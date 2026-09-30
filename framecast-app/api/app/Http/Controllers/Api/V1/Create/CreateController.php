@@ -64,7 +64,7 @@ class CreateController extends Controller
                 $storage = app(StorageService::class);
                 return ['asset_id'=>$asset->id,'purpose'=>$attachment->purpose,'title'=>$asset->title,'asset_type'=>$asset->asset_type,
                     'attached_at'=>$attachment->created_at,'duration_seconds'=>$asset->duration_seconds,'dimensions'=>$asset->dimensions_json,
-                    'bytes'=>$asset->file_size_bytes,'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
+                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
             })->filter()->values(),
             'revisions' => $revisions,
             'runs' => DB::table('composition_runs')->where('conversation_id', $id)->orderBy('created_at')->get(['id', 'status', 'stage', 'error', 'created_at']),
@@ -108,6 +108,13 @@ class CreateController extends Controller
             'reuse_confirmed'=>'exclude_unless:purpose,source|required|accepted']);
         app(AttachmentUploadService::class)->upload($r->user(),$id,$r->file('asset_file'),$input['purpose'],$input['idempotency_key'],$input['expected_version']);
         return $this->show($r,$id);
+    }
+
+    public function reference(Request $r, string $id)
+    {
+        $input = $r->validate(['url' => 'required|string|max:500', 'idempotency_key' => 'required|string|max:128', 'expected_version' => 'required|integer|min:0']);
+        app(\App\Services\Create\References\ReferenceLinkService::class)->add($r->user(), $id, $input['url'], $input['expected_version'], $input['idempotency_key']);
+        return $this->show($r, $id);
     }
 
     public function attach(Request $r, string $id)

@@ -27,10 +27,12 @@ class AnthropicGateway
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $m[1], 'data' => $m[2]]];
         }
         $content[] = ['type' => 'text', 'text' => $input['prompt']];
+        // Opus can take over two minutes to write a full composition with its thinking.
+        set_time_limit(320);
         $attempts = app(AttemptService::class);
         try {
             $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
-                ->acceptJson()->timeout(120)->post('https://api.anthropic.com/v1/messages', [
+                ->acceptJson()->timeout(280)->post('https://api.anthropic.com/v1/messages', [
                     'model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
                     'output_config' => ['effort' => (string) config('create.agent_effort', 'medium')],
                     'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],

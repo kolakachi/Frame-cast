@@ -126,13 +126,24 @@ class PlanService
             'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at];
     }
 
+    /** What a reference teaches, compact for model context; null when it was never studied. */
+    public static function referenceBrief(Asset $asset): ?array
+    {
+        $a = data_get($asset->metadata_json, 'reference_analysis');
+        if (! is_array($a)) return null;
+        return array_filter(['from' => data_get($asset->metadata_json, 'reference_source.platform'), 'duration_seconds' => $a['duration_seconds'] ?? null,
+            'shots' => $a['shots'] ?? null, 'average_shot_seconds' => $a['average_shot_seconds'] ?? null,
+            'speech' => isset($a['transcript']) ? mb_substr((string) $a['transcript'], 0, 600) : null, 'notes' => $a['notes'] ?? null], fn ($v) => $v !== null);
+    }
+
     private function context(User $user, object $c): array
     {
         $settings = json_decode($c->settings_json, true) ?: [];
         $files = DB::table('create_attachments')->where('conversation_id', $c->id)->orderBy('asset_id')->get()->map(function ($a) use ($user) {
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($a->asset_id);
             return $asset ? ['asset_id' => (int) $asset->id, 'title' => (string) $asset->title, 'asset_type' => $asset->asset_type, 'purpose' => $a->purpose,
-                'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json] : null;
+                'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json,
+                'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null] : null;
         })->filter()->values()->all();
         return [
             'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all(),

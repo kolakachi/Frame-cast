@@ -291,3 +291,14 @@ Open decision: an Opus build needs about 9 to 10 calls with its review. That mea
 ### First finished Opus 5.5 build (2026-09-30)
 
 With the 12-call limit, the same Brewline brief finished at `preview_ready`: 6 calls, $0.333, 86 credits, 159 s end to end. The 15 s 1080×1920 video used the exact approved copy ("Cold brew, zero wait", "Order today", Brewline) in the requested orange and cream palette. Opus's own review of sampled frames passed. The only font in the sandbox is DejaVu Sans, which limits typographic range; bundling a small licensed font set is the next quality lever.
+
+## Slice 5: public links as style references (2026-09-30)
+
+Owner approved using public X, YouTube and TikTok posts as style references.
+
+- **Intake.** `POST /v1/create/conversations/{id}/references` takes a public https link from an allowlisted host. X edit-history links point at the post. YouTube tracking parameters are dropped. A pinned yt-dlp (`2026.08.19`, installed in the API image per architecture) runs with no config, cookies or playlists. Posts over 5 minutes, live streams and failures are refused with a plain message. It is limited to 20 a day per workspace. The file is stored privately through the normal upload path and attached with purpose `reference`, so it is never renderable. Replays with the same key return the same reference without fetching again.
+- **Study.** Cuts come from ffmpeg scene detection. Speech is transcribed with Whisper when present. Opus reads a 4×2 contact sheet at low effort and returns a summary, look, palette, type, motion, structure, techniques to borrow and specific things not to copy. This is best-effort: a failed study still leaves the reference attached.
+- **Use.** The planner and the build agent receive the notes with a rule to borrow approach, never content. The Create page has a "From a link" button that shows progress and the one-line summary.
+- **Live run, with the owner's link** (DreW, "Made with @claudeai Opus 5.5", 32 s). Fetched and studied in 29 s. The notes were accurate, and they named the orange box character and specific compositions as not to copy. The Opus plan borrowed the calm, escalating, calm structure. The build finished in 4 calls, $0.52, 132 credits and 245 s, on paper texture in the reference's purple and peach palette, with nothing from the original copied.
+- **Timeout fix found on the way.** One build call took over 120 s and hit the gateway timeout, which left an unknown attempt of up to $0.30 that cannot be reconciled. The gateway now waits up to 280 s and the worker 300 s. Production PHP-FPM has a 120 s fastcgi timeout; the worker's internal routes need a longer one before this runs there.
+- **Tests.** API 717 passed with 1 skipped; worker 70 passed; web 43 passed with the known affiliate failure.

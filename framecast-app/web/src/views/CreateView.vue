@@ -50,7 +50,7 @@ const panelTab = ref('details'), panelHeading = ref(null)
 let panelReturnFocus = null
 function togglePanel() { if (details.value) { closePanel(); return } panelReturnFocus = document.activeElement; openSettings(); nextTick(() => panelHeading.value?.focus()) }
 function closePanel() { details.value = false; nextTick(() => panelReturnFocus?.focus?.()) }
-function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !compareOpen.value) closePanel() }
+function onKey(e) { if (e.key === 'Escape' && details.value && !delivery.value && !showHistory.value && !libraryOpen.value && !linkOpen.value && !compareOpen.value) closePanel() }
 function time(value) { return value ? new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '' }
 function sizeLabel(a) {
   const d = a.dimensions || {}, dims = d.width && d.height ? `${d.width}×${d.height}` : ''
@@ -246,6 +246,25 @@ async function plan(retryRunId = null) { await guarded(async () => {
 async function approve() { if(expiredQuote.value) return; await guarded(async () => { await api.post(`${base()}/runs`,{quote_id:quote.value.id,approved:true,provider_approved:providerApproved.value,idempotency_key:approvalKey}); quote.value = null; await refresh(); await loadHistory() }) }
 async function saveOutput() { await guarded(async () => { await api.post(`${base()}/revisions/${currentRevision.value.id}/save-output`,{expected_version:conversation.value.version}); await refresh() }) }
 async function cancel() { await guarded(async () => { await api.post(`${base()}/runs/${active.value.id}/cancel`); await refresh() }) }
+const linkOpen = ref(false), linkUrl = ref(''), linkBusy = ref(false), linkError = ref('')
+let linkKey = null
+function openLink() { linkUrl.value = ''; linkError.value = ''; linkKey = null; linkOpen.value = true }
+function closeLink() { if(!linkBusy.value) linkOpen.value = false }
+async function addLink() {
+  if(linkBusy.value || !linkUrl.value.trim()) return
+  linkBusy.value = true; linkError.value = ''
+  linkKey ??= crypto.randomUUID()
+  try {
+    const target = await ensureConversation()
+    const result = await api.post(`${base(target)}/references`,{url:linkUrl.value.trim(),idempotency_key:linkKey,expected_version:conversation.value.version},{timeout:150000})
+    if(id.value === target) { data.value = result.data.data; quote.value = null }
+    linkOpen.value = false; await loadHistory()
+  } catch(e) {
+    linkError.value = message(e)
+    // A different link needs a new request key; a retry of the same link replays safely.
+    if(e.response?.status === 409) { linkKey = null; await refresh().catch(()=>{}) }
+  } finally { linkBusy.value = false }
+}
 async function showLibrary() {
   purpose.value = 'reference'; reuseConfirmed.value = false; librarySearch.value = ''; libraryPage.value = 1
   libraryOpen.value = true; await loadLibrary()
@@ -528,7 +547,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="uploads.length || pendingAttachments.length" class="attached">
               <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
-                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small></div>
+                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small></div>
                 <button type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
               </div>
               <div v-for="u in uploads" :key="u.key" :class="['upload', u.error ? 'upload--error' : '']">
@@ -550,6 +569,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               <div class="composer-bottom">
                 <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV. Up to 20 files, 100 MB each and 200 MB total." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
+                <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
@@ -630,6 +650,16 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         </template>
         <small class="muted">Showing up to 100 matching conversations.</small>
       </CreateDialog>
+      <CreateDialog :open="linkOpen" title="Use a video as a style reference" @close="closeLink">
+        <form class="link-form" @submit.prevent="addLink">
+          <label for="ref-url" class="link-form__label">Link to a public post on X, YouTube or TikTok</label>
+          <input id="ref-url" v-model="linkUrl" class="input" type="url" inputmode="url" autocomplete="off" placeholder="https://x.com/…/status/…" :disabled="linkBusy" />
+          <p class="muted link-form__note">We study its pacing, structure and look, and the plan borrows the approach. It is never placed in your video, and its characters, logos and text are not copied.</p>
+          <p v-if="linkError" class="create-error" role="alert">{{ linkError }}</p>
+          <p v-if="linkBusy" class="muted" role="status">Fetching and studying the video. This can take up to a minute.</p>
+          <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="linkBusy" @click="closeLink">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="linkBusy || !linkUrl.trim()">{{ linkBusy ? 'Studying…' : 'Add reference' }}</button></div>
+        </form>
+      </CreateDialog>
       <CreateDialog :open="libraryOpen" title="Add from your library" @close="libraryOpen = false">
         <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form><UiSelect v-model="purpose" label="How to use this asset" :options="[{value:'reference',label:'Reference only'},{value:'source',label:'Reuse in my creation'}]" /><p class="muted">A reference helps describe a style. It does not give permission to copy footage, people or branding.</p><label v-if="purpose === 'source'" class="consent"><input v-model="reuseConfirmed" type="checkbox" /> I own this media or have permission to reuse it.</label>
         <div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked || purpose === 'source' && !reuseConfirmed" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
@@ -641,6 +671,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 
 <style scoped>
 /* Tokens from the approved create-ui mockup, on the app's own accent. */
+.link-form{display:flex;flex-direction:column;gap:10px}.link-form__label{font-size:13px;color:var(--text-2)}.link-form__note{font-size:12px;line-height:1.45;margin:0}.link-form__actions{display:flex;justify-content:flex-end;gap:8px}
+.ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}
 button{font:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}

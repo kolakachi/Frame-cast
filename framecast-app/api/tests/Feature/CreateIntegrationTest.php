@@ -287,6 +287,51 @@ class CreateIntegrationTest extends TestCase
         $this->assertContains('transcript', array_column(\App\Services\Create\CapabilityCatalogue::forWorkspace($this->workspace->id), 'kind'));
     }
 
+    public function test_reference_link_is_fetched_privately_studied_and_never_renderable(): void
+    {
+        $c = $this->brief();
+        $service = app(\App\Services\Create\References\ReferenceLinkService::class);
+        $this->rejected(422, fn () => $service->add($this->owner, $c->id, 'http://x.com/a/status/1', 1, 'r0'));
+        $this->rejected(422, fn () => $service->add($this->owner, $c->id, 'https://evil.example/video.mp4', 1, 'r0'));
+        $this->rejected(422, fn () => $service->add($this->owner, $c->id, 'https://user:pw@x.com/a/status/1', 1, 'r0'));
+        $this->assertSame(['x', 'https://x.com/devteamdrew/status/2102436464323661880'], $service->validate('https://x.com/devteamdrew/status/2102436464323661880/history'));
+        $this->assertSame(['youtube', 'https://www.youtube.com/watch?v=abcdEFG123'], $service->validate('https://www.youtube.com/watch?v=abcdEFG123&si=track&list=x'));
+
+        $mp4 = file_get_contents(base_path('tests/Fixtures/create/tiny.mp4'));
+        $calls = [];
+        \Illuminate\Support\Facades\Process::fake(function ($process) use (&$calls, $mp4) {
+            $cmd = $process->command; $calls[] = $cmd;
+            if ($cmd[0] === 'yt-dlp' && in_array('-J', $cmd, true)) return \Illuminate\Support\Facades\Process::result(json_encode(['title' => 'Made with Opus', 'uploader' => 'DreW', 'duration' => 31.9, 'is_live' => false]));
+            if ($cmd[0] === 'yt-dlp') { $o = $cmd[array_search('-o', $cmd, true) + 1]; file_put_contents(str_replace('%(ext)s', 'mp4', $o), $mp4); return \Illuminate\Support\Facades\Process::result(''); }
+            if ($cmd[0] === 'ffprobe') return \Illuminate\Support\Facades\Process::result(json_encode(['streams' => [['codec_type' => 'video', 'width' => 1280, 'height' => 720]]]));
+            if ($cmd[0] === 'ffmpeg' && str_contains(implode(' ', $cmd), 'scene')) return \Illuminate\Support\Facades\Process::result('', "frame:1 pts:1 pts_time:4.2\nframe:2 pts:2 pts_time:8.9\n");
+            if ($cmd[0] === 'ffmpeg') { file_put_contents(end($cmd), 'jpg'); return \Illuminate\Support\Facades\Process::result(''); }
+            return \Illuminate\Support\Facades\Process::result('', 'unexpected', 1);
+        });
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5']);
+        Http::fake(['https://api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => '{"summary":"Hand-drawn vignettes cut on the beat.","look":"Paper texture, flat shapes","palette":["#F2EDE4","#3A2D6B","bad"],"type":"none","motion":"Springy","structure":"Cold open, montage, end card","borrow":["Hold each idea 3 s"],"avoid_copying":["The orange box character"]}']], 'usage' => ['input_tokens' => 1500, 'output_tokens' => 200]])]);
+
+        $v = $this->conversations->conversation($this->owner, $c->id)->version;
+        $asset = $service->add($this->owner, $c->id, 'https://x.com/devteamdrew/status/2102436464323661880/history', (int) $v, 'ref-1');
+        $this->assertSame('reference', DB::table('create_attachments')->where('asset_id', $asset->id)->value('purpose'));
+        $this->assertStringStartsWith('create-upload://', $asset->storage_url);
+        $this->assertSame('X · DreW', $asset->title);
+        $a = $asset->metadata_json['reference_analysis'];
+        $this->assertSame([[4.2, 8.9], 3], [$a['cuts'], $a['shots']]);
+        $this->assertSame(['#F2EDE4', '#3A2D6B'], $a['notes']['palette'], 'invalid colours are dropped');
+        $this->assertContains('--ignore-config', $calls[0]);
+        // Replay with the same key returns the same reference without fetching again.
+        $n = count($calls);
+        $this->assertSame($asset->id, $service->add($this->owner, $c->id, 'https://x.com/devteamdrew/status/2102436464323661880/history', (int) $v, 'ref-1')->id);
+        $this->assertCount($n, $calls);
+        // The planner and the run snapshot both carry the notes; the reference is never a source.
+        $brief = \App\Services\Create\PlanService::referenceBrief($asset);
+        $this->assertSame('Hand-drawn vignettes cut on the beat.', $brief['notes']['summary']);
+        // A post longer than 5 minutes is refused before download.
+        \Illuminate\Support\Facades\Process::fake(fn () => \Illuminate\Support\Facades\Process::result(json_encode(['duration' => 900])));
+        $this->rejected(422, fn () => $service->add($this->owner, $c->id, 'https://www.tiktok.com/@a/video/1', (int) $this->conversations->conversation($this->owner, $c->id)->version, 'ref-2'));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

@@ -30,6 +30,18 @@ RUN apt-get update \
         zip \
     && rm -rf /var/lib/apt/lists/*
 
+# yt-dlp, pinned: fetches a public post a Create user pastes as a style
+# reference. Standalone binary, no Python needed. Sites change often; bump the
+# version when fetches start failing.
+ARG TARGETARCH
+ARG YTDLP_VERSION=2026.08.19
+RUN set -eux; \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "$arch" in amd64) bin=yt-dlp_linux ;; arm64) bin=yt-dlp_linux_aarch64 ;; *) echo "unsupported arch $arch"; exit 1 ;; esac; \
+    curl -fsSL -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${bin}"; \
+    chmod 0755 /usr/local/bin/yt-dlp; \
+    /usr/local/bin/yt-dlp --version
+
 # ── Tier 2: Liberation fonts (metric-compatible open alternatives for Arial,
 #    Times New Roman, Courier New) — available in Debian repos, no EULA download
 RUN apt-get update \

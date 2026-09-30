@@ -93,7 +93,7 @@ async function execute(run){
   }
   const agentModel=run.input.execution_policy?.agent?.model;
   const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:.3,
-    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,150000)})
+    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,300000)})
    :paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
   if(paid){const complete=provider.complete.bind(provider);provider.complete=async args=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',.3);return complete(args);};}
   let agentResult;

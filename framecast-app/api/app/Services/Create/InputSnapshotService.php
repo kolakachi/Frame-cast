@@ -82,7 +82,8 @@ class InputSnapshotService
                     $files[] = ['asset_id' => $asset->id, 'purpose' => $attachment->purpose, 'name' => $name,
                         'sha256' => $hash, 'bytes' => $bytes, 'mime_type' => $mime, 'asset_type' => $asset->asset_type,
                         'storage_path' => $path, 'duration_seconds' => $asset->duration_seconds,
-                        'transcript' => mb_substr((string) $asset->transcript_text, 0, 20000)];
+                        'transcript' => mb_substr((string) $asset->transcript_text, 0, 20000),
+                        ...($attachment->purpose === 'reference' && ($brief = PlanService::referenceBrief($asset)) ? ['reference' => $brief] : [])];
                     $total += $bytes;
                 } finally { fclose($stream); fclose($tmp); }
             }

@@ -232,6 +232,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/messages', [$controller, 'message']);
             Route::post('/conversations/{id}/uploads', [$controller, 'upload']);
             Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
+            Route::post('/conversations/{id}/references', [$controller, 'reference']);
             Route::delete('/conversations/{id}/attachments/{assetId}', [$controller, 'detach'])->whereNumber('assetId');
             Route::post('/conversations/{id}/plans', [$controller, 'plan']);
             Route::patch('/conversations/{id}/plans/{planId}', [$controller, 'selectPlan']);

@@ -32,6 +32,12 @@ return [
     // Word-timed transcripts of supplied speech (free; OpenAI Whisper cost is about $0.006 a minute).
     'transcript_daily_limit' => (int) env('CREATE_TRANSCRIPT_DAILY_LIMIT', 30),
     'transcript_max_seconds' => 600,
+    // Public posts pasted as style references (X, YouTube, TikTok). Fetched
+    // privately, attached as reference only, never placed in an output.
+    'reference_hosts' => ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com'],
+    'reference_daily_limit' => (int) env('CREATE_REFERENCE_DAILY_LIMIT', 20),
+    'reference_max_seconds' => 300,
+    'ytdlp_path' => env('CREATE_YTDLP_PATH', 'yt-dlp'),
     'lease_seconds' => 90,
     'input_workspace_bytes' => 1024 * 1024 * 1024,
     'input_file_bytes' => 100 * 1024 * 1024,
