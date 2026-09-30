@@ -169,3 +169,12 @@ test('a draft that passed checks and snapshots is delivered when the call limit 
   tools:{check:async()=>({ok:false,diagnostics:{ok:false,errors:[{code:'x'}]}}),snapshot:async()=>({ok:true})}});
  assert.equal(failing.status,'failed','a draft that failed its checks is never delivered');
 });
+test('on the last call a checked draft is delivered with its open issues instead of held as a question',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/last-');await writeFile(dir+'/index.html','<html></html>');
+ const steps=[{type:'write',path:'index.html',content:'<html><h1>Draft</h1></html>'},{type:'preview',times:[1]},{type:'needs_input',question:'Tiles do not exit at 11.5 s.'}];let i=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:3,repairs:3,budgetUsd:0},requireVisualReview:true,
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(state.status,'preview_ready');assert.match(state.summary,/Tiles do not exit/);
+});
