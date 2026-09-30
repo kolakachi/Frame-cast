@@ -15,6 +15,10 @@ services:
     # without it artisan serve runs one request at a time and long Create model
     # calls starve the worker heartbeat. Restart the container after .env edits.
     command: php artisan serve --host=0.0.0.0 --port=8000 --no-reload
+    # Private files (Create uploads, previews, generated media) must survive
+    # restarts and rebuilds; without a volume every recreate wiped them.
+    volumes:
+      - api_storage:/var/www/html/storage/app
     env_file:
       - ./api/.env
     environment:
@@ -267,6 +271,7 @@ services:
       start_period: 3s
 
 volumes:
+  api_storage:
   postgres_data:
   redis_data:
   web_node_modules:
