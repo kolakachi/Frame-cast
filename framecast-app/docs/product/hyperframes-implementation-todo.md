@@ -57,6 +57,8 @@ Local checks pass for cooperative cancellation, deadlines, missing assets/font/o
 
 ## E1 — prove the agent locally
 
+**E1 decision (2026-09-30, owner):** the build agent model is Claude Opus 5.5 through the app-side gateway. No multi-model benchmark will be run. The unchecked comparison items below are closed by this decision, not by evidence. First finished Opus build: 6 calls, $0.33, 86 credits, 159 s, 15 s 1080×1920 preview matching the brief. Paid Opus builds allow 12 calls.
+
 Progress: verified public endpoint schema snapshots, strict JSON action loop, scoped source tools, local journal, bounded execution and disabled-by-default Replicate adapter implemented. 45 deterministic tests pass; scripted and real providers completed offline Hyperframes renders. Latest scripted smoke verifies rejected-edit recovery and exact source preservation at zero provider cost. See [E1 verification](hyperframes-e1-verification.md). Measured test costs and sampled visual review exist, but creative acceptance and the model comparison remain incomplete.
 
 ### E1.1 Replicate endpoint contract

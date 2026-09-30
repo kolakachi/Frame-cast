@@ -287,3 +287,7 @@ Open decision: an Opus build needs about 9 to 10 calls with its review. That mea
 - **Planning.** Both planners propose the transcript step for supplied video or audio. The catalogue lists it at 0 credits.
 - **Tests.** API 716 passed with 1 skipped. Worker 70 passed, including mapping, the runner action and the protocol shape.
 - **Live check.** A 4-second spoken clip went through the harness, the container's audio extraction and real Whisper. The first call took 4.3 s and the repeat was cached in 47 ms. Whisper rendered "Save twenty percent" as "Save 20", dropping a word. On-screen copy must come from approved text, not from the transcript.
+
+### First finished Opus 5.5 build (2026-09-30)
+
+With the 12-call limit, the same Brewline brief finished at `preview_ready`: 6 calls, $0.333, 86 credits, 159 s end to end. The 15 s 1080×1920 video used the exact approved copy ("Cold brew, zero wait", "Order today", Brewline) in the requested orange and cream palette. Opus's own review of sampled frames passed. The only font in the sandbox is DejaVu Sans, which limits typographic range; bundling a small licensed font set is the next quality lever.
