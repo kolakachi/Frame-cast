@@ -169,6 +169,18 @@ class RunService
         });
     }
 
+    /** Worker-reported delivery checks, reduced to known fields and bounded text. */
+    public static function deliveryChecks(mixed $c): ?array
+    {
+        if (! is_array($c)) return null;
+        $items = fn ($list) => array_values(array_slice(array_map(fn ($f) => ['selector' => mb_substr((string) ($f['selector'] ?? ''), 0, 120),
+            'time' => is_numeric($f['time'] ?? null) ? round((float) $f['time'], 2) : null, 'message' => mb_substr((string) ($f['message'] ?? ''), 0, 200)], is_array($list) ? array_filter($list, 'is_array') : []), 0, 12));
+        $l = is_array($c['loudness'] ?? null) ? $c['loudness'] : [];
+        $num = fn ($v) => is_numeric($v) ? round((float) $v, 1) : null;
+        return ['ok' => (bool) ($c['ok'] ?? false), 'safe_area' => $items($c['safe_area'] ?? []), 'edges' => $items($c['edges'] ?? []), 'contrast' => $items($c['contrast'] ?? []),
+            'loudness' => ['status' => in_array($l['status'] ?? '', ['ok', 'levelled', 'silent', 'no_audio', 'check_failed'], true) ? $l['status'] : 'unknown', 'lufs' => $num($l['lufs'] ?? null), 'from' => $num($l['from'] ?? null), 'peak' => $num($l['peak'] ?? null)]];
+    }
+
     public function heartbeat(string $id, string $token, int $sequence, string $stage): array
     {
         return DB::transaction(function () use ($id, $token, $sequence, $stage) {
@@ -229,7 +241,7 @@ class RunService
                 DB::table('composition_revisions')->insert([
                     'id' => $revision, 'conversation_id' => $c->id, 'run_id' => $id,
                     'number' => 1 + (int) DB::table('composition_revisions')->where('conversation_id', $c->id)->max('number'), 'parent_revision_id' => $input['base_revision_id'],
-                    'metadata_json'=>json_encode(['settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
+                    'metadata_json'=>json_encode(['delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
                     'bundle_json' => json_encode($bundle), 'bundle_hash' => hash('sha256', json_encode($bundle)),
                     'artifact_path' => $artifactPath, 'artifact_hash' => $artifactHash, 'summary' => $result['summary'],
                     'conflict' => $conflict, 'created_at' => now(),

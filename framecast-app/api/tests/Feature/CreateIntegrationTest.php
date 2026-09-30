@@ -429,6 +429,18 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(404, fn () => $styles->delete($this->owner, $fromVersion['id']));
     }
 
+    public function test_delivery_checks_are_kept_with_the_version_and_reduced_to_known_fields(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $checks = ['ok' => false, 'safe_area' => [['selector' => '#cta', 'time' => 13.456, 'message' => 'Collides with the caption band', 'extra' => 'dropped']],
+            'edges' => 'not a list', 'contrast' => [], 'loudness' => ['status' => 'levelled', 'from' => -23.44, 'lufs' => -14.02, 'peak' => -1.6], 'injected' => '<script>'];
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<html></html>'], 'delivery_checks' => $checks], 'private/v1.mp4', 'h');
+        $meta = json_decode(DB::table('composition_revisions')->where('run_id', $run->id)->value('metadata_json'), true);
+        $this->assertEquals(['ok' => false, 'safe_area' => [['selector' => '#cta', 'time' => 13.46, 'message' => 'Collides with the caption band']], 'edges' => [], 'contrast' => [],
+            'loudness' => ['status' => 'levelled', 'lufs' => -14.0, 'from' => -23.4, 'peak' => -1.6]], $meta['delivery_checks']);
+        $this->assertNull(\App\Services\Create\RunService::deliveryChecks('nope'));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

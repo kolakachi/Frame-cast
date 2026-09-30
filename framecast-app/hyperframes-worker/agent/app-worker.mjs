@@ -6,6 +6,7 @@ import {PilotBudget} from './pilot-budget.mjs';
 import {ReplicateProvider} from './replicate.mjs';
 import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {buyPlanMedia} from './plan-media.mjs';
+import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
@@ -155,6 +156,19 @@ async function execute(run){
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
    execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status!=='ready')throw Error('Render did not validate');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
+  // Delivery checks on the final file: platform safe area, frame edges,
+  // contrast and loudness. Reported with the version; loudness is levelled.
+  let deliveryChecks=null;
+  if(!(cancelled||stopping||lost)){
+   stage='Checking the final video';
+   try{
+    await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:200000,maxBuffer:2000000});
+    const sandbox=JSON.parse(await readFile(dir+'/delivery/result.json','utf8'));
+    const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
+    const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});
+    deliveryChecks=deliverySummary(sandbox,loudness);
+   }catch{deliveryChecks=null;}
+  }
   clearInterval(timer);
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));
   await beat();
@@ -164,6 +178,7 @@ async function execute(run){
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
   const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?(agentResult.state.summary??'')+cutNote(agentResult.state.edits):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
+  if(deliveryChecks)result.delivery_checks=deliveryChecks;
   // Persist completion before sending: a callback failure must not trigger rendering again.
   await writeFile(dir+'/completion.json',JSON.stringify({result,report}),{mode:0o600});
   if(!report.directory.startsWith('/output/live/'+id+'/render/') || report.artifact !== 'video.mp4')throw Error('Invalid artifact path');

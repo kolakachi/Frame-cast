@@ -38,6 +38,19 @@ async function updateForDelivery(){delivery.value=null;selectedRevision.value=nu
 
 const paid = computed(() => capabilities.value?.paid_generation && capabilities.value?.mode === 'agent')
 const outputMeta = computed(() => {try{return JSON.parse(currentRevision.value?.metadata_json || '{}')}catch{return {}}})
+// Delivery checks the worker ran on the final file, in plain words.
+const delivery_checks = computed(() => outputMeta.value?.delivery_checks || null)
+const checkIssues = computed(() => {
+  const c = delivery_checks.value; if(!c) return []
+  const at = f => (f.time != null ? ` at ${f.time}s` : '')
+  const name = f => (String(f.message || '').match(/"([^"]{1,80})"/)?.[1]) || (f.selector || 'Some text').replace(/^#/, '')
+  return [
+    ...(c.safe_area || []).map(f => `"${name(f)}"${at(f)} sits where the app's captions and buttons cover it. Move it up, or ask for a change.`),
+    ...(c.edges || []).map(f => `"${name(f)}"${at(f)} runs off the edge of the frame.`),
+    ...(c.contrast || []).map(f => `"${name(f)}"${at(f)} is hard to read against its background.`),
+    ...(c.loudness?.status === 'check_failed' ? ['The sound level could not be checked.'] : []),
+  ].slice(0, 8)
+})
 const imageOutput = computed(() => outputMeta.value.settings?.output_kind === 'image')
 async function editResult() {if(imageOutput.value && !currentRevision.value.output_asset_id){await saveOutput();if(!currentRevision.value.output_asset_id)return}prompt.value = imageOutput.value ? 'Keep this image, but change ' : 'Keep this video, but change '; nextTick(()=>composer.value?.focus())}
 async function animateResult(){await guarded(async()=>{const rev=currentRevision.value;if(!rev.output_asset_id)throw Error('Save the image to Assets first.');const c=(await api.post('/create/conversations',{output_kind:'video',video_mode:'animate_image',duration_seconds:5,aspect_ratio:outputMeta.value.settings.aspect_ratio,audio:'silent',origin_conversation_id:id.value,origin_revision_id:rev.id})).data.data;await api.post(`/create/conversations/${c.id}/attachments`,{asset_id:rev.output_asset_id,purpose:'source',reuse_confirmed:true,expected_version:0});await router.push({name:'create',params:{conversationId:c.id}});await refresh();prompt.value='Animate this image with gentle motion. Keep the objects and composition consistent.';nextTick(()=>composer.value?.focus())})}
@@ -491,6 +504,15 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <span class="muted">{{ outputMeta.fixture === false ? (currentRevision.export_job_id ? 'Saved to Videos' : currentRevision.output_asset_id ? 'Saved to Assets' : 'Preview') : 'Local sample preview' }}</span>
                   <span :class="['status', isOldRevision ? 'status--neutral' : 'status--ok']">{{ isOldRevision ? 'EARLIER' : 'CURRENT' }}</span>
                 </div>
+                <div v-if="delivery_checks" class="checks" role="status" aria-label="Before you post">
+                  <b>{{ checkIssues.length ? 'Before you post' : 'Ready to post' }}</b>
+                  <ul>
+                    <li v-for="(t, i) in checkIssues" :key="i" class="checks__warn">{{ t }}</li>
+                    <li v-if="delivery_checks.loudness?.status === 'levelled'">Sound levelled from {{ delivery_checks.loudness.from }} to {{ delivery_checks.loudness.lufs }} LUFS for social playback.</li>
+                    <li v-else-if="delivery_checks.loudness?.status === 'ok'">Sound level is right for social ({{ delivery_checks.loudness.lufs }} LUFS).</li>
+                    <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
+                  </ul>
+                </div>
                 <div class="result__actions">
                   <button v-if="media" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
                   <button v-if="canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
@@ -721,6 +743,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .style-row__swatches{display:flex;gap:3px}.style-row__swatches span{width:14px;height:14px;border-radius:4px;border:1px solid var(--line-2)}
 .style-row__body{display:flex;flex-direction:column;gap:4px;min-width:0}
 @media (max-width:560px){.style-row{grid-template-columns:1fr auto auto}.style-row__swatches{display:none}}
+.checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
 .fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}
