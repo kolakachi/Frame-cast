@@ -39,24 +39,31 @@ Started 2026-10-01. Work one slice at a time. Each slice is done only when its *
 
 Every video type needs this, so it goes first.
 
-- [ ] **Fix the narration download.** The voiceover plan item fails: the TTS result is a managed-storage URL (`minio://…`) that the executor fetches over HTTP. Read managed URLs through `StorageService`. Covered by a test using a `minio://` result.
-- [ ] **Draft a narration script in the plan.** The planner proposes a voiceover script of 25 to 40 words for 15 s, built only from the brief, approved facts and page claims. Page claims are marked as needing approval.
-- [ ] **Edit and approve the script in the plan card.** Lines are editable like on-screen copy. Approving the plan approves the script as spoken copy, and nothing unapproved is spoken.
-- [ ] **Narration reads the approved script.** Not just the on-screen lines.
-- [ ] **Voice choice in the plan.** A catalogue voice by description, or the workspace's cloned voice.
-- [ ] **Timings for generated speech.** After narration is bought, the worker transcribes it with Whisper. The transcript tool already works on source files, so text is timed to the generated voice through the existing `data-spoken` check.
-- [ ] **Accent words.** The agent may set one word per line in an accent style; the fonts are already there.
+- [x] **Fix the narration download.** The voiceover plan item fails: the TTS result is a managed-storage URL (`minio://…`) that the executor fetches over HTTP. Read managed URLs through `StorageService`. Covered by a test using a `minio://` result.
+- [x] **Draft a narration script in the plan.** The planner proposes a voiceover script of 25 to 40 words for 15 s, built only from the brief, approved facts and page claims. Page claims are marked as needing approval.
+- [x] **Edit and approve the script in the plan card.** Lines are editable like on-screen copy. Approving the plan approves the script as spoken copy, and nothing unapproved is spoken.
+- [x] **Narration reads the approved script.** Not just the on-screen lines.
+- [x] **Voice choice in the plan.** A catalogue voice by description, or the workspace's cloned voice.
+- [x] **Timings for generated speech.** After narration is bought, the worker transcribes it with Whisper. The transcript tool already works on source files, so text is timed to the generated voice through the existing `data-spoken` check.
+- [x] **Accent words.** The agent may set one word per line in an accent style; the fonts are already there.
 - **Done when:** a build from a text-only brief has a voiceover of the approved script, and every on-screen line passes the timing check against the narration.
+- **Status 2026-10-01: done.** Run `d29f317c` in workspace 1 spoke the approved four-line script, with nine lines tied to the words and passing the timing check (7 calls, $0.53, 137 credits). The voice said the brand as "Vive Studio", so **workspace pronunciations** were added; WyvStudio is now spoken as "Weave Studio", confirmed by transcribing the final mix.
 - **Cost:** Gemini TTS is 3 credits a line, and Whisper is about $0.006 a minute.
 
 ## Slice B: music and sound effects (Q7)
 
-- [ ] **Decide the music source.** This is the owner's decision. Recommendation: ElevenLabs Music for a generated bed per video, commercial use on a paid plan. Alternatives: Stable Audio 2.5, Soundstripe, or a bought royalty-free pack.
-- [ ] **Music in the plan.** A `music` catalogue item generated to the video's length and mood, priced from measured cost, and bought under the one approval.
-- [ ] **Sound effects.** An `sfx` item for up to 6 short cues such as clicks, whooshes and pops. Candidate: ElevenLabs Sound Effects. The agent places them on UI beats.
-- [ ] **Mixing.** Music ducks under the voice by 10 to 14 dB. The final mix is levelled by the existing delivery loudness step. A check fails if speech is masked.
+- [x] **Decide the music source.** Owner: ElevenLabs. Used through the existing Replicate account (`elevenlabs/music`, $0.0083 per second of output); no new key needed. This is the owner's decision. Recommendation: ElevenLabs Music for a generated bed per video, commercial use on a paid plan. Alternatives: Stable Audio 2.5, Soundstripe, or a bought royalty-free pack.
+- [x] **Music in the plan.** A `music` catalogue item generated to the video's length and mood, priced from measured cost, and bought under the one approval.
+- [x] **Sound effects.** Built on Stable Audio 2.5 on Replicate ($0.20 a file): one sound sheet of up to 6 one-shot cues, cut into cues by silence detection. ElevenLabs Sound Effects is not on Replicate. An `sfx` item for up to 6 short cues such as clicks, whooshes and pops. Candidate: ElevenLabs Sound Effects. The agent places them on UI beats.
+- [x] **Mixing.** Music ducks under the voice by 10 to 14 dB. The final mix is levelled by the existing delivery loudness step. A check fails if speech is masked.
 - [ ] **Library music.** Re-enable it in Create only once licensed tracks exist; it is withheld today.
 - **Done when:** a build has voice, music and at least three timed sound effects, the delivery check reads −14 LUFS ±1, and speech stays intelligible.
+- **Status 2026-10-01: done.** Run `cd2312b0` had voice, a music bed under the whole video, and three real cues (0.36 to 0.48 s) placed four times. Speech transcribed cleanly over the music. Fixes found on the way:
+  - The ElevenLabs song ended at 10 s of 16, so the audible part is now looped with a crossfade.
+  - The first sound sheet was a string of 0.08 s ticks; the prompt now asks for one-shots, fragments merge, and specks drop.
+  - Loudness landed at −15.2 LUFS with a −0.4 dB peak; a gain-correction pass under a limiter now gives −14.2 LUFS with a −1.0 dB peak on that same file.
+  - The run cost 8 calls, $0.79, and 289 credits including 87 for audio.
+- **Local environment fixes.** The local API now runs several PHP workers (`--no-reload`) and keeps its private files on a volume. Before this, restarts wiped Create files.
 
 ## Slice C: consistent character and poses (Q3, Q6)
 

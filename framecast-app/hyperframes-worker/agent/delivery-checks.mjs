@@ -22,7 +22,13 @@ export async function levelIfNeeded(file,{silent=false,ffmpeg='ffmpeg'}={}){
  const tmp=file+'.level.mp4';
  try{
   await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-i',file,'-map','0','-c:v','copy','-af',`loudnorm=I=${TARGET}:TP=-1.5:LRA=11`,'-c:a','aac','-b:a','192k','-movflags','+faststart',tmp],{timeout:180000,maxBuffer:4000000});
-  const after=await measure(tmp,ffmpeg);
+  let after=await measure(tmp,ffmpeg);
+  // One loudnorm pass often lands short and hot; correct the gain once more under a limiter.
+  if(after.lufs!==null&&(Math.abs(after.lufs-TARGET)>0.5||(after.peak??-99)>-1)){
+   const fix=file+'.fix.mp4',gain=(TARGET-after.lufs).toFixed(2);
+   await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-i',tmp,'-map','0','-c:v','copy','-af',`volume=${gain}dB,alimiter=limit=0.84:level=false`,'-c:a','aac','-b:a','192k','-movflags','+faststart',fix],{timeout:180000,maxBuffer:4000000});
+   await rename(fix,tmp);after=await measure(tmp,ffmpeg);
+  }
   await rename(tmp,file);
   return {status:'levelled',from:before.lufs,lufs:after.lufs,peak:after.peak};
  }catch(e){await unlink(tmp).catch(()=>{});return {status:'check_failed',lufs:before.lufs,peak:before.peak};}

@@ -10,7 +10,7 @@ test('parses the final EBU R128 summary',()=>{
 });
 test('a quiet mix is levelled to social loudness and the picture is copied',async()=>{
  const f=await clip('0.02');const before=await measure(f);assert.ok(before.lufs<-25,'test clip is quiet: '+before.lufs);
- const r=await levelIfNeeded(f);assert.equal(r.status,'levelled');assert.ok(Math.abs(r.lufs+14)<=1.5,'after '+r.lufs);
+ const r=await levelIfNeeded(f);assert.equal(r.status,'levelled');assert.ok(Math.abs(r.lufs+14)<=1,'after '+r.lufs);assert.ok(r.peak<=-0.5,'peak '+r.peak);
 });
 test('silent-by-choice and correct levels are left alone',async()=>{
  assert.equal((await levelIfNeeded('/nonexistent',{silent:true})).status,'silent');
