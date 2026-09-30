@@ -80,6 +80,7 @@ Every video type needs this, so it goes first.
 - [ ] **A `talking_shot` item.** 2 to 4 s of the character speaking one approved line: pose image plus narration audio in, lip-synced clip out. Limited to a hook or call to action by default to keep cost down.
 - [ ] **Timing.** The talking shot's audio is the matching narration segment, so text and voice stay in sync.
 - [ ] **Fallback.** If generation fails, use the static talking pose with a subtle idle motion, and say so in the summary.
+- [ ] **Option: generate then trace.** A video model (e.g. Seedance) renders the base motion, then the agent redraws the character in code on top, which keeps the look consistent. Heavier than lip sync; compare it when choosing the provider.
 - **Done when:** the hook shows the character saying the first line with believable lip sync, and the cost of the shot is under the price set for it.
 
 ## Slice E: real product UI (Q5)
@@ -102,6 +103,11 @@ Every video type needs this, so it goes first.
 
 ## Slice F: craft and format (Q6, Q8)
 
+- [ ] **Effort test first.** Every viral Opus 5.5 build ran on xhigh or max effort; ours run on medium to avoid cut-off replies and hold cost. Run one parity build on xhigh with the same brief and compare quality, calls, cost and cut-offs. If it wins, use xhigh for new builds and medium for fixes and re-renders.
+- [ ] **Beat sheet with states.** The plan carries a beat-by-beat state list: each beat's time, what is on screen and its state, a hook in the first 2 s and a payoff every 3 to 5 s. The owner approves it with the script, and the agent builds against it.
+- [ ] **Cuts on the music's beat.** Measure the tempo and beat times of the music bed after it is bought, and give the agent a beat grid so cuts and pops land on beats. A timeline check flags cuts well off the grid.
+- [ ] **Scored critique loop.** Visual review renders stills, scores each one out of 10, names the 3 worst problems and fixes them. Repeat until every still scores 8 or more, or the call limit is reached.
+- [ ] **Build in stages.** Stills first, then a rough timing pass, then the full pass, so a wrong direction is caught before a full build is spent on it.
 - [ ] **Editorial frame kit.** Mono corner labels, timecodes, beat counters and hard cuts to flat colour, as reusable guidance for the agent. It is a style option, not a default.
 - [ ] **16:9 at 60 fps.** Offer 60 fps output for UI-heavy explainers where the renderer supports it; confirm render time and file size.
 - [ ] **Reference-matching pass.** Opus's visual review compares the build's pacing and structure with the reference notes (beats, cut rhythm, closing lockup) and repairs if they are clearly off.
@@ -113,6 +119,12 @@ Every video type needs this, so it goes first.
 - [ ] **Slow-drift check.** A timeline check that flags moves under about 1 pixel per frame, which stutter instead of glide.
 - [ ] **Transitions and light leaks.** Whip, push, mask wipe and light-leak transitions as CSS/GSAP recipes, modelled on Remotion's transitions and light-leaks patterns. No Remotion dependency; its licence needs a paid company licence above 3 people.
 - **Done when:** the parity acceptance test passes.
+- **Notes, not yet scheduled:**
+  - **Call budget for longer films.** The best-known Opus films took 163 calls and 7 to 12 hours. Sixteen calls fit a 15 s parity build; longer or premium films need their own limit and price.
+  - **Every format from one timeline.** Lay scenes out with a layout function and render 9:16, 1:1 and 16:9 in parallel, reframing type and UI rather than cropping.
+  - **Pricing anchor.** Agencies charged about $1,000 for this kind of video a year ago. achxvi, who made the Pocketsflow sample, sells music, a mascot in any style, product features, a closing offer, any language and up to 3 edits.
+- Source for the items above: 0xMovez, "How to build motion design studio with Opus 5.5" (x.com/0xMovez/status/2104216919033192746).
+
 
 ---
 
