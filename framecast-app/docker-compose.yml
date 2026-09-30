@@ -11,7 +11,10 @@ services:
     init: true  # see note at top of file
     build:
       context: ./api
-    command: php artisan serve --host=0.0.0.0 --port=8000
+    # --no-reload is required for PHP_CLI_SERVER_WORKERS (api/.env) to take effect;
+    # without it artisan serve runs one request at a time and long Create model
+    # calls starve the worker heartbeat. Restart the container after .env edits.
+    command: php artisan serve --host=0.0.0.0 --port=8000 --no-reload
     env_file:
       - ./api/.env
     environment:
