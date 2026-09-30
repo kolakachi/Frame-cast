@@ -40,6 +40,7 @@ class AnthropicGateway
                 ]);
         } catch (\Throwable $e) {
             // Sent or not is unknown: keep the hold and let reconciliation decide.
+            \Illuminate\Support\Facades\Log::warning('Create gateway call did not complete', ['run' => $runId, 'attempt' => $attemptId, 'error' => mb_substr(get_class($e).': '.$e->getMessage(), 0, 300)]);
             $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
             abort(502, 'The model call did not complete. The run needs a recovery check; nothing is repeated automatically.');
         }

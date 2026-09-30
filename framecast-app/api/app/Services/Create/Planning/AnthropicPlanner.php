@@ -15,7 +15,7 @@ class AnthropicPlanner implements Planner
 
     public function plan(array $context): array
     {
-        $response = Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(90)
+        $response = Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(180)
             ->post('https://api.anthropic.com/v1/messages', [
                 'model' => $this->model, 'max_tokens' => 3000,
                 'system' => [['type' => 'text', 'text' => PlanPrompt::system(), 'cache_control' => ['type' => 'ephemeral']]],

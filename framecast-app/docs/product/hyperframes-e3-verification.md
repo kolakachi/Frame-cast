@@ -311,3 +311,12 @@ Owner approved using public X, YouTube and TikTok posts as style references.
 - **Live run.** One approval (943 credits maximum) covered the Opus build and three items: Pexels stock video (0 credits), an AI image (43 credits) and library music, which failed because the harness workspace has no music (0 credits). The build used both files. Total charged: 128 credits.
 - **Follow-ups.** The stock adapter searches with the whole item description and picked a beer-like pour; Opus flagged it honestly. Short search terms per stock item would help. The workspace music library is SoundHelix placeholder tracks, not licensed music, so `library_music` should not be sold as licensed until real tracks exist.
 - **Tests.** API 718 passed with 1 skipped; worker 79 passed.
+
+## E4 close-out (2026-10-01)
+
+Built and tested this session: slice 7 (plan media under one approval), timing checks for spoken cues and short media, mistake cuts with a meaning check, saved workspace styles, and delivery checks with loudness levelling. The details and tests are in the commits and the todo.
+
+**Live workflow test** (synthetic 10 s talking-head take with "um", "uh" and a "we, we" false start):
+- **Version 1 passed.** Opus tightened the take and listed "um Uh" as removed in the summary. It timed "Save twenty percent" and "order today" to the spoken words, and the timing check confirmed 6.64 s and 8.46 s. Delivery checks were clean at −11.5 LUFS. It did not cut the "we, we" false start, although the transcript suggested it; Whisper may have merged the repeat in one of its passes.
+- **The correction did not finish.** The first attempt was stopped by SQLite "database is locked" in the local test harness during settlement, which the worker read as a lost lease; production uses Postgres. The second attempt hit the planner's 90 s timeout, now raised to 180 s. The third stopped when the $5 Opus test allowance was exhausted at call 7. That stop happens after the attempt is recorded, so it leaves a harmless unknown hold with no spend; the budget check should move before the attempt is begun.
+- **Other gaps.** Only DejaVu Sans is available in the sandbox, so "bold" text renders in regular weight. The gateway now logs the underlying error when a call does not complete.
