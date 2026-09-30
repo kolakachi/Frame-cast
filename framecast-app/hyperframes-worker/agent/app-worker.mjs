@@ -87,8 +87,8 @@ async function execute(run){
    if(!providerToken)throw Error('Missing local provider credential');
   }
   // Claude API calls keep their own local $5 test ledger so they never draw on the Replicate pilot's.
-  // Opus test allowance: $5, plus $1 the owner added on 2026-10-01 to finish the E4 correction test.
-  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'),viaGateway?6:5);
+  // Opus test allowance: $5, plus $1 and then $0.50 the owner added on 2026-10-01 for the E4 correction test.
+  const pilotBudget=new PilotBudget(root+'/artifacts/live/'+(viaGateway?'e3-opus-budget.json':'e3-2026-09-29-budget.json'),viaGateway?6.5:5);
   const begin=payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});
   let reservation=null;
   const settle=async(attemptId,result)=>{const confirmed=await request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token});if(reservation && confirmed.status==='succeeded'){await pilotBudget.settle(reservation,confirmed);reservation=null;}return confirmed;};
