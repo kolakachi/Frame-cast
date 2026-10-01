@@ -13,19 +13,33 @@ class AnthropicPlanner implements Planner
 {
     public function __construct(private string $model, private string $key) {}
 
-    public function plan(array $context): array
+    private function request(array $context, string $effort, int $maxTokens): \Illuminate\Http\Client\Response
     {
         $response = Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(180)
             ->post('https://api.anthropic.com/v1/messages', [
-                // The plan is where the creative decisions are made and it is short, so deeper thinking is cheap here.
-                'model' => $this->model, 'max_tokens' => 4000, 'output_config' => ['effort' => (string) config('create.planner_effort', 'high')],
+                'model' => $this->model, 'max_tokens' => $maxTokens, 'output_config' => ['effort' => $effort],
                 'system' => [['type' => 'text', 'text' => PlanPrompt::system(), 'cache_control' => ['type' => 'ephemeral']]],
                 'messages' => [['role' => 'user', 'content' => PlanPrompt::user($context)]],
             ]);
         if (! $response->successful()) throw new RuntimeException('Planner request failed.');
+        return $response;
+    }
+
+    public function plan(array $context): array
+    {
+        // The plan is where the creative decisions are made and it is short, so deeper thinking is
+        // cheap here; thinking counts as output, so the budget is generous. A reply cut off before its
+        // JSON is retried once at medium effort rather than failing the plan.
+        $effort = (string) config('create.planner_effort', 'high');
+        $response = $this->request($context, $effort, 12000);
         $text = collect($response->json('content', []))->where('type', 'text')->pluck('text')->implode('');
         $plan = PlanPrompt::extract($text);
-        if (! $plan) throw new RuntimeException('Planner returned no plan.');
+        if (! $plan && $effort !== 'medium') {
+            $response = $this->request($context, 'medium', 8000);
+            $text = collect($response->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+            $plan = PlanPrompt::extract($text);
+        }
+        if (! $plan) throw new RuntimeException('Planner returned no plan (stop reason: '.$response->json('stop_reason', 'unknown').').');
         $u = $response->json('usage', []);
         return ['plan' => $plan, 'provider' => 'anthropic:'.$this->model, 'usage' => ['message_id' => $response->json('id'),
             'input_tokens' => $u['input_tokens'] ?? null, 'output_tokens' => $u['output_tokens'] ?? null,

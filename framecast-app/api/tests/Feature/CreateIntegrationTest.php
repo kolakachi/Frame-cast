@@ -724,10 +724,17 @@ class CreateIntegrationTest extends TestCase
     public function test_the_claude_planner_thinks_at_the_configured_effort(): void
     {
         config(['create.planner_effort' => 'high']);
-        Http::fake(['api.anthropic.com/*' => Http::response(['id' => 'msg_p', 'content' => [['type' => 'text', 'text' => '{"summary":"A plan.","scenes":[]}']], 'usage' => []])]);
-        $out = (new \App\Services\Create\Planning\AnthropicPlanner('claude-opus-5-5', 'k'))->plan(['files' => []]);
-        $this->assertSame('A plan.', $out['plan']['summary']);
-        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'high' && $r['max_tokens'] === 4000);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['id' => 'msg_p', 'content' => [['type' => 'text', 'text' => '{"summary":"A plan.","scenes":[]}']], 'usage' => []])
+            // A reply cut off before its JSON is retried once at medium effort.
+            ->push(['id' => 'msg_a', 'content' => [['type' => 'text', 'text' => 'thinking…']], 'stop_reason' => 'max_tokens', 'usage' => []])
+            ->push(['id' => 'msg_b', 'content' => [['type' => 'text', 'text' => '{"summary":"Second try.","scenes":[]}']], 'usage' => []])]);
+        $planner = new \App\Services\Create\Planning\AnthropicPlanner('claude-opus-5-5', 'k');
+        $this->assertSame('A plan.', $planner->plan(['files' => []])['plan']['summary']);
+        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'high' && $r['max_tokens'] === 12000);
+        $this->assertSame('Second try.', $planner->plan(['files' => []])['plan']['summary']);
+        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'medium' && $r['max_tokens'] === 8000);
+        $this->assertSame(3, count(Http::recorded()));
     }
 
     public function test_the_talking_shot_lip_syncs_the_first_line_from_the_talking_pose_and_the_narration(): void
