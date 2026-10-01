@@ -9,7 +9,7 @@ import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage}) {
-  const cap={calls:12,repairs:2,elapsedMs:180000,callReserveMs:240000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
+  const cap={calls:12,repairs:2,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
   let state;
@@ -74,7 +74,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       boundedSignal.throwIfAborted();
       // Never start a model call that may not finish in the time left: a call cut
       // off mid-flight is paid for and lost. Deliver the last checked draft instead.
-      if(state.lastGood&&cap.elapsedMs-(previousElapsed+Date.now()-started)<(cap.callReserveMs??240000)){await deliverGood('The time limit was near during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
+      if(state.lastGood&&cap.elapsedMs-(previousElapsed+Date.now()-started)<(cap.callReserveMs??Math.min(240000,cap.elapsedMs/4))){await deliverGood('The time limit was near during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
       await workspace.verifyAssets();
       const prompt=JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
       if(Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');

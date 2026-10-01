@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" data-composition-variables='[{"id":"headline","type":"string","label":"Hook","default":"VIDEO?"},{"id":"line_1","type":"string","label":"Slow","default":"SLOW."},{"id":"line_2","type":"string","label":"Hard","default":"HARD."},{"id":"line_3","type":"string","label":"Relief","default":"No camera or editing experience needed"},{"id":"line_4","type":"string","label":"Brand","default":"WyvStudio"},{"id":"line_5","type":"string","label":"Promise","default":"Turn any idea into a video that sells"},{"id":"line_6","type":"string","label":"Formats","default":"One video, 4 formats"},{"id":"cta","type":"string","label":"URL","default":"wyvstudio.com"},{"id":"color_background","type":"color","label":"Background","default":"#0E0B14"},{"id":"color_accent","type":"color","label":"Accent","default":"#FF6B35"},{"id":"color_text","type":"color","label":"Text","default":"#FFFFFF"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+  <div class="glow" id="bgGlow"></div>
+
+  <div id="s1" class="scene clip" data-start="0" data-duration="1.5" data-track-index="1">
+    <div id="hookWord" class="big">VIDEO?</div>
+  </div>
+
+  <div id="s2" class="scene clip" data-start="1.5" data-duration="2" data-track-index="1">
+    <div id="slowWord" class="big letters" data-layout-allow-overlap><span>S</span><span>L</span><span>O</span><span>W</span><span>.</span></div>
+  </div>
+
+  <div id="s3" class="scene clip" data-start="3.5" data-duration="2" data-track-index="1">
+    <div class="field" id="hardField"></div>
+    <div class="crack" id="crack" data-layout-allow-overlap>
+      <div class="half" id="hardTop" data-layout-allow-overlap>HARD.</div>
+      <div class="half" id="hardBot" data-layout-allow-overlap>HARD.</div>
+    </div>
+  </div>
+
+  <div id="s4" class="scene clip" data-start="5.5" data-duration="2" data-track-index="1">
+    <div class="stack" id="relief">
+      <span class="ln">No camera</span>
+      <span class="ln">or editing</span>
+      <span class="ln">experience</span>
+      <span class="ln outline">needed</span>
+    </div>
+  </div>
+
+  <div id="s5" class="scene clip" data-start="7.5" data-duration="1.5" data-track-index="1">
+    <div class="glow" id="turnGlow"></div>
+    <div id="brandBox"><div id="brandWord" class="big">Wyv<span class="acc">Studio</span></div></div>
+  </div>
+
+  <div id="s6" class="scene clip" data-start="9" data-duration="2.5" data-track-index="1">
+    <div class="stack" id="promise">
+      <span class="ln">Turn any idea</span>
+      <span class="ln">into a video</span>
+      <span class="ln">that <span class="grad">sells</span></span>
+    </div>
+  </div>
+
+  <div id="s7" class="scene clip" data-start="11.5" data-duration="1.5" data-track-index="1">
+    <div class="fmtWrap">
+      <div id="fmtTitle">One video, <span class="acc">4 formats</span></div>
+      <div class="tiles" data-layout-allow-overlap>
+        <div class="tile" id="t916">9:16</div>
+        <div class="tile" id="t11">1:1</div>
+        <div class="tile" id="t45">4:5</div>
+        <div class="tile" id="t169">16:9</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="s8" class="scene clip" data-start="13" data-duration="2" data-track-index="1">
+    <div class="glow" id="closeGlow"></div>
+    <div id="closeBox" style="position:absolute;left:0;right:0;top:0;height:100%;display:flex;align-items:center;justify-content:center;"><div id="closeWord" class="big" style="font-size:210px;line-height:1;">Wyv<span class="acc" style="color:var(--color_accent,#FF6B35);">Studio</span></div></div>
+    <div id="url">wyvstudio.com</div>
+  </div>
+</div>
+<script src="main.js"></script>
+<script>
+  window.__timelines["main"] = window.__wyvTl;
+</script>
+</body>
+</html>

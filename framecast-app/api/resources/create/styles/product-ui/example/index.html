@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html data-composition-variables='[{"id":"headline","label":"Headline","type":"string","default":"Paste a script, drop a link, or type an idea"},{"id":"line_1","label":"Line 1","type":"string","default":"Voiced, captioned, ready-to-post video"},{"id":"line_2","label":"Line 2","type":"string","default":"Four formats ready to post"},{"id":"line_3","label":"Line 3","type":"string","default":"No camera or editing experience needed"},{"id":"cta","label":"Call to action","type":"string","default":"Turn any idea into a video that sells"},{"id":"color_background","label":"Background colour","type":"color","default":"#0E0B12"},{"id":"color_accent","label":"Accent colour","type":"color","default":"#FF6B35"},{"id":"color_text","label":"Text colour","type":"color","default":"#FFFFFF"}]' style="--color_background:#0E0B12;--color_accent:#FF6B35;--color_text:#FFFFFF">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+<div class="glow"></div>
+<div id="stage">
+<div class="win" id="win">
+<div class="bar"><i class="dot" style="background:#ff5f57"></i><i class="dot" style="background:#febc2e"></i><i class="dot" style="background:#28c840"></i><span>wyvstudio.com — Live Demo</span></div>
+<div id="ui">
+<div class="lbl">Your idea</div>
+<div class="field" id="field"><span id="typed"></span><i class="caret" id="caret"></i></div>
+<div class="gen" id="gen">Make a Product Video</div>
+</div>
+<div class="pv" id="pv">
+<div class="lamp"></div>
+<div class="fig" id="fig"><div class="hair"></div><div class="body"></div><div class="head"></div></div>
+<div class="wave" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<div class="cap"><b class="cw">Your</b><b class="cw">idea</b></div>
+</div>
+</div>
+<div class="fm" id="f1" style="left:90px;top:560px;width:380px;height:676px"><div class="mini"></div><div class="mh"></div><div class="ok">✓</div></div>
+<div class="fm" id="f2" style="left:520px;top:560px;width:470px;height:470px"><div class="mini"></div><div class="mh"></div><div class="ok">✓</div></div>
+<div class="fm" id="f3" style="left:567px;top:1070px;width:376px;height:470px"><div class="mini"></div><div class="mh"></div><div class="ok">✓</div></div>
+<div class="fm" id="f4" style="left:90px;top:1290px;width:420px;height:236px"><div class="mini"></div><div class="mh"></div><div class="ok">✓</div></div>
+<div class="cursor" id="cursor"></div>
+</div>
+<div class="clip line" id="l1" data-start="0" data-duration="5.3" data-track-index="2"><span class="t" id="t1">Paste a script, drop a link, or <span class="acc">type an idea</span></span></div>
+<div class="clip line" id="l2" data-start="5.3" data-duration="4.2" data-track-index="2"><span class="t" id="t2">Voiced, captioned, <span class="acc">ready-to-post</span> video</span></div>
+<div class="clip line" id="l3" data-start="9.5" data-duration="3.2" data-track-index="2"><span class="t" id="t3"><span class="acc">Four formats</span> ready to post</span></div>
+<div class="clip brand" id="brand" data-start="12.7" data-duration="2.3" data-track-index="3">
+<div class="logo" id="logo">W</div>
+<div class="name" id="name">WyvStudio</div>
+<div class="tag" id="tag">Turn any idea into a video that <span class="acc">sells</span></div>
+</div>
+<div class="clip line small" id="l4" data-start="12.7" data-duration="2.3" data-track-index="4" style="top:1300px;height:160px"><span class="t" id="t4"><span class="chk">✓</span>No camera or editing experience needed</span></div>
+</div>
+<script src="gsap.min.js"></script>
+<script src="main.js"></script>
+<script>window.__timelines["main"]=window.__wyvTL;</script>
+</body>
+</html>
