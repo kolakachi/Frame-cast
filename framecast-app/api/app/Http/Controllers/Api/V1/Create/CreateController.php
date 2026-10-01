@@ -255,7 +255,8 @@ class CreateController extends Controller
     {
         $this->service->conversation($r->user(), $id);
         $revision = DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $revisionId)->firstOrFail();
-        abort_unless($revision->artifact_path && Storage::disk('local')->exists($revision->artifact_path), 404);
+        abort_unless($revision->artifact_path, 404, 'This version has no video.');
+        abort_unless(Storage::disk('local')->exists($revision->artifact_path), 410, 'The video file for this version is no longer stored on this server. Its summary, checks and cost are kept; rebuild from it to get a new file.');
         return response()->file(Storage::disk('local')->path($revision->artifact_path), ['Content-Type' => match(pathinfo($revision->artifact_path,PATHINFO_EXTENSION)) {'png'=>'image/png','jpg'=>'image/jpeg','webp'=>'image/webp',default=>'video/mp4'}, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 }

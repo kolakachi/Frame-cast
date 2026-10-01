@@ -21,7 +21,7 @@ const library = ref([]), librarySearch = ref(''), libraryPage = ref(1), libraryL
 const purpose = ref('reference'), reuseConfirmed = ref(false), rename = ref(''), uploads = ref([])
 const fileInput = ref(null), composer = ref(null), end = ref(null)
 const player = ref(null)
-const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), historyLoading = ref(false), dragging = ref(false)
+const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), artifactGone = ref(''), historyLoading = ref(false), dragging = ref(false)
 const clock = ref(Date.now()), providerApproved = ref(false), variantCount = ref(1)
 const settingsDraft = ref({aspect_ratio:'9:16',duration_seconds:15,language:'en',audio:'original',captions:'off',caption_text:'',approved_facts:[]})
 const factsText = ref('')
@@ -432,10 +432,10 @@ async function loadArtifact() {
   if(nextKey === mediaKey) return
   mediaKey = nextKey; const ticket = ++mediaEpoch
   if(media.value) URL.revokeObjectURL(media.value)
-  media.value = ''; artifactLoading.value = Boolean(nextKey)
+  media.value = ''; artifactGone.value = ''; artifactLoading.value = Boolean(nextKey)
   if(!nextKey) return
   try { const result = await api.get(`${base(target)}/revisions/${revision.id}/artifact`,{responseType:'blob'}); if(ticket === mediaEpoch) media.value = URL.createObjectURL(result.data) }
-  catch(e) { if(ticket === mediaEpoch) {error.value = message(e); mediaKey = ''} }
+  catch(e) { if(ticket === mediaEpoch) {artifactGone.value = e?.response?.status === 410 || e?.response?.status === 404 ? message(e) : ''; if(!artifactGone.value) error.value = message(e); mediaKey = ''} }
   finally { if(ticket === mediaEpoch) artifactLoading.value = false }
 }
 async function compare() {
@@ -602,7 +602,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
                   <img v-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
                   <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /></div>
-                  <button v-if="!media && !artifactLoading" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
+                  <p v-if="artifactGone && !artifactLoading" class="muted">{{ artifactGone }}</p>
+                  <button v-if="!media && !artifactLoading && !artifactGone" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
                 </div>
                 <div class="result__meta">
                   <b>Version {{ currentRevision.number }}{{ imageOutput ? ' · image' : ' · video' }}</b>
