@@ -128,7 +128,10 @@ async function execute(run){
    }
    stage=paid?'Designing your video':'Running the offline agent contract check';
    const assetIds=new Map(manifest.map(f=>[f.name,f.asset_id]));
-   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,
+   // The activity line: what the agent is doing, the call count and the credits so far (model calls plus purchases).
+   const mediaCredits=planMedia.reduce((n,m)=>n+(Number(m.charged_credits)||0),0);
+   const onProgress=p=>{const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · call '+p.call+' of '+p.calls+' · '+credits+' credits so far').slice(0,250);};
+   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,onProgress,
     transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),

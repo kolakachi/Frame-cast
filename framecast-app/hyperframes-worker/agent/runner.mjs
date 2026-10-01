@@ -8,7 +8,7 @@ import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
-export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage}) {
+export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{}}) {
   const cap={calls:12,repairs:2,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
@@ -21,6 +21,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   state.bundleHash ??= await workspace.fingerprint();
   const started=Date.now(),previousElapsed=state.elapsedMs;
   const save=async()=>{state.elapsedMs=previousElapsed+Date.now()-started;await writeFile(stateFile+'.tmp',JSON.stringify(state,null,2),{mode:0o600});await rename(stateFile+'.tmp',stateFile);};
+  // What the agent is doing and what it has spent so far, for the chat's activity line.
+  const spentUsd=()=>(state.usage||[]).reduce((n,u)=>n+(Number(u.costUsd)||0),0);
+  const progress=(doing)=>{try{onProgress({doing,call:state.calls,calls:cap.calls,spentUsd:spentUsd(),revision:state.revision});}catch{/* reporting never stops a build */}};
   if(state.pending){state.status='needs_attention';state.reason='Interrupted action: reconcile before retrying';await save();return state;}
   const gate=briefGate(context);if(gate){Object.assign(state,gate);await save();return state;}
   const timeout=AbortSignal.timeout(Math.max(1,cap.elapsedMs-state.elapsedMs));
@@ -71,6 +74,10 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     errors.push(...numberFindings(html,allowedText()));
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };
+  // A plain label for an action, for the activity line.
+  const describe=a=>({read:'Reading '+(a.path||''),write:'Writing '+(a.path||''),patch:'Editing '+(a.path||''),check:'Checking the draft',preview:'Checking the draft and capturing frames',snapshot:'Capturing frames',
+    timeline:'Reading the timeline',primitives:'Listing options',assets:'Listing files',visual_review:'Reviewing the frames',finish:'Finishing',needs_input:'Asking you a question',propose_media:'Proposing media',
+    media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
   // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
   const dispatch=async(action,reviewImage)=>{
@@ -215,6 +222,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.reservedUsd+=reservation;state.calls++;state.pending={kind:'provider',call:state.calls};await save();
       const reviewImage=state.reviewImage;
       const callStarted=Date.now();
+      progress(state.revision?'Thinking about the next change':'Designing the first draft');
       if(toolMode){
         compactTurns();
         const history=turns();
@@ -222,7 +230,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         const last=history.at(-1);if(last.role==='user'){last.content=last.content.filter(b=>!(b.type==='text'&&/^Remaining calls:/.test(b.text||'')));last.content.push({type:'text',text:'Remaining calls: '+(cap.calls-state.calls)+'. Revision: '+state.revision+'.'});}
         const response=await bounded(()=>provider.complete({prompt:'tool-mode call '+state.calls,system:toolHostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,messages:structuredClone(history),tools:toolDefinitions,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
         boundedSignal.throwIfAborted();
-        state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics});
+        state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
         const content=Array.isArray(response.content)&&response.content.length?response.content:[{type:'text',text:response.text||''}];
         state.pending=null;history.push({role:'assistant',content});state.messages.push({role:'assistant',content:JSON.stringify(content.map(b=>b.type==='tool_use'?{tool:b.name,input:b.input}:{text:(b.text||'').slice(0,400)}))});await save();
         const uses=content.filter(b=>b.type==='tool_use').slice(0,8);
@@ -238,7 +246,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
             if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
             results.push({type:'tool_result',tool_use_id:u.id,is_error:true,content:JSON.stringify({error:e.message})});continue;
           }
-          state.pending={kind:'tool',action};await save();
+          state.pending={kind:'tool',action};await save();progress(describe(action));
           const before=state.reviewImage;
           try{result=await dispatch(action,reviewImage);}
           catch(e){
@@ -258,7 +266,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       }
       const response=await bounded(()=>provider.complete({prompt,system:hostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,image:reviewImage||initialImage,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
       boundedSignal.throwIfAborted();
-      state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(prompt),systemBytes:Buffer.byteLength(hostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics});
+      state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(prompt),systemBytes:Buffer.byteLength(hostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
       // Persist returned output before dispatch. Never repeat an uncertain paid create.
       state.pending=null;state.messages.push({role:'assistant',content:response.text});await save();
       let action;
@@ -267,7 +275,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         const cut=response.stopReason==='max_tokens'||/Unterminated|Unexpected end/i.test(e.message);
         state.messages.push({role:'tool',content:{error:e.message,...(cut?{hint:'Your reply was cut off by the output limit (thinking counts toward it). Split the work into smaller writes: index.html with markup only, then style.css and main.js as separate write actions, each under 6,000 characters, linked from index.html.'}:{})}});await save();continue;
       }
-      state.pending={kind:'tool',action};await save();
+      state.pending={kind:'tool',action};await save();progress(describe(action));
       const result=await dispatch(action,reviewImage);
       state.pending=null;state.messages.push({role:'tool',content:result});await save();
       if(state.status!=='running')return state;

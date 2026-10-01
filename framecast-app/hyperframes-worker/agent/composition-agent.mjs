@@ -6,7 +6,7 @@ import {loadCoreGuidance,readGuidanceReference} from './context.mjs';
 
 // Dependencies are host-owned. Neither a prompt nor a tool result chooses the
 // provider, accounting policy, filesystem root or executable.
-export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,guidanceDirectory,signal}) {
+export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,guidanceDirectory,signal,onProgress}) {
  const assets=[];
  for(const file of manifest){
   // Reference-only media is described in context, never made renderable.
@@ -48,7 +48,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  let initialImage;
  const page=manifest.find(f=>f.purpose==='reference'&&f.asset_type==='image'&&f.reference?.from==='page');
  if(page){try{const bytes=await readFile(directory+'/inputs/'+page.path);if(bytes.length<=1000000)initialImage='data:image/jpeg;base64,'+bytes.toString('base64');}catch{/* the notes still describe it */}}
- const state=await runAgent({initialImage,stateFile:directory+'/agent-state.json',workspace,provider:accountedProvider,
+ const state=await runAgent({initialImage,onProgress,stateFile:directory+'/agent-state.json',workspace,provider:accountedProvider,
   context:{brief:messages.at(-1).content,messages,baseRevision:input.base_revision_id,
    // An edit starts with the current source in hand, so no calls go on reading it (bounded; larger bundles are read on demand).
    baseFiles:input.base_bundle&&Object.values(input.base_bundle).reduce((n,t)=>n+Buffer.byteLength(String(t)),0)<=30000?input.base_bundle:null,
