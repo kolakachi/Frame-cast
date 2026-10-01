@@ -63,33 +63,43 @@ Progress: verified public endpoint schema snapshots, strict JSON action loop, sc
 
 ### E1.1 Replicate endpoint contract
 
-- [ ] Inspect actual schemas for shortlisted endpoints: image input, prompt/system context, output limits, structured output/tool support, streaming, cancellation and usage metadata.
+- [x] Inspect actual schemas for shortlisted endpoints: image input, prompt/system context, output limits, structured output/tool support, streaming, cancellation and usage metadata.
+  - Closed 2026-10-01: the agent runs on the Claude Messages API through the app gateway (owner decision), whose request and usage shape is verified in code: image input, cached system prompt, output_config.effort, max_tokens, usage with cache counts, request ids on refusals.
 - [x] Implement a provider adapter against verified capabilities. If native tool calls are unavailable, use a validated action envelope executed by our runner; never execute free-form model output as shell commands.
 - [x] Use fake provider responses first to prove tool dispatch, malformed-output handling, context carryover and bounded retries.
 - [x] Establish explicit credential and total test-budget authorization. User approved the configured credential instead of a separate credential, with a $5 total cap. Reservations and requests are recorded without secrets; latest instruction is offline work only.
 - [ ] Reconcile actual provider billing and unknown requests; current token estimates are not invoice-confirmed charges.
+  - Still open: charges are computed from the usage each response returns (not estimates), but they are not yet checked against an Anthropic invoice. Owner: compare one day of `composition_attempts` cost against the console.
 
 ### E1.2 Bounded tool loop
 
-- [ ] Load pinned router/core/CLI and relevant creative/animation guidance on demand; host authorization and budget rules take precedence.
+- [x] Load pinned router/core/CLI and relevant creative/animation guidance on demand; host authorization and budget rules take precedence.
+  - Built 2026-10-01: HyperFrames core guidance and the WyvStudio craft rules are pinned; HyperFrames references, the style pack example and the motion kit guide are read on demand; host policy and budget rules precede them.
 - [x] Implement scoped read/write/patch, asset manifest, timeline, installed primitive lookup, validation, snapshot inspection and media-proposal tools. Bounded local tools and combined preview implemented.
-- [ ] Supply the brief, approved facts, brand, transcript, asset manifest and base revision; preserve stable IDs and locked inputs.
+- [x] Supply the brief, approved facts, brand, transcript, asset manifest and base revision; preserve stable IDs and locked inputs.
+  - Built: the agent context carries the brief and messages, approved facts and plan copy, brand kit and saved style, page references, transcripts, the asset manifest, bought plan media, the beat sheet, the style pack and the base revision; locked inputs are protected by hash.
 - [x] Enforce maximum calls, tokens, elapsed time, cost and two repair cycles after the first draft. Pause rather than retry indefinitely. Local limits verified; cost uses conservative per-call reservations, not assumed billing metrics.
-- [ ] Inspect sampled output frames using a verified image-capable endpoint. Validate audio and timing separately; never claim every frame was checked from a few samples.
+- [x] Inspect sampled output frames using a verified image-capable endpoint. Validate audio and timing separately; never claim every frame was checked from a few samples.
+  - Built 2026-10-01: a contact sheet of sampled frames goes to Opus for a scored review (frames under 8 cannot pass); audio is checked separately (loudness, ducking under the voice), timing separately (spoken cues, reading time, blank frames, slow drift). Summaries say only sampled frames were reviewed.
 - [x] Recover from rejected locked-source edits and stale exact patches within the shared two-repair cap; keep source reads complete within context limits. 45 tests and a real scripted offline render pass.
 - [x] Persist progress so restarting a job does not lose the current revision or repeat completed paid steps. Local journal/no-replay tests pass; unknown outcomes pause for reconciliation. Production leases remain E2.
 
 ### E1.3 Quality and cost fixtures
 
-- [ ] Implement context-aware creative direction and retrieval of reviewed visual examples; include failure examples and grounded-claim checks.
-- [ ] Run the same-footage three-style benchmark (educational, energetic social, restrained product) and opening-only follow-up edit. Record human creative review separately from technical checks.
+- [x] Implement context-aware creative direction and retrieval of reviewed visual examples; include failure examples and grounded-claim checks.
+  - Built 2026-10-01 (parity slice F): style packs with worked examples and their weak spots, shared craft rules, the grounded-numbers check (now including aspect ratios) and the "new wording" flag on plan lines.
+- [x] Run the same-footage three-style benchmark (educational, energetic social, restrained product) and opening-only follow-up edit. Record human creative review separately from technical checks.
+  - Closed by the owner's E1 decision (2026-09-30): one model, no benchmark. Measured instead: six pack example builds at $0.43 to $0.90 each, see the parity todo.
 - [ ] Add the supplied mismatched-bottle case: no false product identity, unauthorized substitution or invented endorsement.
 
-- [ ] Run the same five briefs through each candidate: product promo, footage overlay, typography explainer, reference-inspired layout, and targeted follow-up edit.
+- [x] Run the same five briefs through each candidate: product promo, footage overlay, typography explainer, reference-inspired layout, and targeted follow-up edit.
+  - Closed by the owner's E1 decision: one candidate.
 - [ ] Include difficult cases: long text, missing benefit claims, contradictory request, too-short footage and a requested new spoken hook.
-- [ ] Score instruction adherence, source preservation, readability, audio alignment, repair count, latency and total cost per acceptable output.
+- [x] Score instruction adherence, source preservation, readability, audio alignment, repair count, latency and total cost per acceptable output.
+  - Closed by the owner's E1 decision for candidate comparison. Per build, the critique loop now scores frames and the checks measure reading time, timing, grounding and loudness.
 - [x] Confirm composition-only requests make zero image/video-generation calls. Local provider permits only the two inspected text/vision endpoints; media proposals pause, rendering is offline.
-- [ ] Record the model choice and measured ceilings. Do not assume a cheaper token rate gives a cheaper successful video.
+- [x] Record the model choice and measured ceilings. Do not assume a cheaper token rate gives a cheaper successful video.
+  - Recorded 2026-10-01: Claude Opus 5.5, medium effort for builds and high for the planner; 16 calls, 16,384 output tokens and $0.45 per call, 96 KB context, 15 minutes; measured builds $0.43 to $1.85 and 6 to 15 calls; a draft that passed its checks is delivered when any limit is reached.
 
 **Latest E1 checkpoint:** offline hardening verified. No new paid calls; the $5 cap remains unchanged. Real creative acceptance, presenter/audio fidelity and benchmark coverage below remain open. Do not mark this phase complete from the scripted smoke.
 
@@ -167,6 +177,7 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 - [x] Generated media dependencies have separate approvals and resumable parent runs; reuse completed assets after failures. Owner decision 2026-10-01: one approval covers the build and each itemised plan purchase. Built in slice 7: charged per item on success, recorded per plan, reused on retry.
 - [x] Representative captioned encoded preview before approval, with crop/readability/audio checks on delivery. Owner decision 2026-10-01: the preview is the final encoded file. Built: platform safe-area, frame-edge and contrast checks plus loudness levelling on every render, shown before posting.
 - [~] Test the transcript-inspired workflow: upload talking-head footage → timed explanatory visuals → prompt correction → final artifact. 2026-10-01: the first half passed live (filler cut and listed, text timed to the spoken words and verified by the timing check, delivery checks clean). The correction build stopped when the $5 Opus test allowance ran out; it needs about $1 more to finish.
+  - 2026-10-01: the correction build is run 3 of the paid batch in the parity todo (a targeted correction on the final build, patch mode, about $1).
 
 **E4 exit:** speech-timed editing works on the bounded pilot clips. Large event archives, arbitrary web capture and long-form editing remain deferred until separately scoped and measured.
 
@@ -176,8 +187,10 @@ See [local app integration evidence and setup](hyperframes-app-integration-verif
 - [ ] Exercise browser flows at desktop and mobile sizes; verify dialogs, keyboard access, attachment previews and video playback continuity during polling.
 - [ ] Verify source-specific edits, grounded claims and version/export consistency with actual outputs, not mock screenshots alone.
 - [ ] Concurrent admission/cancellation/replay tests prove credit and capacity limits.
-- [ ] Record outstanding defects and exact passing commit/runtime/model configuration in the verification document.
-- [ ] Write local setup, rebuild, smoke, reset-test-data and troubleshooting instructions. Reset commands must target isolated test data only.
+- [~] Record outstanding defects and exact passing commit/runtime/model configuration in the verification document.
+  - 2026-10-01: a "Current configuration" section in `hyperframes-e3-verification.md` lists the commit, image, model settings, test counts and open defects.
+- [~] Write local setup, rebuild, smoke, reset-test-data and troubleshooting instructions. Reset commands must target isolated test data only.
+  - 2026-10-01: `create-local-testing.md` refreshed with the current limits, commands, style packs and troubleshooting. Reset-test-data instructions are still to write (all test data lives in workspace 1).
 - [ ] Agree measured pricing, customer limits and quality thresholds before enabling paid customer use.
 
 **E5 exit:** local acceptance evidence is complete; unresolved blockers are explicitly listed. A UI demo or one successful render does not close this gate.
@@ -200,3 +213,6 @@ Create UI parity (owner review 2026-09-29): slice 1 shell parity done; slice 2 p
 **E3 local exit run passed (2026-09-29):** after the paid pilot ended, a fresh fixture-mode harness ran `create-e3-browser.mjs` (upload before brief, upload retry, draft recovery, conflict keeps text, archive and restore, filename search, image brief gated, mobile, no JS errors) and, after `app-http-smoke.mjs` rendered an offline video, `create-browser.mjs` (desktop, mobile, stable playback, output saved to Videos, history, version comparison, dialog escape). Zero paid calls. Pilot spend closed at about $0.61 of $5 across 24 settled calls.
 
 Immediate next implementation slice: **E3 exit run on the committed build — `create-e3-browser.mjs` and `create-browser.mjs` against the disposable harness (needs a Playwright install via `PLAYWRIGHT_MODULE`; none is present on this machine as of 2026-09-29 evening, so only the API suite (53 tests), the web unit tests and the production build were run). Then E4 timed editing. Model comparisons remain deferred; E1 creative acceptance and paid/production release gates stay open.**
+
+
+**Immediate next (2026-10-01):** the paid batch in the parity todo (final mascot build with the talking shot, the saved-character build, and the correction), then E5: the spec §12 cases (most need only the local stack; concurrent edits, timeout/replay/cancel and cross-workspace denial are already covered by the API suite and need recording), browser flows at mobile size (Playwright is not installed on this machine), reset-test-data instructions, and the pricing agreement before any paid customer use. E6 is untouched.

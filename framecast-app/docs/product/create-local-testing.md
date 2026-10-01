@@ -6,34 +6,33 @@ Last updated: 2026-10-01.
 
 ## Current state
 
-- Local Create is in **paid mode**. `api/.env` has `CREATE_MODE=agent` and `CREATE_PAID_EXECUTION_ENABLED=true`.
-- The local Opus test ledger is **uncapped**, by owner decision on 2026-10-01. The ledger is `hyperframes-worker/artifacts/live/e3-opus-budget.json`. It stood at $6.82 spent when the cap was removed.
-- The local API runs a built image, not the mounted source. It was rebuilt on 2026-10-01 with the latest Create code, and the Create migrations were applied.
+- Local Create is in **paid mode**: `api/.env` has `CREATE_MODE=agent` and `CREATE_PAID_EXECUTION_ENABLED=true`.
+- The local Opus test ledger (`hyperframes-worker/artifacts/live/e3-opus-budget.json`) is **uncapped** (owner, 2026-10-01). The app-side ceiling still applies.
+- The local API runs a built image, not the mounted source. After a code change: `docker compose build api && docker compose up -d --no-deps api`, then `docker compose exec -T api php artisan migrate --force` if there are migrations.
+- The sandbox image (`wyv-hyperframes-proof-smoke`) holds the worker's agent code, runtime fonts and the motion kit. After a change under `hyperframes-worker/`: `docker compose -f hyperframes-worker/compose.local.yml build smoke`, then restart the worker.
 
-## Limits that still apply
+## Limits that apply
 
 | Limit | Value | Where it's set |
 |---|---|---|
-| Opus calls per build | 12 | `PilotPolicy::execution` |
-| Cost per call | $0.30 maximum | `PilotPolicy::execution` |
-| Worst case per build | $3.60 | 12 × $0.30 |
-| App-side pilot ceiling | $4.50 | `CREATE_PILOT_BUDGET_MICROUSD=4500000` in `api/.env` |
+| Opus calls per build | 16 | `PilotPolicy::execution` |
+| Output tokens per call | 16,384 (thinking counts) | `PilotPolicy::execution` |
+| Cost per call | $0.45 maximum | `PilotPolicy::execution` |
+| Context per call | 96 KB | `PilotPolicy::execution` |
+| Time per build | 15 minutes | `composition-agent.mjs` |
+| Worst case per build | $7.20 plus plan media | 16 × $0.45 |
+| App-side pilot ceiling | `CREATE_PILOT_BUDGET_MICROUSD` in `api/.env` ($40 as of 2026-10-01) | restart the API after changing it |
+| Runs per day | `CREATE_RUN_DAILY_LIMIT` (owner set 50) | `api/.env` |
 
-A typical build costs **$0.30 to $0.50**. On real footage with contrast fixes, expect 9 to 12 calls.
+A build costs **$0.40 to $1.90** of Opus, typically 6 to 15 calls, plus its plan media at catalogue prices (poses 210 credits, talking shot 140, sound effects 50, music about 34, a voice line 3). The app admits a run only if the amount already used plus the run's worst case fits under the ceiling. Effort is recorded per run (`CREATE_AGENT_EFFORT`, default medium; the planner uses `CREATE_PLANNER_EFFORT`, default high).
 
-The app admits a new run only if the amount already used, plus that run's $3.60 worst case, fits under the ceiling. About $0.43 was used at the last check. That leaves room for roughly one more build. To keep going, raise the ceiling (for example `CREATE_PILOT_BUDGET_MICROUSD=20000000` for $20) and restart the API:
-
-```
-docker compose up -d --no-deps api
-```
-
-Docker reads `api/.env` only when a container starts, so every `.env` change needs this restart.
+When any limit is reached (calls, time, context, output, repairs, model unavailable), the last draft that passed every check is delivered with a note, so a build never ends empty if a checked draft existed.
 
 ## Run a build from the chat
 
-1. Open the Create page at http://localhost:5173/create. The test conversation is `/create/19266222-df34-4e5b-8414-6585c7d82bd2`.
-2. Send your request. The plan and quote appear; approve it. The run is now **queued**.
-3. Start the worker from `framecast-app/`. It picks up queued runs:
+1. Open http://localhost:5173/create. Pick a style in the composer (WyvStudio styles are built-in packs; your styles are saved ones) or let WyvStudio choose.
+2. Send the brief. The plan shows the beats, the script and voice, the style and the quote; approve it. Lines whose words are not in your brief, facts or page are marked "new wording".
+3. Start the worker from `framecast-app/`:
 
    ```
    CREATE_WORKER_TOKEN="$(grep -E '^CREATE_WORKER_TOKEN=' api/.env | cut -d= -f2- | tr -d "\"'")" \
@@ -41,46 +40,42 @@ Docker reads `api/.env` only when a container starts, so every `.env` change nee
    caffeinate -i node hyperframes-worker/agent/app-worker.mjs
    ```
 
-   - The token is read straight from `api/.env`, so it never appears on screen. It must match `CREATE_WORKER_TOKEN` exactly.
-   - Without `--once`, the worker keeps polling, so you can keep chatting. Add `--once` to process one run and exit.
-   - `caffeinate -i` stops the Mac sleeping mid-build.
-   - Stop the worker with Ctrl+C.
+   The token is read from `api/.env` and never printed. Without `--once` the worker keeps polling. Stop it with Ctrl+C. Restart it after any worker code change.
 
-4. Watch the chat. A build takes about 2 to 5 minutes. The version, its summary, the delivery checks ("Before you post") and the cost appear there when it finishes.
+4. A build takes 3 to 10 minutes. The version, its summary with the review scores, "Before you post" (safe area, edges, contrast, reading time, blank frames, loudness) and the cost appear in the chat.
+
+Settings (the panel beside the composer): length, aspect ratio, approved facts, and **motion blur** (the final render takes about twice as long).
+
+## Scripted builds
+
+`scratchpad/local/pack.php` with `runpack.sh <brief file>` creates a conversation pinned to a style pack, studies the page and an optional X link, approves the first claims, plans, quotes and approves a run, all as user 1. `sequence.sh` runs several briefs one after another, waiting for each run to finish.
 
 ## Cheaper changes
 
-- **Text or colour only.** For example: "change the button text to Order now". The plan shows **This is a free change**; click **Apply for free**. There's no Opus build, just one render. The worker must be running for the render.
-- **Other corrections.** Size, position, timing or motion changes make Opus patch the existing file rather than rebuild it. Say "redesign" or "start over" only if you want a full rebuild.
+- **Text or colour only** ("change the button text to Order now"): the plan shows **This is a free change**; click **Apply for free**. One render, no Opus.
+- **Other corrections** (size, position, timing, motion) make Opus patch the existing version. Say "redesign" or "start over" for a full rebuild.
 
 ## If a run stops
 
 | What you see | Meaning | What to do |
 |---|---|---|
-| Run stays **queued** | No worker is running | Start the worker (step 3) |
-| "budget exhausted" in the worker journal | The app-side ceiling or a ledger cap was reached | Raise `CREATE_PILOT_BUDGET_MICROUSD`, restart the API, and send again |
-| "The approved local test budget cannot cover this run" | The app-side ceiling can't fit the $3.60 worst case | Raise `CREATE_PILOT_BUDGET_MICROUSD` and restart the API |
-| Run **needs attention** | The worker stopped mid-run | Ask for a check. If every call was settled, it can be closed safely with `ReconciliationService::closeSettled` |
-| "Local render stopped without a usable result" | Generic failure message | The real reason is in `hyperframes-worker/artifacts/live/app-<run id>/failure.json` and `agent-state.json` |
+| Run stays **queued** | No worker is running | Start the worker |
+| "The approved local test budget cannot cover this run" | The ceiling can't fit the run's worst case | Raise `CREATE_PILOT_BUDGET_MICROUSD`, restart the API, send again |
+| `insufficient_credits` | Workspace 1 is out of local test credits | `app(CreditService::class)->grant(1, 4000, 'local test: ...')` in tinker |
+| Run **needs attention** | A paid call's outcome is unknown | Check `composition_attempts`; if every call is settled, `ReconciliationService::closeSettled($runId, true)` closes it. Never update attempt rows by hand without also closing their `api_operation_jobs`, or credits stay reserved |
+| "Local render stopped without a usable result" | Generic failure | The reason is in `hyperframes-worker/artifacts/live/app-<run id>/failure.json` and `agent-state.json` (`failureDetail`) |
 
-Only one run is processed at a time. A run that needs attention blocks all queued runs until it's resolved.
+Only one run is processed at a time; a run that needs attention blocks the queue until it is resolved. Never restart the API while a build is mid-call: the call is paid for and lost.
 
 ## Checking spend
 
-- **Per run.** Calls, cost and credits are in the `composition_attempts` table, one row per Opus call.
-- **Local ledger.** Every Opus call's reservation and actual cost is in `hyperframes-worker/artifacts/live/e3-opus-budget.json`.
+- **Per run:** `composition_attempts`, one row per Opus call and per plan item.
+- **Pilot budget used:** sum `cost_microusd` (or the cap for unsettled calls) over runs with the current `pilot_budget_id`.
 
 ## Turning paid mode off
 
-When you're done testing:
-
-1. In `api/.env`, set `CREATE_MODE=fixture`. Optionally set `CREATE_PAID_EXECUTION_ENABLED=false`.
-2. Restart the API:
-
-   ```
-   docker compose up -d --no-deps api
-   ```
-
-3. Stop the worker with Ctrl+C.
+1. In `api/.env`, set `CREATE_MODE=fixture` (optionally `CREATE_PAID_EXECUTION_ENABLED=false`).
+2. `docker compose up -d --no-deps api`.
+3. Stop the worker.
 
 In fixture mode, Create renders a fixed offline sample and makes no paid calls.

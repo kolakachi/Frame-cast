@@ -347,3 +347,12 @@ Built and tested this session: slice 7 (plan media under one approval), timing c
 - **Run 2: 9 calls, 72 credits, stopped at the cap.** Opus cut 5.16–6.48 s from the take and laid text over the real footage. It then spent repairs on WCAG contrast failures in its captions and stopped at the $7.10 cap mid-repair. No version was produced.
 - **Findings.** A first build on real footage can take 9 to 12 calls when the checker finds contrast issues. A $0.30 reservation per call means the last $0.28 of any cap can never be used.
 - **Cleanup owed.** The owner's local `.env` is still in paid mode; set `CREATE_MODE=fixture` and restart the API container.
+
+## Current configuration (2026-10-01, parity slice F)
+
+- **Commits:** local branch `master` through `a8540b37` (unpushed; the owner releases). Key commits: style packs `708c15d5`, pacing checks `49326281`, motion kit `51509f2b` (fixed `975181e4`), beat grid `83ef0385`, director's plan `21d3131e`, critique scores `4fa6408e`, ducking/motion blur/talking shot `2daa2193`.
+- **Runtime:** sandbox image `wyv-hyperframes-proof-smoke` built from `hyperframes-worker/` (HyperFrames 0.8.82, Chromium 154, ffmpeg 5.1, six OFL fonts, `runtime/wyv-motion.js`); local API image rebuilt from `api/`.
+- **Model settings:** Claude Opus 5.5 via the app gateway; build effort medium (per run), planner effort high; 16 calls, 16,384 output tokens, $0.45 per call, 96 KB context, 15 minutes per paid build; plan media at catalogue prices.
+- **Tests:** API 737 passed (1 skipped), worker 60 passed, web production build passed. `phpunit.xml` now forces queue, cache, mail, session and app env over the container's `.env`.
+- **Measured:** pack example builds $0.43 to $0.90 (6 to 10 calls); mascot builds $1.35 to $1.85 (13 to 15 calls); ducking 12.6 dB under speech on the slice C bed; motion blur about 2× render time, +5% bytes; beat grid 116 BPM with 22 of 24 strong hits on grid.
+- **Open defects:** the mascot pack has no approved worked example yet (its two fresh-plan builds were lost to a kit bug and a context limit, both fixed); the saved-character route and the talking shot are built but not yet run live; the correction (patch-mode) proof from E4 is still open; the invoice reconciliation of gateway charges is open. Paid tests waiting on the pilot ceiling ($32.95 of $40 used).
