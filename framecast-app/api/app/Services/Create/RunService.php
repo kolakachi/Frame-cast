@@ -72,17 +72,19 @@ class RunService
         return $file;
     }
 
-    public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade', 'duck'];
-    private const DERIVED_TYPES = ['video/mp4' => ['video', 'mp4'], 'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg']];
+    // 'run' is the sandbox program runner: its files may be generated from scratch, so they can have no parent.
+    public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade', 'duck', 'run'];
+    private const DERIVED_TYPES = ['video/mp4' => ['video', 'mp4'], 'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg'], 'image/webp' => ['image', 'webp'], 'image/svg+xml' => ['image', 'svg']];
 
     /**
      * A file the sandbox made from a source file (stabilised, trimmed, cleaned).
      * Stored like a private upload, listed in the library with where it came
      * from, and recorded on the run so later versions and free edits inherit it.
      */
-    public function derived(string $id, string $token, \Illuminate\Http\UploadedFile $file, int $fromAssetId, string $op, array $params): array
+    public function derived(string $id, string $token, \Illuminate\Http\UploadedFile $file, ?int $fromAssetId, string $op, array $params): array
     {
         abort_unless(in_array($op, self::DERIVED_OPS, true), 422, 'Unknown media operation.');
+        abort_unless($fromAssetId !== null || $op === 'run', 422, 'Derived media must name its source file.');
         abort_unless($file->isValid() && $file->getSize() > 0 && $file->getSize() <= (int) config('create.input_file_bytes'), 422, 'Derived file size is not allowed.');
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file->getRealPath());
         $type = self::DERIVED_TYPES[$mime] ?? null;
@@ -96,12 +98,12 @@ class RunService
             if ($same = collect($derived)->firstWhere('sha256', $hash)) return $same;
             abort_if(count($derived) >= 20, 422, 'Too many derived files in one run.');
             $sources = collect(array_merge($input['input_files'] ?? [], $derived))->where('purpose', 'source');
-            $parent = $sources->first(fn ($f) => (int) $f['asset_id'] === $fromAssetId);
-            abort_unless($parent, 422, 'Derived media must come from a source file of this run.');
+            $parent = $fromAssetId === null ? null : $sources->first(fn ($f) => (int) $f['asset_id'] === $fromAssetId);
+            abort_unless($fromAssetId === null || $parent, 422, 'Derived media must come from a source file of this run.');
             $suffix = $run->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
             $path = 'create/uploads/'.$suffix;
             abort_unless(Storage::disk('local')->putFileAs(dirname($path), $file, basename($path)), 503, 'Could not store derived media.');
-            $origin = \App\Models\Asset::whereKey($fromAssetId)->value('title') ?: 'media';
+            $origin = $fromAssetId === null ? 'generated' : (\App\Models\Asset::whereKey($fromAssetId)->value('title') ?: 'media');
             $asset = \App\Models\Asset::create(['workspace_id' => $run->workspace_id, 'asset_type' => $type[0],
                 'title' => mb_substr(ucfirst(str_replace('_', ' ', $op)).' · '.$origin, 0, 180), 'storage_url' => 'create-upload://'.$suffix,
                 'mime_type' => $mime, 'file_size_bytes' => $file->getSize(), 'status' => 'active', 'restriction_scope' => 'workspace',

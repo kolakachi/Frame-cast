@@ -3,7 +3,18 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {inspectionReport} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
-if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery'].includes(operation))throw Error('Invalid local job');
+if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run'].includes(operation))throw Error('Invalid local job');
+if(operation==='run'){
+ // One allowlisted program in the run's work folder; the request was written by the host.
+ const {runOp}=await import('./run-tool.mjs');
+ const dir='/output/live/'+id;
+ await mkdir(dir+'/run',{recursive:true});
+ let result;
+ try{result=await runOp({runDir:dir,request:JSON.parse(await readFile(dir+'/run-request.json','utf8'))});}
+ catch(e){result={ok:false,error:String(e.message).slice(0,600)};}
+ await writeFile(dir+'/run/result.json',JSON.stringify(result,null,2));
+ process.exit(0);
+}
 if(operation==='media'){
  // Operates on the run's own project folder; the request was written by the host.
  const {mediaOp,nextNameFactory}=await import('./media-tool.mjs');

@@ -43,7 +43,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  });}};
  const paid=input.mode==='agent',settings=input.settings??{};
  const dims=({'9:16':[1080,1920],'16:9':[1920,1080],'1:1':[1080,1080],'4:5':[1080,1350]})[settings.aspect_ratio??'9:16'];
- const workspace=new Workspace(directory+'/project',assets);
+ const workspace=new Workspace(directory+'/project',assets,directory+'/work');
  // A captured web page is shown to the agent as its first image, so it can rebuild the brand's real screens.
  let initialImage;
  const page=manifest.find(f=>f.purpose==='reference'&&f.asset_type==='image'&&f.reference?.from==='page');
@@ -79,7 +79,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   // Shared craft rules apply to every build, whatever its style route.
   skills:(await loadCoreGuidance(guidanceDirectory))+'\n\n'+await readFile(guidanceDirectory+'/../craft.md','utf8'),signal,requireVisualReview:paid,
   limits:{repairs:paid?4:2,calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:paid?(input.execution_policy?.agent?.max_calls??8)*(input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6:0,contextBytes:paid?96000:200000,maxOutputTokens:Math.min(16384,Math.max(256,input.execution_policy?.agent?.max_output_tokens??4096)),totalOutputTokenAllowance:Math.max(98304,(input.execution_policy?.agent?.max_calls??12)*Math.min(16384,input.execution_policy?.agent?.max_output_tokens??4096)),elapsedMs:paid?900000:600000},
-  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),...(buy?{buy:async args=>{
+  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),run:args=>invoke('run',args),...(buy?{buy:async args=>{
    // Stage what was bought into the project so the composition can use it at once.
    const r=await buy(args);if(!r?.ok)return r;
    const files=[];for(const f of r.files||[]){await copyFile(directory+'/inputs/source/'+f.name,directory+'/project/'+f.name).catch(()=>{});files.push({path:f.name,sha256:f.sha256});}
@@ -91,7 +91,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const bundle={};
  for(const name of (await readdir(directory+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)).sort())bundle[name]=await readFile(directory+'/project/'+name,'utf8');
  // Files the sandbox derived during this run, with where they came from.
- return {state,bundle,derived:workspace.assets.filter(a=>a.derivedFrom)};
+ return {state,bundle,derived:workspace.assets.filter(a=>a.derivedFrom||a.operation==='run')};
 }
 
 // Explicit offline contract probe, not a generative model. It exercises reads,

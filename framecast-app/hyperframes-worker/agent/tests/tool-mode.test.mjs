@@ -6,8 +6,8 @@ async function harness(turns,{limits={},requireVisualReview=true,tools}={}){
  const dir=await mkdtemp(tmpdir()+'/tool-');await writeFile(dir+'/index.html','<html></html>');
  let i=0;const seen=[];
  const provider={id:'t',maxCallUsd:0,complete:async args=>{seen.push(args);const t=turns[i++]??turns.at(-1);return {content:t,text:'',predictionId:'p'+i,metrics:{}};}};
- const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider,context:{brief:'x',toolMode:true},limits:{calls:6,repairs:3,budgetUsd:0,...limits},requireVisualReview,
-  tools:tools??{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[],dir+'-work'),provider,context:{brief:'x',toolMode:true},limits:{calls:6,repairs:3,budgetUsd:0,...limits},requireVisualReview,
+  tools:(typeof tools==='function'?tools(dir):tools)??{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
  return {state,seen,dir};
 }
 test('one model call can write three files and preview; the next reviews and finishes',async()=>{
@@ -43,4 +43,19 @@ test('old frames leave the history and only the latest image stays',async()=>{
  ]);
  const images=seen[2].messages.flatMap(m=>m.content).flatMap(b=>b.type==='tool_result'&&Array.isArray(b.content)?b.content:[]).filter(b=>b.type==='image');
  assert.equal(images.length,1,'exactly one image in the history sent to the model');
+});
+test('run executes through the host tool: scratch writes do not bump the revision, outputs become protected assets, misuse is an error result',async()=>{
+ const calls=[];
+ const {state,seen,dir}=await harness([
+  [use('a','write',{path:'work/gen.mjs',content:'1;'}),use('b','run',{cmd:'node',args:['gen.mjs']}),use('c','run',{cmd:'ffmpeg',args:['-i','/etc/passwd']}),use('d','write',{path:'index.html',content:'<html><img src="sprite.png"></html>'}),use('e','preview',{times:[1]})],
+  [use('f','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('g','finish',{summary:'Done'})],
+ ],{tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
+  run:async a=>{calls.push(a);await writeFile(dir+'/sprite.png','p');return {ok:true,exit:0,stdout:'',stderr:'',outputs:[{path:'sprite.png',sha256:'148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940',bytes:1}],scratch:['gen.mjs']};}})});
+ assert.equal(state.status,'preview_ready');assert.equal(state.revision,1,'the scratch write did not count as a source revision');
+ assert.deepEqual(calls.map(c=>c.cmd),['node']);
+ assert.equal(await readFile(dir+'-work/gen.mjs','utf8'),'1;','the scratch file lives beside the project, not in it');
+ assert.equal(await readFile(dir+'/gen.mjs','utf8').catch(()=>null),null);
+ const r=seen[1].messages.at(-1).content.filter(b=>b.type==='tool_result');
+ assert.equal(r[2].is_error,true);assert.match(r[2].content,/absolute paths/);
+ assert.equal(state.runs,1);
 });

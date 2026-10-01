@@ -9,7 +9,7 @@ import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{}}) {
-  const cap={calls:12,repairs:2,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
+  const cap={calls:12,repairs:2,runs:24,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
   let state;
@@ -17,7 +17,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   if(state && state.identity!==identity)throw Error('Run context changed; start a new run');
   if(state?.bundleHash && state.bundleHash!==await workspace.fingerprint())throw Error('Source bundle changed outside this run');
   if(state && state.status!=='running'){await workspace.verifyAssets();return state;}
-  state ??= {identity,status:'running',calls:0,repairs:0,reservedUsd:0,reservedOutputTokens:0,elapsedMs:0,messages:[],revision:0,checkedRevision:-1,snapshotRevision:-1,reviewedRevision:-1,pending:null};
+  state ??= {identity,status:'running',calls:0,repairs:0,runs:0,reservedUsd:0,reservedOutputTokens:0,elapsedMs:0,messages:[],revision:0,checkedRevision:-1,snapshotRevision:-1,reviewedRevision:-1,pending:null};
   state.bundleHash ??= await workspace.fingerprint();
   const started=Date.now(),previousElapsed=state.elapsedMs;
   const save=async()=>{state.elapsedMs=previousElapsed+Date.now()-started;await writeFile(stateFile+'.tmp',JSON.stringify(state,null,2),{mode:0o600});await rename(stateFile+'.tmp',stateFile);};
@@ -96,7 +96,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           text=old.replace(action.before,action.after);
         }
         if(action.path==='index.html')assertLockedSource(context,text);
-        await workspace.write(action.path,text);state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};
+        await workspace.write(action.path,text);
+        if(action.path.startsWith('work/'))result={written:action.path,note:'Scratch file; run it with the run action.'};
+        else {state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};}
       } catch(e) {
         // Only known pre-write authoring rejections are repairable. Filesystem,
         // sandbox and uncertain write failures still stop the run.
@@ -149,6 +151,17 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     } else if(action.type==='assets') result=workspace.assets.map(({sourceMap,...a})=>a);
     else if(action.type==='primitives') result=primitives;
     else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
+    else if(action.type==='run') {
+      if(!tools.run)throw Error('The run tool is not available in this run');
+      if((state.runs=(state.runs??0)+1)>cap.runs)result={ok:false,error:'Run limit reached for this build ('+cap.runs+'); finish with what you have.'};
+      else {
+        result=await bounded(()=>tools.run({cmd:action.cmd,args:action.args,signal:boundedSignal}));
+        // New files join the protected assets with how they were made; the first project file named in args is their origin.
+        const origin=action.args.map(a=>a.replace(/^project\//,'')).find(a=>workspace.assets.some(x=>x.path===a))??null;
+        for(const f of result?.outputs??[])if(!workspace.assets.some(a=>a.path===f.path))workspace.assets.push({path:f.path,sha256:f.sha256,operation:'run',origin,params:{cmd:action.cmd,args:action.args.join(' ').slice(0,1500)}});
+        if(!result?.ok&&++state.repairs>cap.repairs)throw Error('Run repair limit reached');
+      }
+    }
     else if(action.type==='buy') {
       if(!tools.buy)throw Error('Purchases are not available in this run');
       result=await bounded(()=>tools.buy({kind:action.kind,description:action.description,signal:boundedSignal}));

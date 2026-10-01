@@ -1,13 +1,16 @@
-import {readFile,writeFile,rename,realpath,lstat,readdir} from 'node:fs/promises';
+import {readFile,writeFile,rename,realpath,lstat,readdir,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 export const digest = value => createHash('sha256').update(value).digest('hex');
 export class Workspace {
-  constructor(root, assets = []) { this.root = root; this.assets = assets; }
+  constructor(root, assets = [], scratch = null) { this.root = root; this.assets = assets; this.scratch = scratch; }
   async resolve(relative, write = false) {
     // Deliberately flat pilot source bundle. No directories, assets or runtime edits.
-    if (!/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(relative)) throw Error('Source path is not allowed');
-    const root = await realpath(this.root), file = path.join(root, relative);
+    // work/<name> is the run's scratch folder: scripts and data for the run action, never part of the bundle.
+    const scratch = this.scratch && relative.match(/^work\/([a-zA-Z0-9_-]+\.(mjs|js|cjs|json|txt|csv|svg))$/);
+    if (!scratch && !/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(relative)) throw Error('Source path is not allowed');
+    if (scratch && write) await mkdir(this.scratch, {recursive: true});
+    const root = await realpath(scratch ? this.scratch : this.root), file = path.join(root, scratch ? scratch[1] : relative);
     try { if ((await lstat(file)).isSymbolicLink()) throw Error('Symlinks are not allowed'); }
     catch (e) { if (!(write && e.code === 'ENOENT')) throw e; }
     return file;

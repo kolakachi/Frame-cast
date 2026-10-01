@@ -149,7 +149,7 @@ async function execute(run){
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),
     settle,receipt:output=>paid?({status:'succeeded',prediction_id:output.predictionId}):({status:'succeeded',cost_microusd:0}),
-    invoke:async(operation,{times=[],signal,op,input,params}={})=>{if(operation==='media')await writeFile(dir+'/media-request.json',JSON.stringify({op,input,params:params??{}}),{mode:0o600});await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));if(operation==='media')await unlink(dir+'/media-request.json').catch(()=>{});if(paid&&operation==='snapshot'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/snapshot/contact-sheet.jpg')).toString('base64');return result;}});
+    invoke:async(operation,{times=[],signal,op,input,params,cmd,args}={})=>{if(operation==='media')await writeFile(dir+'/media-request.json',JSON.stringify({op,input,params:params??{}}),{mode:0o600});if(operation==='run')await writeFile(dir+'/run-request.json',JSON.stringify({cmd,args}),{mode:0o600});await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));if(operation==='media')await unlink(dir+'/media-request.json').catch(()=>{});if(operation==='run')await unlink(dir+'/run-request.json').catch(()=>{});if(paid&&operation==='snapshot'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/snapshot/contact-sheet.jpg')).toString('base64');return result;}});
    if(['needs_input','awaiting_media_approval'].includes(agentResult.state.status)){
     await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
    }
@@ -162,8 +162,9 @@ async function execute(run){
    stage='Saving your edited footage';await beat();
    const ids=new Map(manifest.map(f=>[f.name,f.asset_id]));
    for(const d of agentResult.derived){
-    const from=ids.get(d.derivedFrom);if(!from)throw Error('Derived media has no known source');
-    const form=new FormData();form.append('lease_token',run.lease_token);form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));
+    // A run-made file may have no source (generated from scratch); a media edit always has one.
+    const from=ids.get(d.derivedFrom??d.origin);if(!from&&d.operation!=='run')throw Error('Derived media has no known source');
+    const form=new FormData();form.append('lease_token',run.lease_token);if(from)form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));
     form.append('file',new Blob([await readFile(dir+'/project/'+d.path)]),d.path);
     const response=await fetch(new URL('/api/internal/create/runs/'+run.id+'/derived',base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},body:form,signal:aborter.signal});
     if(!response.ok)throw Error('Derived media upload failed ('+response.status+')');

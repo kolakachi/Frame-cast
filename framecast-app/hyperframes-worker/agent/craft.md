@@ -50,3 +50,6 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 
 ## Before finishing
 - Every beat has an event; every read has time; nothing lingers from a previous beat; no blank frames in transitions.
+
+## Close to the metal
+- The fixed tools cover most builds. When they do not (a sprite sheet, a generated texture, a custom ffmpeg chain, a computed data file), write a script to work/<name>.mjs and run it, or run ffmpeg directly; put results in project/ under new names and use them like any asset.

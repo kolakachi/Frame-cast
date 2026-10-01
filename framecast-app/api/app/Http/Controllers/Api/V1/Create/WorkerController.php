@@ -46,9 +46,9 @@ class WorkerController extends Controller
     {
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'file' => 'required|file|max:102400',
-            'derived_from_asset_id' => 'required|integer|min:1', 'operation' => 'required|string|max:32', 'params' => 'sometimes|string|max:2000']);
+            'derived_from_asset_id' => 'nullable|integer|min:1', 'operation' => 'required|string|max:32', 'params' => 'sometimes|string|max:2000']);
         $params = json_decode($input['params'] ?? '{}', true);
-        return response()->json(['data' => $this->runs->derived($id, $input['lease_token'], $r->file('file'), (int) $input['derived_from_asset_id'], $input['operation'], is_array($params) ? $params : [])], 201);
+        return response()->json(['data' => $this->runs->derived($id, $input['lease_token'], $r->file('file'), isset($input['derived_from_asset_id']) ? (int) $input['derived_from_asset_id'] : null, $input['operation'], is_array($params) ? $params : [])], 201);
     }
 
     public function beginAttempt(Request $r, string $id)

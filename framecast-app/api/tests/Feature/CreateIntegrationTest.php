@@ -251,12 +251,18 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['derived_from_asset_id' => $source->id, 'operation' => 'grade', 'params' => ['look' => 'warm']],
             array_intersect_key($asset->metadata_json, array_flip(['derived_from_asset_id', 'operation', 'params'])));
         $this->assertSame($record['sha256'], $this->runs->inputFile($run->id, $lease, $record['asset_id'])['sha256'], 'the worker can re-download it');
+        // A file the run action generated from scratch has no parent; only run may do that.
+        $made = \Illuminate\Http\UploadedFile::fake()->createWithContent('sprite.png', $png.'x');
+        $this->rejected(422, fn () => $this->runs->derived($run->id, $lease, $made, null, 'grade', []));
+        $generated = $this->runs->derived($run->id, $lease, $made, null, 'run', ['cmd' => 'node', 'args' => 'sprite.mjs']);
+        $this->assertNull($generated['derived_from_asset_id']);
+        $this->assertStringStartsWith('Run · generated', Asset::find($generated['asset_id'])->title);
 
         // Finish; the next run inherits the derived file alongside the original source.
         $this->runs->finish($run->id, $lease, ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<img src="'.$record['name'].'">']], 'private/v1.mp4', 'h');
         $head = $this->conversations->conversation($this->owner, $c->id)->head_revision_id;
         $inherited = app(\App\Services\Create\InputSnapshotService::class)->inherited($c->id, $head);
-        $this->assertEqualsCanonicalizing([$source->id, $record['asset_id']], array_column($inherited, 'asset_id'));
+        $this->assertEqualsCanonicalizing([$source->id, $record['asset_id'], $generated['asset_id']], array_column($inherited, 'asset_id'));
     }
 
     public function test_transcript_is_word_timed_cached_by_bytes_and_never_a_placeholder(): void
