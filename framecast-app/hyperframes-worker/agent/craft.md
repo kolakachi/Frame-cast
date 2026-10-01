@@ -11,7 +11,7 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 
 ## Text on screen
 - Never more than 8 words on screen at once, except a UI card's own labels.
-- Each text block stays fully on screen for its length at about 15 characters a second, plus 1.5 s, and never less than 1.5 s.
+- Each headline-sized text block stays fully on screen for its length at about 17 characters a second, plus 1 s, and never less than 1 s. The check measures this (reading_time).
 - One accent per line at most (colour, italic serif or weight), on the word that carries the meaning.
 - Keep text out of the bottom caption zone and at least 6% from every edge.
 

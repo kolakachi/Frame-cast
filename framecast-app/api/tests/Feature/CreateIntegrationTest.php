@@ -439,7 +439,7 @@ class CreateIntegrationTest extends TestCase
         $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<html></html>'], 'delivery_checks' => $checks], 'private/v1.mp4', 'h');
         $meta = json_decode(DB::table('composition_revisions')->where('run_id', $run->id)->value('metadata_json'), true);
         $this->assertEquals(['ok' => false, 'safe_area' => [['selector' => '#cta', 'time' => 13.46, 'message' => 'Collides with the caption band']], 'edges' => [], 'contrast' => [],
-            'loudness' => ['status' => 'levelled', 'lufs' => -14.0, 'from' => -23.4, 'peak' => -1.6]], $meta['delivery_checks']);
+            'pacing' => [], 'loudness' => ['status' => 'levelled', 'lufs' => -14.0, 'from' => -23.4, 'peak' => -1.6]], $meta['delivery_checks']);
         $this->assertNull(\App\Services\Create\RunService::deliveryChecks('nope'));
     }
 
@@ -695,6 +695,15 @@ class CreateIntegrationTest extends TestCase
             'approved_facts' => ['One video, 4 formats'], 'files' => [['reference' => ['page_claims_not_approved' => ['Voiced, captioned, ready-to-post videos']]]]];
         $this->assertSame(['One video, 4 formats, reach more buyers'], \App\Services\Create\PlanService::newWording(
             ['VIDEO? SLOW. HARD.', 'One video, 4 formats', 'Voiced, captioned videos', 'One video, 4 formats, reach more buyers'], $ctx), 'only the line with new words is marked; assistant text is not the user\'s words');
+    }
+
+    public function test_delivery_checks_keep_pacing_findings_with_known_codes_only(): void
+    {
+        $c = \App\Services\Create\RunService::deliveryChecks(['ok' => false, 'pacing' => [
+            ['code' => 'reading_time', 'time' => 6.84, 'message' => '"No camera" is fully on screen for 1.8 s'],
+            ['code' => 'made_up', 'time' => 1, 'message' => 'x'], 'not an array']]);
+        $this->assertSame([['selector' => '', 'time' => 6.84, 'message' => '"No camera" is fully on screen for 1.8 s', 'code' => 'reading_time'],
+            ['selector' => '', 'time' => 1.0, 'message' => 'x', 'code' => 'reading_time']], $c['pacing']);
     }
 
     private function brief(): object

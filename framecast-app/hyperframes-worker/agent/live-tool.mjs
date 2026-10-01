@@ -29,6 +29,10 @@ let settings={aspect_ratio:'9:16',duration_seconds:15};
 try{settings=JSON.parse(await readFile(source+'/output-settings.json','utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
 const dims=({'9:16':[1080,1920],'16:9':[1920,1080],'1:1':[1080,1080],'4:5':[1080,1350]})[settings.aspect_ratio];
 if(!dims||!Number.isInteger(settings.duration_seconds)||settings.duration_seconds<5||settings.duration_seconds>30)throw Error('Invalid output contract');
+async function pacing(){
+ try{const {readsCheck}=await import('./reads-check.mjs');return await readsCheck({root,width:dims[0],height:dims[1],duration:settings.duration_seconds});}
+ catch(e){return [{code:'pacing_check_failed',severity:'warning',message:String(e.message).slice(0,200)}];}
+}
 if(operation==='delivery'){
  // Delivery checks on the final composition: text inside the band each
  // platform's own interface covers, content breaching the frame edge, and
@@ -39,7 +43,7 @@ if(operation==='delivery'){
  catch(e){try{raw=JSON.parse(e.stdout||'{}');}catch{raw={};}}
  const findings=Object.values(raw).flatMap(s=>s?.findings??[]).map(({code,message,selector,time,severity})=>({code,message,selector,time,severity}));
  const pick=re=>findings.filter(f=>re.test(f.code||'')).slice(0,12);
- result={ok:true,band,safe_area:pick(/caption_zone/),edges:pick(/frame|offscreen|overflow|clip/),contrast:pick(/contrast/)};
+ result={ok:true,band,safe_area:pick(/caption_zone/),edges:pick(/frame|offscreen|overflow|clip/),contrast:pick(/contrast/),pacing:await pacing()};
 }
 else if(operation==='render')result=await renderRun({project:root,outputRoot:out,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
 else {
@@ -48,6 +52,8 @@ else {
  try {const {stdout,stderr}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',...args],{cwd:root,timeout:120000,maxBuffer:16000000});await writeFile(out+'/command.log',stdout+stderr);result={ok:operation==='check'?JSON.parse(stdout).ok===true:true,diagnostics:operation==='timeline'?JSON.parse(stdout):operation==='check'?inspectionReport(stdout):'Snapshots captured'};}
  catch(e){await writeFile(out+'/command.log',(e.stdout||'')+(e.stderr||''));result={ok:false,diagnostics:operation==='check'?inspectionReport(e.stdout||e.stderr||e.message):(e.stdout||e.stderr||e.message).slice(0,12000)};}
 }
+// Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
+if(operation==='check'&&result.ok)result.pacing=await pacing();
 if(operation==='snapshot'&&result.ok){
  const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort().slice(0,5);
  if(!shots.length)throw Error('Snapshot returned no images');

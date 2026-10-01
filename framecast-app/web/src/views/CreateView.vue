@@ -50,6 +50,7 @@ const checkIssues = computed(() => {
     ...(c.safe_area || []).map(f => `"${name(f)}"${at(f)} sits where the app's captions and buttons cover it. Move it up, or ask for a change.`),
     ...(c.edges || []).map(f => `"${name(f)}"${at(f)} runs off the edge of the frame.`),
     ...(c.contrast || []).map(f => `"${name(f)}"${at(f)} is hard to read against its background.`),
+    ...(c.pacing || []).map(f => f.code === 'blank_frames' ? `The screen is empty${at(f)}.` : `"${name(f)}"${at(f)} leaves the screen before most people can read it.`),
     ...(c.loudness?.status === 'check_failed' ? ['The sound level could not be checked.'] : []),
   ].slice(0, 8)
 })

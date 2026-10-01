@@ -169,7 +169,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         result=await bounded(()=>tools.check({signal:boundedSignal}));
         if(result.ok){const t=await timing();if(!t.ok)result=t;}
         if(!result.ok)result=repeated(result);else state.lastFindings=null;
-        if(result.ok){state.checkedRevision=state.revision;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined};}}
+        if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
         else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
       }
       else if(action.type==='check') {

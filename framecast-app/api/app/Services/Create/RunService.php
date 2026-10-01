@@ -178,6 +178,7 @@ class RunService
         $l = is_array($c['loudness'] ?? null) ? $c['loudness'] : [];
         $num = fn ($v) => is_numeric($v) ? round((float) $v, 1) : null;
         return ['ok' => (bool) ($c['ok'] ?? false), 'safe_area' => $items($c['safe_area'] ?? []), 'edges' => $items($c['edges'] ?? []), 'contrast' => $items($c['contrast'] ?? []),
+            'pacing' => array_map(fn ($f, $raw) => [...$f, 'code' => in_array($raw['code'] ?? '', ['reading_time', 'blank_frames'], true) ? $raw['code'] : 'reading_time'], $items($c['pacing'] ?? []), array_slice(array_values(array_filter(is_array($c['pacing'] ?? null) ? $c['pacing'] : [], 'is_array')), 0, 12)),
             'loudness' => ['status' => in_array($l['status'] ?? '', ['ok', 'levelled', 'silent', 'no_audio', 'check_failed'], true) ? $l['status'] : 'unknown', 'lufs' => $num($l['lufs'] ?? null), 'from' => $num($l['from'] ?? null), 'peak' => $num($l['peak'] ?? null)]];
     }
 
