@@ -143,6 +143,27 @@ class PlanService
     }
 
     /** What a reference teaches, compact for model context; null when it was never studied. */
+    /**
+     * Lines whose words are not in the user's brief, approved facts or attached
+     * pages. They are not blocked (a headline needs craft), but the plan card
+     * marks them so the user sees new wording before approving it.
+     */
+    public static function newWording(array $lines, array $ctx): array
+    {
+        $words = fn (string $t) => array_map(fn ($w) => preg_replace('/(ies|es|s)$/', '', $w), preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($t), -1, PREG_SPLIT_NO_EMPTY));
+        $corpus = implode(' ', [
+            ...array_map(fn ($m) => (string) ($m['content'] ?? ''), array_filter($ctx['messages'] ?? [], fn ($m) => ($m['role'] ?? '') === 'user')),
+            ...($ctx['approved_facts'] ?? []),
+            ...collect($ctx['files'] ?? [])->flatMap(fn ($f) => $f['reference']['page_claims_not_approved'] ?? [])->all(),
+        ]);
+        $known = array_flip($words($corpus));
+        $common = array_flip(['a', 'an', 'the', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'your', 'you', 'it', 'is', 'are', 'be', 'that', 'this', 'one', 'no', 'not', 'from', 'into', 'at', 'by', 'we', 'our', 'get', 'make', 'now', 'just', 'all', 'any', 'more', 'how', 'what', 'why', 'two', 'three', 'four', 'five', 'six', 'ready', 'try', 'start', 'today', 'meet', 'say', 'hello', 'got', 'need']);
+        return array_values(array_filter(array_unique($lines), function ($line) use ($words, $known, $common) {
+            foreach ($words($line) as $w) if (mb_strlen($w) > 2 && ! isset($known[$w]) && ! isset($common[$w]) && ! ctype_digit($w)) return true;
+            return false;
+        }));
+    }
+
     public static function referenceBrief(Asset $asset): ?array
     {
         $a = data_get($asset->metadata_json, 'reference_analysis');
@@ -254,6 +275,7 @@ class PlanService
             try { $free = CompositionVariables::validate($decls, $raw['free_edit']); } catch (\Symfony\Component\HttpKernel\Exception\HttpException) { $free = []; }
         }
         $plan['free_edit'] = $free ?: null;
+        $plan['new_wording'] = self::newWording([...$callouts, ...$narration], $ctx);
         $plan['credits'] = $this->credits($plan);
         return $plan;
     }

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html data-composition-variables='[{"id":"headline","type":"string","label":"Teaser line","default":"Turn any idea into"},{"id":"line_1","type":"string","label":"Reveal line","default":"a video that sells"},{"id":"line_2","type":"string","label":"Flash 1","default":"Voiced, captioned, ready-to-post videos"},{"id":"line_3","type":"string","label":"Flash 2","default":"No camera or editing experience needed"},{"id":"line_4","type":"string","label":"Flash 3","default":"One video, 4 formats — reach more buyers"},{"id":"cta","type":"string","label":"URL","default":"wyvstudio.com"},{"id":"color_background","type":"color","label":"Background","default":"#0E0B12"},{"id":"color_accent","type":"color","label":"Accent","default":"#FF6B35"},{"id":"color_text","type":"color","label":"Text","default":"#FFFFFF"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+  <div id="bg" class="clip layer" data-start="0" data-duration="15" data-track-index="0">
+    <div class="glow" id="glow"></div>
+    <div class="grid" id="grid"></div>
+    <div class="pane" id="p1"></div>
+    <div class="pane" id="p3"></div>
+    <div class="pane" id="p2"></div>
+  </div>
+  <div id="tease" class="clip layer" data-start="0" data-duration="3.5" data-track-index="1">
+    <div class="cursor" id="cursor"></div>
+  </div>
+  <div id="cardclip" class="clip layer" data-start="3.5" data-duration="7.6" data-track-index="2">
+    <div class="card" id="card">
+      <div class="bar"><div class="dot" style="background:#FF5F57"></div><div class="dot" style="background:#FEBC2E"></div><div class="dot" style="background:#28C840"></div></div>
+      <div class="screen"><div class="play" id="play"></div><div class="cap"><i id="capfill"></i></div></div>
+      <div class="sweep" id="sweep"></div>
+    </div>
+  </div>
+  <div id="labelclip" class="clip layer" data-start="3.5" data-duration="5" data-track-index="3">
+    <div class="label" id="label">Turn any idea into</div>
+  </div>
+  <div id="burstclip" class="clip layer" data-start="5.35" data-duration="1.2" data-track-index="4">
+    <div class="burst" id="burst"></div>
+  </div>
+  <div id="heroclip" class="clip layer" data-start="5.5" data-duration="3" data-track-index="5">
+    <div class="hero" id="hero">a video that sells</div>
+  </div>
+  <div id="f1clip" class="clip layer" data-start="8.5" data-duration="1.3" data-track-index="6">
+    <div class="flash" id="f1">Voiced, captioned, <b>ready-to-post</b> videos</div>
+  </div>
+  <div id="f2clip" class="clip layer" data-start="9.8" data-duration="1.3" data-track-index="7">
+    <div class="flash" id="f2"><b>No camera</b> or editing experience needed</div>
+  </div>
+  <div id="f3clip" class="clip layer" data-start="11.1" data-duration="1.3" data-track-index="8">
+    <div class="flash" id="f3">One video, <b>4 formats</b> — reach more buyers</div>
+    <div class="fmt" id="r1"></div>
+    <div class="fmt" id="r2"></div>
+    <div class="fmt" id="r3"></div>
+    <div class="fmt" id="r4"></div>
+  </div>
+  <div id="lockclip" class="clip layer" data-start="12.4" data-duration="2.6" data-track-index="9">
+    <div class="lock" id="lock">
+      <div class="mark" id="mark">W</div>
+      <div class="word" id="word">Wyv<span>Studio</span></div>
+      <div class="url" id="url">wyvstudio.com</div>
+    </div>
+  </div>
+</div>
+<script src="main.js"></script>
+<script>
+window.__timelines["main"] = window.buildMain();
+</script>
+</body>
+</html>

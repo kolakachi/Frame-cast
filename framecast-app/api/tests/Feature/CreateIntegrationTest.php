@@ -689,6 +689,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertNotEmpty($frozen['version']);
     }
 
+    public function test_plan_lines_not_in_the_users_words_are_marked_as_new_wording(): void
+    {
+        $ctx = ['messages' => [['role' => 'user', 'content' => 'Making video is slow and hard. WyvStudio fixes it.'], ['role' => 'assistant', 'content' => 'reach buyers']],
+            'approved_facts' => ['One video, 4 formats'], 'files' => [['reference' => ['page_claims_not_approved' => ['Voiced, captioned, ready-to-post videos']]]]];
+        $this->assertSame(['One video, 4 formats, reach more buyers'], \App\Services\Create\PlanService::newWording(
+            ['VIDEO? SLOW. HARD.', 'One video, 4 formats', 'Voiced, captioned videos', 'One video, 4 formats, reach more buyers'], $ctx), 'only the line with new words is marked; assistant text is not the user\'s words');
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

@@ -10,7 +10,7 @@ A keynote-style reveal. Darkness, light and depth build anticipation, then the p
 
 ## Motion
 - Slow, confident camera: a push through layers, a parallax drift, a light sweep. Then one fast, decisive reveal.
-- Tease before the reveal: glimpses, silhouettes, a single line of text.
+- Tease before the reveal: glimpses, silhouettes, a single line of text. The tease is still a hook: something moves and draws the eye in frame 1 (a light sweep, a glimpse sliding past, a word cutting in); never open on near-empty darkness.
 - The reveal is the signature shot: the hero arrives with a burst of light, scale or depth, on the strongest musical hit.
 - After the reveal, 2 or 3 quick feature flashes, then a held lockup.
 

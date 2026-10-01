@@ -1,0 +1,70 @@
+<!doctype html>
+<html data-composition-variables='[{"id":"headline","type":"string","label":"Headline","default":"Turn any idea into a video that sells"},{"id":"line_1","type":"string","label":"Line 1","default":"No camera or editing experience needed"},{"id":"line_2","type":"string","label":"Line 2","default":"Voiced, captioned, ready-to-post videos"},{"id":"line_3","type":"string","label":"Line 3","default":"One video, 4 formats"},{"id":"cta","type":"string","label":"Wordmark","default":"WyvStudio"},{"id":"color_background","type":"color","label":"Background","default":"#0E0C14"},{"id":"color_accent","type":"color","label":"Accent","default":"#FF6B35"},{"id":"color_text","type":"color","label":"Text","default":"#F5F0E8"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15" data-start="0">
+
+<div id="s1" class="clip scene" data-start="0" data-duration="3" data-track-index="1">
+ <div class="fill dark"></div>
+ <div class="lab tr">01 / 05</div><div class="lab bl">Problem</div>
+ <div id="cam" class="cam"><div class="cam-top"></div><div class="cam-body"><div class="lens"></div></div></div>
+ <div id="tracks" class="tracks"><div id="playhead" class="playhead"></div></div>
+ <div id="strike" class="strike"></div>
+</div>
+
+<div id="s2" class="clip scene" data-start="3" data-duration="3.5" data-track-index="1">
+ <div class="fill dark"></div>
+ <div id="f2" class="fill orange"></div>
+ <div class="lab tr">02 / 05</div><div class="lab bl">What it does</div>
+ <h1 id="headline" class="head h2" data-layout-allow-overlap>Turn any idea into a video that sells</h1>
+ <div id="browser" class="browser"><div class="bar"><i></i><i></i><i></i><span class="url"></span></div>
+  <div class="screen"><div class="head-c"></div><div class="body-c"></div><div id="capbar" class="capbar"></div></div></div>
+</div>
+
+<div id="s3" class="clip scene" data-start="6.5" data-duration="3.5" data-track-index="1">
+ <div class="fill orange"></div>
+ <div id="f3" class="fill light"></div>
+ <div class="lab tr">03 / 05</div><div class="lab bl">Why it's easy</div>
+ <div class="lines" data-layout-allow-overlap>
+  <h2 id="line_1" class="head h3">No camera or editing experience needed</h2>
+  <h2 id="line_2" class="head h3">Voiced, captioned, ready-to-post videos</h2>
+ </div>
+ <div id="wave" class="wave"></div>
+</div>
+
+<div id="s4" class="clip scene" data-start="10" data-duration="3" data-track-index="1">
+ <div class="fill light"></div>
+ <div id="f4" class="fill dark"></div>
+ <div class="lab tr">04 / 05</div><div class="lab bl">Formats</div>
+ <h2 id="line_3" class="head h4">One video, 4 formats</h2>
+ <div id="grid" class="grid" data-layout-allow-overlap>
+  <div class="fmt" style="left:80px;top:0;width:270px;height:480px"></div>
+  <div class="fmt" style="left:493px;top:0;width:384px;height:480px"></div>
+  <div class="fmt" style="left:85px;top:540px;width:260px;height:260px"></div>
+  <div class="fmt" style="left:470px;top:549px;width:430px;height:242px"></div>
+ </div>
+</div>
+
+<div id="s5" class="clip scene" data-start="13" data-duration="2" data-track-index="1">
+ <div class="fill dark"></div>
+ <div class="lab tr">05 / 05</div><div class="lab bl">Close</div>
+ <div class="lock"><div id="cta" class="mark">WyvStudio</div><div id="under" class="under"></div></div>
+</div>
+
+<div id="frame" class="clip" data-start="0" data-duration="15" data-track-index="5">
+ <div id="frame-in" class="frame-in">
+  <div class="lab tl">WyvStudio · Explainer</div>
+  <div class="rule"><div id="prog" class="prog"></div></div>
+  <div id="tc" class="lab br">00:00:00</div>
+ </div>
+</div>
+
+</div>
+<script src="main.js"></script>
+<script>window.__timelines["main"] = window.buildMain();</script>
+</body>
+</html>
