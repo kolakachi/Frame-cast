@@ -208,3 +208,11 @@ test('running out of context after a checked draft delivers that draft',async()=
  assert.equal(state.status,'preview_ready');assert.match(state.summary,/Context limit reached/);
  assert.equal(await readFile(dir+'/index.html','utf8'),'<html><h1>Good</h1></html>');
 });
+test('the last call within the per-run budget is not refused by rounding',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/budget-');await writeFile(dir+'/index.html','<html></html>');let calls=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0.45,complete:async()=>{calls++;return {text:JSON.stringify(calls<16?{type:'read',path:'index.html'}:{type:'needs_input',question:'q'}),actualCostUsd:0.01}}},context:{brief:'x'},limits:{calls:16,repairs:3,budgetUsd:16*0.45,maxOutputTokens:256,totalOutputTokenAllowance:100000},
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(calls,16);
+});

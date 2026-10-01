@@ -13,3 +13,6 @@ test('playful and snappy overshoot; heavy never does',()=>{
  assert.ok(Math.max(...curve(ease.heavy))<=1.0001);
 });
 test('springs are deterministic',()=>{assert.deepEqual(curve(ease.default),curve(ease.default));});
+test('the kit never contains a closing script tag (HyperFrames inlines scripts into the page)',()=>{
+ assert.ok(!/<\/script/i.test(src),'a literal closing script tag ends the inlined script early and breaks every build that loads the kit');
+});

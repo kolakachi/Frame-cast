@@ -1,4 +1,4 @@
-/* WyvStudio motion kit. Load after gsap.min.js: <script src="wyv-motion.js"></script>
+/* WyvStudio motion kit. Load it with a script tag after gsap.min.js.
  * Everything here adds ordinary GSAP tweens to a timeline you pass in, so it
  * seeks and renders exactly like the rest of the composition. Deterministic:
  * no timers, no randomness, no state outside the timeline. */
