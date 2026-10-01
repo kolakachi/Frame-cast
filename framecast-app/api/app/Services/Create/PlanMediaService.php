@@ -63,7 +63,7 @@ class PlanMediaService
                 'pilot-tariff:catalogue; '.$item['kind'].' at its listed price of '.$credits.' credits');
             $settled = $attempts->settle($runId, $lease, $attempt['id'], $receipt->result(), $receipt);
             $record = ['kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null,
-                'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null];
+                'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null, 'line' => $made['line'] ?? null];
             $this->record($run, $planId, $index, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
             return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];
         } finally {
@@ -78,7 +78,9 @@ class PlanMediaService
             ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
         return ['workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images,
-            'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15)];
+            'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15),
+            // Items made from earlier items (the talking shot) find them by the plan.
+            'plan_id' => $input['plan']['plan_id'] ?? null];
     }
 
     private function record(object $run, string $planId, int $index, array $item, string $hash, string $status, ?array $record, int $credits, ?string $error): void

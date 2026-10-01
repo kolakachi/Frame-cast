@@ -45,7 +45,7 @@ if(operation==='delivery'){
  const pick=re=>findings.filter(f=>re.test(f.code||'')).slice(0,12);
  result={ok:true,band,safe_area:pick(/caption_zone/),edges:pick(/frame|offscreen|overflow|clip/),contrast:pick(/contrast/),pacing:await pacing()};
 }
-else if(operation==='render')result=await renderRun({project:root,outputRoot:out,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
+else if(operation==='render')result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');
  const args=operation==='timeline'?['timeline','--json']:operation==='check'?['check',root,'--json']:['snapshot',root,'--at',times,'--no-end','--describe','false','--output',out];

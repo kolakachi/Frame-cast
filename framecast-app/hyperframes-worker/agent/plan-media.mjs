@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
 
-const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',brand_kit:'your brand kit'};
+const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character poses',talking_shot:'the talking shot',brand_kit:'your brand kit'};
 
 // Asks the app to buy each approved plan item in order, then stages the
 // returned files as usable source footage. A failed item never stops the
@@ -12,7 +12,7 @@ export async function buyPlanMedia({items,produce,download,directory,manifest,on
   signal?.throwIfAborted();
   onStage('Getting '+(LABEL[items[i].kind]||'plan media')+' ('+(i+1)+' of '+items.length+')');
   const r=await produce(i);
-  const out={kind:items[i].kind,description:items[i].description,status:r.status,reused:!!r.reused,charged_credits:r.charged_credits??0,...(r.error?{error:r.error}:{}),...(r.brand?{brand:r.brand}:{}),...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{})};
+  const out={kind:items[i].kind,description:items[i].description,status:r.status,reused:!!r.reused,charged_credits:r.charged_credits??0,...(r.error?{error:r.error}:{}),...(r.brand?{brand:r.brand}:{}),...(typeof r.line==='string'?{line:r.line}:{}),...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{})};
   const stage=async f=>{
    if(!Number.isSafeInteger(f.asset_id)||!/^[a-f0-9]{64}$/.test(f.sha256)||!new RegExp('^asset-'+f.asset_id+'-'+f.sha256+'\\.(png|jpg|webp|mp4|mp3|wav)$').test(f.name))throw Error('Invalid plan media record');
    if(!manifest.some(m=>m.asset_id===f.asset_id)){

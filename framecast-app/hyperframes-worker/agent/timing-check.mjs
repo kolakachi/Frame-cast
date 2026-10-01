@@ -64,3 +64,19 @@ export function timingFindings({rows,html,durations={},transcripts={}}){
  }
  return errors;
 }
+
+// Music under a voice must be ducked: the original music file may not play
+// while narration plays; the agent runs media op duck and uses its output.
+export function duckingFindings({rows,planMedia=[]}){
+ const files=k=>new Set(planMedia.filter(m=>m.kind===k&&m.status==='succeeded'&&m.file).map(m=>m.file));
+ const music=files('music'),voice=new Set([...files('voiceover'),...files('cloned_voiceover')]);
+ if(!music.size||!voice.size)return [];
+ const audio=rows.filter(r=>['video','audio'].includes(r.kind)&&r.src);
+ const errors=[];
+ for(const m of audio.filter(r=>music.has(r.src))){
+  const v=audio.find(r=>voice.has(r.src)&&Math.min(r.end,m.end)-Math.max(r.start,m.start)>0.5);
+  if(v)errors.push({code:'music_not_ducked',selector:'#'+(m.id||m.elementId),message:`${m.src} plays under the voice from ${Math.max(v.start,m.start).toFixed(2)} s without ducking.`,
+   fixHint:`Run media op duck on ${m.src} with params {"voice":"${v.src}","voice_start":${v.start.toFixed(2)}} and use its output here at data-volume about 0.35.`});
+ }
+ return errors;
+}

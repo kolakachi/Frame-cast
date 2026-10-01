@@ -43,3 +43,12 @@ test('runner turns timing findings into a repairable check failure',async()=>{
  const r=state.messages.filter(m=>m.role==='tool')[0].content;
  assert.equal(r.ok,false);assert.equal(r.diagnostics.errors[0].code,'spoken_cue_without_transcript');assert.equal(state.checkedRevision,-1);
 });
+test('music playing under the narration without ducking is flagged; ducked music is not',async()=>{
+ const {duckingFindings}=await import('../timing-check.mjs');
+ const planMedia=[{kind:'voiceover',status:'succeeded',file:'vo.wav'},{kind:'music',status:'succeeded',file:'bed.wav'}];
+ const rows=[{kind:'audio',src:'vo.wav',start:0.3,end:12,id:'vo'},{kind:'audio',src:'bed.wav',start:0,end:15,id:'music'}];
+ const e=duckingFindings({rows,planMedia});
+ assert.equal(e.length,1);assert.equal(e[0].code,'music_not_ducked');assert.match(e[0].fixHint,/"voice":"vo.wav","voice_start":0.30/);
+ assert.deepEqual(duckingFindings({rows:[rows[0],{...rows[1],src:'derived-1-duck.wav'}],planMedia}),[]);
+ assert.deepEqual(duckingFindings({rows,planMedia:[planMedia[1]]}),[],'no narration, nothing to duck under');
+});

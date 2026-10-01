@@ -6,7 +6,7 @@ import {commandFor} from './commands.mjs';
 
 // Local trusted-fixture adapter. Artifact consumers must require status=ready.
 // Never reuse a run directory or replace a previous revision's output.
-export async function renderRun({project, outputRoot, signal, timeoutMs = 120000, expected, onStage = () => {}}) {
+export async function renderRun({motionBlur=false,project, outputRoot, signal, timeoutMs = 120000, expected, onStage = () => {}}) {
   const started = Date.now();
   const id = randomUUID();
   const directory = path.join(outputRoot, id);
@@ -46,7 +46,13 @@ export async function renderRun({project, outputRoot, signal, timeoutMs = 120000
     const cli = '/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs';
     const check = await commandFor(project, 'check');
     await command(check.executable, check.args, 'check');
-    await command(process.execPath, [cli,'render',project,'--output',partial,'--fps','24','--workers','1','--quality','draft','--strict','--no-best-effort'], 'render');
+    // Motion blur: render four sub-frames per output frame (a 180-degree shutter at 24 fps) and blend them.
+    const sub = partial + '.96.mp4';
+    await command(process.execPath, [cli,'render',project,'--output',motionBlur ? sub : partial,'--fps',motionBlur ? '96' : '24','--workers','1','--quality','draft','--strict','--no-best-effort'], 'render');
+    if (motionBlur) {
+      await command('ffmpeg', ['-v','error','-y','-i',sub,'-vf',"tmix=frames=4:weights=1 1 1 1,select=not(mod(n\\,4)),setpts=N/(24*TB)",'-r','24','-c:v','libx264','-preset','medium','-crf','18','-pix_fmt','yuv420p','-c:a','copy','-movflags','+faststart',partial], 'blur');
+      await rm(sub, {force:true});
+    }
     const probe = JSON.parse(await command('ffprobe',['-v','error','-show_streams','-show_format','-of','json',partial], 'probe'));
     const video = probe.streams.find(s => s.codec_type === 'video');
     if(!video || video.r_frame_rate !== '24/1' || video.width !== expected.width || video.height !== expected.height || Math.abs(Number(probe.format.duration)-expected.duration) > .15 || (expected.audio && !probe.streams.some(s => s.codec_type === 'audio'))) throw Error('Rendered media does not match the approved dimensions, duration or audio requirement');

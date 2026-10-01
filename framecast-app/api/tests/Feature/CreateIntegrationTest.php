@@ -730,6 +730,48 @@ class CreateIntegrationTest extends TestCase
         Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'high' && $r['max_tokens'] === 4000);
     }
 
+    public function test_the_talking_shot_lip_syncs_the_first_line_from_the_talking_pose_and_the_narration(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']];
+        $raw = ['summary' => 'x', 'left_out' => '', 'narration' => ['Got an idea?'], 'media' => [['kind' => 'talking_shot', 'description' => 'hook'], ['kind' => 'character_poses', 'description' => 'Mascot: talking, waving'], ['kind' => 'voiceover', 'description' => 'n']]];
+        $p = $plans->normalize($raw, $ctx, $this->workspace->id);
+        $this->assertSame(['character_poses', 'voiceover', 'talking_shot'], array_column($p['media'], 'kind'), 'the talking shot is bought after what it is made from');
+        $this->assertSame(\App\Services\CreditService::spokespersonCost(4.0), collect($p['media'])->firstWhere('kind', 'talking_shot')['credits']);
+
+        $planId = (string) \Illuminate\Support\Str::uuid();
+        $mk = fn (string $type, string $url, string $mime) => Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => $type, 'title' => 't', 'status' => 'active', 'storage_url' => $url, 'mime_type' => $mime]);
+        $neutral = $mk('image', 'minio://p/neutral.png', 'image/png'); $talking = $mk('image', 'minio://p/talking.png', 'image/png'); $voice = $mk('audio', 'minio://p/narration.wav', 'audio/wav');
+        $row = fn (string $kind, array $record) => DB::table('create_plan_media')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => (string) \Illuminate\Support\Str::uuid(), 'plan_id' => $planId, 'item_index' => $kind === 'voiceover' ? 1 : 0,
+            'kind' => $kind, 'description_hash' => 'h', 'status' => 'succeeded', 'asset_id' => $record['file']['asset_id'], 'record_json' => json_encode($record), 'run_id' => null, 'charged_credits' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $row('character_poses', ['file' => ['asset_id' => $neutral->id], 'more_files' => [['asset_id' => $talking->id]], 'poses' => ['neutral', 'talking to camera']]);
+        $row('voiceover', ['file' => ['asset_id' => $voice->id]]);
+        $tmp = sys_get_temp_dir().'/talk-'.\Illuminate\Support\Str::uuid(); mkdir($tmp);
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=16000', '-t', '4', $tmp.'/n.wav']);
+        $wav = file_get_contents($tmp.'/n.wav');
+        $storage = \Mockery::mock(\App\Services\Media\StorageService::class);
+        $storage->shouldReceive('isManagedUrl')->andReturnUsing(fn ($u) => str_starts_with($u, 'minio://'));
+        $storage->shouldReceive('get')->with('minio://p/talking.png')->andReturn('PNG-TALKING');
+        $storage->shouldReceive('get')->with('minio://p/narration.wav')->andReturn($wav);
+        $this->app->instance(\App\Services\Media\StorageService::class, $storage);
+        $stt = \Mockery::mock(\App\Services\Media\MediaTranscriptionService::class);
+        $stt->shouldReceive('transcribeLocalMediaWithTimestamps')->once()->andReturn(['provider_key' => 'openai', 'words' => [['text' => 'Got', 'start' => 0.3, 'end' => 0.5], ['text' => 'an', 'start' => 0.5, 'end' => 0.6], ['text' => 'idea?', 'start' => 0.6, 'end' => 1.1], ['text' => 'Turn', 'start' => 1.6, 'end' => 1.9]]]);
+        $this->app->instance(\App\Services\Media\MediaTranscriptionService::class, $stt);
+        config(['services.replicate.api_token' => 'tok']);
+        $uploads = 0;
+        Http::fake(['api.replicate.com/v1/files' => function () use (&$uploads) { $uploads++; return Http::response(['urls' => ['get' => 'https://api.replicate.com/v1/files/f'.$uploads]]); },
+            'api.replicate.com/v1/models/bytedance/omni-human/predictions' => Http::response(['id' => 'pred_talk1', 'status' => 'starting']),
+            'api.replicate.com/v1/predictions/pred_talk1' => Http::response(['status' => 'succeeded', 'output' => 'https://replicate.delivery/x/talk.mp4']),
+            'replicate.delivery/*' => Http::response('MP4BYTES')]);
+        $made = app(\App\Services\Create\PlanMediaExecutor::class)->produce('talking_shot', 'hook', ['workspace_id' => $this->workspace->id, 'narration' => ['Got an idea?', 'Turn any idea into a video.'], 'plan_id' => $planId], $tmp);
+        $this->assertSame(['video/mp4', 'MP4BYTES', 'Got an idea?', 1.5], [$made['mime'], file_get_contents($made['path']), $made['line'], $made['seconds']], 'the line ends at 1.1 s plus a breath, held to the 1.5 s a lip-sync clip needs');
+        $this->assertStringContainsString('Talking shot', $made['title']);
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'omni-human/predictions') && $r['input']['image'] === 'https://api.replicate.com/v1/files/f1' && $r['input']['audio'] === 'https://api.replicate.com/v1/files/f2');
+        $cut = trim(\Illuminate\Support\Facades\Process::run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $tmp.'/line.wav'])->output());
+        $this->assertEqualsWithDelta(1.5, (float) $cut, 0.05, 'the uploaded audio is the first line only');
+        $this->assertSame(2, $uploads, 'the talking pose was chosen, not the first pose');
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

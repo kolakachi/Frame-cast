@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readdir,lstat,readFile,unlink} from 'node:fs/promises';import {createHash} from 'node:crypto';
 const run=promisify(execFile);
 const FF={timeout:150000,maxBuffer:32*1024*1024};
-export const OPS=['probe','silences','beats','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
+export const OPS=['probe','silences','beats','duck','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
 const LOOKS={
  warm:'colorbalance=rs=.06:gs=.01:bs=-.06,eq=saturation=1.08',
  cool:'colorbalance=rs=-.05:gs=.0:bs=.07,eq=saturation=1.02',
@@ -93,6 +93,14 @@ export async function mediaOp({projectDir,request,nextName}){
    if(!s.length)return {ok:true,info,output:null,note:'No silences long enough to remove.'};
    args=concatArgs(file,k,info).concat(enc);map=sourceMap(k);break;}
   case 'clean_audio':{if(!info.has_audio)throw Error('No audio to clean');args=['-i',file,'-af','highpass=f=80,lowpass=f=12000,afftdn=nf=-25',...(info.has_video?['-c:v','copy']:[]),...(audioOnly?['-c:a','pcm_s16le']:['-c:a','aac','-b:a','160k'])];break;}
+  case 'duck':{
+   // Music pulled down under the voice as it speaks (about 14 dB on speech peaks), back up in the gaps.
+   if(!info.has_audio)throw Error('Needs music audio');
+   const voice=params.voice;if(typeof voice!=='string'||!/^[a-zA-Z0-9_.-]+\.(mp4|mp3|wav)$/.test(voice)||voice===input)throw Error('voice must be a different audio file in this project');
+   const vf=projectDir+'/'+voice,vs=await lstat(vf).catch(()=>null);if(!vs||!vs.isFile()||vs.isSymbolicLink())throw Error('Voice file not found in this project');
+   const delta=num(params.voice_start,0,120,0)-num(params.music_start,0,120,0);
+   const side=(delta>=0?'adelay='+Math.round(delta*1000)+'|'+Math.round(delta*1000):'atrim=start='+(-delta).toFixed(3)+',asetpts=PTS-STARTPTS')+',apad';
+   args=['-i',file,'-i',vf,'-filter_complex','[1:a]'+side+'[sc];[0:a][sc]sidechaincompress=threshold=0.03:ratio=3:attack=40:release=500:makeup=1[out]','-map','[out]','-t',fx(info.duration),...enc];break;}
   case 'loudness':{if(!info.has_audio)throw Error('No audio to level');const t=num(params.target_lufs,-24,-9,-14);args=['-i',file,'-af',`loudnorm=I=${t}:TP=-1.5:LRA=11`,...(info.has_video?['-c:v','copy']:[]),...(audioOnly?['-c:a','pcm_s16le']:['-c:a','aac','-b:a','160k'])];break;}
   case 'stabilize':{if(!info.has_video)throw Error('Needs a video');const trf=projectDir+'/.'+output+'.trf';
    await run('ffmpeg',['-hide_banner','-y','-i',file,'-vf',`vidstabdetect=shakiness=6:accuracy=12:result=${trf}`,'-f','null','-'],FF);

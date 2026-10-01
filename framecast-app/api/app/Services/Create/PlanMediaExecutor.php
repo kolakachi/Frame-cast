@@ -32,6 +32,7 @@ class PlanMediaExecutor
             'music' => $this->generatedMusic($description, $ctx, $dir),
             'sfx' => $this->soundSheet($description, $dir),
             'character_poses' => $this->characterPoses($description, $ctx, $dir),
+            'talking_shot' => $this->talkingShot($ctx, $dir),
             'brand_kit' => $this->brand($ctx, $dir),
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
@@ -159,6 +160,62 @@ class PlanMediaExecutor
             $files[] = ['path' => $path, 'title' => $name.' · '.Str::limit($pose, 40, '…'), 'pose' => $pose];
         }
         return ['path' => $files[0]['path'], 'mime' => 'image/png', 'title' => $files[0]['title'], 'provider_id' => 'poses-'.Str::uuid(), 'extra' => array_slice($files, 1), 'poses' => array_column($files, 'pose')];
+    }
+
+    /**
+     * The character lip-syncing the first narration line, for the hook: its talking
+     * pose plus that line cut from the bought narration (so the clip and the voice
+     * share one timeline), through the workspace's lipsync engine (OmniHuman by default).
+     */
+    private function talkingShot(array $ctx, string $dir): array
+    {
+        $line = trim((string) (($ctx['narration'] ?? [])[0] ?? ''));
+        if ($line === '' || empty($ctx['plan_id'])) throw new RuntimeException('A talking shot needs a narration script.');
+        $item = fn (array $kinds) => \Illuminate\Support\Facades\DB::table('create_plan_media')->where('plan_id', $ctx['plan_id'])->whereIn('kind', $kinds)->where('status', 'succeeded')->first();
+        $poses = $item(['character_poses']); $voice = $item(['voiceover', 'cloned_voiceover']);
+        if (! $poses || ! $voice) throw new RuntimeException('A talking shot needs the character poses and the narration first.');
+        $p = json_decode((string) $poses->record_json, true) ?: []; $v = json_decode((string) $voice->record_json, true) ?: [];
+        $files = array_values(array_filter([$p['file'] ?? null, ...(array) ($p['more_files'] ?? [])]));
+        if (! $files || empty($v['file'])) throw new RuntimeException('The character poses or the narration are missing.');
+        $i = 0; foreach ((array) ($p['poses'] ?? []) as $k => $name) if (preg_match('/talk|speak|say/i', (string) $name) && isset($files[$k])) { $i = $k; break; }
+        $storage = app(StorageService::class);
+        $read = function (array $f) use ($storage): array {
+            $a = Asset::find((int) ($f['asset_id'] ?? 0));
+            $bytes = $a?->storage_url ? $storage->get((string) $a->storage_url) : null;
+            if (! is_string($bytes) || $bytes === '') throw new RuntimeException('A bought file could not be read.');
+            return [$bytes, (string) ($a->mime_type ?: 'application/octet-stream')];
+        };
+        [$image, $imageMime] = $read($files[$i]);
+        [$audio, $audioMime] = $read($v['file']);
+        $narration = $dir.'/narration.'.(str_contains($audioMime, 'mpeg') || str_contains($audioMime, 'mp3') ? 'mp3' : 'wav');
+        file_put_contents($narration, $audio);
+        $end = $this->firstLineEnd($narration, $audioMime, $line);
+        Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $narration, '-t', (string) $end, '-c:a', 'pcm_s16le', $dir.'/line.wav']);
+        if (! is_file($dir.'/line.wav')) throw new RuntimeException('The first line could not be cut from the narration.');
+        $adapter = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
+        $id = $adapter->start($this->replicateUpload($image, $imageMime), $this->replicateUpload((string) file_get_contents($dir.'/line.wav'), 'audio/wav'), null);
+        $url = $adapter->pollUntilDone($id, 330);
+        if (! $url) throw new RuntimeException('The talking shot took too long to make.');
+        $path = $this->fetch($url, $dir.'/talking.mp4');
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'Talking shot · '.Str::limit($line, 40, '…'), 'provider_id' => 'talk-'.preg_replace('/[^a-zA-Z0-9_-]/', '', $id), 'line' => $line, 'seconds' => $end];
+    }
+
+    /** Where the first script line ends in the narration, from word timings; a sensible length when unsure. */
+    public function firstLineEnd(string $path, string $mime, string $line): float
+    {
+        $norm = fn ($t) => preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower((string) $t));
+        $tokens = array_values(array_filter(array_map($norm, preg_split('/\s+/', $line))));
+        $end = null;
+        try {
+            $r = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, $mime);
+            $words = ($r['provider_key'] ?? '') === 'local_fallback' ? [] : (array) ($r['words'] ?? []);
+            $j = 0; $matched = 0;
+            foreach ($words as $w) {
+                if ($j < count($tokens) && $norm($w['text'] ?? '') === $tokens[$j]) { $j++; $matched++; $end = (float) ($w['end'] ?? 0); if ($j === count($tokens)) break; }
+            }
+            if ($matched < max(1, (int) ceil(count($tokens) * 0.6))) $end = null;
+        } catch (\Throwable) { $end = null; }
+        return round(max(1.5, min(4.5, ($end ?? 2.8) + 0.2)), 2);
     }
 
     /** Upload bytes to Replicate's file store so a model can read a private image. */

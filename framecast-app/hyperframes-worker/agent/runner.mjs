@@ -1,7 +1,7 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {parseAction,hostPolicy} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
-import {rowsOf,timingFindings} from './timing-check.mjs';
+import {rowsOf,timingFindings,duckingFindings} from './timing-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
@@ -67,6 +67,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.durations[r.src]=Number(p?.info?.duration)||null;
     }
     const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
+    errors.push(...duckingFindings({rows,planMedia:context.planMedia||[]}));
     errors.push(...numberFindings(html,allowedText()));
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };
