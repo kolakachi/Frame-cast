@@ -21,9 +21,10 @@ Hard rules:
 
 - current_variables lists the text and colour fields of the version the user already has. If the latest request only changes some of those values and nothing else (no size, position, motion, timing or new content), set free_edit to the new values, colours as #rrggbb, and keep the rest of the plan to one short scene; otherwise free_edit is null.
 - Sound: most videos should have a music bed; include the music tool with a short mood description (genre, energy, tempo) matched to the brand and pacing. When UI builds on screen or cuts land hard, include the sfx tool with a description listing up to 6 cue names, for example "UI sounds: soft click, card pop, quick whoosh". Skip both when settings.audio is silent.
-- Character: when the brief or reference calls for a narrator, mascot or recurring character, include character_poses. Describe it as "<who the character is>: <pose 1>, <pose 2>, ..." with up to 5 poses matched to the beats (talking, pointing, surprised, waving, thumbs up and so on). Name a saved workspace character if one fits; otherwise describe an original one, never a copy of a reference's character.
+- Character: when the brief or reference calls for a narrator, mascot or recurring character, include character_poses. Describe it as "<who the character is>: <pose 1>, <pose 2>, ..." with up to 5 poses matched to the beats. A narrator is framed as a bust (shoulders up, facing camera, cropped at the chest) with a distinct expression per pose (talking, grinning at the reveal, eyes to the side at the UI, surprised, waving); say "bust" in the description. Name a saved workspace character if one fits; otherwise describe an original one, never a copy of a reference's character.
 - Talking shot: when the brief asks for the character to speak, talk to camera or say the first line, include talking_shot (it lip-syncs the character's talking pose to the first narration line for the hook, 2 to 4 s) together with character_poses and the voice. Otherwise add it only when the character is clearly the narrator; it is the dearest item and is used once, for the hook.
 - narration is the voiceover script. Write it when the video should speak and settings.audio is not silent and no supplied footage already carries speech: about 2 words per second of the video minus 1.5 s (so about 27 words for 15 s), one short line per beat, a hook first and the call to action last. Use only the brief, approved_facts and the claims of attached pages; the user approves the script with the plan. Never invent numbers, prices, guarantees or endorsements. Pick the voice from voices whose character best fits the brand and audience.
+- Design from the pictures when they are attached: the reference frames show its scale, framing, density, colour fields and signature move; take that craft (never its content) and set it on the brand. Each beat has layout (the grid and where things sit and how big, for example "two columns: character bust left at half height bleeding off the bottom, headline right") and field (the background colour of the beat; flip fields on key beats). signature_move names the one move the video is remembered for (a giant-type wipe, a stamp, one shape morphing, a field flip on the hit) and the beat it lands in.
 - Beats: scenes are the beat sheet the video is built from, so write them like a director. Each scene has start and end (a hook that moves within the first 2 s; a payoff every 3 to 5 s; the last beat echoes the first), state_in and state_out (what is on screen when it starts and when it ends, so each beat has one visible event), and reads: what the viewer must understand in that beat, in order, one at a time, each short enough to land in its time. The on-screen copy and narration lines must appear in the reads of the beats where they happen.
 - Style: choose the route the build starts from. "reference" when a studied reference file is attached and the user wants its feel; "saved" when house_style is set; "pack" when one of style_packs clearly fits the brief and video type (avoid the recent_style_packs unless one is clearly the best fit, so a workspace's videos do not all look alike); "free" when none fits. A pack is a starting craft, not a template. Give a short why. When pinned_style_rules is set, the user chose that pack: write the scenes in its structure, look and motion, not in a layout of your own.
 Be brief: the user reads this on a phone. summary under 45 words; each use, idea, state_in, state_out, read and detail under 18 words; at most 4 reads per beat; question under 12 words; left_out under 25 words. No markdown.
@@ -31,7 +32,8 @@ Be brief: the user reads this on a phone. summary under 45 words; each use, idea
 Reply with one JSON object and nothing else:
 {"summary": string (1-3 sentences, first person, what you will make),
  "reused": [{"asset_id": int, "use": string}],
- "scenes": [{"label": string, "start": number, "end": number, "idea": string, "state_in": string, "state_out": string, "reads": [string]}],
+ "scenes": [{"label": string, "start": number, "end": number, "idea": string, "state_in": string, "state_out": string, "reads": [string], "layout": string, "field": string}],
+ "signature_move": string,
  "callouts": [string],
  "decisions": [{"id": string, "question": string, "options": [{"id": string, "label": string, "detail": string, "kind": "included"|"media", "tool": string|null}]}],
  "kept_as_is": [string],
@@ -46,7 +48,19 @@ TXT;
 
     public static function user(array $context): string
     {
-        return json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return json_encode(array_filter($context, fn ($k) => ! str_starts_with((string) $k, '_'), ARRAY_FILTER_USE_KEY), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    /** The user turn as content blocks: the images first (reference frames, page capture), then the brief as JSON. */
+    public static function userContent(array $context): array
+    {
+        $blocks = [];
+        foreach (array_slice((array) ($context['_images'] ?? []), 0, 3) as $img) {
+            $blocks[] = ['type' => 'text', 'text' => (string) $img['label'].':'];
+            $blocks[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $img['media_type'], 'data' => $img['data']]];
+        }
+        $blocks[] = ['type' => 'text', 'text' => self::user($context)];
+        return $blocks;
     }
 
     /** First JSON object in a model reply, or null. */

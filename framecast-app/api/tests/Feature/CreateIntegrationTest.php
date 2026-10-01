@@ -139,7 +139,7 @@ class CreateIntegrationTest extends TestCase
         $plan = $p['plan'];
         $this->assertSame('anthropic:claude-opus-5-5', $p['provider']);
         $this->assertSame([$asset->id], array_column($plan['reused'], 'asset_id'), 'only this conversation\'s source files');
-        $blank = ['state_in' => '', 'state_out' => '', 'reads' => []];
+        $blank = ['state_in' => '', 'state_out' => '', 'reads' => [], 'layout' => '', 'field' => ''];
         $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take', ...$blank], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped', ...$blank]], $plan['scenes']);
         $this->assertCount(1, $plan['decisions'], 'a decision with one option is dropped');
         $this->assertSame('introstyle', $plan['decisions'][0]['id']);
@@ -799,6 +799,47 @@ class CreateIntegrationTest extends TestCase
         $withCharacter = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
         $this->assertSame(20, $withCharacter->payload_json['execution_policy']['agent']['max_calls']);
         $this->assertGreaterThan($plain->credits_max, $withCharacter->credits_max, 'the extra calls are reserved up front');
+    }
+
+    public function test_the_planner_sees_reference_frames_and_the_page_capture_as_images(): void
+    {
+        $sheet = base64_encode('JPEGBYTES');
+        $ctx = ['files' => [], 'settings' => [], '_images' => [['label' => 'Reference video "X": 20 frames', 'media_type' => 'image/jpeg', 'data' => $sheet]]];
+        $blocks = \App\Services\Create\Planning\PlanPrompt::userContent($ctx);
+        $this->assertSame(['text', 'image', 'text'], array_column($blocks, 'type'));
+        $this->assertSame($sheet, $blocks[1]['source']['data']);
+        $this->assertStringNotContainsString('_images', $blocks[2]['text'], 'pictures never leak into the JSON brief');
+        $this->assertStringNotContainsString('JPEGBYTES', \App\Services\Create\Planning\PlanPrompt::user($ctx));
+        Http::fake(['api.anthropic.com/*' => Http::response(['id' => 'msg_i', 'content' => [['type' => 'text', 'text' => '{"summary":"Designed from the frames.","scenes":[]}']], 'usage' => []])]);
+        (new \App\Services\Create\Planning\AnthropicPlanner('claude-opus-5-5', 'k'))->plan($ctx);
+        Http::assertSent(fn ($r) => is_array($r['messages'][0]['content']) && $r['messages'][0]['content'][1]['type'] === 'image');
+    }
+
+    public function test_a_reference_video_gets_a_cached_contact_sheet(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $tmp = sys_get_temp_dir().'/refsheet-'.\Illuminate\Support\Str::uuid(); mkdir($tmp);
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10', '-t', '3', '-pix_fmt', 'yuv420p', $tmp.'/ref.mp4']);
+        $asset = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'X · ref', 'status' => 'active', 'storage_url' => 'minio://r/ref.mp4']);
+        $storage = \Mockery::mock(\App\Services\Media\StorageService::class);
+        $storage->shouldReceive('get')->with('minio://r/ref.mp4')->once()->andReturn(file_get_contents($tmp.'/ref.mp4'));
+        $this->app->instance(\App\Services\Media\StorageService::class, $storage);
+        $sheets = app(\App\Services\Create\References\ReferenceSheets::class);
+        $path = $sheets->pathFor($asset);
+        $this->assertSame('create/references/'.$asset->id.'/sheet.jpg', $path);
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists($path));
+        $this->assertSame($path, $sheets->pathFor($asset), 'the second call reuses the cached sheet without reading the video again');
+    }
+
+    public function test_the_plan_carries_art_direction_per_beat_and_a_signature_move(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'silent']];
+        $raw = ['summary' => 'x', 'left_out' => '', 'signature_move' => 'A giant-type wipe of FLOW into the dashboard beat',
+            'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 3, 'layout' => 'Two columns: bust left at half height, headline right', 'field' => '#0E0B12']]];
+        $p = $plans->normalize($raw, $ctx, $this->workspace->id);
+        $this->assertSame(['Two columns: bust left at half height, headline right', '#0E0B12'], [$p['scenes'][0]['layout'], $p['scenes'][0]['field']]);
+        $this->assertSame('A giant-type wipe of FLOW into the dashboard beat', $p['signature_move']);
     }
 
     private function brief(): object

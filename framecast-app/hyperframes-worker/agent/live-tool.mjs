@@ -60,5 +60,22 @@ if(operation==='snapshot'&&result.ok){
  const args=shots.flatMap(n=>['-i',out+'/'+n]);
  const filters=shots.map((_,i)=>`[${i}:v]scale=270:-2,pad=270:480:0:(oh-ih)/2:black[s${i}]`).join(';')+';'+shots.map((_,i)=>`[s${i}]`).join('')+`hstack=inputs=${shots.length}[sheet]`;
  await promisify(execFile)('ffmpeg',['-y',...args,'-filter_complex',filters,'-map','[sheet]','-frames:v','1',out+'/contact-sheet.jpg'],{timeout:30000,maxBuffer:1000000});
+ // A studied reference video gets a second row: its frames at the same moments, scaled to our length, so the review compares against it.
+ try{
+  const ref=(await readdir(source+'/inputs/reference').catch(()=>[])).find(n=>/\.(mp4|mov|webm)$/.test(n));
+  if(ref){
+   const file=source+'/inputs/reference/'+ref;
+   const {stdout}=await promisify(execFile)('ffprobe',['-v','error','-show_entries','format=duration','-of','csv=p=0',file],{timeout:20000});
+   const refDur=Number(stdout)||0,ours=settings.duration_seconds;
+   const at=shots.map(n=>Number((n.match(/at-([0-9.]+)s/)||[])[1])).filter(Number.isFinite);
+   if(refDur>0&&at.length===shots.length){
+    const inputs=at.flatMap(t=>['-ss',String(Math.min(refDur-0.05,t/ours*refDur)),'-i',file]);
+    const f2=at.map((_,i)=>`[${i}:v]scale=270:-2,pad=270:480:0:(oh-ih)/2:black[r${i}]`).join(';')+';'+at.map((_,i)=>`[r${i}]`).join('')+`hstack=inputs=${at.length}[row]`;
+    await promisify(execFile)('ffmpeg',['-y',...inputs,'-filter_complex',f2,'-map','[row]','-frames:v','1',out+'/reference-row.jpg'],{timeout:60000,maxBuffer:1000000});
+    await promisify(execFile)('ffmpeg',['-y','-i',out+'/contact-sheet.jpg','-i',out+'/reference-row.jpg','-filter_complex','[0:v][1:v]vstack=inputs=2[both]','-map','[both]','-frames:v','1',out+'/contact-sheet.jpg'],{timeout:30000,maxBuffer:1000000});
+    result={...result,reference_row:'The bottom row of the contact sheet is the reference video at the same moments.'};
+   }
+  }
+ }catch(e){result={...result,reference_row_error:String(e.message).slice(0,200)};/* the review proceeds without the reference row */}
 }
 await writeFile(out+'/result.json',JSON.stringify(result,null,2));

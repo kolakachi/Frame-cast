@@ -16,3 +16,4 @@ test('springs are deterministic',()=>{assert.deepEqual(curve(ease.default),curve
 test('the kit never contains a closing script tag (HyperFrames inlines scripts into the page)',()=>{
  assert.ok(!/<\/script/i.test(src),'a literal closing script tag ends the inlined script early and breaks every build that loads the kit');
 });
+test('the signature-move recipes exist',()=>{for(const k of ['giantWipe','stamp','field'])assert.equal(typeof window.WM[k],'function',k);});

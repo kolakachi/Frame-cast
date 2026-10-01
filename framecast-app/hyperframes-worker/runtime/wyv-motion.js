@@ -109,6 +109,32 @@
         .fromTo($(b), { xPercent: 60, filter: 'blur(24px)', autoAlpha: 0 }, { xPercent: 0, filter: 'blur(0px)', autoAlpha: 1, duration: 0.42, ease: 'expo.out' }, at);
       return tl;
     },
+    /* Giant-type wipe: one huge word sweeps across the frame as the cut, so the
+       next scene is revealed behind it. el is a full-frame div holding the word in
+       display type at 2 to 3 times the frame height, overflow hidden on the stage. */
+    giantWipe: function (tl, el, word, at, opts) {
+      el = $(el); opts = opts || {};
+      el.textContent = word;
+      tl.set(el, { autoAlpha: 1, xPercent: 110, filter: 'blur(0px)' }, at - 0.01)
+        .to(el, { keyframes: [{ xPercent: 0, filter: 'blur(14px)', duration: 0.28, ease: 'expo.in' }, { xPercent: -120, filter: 'blur(0px)', duration: 0.5, ease: 'expo.out' }] }, at)
+        .set(el, { autoAlpha: 0 }, at + 0.8);
+      return tl;
+    },
+
+    /* Stamp: a badge slams in rotated, overshoots and settles, like an ink stamp. */
+    stamp: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      tl.fromTo(el, { autoAlpha: 0, scale: 2.2, rotation: (opts.rotation || -8) - 6 },
+        { autoAlpha: 1, scale: 1, rotation: opts.rotation || -8, duration: 0.45, ease: ease.playful, transformOrigin: '50% 50%' }, at);
+      return tl;
+    },
+
+    /* Field flip: the full-frame background cuts to a new colour on a hit. el is the stage background. */
+    field: function (tl, el, color, at) {
+      tl.set($(el), { backgroundColor: color }, at);
+      return tl;
+    },
+
     /* Light leak: a warm glow that sweeps across the frame over a cut. el is a
        full-frame div above the scenes with mix-blend-mode: screen. */
     leak: function (tl, el, at, color) {

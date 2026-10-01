@@ -132,6 +132,9 @@ class PlanMediaExecutor
     private function characterPoses(string $description, array $ctx, string $dir): array
     {
         [$who, $list] = array_pad(explode(':', $description, 2), 2, '');
+        // A narrator is a bust (the way a presenter is framed); anything else is full body.
+        $bust = (bool) preg_match('/\b(bust|shoulders up|head and shoulders|chest up|presenter)\b/i', $description);
+        $framing = $bust ? 'Bust shot from the chest up, facing the camera, head and shoulders filling the frame' : 'Full body';
         $poses = array_values(array_slice(array_filter(array_map('trim', preg_split('/[,;\n]+/', $list))), 0, 5)) ?: self::DEFAULT_POSES;
         $nano = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class);
         $refUrl = null; $name = 'Character';
@@ -145,10 +148,10 @@ class PlanMediaExecutor
             $refUrl = $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
             $name = 'Your character';
         } else {
-            $base = $nano->generate(trim($who) !== '' ? trim($who).'. Full body, front view, standing, plain flat cream background, centred.' : 'An original friendly mascot character. Full body, front view, plain flat cream background.', '3d', '1:1');
+            $base = $nano->generate(trim($who) !== '' ? trim($who).'. '.$framing.', front view, plain flat cream background, centred.' : 'An original friendly mascot character. '.$framing.', front view, plain flat cream background.', '3d', '1:1');
             $refUrl = $base['image_url'] ?? $this->replicateUpload(base64_decode((string) ($base['image_b64'] ?? '')), 'image/png');
         }
-        $keep = ' Same character exactly: same body shape, colours, face, details and texture. Full body, plain flat cream background, centred, nothing else in frame.';
+        $keep = ' Same character exactly: same body shape, colours, face, details and texture. '.$framing.', plain flat cream background, centred, nothing else in frame.';
         $files = [];
         foreach ($poses as $i => $pose) {
             // A dropped connection mid-sheet shouldn't lose the poses already paid for.

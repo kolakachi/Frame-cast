@@ -31,7 +31,8 @@ These rules apply whatever the style. A style pack adds character on top; it nev
   - A build with a character uses the kit for more than eases: `WM.ease.playful` on every pose change, a transition recipe (whip, push or wipe) between beats, and press or cursor on any UI it points at. A build that only swaps opacity between beats reads as slides.
 
 ## Character (when there is one)
-- The same character throughout, big enough to read (at least a quarter of the frame height in its beats).
+- The same character throughout, big enough to read: a narrator is framed as a bust at about half the frame height, cropped at the chest and bleeding off the bottom edge like a presenter, never a small full figure standing in empty space. Never under a third of the frame in any beat.
+- In landscape, use a two-column grid: the character in one column, the headline or UI in the other; in portrait, the character takes the lower half and the UI or headline the upper, overlapping on purpose.
 - Pose changes are acted: a small anticipation, the change, a slight overshoot and settle. Never swap poses between two frames with nothing in between.
 - Cause, then reaction: the character reacts after the thing it reacts to, not at the same moment.
 
@@ -39,7 +40,8 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 - One focal point per beat. Subject never tiny or pushed against an edge.
 - Never colour on the same colour (red text on red). Text contrast at least 4.5:1, large display text at least 3:1.
 - At most two background colours in the whole video plus near-black and near-white, unless the style pack says otherwise.
-- Change the composition between beats: scale, position or framing should differ, so the video does not sit in one layout for its whole length.
+- Change the composition between beats: scale, position or framing should differ, so the video does not sit in one layout for its whole length. Flip the colour field on at least one key beat.
+- Every video has one signature move the viewer remembers (the plan names it: a giant-type wipe, a stamp, a morph, a field flip on the hit). Build it with the kit and land it on its beat.
 
 ## Sound (when there is audio)
 - A sound on every visible action that has one: card landings, clicks, cuts.

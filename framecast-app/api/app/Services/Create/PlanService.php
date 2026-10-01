@@ -127,7 +127,7 @@ class PlanService
         return ['plan_id' => $row->id, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
-            'media' => $p['media'], 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null];
+            'media' => $p['media'], 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'signature_move' => $p['signature_move'] ?? ''];
     }
 
     public function stale(object $plan, object $c): bool
@@ -175,6 +175,27 @@ class PlanService
             'page_claims_not_approved' => ! empty($a['suggested_claims']) ? array_column($a['suggested_claims'], 'text') : null], fn ($v) => $v !== null);
     }
 
+    /** Reference frames and the page capture as planner images: [['label' => ..., 'media_type' => ..., 'data' => base64], ...], at most three. */
+    private function planImages(User $user, array $files): array
+    {
+        $out = [];
+        foreach ($files as $f) {
+            if (count($out) >= 3 || ($f['purpose'] ?? '') !== 'reference') continue;
+            $asset = Asset::where('workspace_id', $user->workspace_id)->find($f['asset_id']);
+            if (! $asset) continue;
+            try {
+                if ($asset->asset_type === 'video') {
+                    $path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset);
+                    if ($path) $out[] = ['label' => 'Reference video "'.$asset->title.'": '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($path))];
+                } elseif ($asset->asset_type === 'image' && data_get($asset->metadata_json, 'reference_source.platform') === 'page') {
+                    $bytes = app(\App\Services\Media\StorageService::class)->get((string) $asset->storage_url);
+                    if (is_string($bytes) && $bytes !== '' && strlen($bytes) <= 1_000_000) $out[] = ['label' => 'The brand page capture', 'media_type' => str_contains((string) $asset->mime_type, 'png') ? 'image/png' : 'image/jpeg', 'data' => base64_encode($bytes)];
+                }
+            } catch (\Throwable) { /* the notes still describe it */ }
+        }
+        return $out;
+    }
+
     private function context(User $user, object $c): array
     {
         $settings = json_decode($c->settings_json, true) ?: [];
@@ -195,6 +216,8 @@ class PlanService
             'voices' => array_merge(array_map(fn ($k) => ['key' => $k, 'character' => \App\Services\Generation\TTS\GeminiVoices::VOICES[$k], 'gender' => \App\Services\Generation\TTS\GeminiVoices::gender($k)], array_keys(\App\Services\Generation\TTS\GeminiVoices::VOICES)),
                 \Illuminate\Support\Facades\Schema::hasTable('voice_profiles') && DB::table('voice_profiles')->where('workspace_id', $user->workspace_id)->where('is_cloned', true)->exists() ? [['key' => 'clone', 'character' => "The workspace's own cloned voice", 'gender' => '']] : []),
             'files' => $files, 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
+            // Pictures for the planner (underscored keys never reach the JSON): frames of each studied reference video, and the page capture.
+            '_images' => $this->planImages($user, $files),
             // Built-in style packs to start from, and the ones this workspace used last, so the planner varies them.
             'style_packs' => StylePacks::catalogue(),
             // A pack the user pinned: the planner writes the scenes inside its rules.
@@ -233,6 +256,8 @@ class PlanService
             // The director's plan: what is on screen at each end of the beat, and what the viewer must understand, in order.
             'state_in' => $str($s['state_in'] ?? '', 120), 'state_out' => $str($s['state_out'] ?? '', 120),
             'reads' => collect((array) ($s['reads'] ?? []))->map(fn ($r) => $str($r, 90))->filter()->take(4)->values()->all(),
+            // Art direction per beat: where things sit and how big, and the colour field behind them.
+            'layout' => $str($s['layout'] ?? '', 140), 'field' => $str($s['field'] ?? '', 40),
         ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(8)->values()->all();
         $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
         $known = collect(CapabilityCatalogue::forWorkspace($workspaceId))->keyBy('kind');
@@ -271,7 +296,7 @@ class PlanService
         }
         $style = StylePacks::route(is_array($raw['style'] ?? null) ? $raw['style'] : [], $ctx);
         $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
-            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style,
+            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
             'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
         // A text/colour-only request becomes a free edit, validated against the real fields.
         $free = [];

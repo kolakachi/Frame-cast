@@ -19,7 +19,7 @@ class AnthropicPlanner implements Planner
             ->post('https://api.anthropic.com/v1/messages', [
                 'model' => $this->model, 'max_tokens' => $maxTokens, 'output_config' => ['effort' => $effort],
                 'system' => [['type' => 'text', 'text' => PlanPrompt::system(), 'cache_control' => ['type' => 'ephemeral']]],
-                'messages' => [['role' => 'user', 'content' => PlanPrompt::user($context)]],
+                'messages' => [['role' => 'user', 'content' => PlanPrompt::userContent($context)]],
             ]);
         if (! $response->successful()) throw new RuntimeException('Planner request failed.');
         return $response;

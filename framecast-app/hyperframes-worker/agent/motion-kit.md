@@ -21,6 +21,11 @@ Scenes are full-frame layers; the incoming one starts hidden (visibility:hidden)
 - `WM.leak(tl, '#leak', at, 'rgba(255,140,60,.85)')`: a warm light leak sweeps over the cut. `#leak` is a full-frame div above the scenes with `mix-blend-mode: screen; visibility: hidden`.
 Hide the outgoing scene once the transition is done (`tl.set('#a', {autoAlpha: 0}, at + 0.6)`), so it never sits under the next one.
 
+## Signature moves
+- `WM.giantWipe(tl, '#wipe', 'FLOW', at)`: one huge word sweeps across the frame as the cut; put the next scene underneath before `at`. `#wipe` is a full-frame div with display type at 2 to 3 times the frame height, white or the accent colour, `white-space: nowrap`.
+- `WM.stamp(tl, '#stamp', at, {rotation: -8})`: a badge (a bordered word such as "Handled.") slams in, overshoots and settles. Use once, on the payoff.
+- `WM.field(tl, '#stage', '#FF6B35', at)`: the background cuts to a new colour on a hit. Flip fields on key beats; keep text contrast when you do.
+
 ## Good habits
 - One idea per interaction: move, then press, then show the result; leave about 0.3 s between them.
 - Use `WM.ease.heavy` for headlines and `WM.ease.snappy` for UI, so type feels weighty and UI feels quick.
