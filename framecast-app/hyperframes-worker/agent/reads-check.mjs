@@ -12,7 +12,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Short-form reading speed: about 17 characters a second plus a second to find the words.
-export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:30,slack:0.15};
+export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
 function serve(root,runtime){

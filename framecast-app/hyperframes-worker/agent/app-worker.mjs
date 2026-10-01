@@ -187,7 +187,7 @@ async function execute(run){
   if(cancelled||stopping){await finish(run,{status:'cancelled',summary:'Local render stopped'});return;}
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
-  const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
+  const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
   const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?fitSummary(agentResult.state.summary??'',cutNote(agentResult.state.edits)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
   // Persist completion before sending: a callback failure must not trigger rendering again.

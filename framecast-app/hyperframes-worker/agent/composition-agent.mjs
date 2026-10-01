@@ -53,7 +53,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
     exampleFiles:Object.keys(input.style_pack.example??{}).map(f=>'style-example/'+f),
     howToUse:'This is the craft the build starts from, not a template. Follow its rules. If exampleFiles are listed, read style-example/index.html once to learn its technique; never copy its layout wholesale. The fingerprint describes the example on six points: structure, opening, signature shot, camera path, score shape and ending. Your video must differ from it on at least 4 of the 6; in your final visual_review add one finding that starts with "Fingerprint:" and names your six. Brand look (houseStyle, page palette, brand kit) still wins on colours and fonts.'}:null,
    variantDirection:input.variant_direction??null,approvedFacts:[...(settings.approved_facts??[]),...(input.plan?.on_screen_copy??[])],settings,output:{width:dims[0],height:dims[1],durationSeconds:settings.duration_seconds??15},
-   runtimeFiles:[{path:'gsap.min.js',purpose:'Local GSAP runtime'},{path:'font.ttf',purpose:'DejaVu Sans, plain fallback'},
+   runtimeFiles:[{path:'gsap.min.js',purpose:'Local GSAP runtime'},{path:'wyv-motion.js',purpose:'WyvStudio motion kit, load after gsap.min.js: spring eases, cursor, button press, typing, toggle, counter, shape morph and scene transitions (whip, push, wipe, light leak). Read kit/motion-kit.md for the API before using it.'},{path:'font.ttf',purpose:'DejaVu Sans, plain fallback'},
     {path:'inter.ttf',purpose:'Inter, variable weight 100-900: clean modern sans for body and bold headlines'},
     {path:'anton.ttf',purpose:'Anton, heavy condensed display: punchy ad headlines'},
     {path:'bebas-neue.ttf',purpose:'Bebas Neue, tall all-caps display'},
@@ -67,6 +67,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   limits:{repairs:paid?4:2,calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:paid?(input.execution_policy?.agent?.max_calls??8)*(input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6:0,contextBytes:paid?60000:200000,maxOutputTokens:Math.min(16384,Math.max(256,input.execution_policy?.agent?.max_output_tokens??4096)),totalOutputTokenAllowance:Math.max(98304,(input.execution_policy?.agent?.max_calls??12)*Math.min(16384,input.execution_policy?.agent?.max_output_tokens??4096)),elapsedMs:paid?900000:600000},
   tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),check:args=>invoke('check',args),snapshot:args=>invoke('snapshot',args),timeline:args=>invoke('timeline',args),guidance:name=>{
    // The style pack's worked example, frozen with the run: readable, never part of the bundle.
+   if(name==='kit/motion-kit.md')return readFile(guidanceDirectory+'/../motion-kit.md','utf8');
    if(name.startsWith('style-example/')){const text=input.style_pack?.example?.[name.slice(14)];if(typeof text!=='string')throw Error('No such example file');return text;}
    return readGuidanceReference(guidanceDirectory,name);}}});
  const bundle={};

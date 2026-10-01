@@ -98,7 +98,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       }
       state.pending={kind:'tool',action};await save();
       let result;
-      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/'))&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
       else if(action.type==='write'||action.type==='patch') {
         try {
           let text=action.content;

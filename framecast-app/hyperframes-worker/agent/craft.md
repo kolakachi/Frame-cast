@@ -22,6 +22,7 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 - Moves slower than about 1 pixel per frame stutter. Move further, move faster, or carry the hold with opacity, blur, colour or a counter instead.
 - Change a thing's state instead of replacing it where you can: one card that grows into the next idea reads better than a new card fading in.
 - No twinning: offset the timing of repeated elements; never animate a row of items in perfect unison.
+- Use the motion kit (wyv-motion.js; read kit/motion-kit.md once) for spring eases, cursor interactions, morphing shapes and scene transitions, rather than hand-rolling them.
 
 ## Character (when there is one)
 - The same character throughout, big enough to read (at least a quarter of the frame height in its beats).
