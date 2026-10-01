@@ -234,7 +234,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       await workspace.verifyAssets();
       const prompt=toolMode?'':JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
       if(!toolMode&&Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
-      if(toolMode){compactTurns();if(Buffer.byteLength(JSON.stringify(turns()))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes)throw Error('Context limit reached');}
+      // Images are not text context: the one kept review frame or page capture is measured as a placeholder, not its bytes.
+      if(toolMode){compactTurns();if(Buffer.byteLength(JSON.stringify(turns(),(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes)throw Error('Context limit reached');}
       const reservation=provider.maxCallUsd;
       if(!Number.isFinite(reservation)||reservation<0||state.reservedUsd+reservation>cap.budgetUsd+1e-9)throw Error('Model budget exhausted');
       if(state.reservedOutputTokens+cap.maxOutputTokens>cap.totalOutputTokenAllowance)throw Error('Output token allowance exhausted');

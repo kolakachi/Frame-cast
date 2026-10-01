@@ -59,3 +59,12 @@ test('run executes through the host tool: scratch writes do not bump the revisio
  assert.equal(r[2].is_error,true);assert.match(r[2].content,/absolute paths/);
  assert.equal(state.runs,1);
 });
+test('an initial page image does not count toward the text context limit',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/tool-');await writeFile(dir+'/index.html','<html></html>');
+ const turns=[[use('a','write',{path:'index.html',content:'<html>ok</html>'}),use('b','preview',{times:[1]})],[use('c','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('d','finish',{summary:'Done'})]];
+ let i=0;const provider={id:'t',maxCallUsd:0,complete:async()=>({content:turns[i++]??turns.at(-1),text:'',predictionId:'p',metrics:{}})};
+ const big='data:image/jpeg;base64,'+'A'.repeat(400000);
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider,initialImage:big,context:{brief:'x',toolMode:true},limits:{calls:4,repairs:2,budgetUsd:0,contextBytes:96000},requireVisualReview:true,
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
+ assert.equal(state.status,'preview_ready',state.reason);
+});
