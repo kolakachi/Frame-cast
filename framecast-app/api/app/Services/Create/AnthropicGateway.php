@@ -12,6 +12,29 @@ use Illuminate\Support\Str;
  */
 class AnthropicGateway
 {
+    /** Tool-mode history must be a bounded, well-formed conversation: known roles and block types, few images, modest size. */
+    public static function checkToolMessages(mixed $messages, mixed $tools): void
+    {
+        abort_unless(is_array($messages) && count($messages) >= 1 && count($messages) <= 120, 422, 'Invalid tool conversation.');
+        abort_unless(is_array($tools) && count($tools) <= 24, 422, 'Invalid tool list.');
+        foreach ($tools as $t) abort_unless(is_array($t) && preg_match('/^[a-z_]{2,40}$/', (string) ($t['name'] ?? '')) && is_array($t['input_schema'] ?? null), 422, 'Invalid tool definition.');
+        $images = 0;
+        foreach ($messages as $m) {
+            abort_unless(is_array($m) && in_array($m['role'] ?? '', ['user', 'assistant'], true) && is_array($m['content'] ?? null), 422, 'Invalid message.');
+            foreach ($m['content'] as $b) {
+                $type = is_array($b) ? ($b['type'] ?? '') : '';
+                abort_unless(in_array($type, ['text', 'image', 'tool_use', 'tool_result'], true), 422, 'Invalid message block.');
+                $inner = $type === 'tool_result' && is_array($b['content'] ?? null) ? $b['content'] : [];
+                foreach ([$b, ...$inner] as $x) {
+                    if (($x['type'] ?? '') !== 'image') continue;
+                    $src = $x['source'] ?? [];
+                    abort_unless(($src['type'] ?? '') === 'base64' && in_array($src['media_type'] ?? '', ['image/png', 'image/jpeg'], true) && is_string($src['data'] ?? null) && strlen($src['data']) <= 1_400_000, 422, 'Only inline PNG or JPEG images are accepted.');
+                    abort_if(++$images > 4, 422, 'Too many images in one request.');
+                }
+            }
+        }
+    }
+
     public function complete(string $runId, string $lease, string $attemptId, array $input): array
     {
         app(RunService::class)->validateResultLease($runId, $lease);
@@ -19,6 +42,9 @@ class AnthropicGateway
         abort_unless($attempt->provider === 'anthropic' && $attempt->kind === 'agent', 422, 'This attempt is not an Anthropic agent call.');
         abort_unless($attempt->status === 'started' && ! $attempt->prediction_id, 409, 'This attempt was already sent. Reconcile instead of sending again.');
         $canonical = ['prompt' => $input['prompt'], 'system' => $input['system'], 'maxTokens' => $input['max_tokens'], 'image' => $input['image'] ?? null];
+        // Tool mode: the worker hashes the serialised history and tool list as strings, so both sides agree byte for byte.
+        $toolMode = is_string($input['messages_json'] ?? null) && $input['messages_json'] !== '';
+        if ($toolMode) { $canonical['messagesJson'] = $input['messages_json']; $canonical['toolsJson'] = (string) ($input['tools_json'] ?? ''); }
         $hash = hash('sha256', json_encode($canonical, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR));
         abort_unless(hash_equals($attempt->request_hash, $hash), 409, 'The call does not match the recorded attempt.');
 
@@ -32,6 +58,13 @@ class AnthropicGateway
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $m[1], 'data' => $m[2]]];
         }
         $content[] = ['type' => 'text', 'text' => $input['prompt']];
+        $messages = [['role' => 'user', 'content' => $content]];
+        $tools = null;
+        if ($toolMode) {
+            $messages = json_decode($input['messages_json'], true, 16);
+            $tools = json_decode((string) ($input['tools_json'] ?? '[]'), true, 16);
+            self::checkToolMessages($messages, $tools);
+        }
         // Opus can take over two minutes to write a full composition with its thinking.
         set_time_limit(320);
         $attempts = app(AttemptService::class);
@@ -39,7 +72,7 @@ class AnthropicGateway
             // The effort approved with the run, so a later settings change never alters a build in flight.
             'output_config' => ['effort' => (string) (data_get($policy, 'effort') ?: config('create.agent_effort', 'medium'))],
             'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
-            'messages' => [['role' => 'user', 'content' => $content]]];
+            'messages' => $messages, ...($tools ? ['tools' => $tools] : [])];
         // A failure to connect means nothing was sent, so it is safe to try again.
         $response = null; $notSent = false;
         for ($try = 1; $try <= 3 && ! $response; $try++) {
@@ -98,8 +131,9 @@ class AnthropicGateway
         $receipt = new VerifiedAttemptReceipt($attemptId, 'succeeded', $id, $cost,
             'pilot-tariff:2026-09-30; anthropic usage returned to WyvStudio: in '.$in.', out '.$out.', cache write '.$write.', cache read '.$read);
         $settled = $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
-        $text = collect($response->json('content', []))->where('type', 'text')->pluck('text')->implode('');
-        return ['text' => $text, 'message_id' => $id, 'stop_reason' => (string) $response->json('stop_reason'), 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
+        $blocks = collect($response->json('content', []))->filter(fn ($b) => is_array($b) && in_array($b['type'] ?? '', ['text', 'tool_use'], true))->values()->all();
+        $text = collect($blocks)->where('type', 'text')->pluck('text')->implode('');
+        return ['text' => $text, 'content' => $blocks, 'message_id' => $id, 'stop_reason' => (string) $response->json('stop_reason'), 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
             'usage' => ['input_tokens' => $in, 'output_tokens' => $out, 'cache_write_tokens' => $write, 'cache_read_tokens' => $read], 'status' => 'succeeded'];
     }
 }

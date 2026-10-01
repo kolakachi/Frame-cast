@@ -14,6 +14,8 @@ return [
     // offline = deterministic planner (always used in fixture mode);
     // replicate = a Claude model on Replicate; anthropic = Claude API directly.
     'planner' => env('CREATE_PLANNER', 'offline'),
+    // The build agent calls native tools (several per model call) instead of one JSON action per call.
+    'tool_mode' => (bool) env('CREATE_TOOL_MODE', false),
     // Thinking effort for the planner (the beat sheet and script); the build agent has its own setting.
     'planner_effort' => env('CREATE_PLANNER_EFFORT', 'high'),
     'planner_model' => env('CREATE_PLANNER_MODEL', 'anthropic/claude-sonnet-5'),

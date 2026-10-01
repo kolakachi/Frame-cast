@@ -33,7 +33,8 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   // A failed reservation means no call was started: nothing to reconcile.
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
   return accountedCall({
-  key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null},begin,settle,
+  // The hash covers exactly what the gateway will hash: tool-mode history and tools as strings.
+  key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null,...(args.messages?{messagesJson:JSON.stringify(args.messages),toolsJson:JSON.stringify(args.tools??[])}:{})},begin,settle,
   execute:attemptId=>provider.complete({...args,attemptId,recordPrediction:args.onPrediction,onPrediction:async id=>{
    // Record the provider identity in both app accounting and the local journal.
    if(!bindPrediction)throw Error('Prediction recorder is required');
@@ -55,6 +56,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
    editOnly:!!input.base_bundle&&!input.from_look&&!/\b(redesign|start over|from scratch|completely new|brand new|totally different)\b/i.test(String(messages.at(-1)?.content||'')),
    // Design first: a look run makes one still per beat for approval; the approved look is then the base for the motion build.
    lookOnly:input.look_first===true,fromLook:input.from_look===true,
+   toolMode:input.execution_policy?.agent?.tool_mode===true||process.env.CREATE_TOOL_MODE==='1',
    styleNotes:Array.isArray(input.style_notes)&&input.style_notes.length?input.style_notes.slice(0,10):null,
    assets:manifest.map(({storage_path,path,...file})=>({...file,renderable:file.purpose==='source'})),
    plan:input.plan??null,

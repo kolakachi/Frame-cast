@@ -915,6 +915,34 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('logo lockup on white', $saved['style']['fingerprint']['ending']);
     }
 
+    public function test_the_gateway_runs_tool_mode_with_a_hashed_history_and_returns_tool_calls(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim(); $attempts = app(\App\Services\Create\AttemptService::class);
+        $input = json_decode($run->input_json, true); $input['mode'] = 'agent';
+        $input['execution_policy']['agent'] = ['provider' => 'anthropic', 'model' => 'claude-opus-5-5', 'credits' => 75, 'cost_limit_microusd' => 300000, 'max_calls' => 3];
+        DB::table('composition_runs')->where('id', $run->id)->update(['input_json' => json_encode($input)]);
+        DB::table('api_operations')->where('id', $run->operation_id)->update(['authorized_credits' => 225, 'reserved_credits' => 225]);
+        $this->workspace->update(['credits_monthly' => 1000]);
+        config(['create.paid_execution_enabled' => true, 'create.pilot_budget_id' => 'test-pilot', 'create.pilot_budget_microusd' => 5000000, 'services.anthropic.key' => 'test-key', 'create.worker_token' => str_repeat('a', 64)]);
+        $messages = [['role' => 'user', 'content' => [['type' => 'text', 'text' => '{"context":{}}']]]];
+        $tools = [['name' => 'write', 'description' => 'Write a file', 'input_schema' => ['type' => 'object', 'properties' => ['path' => ['type' => 'string']], 'required' => ['path']]]];
+        $messagesJson = json_encode($messages, JSON_UNESCAPED_SLASHES); $toolsJson = json_encode($tools, JSON_UNESCAPED_SLASHES);
+        // The worker hashes {prompt, system, maxTokens, image, messagesJson, toolsJson} as JSON; the gateway must agree.
+        $hash = hash('sha256', json_encode(['prompt' => 'tool-mode call 1', 'system' => 'sys', 'maxTokens' => 4096, 'image' => null, 'messagesJson' => $messagesJson, 'toolsJson' => $toolsJson], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS));
+        $a = $attempts->begin($run->id, $claim['lease_token'], 'agent-1', 'agent', $hash);
+        Http::fake(['api.anthropic.com/*' => Http::response(['id' => 'msg_tool', 'stop_reason' => 'tool_use', 'usage' => ['input_tokens' => 100, 'output_tokens' => 50],
+            'content' => [['type' => 'text', 'text' => 'Writing.'], ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'write', 'input' => ['path' => 'index.html']], ['type' => 'server_tool_use', 'id' => 'x']]])]);
+        $out = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $a['id'], ['prompt' => 'tool-mode call 1', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => $toolsJson]);
+        $this->assertSame(['text', 'tool_use'], array_column($out['content'], 'type'), 'content blocks come back; unknown block types are dropped');
+        $this->assertSame('tool_use', $out['stop_reason']);
+        Http::assertSent(fn ($r) => $r['messages'] === $messages && $r['tools'] === $tools && ! isset($r['messages'][0]['content'][1]));
+        // A history with an unknown block type is refused before any call.
+        $b = $attempts->begin($run->id, $claim['lease_token'], 'agent-2', 'agent', 'h2');
+        $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $b['id'], ['prompt' => 'p', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => json_encode([['role' => 'user', 'content' => [['type' => 'document']]]]), 'tools_json' => '[]']));
+        $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'document']]]], []));
+        $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'text', 'text' => 'x']]]], [['name' => 'Bad Name', 'input_schema' => []]]));
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

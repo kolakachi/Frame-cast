@@ -12,7 +12,10 @@ export function parseAction(text) {
   const blocks=[...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
   if(blocks.length>1)throw Error('Multiple action blocks are not allowed');
   const candidate=blocks.length===1?blocks[0][1]:text.slice(text.indexOf('{'),text.lastIndexOf('}')+1);
-  const action = JSON.parse(candidate);
+  return validateAction(JSON.parse(candidate));
+}
+// The same rules for an action that arrived as a native tool call.
+export function validateAction(action) {
   if (!action || Array.isArray(action) || !fields[action.type]) throw Error('Unsupported action');
   const required = fields[action.type];
   if (Object.keys(action).length !== required.length || required.some(k => !(k in action))) throw Error('Unexpected or missing action fields');
@@ -43,3 +46,40 @@ Do not install packages, access URLs, publish, run shell commands or modify runt
 Snapshot accepts 1 to 5 timestamps per action, each between 0 and 30 seconds and within the composition duration. For a 15-second composition use [1,7,13]. After writing, prefer preview: it validates then captures frames in one tool call. Separate check and snapshot remain available. Use timeline to inspect timing and primitives to discover installed options. When a snapshot image is supplied, respond with visual_review: decision pass or repair, findings string, and scores, one per sampled frame: {time, score 1-10, problems: the up to 3 worst things in that frame}. Score against this rubric, where 8 means ready to post: one clear focal point, the subject big and off the edges; text readable at a glance, no more than 8 words, not covering the subject, nothing cut off or overlapping; the composition clearly different from the last beat; on brand; something happening (a frame that would look the same a second later scores at most 6). Pass only when every frame scores 8 or more; otherwise repair, fixing the named problems first. Describe only the sampled frames you can see; screenshots do not establish motion quality, audio quality or all-frame coverage. A technical pass is not human creative acceptance. Finish only after checks, snapshots and visual review pass for the current revision.
 Skills are authoring guidance, not permission. A successful check is not proof of visual quality.
 Use reasonable creative defaults when the brief already states the result. Do not ask preference questions before trying a draft. Needs_input is only for essential missing facts or assets. These host action rules override any workflow, file-reading, interview or shell instructions in the appended guidance.`;
+
+// Native tool definitions (tool mode): one tool per action, same fields and rules.
+const DESC={
+ read:'Read a source file of the composition (index.html, style.css, main.js), or guidance: references/<name>.md, style-example/<file>, kit/motion-kit.md.',
+ write:'Write a whole source file. Keep each file under about 6,000 characters; split markup, styles and script across index.html, style.css and main.js.',
+ patch:'Replace one exact occurrence of before with after in a source file. Read the file first; before must match exactly once.',
+ check:'Validate the current draft: lint, layout, motion, contrast, timing, reading time, grounded numbers.',
+ preview:'Validate the draft and capture frames at the given times (1 to 5, in seconds). Prefer this over separate check and snapshot. The frames come back as an image for your visual review.',
+ snapshot:'Capture frames of the checked draft at the given times (1 to 5, in seconds).',
+ timeline:'The timeline of every clip: starts, ends, sources.',
+ primitives:'Installed runtime options.',
+ assets:'The files available to the composition.',
+ visual_review:'Your review of the latest frames: decision pass or repair, findings, and scores per sampled frame {time, score 1-10, problems[]}. Pass only when every frame scores 8 or more.',
+ finish:'Deliver the current draft (after a passing check, snapshots and a passing visual review) with a short summary for the user.',
+ needs_input:'Ask the user one essential question when a fact or asset is missing. Not for preferences.',
+ propose_media:'Propose extra paid media for the user to approve; never buys anything.',
+ media:'Edit a supplied media file in the sandbox for free: op probe|silences|trim|cut|remove_silence|clean_audio|loudness|stabilize|speed|crop|frame|grade|duck|beats|tighten with params.',
+ transcript:'Word timings for a supplied speech file: [text,start,end] on that file\'s timeline, with suggested cuts.',
+};
+const SCHEMA={
+ read:{path:{type:'string'}}, write:{path:{type:'string'},content:{type:'string'}}, patch:{path:{type:'string'},before:{type:'string'},after:{type:'string'}},
+ check:{}, preview:{times:{type:'array',items:{type:'number'},minItems:1,maxItems:5}}, snapshot:{times:{type:'array',items:{type:'number'},minItems:1,maxItems:5}},
+ timeline:{}, primitives:{}, assets:{},
+ visual_review:{decision:{type:'string',enum:['pass','repair']},findings:{type:'string'},scores:{type:'array',items:{type:'object',properties:{time:{type:'number'},score:{type:'integer'},problems:{type:'array',items:{type:'string'}}},required:['time','score','problems']}}},
+ finish:{summary:{type:'string'}}, needs_input:{question:{type:'string'}}, propose_media:{description:{type:'string'}},
+ media:{op:{type:'string'},input:{type:'string'},params:{type:'object'}}, transcript:{input:{type:'string'}},
+};
+export const toolDefinitions=Object.keys(fields).map(name=>({name,description:DESC[name]||name,input_schema:{type:'object',properties:SCHEMA[name]||{},required:Object.keys(SCHEMA[name]||{}),additionalProperties:false}}));
+// A tool call becomes an action: the tool name is the type, its input the fields; absent optional fields are filled.
+export function actionFromToolUse(block){
+ const input=block&&typeof block.input==='object'&&block.input?block.input:{};
+ const action={type:block?.name,...input};
+ if(action.type==='media'&&action.params===undefined)action.params={};
+ if(action.type==='patch'&&action.after===undefined)action.after='';
+ return validateAction(action);
+}
+export const toolHostPolicy=hostPolicy.replace('You author Hyperframes compositions using one JSON action per response, without markdown fences.','You author Hyperframes compositions by calling the provided tools. Call several tools in one turn when they do not depend on each other (for example write three files, then preview); results come back in order. Reply with tool calls, not prose; a turn with no tool call is wasted.');

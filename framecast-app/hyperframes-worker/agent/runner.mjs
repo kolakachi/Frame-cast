@@ -1,5 +1,5 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
-import {parseAction,hostPolicy} from './protocol.mjs';
+import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings,duckingFindings} from './timing-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
@@ -71,6 +71,133 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     errors.push(...numberFindings(html,allowedText()));
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };
+  // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
+  const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
+  const dispatch=async(action,reviewImage)=>{
+    let result;
+      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+    else if(action.type==='write'||action.type==='patch') {
+      try {
+        let text=action.content;
+        // Editing an existing version: change it with patches, not a full rewrite,
+        // unless the request is a redesign. A rewrite costs as much as a first build.
+        if(action.type==='write'&&context.editOnly&&await workspace.read(action.path).then(()=>true,()=>false))
+          throw Object.assign(Error('This is an edit of an existing version. Change it with patch actions (several small patches are fine); write would rebuild the whole file.'),{code:'AUTHORING_REJECTED'});
+        if(action.type==='patch') {
+          const old=await workspace.read(action.path);
+          if(old.split(action.before).length!==2)throw Object.assign(Error('Patch must match exactly once. Read the current source before retrying.'),{code:'AUTHORING_REJECTED'});
+          text=old.replace(action.before,action.after);
+        }
+        if(action.path==='index.html')assertLockedSource(context,text);
+        await workspace.write(action.path,text);state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};
+      } catch(e) {
+        // Only known pre-write authoring rejections are repairable. Filesystem,
+        // sandbox and uncertain write failures still stop the run.
+        if(e.code!=='AUTHORING_REJECTED')throw e;
+        if(++state.repairs>cap.repairs)throw Error('Authoring repair limit reached');
+        result={error:e.message,sourceUnchanged:true,remainingRepairs:cap.repairs-state.repairs};
+      }
+    } else if(action.type==='media') {
+      if(!tools.media)throw Error('Media tool not installed');
+      if(!workspace.assets.some(a=>a.path===action.input))result={ok:false,error:'Input is not a file in this project. Call assets to list them.'};
+      else if(action.op==='tighten'&&!state.transcripts?.[action.input]){
+        result={ok:false,error:'Call transcript on this file first; tighten cuts from its word timings.'};
+        if(++state.repairs>cap.repairs)throw Error('Media repair limit reached');
+      } else {
+        // tighten: the transcript's filler and false-start cuts, applied as one cut.
+        if(action.op==='tighten'){
+          const probe=await bounded(()=>tools.media({op:'probe',input:action.input,params:{},signal:boundedSignal}));
+          const plan=tightenRanges(state.transcripts[action.input].map(([text,start,end])=>({text,start,end})),Number(probe?.info?.duration)||0,{pauses:action.params?.pauses===true});
+          action={...action,op:plan.removed?'cut':'probe',params:plan.removed?{keep:plan.keep}:{}};
+        }
+        result=await bounded(()=>tools.media({op:action.op,input:action.input,params:action.params,signal:boundedSignal}));
+        // A derived file is protected from later changes like any supplied asset.
+        if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params,...(result.source_map?{sourceMap:result.source_map}:{})});
+        // Cutting transcribed speech: say exactly which words went, flag any that were not filler or a repeat, and check sync.
+        if(result.ok && result.output && result.source_map && state.transcripts?.[action.input]){
+          const words=state.transcripts[action.input],step={operation:action.op,sourceMap:result.source_map};
+          const {removed,content}=removedWords(words,step);
+          state.transcripts[result.output]=mapThrough(words.map(([text,start,end])=>({text,start,end})),[step]).map(w=>[w.text,w.start,w.end]);
+          const expected=result.source_map.reduce((t,m)=>t+(m.src_end-m.src_start),0),actual=Number(result.info?.duration);
+          result={...result,removed_words:removed,...(content.length?{content_removed:content,warning:'These words are not filler or repeats; removing them may change the meaning. Adjust the cut or say so in your summary.'}:{}),
+            ...(Number.isFinite(actual)&&Math.abs(actual-expected)>0.15?{sync_warning:`Output is ${actual.toFixed(2)} s but the kept ranges total ${expected.toFixed(2)} s; audio and video may drift.`}:{})};
+          if(removed.length)(state.edits??=[]).push({input:action.input,output:result.output,op:action.op,removed,content_removed:content});
+        }
+        if(!result.ok && ++state.repairs>cap.repairs)throw Error('Media repair limit reached');
+      }
+    } else if(action.type==='transcript') {
+      if(!tools.transcript)throw Error('Transcript tool not installed');
+      try {
+        // Transcribe the original once; carry its times through this run's edits.
+        const {root,steps}=chainFor(action.input,workspace.assets);
+        const t=await bounded(()=>tools.transcript({input:root,signal:boundedSignal}));
+        const mapped={words:mapThrough(t.words,steps),segments:mapThrough(t.segments,steps)};
+        state.transcripts={...(state.transcripts||{}),[action.input]:mapped.words.map(w=>[w.text,w.start,w.end])};
+        result={ok:true,input:action.input,timeline:steps.length?'mapped from '+root+' through '+steps.map(s=>s.operation).join(', '):'original',...compact(mapped),suggested_cuts:suggestCuts(mapped.words).map(({indices,...c})=>c)};
+      } catch(e) {
+        if(boundedSignal.aborted)throw e;
+        result={ok:false,error:e.message};
+        if(++state.repairs>cap.repairs)throw Error('Transcript repair limit reached');
+      }
+    } else if(action.type==='assets') result=workspace.assets.map(({sourceMap,...a})=>a);
+    else if(action.type==='primitives') result=primitives;
+    else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
+    else if(action.type==='preview') {
+      result=await bounded(()=>tools.check({signal:boundedSignal}));
+      if(result.ok){const t=await timing();if(!t.ok)result=t;}
+      if(!result.ok)result=repeated(result);else state.lastFindings=null;
+      if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
+      else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
+    }
+    else if(action.type==='check') {
+      result=await bounded(()=>tools.check({signal:boundedSignal}));
+      if(result.ok){const t=await timing();if(!t.ok)result=t;}
+      if(!result.ok)result=repeated(result);else state.lastFindings=null;
+      if(result.ok)state.checkedRevision=state.revision;
+      else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
+    } else if(action.type==='snapshot') {
+      if(state.checkedRevision!==state.revision)throw Error('Check the current draft before snapshots');
+      result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));
+      if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined};}
+    } else if(action.type==='visual_review') {
+      if(!reviewImage || state.snapshotRevision!==state.revision)throw Error('Visual review requires current host-provided snapshot');
+      state.reviewImage=null;
+      state.scores=action.scores.map(x=>({time:x.time,score:x.score,problems:x.problems.slice(0,3)}));
+      const scoreLine=' Review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.';
+      if(action.decision==='pass'){state.reviewedRevision=state.revision;if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine).slice(0,1900);}}
+      else {state.reviewedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Visual repair limit reached');}
+      result={decision:action.decision,findings:action.findings,scores:state.scores,...(action.decision==='repair'?{next:'Fix the lowest-scoring frames first: '+state.scores.filter(x=>x.score<8).sort((a,b)=>a.score-b.score).flatMap(x=>x.problems).slice(0,3).join('; ')}:{})};
+    } else if(action.type==='finish') {
+      if(requireVisualReview && state.reviewedRevision!==state.revision)throw Error('Visual review is required');
+      if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');
+      state.status='preview_ready';state.summary=action.summary;
+    } else if(action.type==='needs_input') {
+      // On the last call, a draft that passed every check is delivered with the open issues, not held back.
+      if(state.calls>=cap.calls-1&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
+        state.status='preview_ready';state.summary=('Draft delivered at the call limit. It passes every automated check; open issues from the last review: '+action.question).slice(0,1900);
+      } else if(state.calls>=cap.calls-1&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
+      else {state.status='needs_input';state.question=action.question;}
+    }
+    else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;}
+    await workspace.verifyAssets();boundedSignal.throwIfAborted();
+    if(result && action.type!=='read' && Buffer.byteLength(JSON.stringify(result))>16000)result={truncated:true,summary:JSON.stringify(result).slice(0,12000)};
+    return result??{status:state.status};
+  };
+  // Tool mode: the conversation is a real message history; a turn may carry several tool calls.
+  const toolMode=context.toolMode===true;
+  const turns=()=>{state.turns??=[{role:'user',content:[...(initialImage&&/^data:image\/(png|jpeg);base64,/.test(initialImage)?[{type:'image',source:{type:'base64',media_type:initialImage.startsWith('data:image/png')?'image/png':'image/jpeg',data:initialImage.split(',')[1]}}]:[]),{type:'text',text:JSON.stringify({context})}]}];return state.turns;};
+  // Keep the history inside the context budget: only the latest frames stay as an image, old tool results shrink.
+  const compactTurns=()=>{
+    const t=turns();let lastImage=-1;
+    t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content)&&b.content.some(x=>x.type==='image'))lastImage=k;});
+    t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
+    let guard=0;
+    while(Buffer.byteLength(JSON.stringify(t))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes&&guard++<200){
+      const m=t.slice(1).find(m=>m.role==='user'&&m.content.some(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400));
+      if(!m)break;
+      for(const b of m.content)if(b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400)b.content=b.content.slice(0,300)+' …[earlier result shortened]';
+    }
+  };
   try {
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
@@ -78,8 +205,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       // off mid-flight is paid for and lost. Deliver the last checked draft instead.
       if(state.lastGood&&cap.elapsedMs-(previousElapsed+Date.now()-started)<(cap.callReserveMs??Math.min(240000,cap.elapsedMs/4))){await deliverGood('The time limit was near during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
       await workspace.verifyAssets();
-      const prompt=JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
-      if(Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
+      const prompt=toolMode?'':JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
+      if(!toolMode&&Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
+      if(toolMode){compactTurns();if(Buffer.byteLength(JSON.stringify(turns()))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes)throw Error('Context limit reached');}
       const reservation=provider.maxCallUsd;
       if(!Number.isFinite(reservation)||reservation<0||state.reservedUsd+reservation>cap.budgetUsd+1e-9)throw Error('Model budget exhausted');
       if(state.reservedOutputTokens+cap.maxOutputTokens>cap.totalOutputTokenAllowance)throw Error('Output token allowance exhausted');
@@ -87,6 +215,47 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.reservedUsd+=reservation;state.calls++;state.pending={kind:'provider',call:state.calls};await save();
       const reviewImage=state.reviewImage;
       const callStarted=Date.now();
+      if(toolMode){
+        compactTurns();
+        const history=turns();
+        // The last user turn carries the call budget so the model paces itself.
+        const last=history.at(-1);if(last.role==='user'){last.content=last.content.filter(b=>!(b.type==='text'&&/^Remaining calls:/.test(b.text||'')));last.content.push({type:'text',text:'Remaining calls: '+(cap.calls-state.calls)+'. Revision: '+state.revision+'.'});}
+        const response=await bounded(()=>provider.complete({prompt:'tool-mode call '+state.calls,system:toolHostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,messages:structuredClone(history),tools:toolDefinitions,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
+        boundedSignal.throwIfAborted();
+        state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics});
+        const content=Array.isArray(response.content)&&response.content.length?response.content:[{type:'text',text:response.text||''}];
+        state.pending=null;history.push({role:'assistant',content});state.messages.push({role:'assistant',content:JSON.stringify(content.map(b=>b.type==='tool_use'?{tool:b.name,input:b.input}:{text:(b.text||'').slice(0,400)}))});await save();
+        const uses=content.filter(b=>b.type==='tool_use').slice(0,8);
+        if(!uses.length){
+          if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
+          const cut=response.stopReason==='max_tokens';
+          history.push({role:'user',content:[{type:'text',text:cut?'Your reply was cut off by the output limit (thinking counts toward it). Call the tools with smaller writes: index.html, then style.css and main.js separately, each under 6,000 characters.':'Use the tools; a reply without a tool call does nothing.'}]});await save();continue;
+        }
+        const results=[];
+        for(const u of uses){
+          let action,result;
+          try{action=actionFromToolUse(u);}catch(e){
+            if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
+            results.push({type:'tool_result',tool_use_id:u.id,is_error:true,content:JSON.stringify({error:e.message})});continue;
+          }
+          state.pending={kind:'tool',action};await save();
+          const before=state.reviewImage;
+          try{result=await dispatch(action,reviewImage);}
+          catch(e){
+            if(!MISUSE.test(String(e.message))||boundedSignal.aborted)throw e;
+            if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
+            result={error:e.message};
+          }
+          state.pending=null;state.messages.push({role:'tool',content:result});await save();
+          // New frames travel back as an image in the tool result, for the next turn's review.
+          const img=state.reviewImage&&state.reviewImage!==before&&/^data:image\/(png|jpeg);base64,/.test(state.reviewImage)?state.reviewImage:null;
+          results.push({type:'tool_result',tool_use_id:u.id,...(result?.error?{is_error:true}:{}),content:img?[{type:'text',text:JSON.stringify(result)},{type:'image',source:{type:'base64',media_type:img.startsWith('data:image/png')?'image/png':'image/jpeg',data:img.split(',')[1]}}]:JSON.stringify(result)});
+          if(state.status!=='running')break;
+        }
+        history.push({role:'user',content:results});await save();
+        if(state.status!=='running')return state;
+        continue;
+      }
       const response=await bounded(()=>provider.complete({prompt,system:hostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,image:reviewImage||initialImage,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
       boundedSignal.throwIfAborted();
       state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(prompt),systemBytes:Buffer.byteLength(hostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics});
@@ -99,114 +268,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         state.messages.push({role:'tool',content:{error:e.message,...(cut?{hint:'Your reply was cut off by the output limit (thinking counts toward it). Split the work into smaller writes: index.html with markup only, then style.css and main.js as separate write actions, each under 6,000 characters, linked from index.html.'}:{})}});await save();continue;
       }
       state.pending={kind:'tool',action};await save();
-      let result;
-      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
-      else if(action.type==='write'||action.type==='patch') {
-        try {
-          let text=action.content;
-          // Editing an existing version: change it with patches, not a full rewrite,
-          // unless the request is a redesign. A rewrite costs as much as a first build.
-          if(action.type==='write'&&context.editOnly&&await workspace.read(action.path).then(()=>true,()=>false))
-            throw Object.assign(Error('This is an edit of an existing version. Change it with patch actions (several small patches are fine); write would rebuild the whole file.'),{code:'AUTHORING_REJECTED'});
-          if(action.type==='patch') {
-            const old=await workspace.read(action.path);
-            if(old.split(action.before).length!==2)throw Object.assign(Error('Patch must match exactly once. Read the current source before retrying.'),{code:'AUTHORING_REJECTED'});
-            text=old.replace(action.before,action.after);
-          }
-          if(action.path==='index.html')assertLockedSource(context,text);
-          await workspace.write(action.path,text);state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};
-        } catch(e) {
-          // Only known pre-write authoring rejections are repairable. Filesystem,
-          // sandbox and uncertain write failures still stop the run.
-          if(e.code!=='AUTHORING_REJECTED')throw e;
-          if(++state.repairs>cap.repairs)throw Error('Authoring repair limit reached');
-          result={error:e.message,sourceUnchanged:true,remainingRepairs:cap.repairs-state.repairs};
-        }
-      } else if(action.type==='media') {
-        if(!tools.media)throw Error('Media tool not installed');
-        if(!workspace.assets.some(a=>a.path===action.input))result={ok:false,error:'Input is not a file in this project. Call assets to list them.'};
-        else if(action.op==='tighten'&&!state.transcripts?.[action.input]){
-          result={ok:false,error:'Call transcript on this file first; tighten cuts from its word timings.'};
-          if(++state.repairs>cap.repairs)throw Error('Media repair limit reached');
-        } else {
-          // tighten: the transcript's filler and false-start cuts, applied as one cut.
-          if(action.op==='tighten'){
-            const probe=await bounded(()=>tools.media({op:'probe',input:action.input,params:{},signal:boundedSignal}));
-            const plan=tightenRanges(state.transcripts[action.input].map(([text,start,end])=>({text,start,end})),Number(probe?.info?.duration)||0,{pauses:action.params?.pauses===true});
-            action={...action,op:plan.removed?'cut':'probe',params:plan.removed?{keep:plan.keep}:{}};
-          }
-          result=await bounded(()=>tools.media({op:action.op,input:action.input,params:action.params,signal:boundedSignal}));
-          // A derived file is protected from later changes like any supplied asset.
-          if(result.ok && result.output)workspace.assets.push({path:result.output,sha256:result.sha256,derivedFrom:action.input,operation:action.op,params:action.params,...(result.source_map?{sourceMap:result.source_map}:{})});
-          // Cutting transcribed speech: say exactly which words went, flag any that were not filler or a repeat, and check sync.
-          if(result.ok && result.output && result.source_map && state.transcripts?.[action.input]){
-            const words=state.transcripts[action.input],step={operation:action.op,sourceMap:result.source_map};
-            const {removed,content}=removedWords(words,step);
-            state.transcripts[result.output]=mapThrough(words.map(([text,start,end])=>({text,start,end})),[step]).map(w=>[w.text,w.start,w.end]);
-            const expected=result.source_map.reduce((t,m)=>t+(m.src_end-m.src_start),0),actual=Number(result.info?.duration);
-            result={...result,removed_words:removed,...(content.length?{content_removed:content,warning:'These words are not filler or repeats; removing them may change the meaning. Adjust the cut or say so in your summary.'}:{}),
-              ...(Number.isFinite(actual)&&Math.abs(actual-expected)>0.15?{sync_warning:`Output is ${actual.toFixed(2)} s but the kept ranges total ${expected.toFixed(2)} s; audio and video may drift.`}:{})};
-            if(removed.length)(state.edits??=[]).push({input:action.input,output:result.output,op:action.op,removed,content_removed:content});
-          }
-          if(!result.ok && ++state.repairs>cap.repairs)throw Error('Media repair limit reached');
-        }
-      } else if(action.type==='transcript') {
-        if(!tools.transcript)throw Error('Transcript tool not installed');
-        try {
-          // Transcribe the original once; carry its times through this run's edits.
-          const {root,steps}=chainFor(action.input,workspace.assets);
-          const t=await bounded(()=>tools.transcript({input:root,signal:boundedSignal}));
-          const mapped={words:mapThrough(t.words,steps),segments:mapThrough(t.segments,steps)};
-          state.transcripts={...(state.transcripts||{}),[action.input]:mapped.words.map(w=>[w.text,w.start,w.end])};
-          result={ok:true,input:action.input,timeline:steps.length?'mapped from '+root+' through '+steps.map(s=>s.operation).join(', '):'original',...compact(mapped),suggested_cuts:suggestCuts(mapped.words).map(({indices,...c})=>c)};
-        } catch(e) {
-          if(boundedSignal.aborted)throw e;
-          result={ok:false,error:e.message};
-          if(++state.repairs>cap.repairs)throw Error('Transcript repair limit reached');
-        }
-      } else if(action.type==='assets') result=workspace.assets.map(({sourceMap,...a})=>a);
-      else if(action.type==='primitives') result=primitives;
-      else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
-      else if(action.type==='preview') {
-        result=await bounded(()=>tools.check({signal:boundedSignal}));
-        if(result.ok){const t=await timing();if(!t.ok)result=t;}
-        if(!result.ok)result=repeated(result);else state.lastFindings=null;
-        if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
-        else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
-      }
-      else if(action.type==='check') {
-        result=await bounded(()=>tools.check({signal:boundedSignal}));
-        if(result.ok){const t=await timing();if(!t.ok)result=t;}
-        if(!result.ok)result=repeated(result);else state.lastFindings=null;
-        if(result.ok)state.checkedRevision=state.revision;
-        else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
-      } else if(action.type==='snapshot') {
-        if(state.checkedRevision!==state.revision)throw Error('Check the current draft before snapshots');
-        result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));
-        if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined};}
-      } else if(action.type==='visual_review') {
-        if(!reviewImage || state.snapshotRevision!==state.revision)throw Error('Visual review requires current host-provided snapshot');
-        state.reviewImage=null;
-        state.scores=action.scores.map(x=>({time:x.time,score:x.score,problems:x.problems.slice(0,3)}));
-        const scoreLine=' Review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.';
-        if(action.decision==='pass'){state.reviewedRevision=state.revision;if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine).slice(0,1900);}}
-        else {state.reviewedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Visual repair limit reached');}
-        result={decision:action.decision,findings:action.findings,scores:state.scores,...(action.decision==='repair'?{next:'Fix the lowest-scoring frames first: '+state.scores.filter(x=>x.score<8).sort((a,b)=>a.score-b.score).flatMap(x=>x.problems).slice(0,3).join('; ')}:{})};
-      } else if(action.type==='finish') {
-        if(requireVisualReview && state.reviewedRevision!==state.revision)throw Error('Visual review is required');
-        if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');
-        state.status='preview_ready';state.summary=action.summary;
-      } else if(action.type==='needs_input') {
-        // On the last call, a draft that passed every check is delivered with the open issues, not held back.
-        if(state.calls>=cap.calls-1&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
-          state.status='preview_ready';state.summary=('Draft delivered at the call limit. It passes every automated check; open issues from the last review: '+action.question).slice(0,1900);
-        } else if(state.calls>=cap.calls-1&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
-        else {state.status='needs_input';state.question=action.question;}
-      }
-      else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;}
-      await workspace.verifyAssets();boundedSignal.throwIfAborted();
-      if(result && action.type!=='read' && Buffer.byteLength(JSON.stringify(result))>16000)result={truncated:true,summary:JSON.stringify(result).slice(0,12000)};
-      state.pending=null;state.messages.push({role:'tool',content:result??{status:state.status}});await save();
+      const result=await dispatch(action,reviewImage);
+      state.pending=null;state.messages.push({role:'tool',content:result});await save();
       if(state.status!=='running')return state;
     }
     // Out of calls right after a draft passed every check and was snapshotted:
