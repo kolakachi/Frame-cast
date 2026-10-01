@@ -31,7 +31,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const deliverGood=async why=>{
     for(const [f,t] of Object.entries(state.lastGood.files))await workspace.write(f,t);
     state.bundleHash=await workspace.fingerprint();state.revision=state.lastGood.revision;state.checkedRevision=state.snapshotRevision=state.revision;
-    state.status='preview_ready';state.summary=('This is the last version that passed every automated check (layout, timing, contrast and grounded numbers). '+why).slice(0,1900);
+    const last=state.scores?' Last review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.':'';
+    state.status='preview_ready';state.summary=('This is the last version that passed every automated check (layout, timing, contrast and grounded numbers). '+why+last).slice(0,1900);
   };
   const bounded = work => new Promise((resolve,reject)=>{
     const abort=()=>reject(Error('Run cancelled or deadline exceeded'));
@@ -185,9 +186,11 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       } else if(action.type==='visual_review') {
         if(!reviewImage || state.snapshotRevision!==state.revision)throw Error('Visual review requires current host-provided snapshot');
         state.reviewImage=null;
-        if(action.decision==='pass'){state.reviewedRevision=state.revision;if(requireVisualReview){state.status='preview_ready';state.summary=action.findings;}}
+        state.scores=action.scores.map(x=>({time:x.time,score:x.score,problems:x.problems.slice(0,3)}));
+        const scoreLine=' Review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.';
+        if(action.decision==='pass'){state.reviewedRevision=state.revision;if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine).slice(0,1900);}}
         else {state.reviewedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Visual repair limit reached');}
-        result={decision:action.decision,findings:action.findings};
+        result={decision:action.decision,findings:action.findings,scores:state.scores,...(action.decision==='repair'?{next:'Fix the lowest-scoring frames first: '+state.scores.filter(x=>x.score<8).sort((a,b)=>a.score-b.score).flatMap(x=>x.problems).slice(0,3).join('; ')}:{})};
       } else if(action.type==='finish') {
         if(requireVisualReview && state.reviewedRevision!==state.revision)throw Error('Visual review is required');
         if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');
@@ -219,7 +222,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     // Out of time (not cancelled by the user) with no paid call in doubt: deliver the last checked draft.
     // Running out of something (time, calls, context, output, repairs, the model itself), with no paid
     // call in doubt and not the user's own cancel, delivers the last checked draft. Rule breaks still fail.
-    const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached)$/.test(e.message);
+    const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
     if(exhausted&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
       const why=e.code==='NOT_SENT'?'The model was unavailable':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
       state.pending=null;try{await deliverGood(why+' during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}catch{/* fall through to the failure below */}

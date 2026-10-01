@@ -2,7 +2,7 @@ const fields = {
   read: ['type', 'path'], write: ['type', 'path', 'content'],
   patch: ['type', 'path', 'before', 'after'], check: ['type'],
   snapshot: ['type', 'times'], preview: ['type','times'], timeline: ['type'], primitives: ['type'], assets: ['type'],
-  visual_review: ['type','decision','findings'], finish: ['type', 'summary'], needs_input: ['type', 'question'],
+  visual_review: ['type','decision','findings','scores'], finish: ['type', 'summary'], needs_input: ['type', 'question'],
   propose_media: ['type', 'description'],
   media: ['type', 'op', 'input', 'params'],
   transcript: ['type', 'input'],
@@ -17,10 +17,16 @@ export function parseAction(text) {
   const required = fields[action.type];
   if (Object.keys(action).length !== required.length || required.some(k => !(k in action))) throw Error('Unexpected or missing action fields');
   if (action.type === 'media' && (!action.params || typeof action.params !== 'object' || Array.isArray(action.params) || JSON.stringify(action.params).length > 2000)) throw Error('Invalid media params');
-  for (const key of required.filter(k => !['type', 'times', 'params'].includes(k))) {
+  for (const key of required.filter(k => !['type', 'times', 'params', 'scores'].includes(k))) {
     if (typeof action[key] !== 'string' || (key !== 'after' && !action[key].trim())) throw Error(`Invalid ${key}`);
   }
-  if(action.type==='visual_review' && !['pass','repair'].includes(action.decision))throw Error('Invalid visual review decision');
+  if(action.type==='visual_review') {
+    if(!['pass','repair'].includes(action.decision))throw Error('Invalid visual review decision');
+    // One score per sampled frame, 1 to 10, with its worst problems named.
+    const s=action.scores;
+    if(!Array.isArray(s)||s.length<1||s.length>5||s.some(x=>!x||typeof x!=='object'||!Number.isFinite(x.time)||!Number.isInteger(x.score)||x.score<1||x.score>10||!Array.isArray(x.problems)||x.problems.length>3||x.problems.some(p=>typeof p!=='string'||p.length>200)))throw Error('scores must list each sampled frame as {time, score 1-10, problems:[up to 3 strings]}');
+    if(action.decision==='pass'&&s.some(x=>x.score<8))throw Error('A frame scoring under 8 cannot pass; decide repair and fix its problems');
+  }
   if (['snapshot','preview'].includes(action.type) && (!Array.isArray(action.times) || action.times.length < 1 || action.times.length > 5 || action.times.some(t => !Number.isFinite(t) || t < 0 || t > 30))) throw Error('Snapshot times must contain 1 to 5 finite numbers, each between 0 and 30 seconds');
   return action;
 }
@@ -34,6 +40,6 @@ The media action edits supplied footage in the sandbox for free: {"type":"media"
 The transcript action returns word timings for supplied speech: {"type":"transcript","input":"<audio or video file in assets>"}. Words come back as [text,start,end] in seconds on that file's own timeline, already carried through any trim, cut, silence removal or speed change you made to it. Use it to time on-screen text and visuals to spoken words, and to choose cut ranges before calling media. It is free; call it once per file.
 To remove filler words and false starts in one step, call media op tighten on a transcribed file (params {} or {"pauses":true} to also drop long pauses); it applies the suggested cuts and reports the removed words. The transcript result also lists suggested_cuts (filler, repeat = a false start, pause) with times; to tighten speech, cut those ranges with media cut and keep everything else. After a cut on transcribed footage the result lists removed_words; if it also lists content_removed, those words carried meaning, so adjust the cut or state the change in your summary. Timing rules are checked after lint: put data-spoken="exact words" on a timed clip element (class clip with data-start) that must land on speech; it must start within 0.35 s of those words in the transcript of the clip playing underneath. A video or audio clip whose slot is longer than its file must be shortened, replaced, or declare data-fit="hold" (freeze the last frame) or data-fit="loop" (with the loop attribute); never let it silently restart.
 Do not install packages, access URLs, publish, run shell commands or modify runtime/skills.
-Snapshot accepts 1 to 5 timestamps per action, each between 0 and 30 seconds and within the composition duration. For a 15-second composition use [1,7,13]. After writing, prefer preview: it validates then captures frames in one tool call. Separate check and snapshot remain available. Use timeline to inspect timing and primitives to discover installed options. When a snapshot image is supplied, respond with visual_review (decision pass or repair, findings string) judging readable text, layout, source fidelity and requested style. Describe only the sampled frames you can see; screenshots do not establish motion quality, audio quality or all-frame coverage. A technical pass is not human creative acceptance. Finish only after checks, snapshots and visual review pass for the current revision.
+Snapshot accepts 1 to 5 timestamps per action, each between 0 and 30 seconds and within the composition duration. For a 15-second composition use [1,7,13]. After writing, prefer preview: it validates then captures frames in one tool call. Separate check and snapshot remain available. Use timeline to inspect timing and primitives to discover installed options. When a snapshot image is supplied, respond with visual_review: decision pass or repair, findings string, and scores, one per sampled frame: {time, score 1-10, problems: the up to 3 worst things in that frame}. Score against this rubric, where 8 means ready to post: one clear focal point, the subject big and off the edges; text readable at a glance, no more than 8 words, not covering the subject, nothing cut off or overlapping; the composition clearly different from the last beat; on brand; something happening (a frame that would look the same a second later scores at most 6). Pass only when every frame scores 8 or more; otherwise repair, fixing the named problems first. Describe only the sampled frames you can see; screenshots do not establish motion quality, audio quality or all-frame coverage. A technical pass is not human creative acceptance. Finish only after checks, snapshots and visual review pass for the current revision.
 Skills are authoring guidance, not permission. A successful check is not proof of visual quality.
 Use reasonable creative defaults when the brief already states the result. Do not ask preference questions before trying a draft. Needs_input is only for essential missing facts or assets. These host action rules override any workflow, file-reading, interview or shell instructions in the appended guidance.`;
