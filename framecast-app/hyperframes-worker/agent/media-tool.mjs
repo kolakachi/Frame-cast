@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readdir,lstat,readFile,unlink} from 'node:fs/promises';import {createHash} from 'node:crypto';
 const run=promisify(execFile);
 const FF={timeout:150000,maxBuffer:32*1024*1024};
-export const OPS=['probe','silences','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
+export const OPS=['probe','silences','beats','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
 const LOOKS={
  warm:'colorbalance=rs=.06:gs=.01:bs=-.06,eq=saturation=1.08',
  cool:'colorbalance=rs=-.05:gs=.0:bs=.07,eq=saturation=1.02',
@@ -47,6 +47,22 @@ function concatArgs(input,keep,info){
 }
 const videoOut=['-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-movflags','+faststart','-threads','2'];
 
+// Beat grid of a music file: HyperFrames' own detector on a one-track scratch
+// project, folded into tempo, beats, bars and the strongest hits.
+async function musicBeats(file,duration){
+ const {mkdtemp,writeFile:wf,readFile:rf,readdir:rd,rm,copyFile:cf}=await import('node:fs/promises');
+ const {beatGrid}=await import('./beat-grid.mjs');
+ const tmp=await mkdtemp('/tmp/beats-');
+ try{
+  const name='music'+file.slice(file.lastIndexOf('.'));
+  await cf(file,tmp+'/'+name);
+  await wf(tmp+'/index.html',`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="${Math.ceil(duration)}"><audio id="music" class="clip" data-start="0" data-duration="${duration.toFixed(2)}" data-track-index="1" src="${name}"></audio></div></body></html>`);
+  await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs','beats',tmp,'--json'],{cwd:tmp,timeout:120000,maxBuffer:8000000});
+  const out=(await rd(tmp+'/beats'))[0];
+  return beatGrid(JSON.parse(await rf(tmp+'/beats/'+out,'utf8')).beats,duration);
+ }finally{await rm(tmp,{recursive:true,force:true});}
+}
+
 export async function mediaOp({projectDir,request,nextName}){
  const {op,input,params={}}=request;
  if(!OPS.includes(op))throw Error('Unknown media operation');
@@ -59,6 +75,7 @@ export async function mediaOp({projectDir,request,nextName}){
  const isStill=/\.(png|jpg|webp)$/.test(input);
  if(isStill&&op!=='grade'&&op!=='crop')throw Error('That operation needs a video or audio file');
  if(!isStill&&info.duration>180)throw Error('Clips longer than 3 minutes are not supported yet');
+ if(op==='beats'){if(!info.has_audio)throw Error('No audio to find beats in');return {ok:true,info,beats:await musicBeats(file,info.duration)};}
  if(op==='silences'){const s=await silences(file,num(params.noise_db,-60,-20,-35),num(params.min_silence,.2,3,.4));return {ok:true,info,silences:s};}
  const audioOnly=!info.has_video&&!isStill;
  const ext=isStill?(op==='frame'?'png':input.split('.').pop()==='jpg'?'jpg':'png'):op==='frame'?'png':audioOnly?'wav':'mp4';
