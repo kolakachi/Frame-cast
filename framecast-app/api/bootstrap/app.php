@@ -74,7 +74,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 default => 500,
             };
 
-            $message = $status < 500
+            // The Create worker acts on deliberate server-side messages (for example "nothing was sent"),
+            // so its internal routes see them; crashes stay masked everywhere.
+            $deliberate = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpException && $request->is('api/internal/create/*') && $e->getMessage() !== '';
+            $message = $status < 500 || $deliberate
                 ? $e->getMessage() ?: 'An error occurred.'
                 : 'An unexpected error occurred. Please try again.';
 

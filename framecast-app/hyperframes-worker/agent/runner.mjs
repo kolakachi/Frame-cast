@@ -217,8 +217,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   } catch(e) {
     if(e.code==='NOT_STARTED'||e.code==='NOT_SENT')state.pending=null;
     // Out of time (not cancelled by the user) with no paid call in doubt: deliver the last checked draft.
-    if(timeout.aborted&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
-      state.pending=null;try{await deliverGood('The time limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}catch{/* fall through to the failure below */}
+    if(((timeout.aborted&&!signal?.aborted)||e.code==='NOT_SENT')&&state.lastGood&&state.pending?.kind!=='provider'){
+      state.pending=null;try{await deliverGood(e.code==='NOT_SENT'?'The model was unavailable during a later repair, so that repair is not included. Give it a look before posting.':'The time limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}catch{/* fall through to the failure below */}
     }
     state.status=state.pending?.kind==='provider'?'needs_attention':boundedSignal.aborted?'cancelled':'failed';
     if(e.code==='BUDGET_EXHAUSTED'){state.pending=null;state.status='budget_exhausted';state.reason=e.message;await save();return state;}

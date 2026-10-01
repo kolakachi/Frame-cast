@@ -46,6 +46,11 @@ class AnthropicGateway
             try {
                 $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
                     ->acceptJson()->connectTimeout(10)->timeout(280)->post('https://api.anthropic.com/v1/messages', $body);
+                // Overloaded or rate-limited: refused and not billed, so a short wait and another try is safe.
+                if (in_array($response->status(), [429, 500, 502, 503, 529], true) && $try < 3) {
+                    \Illuminate\Support\Facades\Log::warning('Create gateway call refused, retrying', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'status' => $response->status()]);
+                    $response = null; $notSent = true; sleep(4 * $try);
+                }
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Create gateway call did not complete', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'error' => mb_substr(get_class($e).': '.$e->getMessage(), 0, 300)]);
                 $notSent = (bool) preg_match('/Failed to connect|Could not resolve|Connection refused|Couldn.t connect|Resolving timed out/i', $e->getMessage());
@@ -76,7 +81,8 @@ class AnthropicGateway
             $attempts->bindPrediction($runId, $lease, $attemptId, $requestId);
             $receipt = new VerifiedAttemptReceipt($attemptId, 'failed', $requestId, 0, 'pilot-tariff:2026-09-30; anthropic refused the request ('.$response->status().')');
             $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
-            abort(502, 'The model refused this call ('.$response->status().').');
+            \Illuminate\Support\Facades\Log::warning('Create gateway call refused', ['run' => $runId, 'attempt' => $attemptId, 'status' => $response->status(), 'body' => mb_substr($response->body(), 0, 300)]);
+            abort(503, 'The model refused this call ('.$response->status().'); nothing was charged.');
         }
         $id = (string) $response->json('id');
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D', $id), 502, 'The model response had no usable id.');

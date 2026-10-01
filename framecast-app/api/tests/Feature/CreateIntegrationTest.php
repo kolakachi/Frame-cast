@@ -1277,9 +1277,9 @@ class CreateIntegrationTest extends TestCase
         $this->withToken(str_repeat('a',64))->postJson('/api/internal/create/runs/'.$run->id.'/attempts/'.$a['id'].'/settle',['lease_token'=>$claim['lease_token'],'status'=>'succeeded','prediction_id'=>'msg_01abc'])
             ->assertOk()->assertJsonPath('data.replayed',true)->assertJsonPath('data.cost_microusd',100000);
         $this->assertSame(1,DB::table('credit_ledger')->count());
-        // A refused call is recorded against its request id and costs nothing.
+        // A refused call is recorded against its request id and costs nothing; the worker is told so.
         $b=$attempts->begin($run->id,$claim['lease_token'],'agent-2','agent',$hash);
-        $this->rejected(502,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
+        $this->rejected(503,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
         $row=DB::table('composition_attempts')->where('id',$b['id'])->first();
         $this->assertSame(['failed','req_011refused',0],[$row->status,$row->prediction_id,(int)$row->charged_credits]);
         $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
