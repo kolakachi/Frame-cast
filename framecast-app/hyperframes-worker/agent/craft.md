@@ -28,6 +28,7 @@ These rules apply whatever the style. A style pack adds character on top; it nev
   - `WM.morph(tl,'#shape',[{at,width,height,borderRadius,backgroundColor},...])`: one shape through states.
   - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; hide the old scene after.
   - Details and examples: read kit/motion-kit.md.
+  - A build with a character uses the kit for more than eases: `WM.ease.playful` on every pose change, a transition recipe (whip, push or wipe) between beats, and press or cursor on any UI it points at. A build that only swaps opacity between beats reads as slides.
 
 ## Character (when there is one)
 - The same character throughout, big enough to read (at least a quarter of the frame height in its beats).

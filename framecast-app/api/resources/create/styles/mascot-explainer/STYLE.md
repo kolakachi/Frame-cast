@@ -3,7 +3,7 @@
 A character tells the story. It talks, points, reacts and celebrates while the idea builds around it. The character is the thread that makes it feel like a short film, not a slide deck.
 
 ## Look
-- The character is cut out over flat colour fields, big: half the frame height in its hero beats, never smaller than a quarter.
+- The character is cut out over flat colour fields, big: half the frame height in its hero beats, never smaller than a third in any beat, and always beside the thing it points at, never parked in a corner with empty space above it.
 - A print texture ties it together: halftone dots or film grain on the character, and flat, clean colour behind it.
 - Supporting elements (UI cards, words, props) are simple, graphic and lighter in weight than the character.
 - Type: a bold sans for statements, a serif italic for one accent word per line.
