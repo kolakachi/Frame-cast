@@ -100,7 +100,7 @@ export async function mediaOp({projectDir,request,nextName}){
    const vf=projectDir+'/'+voice,vs=await lstat(vf).catch(()=>null);if(!vs||!vs.isFile()||vs.isSymbolicLink())throw Error('Voice file not found in this project');
    const delta=num(params.voice_start,0,120,0)-num(params.music_start,0,120,0);
    const side=(delta>=0?'adelay='+Math.round(delta*1000)+'|'+Math.round(delta*1000):'atrim=start='+(-delta).toFixed(3)+',asetpts=PTS-STARTPTS')+',apad';
-   args=['-i',file,'-i',vf,'-filter_complex','[1:a]'+side+'[sc];[0:a][sc]sidechaincompress=threshold=0.03:ratio=3:attack=40:release=500:makeup=1[out]','-map','[out]','-t',fx(info.duration),...enc];break;}
+   args=['-i',file,'-i',vf,'-filter_complex','[1:a]'+side+'[sc];[0:a][sc]sidechaincompress=threshold=0.02:ratio=4:attack=30:release=650:makeup=1[out]','-map','[out]','-t',fx(info.duration),...enc];break;}
   case 'loudness':{if(!info.has_audio)throw Error('No audio to level');const t=num(params.target_lufs,-24,-9,-14);args=['-i',file,'-af',`loudnorm=I=${t}:TP=-1.5:LRA=11`,...(info.has_video?['-c:v','copy']:[]),...(audioOnly?['-c:a','pcm_s16le']:['-c:a','aac','-b:a','160k'])];break;}
   case 'stabilize':{if(!info.has_video)throw Error('Needs a video');const trf=projectDir+'/.'+output+'.trf';
    await run('ffmpeg',['-hide_banner','-y','-i',file,'-vf',`vidstabdetect=shakiness=6:accuracy=12:result=${trf}`,'-f','null','-'],FF);
