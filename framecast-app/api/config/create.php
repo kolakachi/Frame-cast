@@ -14,6 +14,8 @@ return [
     // offline = deterministic planner (always used in fixture mode);
     // replicate = a Claude model on Replicate; anthropic = Claude API directly.
     'planner' => env('CREATE_PLANNER', 'offline'),
+    // Thinking effort for the planner (the beat sheet and script); the build agent has its own setting.
+    'planner_effort' => env('CREATE_PLANNER_EFFORT', 'high'),
     'planner_model' => env('CREATE_PLANNER_MODEL', 'anthropic/claude-sonnet-5'),
     'plan_daily_limit' => (int) env('CREATE_PLAN_DAILY_LIMIT', 40),
     // Owner decision 2026-09-29: jobs up to this many credits run without a

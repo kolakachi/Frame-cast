@@ -17,7 +17,8 @@ class AnthropicPlanner implements Planner
     {
         $response = Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(180)
             ->post('https://api.anthropic.com/v1/messages', [
-                'model' => $this->model, 'max_tokens' => 3000,
+                // The plan is where the creative decisions are made and it is short, so deeper thinking is cheap here.
+                'model' => $this->model, 'max_tokens' => 4000, 'output_config' => ['effort' => (string) config('create.planner_effort', 'high')],
                 'system' => [['type' => 'text', 'text' => PlanPrompt::system(), 'cache_control' => ['type' => 'ephemeral']]],
                 'messages' => [['role' => 'user', 'content' => PlanPrompt::user($context)]],
             ]);

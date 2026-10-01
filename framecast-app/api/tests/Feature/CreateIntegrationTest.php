@@ -139,7 +139,8 @@ class CreateIntegrationTest extends TestCase
         $plan = $p['plan'];
         $this->assertSame('anthropic:claude-opus-5-5', $p['provider']);
         $this->assertSame([$asset->id], array_column($plan['reused'], 'asset_id'), 'only this conversation\'s source files');
-        $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take'], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped']], $plan['scenes']);
+        $blank = ['state_in' => '', 'state_out' => '', 'reads' => []];
+        $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take', ...$blank], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped', ...$blank]], $plan['scenes']);
         $this->assertCount(1, $plan['decisions'], 'a decision with one option is dropped');
         $this->assertSame('introstyle', $plan['decisions'][0]['id']);
         $gen = $plan['decisions'][0]['options'][1];
@@ -704,6 +705,29 @@ class CreateIntegrationTest extends TestCase
             ['code' => 'made_up', 'time' => 1, 'message' => 'x'], 'not an array']]);
         $this->assertSame([['selector' => '', 'time' => 6.84, 'message' => '"No camera" is fully on screen for 1.8 s', 'code' => 'reading_time'],
             ['selector' => '', 'time' => 1.0, 'message' => 'x', 'code' => 'reading_time']], $c['pacing']);
+    }
+
+    public function test_the_plan_carries_a_beat_sheet_with_states_and_reads(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'silent']];
+        $raw = ['summary' => 'Explainer.', 'left_out' => '', 'scenes' => [
+            ['label' => 'Hook', 'start' => 0, 'end' => 2.5, 'idea' => 'A word slams in', 'state_in' => 'Black field', 'state_out' => 'VIDEO? huge, centred', 'reads' => ['Making video is the problem', ' ', 'Too many', 'Reads', 'Here', 'Dropped']],
+            ['label' => 'Bad', 'start' => 5, 'end' => 4],
+            ['label' => 'Turn', 'start' => 2.5, 'end' => 6, 'idea' => 'The brand lands']]];
+        $p = $plans->normalize($raw, $ctx, $this->workspace->id);
+        $this->assertSame(['Hook', 'Turn'], array_column($p['scenes'], 'label'), 'a beat that ends before it starts is dropped');
+        $this->assertSame(['Black field', 'VIDEO? huge, centred', ['Making video is the problem', 'Too many', 'Reads', 'Here']], [$p['scenes'][0]['state_in'], $p['scenes'][0]['state_out'], $p['scenes'][0]['reads']], 'at most four reads, blanks dropped');
+        $this->assertSame(['', '', []], [$p['scenes'][1]['state_in'], $p['scenes'][1]['state_out'], $p['scenes'][1]['reads']], 'beats without a director\'s plan still work');
+    }
+
+    public function test_the_claude_planner_thinks_at_the_configured_effort(): void
+    {
+        config(['create.planner_effort' => 'high']);
+        Http::fake(['api.anthropic.com/*' => Http::response(['id' => 'msg_p', 'content' => [['type' => 'text', 'text' => '{"summary":"A plan.","scenes":[]}']], 'usage' => []])]);
+        $out = (new \App\Services\Create\Planning\AnthropicPlanner('claude-opus-5-5', 'k'))->plan(['files' => []]);
+        $this->assertSame('A plan.', $out['plan']['summary']);
+        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'high' && $r['max_tokens'] === 4000);
     }
 
     private function brief(): object
