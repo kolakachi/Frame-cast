@@ -135,7 +135,15 @@ class CreateController extends Controller
 
     public function styles(Request $r)
     {
-        return response()->json(['data' => app(\App\Services\Create\StyleService::class)->list($r->user()), 'packs' => \App\Services\Create\StylePacks::catalogue()]);
+        return response()->json(['data' => app(\App\Services\Create\StyleService::class)->list($r->user()), 'packs' => \App\Services\Create\StylePacks::catalogue(),
+            'notes' => app(\App\Services\Create\StyleNotes::class)->all((int) $r->user()->workspace_id)]);
+    }
+
+    /** What the user thought of a finished video, kept for the style it was built in. */
+    public function noteRevision(Request $r, string $id, string $revisionId)
+    {
+        $input = $r->validate(['note' => 'required|string|max:400']);
+        return response()->json(['data' => app(\App\Services\Create\StyleNotes::class)->add($r->user(), $id, $revisionId, $input['note'])], 201);
     }
 
     public function saveStyle(Request $r)

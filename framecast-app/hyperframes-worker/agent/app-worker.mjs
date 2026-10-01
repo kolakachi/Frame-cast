@@ -190,6 +190,8 @@ async function execute(run){
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
   const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?fitSummary(agentResult.state.summary??'',cutNote(agentResult.state.edits)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
+  // The agent's last review scores travel with the version, so the card can offer another round.
+  if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);
   // Persist completion before sending: a callback failure must not trigger rendering again.
   await writeFile(dir+'/completion.json',JSON.stringify({result,report}),{mode:0o600});
   if(!report.directory.startsWith('/output/live/'+id+'/render/') || report.artifact !== 'video.mp4')throw Error('Invalid artifact path');

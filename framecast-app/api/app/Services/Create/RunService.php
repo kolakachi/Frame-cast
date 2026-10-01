@@ -169,6 +169,14 @@ class RunService
         });
     }
 
+    /** The agent's last review scores, one per sampled frame, bounded. */
+    public static function reviewScores(mixed $r): array
+    {
+        if (! is_array($r)) return [];
+        return array_values(array_slice(array_map(fn ($x) => ['time' => round((float) ($x['time'] ?? 0), 1), 'score' => max(1, min(10, (int) ($x['score'] ?? 0))),
+            'problems' => array_values(array_slice(array_map(fn ($p) => mb_substr((string) $p, 0, 120), array_filter((array) ($x['problems'] ?? []), 'is_string')), 0, 3))], array_filter($r, 'is_array')), 0, 5));
+    }
+
     /** Worker-reported delivery checks, reduced to known fields and bounded text. */
     public static function deliveryChecks(mixed $c): ?array
     {
@@ -242,7 +250,7 @@ class RunService
                 DB::table('composition_revisions')->insert([
                     'id' => $revision, 'conversation_id' => $c->id, 'run_id' => $id,
                     'number' => 1 + (int) DB::table('composition_revisions')->where('conversation_id', $c->id)->max('number'), 'parent_revision_id' => $input['base_revision_id'],
-                    'metadata_json'=>json_encode(['look'=>(bool)($input['look_first'] ?? false),'delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
+                    'metadata_json'=>json_encode(['look'=>(bool)($input['look_first'] ?? false),'review'=>self::reviewScores($result['review'] ?? null),'delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
                     'bundle_json' => json_encode($bundle), 'bundle_hash' => hash('sha256', json_encode($bundle)),
                     'artifact_path' => $artifactPath, 'artifact_hash' => $artifactHash, 'summary' => $result['summary'],
                     'conflict' => $conflict, 'created_at' => now(),

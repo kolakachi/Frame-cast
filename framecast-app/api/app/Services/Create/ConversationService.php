@@ -181,6 +181,8 @@ class ConversationService
                 $lookFirst = $paid && isset($policy['agent']) && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && ! $fromLook
                     && ((! $base && ! empty($plan['look_first'])) || ! empty($baseMeta['look']));
                 if ($lookFirst) $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8);
+                $resolvedPack = StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
+                    DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all());
                 if ($planMedia) {
                     $top = max(array_column($planMedia, 'credits'));
                     $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
@@ -196,9 +198,9 @@ class ConversationService
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
                     'look_first'=>$lookFirst, 'from_look'=>$fromLook,
+                    'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
-                    'style_pack'=>StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
-                        DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all()),
+                    'style_pack'=>$resolvedPack,
                     'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
                     'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['total_credits'] ?? $p['credits']*$p['max_calls'],$policy)),

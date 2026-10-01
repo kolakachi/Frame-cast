@@ -251,6 +251,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/revisions/{revisionId}/edits', [$controller, 'freeEdit']);
             Route::post('/conversations/{id}/revisions/{revisionId}/delivery', [\App\Http\Controllers\Api\V1\Create\DeliveryController::class, 'store']);
             Route::get('/conversations/{id}/revisions/{revisionId}/artifact', [$controller, 'artifact']);
+            Route::post('/conversations/{id}/revisions/{revisionId}/note', [$controller, 'noteRevision']);
         });
 
         // Client workspaces. An agency works for several clients, each kept

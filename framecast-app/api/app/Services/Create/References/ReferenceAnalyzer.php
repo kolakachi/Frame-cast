@@ -58,7 +58,9 @@ class ReferenceAnalyzer
             .'Describe what makes it work so a designer can borrow the approach, not the content. Reply with JSON only: '
             .'{"summary": "one sentence", "look": "under 25 words", "palette": ["#hex", ...up to 5], "type": "typography, under 20 words or none", '
             .'"motion": "under 25 words", "structure": "how it opens, builds and ends, under 30 words", "borrow": ["up to 4 techniques"], '
-            .'"avoid_copying": ["specific characters, logos, text or footage that belong to the original"]}';
+            .'"avoid_copying": ["specific characters, logos, text or footage that belong to the original"], '
+            .'"fingerprint": {"structure": "under 15 words", "opening": "under 15 words", "signature_shot": "the one move it is remembered for, under 15 words", "camera_path": "under 12 words", "score_shape": "music or sound shape, under 12 words", "ending": "under 12 words"}, '
+            .'"recipes": ["up to 3 named motion moves worth building, e.g. giant-type wipe, stamp, field flip, one shape morphing"]}';
         $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
         $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(60)
             ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => 1500, 'output_config' => ['effort' => 'low'],
@@ -74,7 +76,9 @@ class ReferenceAnalyzer
         $u = $r->json('usage', []);
         return ['notes' => ['summary' => $s($json['summary'] ?? '', 240), 'look' => $s($json['look'] ?? '', 200), 'palette' => array_values(array_filter($list($json['palette'] ?? [], 5, 9), fn ($c) => preg_match('/^#[0-9a-fA-F]{3,8}$/', $c))),
                 'type' => $s($json['type'] ?? '', 160), 'motion' => $s($json['motion'] ?? '', 200), 'structure' => $s($json['structure'] ?? '', 240),
-                'borrow' => $list($json['borrow'] ?? [], 4, 140), 'avoid_copying' => $list($json['avoid_copying'] ?? [], 6, 140)],
+                'borrow' => $list($json['borrow'] ?? [], 4, 140), 'avoid_copying' => $list($json['avoid_copying'] ?? [], 6, 140),
+                'fingerprint' => collect(['structure', 'opening', 'signature_shot', 'camera_path', 'score_shape', 'ending'])->mapWithKeys(fn ($k) => [$k => $s(data_get($json, 'fingerprint.'.$k, ''), 120)])->filter()->all(),
+                'recipes' => $list($json['recipes'] ?? [], 3, 100)],
             'notes_model' => $model, 'notes_cost_microusd' => (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 4 + ((int) ($u['output_tokens'] ?? 0)) * 20)];
     }
 }

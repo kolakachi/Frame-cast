@@ -38,6 +38,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_10_01_120000_create_create_plan_media.php'))->up();
         (require database_path('migrations/2026_10_01_130000_create_create_styles.php'))->up();
         (require database_path('migrations/2026_10_01_140000_create_create_pronunciations.php'))->up();
+        (require database_path('migrations/2026_10_01_150000_create_create_style_notes.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -865,6 +866,53 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([false, true], [$q2->payload_json['look_first'], $q2->payload_json['from_look']]);
         $this->assertSame(['index.html' => '<html>look</html>'], $q2->payload_json['base_bundle'], 'the motion is built from the approved stills');
         $this->assertSame(16, $q2->payload_json['execution_policy']['agent']['max_calls']);
+    }
+
+    public function test_notes_on_a_version_feed_the_next_plan_and_build_in_that_style(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.agent_provider' => 'anthropic', 'create.agent_model' => 'claude-opus-5-5', 'services.anthropic.key' => 'k', 'create.pilot_budget_microusd' => 60_000_000]);
+        $c = $this->brief();
+        $plans = app(\App\Services\Create\PlanService::class);
+        $plan = $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-notes');
+        $plans->select($this->owner, $c->id, $plan['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['style' => ['route' => 'pack', 'pack' => 'kinetic-type']]);
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame([], $q->payload_json['style_notes']);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-notes', true);
+        $claim = $this->runs->claim();
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<html></html>'],
+            'review' => [['time' => 1, 'score' => 9, 'problems' => []], ['time' => 7, 'score' => 6, 'problems' => ['Word too small', 'x', 'y', 'dropped fourth']], 'junk']], 'private/v1.mp4', 'h');
+        $rev = DB::table('composition_revisions')->where('run_id', $run->id)->first();
+        $this->assertEquals([['time' => 1, 'score' => 9, 'problems' => []], ['time' => 7, 'score' => 6, 'problems' => ['Word too small', 'x', 'y']]], json_decode($rev->metadata_json, true)['review'], 'review scores travel with the version, bounded');
+
+        $notes = app(\App\Services\Create\StyleNotes::class);
+        $out = $notes->add($this->owner, $c->id, $rev->id, '  Loved the field flip; the last line was too small.  ');
+        $this->assertSame('pack:kinetic-type', $out['style_key']);
+        $this->assertSame(['Loved the field flip; the last line was too small.'], $out['notes']);
+        $this->rejected(422, fn () => $notes->add($this->owner, $c->id, $rev->id, '   '));
+
+        // The next plan and quote in that style carry the note.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Another one in the same style.', 'expected_version' => (int) $this->conversations->conversation($this->owner, $c->id)->version, 'idempotency_key' => 'm-notes']);
+        $plan2 = $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-notes-2');
+        $plans->select($this->owner, $c->id, $plan2['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['style' => ['route' => 'pack', 'pack' => 'kinetic-type']]);
+        $q2 = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame(['Loved the field flip; the last line was too small.'], $q2->payload_json['style_notes']);
+        $this->assertSame(['pack:kinetic-type' => ['Loved the field flip; the last line was too small.']], $notes->all($this->workspace->id));
+    }
+
+    public function test_a_studied_reference_becomes_a_pack_with_a_fingerprint(): void
+    {
+        $asset = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'X · ref', 'storage_url' => 'create-upload://x', 'status' => 'active',
+            'metadata_json' => ['reference_analysis' => ['average_shot_seconds' => 4.5, 'notes' => ['summary' => 'A halftone mascot explainer', 'look' => 'Flat fields', 'palette' => ['#FFFFFF'],
+                'fingerprint' => ['structure' => 'hook, store, dashboard, tagline, lockup', 'opening' => 'whispered character hook', 'signature_shot' => 'giant-type wipe into the dashboard', 'camera_path' => 'static two-column grid', 'score_shape' => 'punchy voice over a bed', 'ending' => 'logo lockup on white'],
+                'recipes' => ['giant-type wipe', 'stamp', 'field flip']]]]]);
+        $pack = \App\Services\Create\StylePacks::resolve(['route' => 'reference', 'name' => 'From your reference'], $this->workspace->id, [], [$asset->id]);
+        $this->assertSame('reference', $pack['route']);
+        $this->assertStringContainsString('differ from it on at least four', $pack['fingerprint']);
+        $this->assertStringContainsString('- Signature shot: giant-type wipe into the dashboard', $pack['fingerprint']);
+        $this->assertStringContainsString('Moves worth building (see the motion kit): giant-type wipe; stamp; field flip', $pack['rules']);
+        $saved = app(\App\Services\Create\StyleService::class)->fromReference($this->owner, $asset->id, 'Pocket look');
+        $this->assertSame(['giant-type wipe', 'stamp', 'field flip'], $saved['style']['recipes']);
+        $this->assertSame('logo lockup on white', $saved['style']['fingerprint']['ending']);
     }
 
     private function brief(): object

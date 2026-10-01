@@ -221,6 +221,8 @@ class PlanService
             '_images' => $this->planImages($user, $files),
             // Built-in style packs to start from, and the ones this workspace used last, so the planner varies them.
             'style_packs' => StylePacks::catalogue(),
+            // The user's verdicts on earlier videos, per style key (pack:<slug>, saved:<id>, reference, free).
+            'style_notes' => app(StyleNotes::class)->all((int) $user->workspace_id),
             // A pack the user pinned: the planner writes the scenes inside its rules.
             'pinned_style_rules' => StylePacks::exists($settings['style_pack'] ?? null) ? (string) file_get_contents(StylePacks::dir().'/'.$settings['style_pack'].'/STYLE.md') : null,
             'recent_style_packs' => DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->orderByDesc('created_at')->limit(6)->pluck('input_json')

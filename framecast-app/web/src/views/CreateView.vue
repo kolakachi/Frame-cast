@@ -265,7 +265,17 @@ const styles = ref([]), pendingStyleId = ref(''), stylesOpen = ref(false), style
 // Built-in style packs: a craft to start from. The picker holds 'pack:<slug>', a saved style id, or '' to let WyvStudio choose.
 const packs = ref([])
 const currentStyleId = computed(() => { try { if(!conversation.value) return pendingStyleId.value; const s = JSON.parse(conversation.value.settings_json || '{}'); return s.style_pack ? 'pack:' + s.style_pack : (s.style_id || '') } catch { return '' } })
-async function loadStyles() { try { const r = (await api.get('/create/styles')).data; styles.value = r.data || []; packs.value = r.packs || [] } catch { /* optional */ } }
+const styleNotes = ref({}), noteText = ref(''), noteSaved = ref('')
+async function loadStyles() { try { const r = (await api.get('/create/styles')).data; styles.value = r.data || []; packs.value = r.packs || []; styleNotes.value = r.notes || {} } catch { /* optional */ } }
+// The style key a plan builds in, matching the API's keys for notes.
+function planStyleKey(p) { const st = p?.plan?.selections?.style || p?.plan?.style; if (!st) return ''; try { const s = JSON.parse(conversation.value?.settings_json || '{}'); return st.route === 'pack' ? 'pack:' + st.pack : st.route === 'saved' ? 'saved:' + (s.style_id || '') : st.route } catch { return st.route } }
+async function saveNote() {
+  const note = noteText.value.trim(); if (!note || !currentRevision.value) return
+  await guarded(async () => { const r = (await api.post(`${base()}/revisions/${currentRevision.value.id}/note`, { note })).data.data; noteText.value = ''; noteSaved.value = r.style_key; await loadStyles() })
+}
+const reviewScores = computed(() => outputMeta.value?.review || [])
+const needsAnotherRound = computed(() => reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8))
+async function keepImproving() { prompt.value = 'Keep this video and fix the open issues from the last review.'; await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
 async function chooseStyle(value) {
   if(!conversation.value) { pendingStyleId.value = value; return }
@@ -551,6 +561,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           </select>
                           <span v-if="planByMessage[m.id].plan.style.why" class="muted">{{ planByMessage[m.id].plan.style.why }}</span>
                         </label>
+                        <ul v-if="(styleNotes[planStyleKey(planByMessage[m.id])] || []).length" class="style-notes"><li v-for="(n, i) in styleNotes[planStyleKey(planByMessage[m.id])]" :key="i">{{ n }}</li></ul>
                         <label v-if="planByMessage[m.id].plan.style && !planByMessage[m.id].plan.free_edit && conversation && !conversation.head_revision_id" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Design first: one frame per beat for you to approve before the motion is built <small class="muted">(a short, cheap run)</small></span></label>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
@@ -622,10 +633,17 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
                   </ul>
                 </div>
+                <p v-if="reviewScores.length" class="review-line muted">Review scores by frame: <b v-for="s in reviewScores" :key="s.time" :class="{ low: s.score < 8 }">{{ s.time }}s {{ s.score }}</b></p>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">This is the look: one frame per beat, held in place. Approve it and the motion gets built from these frames, or say what to change.</p>
+                <form v-if="paid && canWrite && !conversation.archived_at" class="note-form" @submit.prevent="saveNote">
+                  <input v-model="noteText" class="input" maxlength="400" placeholder="What worked, what to change next time (kept for this style)" aria-label="Note for this style" />
+                  <button type="submit" class="btn btn--ghost btn--sm" :disabled="!noteText.trim()">Save note</button>
+                  <small v-if="noteSaved" class="muted">Saved for {{ noteSaved }}</small>
+                </form>
                 <div class="result__actions">
                   <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve the look</button>
                   <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
+                  <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
                   <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
                   <button v-if="canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
                   <button v-if="canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
@@ -879,6 +897,9 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
+.review-line{margin:10px 14px 0;font-size:12px}.review-line b{margin-left:8px;font-weight:600}.review-line b.low{color:#e07b39}
+.note-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px 0}.note-form .input{flex:1;min-width:220px}
+.style-notes{margin:4px 0 8px;padding-left:18px;font-size:12px;color:var(--text-2)}.style-notes li{margin:2px 0}
 .look-note{margin:10px 14px 0;padding:10px 12px;border-radius:10px;background:var(--bg-2);font-size:13px}.look-first{margin:6px 0}.look-first input{width:auto}
 .field-label--check{flex-direction:row;align-items:center;gap:8px}.field-label--check input{width:auto}
 .beat__state,.beat__reads{display:block;font-size:11px;color:var(--text-3);line-height:1.35}.beat__reads{color:var(--text-2)}.plan-col--beats li{margin-bottom:4px}

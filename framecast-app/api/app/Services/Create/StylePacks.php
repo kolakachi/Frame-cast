@@ -107,11 +107,14 @@ class StylePacks
             .$line('Summary', $n['summary'] ?? '').$line('Look', $n['look'] ?? '').$line('Type', $n['type'] ?? '').$line('Motion', $n['motion'] ?? '')
             .$line('Structure', $n['structure'] ?? $n['layout'] ?? '').$line('Palette', $n['palette'] ?? []).$line('Borrow', $n['borrow'] ?? [])
             .$line('Do not copy', $n['avoid_copying'] ?? [])
+            .$line('Moves worth building (see the motion kit)', $n['recipes'] ?? [])
             .(is_numeric($n['average_shot_seconds'] ?? null) ? '- Average shot: about '.round((float) $n['average_shot_seconds'], 1)." s\n" : '');
     }
 
     private static function fingerprintFromNotes(array $n): string
     {
+        $f = is_array($n['fingerprint'] ?? null) ? array_filter($n['fingerprint'], fn ($v) => is_string($v) && trim($v) !== '') : [];
+        if ($f) return "# The source, on six points (differ from it on at least four)\n\n".implode("\n", array_map(fn ($k, $v) => '- '.ucfirst(str_replace('_', ' ', $k)).': '.$v, array_keys($f), $f))."\n";
         $s = trim((string) ($n['structure'] ?? $n['layout'] ?? ''));
         return $s !== '' ? "Structure of the source: $s" : '';
     }

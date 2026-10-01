@@ -93,6 +93,9 @@ class StyleService
         $out['borrow'] = array_values(array_slice(array_map(fn ($x) => mb_substr(trim((string) $x), 0, 140), array_filter((array) ($s['borrow'] ?? []))), 0, 4));
         $out['avoid_copying'] = array_values(array_slice(array_map(fn ($x) => mb_substr(trim((string) $x), 0, 140), array_filter((array) ($s['avoid_copying'] ?? []))), 0, 6));
         $out['average_shot_seconds'] = is_numeric($s['average_shot_seconds'] ?? null) ? round((float) $s['average_shot_seconds'], 1) : null;
+        // From a studied reference: the six-point fingerprint a build must differ from, and the moves worth building.
+        $out['fingerprint'] = collect(['structure', 'opening', 'signature_shot', 'camera_path', 'score_shape', 'ending'])->mapWithKeys(fn ($k) => [$k => mb_substr(trim((string) data_get($s, 'fingerprint.'.$k, '')), 0, 120)])->filter()->all();
+        $out['recipes'] = array_values(array_slice(array_map(fn ($x) => mb_substr(trim((string) $x), 0, 100), array_filter((array) ($s['recipes'] ?? []), 'is_string')), 0, 3));
         return $out;
     }
 
