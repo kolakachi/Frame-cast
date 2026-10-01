@@ -17,7 +17,8 @@ use RuntimeException;
  */
 class PlanMediaExecutor
 {
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'brand_kit'];
+    /** Kinds this executor can make; the catalogue must not offer anything outside it. */
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'talking_shot', 'brand_kit'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array

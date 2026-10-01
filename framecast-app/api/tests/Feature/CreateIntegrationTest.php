@@ -779,6 +779,13 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(2, $uploads, 'the talking pose was chosen, not the first pose');
     }
 
+    public function test_every_catalogue_item_can_be_made_by_the_executor(): void
+    {
+        // Priced items are bought by the executor; free sandbox edits (transcript, stabilize, ...) are not.
+        $purchasable = array_column(array_filter(\App\Services\Create\CapabilityCatalogue::forWorkspace($this->workspace->id), fn ($t) => (int) $t['credits'] > 0), 'kind');
+        $this->assertSame([], array_values(array_diff($purchasable, \App\Services\Create\PlanMediaExecutor::KINDS)), 'a catalogue item the executor cannot make would be dropped from the quote silently');
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
