@@ -25,13 +25,14 @@ class PilotPolicy
         }
         if(config('create.agent_provider')==='anthropic') {
             abort_unless((string)config('services.anthropic.key')!=='',503,'The Claude API key is not configured.');
-            // Deeper effort thinks longer, and thinking is output: give it room and a matching per-call cap.
-            $effort=(string)config('create.agent_effort','medium'); $deep=in_array($effort,['high','xhigh','max'],true);
+            // Thinking is output. With style packs and craft rules pinned, even medium effort spends most of
+            // 8k tokens planning a first draft and gets cut off, so every build gets 16k and the matching cap.
+            $effort=(string)config('create.agent_effort','medium');
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
                 // 16 calls (owner, 2026-10-01): UI-heavy parity builds with visual repairs need 14 to 16;
                 // plain builds still finish in 7 to 8. Worst case 16 x $0.30.
-                'cost_limit_microusd'=>$deep?450000:300000,'max_calls'=>16,'max_output_tokens'=>$deep?16384:8192,'context_bytes'=>96000],
+                'cost_limit_microusd'=>450000,'max_calls'=>16,'max_output_tokens'=>16384,'context_bytes'=>96000],
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

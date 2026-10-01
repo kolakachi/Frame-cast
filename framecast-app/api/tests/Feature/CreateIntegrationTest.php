@@ -1343,7 +1343,7 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(503,fn()=>\App\Services\Create\PilotPolicy::execution([]));
         config(['services.anthropic.key'=>'k']);
         $agent=\App\Services\Create\PilotPolicy::execution([])['agent'];
-        $this->assertSame(['anthropic','claude-opus-5-5',300000],[$agent['provider'],$agent['model'],$agent['cost_limit_microusd']]);
+        $this->assertSame(['anthropic','claude-opus-5-5',450000,16384,'medium'],[$agent['provider'],$agent['model'],$agent['cost_limit_microusd'],$agent['max_output_tokens'],$agent['effort']]);
     }
 
     public function test_expired_or_cancelled_attempt_cannot_start_but_cancel_can_settle_known_work(): void
