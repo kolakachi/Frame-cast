@@ -178,3 +178,22 @@ test('on the last call a checked draft is delivered with its open issues instead
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
  assert.equal(state.status,'preview_ready');assert.match(state.summary,/Tiles do not exit/);
 });
+test('a question on the second-to-last call with an earlier checked draft delivers that draft, not the later edit',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile,readFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/late-');await writeFile(dir+'/index.html','<html></html>');
+ const steps=[{type:'write',path:'index.html',content:'<html><h1>Good</h1></html>'},{type:'preview',times:[1]},{type:'patch',path:'index.html',before:'Good',after:'Half fixed'},{type:'needs_input',question:'The closing line repeats a word.'}];let i=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:5,repairs:3,budgetUsd:0},requireVisualReview:true,
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(state.status,'preview_ready');assert.match(state.summary,/repeats a word/);
+ assert.match(await readFile(dir+'/index.html','utf8'),/Good/);
+});
+test('a question early in a build is still asked',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/early-');await writeFile(dir+'/index.html','<html></html>');
+ const steps=[{type:'needs_input',question:'Which offer should the video end on?'}];let i=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:8,repairs:3,budgetUsd:0},
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(state.status,'needs_input');
+});

@@ -194,9 +194,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         state.status='preview_ready';state.summary=action.summary;
       } else if(action.type==='needs_input') {
         // On the last call, a draft that passed every check is delivered with the open issues, not held back.
-        if(state.calls>=cap.calls&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
+        if(state.calls>=cap.calls-1&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
           state.status='preview_ready';state.summary=('Draft delivered at the call limit. It passes every automated check; open issues from the last review: '+action.question).slice(0,1900);
-        } else if(state.calls>=cap.calls&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
+        } else if(state.calls>=cap.calls-1&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
         else {state.status='needs_input';state.question=action.question;}
       }
       else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;}
