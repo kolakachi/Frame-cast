@@ -931,9 +931,10 @@ class CreateIntegrationTest extends TestCase
         DB::table('api_operations')->where('id', $run->operation_id)->update(['authorized_credits' => 225, 'reserved_credits' => 225]);
         $this->workspace->update(['credits_monthly' => 1000]);
         config(['create.paid_execution_enabled' => true, 'create.pilot_budget_id' => 'test-pilot', 'create.pilot_budget_microusd' => 5000000, 'services.anthropic.key' => 'test-key', 'create.worker_token' => str_repeat('a', 64)]);
-        $messages = [['role' => 'user', 'content' => [['type' => 'text', 'text' => '{"context":{}}']]]];
-        $tools = [['name' => 'write', 'description' => 'Write a file', 'input_schema' => ['type' => 'object', 'properties' => ['path' => ['type' => 'string']], 'required' => ['path']]]];
-        $messagesJson = json_encode($messages, JSON_UNESCAPED_SLASHES); $toolsJson = json_encode($tools, JSON_UNESCAPED_SLASHES);
+        // Empty objects (a tool with no fields, a tool_use with no input) are sent as the worker wrote them.
+        $messagesJson = '[{"role":"user","content":[{"type":"text","text":"{\\"context\\":{}}"}]},{"role":"assistant","content":[{"type":"tool_use","id":"tu_0","name":"check","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_0","content":"{\\"ok\\":true}"}]}]';
+        $toolsJson = '[{"name":"write","description":"Write a file","input_schema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},{"name":"check","description":"Check","input_schema":{"type":"object","properties":{},"required":[]}}]';
+        $messages = json_decode($messagesJson, true); $tools = json_decode($toolsJson, true);
         // The worker hashes {prompt, system, maxTokens, image, messagesJson, toolsJson} as JSON; the gateway must agree.
         $hash = hash('sha256', json_encode(['prompt' => 'tool-mode call 1', 'system' => 'sys', 'maxTokens' => 4096, 'image' => null, 'messagesJson' => $messagesJson, 'toolsJson' => $toolsJson], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS));
         $a = $attempts->begin($run->id, $claim['lease_token'], 'agent-1', 'agent', $hash);
@@ -942,7 +943,11 @@ class CreateIntegrationTest extends TestCase
         $out = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $a['id'], ['prompt' => 'tool-mode call 1', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => $toolsJson]);
         $this->assertSame(['text', 'tool_use'], array_column($out['content'], 'type'), 'content blocks come back; unknown block types are dropped');
         $this->assertSame('tool_use', $out['stop_reason']);
-        Http::assertSent(fn ($r) => $r['messages'] === $messages && $r['tools'] === $tools && ! isset($r['messages'][0]['content'][1]));
+        $sent = Http::recorded()[0][0]; $sentBody = json_decode($sent->body(), true);
+        $this->assertSame($messages, $sentBody['messages'], 'the history goes to the provider as the worker wrote it');
+        $this->assertSame($tools, $sentBody['tools']);
+        $this->assertStringContainsString('"properties":{}', $sent->body(), 'an empty schema stays an object');
+        $this->assertStringContainsString('"input":{}', $sent->body(), 'an empty tool_use input stays an object');
         // A history with an unknown block type is refused before any call.
         $b = $attempts->begin($run->id, $claim['lease_token'], 'agent-2', 'agent', 'h2');
         $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $b['id'], ['prompt' => 'p', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => json_encode([['role' => 'user', 'content' => [['type' => 'document']]]]), 'tools_json' => '[]']));

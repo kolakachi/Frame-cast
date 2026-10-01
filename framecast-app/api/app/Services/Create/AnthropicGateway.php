@@ -64,6 +64,10 @@ class AnthropicGateway
             $messages = json_decode($input['messages_json'], true, 16);
             $tools = json_decode((string) ($input['tools_json'] ?? '[]'), true, 16);
             self::checkToolMessages($messages, $tools);
+            // The body keeps the worker's objects: an empty {} (a tool with no fields, a tool_use with no input)
+            // must not become [] on re-encoding, which the provider rejects.
+            $messages = json_decode($input['messages_json'], false, 16);
+            $tools = json_decode((string) ($input['tools_json'] ?? '[]'), false, 16);
         }
         // Opus can take over two minutes to write a full composition with its thinking.
         set_time_limit(320);
