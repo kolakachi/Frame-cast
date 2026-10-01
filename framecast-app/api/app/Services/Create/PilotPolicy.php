@@ -31,7 +31,7 @@ class PilotPolicy
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
                 // 16 calls (owner, 2026-10-01): UI-heavy parity builds with visual repairs need 14 to 16;
                 // plain builds still finish in 7 to 8. Worst case 16 x $0.30.
-                'cost_limit_microusd'=>$deep?450000:300000,'max_calls'=>16,'max_output_tokens'=>$deep?16384:8192,'context_bytes'=>64000],
+                'cost_limit_microusd'=>$deep?450000:300000,'max_calls'=>16,'max_output_tokens'=>$deep?16384:8192,'context_bytes'=>96000],
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

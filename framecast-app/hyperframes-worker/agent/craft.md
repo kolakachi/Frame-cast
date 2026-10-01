@@ -22,7 +22,12 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 - Moves slower than about 1 pixel per frame stutter. Move further, move faster, or carry the hold with opacity, blur, colour or a counter instead.
 - Change a thing's state instead of replacing it where you can: one card that grows into the next idea reads better than a new card fading in.
 - No twinning: offset the timing of repeated elements; never animate a row of items in perfect unison.
-- Use the motion kit (wyv-motion.js; read kit/motion-kit.md once) for spring eases, cursor interactions, morphing shapes and scene transitions, rather than hand-rolling them.
+- Use the motion kit, loaded after GSAP as `<script src="wyv-motion.js"></script>`, rather than hand-rolling motion. It adds tweens to your timeline `tl` (at = seconds):
+  - Eases: `WM.ease.snappy` (UI), `WM.ease.default` (cards, camera), `WM.ease.heavy` (big type), `WM.ease.playful` (characters).
+  - `WM.cursor(tl,'#cursor',[{x,y,at},{x,y,at,click:true}])`, `WM.press(tl,'#btn',at,{glow:'rgba(255,107,53,.8)'})`, `WM.type(tl,'#field',text,at,16)`, `WM.toggle(tl,'#track','#knob',at,{distance:58,on:'#FF6B35'})`, `WM.count(tl,'#n',0,to,at,1.4,fmt)`.
+  - `WM.morph(tl,'#shape',[{at,width,height,borderRadius,backgroundColor},...])`: one shape through states.
+  - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; hide the old scene after.
+  - Details and examples: read kit/motion-kit.md.
 
 ## Character (when there is one)
 - The same character throughout, big enough to read (at least a quarter of the frame height in its beats).

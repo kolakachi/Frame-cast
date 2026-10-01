@@ -197,3 +197,14 @@ test('a question early in a build is still asked',async()=>{
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
  assert.equal(state.status,'needs_input');
 });
+test('running out of context after a checked draft delivers that draft',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
+ const {mkdtemp,writeFile,readFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/ctx-');await writeFile(dir+'/index.html','<html></html>');
+ const big='x'.repeat(4000);
+ const steps=[{type:'write',path:'index.html',content:'<html><h1>Good</h1></html>'},{type:'preview',times:[1]},{type:'patch',path:'index.html',before:'Good',after:'Good '+big}];let i=0;
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++]??{type:'check'})})},context:{brief:'x'},limits:{calls:8,repairs:3,budgetUsd:0,contextBytes:4500},
+  tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(state.status,'preview_ready');assert.match(state.summary,/Context limit reached/);
+ assert.equal(await readFile(dir+'/index.html','utf8'),'<html><h1>Good</h1></html>');
+});
