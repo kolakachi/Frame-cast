@@ -72,6 +72,28 @@ class PlanMediaService
         }
     }
 
+    /**
+     * A purchase the agent decided on mid-build, within the approved media ceiling.
+     * The item is appended to the run's plan list and bought like any other.
+     */
+    public function produceAdHoc(string $runId, string $lease, string $kind, string $description): array
+    {
+        $run = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
+        app(RunService::class)->validateResultLease($runId, $lease);
+        $input = json_decode($run->input_json, true);
+        abort_unless(in_array($kind, PlanMediaExecutor::KINDS, true), 422, 'That kind of media cannot be bought.');
+        $credits = $kind === 'music' ? CapabilityCatalogue::musicCredits((int) ($input['settings']['duration_seconds'] ?? 15)) : CapabilityCatalogue::credits($kind, (int) $run->workspace_id);
+        abort_unless(is_int($credits) && $credits > 0, 422, 'That item is not for sale here.');
+        $ceiling = (int) ($input['execution_policy']['plan_media']['total_credits'] ?? 0);
+        $spent = (int) DB::table('composition_attempts')->where('run_id', $runId)->where('kind', 'plan_media')->sum('charged_credits');
+        abort_if($spent + $credits > $ceiling, 402, 'Over the approved media ceiling ('.$spent.' of '.$ceiling.' credits used; this item is '.$credits.'). Propose it to the user instead.');
+        $items = $input['plan_media'] ?? [];
+        $items[] = ['kind' => $kind, 'description' => mb_substr(trim($description), 0, 200), 'credits' => $credits, 'ad_hoc' => true];
+        $input['plan_media'] = $items;
+        DB::table('composition_runs')->where('id', $runId)->update(['input_json' => json_encode($input), 'updated_at' => now()]);
+        return $this->produce($runId, $lease, count($items) - 1);
+    }
+
     private function context(object $run, array $input): array
     {
         $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')

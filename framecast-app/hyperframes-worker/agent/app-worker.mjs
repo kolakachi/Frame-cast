@@ -5,7 +5,7 @@ import path from 'node:path';
 import {PilotBudget} from './pilot-budget.mjs';
 import {ReplicateProvider} from './replicate.mjs';
 import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
-import {buyPlanMedia} from './plan-media.mjs';
+import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
@@ -121,9 +121,10 @@ async function execute(run){
    // Buy the approved plan items first, so the design can use them.
    let planMedia=[];
    if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
+    const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])});
     planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},
      produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,420000),
-     download:(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])})});
+     download});
     if(lost||cancelled||stopping)throw Error('Stopped while getting plan media');
    }
    stage=paid?'Designing your video':'Running the offline agent contract check';
@@ -131,7 +132,18 @@ async function execute(run){
    // The activity line: what the agent is doing, the call count and the credits so far (model calls plus purchases).
    const mediaCredits=planMedia.reduce((n,m)=>n+(Number(m.charged_credits)||0),0);
    const onProgress=p=>{const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · call '+p.call+' of '+p.calls+' · '+credits+' credits so far').slice(0,250);};
-   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,onProgress,
+   // A purchase the agent decides on, within the approved ceiling; the API refuses anything over it (402).
+   const buy=async({kind,description,signal})=>{
+    let r;
+    try{r=await request('runs/'+run.id+'/plan-media/adhoc',{lease_token:run.lease_token,kind,description},false,420000);}
+    catch(e){const m=String(e.message);return {ok:false,over_ceiling:/HTTP 402/.test(m),error:m.replace(/^Coordinator returned HTTP \d+: ?/,'').slice(0,300)};}
+    if(r.status!=='succeeded')return {ok:false,error:r.error||'The item could not be made.'};
+    const files=[];
+    for(const f of [r.file,...(r.more_files||[])].filter(Boolean)){const name=await stageFile(f,{manifest,directory:dir+'/inputs',download,signal,kind,description});files.push({name,sha256:f.sha256,asset_id:f.asset_id});}
+    planMedia.push({kind,description,status:'succeeded',file:files[0]?.name,charged_credits:r.charged_credits});
+    return {ok:true,kind,description,charged_credits:r.charged_credits,reused:!!r.reused,files,...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(Array.isArray(r.poses)?{poses:r.poses}:{}),...(typeof r.line==='string'?{line:r.line}:{})};
+   };
+   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,onProgress,buy,
     transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),

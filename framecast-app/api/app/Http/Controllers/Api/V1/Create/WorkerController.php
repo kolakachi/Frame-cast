@@ -99,6 +99,15 @@ class WorkerController extends Controller
         return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produce($id, $input['lease_token'], $index)]);
     }
 
+    /** The agent buys a catalogue item mid-build, within the approved ceiling. */
+    public function planMediaAdHoc(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'kind' => 'required|string|max:40', 'description' => 'required|string|max:200']);
+        set_time_limit(420);
+        return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produceAdHoc($id, $input['lease_token'], $input['kind'], $input['description'])]);
+    }
+
     public function transcript(Request $r, string $id)
     {
         $this->authorizeWorker($r);

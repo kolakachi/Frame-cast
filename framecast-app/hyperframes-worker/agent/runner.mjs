@@ -77,7 +77,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // A plain label for an action, for the activity line.
   const describe=a=>({read:'Reading '+(a.path||''),write:'Writing '+(a.path||''),patch:'Editing '+(a.path||''),check:'Checking the draft',preview:'Checking the draft and capturing frames',snapshot:'Capturing frames',
     timeline:'Reading the timeline',primitives:'Listing options',assets:'Listing files',visual_review:'Reviewing the frames',finish:'Finishing',needs_input:'Asking you a question',propose_media:'Proposing media',
-    media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
+    media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),buy:'Buying '+(a.kind||'').replace('_',' '),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
   // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
   const dispatch=async(action,reviewImage)=>{
@@ -149,6 +149,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     } else if(action.type==='assets') result=workspace.assets.map(({sourceMap,...a})=>a);
     else if(action.type==='primitives') result=primitives;
     else if(action.type==='timeline') {if(!tools.timeline)throw Error('Timeline tool not installed');result=await bounded(()=>tools.timeline({signal:boundedSignal}));}
+    else if(action.type==='buy') {
+      if(!tools.buy)throw Error('Purchases are not available in this run');
+      result=await bounded(()=>tools.buy({kind:action.kind,description:action.description,signal:boundedSignal}));
+      // Bought files join the protected assets and the plan media the checks know about.
+      if(result?.ok){for(const f of result.files||[])if(!workspace.assets.some(a=>a.path===f.path))workspace.assets.push({path:f.path,sha256:f.sha256});(context.planMedia??=[]).push({kind:action.kind,description:action.description,status:'succeeded',file:result.files?.[0]?.path,charged_credits:result.charged_credits});}
+      else if(++state.repairs>cap.repairs)throw Error('Purchase repair limit reached');
+    }
     else if(action.type==='preview') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}

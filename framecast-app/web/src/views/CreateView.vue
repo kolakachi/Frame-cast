@@ -273,6 +273,12 @@ async function saveNote() {
   const note = noteText.value.trim(); if (!note || !currentRevision.value) return
   await guarded(async () => { const r = (await api.post(`${base()}/revisions/${currentRevision.value.id}/note`, { note })).data.data; noteText.value = ''; noteSaved.value = r.style_key; await loadStyles() })
 }
+const ceilingDraft = ref(0)
+watch(() => quote.value?.media_ceiling, v => { if (typeof v === 'number') ceilingDraft.value = v }, { immediate: true })
+async function setCeiling() {
+  const v = Math.max(quote.value?.media_estimate || 0, Math.round(Number(ceilingDraft.value) || 0))
+  await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { media_ceiling_credits: v } }); quote.value = null; await refresh(); await plan() })
+}
 const reviewScores = computed(() => outputMeta.value?.review || [])
 const needsAnotherRound = computed(() => reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8))
 async function keepImproving() { prompt.value = 'Keep this video and fix the open issues from the last review.'; await send() }
@@ -698,6 +704,13 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <div v-for="(md, i) in quote.plan_media" :key="i" class="quote__line"><span>{{ md.description }}</span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
                     <small class="muted">Each item is charged only if it is made. A retry of this plan reuses what was already made.</small>
                   </div>
+                  <div v-if="quote.paid && quote.media_ceiling" class="ceiling-line">
+                    <span class="muted">Media: estimated {{ quote.media_estimate }} credits · spend up to</span>
+                    <input v-model.number="ceilingDraft" type="number" min="0" max="20000" step="10" class="input input--sm" aria-label="Media spending ceiling in credits" />
+                    <span class="muted">credits</span>
+                    <button v-if="ceilingDraft !== quote.media_ceiling" type="button" class="quiet quiet--sm" :disabled="busy" @click="setCeiling">Set</button>
+                    <small class="muted">The agent may buy more media under this ceiling; anything over it waits for your approval.</small>
+                  </div>
                   <div class="cost-line"><b>{{ quote.paid ? `Up to ${quote.credits_max} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
                   <span class="spacer" />
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
@@ -897,6 +910,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
+.ceiling-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;margin:6px 0}.ceiling-line .input--sm{width:96px;padding:4px 8px}
 .review-line{margin:10px 14px 0;font-size:12px}.review-line b{margin-left:8px;font-weight:600}.review-line b.low{color:#e07b39}
 .note-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px 0}.note-form .input{flex:1;min-width:220px}
 .style-notes{margin:4px 0 8px;padding-left:18px;font-size:12px;color:var(--text-2)}.style-notes li{margin:2px 0}

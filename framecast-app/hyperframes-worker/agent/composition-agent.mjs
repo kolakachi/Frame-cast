@@ -6,7 +6,7 @@ import {loadCoreGuidance,readGuidanceReference} from './context.mjs';
 
 // Dependencies are host-owned. Neither a prompt nor a tool result chooses the
 // provider, accounting policy, filesystem root or executable.
-export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,guidanceDirectory,signal,onProgress}) {
+export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,onProgress}) {
  const assets=[];
  for(const file of manifest){
   // Reference-only media is described in context, never made renderable.
@@ -79,7 +79,11 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   // Shared craft rules apply to every build, whatever its style route.
   skills:(await loadCoreGuidance(guidanceDirectory))+'\n\n'+await readFile(guidanceDirectory+'/../craft.md','utf8'),signal,requireVisualReview:paid,
   limits:{repairs:paid?4:2,calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:paid?(input.execution_policy?.agent?.max_calls??8)*(input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6:0,contextBytes:paid?96000:200000,maxOutputTokens:Math.min(16384,Math.max(256,input.execution_policy?.agent?.max_output_tokens??4096)),totalOutputTokenAllowance:Math.max(98304,(input.execution_policy?.agent?.max_calls??12)*Math.min(16384,input.execution_policy?.agent?.max_output_tokens??4096)),elapsedMs:paid?900000:600000},
-  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),check:args=>invoke('check',args),snapshot:args=>invoke('snapshot',args),timeline:args=>invoke('timeline',args),guidance:name=>{
+  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),...(buy?{buy:async args=>{
+   // Stage what was bought into the project so the composition can use it at once.
+   const r=await buy(args);if(!r?.ok)return r;
+   const files=[];for(const f of r.files||[]){await copyFile(directory+'/inputs/source/'+f.name,directory+'/project/'+f.name).catch(()=>{});files.push({path:f.name,sha256:f.sha256});}
+   return {...r,files};}}:{}),check:args=>invoke('check',args),snapshot:args=>invoke('snapshot',args),timeline:args=>invoke('timeline',args),guidance:name=>{
    // The style pack's worked example, frozen with the run: readable, never part of the bundle.
    if(name==='kit/motion-kit.md')return readFile(guidanceDirectory+'/../motion-kit.md','utf8');
    if(name.startsWith('style-example/')){const text=input.style_pack?.example?.[name.slice(14)];if(typeof text!=='string')throw Error('No such example file');return text;}

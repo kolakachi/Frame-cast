@@ -183,10 +183,15 @@ class ConversationService
                 if ($lookFirst) $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8);
                 $resolvedPack = StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
                     DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all());
-                if ($planMedia) {
-                    $top = max(array_column($planMedia, 'credits'));
+                // Media is approved as a ceiling, not an item list: the plan's items are the estimate; the agent may buy
+                // more under the ceiling (1.5x the estimate, or the conversation's own figure) and must ask above it.
+                $mediaEstimate = array_sum(array_column($planMedia, 'credits'));
+                $mediaCeiling = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition'
+                    ? max($mediaEstimate, isset($settings['media_ceiling_credits']) ? (int) $settings['media_ceiling_credits'] : (int) ceil($mediaEstimate * 1.5)) : 0;
+                if ($mediaCeiling > 0) {
+                    $top = max(array_merge([0], array_column($planMedia, 'credits'), array_map(fn ($t) => (int) $t['credits'], array_filter(CapabilityCatalogue::forWorkspace((int) $user->workspace_id), fn ($t) => in_array($t['kind'], PlanMediaExecutor::KINDS, true)))));
                     $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
-                        'max_calls' => count($planMedia), 'total_credits' => array_sum(array_column($planMedia, 'credits'))];
+                        'max_calls' => count($planMedia) + 6, 'total_credits' => $mediaCeiling];
                 }
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
                     'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->orderBy('asset_id')->get(['asset_id','purpose'])->all(),
@@ -197,7 +202,7 @@ class ConversationService
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
-                    'look_first'=>$lookFirst, 'from_look'=>$fromLook,
+                    'look_first'=>$lookFirst, 'from_look'=>$fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
                     'style_pack'=>$resolvedPack,

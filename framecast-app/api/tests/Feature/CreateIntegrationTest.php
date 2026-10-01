@@ -355,9 +355,10 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['ai_image', 'stock_image', 'voiceover'], array_column($q->payload_json['plan_media'], 'kind'), 'sandbox edits are not purchases');
         $this->assertSame($imageCredits, $q->payload_json['plan_media'][0]['credits'], 'price comes from the catalogue, not the plan');
         $media = $q->payload_json['execution_policy']['plan_media'];
-        $this->assertSame([$imageCredits + 0 + 3, 3], [$media['total_credits'], $media['max_calls']]);
+        // Media is approved as a ceiling: 1.5x the estimate, with room for six more purchases.
+        $this->assertSame([(int) ceil(($imageCredits + 0 + 3) * 1.5), 3 + 6], [$media['total_credits'], $media['max_calls']]);
         $agent = $q->payload_json['execution_policy']['agent'];
-        $this->assertSame($agent['credits'] * $agent['max_calls'] + $imageCredits + 3, (int) $q->credits_max, 'one approval covers the build and every item');
+        $this->assertSame($agent['credits'] * $agent['max_calls'] + $media['total_credits'], (int) $q->credits_max, 'one approval covers the build and the media ceiling');
 
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
         $calls = [];
@@ -941,6 +942,46 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $b['id'], ['prompt' => 'p', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => json_encode([['role' => 'user', 'content' => [['type' => 'document']]]]), 'tools_json' => '[]']));
         $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'document']]]], []));
         $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'text', 'text' => 'x']]]], [['name' => 'Bad Name', 'input_schema' => []]]));
+    }
+
+    public function test_media_is_approved_as_a_ceiling_and_the_agent_may_buy_under_it(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.agent_provider' => 'anthropic', 'create.agent_model' => 'claude-opus-5-5', 'services.anthropic.key' => 'k', 'create.pilot_budget_microusd' => 60_000_000]);
+        $c = $this->brief();
+        $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-ceiling');
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $json['media'] = [['kind' => 'voiceover', 'description' => 'Narration', 'credits' => 3], ['kind' => 'sfx', 'description' => 'clicks', 'credits' => 50]];
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame([53, 80], [$q->payload_json['media_estimate'], $q->payload_json['media_ceiling']], '1.5x the estimate by default');
+        $this->assertSame(80, $q->payload_json['execution_policy']['plan_media']['total_credits']);
+        $this->assertSame(8, $q->payload_json['execution_policy']['plan_media']['max_calls'], 'room for ad-hoc purchases');
+        $this->assertGreaterThanOrEqual(210, $q->payload_json['execution_policy']['plan_media']['credits'], 'any single catalogue item fits');
+
+        // The conversation can set its own ceiling, never under the estimate.
+        $cv = $this->conversations->conversation($this->owner, $c->id);
+        DB::table('create_conversations')->where('id', $c->id)->update(['settings_json' => json_encode(\App\Services\Create\OutputSettings::normalize([...json_decode($cv->settings_json, true), 'media_ceiling_credits' => 100])), 'version' => $cv->version + 1]);
+        $q2 = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame(100, $q2->payload_json['media_ceiling']);
+
+        // A purchase within the ceiling appends to the plan list and is bought; one over it is refused with 402.
+        $run = $this->conversations->approve($this->owner, $c->id, $q2->id, 'approve-ceiling', true);
+        $claim = $this->runs->claim();
+        $service = app(\App\Services\Create\PlanMediaService::class);
+        $this->rejected(422, fn () => $service->produceAdHoc($run->id, $claim['lease_token'], 'transcript', 'free thing'));
+        $this->rejected(422, fn () => $service->produceAdHoc($run->id, $claim['lease_token'], 'made_up', 'x'));
+        $executor = \Mockery::mock(\App\Services\Create\PlanMediaExecutor::class);
+        $executor->shouldReceive('produce')->once()->with('sfx', 'extra whoosh', \Mockery::any(), \Mockery::any())->andReturnUsing(function ($k, $d, $ctx, $dir) {
+            \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=16000', '-t', '0.3', $dir.'/s.wav']);
+            return ['path' => $dir.'/s.wav', 'mime' => 'audio/wav', 'title' => 'SFX', 'provider_id' => 'sfx-1']; });
+        $this->app->instance(\App\Services\Create\PlanMediaExecutor::class, $executor);
+        $bought = $service->produceAdHoc($run->id, $claim['lease_token'], 'sfx', 'extra whoosh');
+        $this->assertSame(['succeeded', 50], [$bought['status'], $bought['charged_credits']]);
+        $items = json_decode(DB::table('composition_runs')->where('id', $run->id)->value('input_json'), true)['plan_media'];
+        $this->assertSame(['voiceover', 'sfx', 'sfx'], array_column($items, 'kind'));
+        $this->assertTrue($items[2]['ad_hoc']);
+        // 50 spent of 100: character poses (210) go over the ceiling and are refused before anything is made.
+        $this->rejected(402, fn () => $service->produceAdHoc($run->id, $claim['lease_token'], 'character_poses', 'x'));
     }
 
     private function brief(): object
