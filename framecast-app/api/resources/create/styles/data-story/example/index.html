@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html data-composition-variables='[{"id":"headline","type":"string","label":"Hook label","default":"Repeat visits up"},{"id":"line_1","type":"string","label":"Hook sub","default":"in six months"},{"id":"line_2","type":"string","label":"Members label","default":"Brewline members:"},{"id":"line_3","type":"string","label":"Order label","default":"Average order up"},{"id":"cta","type":"string","label":"Close line","default":"is a coffee loyalty app"},{"id":"color_background","type":"color","label":"Background","default":"#F4ECDF"},{"id":"color_accent","type":"color","label":"Accent","default":"#9A4A1F"},{"id":"color_text","type":"color","label":"Text","default":"#2B1D14"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<style>:root{--color_background:#F4ECDF;--color_accent:#9A4A1F;--color_text:#2B1D14;--color_muted:#7A6A5C;}</style>
+<script src="gsap.min.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="brewline" data-width="1080" data-height="1920" data-duration="15">
+<div class="grid" id="grid"></div>
+
+<div class="scene clip" id="s1" data-start="0" data-duration="3.5" data-track-index="1">
+<div class="inner" id="s1i">
+<span class="label" id="t_headline">Repeat visits up</span>
+<span class="hero" id="n1">38%</span>
+<div class="rule" id="r1"></div>
+<span class="sub" id="t_line1">in six months</span>
+</div></div>
+
+<div class="scene clip" id="s2" data-start="3.5" data-duration="4" data-track-index="1">
+<div class="inner" id="s2i">
+<span class="label" id="t_line2">Brewline members:</span>
+<span class="num2" id="n2">12,400</span>
+<div class="dots" id="dots"></div>
+</div></div>
+
+<div class="scene clip" id="s3" data-start="7.5" data-duration="4" data-track-index="1">
+<div class="inner" id="s3i">
+<span class="label" id="t_line3">Average order up</span>
+<div class="chart">
+<div class="col"><span class="val" id="vA">from $6.10</span><div class="bar barA" id="bA"></div></div>
+<div class="col"><span class="val valB" id="vB">to $7.40</span><div class="bar barB" id="bB"></div></div>
+</div>
+</div></div>
+
+<div class="scene clip close" id="s4" data-start="11.5" data-duration="3.5" data-track-index="1">
+<div class="inner" id="s4i">
+<div class="cup" id="cup"></div>
+<span class="word" id="word">Brewline</span>
+<span class="label" id="t_cta">is a coffee loyalty app</span>
+</div></div>
+
+</div>
+<script>
+(function(){
+var v={};try{v=(window.__hyperframes&&window.__hyperframes.getVariables&&window.__hyperframes.getVariables())||{};}catch(e){}
+var r=document.documentElement.style;
+['color_background','color_accent','color_text'].forEach(function(k){if(v[k])r.setProperty('--'+k,v[k]);});
+function t(id,k){if(v[k])document.getElementById(id).textContent=v[k];}
+t('t_headline','headline');t('t_line1','line_1');t('t_line2','line_2');t('t_line3','line_3');t('t_cta','cta');
+var dots=document.getElementById('dots');
+for(var i=0;i<40;i++){var d=document.createElement('span');d.className='dot';dots.appendChild(d);}
+var tl=gsap.timeline({paused:true});
+tl.fromTo('#grid',{y:0},{y:-120,duration:15,ease:'sine.inOut'},0);
+// Hook
+var n1=document.getElementById('n1'),c1={v:0};
+tl.fromTo('#t_headline',{opacity:0,y:30},{opacity:1,y:0,duration:0.4,ease:'power3.out'},0);
+tl.fromTo(n1,{scale:0.7,opacity:0},{scale:1,opacity:1,duration:0.6,ease:'back.out(1.4)',transformOrigin:'left center'},0.05);
+tl.to(c1,{v:38,duration:1.1,ease:'power2.out',onUpdate:function(){n1.textContent=Math.round(c1.v)+'%';}},0.05);
+tl.fromTo('#r1',{scaleX:0},{scaleX:1,duration:0.7,ease:'expo.out'},0.9);
+tl.fromTo('#t_line1',{opacity:0,y:30},{opacity:1,y:0,duration:0.5,ease:'power3.out'},1.0);
+tl.to(n1,{scale:1.05,duration:2,ease:'sine.inOut'},1.2);
+tl.to('#s1i',{opacity:0,y:-80,duration:0.35,ease:'power2.in'},3.15);
+// Members
+var n2=document.getElementById('n2'),c2={v:0};
+tl.fromTo('#s2i',{y:80},{y:0,duration:0.5,ease:'power3.out'},3.5);
+tl.fromTo('#t_line2',{opacity:0},{opacity:1,duration:0.4,ease:'power3.out'},3.5);
+tl.fromTo(n2,{opacity:0,scale:0.8},{opacity:1,scale:1,duration:0.5,ease:'back.out(1.4)',transformOrigin:'left center'},3.55);
+tl.to(c2,{v:12400,duration:1.4,ease:'power2.out',onUpdate:function(){n2.textContent=Math.round(c2.v).toLocaleString('en-US');}},3.55);
+tl.fromTo('#dots .dot',{scale:0,opacity:0},{scale:1,opacity:1,duration:0.35,ease:'back.out(1.6)',stagger:0.035},3.7);
+tl.to('#dots',{scale:1.04,duration:2,ease:'sine.inOut',transformOrigin:'left top'},5.2);
+tl.to('#s2i',{opacity:0,y:-80,duration:0.35,ease:'power2.in'},7.15);
+// Average order
+tl.fromTo('#s3i',{y:80},{y:0,duration:0.5,ease:'power3.out'},7.5);
+tl.fromTo('#t_line3',{opacity:0},{opacity:1,duration:0.4,ease:'power3.out'},7.5);
+tl.fromTo('#bA',{scaleY:0},{scaleY:1,duration:0.7,ease:'power3.out'},7.6);
+tl.fromTo('#vA',{opacity:0,y:20},{opacity:1,y:0,duration:0.4,ease:'power3.out'},8.0);
+tl.fromTo('#bB',{scaleY:0},{scaleY:1,duration:0.8,ease:'back.out(1.2)'},8.5);
+tl.fromTo('#vB',{opacity:0,y:20,scale:0.8},{opacity:1,y:0,scale:1,duration:0.5,ease:'back.out(1.4)'},9.0);
+tl.to('#bA',{opacity:0.55,duration:0.6,ease:'power2.inOut'},9.2);
+tl.to('#vB',{scale:1.08,duration:1.6,ease:'sine.inOut'},9.5);
+tl.to('#s3i',{opacity:0,y:-80,duration:0.35,ease:'power2.in'},11.15);
+// Close
+tl.fromTo('#cup',{scale:0,opacity:0},{scale:1,opacity:1,duration:0.6,ease:'back.out(1.6)'},11.5);
+tl.fromTo('#word',{opacity:0,y:60},{opacity:1,y:0,duration:0.6,ease:'expo.out'},11.65);
+tl.fromTo('#t_cta',{opacity:0,y:20},{opacity:1,y:0,duration:0.5,ease:'power3.out'},12.1);
+tl.fromTo('#s4i',{scale:1},{scale:1.04,duration:3,ease:'sine.inOut'},12);
+window.__timelines['brewline']=tl;
+})();
+</script>
+</body>
+</html>
