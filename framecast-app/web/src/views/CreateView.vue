@@ -55,6 +55,8 @@ const checkIssues = computed(() => {
   ].slice(0, 8)
 })
 const imageOutput = computed(() => outputMeta.value.settings?.output_kind === 'image')
+async function approveLook() { prompt.value = 'Approve the look and build the motion.'; await send() }
+function changeLook() { prompt.value = 'Keep the look, but change '; nextTick(() => composer.value?.focus()) }
 async function editResult() {if(imageOutput.value && !currentRevision.value.output_asset_id){await saveOutput();if(!currentRevision.value.output_asset_id)return}prompt.value = imageOutput.value ? 'Keep this image, but change ' : 'Keep this video, but change '; nextTick(()=>composer.value?.focus())}
 async function animateResult(){await guarded(async()=>{const rev=currentRevision.value;if(!rev.output_asset_id)throw Error('Save the image to Assets first.');const c=(await api.post('/create/conversations',{output_kind:'video',video_mode:'animate_image',duration_seconds:5,aspect_ratio:outputMeta.value.settings.aspect_ratio,audio:'silent',origin_conversation_id:id.value,origin_revision_id:rev.id})).data.data;await api.post(`/create/conversations/${c.id}/attachments`,{asset_id:rev.output_asset_id,purpose:'source',reuse_confirmed:true,expected_version:0});await router.push({name:'create',params:{conversationId:c.id}});await refresh();prompt.value='Animate this image with gentle motion. Keep the objects and composition consistent.';nextTick(()=>composer.value?.focus())})}
 async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
@@ -125,14 +127,14 @@ watch(() => data.value?.plans, list => {
   for (const p of list || []) {
     if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
     const sel = p.plan.selections
-    planDrafts.value[p.id] = { callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), choices: { ...sel.choices }, kept: [...sel.kept] }
+    planDrafts.value[p.id] = { callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept] }
   }
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
 function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
-  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), sel.choices, [...sel.kept].sort()])
+  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort()])
 }
 function optionCredits(p) {
   const d = planDrafts.value[p.id] || p.plan.selections
@@ -173,7 +175,7 @@ async function makePlan() {
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
-  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), choices: d.choices, kept: d.kept })
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept })
   const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
 }
 async function reviewPlanCost(p) {
@@ -549,6 +551,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           </select>
                           <span v-if="planByMessage[m.id].plan.style.why" class="muted">{{ planByMessage[m.id].plan.style.why }}</span>
                         </label>
+                        <label v-if="planByMessage[m.id].plan.style && !planByMessage[m.id].plan.free_edit && conversation && !conversation.head_revision_id" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Design first: one frame per beat for you to approve before the motion is built <small class="muted">(a short, cheap run)</small></span></label>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
                           <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
@@ -619,8 +622,11 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
                   </ul>
                 </div>
+                <p v-if="outputMeta.look && !isOldRevision" class="look-note">This is the look: one frame per beat, held in place. Approve it and the motion gets built from these frames, or say what to change.</p>
                 <div class="result__actions">
-                  <button v-if="media" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
+                  <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve the look</button>
+                  <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
+                  <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
                   <button v-if="canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
                   <button v-if="canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
                   <button v-if="canWrite && !conversation.archived_at && currentRevision.share_enabled" type="button" class="btn btn--ghost" @click="requestDelivery('unshare')">Turn off share link</button>
@@ -873,6 +879,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .checks{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:var(--text-2)}.checks b{font-size:12px;color:var(--text)}.checks ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}.checks__warn{color:#f5a524}
 .free-plan{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px}.free-plan ul{margin:0;padding-left:16px}.free-plan__swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--line-2)}
 .claims{display:flex;flex-direction:column;gap:3px;margin-top:4px}.claims__row{font-size:11px;color:var(--text-2);display:flex;gap:6px;align-items:flex-start}
+.look-note{margin:10px 14px 0;padding:10px 12px;border-radius:10px;background:var(--bg-2);font-size:13px}.look-first{margin:6px 0}.look-first input{width:auto}
 .field-label--check{flex-direction:row;align-items:center;gap:8px}.field-label--check input{width:auto}
 .beat__state,.beat__reads{display:block;font-size:11px;color:var(--text-3);line-height:1.35}.beat__reads{color:var(--text-2)}.plan-col--beats li{margin-bottom:4px}
 .voice-pick{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px}.style-line{flex-wrap:wrap;margin:8px 0}.voice-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px}

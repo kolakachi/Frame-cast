@@ -842,6 +842,31 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('A giant-type wipe of FLOW into the dashboard beat', $p['signature_move']);
     }
 
+    public function test_design_first_makes_a_cheap_look_run_and_approving_it_builds_the_motion(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.agent_provider' => 'anthropic', 'create.agent_model' => 'claude-opus-5-5', 'services.anthropic.key' => 'k']);
+        $c = $this->brief();
+        $plans = app(\App\Services\Create\PlanService::class);
+        $plan = $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-look');
+        $this->assertFalse($plan['plan']['selections']['look_first'], 'the offline planner does not ask for a look run');
+        $plans->select($this->owner, $c->id, $plan['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['look_first' => true]);
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame([true, false, 8], [$q->payload_json['look_first'], $q->payload_json['from_look'], $q->payload_json['execution_policy']['agent']['max_calls']], 'the look run is short');
+
+        // The look version is recorded as such; approving it quotes the motion build from it.
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-look', true);
+        $claim = $this->runs->claim();
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'The look', 'bundle' => ['index.html' => '<html>look</html>']], 'private/look.mp4', 'h1');
+        $head = DB::table('composition_revisions')->where('run_id', $run->id)->first();
+        $this->assertTrue(json_decode($head->metadata_json, true)['look']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Approve the look and build the motion.', 'expected_version' => (int) $this->conversations->conversation($this->owner, $c->id)->version, 'idempotency_key' => 'm-approve']);
+        $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-motion');
+        $q2 = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame([false, true], [$q2->payload_json['look_first'], $q2->payload_json['from_look']]);
+        $this->assertSame(['index.html' => '<html>look</html>'], $q2->payload_json['base_bundle'], 'the motion is built from the approved stills');
+        $this->assertSame(16, $q2->payload_json['execution_policy']['agent']['max_calls']);
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

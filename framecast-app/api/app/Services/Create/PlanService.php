@@ -95,6 +95,7 @@ class PlanService
                 abort_unless($picked['route'] === ($want['route'] ?? null), 422, 'That style is not available for this brief.');
                 $sel['style'] = $picked;
             }
+            if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'];
             if (array_key_exists('voice', $input)) {
                 abort_unless(\App\Services\Generation\TTS\GeminiVoices::isGeminiVoice((string) $input['voice']) || $input['voice'] === 'clone', 422, 'Choose one of the listed voices.');
                 $sel['voice'] = (string) $input['voice'];
@@ -127,7 +128,7 @@ class PlanService
         return ['plan_id' => $row->id, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
-            'media' => $p['media'], 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'signature_move' => $p['signature_move'] ?? ''];
+            'media' => $p['media'], 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false)];
     }
 
     public function stale(object $plan, object $c): bool
@@ -297,7 +298,9 @@ class PlanService
         $style = StylePacks::route(is_array($raw['style'] ?? null) ? $raw['style'] : [], $ctx);
         $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
-            'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+            // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
+            'look_first' => (bool) ($raw['look_first'] ?? false),
+            'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
         // A text/colour-only request becomes a free edit, validated against the real fields.
         $free = [];
         if (is_array($raw['free_edit'] ?? null) && ! empty($ctx['current_variables'])) {

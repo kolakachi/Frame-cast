@@ -174,6 +174,13 @@ class ConversationService
                     : [];
                 // A character build needs room for the scored review to converge: 20 calls (owner, 2026-10-01).
                 if ($paid && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = 20;
+                // Design first: the look run builds one still per beat (cheap: 8 calls) for approval; approving it builds the motion from those stills.
+                $baseMeta = $base ? (json_decode((string) $base->metadata_json, true) ?: []) : [];
+                $lastUser = (string) (collect($messages)->where('role', 'user')->last()->content ?? '');
+                $fromLook = ! empty($baseMeta['look']) && (bool) preg_match('/\b(approve|approved|looks? good|go ahead|build (it|the motion)|animate it)\b/i', $lastUser);
+                $lookFirst = $paid && isset($policy['agent']) && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && ! $fromLook
+                    && ((! $base && ! empty($plan['look_first'])) || ! empty($baseMeta['look']));
+                if ($lookFirst) $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8);
                 if ($planMedia) {
                     $top = max(array_column($planMedia, 'credits'));
                     $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
@@ -188,6 +195,7 @@ class ConversationService
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
+                    'look_first'=>$lookFirst, 'from_look'=>$fromLook,
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
                     'style_pack'=>StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
                         DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all()),
