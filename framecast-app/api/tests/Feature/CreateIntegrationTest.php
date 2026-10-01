@@ -786,6 +786,21 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([], array_values(array_diff($purchasable, \App\Services\Create\PlanMediaExecutor::KINDS)), 'a catalogue item the executor cannot make would be dropped from the quote silently');
     }
 
+    public function test_a_build_with_a_character_gets_twenty_calls(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.agent_provider' => 'anthropic', 'create.agent_model' => 'claude-opus-5-5', 'services.anthropic.key' => 'k']);
+        $c = $this->brief();
+        $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-20');
+        $plain = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame(16, $plain->payload_json['execution_policy']['agent']['max_calls']);
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $json['media'] = [['kind' => 'character_poses', 'description' => 'Mascot: talking', 'credits' => 210]];
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+        $withCharacter = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $this->assertSame(20, $withCharacter->payload_json['execution_policy']['agent']['max_calls']);
+        $this->assertGreaterThan($plain->credits_max, $withCharacter->credits_max, 'the extra calls are reserved up front');
+    }
+
     private function brief(): object
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

@@ -172,6 +172,8 @@ class ConversationService
                         ->map(fn ($m) => ['kind' => $m['kind'], 'description' => (string) $m['description'],
                         'credits' => $m['kind'] === 'music' ? CapabilityCatalogue::musicCredits((int) ($settings['duration_seconds'] ?? 15)) : (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)])->values()->all()
                     : [];
+                // A character build needs room for the scored review to converge: 20 calls (owner, 2026-10-01).
+                if ($paid && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = 20;
                 if ($planMedia) {
                     $top = max(array_column($planMedia, 'credits'));
                     $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
