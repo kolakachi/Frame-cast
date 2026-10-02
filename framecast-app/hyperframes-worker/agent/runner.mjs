@@ -50,9 +50,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const repeated=result=>{
     const errs=result?.diagnostics?.errors;if(!Array.isArray(errs)||!errs.length)return result;
     const key=JSON.stringify(errs.map(e=>[e.code,e.selector]).sort());
-    const again=state.lastFindings===key;state.lastFindings=key;
+    const again=state.lastFindings===key;state.lastFindings=key;state.findingsRepeats=again?(state.findingsRepeats??1)+1:1;
     if(!again)return result;
     const overlap=errs.some(e=>/overlap|occlu/.test(e.code||''));
+    // Layout findings that survive two repairs stop blocking: the review and the critic see the frames and judge them.
+    const LAYOUT=/^(content_overlap|text_occluded|text_box_overflow)$/;
+    if(state.findingsRepeats>=3&&errs.every(e=>LAYOUT.test(e.code||''))){
+      return {...result,ok:true,diagnostics:{ok:true,advisory:errs,note:'These layout findings survived two repairs and no longer block: they are advisory now. Judge them in the frames; fix what the review shows is really unreadable.'}};
+    }
     return {...result,diagnostics:{...result.diagnostics,repeated:true,note:'These exact findings survived your last repair. Do not rewrite the same code again.'+(overlap?' If the overlap is intended (per-word or per-letter animation, stacked layers), add data-layout-allow-overlap (or data-layout-allow-occlusion) to the containing element instead.':' Change approach or remove the element.')}};
   };
   // Words the user approved or wrote; numbers on screen must come from here.
@@ -103,7 +108,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         }
         if(action.path==='index.html')assertLockedSource(context,text);
         // Pre-flight: fix what has one right answer, name the rest, before a check call is spent.
-        const flight=action.path.startsWith('work/')?{text,fixed:[],warnings:[]}:preflight({path:action.path,text,assets:workspace.assets.map(a=>a.path)});
+        const flight=action.path.startsWith('work/')?{text,fixed:[],warnings:[]}:preflight({path:action.path,text,assets:workspace.assets.map(a=>a.path),audible:(context.planMedia||[]).filter(m=>['talking_shot','talking_take'].includes(m.kind)&&m.file).map(m=>m.file)});
         text=flight.text;
         await workspace.write(action.path,text);
         if(action.path.startsWith('work/'))result={written:action.path,note:'Scratch file; run it with the run action.'};

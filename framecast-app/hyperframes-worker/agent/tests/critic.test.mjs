@@ -41,3 +41,11 @@ test('pre-flight fills composition variables and names what would fail the check
  const clean=preflight({path:'index.html',text:`<html><body><script>window.__timelines["main"]=tl;</script></body></html>`,assets:[]});
  assert.deepEqual([clean.fixed,clean.warnings],[[],[]]);
 });
+test('pre-flight settles the sound of every timed video',()=>{
+ const html='<html><body><video id="take" data-start="0" data-duration="13" src="take.mp4"></video><video data-start="1" src="broll.mp4"></video><video src="x.mp4"></video><video data-start="2" muted src="y.mp4"></video><script>window.__timelines["main"]=1;</script></body></html>';
+ const r=preflight({path:'index.html',text:html,assets:['take.mp4','broll.mp4','x.mp4','y.mp4'],audible:['take.mp4']});
+ assert.match(r.text,/<video id="take" data-start="0" data-duration="13" src="take.mp4" data-has-audio="true">/);
+ assert.match(r.text,/<video data-start="1" src="broll.mp4" muted>/);
+ assert.match(r.text,/<video src="x.mp4"><\/video>/,'an untimed video is left alone');
+ assert.equal(r.fixed.length,2);
+});

@@ -4,7 +4,7 @@
 const titleCase=id=>String(id).replace(/[_-]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();
 const TYPES=new Set(['string','number','color','boolean','enum','font','image']);
 
-export function preflight({path,text,assets=[]}){
+export function preflight({path,text,assets=[],audible=[]}){
  const fixed=[],warnings=[];let out=String(text);
  if(path==='index.html'){
   // Composition variables: each entry needs id, label, type (one of the runtime's) and default.
@@ -22,6 +22,14 @@ export function preflight({path,text,assets=[]}){
    });
    if(changed){fixed.push('composition variables: label, type or default filled in');return "data-composition-variables='"+JSON.stringify(next).replace(/'/g,'&#39;')+"'";}
    return all;
+  });
+  // A timed <video> is muted unless it is a talking take or shot, whose own sound is the voice.
+  out=out.replace(/<video\b([^>]*)>/gi,(all,attrs)=>{
+   if(!/data-start=/.test(attrs)||/\bmuted\b|data-has-audio=/.test(attrs))return all;
+   const src=(attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/)||[])[1]||'';
+   const speaks=audible.includes(src);
+   fixed.push(speaks?'<video> with the talking take: data-has-audio="true"':'<video> muted (sound comes from audio clips)');
+   return '<video'+attrs+(speaks?' data-has-audio="true"':' muted')+'>';
   });
   if(/<script[^>]+src\s*=\s*["']https?:\/\//i.test(out))warnings.push('A script is loaded from a URL; the sandbox has no network. Use the served files (gsap.min.js, wyv-motion.js, lottie_light.min.js).');
   if(/<link[^>]+href\s*=\s*["']https?:\/\//i.test(out)||/@import\s+url\(["']?https?:/i.test(out))warnings.push('A stylesheet or font is loaded from a URL; use the shipped fonts with @font-face.');

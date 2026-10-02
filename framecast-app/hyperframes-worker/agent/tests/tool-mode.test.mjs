@@ -135,3 +135,14 @@ test('tool calls are forgiven their transport: empty params as [] and a script n
   {requireVisualReview:false,tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true}),run:async a=>{runs.push(a);return {ok:true,exit:0,stdout:'',stderr:'',outputs:[],scratch:[]};}})});
  assert.deepEqual(runs[0].args,['show.mjs']);assert.equal(state.repairs,0);
 });
+test('layout findings that survive two repairs become advisory and the build goes on to review',async()=>{
+ let checks=0;
+ const fail={ok:false,diagnostics:{ok:false,errors:[{code:'text_occluded',selector:'#f1',message:'hidden'}]}};
+ const {state}=await harness([
+  [use('a','write',{path:'index.html',content:'<html>1</html>'}),use('b','preview',{times:[1]})],
+  [use('c','patch',{path:'index.html',before:'1',after:'2'}),use('d','preview',{times:[1]})],
+  [use('e','patch',{path:'index.html',before:'2',after:'3'}),use('f','preview',{times:[1]})],
+  [use('g','visual_review',{decision:'pass',findings:'Readable in the frames',scores:[{time:1,score:8,problems:[]}]}),use('h','finish',{summary:'Done'})],
+ ],{limits:{calls:8,repairs:8},tools:dir=>({check:async()=>{checks++;return structuredClone(fail);},snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})})});
+ assert.equal(state.status,'preview_ready',state.reason);assert.equal(checks,3);assert.equal(state.repairs,2);
+});
