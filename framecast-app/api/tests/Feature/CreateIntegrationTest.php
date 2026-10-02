@@ -962,10 +962,11 @@ class CreateIntegrationTest extends TestCase
         $hash = hash('sha256', json_encode(['prompt' => 'tool-mode call 1', 'system' => 'sys', 'maxTokens' => 4096, 'image' => null, 'messagesJson' => $messagesJson, 'toolsJson' => $toolsJson], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS));
         $a = $attempts->begin($run->id, $claim['lease_token'], 'agent-1', 'agent', $hash);
         Http::fake(['api.anthropic.com/*' => Http::sequence()->push(['id' => 'msg_tool', 'stop_reason' => 'tool_use', 'usage' => ['input_tokens' => 100, 'output_tokens' => 50],
-            'content' => [['type' => 'text', 'text' => 'Writing.'], ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'write', 'input' => ['path' => 'index.html']], ['type' => 'server_tool_use', 'id' => 'x']]])
+            'content' => [['type' => 'text', 'text' => 'Writing.'], ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'write', 'input' => ['path' => 'index.html']], ['type' => 'tool_use', 'id' => 'tu_2', 'name' => 'check', 'input' => []], ['type' => 'server_tool_use', 'id' => 'x']]])
             ->push(['id' => 'msg_critic', 'stop_reason' => 'end_turn', 'usage' => ['input_tokens' => 90, 'output_tokens' => 40], 'content' => [['type' => 'text', 'text' => '{"scores":{}}']]])]);
         $out = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $a['id'], ['prompt' => 'tool-mode call 1', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => $toolsJson]);
-        $this->assertSame(['text', 'tool_use'], array_column($out['content'], 'type'), 'content blocks come back; unknown block types are dropped');
+        $this->assertSame(['text', 'tool_use', 'tool_use'], array_column($out['content'], 'type'), 'content blocks come back; unknown block types are dropped');
+        $this->assertStringContainsString('"input":{}', json_encode($out['content'][2]), 'a tool call with no fields goes back out as an object');
         $this->assertSame('tool_use', $out['stop_reason']);
         $sent = Http::recorded()[0][0]; $sentBody = json_decode($sent->body(), true);
         $this->assertSame($messages, $sentBody['messages'], 'the history goes to the provider as the worker wrote it');

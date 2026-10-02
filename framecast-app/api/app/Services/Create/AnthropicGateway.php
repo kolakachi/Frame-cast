@@ -135,7 +135,9 @@ class AnthropicGateway
         $receipt = new VerifiedAttemptReceipt($attemptId, 'succeeded', $id, $cost,
             'pilot-tariff:2026-09-30; anthropic usage returned to WyvStudio: in '.$in.', out '.$out.', cache write '.$write.', cache read '.$read);
         $settled = $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
-        $blocks = collect($response->json('content', []))->filter(fn ($b) => is_array($b) && in_array($b['type'] ?? '', ['text', 'tool_use'], true))->values()->all();
+        // A tool call with no fields decodes as an empty array; it must go back out as {} or the next call is refused.
+        $blocks = collect($response->json('content', []))->filter(fn ($b) => is_array($b) && in_array($b['type'] ?? '', ['text', 'tool_use'], true))
+            ->map(fn ($b) => $b['type'] === 'tool_use' && is_array($b['input'] ?? null) && $b['input'] === [] ? [...$b, 'input' => new \stdClass] : $b)->values()->all();
         $text = collect($blocks)->where('type', 'text')->pluck('text')->implode('');
         return ['text' => $text, 'content' => $blocks, 'message_id' => $id, 'stop_reason' => (string) $response->json('stop_reason'), 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
             'usage' => ['input_tokens' => $in, 'output_tokens' => $out, 'cache_write_tokens' => $write, 'cache_read_tokens' => $read], 'status' => 'succeeded'];

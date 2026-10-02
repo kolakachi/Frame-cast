@@ -285,7 +285,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         const response=await bounded(()=>provider.complete({prompt:'tool-mode call '+state.calls,system:toolHostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,messages:structuredClone(history),tools:toolDefinitions,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
         boundedSignal.throwIfAborted();
         state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
-        const content=Array.isArray(response.content)&&response.content.length?response.content:[{type:'text',text:response.text||''}];
+        const content=(Array.isArray(response.content)&&response.content.length?response.content:[{type:'text',text:response.text||''}]).map(b=>b.type==='tool_use'&&(!b.input||typeof b.input!=='object'||Array.isArray(b.input))?{...b,input:{}}:b);
         state.pending=null;history.push({role:'assistant',content});state.messages.push({role:'assistant',content:JSON.stringify(content.map(b=>b.type==='tool_use'?{tool:b.name,input:b.input}:{text:(b.text||'').slice(0,400)}))});await save();
         const uses=content.filter(b=>b.type==='tool_use').slice(0,8);
         if(!uses.length){

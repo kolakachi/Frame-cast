@@ -121,3 +121,8 @@ test('the first turn is a cache breakpoint',async()=>{
  const first=seen[1].messages[0];assert.ok(first.content.some(b=>b.type==='text'&&b.cache_control?.type==='ephemeral'),'the context block is the breakpoint');
  assert.equal(first.content.filter(b=>/^Remaining calls/.test(b.text||'')).length,0,'the budget line moves with the last turn');
 });
+test('a tool call whose input arrived as an empty array is kept as an object in the history',async()=>{
+ const {seen}=await harness([[Object.assign(use('a','write',{path:'index.html',content:'<html>1</html>'})),{type:'tool_use',id:'b',name:'check',input:[]}],[use('c','finish',{summary:'x'})]],{requireVisualReview:false});
+ const first=seen[1].messages.find(m=>m.role==='assistant');
+ assert.deepEqual(first.content[1].input,{});assert.equal(JSON.stringify(first.content[1].input),'{}');
+});
