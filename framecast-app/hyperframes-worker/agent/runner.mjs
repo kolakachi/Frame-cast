@@ -77,12 +77,16 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // A plain label for an action, for the activity line.
   const describe=a=>({read:'Reading '+(a.path||''),write:'Writing '+(a.path||''),patch:'Editing '+(a.path||''),check:'Checking the draft',preview:'Checking the draft and capturing frames',snapshot:'Capturing frames',
     timeline:'Reading the timeline',primitives:'Listing options',assets:'Listing files',visual_review:'Reviewing the frames',finish:'Finishing',needs_input:'Asking you a question',propose_media:'Proposing media',
-    media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),buy:'Buying '+(a.kind||'').replace('_',' '),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
+    catalog:'Searching the registry: '+(a.query||'').slice(0,40),media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),buy:'Buying '+(a.kind||'').replace('_',' '),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
   // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
   const dispatch=async(action,reviewImage)=>{
     let result;
-      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/registry.md')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+    else if(action.type==='catalog') {
+      if(!tools.catalog)throw Error('The registry catalogue is not available in this run');
+      result=await tools.catalog({query:action.query});
+    }
     else if(action.type==='write'||action.type==='patch') {
       try {
         let text=action.content;

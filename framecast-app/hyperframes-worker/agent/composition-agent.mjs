@@ -3,6 +3,7 @@ import {Workspace,digest} from './workspace.mjs';
 import {runAgent} from './runner.mjs';
 import {accountedCall} from './accounted-call.mjs';
 import {loadCoreGuidance,readGuidanceReference} from './context.mjs';
+import {loadCatalog,searchCatalog,catalogItem} from './registry.mjs';
 
 // Dependencies are host-owned. Neither a prompt nor a tool result chooses the
 // provider, accounting policy, filesystem root or executable.
@@ -44,6 +45,16 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const paid=input.mode==='agent',settings=input.settings??{};
  const dims=({'9:16':[1080,1920],'16:9':[1920,1080],'1:1':[1080,1080],'4:5':[1080,1350]})[settings.aspect_ratio??'9:16'];
  const workspace=new Workspace(directory+'/project',assets,directory+'/work');
+ // The vendored registry catalogue: exact names return the item in full; words or a tag rank the rest.
+ const catalog=await loadCatalog(guidanceDirectory+'/../../runtime/registry-catalog.json').catch(()=>[]);
+ const catalogTool=async({query})=>{
+  const q=String(query||'').trim();
+  const exact=catalogItem(catalog,q.toLowerCase());
+  if(exact)return {item:exact};
+  const tagged=q.match(/^tag:\s*([a-z0-9-]+)$/i);
+  const results=tagged?searchCatalog(catalog,{tag:tagged[1],limit:20}):searchCatalog(catalog,{query:q,limit:12});
+  return {results:results.map(({variables,...r})=>({...r,variables:variables.map(v=>v.id)})),hint:results.length?'Call catalog with an exact name for its variables, mount and usage header.':'No match; try other words, tag:<tag>, or hand-build it.'};
+ };
  // A captured web page is shown to the agent as its first image, so it can rebuild the brand's real screens.
  let initialImage;
  const page=manifest.find(f=>f.purpose==='reference'&&f.asset_type==='image'&&f.reference?.from==='page');
@@ -67,6 +78,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
     exampleFiles:Object.keys(input.style_pack.example??{}).map(f=>'style-example/'+f),
     howToUse:'This is the craft the build starts from, not a template. Follow its rules. If exampleFiles are listed, read style-example/index.html once to learn its technique; never copy its layout wholesale. The fingerprint describes the example on six points: structure, opening, signature shot, camera path, score shape and ending. Your video must differ from it on at least 4 of the 6; in your final visual_review add one finding that starts with "Fingerprint:" and names your six. Brand look (houseStyle, page palette, brand kit) still wins on colours and fonts.'}:null,
    variantDirection:input.variant_direction??null,approvedFacts:[...(settings.approved_facts??[]),...(input.plan?.on_screen_copy??[])],settings,output:{width:dims[0],height:dims[1],durationSeconds:settings.duration_seconds??15},
+   registry:catalog.length?{items:catalog.length,howToUse:'Search with the catalog action before hand-building any named visual; read kit/registry.md once before wiring an item.'}:null,
    runtimeFiles:[{path:'gsap.min.js',purpose:'Local GSAP runtime'},{path:'wyv-motion.js',purpose:'WyvStudio motion kit, load after gsap.min.js: spring eases, cursor, button press, typing, toggle, counter, shape morph and scene transitions (whip, push, wipe, light leak). Read kit/motion-kit.md for the API before using it.'},{path:'font.ttf',purpose:'DejaVu Sans, plain fallback'},
     {path:'inter.ttf',purpose:'Inter, variable weight 100-900: clean modern sans for body and bold headlines'},
     {path:'anton.ttf',purpose:'Anton, heavy condensed display: punchy ad headlines'},
@@ -79,13 +91,14 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   // Shared craft rules apply to every build, whatever its style route.
   skills:(await loadCoreGuidance(guidanceDirectory))+'\n\n'+await readFile(guidanceDirectory+'/../craft.md','utf8'),signal,requireVisualReview:paid,
   limits:{repairs:paid?4:2,calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:paid?(input.execution_policy?.agent?.max_calls??8)*(input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6:0,contextBytes:paid?96000:200000,maxOutputTokens:Math.min(16384,Math.max(256,input.execution_policy?.agent?.max_output_tokens??4096)),totalOutputTokenAllowance:Math.max(98304,(input.execution_policy?.agent?.max_calls??12)*Math.min(16384,input.execution_policy?.agent?.max_output_tokens??4096)),elapsedMs:paid?900000:600000},
-  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),run:args=>invoke('run',args),...(buy?{buy:async args=>{
+  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),media:args=>invoke('media',args),run:args=>invoke('run',args),...(catalog.length?{catalog:catalogTool}:{}),...(buy?{buy:async args=>{
    // Stage what was bought into the project so the composition can use it at once.
    const r=await buy(args);if(!r?.ok)return r;
    const files=[];for(const f of r.files||[]){await copyFile(directory+'/inputs/source/'+f.name,directory+'/project/'+f.name).catch(()=>{});files.push({path:f.name,sha256:f.sha256});}
    return {...r,files};}}:{}),check:args=>invoke('check',args),snapshot:args=>invoke('snapshot',args),timeline:args=>invoke('timeline',args),guidance:name=>{
    // The style pack's worked example, frozen with the run: readable, never part of the bundle.
    if(name==='kit/motion-kit.md')return readFile(guidanceDirectory+'/../motion-kit.md','utf8');
+   if(name==='kit/registry.md')return readFile(guidanceDirectory+'/../registry-kit.md','utf8');
    if(name.startsWith('style-example/')){const text=input.style_pack?.example?.[name.slice(14)];if(typeof text!=='string')throw Error('No such example file');return text;}
    return readGuidanceReference(guidanceDirectory,name);}}});
  const bundle={};

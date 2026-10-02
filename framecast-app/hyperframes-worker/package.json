@@ -1,1 +1,1 @@
-{"name":"wyvstudio-hyperframes-worker","private":true,"type":"module","scripts":{"smoke":"node scripts/smoke.mjs"},"dependencies":{"hyperframes":"0.8.82","gsap":"3.14.2"}}
+{"name":"wyvstudio-hyperframes-worker","private":true,"type":"module","scripts":{"smoke":"node scripts/smoke.mjs"},"dependencies":{"gsap":"3.14.2","hyperframes":"0.8.82","lottie-web":"^5.12.2"}}

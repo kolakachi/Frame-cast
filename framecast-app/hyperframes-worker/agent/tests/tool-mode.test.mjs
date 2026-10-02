@@ -68,3 +68,11 @@ test('an initial page image does not count toward the text context limit',async(
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
  assert.equal(state.status,'preview_ready',state.reason);
 });
+test('catalog searches through the host tool; an over-long query is refused as misuse',async()=>{
+ const seen=[];
+ const {state}=await harness([
+  [use('a','catalog',{query:'browser frame'}),use('b','catalog',{query:'x'.repeat(300)}),use('c','write',{path:'index.html',content:'<html>ok</html>'}),use('d','preview',{times:[1]})],
+  [use('e','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('f','finish',{summary:'Done'})],
+ ],{tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),catalog:async a=>{seen.push(a.query);return {results:[{name:'browser-device-stage'}]};}}});
+ assert.equal(state.status,'preview_ready');assert.deepEqual(seen,['browser frame']);assert.equal(state.repairs,1);
+});

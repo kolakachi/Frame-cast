@@ -35,6 +35,14 @@ for(const file of await readdir(source+'/project')){
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
 // Licensed display and text fonts (SIL OFL), vendored in runtime/fonts.
 for(const f of ['inter.ttf','anton.ttf','bebas-neue.ttf','playfair.ttf','space-grotesk.ttf','caveat.ttf'])await copyFile('/opt/worker/runtime/fonts/'+f,root+'/'+f);
+// Registry items the composition wires (data-composition-src) are staged from the vendored registry, with the libraries they load.
+{
+ const {loadCatalog,stageRegistryFiles}=await import('./registry.mjs');
+ const items=await loadCatalog('/opt/worker/runtime/registry-catalog.json').catch(()=>[]);
+ const html=await readFile(root+'/index.html','utf8').catch(()=>'');
+ const staged=await stageRegistryFiles({root,registryRoot:'/opt/worker/runtime/registry',html,items,libs:{'lottie_light.min.js':'/opt/worker/node_modules/lottie-web/build/player/lottie_light.min.js','gsap/CustomEase.min.js':'/opt/worker/node_modules/gsap/dist/CustomEase.min.js','gsap/MotionPathPlugin.min.js':'/opt/worker/node_modules/gsap/dist/MotionPathPlugin.min.js'}});
+ if(staged.missing.length)await writeFile(out+'/registry-missing.json',JSON.stringify(staged.missing));
+}
 let result;
 let settings={aspect_ratio:'9:16',duration_seconds:15};
 try{settings=JSON.parse(await readFile(source+'/output-settings.json','utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -69,7 +77,9 @@ if(operation==='snapshot'&&result.ok){
  const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort().slice(0,5);
  if(!shots.length)throw Error('Snapshot returned no images');
  const args=shots.flatMap(n=>['-i',out+'/'+n]);
- const filters=shots.map((_,i)=>`[${i}:v]scale=270:-2,pad=270:480:0:(oh-ih)/2:black[s${i}]`).join(';')+';'+shots.map((_,i)=>`[s${i}]`).join('')+`hstack=inputs=${shots.length}[sheet]`;
+ // Cells follow the output aspect, so a landscape frame is reviewed at full width, not letterboxed into a portrait cell.
+ const cell=dims[0]>dims[1]?[480,270]:dims[0]===dims[1]?[360,360]:[270,480],fit=`scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black`;
+ const filters=shots.map((_,i)=>`[${i}:v]${fit}[s${i}]`).join(';')+';'+shots.map((_,i)=>`[s${i}]`).join('')+`hstack=inputs=${shots.length}[sheet]`;
  await promisify(execFile)('ffmpeg',['-y',...args,'-filter_complex',filters,'-map','[sheet]','-frames:v','1',out+'/contact-sheet.jpg'],{timeout:30000,maxBuffer:1000000});
  // A studied reference video gets a second row: its frames at the same moments, scaled to our length, so the review compares against it.
  try{
@@ -81,7 +91,7 @@ if(operation==='snapshot'&&result.ok){
    const at=shots.map(n=>Number((n.match(/at-([0-9.]+)s/)||[])[1])).filter(Number.isFinite);
    if(refDur>0&&at.length===shots.length){
     const inputs=at.flatMap(t=>['-ss',String(Math.min(refDur-0.05,t/ours*refDur)),'-i',file]);
-    const f2=at.map((_,i)=>`[${i}:v]scale=270:-2,pad=270:480:0:(oh-ih)/2:black[r${i}]`).join(';')+';'+at.map((_,i)=>`[r${i}]`).join('')+`hstack=inputs=${at.length}[row]`;
+    const f2=at.map((_,i)=>`[${i}:v]${fit}[r${i}]`).join(';')+';'+at.map((_,i)=>`[r${i}]`).join('')+`hstack=inputs=${at.length}[row]`;
     await promisify(execFile)('ffmpeg',['-y',...inputs,'-filter_complex',f2,'-map','[row]','-frames:v','1',out+'/reference-row.jpg'],{timeout:60000,maxBuffer:1000000});
     await promisify(execFile)('ffmpeg',['-y','-i',out+'/contact-sheet.jpg','-i',out+'/reference-row.jpg','-filter_complex','[0:v][1:v]vstack=inputs=2[both]','-map','[both]','-frames:v','1',out+'/contact-sheet.jpg'],{timeout:30000,maxBuffer:1000000});
     result={...result,reference_row:'The bottom row of the contact sheet is the reference video at the same moments.'};
