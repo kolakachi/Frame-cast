@@ -241,8 +241,17 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     const t=turns();let lastImage=-1;
     t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content)&&b.content.some(x=>x.type==='image'))lastImage=k;});
     t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
+    // A file written in an earlier turn is on disk: its text leaves the history (the model reads it back if it needs it).
+    const over=()=>Buffer.byteLength(JSON.stringify(t))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes;
+    const lastAssistant=t.map(m=>m.role).lastIndexOf('assistant');
+    const shrinkWrites=(m)=>{for(const b of m.content)if(b.type==='tool_use'&&b.input&&typeof b.input==='object'){
+      if(b.name==='write'&&typeof b.input.content==='string'&&b.input.content.length>200)b.input={path:b.input.path,content:'[written earlier, '+Buffer.byteLength(b.input.content)+' bytes; read the file to see it]'};
+      if(b.name==='patch'&&(String(b.input.before).length+String(b.input.after).length)>300)b.input={path:b.input.path,before:'[patched earlier]',after:'[patched earlier, '+Buffer.byteLength(String(b.input.after))+' bytes]'};
+    }};
+    t.forEach((m,k)=>{if(m.role==='assistant'&&k<lastAssistant)shrinkWrites(m);});
+    if(over()&&lastAssistant>0)shrinkWrites(t[lastAssistant]);
     let guard=0;
-    while(Buffer.byteLength(JSON.stringify(t))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes&&guard++<200){
+    while(over()&&guard++<200){
       const m=t.slice(1).find(m=>m.role==='user'&&m.content.some(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400));
       if(!m)break;
       for(const b of m.content)if(b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400)b.content=b.content.slice(0,300)+' …[earlier result shortened]';

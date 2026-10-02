@@ -104,3 +104,15 @@ test('without a critic tool the review pass finishes as before; a look run asks 
   critic:async()=>({ok:true,verdict:'pass',scores:{hook:8,hierarchy:8,density:8,energy:8,performance:8},mean:8,directives:[],note:''})}),context:{lookOnly:true}});
  assert.equal(state.status,'preview_ready');assert.equal(strips.length,0,'no strip for stills');
 });
+test('earlier file writes leave the history so a build of large files fits the context',async()=>{
+ const big=n=>'<html>'+'x'.repeat(n)+'</html>';
+ const {state,seen}=await harness([
+  [use('a','write',{path:'index.html',content:big(30000)}),use('b','write',{path:'style.css',content:'/*'+'y'.repeat(30000)+'*/'}),use('c','write',{path:'main.js',content:'//'+'z'.repeat(30000)})],
+  [use('d','patch',{path:'index.html',before:'<html>','after':'<html lang="en">'}),use('e','preview',{times:[1]})],
+  [use('f','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('g','finish',{summary:'Done'})],
+ ],{limits:{calls:6,repairs:2,contextBytes:96000}});
+ assert.equal(state.status,'preview_ready',state.reason);
+ const first=seen[2].messages.find(m=>m.role==='assistant');
+ assert.match(first.content[0].input.content,/^\[written earlier, 30\d+ bytes/,'the old write is a placeholder');
+ assert.ok(Buffer.byteLength(JSON.stringify(seen[2].messages))<40000);
+});

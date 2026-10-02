@@ -131,7 +131,7 @@ async function execute(run){
    const assetIds=new Map(manifest.map(f=>[f.name,f.asset_id]));
    // The activity line: what the agent is doing, the call count and the credits so far (model calls plus purchases).
    const mediaCredits=planMedia.reduce((n,m)=>n+(Number(m.charged_credits)||0),0);
-   const onProgress=p=>{const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · call '+p.call+' of '+p.calls+' · '+credits+' credits so far').slice(0,250);};
+   const onProgress=p=>{const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · '+credits+' credits so far').slice(0,250);};
    // A purchase the agent decides on, within the approved ceiling; the API refuses anything over it (402).
    const buy=async({kind,description,signal})=>{
     let r;
