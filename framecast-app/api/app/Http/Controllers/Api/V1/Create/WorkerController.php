@@ -55,7 +55,7 @@ class WorkerController extends Controller
     {
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'attempt_key' => 'required|string|max:100',
-            'kind' => 'required|in:agent,media,render', 'request_hash' => 'required|regex:/^[a-f0-9]{64}$/']);
+            'kind' => 'required|in:agent,critic,media,render', 'request_hash' => 'required|regex:/^[a-f0-9]{64}$/']);
         return response()->json(['data' => app(\App\Services\Create\AttemptService::class)->begin($id, $input['lease_token'], $input['attempt_key'], $input['kind'], $input['request_hash'])]);
     }
 
