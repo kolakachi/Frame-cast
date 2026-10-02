@@ -7,7 +7,7 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 - A payoff every 3 to 5 seconds: each beat has one event, something that is different at its end from its start.
 - One read at a time. A read is one thing the viewer must understand (a word, a card landing, a reaction). Give each read time to be found and understood before the next starts; never start two important reads at once.
 - Fast actions, slow meanings: a move can be quick, but hold what it means long enough to register.
-- End on the offer and let it hold at least 1.5 s. Echo the opening in the ending (same shape, place or motif, changed).
+- End on the offer and let it hold at least 2 s, in the hook's words. Echo the opening in the ending (same shape, place or motif, changed).
 
 ## Text on screen
 - Never more than 8 words on screen at once, except a UI card's own labels.
@@ -16,19 +16,14 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 - Keep text out of the bottom caption zone and at least 6% from every edge.
 
 ## Motion
-- Motion is the medium, not a slideshow: fading in, sitting still and fading out reads as slides. Overlap entrances and exits, stagger siblings by 2 to 4 frames, and keep something moving during holds (a slow drift, scale or counter).
-- Never use linear or default easing. Entrances ease out (for example power3.out or expo.out); exits ease in; A-to-B moves ease in and out. Across a cut, ease in to the exit and ease out of the reveal so objects are fastest at the cut.
-- Things with weight settle: a small overshoot on UI and playful elements (back.out(1.4)), none on large type.
-- Moves slower than about 1 pixel per frame stutter. Move further, move faster, or carry the hold with opacity, blur, colour or a counter instead.
-- Change a thing's state instead of replacing it where you can: one card that grows into the next idea reads better than a new card fading in.
-- No twinning: offset the timing of repeated elements; never animate a row of items in perfect unison.
+- The pinned cards carry the motion law (seams: the vector law and the seam catalogue; principles: easing, duration, stagger, the 1/3 rules, beat sync). Build to them; a slideshow of fades fails review.
 - Use the motion kit, loaded after GSAP as `<script src="wyv-motion.js"></script>`, rather than hand-rolling motion. It adds tweens to your timeline `tl` (at = seconds):
   - Eases: `WM.ease.snappy` (UI), `WM.ease.default` (cards, camera), `WM.ease.heavy` (big type), `WM.ease.playful` (characters).
-  - `WM.cursor(tl,'#cursor',[{x,y,at},{x,y,at,click:true}])`, `WM.press(tl,'#btn',at,{glow:'rgba(255,107,53,.8)'})`, `WM.type(tl,'#field',text,at,16)`, `WM.toggle(tl,'#track','#knob',at,{distance:58,on:'#FF6B35'})`, `WM.count(tl,'#n',0,to,at,1.4,fmt)`.
+  - `WM.cursor(tl,'#cursor',[{x,y,at},{x,y,at,click:true}])`, `WM.press(tl,'#btn',at,{glow:'rgba(255,107,53,.8)'})`, `WM.type(tl,'#field',text,at,16)`, `WM.toggle(tl,'#track','#knob',at,{distance:58,on:'#FF6B35'})`, `WM.count(tl,'#num',0,1200,at,1.4,fmt)` (approved numbers only).
   - `WM.morph(tl,'#shape',[{at,width,height,borderRadius,backgroundColor},...])`: one shape through states.
-  - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; hide the old scene after.
-  - Details and examples: read kit/motion-kit.md.
-  - A build with a character uses the kit for more than eases: `WM.ease.playful` on every pose change, a transition recipe (whip, push or wipe) between beats, and press or cursor on any UI it points at. A build that only swaps opacity between beats reads as slides.
+  - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; signature moves `WM.giantWipe`, `WM.stamp`, `WM.field`; hide the old scene after. Details: read kit/motion-kit.md.
+  - A build with a character uses the kit for more than eases: `WM.ease.playful` on every pose change, a transition recipe between beats, and press or cursor on any UI it points at.
+- Before hand-building a named visual (device frame, captions, CTA, counter, chart, chat UI, transition, texture, mascot), search the registry with the catalog action and wire the item (kit/registry.md).
 
 ## Character (when there is one)
 - The same character throughout, big enough to read: a narrator is framed as a bust at about half the frame height, cropped at the chest and bleeding off the bottom edge like a presenter, never a small full figure standing in empty space. Never under a third of the frame in any beat.

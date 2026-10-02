@@ -82,7 +82,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
   const dispatch=async(action,reviewImage)=>{
     let result;
-      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/registry.md')&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/registry.md'||action.path.startsWith('cards/'))&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
     else if(action.type==='catalog') {
       if(!tools.catalog)throw Error('The registry catalogue is not available in this run');
       result=await tools.catalog({query:action.query});

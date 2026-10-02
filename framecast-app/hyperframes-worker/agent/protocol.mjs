@@ -70,7 +70,7 @@ Use reasonable creative defaults when the brief already states the result. Do no
 
 // Native tool definitions (tool mode): one tool per action, same fields and rules.
 const DESC={
- read:'Read a source file of the composition (index.html, style.css, main.js), or guidance: references/<name>.md, style-example/<file>, kit/motion-kit.md, kit/registry.md (how to wire registry items).',
+ read:'Read a source file of the composition (index.html, style.css, main.js), or guidance: references/<name>.md, style-example/<file>, kit/motion-kit.md, kit/registry.md (how to wire registry items), cards/<name>.md (a doctrine card not pinned for this route; context.cards lists them).',
  write:'Write a whole source file. Keep each file under about 6,000 characters; split markup, styles and script across index.html, style.css and main.js.',
  patch:'Replace one exact occurrence of before with after in a source file. Read the file first; before must match exactly once.',
  check:'Validate the current draft: lint, layout, motion, contrast, timing, reading time, grounded numbers.',
