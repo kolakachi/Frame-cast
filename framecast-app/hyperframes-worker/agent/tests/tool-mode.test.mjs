@@ -126,3 +126,12 @@ test('a tool call whose input arrived as an empty array is kept as an object in 
  const first=seen[1].messages.find(m=>m.role==='assistant');
  assert.deepEqual(first.content[1].input,{});assert.equal(JSON.stringify(first.content[1].input),'{}');
 });
+test('tool calls are forgiven their transport: empty params as [] and a script named with its folder',async()=>{
+ const {actionFromToolUse}=await import('../protocol.mjs');
+ assert.deepEqual(actionFromToolUse({name:'media',input:{op:'probe',input:'clip.mp4',params:[]}}).params,{});
+ assert.deepEqual(actionFromToolUse({name:'run',input:{cmd:'node',args:['work/show.mjs','3']}}).args,['show.mjs','3']);
+ const runs=[];
+ const {state}=await harness([[use('b','run',{cmd:'node',args:['work/show.mjs']}),use('c','write',{path:'index.html',content:'<html>1</html>'}),use('e','preview',{times:[1]})],[use('d','finish',{summary:'x'})]],
+  {requireVisualReview:false,tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true}),run:async a=>{runs.push(a);return {ok:true,exit:0,stdout:'',stderr:'',outputs:[],scratch:[]};}})});
+ assert.deepEqual(runs[0].args,['show.mjs']);assert.equal(state.repairs,0);
+});

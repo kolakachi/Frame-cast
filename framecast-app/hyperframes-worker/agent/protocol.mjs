@@ -103,9 +103,10 @@ const SCHEMA={
 export const toolDefinitions=Object.keys(fields).map(name=>({name,description:DESC[name]||name,input_schema:{type:'object',properties:SCHEMA[name]||{},required:Object.keys(SCHEMA[name]||{}),additionalProperties:false}}));
 // A tool call becomes an action: the tool name is the type, its input the fields; absent optional fields are filled.
 export function actionFromToolUse(block){
- const input=block&&typeof block.input==='object'&&block.input?block.input:{};
+ const input=block&&typeof block.input==='object'&&block.input&&!Array.isArray(block.input)?block.input:{};
  const action={type:block?.name,...input};
- if(action.type==='media'&&action.params===undefined)action.params={};
+ if(action.type==='media'&&(action.params===undefined||(Array.isArray(action.params)&&!action.params.length)))action.params={};
+ if(action.type==='run'&&Array.isArray(action.args))action.args=action.args.map(a=>typeof a==='string'?a.replace(/^\.?\/?work\//,''):a);
  if(action.type==='patch'&&action.after===undefined)action.after='';
  return validateAction(action);
 }
