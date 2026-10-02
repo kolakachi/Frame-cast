@@ -200,8 +200,9 @@ class PlanMediaExecutor
         if (! is_file($dir.'/line.wav')) throw new RuntimeException('The first line could not be cut from the narration.');
         $adapter = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
         $id = $adapter->start($this->replicateUpload($image, $imageMime), $this->replicateUpload((string) file_get_contents($dir.'/line.wav'), 'audio/wav'), null);
-        $url = $adapter->pollUntilDone($id, 330);
-        if (! $url) throw new RuntimeException('The talking shot took too long to make.');
+        // Measured: a 3 s shot returns in about a minute; a 15 s take in five to ten.
+        $url = $adapter->pollUntilDone($id, $whole ? 840 : 330);
+        if (! $url) throw new RuntimeException(($whole ? 'The talking take' : 'The talking shot').' took too long to make.');
         $path = $this->fetch($url, $dir.'/talking.mp4');
         return ['path' => $path, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'), 'provider_id' => 'talk-'.preg_replace('/[^a-zA-Z0-9_-]/', '', $id), 'line' => $line, 'seconds' => $end];
     }

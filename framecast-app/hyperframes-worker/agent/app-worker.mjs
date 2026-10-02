@@ -123,7 +123,7 @@ async function execute(run){
    if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
     const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])});
     planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},
-     produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,420000),
+     produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,900000),
      download});
     if(lost||cancelled||stopping)throw Error('Stopped while getting plan media');
    }
@@ -135,7 +135,7 @@ async function execute(run){
    // A purchase the agent decides on, within the approved ceiling; the API refuses anything over it (402).
    const buy=async({kind,description,signal})=>{
     let r;
-    try{r=await request('runs/'+run.id+'/plan-media/adhoc',{lease_token:run.lease_token,kind,description},false,420000);}
+    try{r=await request('runs/'+run.id+'/plan-media/adhoc',{lease_token:run.lease_token,kind,description},false,900000);}
     catch(e){const m=String(e.message);return {ok:false,over_ceiling:/HTTP 402/.test(m),error:m.replace(/^Coordinator returned HTTP \d+: ?/,'').slice(0,300)};}
     if(r.status!=='succeeded')return {ok:false,error:r.error||'The item could not be made.'};
     const files=[];

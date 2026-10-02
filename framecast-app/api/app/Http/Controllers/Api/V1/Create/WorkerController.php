@@ -95,7 +95,7 @@ class WorkerController extends Controller
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64']);
         // Generation can take minutes (animation especially).
-        set_time_limit(420);
+        set_time_limit(900);
         return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produce($id, $input['lease_token'], $index)]);
     }
 
@@ -104,7 +104,7 @@ class WorkerController extends Controller
     {
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'kind' => 'required|string|max:40', 'description' => 'required|string|max:200']);
-        set_time_limit(420);
+        set_time_limit(900);
         return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produceAdHoc($id, $input['lease_token'], $input['kind'], $input['description'])]);
     }
 
