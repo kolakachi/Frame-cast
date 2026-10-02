@@ -285,8 +285,8 @@ class PlanService
         $kept = collect((array) ($raw['kept_as_is'] ?? []))->map(fn ($t) => $str($t, 80))->filter()->unique()->take(8)->values()->all();
         $media = collect((array) ($raw['media'] ?? []))->filter(fn ($m) => is_array($m) && $known->has($m['kind'] ?? ''))
             ->map(fn ($m) => ['kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'credits' => (int) $known[$m['kind']]['credits']])->take(6)
-            // The talking shot is made from the poses and the narration, so it is always bought after them.
-            ->sortBy(fn ($m) => $m['kind'] === 'talking_shot' ? 1 : 0, SORT_NUMERIC, false)->values()->all();
+            // A talking shot or take is made from the poses and the narration, so it is always bought after them.
+            ->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true) ? 1 : 0, SORT_NUMERIC, false)->values()->all();
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
         // Measured: the catalogue voices speak about 2 words a second with pauses; leave 1.5 s at the end.

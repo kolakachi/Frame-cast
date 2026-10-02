@@ -778,9 +778,11 @@ class CreateIntegrationTest extends TestCase
         config(['services.replicate.api_token' => 'tok']);
         $uploads = 0;
         Http::fake(['api.replicate.com/v1/files' => function () use (&$uploads) { $uploads++; return Http::response(['urls' => ['get' => 'https://api.replicate.com/v1/files/f'.$uploads]]); },
-            'api.replicate.com/v1/models/bytedance/omni-human/predictions' => Http::response(['id' => 'pred_talk1', 'status' => 'starting']),
+            // The shot first, then the take: the earliest stub for a URL wins in Laravel's fake, so both replies are sequenced here.
+            'api.replicate.com/v1/models/bytedance/omni-human/predictions' => Http::sequence()->push(['id' => 'pred_talk1', 'status' => 'starting'])->push(['id' => 'pred_take1', 'status' => 'starting']),
             'api.replicate.com/v1/predictions/pred_talk1' => Http::response(['status' => 'succeeded', 'output' => 'https://replicate.delivery/x/talk.mp4']),
-            'replicate.delivery/*' => Http::response('MP4BYTES')]);
+            'api.replicate.com/v1/predictions/pred_take1' => Http::response(['status' => 'succeeded', 'output' => 'https://replicate.delivery/x/take.mp4']),
+            'replicate.delivery/*' => Http::sequence()->push('MP4BYTES')->push('TAKEBYTES')]);
         $made = app(\App\Services\Create\PlanMediaExecutor::class)->produce('talking_shot', 'hook', ['workspace_id' => $this->workspace->id, 'narration' => ['Got an idea?', 'Turn any idea into a video.'], 'plan_id' => $planId], $tmp);
         $this->assertSame(['video/mp4', 'MP4BYTES', 'Got an idea?', 1.5], [$made['mime'], file_get_contents($made['path']), $made['line'], $made['seconds']], 'the line ends at 1.1 s plus a breath, held to the 1.5 s a lip-sync clip needs');
         $this->assertStringContainsString('Talking shot', $made['title']);
@@ -788,6 +790,13 @@ class CreateIntegrationTest extends TestCase
         $cut = trim(\Illuminate\Support\Facades\Process::run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $tmp.'/line.wav'])->output());
         $this->assertEqualsWithDelta(1.5, (float) $cut, 0.05, 'the uploaded audio is the first line only');
         $this->assertSame(2, $uploads, 'the talking pose was chosen, not the first pose');
+
+        // The take: the whole narration, no transcription, at most 15 s; priced at the 15 s tariff.
+        $take = app(\App\Services\Create\PlanMediaExecutor::class)->produce('talking_take', 'a-roll', ['workspace_id' => $this->workspace->id, 'narration' => ['Got an idea?', 'Turn any idea into a video.'], 'plan_id' => $planId], $tmp);
+        $this->assertSame(['TAKEBYTES', 'Got an idea? Turn any idea into a video.', 4.0], [file_get_contents($take['path']), $take['line'], $take['seconds']]);
+        $this->assertStringContainsString('Talking take', $take['title']);
+        $this->assertEqualsWithDelta(4.0, (float) trim(\Illuminate\Support\Facades\Process::run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $tmp.'/line.wav'])->output()), 0.05, 'the whole narration is uploaded');
+        $this->assertSame(\App\Services\CreditService::spokespersonCost(15.0), \App\Services\Create\CapabilityCatalogue::credits('talking_take', $this->workspace->id));
     }
 
     public function test_every_catalogue_item_can_be_made_by_the_executor(): void

@@ -18,7 +18,7 @@ use RuntimeException;
 class PlanMediaExecutor
 {
     /** Kinds this executor can make; the catalogue must not offer anything outside it. */
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'talking_shot', 'brand_kit'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'talking_shot', 'talking_take', 'brand_kit'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -34,6 +34,7 @@ class PlanMediaExecutor
             'sfx' => $this->soundSheet($description, $dir),
             'character_poses' => $this->characterPoses($description, $ctx, $dir),
             'talking_shot' => $this->talkingShot($ctx, $dir),
+            'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
@@ -171,9 +172,10 @@ class PlanMediaExecutor
      * pose plus that line cut from the bought narration (so the clip and the voice
      * share one timeline), through the workspace's lipsync engine (OmniHuman by default).
      */
-    private function talkingShot(array $ctx, string $dir): array
+    private function talkingShot(array $ctx, string $dir, bool $whole = false): array
     {
-        $line = trim((string) (($ctx['narration'] ?? [])[0] ?? ''));
+        // The take speaks the whole narration (at most 15 s, the catalogue price); the shot speaks the first line.
+        $line = $whole ? trim(implode(' ', array_map('strval', (array) ($ctx['narration'] ?? [])))) : trim((string) (($ctx['narration'] ?? [])[0] ?? ''));
         if ($line === '' || empty($ctx['plan_id'])) throw new RuntimeException('A talking shot needs a narration script.');
         $item = fn (array $kinds) => \Illuminate\Support\Facades\DB::table('create_plan_media')->where('plan_id', $ctx['plan_id'])->whereIn('kind', $kinds)->where('status', 'succeeded')->first();
         $poses = $item(['character_poses']); $voice = $item(['voiceover', 'cloned_voiceover']);
@@ -193,7 +195,7 @@ class PlanMediaExecutor
         [$audio, $audioMime] = $read($v['file']);
         $narration = $dir.'/narration.'.(str_contains($audioMime, 'mpeg') || str_contains($audioMime, 'mp3') ? 'mp3' : 'wav');
         file_put_contents($narration, $audio);
-        $end = $this->firstLineEnd($narration, $audioMime, $line);
+        $end = $whole ? min(15.0, max(1.5, round((float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $narration])->output()), 2))) : $this->firstLineEnd($narration, $audioMime, $line);
         Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $narration, '-t', (string) $end, '-c:a', 'pcm_s16le', $dir.'/line.wav']);
         if (! is_file($dir.'/line.wav')) throw new RuntimeException('The first line could not be cut from the narration.');
         $adapter = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
@@ -201,7 +203,7 @@ class PlanMediaExecutor
         $url = $adapter->pollUntilDone($id, 330);
         if (! $url) throw new RuntimeException('The talking shot took too long to make.');
         $path = $this->fetch($url, $dir.'/talking.mp4');
-        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'Talking shot · '.Str::limit($line, 40, '…'), 'provider_id' => 'talk-'.preg_replace('/[^a-zA-Z0-9_-]/', '', $id), 'line' => $line, 'seconds' => $end];
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'), 'provider_id' => 'talk-'.preg_replace('/[^a-zA-Z0-9_-]/', '', $id), 'line' => $line, 'seconds' => $end];
     }
 
     /** Where the first script line ends in the narration, from word timings; a sensible length when unsure. */

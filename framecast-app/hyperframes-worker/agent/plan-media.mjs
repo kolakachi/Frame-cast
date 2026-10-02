@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
 
-const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character poses',talking_shot:'the talking shot',brand_kit:'your brand kit'};
+const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character poses',talking_shot:'the talking shot',talking_take:'the talking take',brand_kit:'your brand kit'};
 
 // Asks the app to buy each approved plan item in order, then stages the
 // returned files as usable source footage. A failed item never stops the

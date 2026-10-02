@@ -44,7 +44,7 @@ These rules apply whatever the style. A style pack adds character on top; it nev
 - Put cuts and pops on the music's strong beats when the music has a clear pulse.
 
 ## The presenter performs (when a talking shot or character poses exist)
-- A talking shot is the A-roll: the character speaks on camera at hero scale while the words are heard; never leave it as a muted clip or a still. B-roll beats (UI cards, the browser, the formats) cut in beside or over the A-roll and return to it; the close is A-roll.
+- A talking take (the whole narration) or talking shot (the hook line) is the A-roll: the character speaks on camera at hero scale while the words are heard, its own audio as the voice track for its span (do not also play the narration file over it); never leave it as a muted clip or a still. B-roll beats (UI cards, the browser, the formats) cut in beside or over the A-roll and return to it; the close is A-roll.
 - Between spoken lines the character reacts with the poses: a cut to the surprised, pointing or grinning pose on the beat, with a small settle (scale 1.04 to 1, a 2 to 3 degree tilt) so a still never sits dead. Every beat the character is on screen, something about them changes.
 - Declare composition variables fully: each `data-composition-variables` entry needs `id`, `label`, `type` and `default`.
 
