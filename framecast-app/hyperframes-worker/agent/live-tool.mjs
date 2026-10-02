@@ -3,7 +3,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {inspectionReport} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
-if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run'].includes(operation))throw Error('Invalid local job');
+if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip'].includes(operation))throw Error('Invalid local job');
 if(operation==='run'){
  // One allowlisted program in the run's work folder; the request was written by the host.
  const {runOp}=await import('./run-tool.mjs');
@@ -67,12 +67,29 @@ if(operation==='delivery'){
 else if(operation==='render')result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');
- const args=operation==='timeline'?['timeline','--json']:operation==='check'?['check',root,'--json']:['snapshot',root,'--at',times,'--no-end','--describe','false','--output',out];
+ // The strip: a frame every half second across the whole video, for the critic's view of pacing and motion.
+ const stripTimes=operation==='strip'?Array.from({length:Math.min(30,Math.floor(settings.duration_seconds*2))},(_,i)=>(i*0.5+0.25).toFixed(2)).join(','):null;
+ const args=operation==='timeline'?['timeline','--json']:operation==='check'?['check',root,'--json']:['snapshot',root,'--at',stripTimes??times,'--no-end','--describe','false','--output',out];
  try {const {stdout,stderr}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',...args],{cwd:root,timeout:120000,maxBuffer:16000000});await writeFile(out+'/command.log',stdout+stderr);result={ok:operation==='check'?JSON.parse(stdout).ok===true:true,diagnostics:operation==='timeline'?JSON.parse(stdout):operation==='check'?inspectionReport(stdout):'Snapshots captured'};}
  catch(e){await writeFile(out+'/command.log',(e.stdout||'')+(e.stderr||''));result={ok:false,diagnostics:operation==='check'?inspectionReport(e.stdout||e.stderr||e.message):(e.stdout||e.stderr||e.message).slice(0,12000)};}
 }
 // Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
 if(operation==='check'&&result.ok)result.pacing=await pacing();
+if(operation==='strip'&&result.ok){
+ const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort();
+ if(!shots.length)throw Error('Strip returned no images');
+ const cell=dims[0]>dims[1]?[192,108]:dims[0]===dims[1]?[144,144]:[108,192],cols=10,rows=Math.ceil(shots.length/cols);
+ const inputs=shots.flatMap(n=>['-i',out+'/'+n]);
+ const filters=shots.map((_,i)=>`[${i}:v]scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black,drawtext=text='${shots[i].replace(/^.*at-([0-9.]+)s.*$/,'$1')}':fontcolor=white:fontsize=14:x=3:y=3[c${i}]`).join(';')
+  +';'+Array.from({length:rows},(_,r)=>shots.slice(r*cols,r*cols+cols).map((_,i)=>`[c${r*cols+i}]`).join('')+`hstack=inputs=${Math.min(cols,shots.length-r*cols)}[r${r}]`).join(';')
+  +(rows>1?';'+Array.from({length:rows},(_,r)=>`[r${r}]`).join('')+`vstack=inputs=${rows}[strip]`:';[r0]copy[strip]');
+ try{await promisify(execFile)('ffmpeg',['-y',...inputs,'-filter_complex',filters,'-map','[strip]','-frames:v','1',out+'/strip.jpg'],{timeout:60000,maxBuffer:1000000});}
+ catch{ // uneven last row or no drawtext: fall back to a plain grid without labels
+  const f2=shots.map((_,i)=>`[${i}:v]scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black[c${i}]`).join(';')+';'+shots.map((_,i)=>`[c${i}]`).join('')+`hstack=inputs=${shots.length}[strip]`;
+  await promisify(execFile)('ffmpeg',['-y',...inputs,'-filter_complex',f2,'-map','[strip]','-frames:v','1',out+'/strip.jpg'],{timeout:60000,maxBuffer:1000000});
+ }
+ result={ok:true,frames:shots.length,every_seconds:0.5};
+}
 if(operation==='snapshot'&&result.ok){
  const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort().slice(0,5);
  if(!shots.length)throw Error('Snapshot returned no images');

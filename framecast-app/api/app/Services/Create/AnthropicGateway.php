@@ -39,7 +39,7 @@ class AnthropicGateway
     {
         app(RunService::class)->validateResultLease($runId, $lease);
         $attempt = DB::table('composition_attempts')->where('run_id', $runId)->where('id', $attemptId)->firstOrFail();
-        abort_unless($attempt->provider === 'anthropic' && $attempt->kind === 'agent', 422, 'This attempt is not an Anthropic agent call.');
+        abort_unless($attempt->provider === 'anthropic' && in_array($attempt->kind, ['agent', 'critic'], true), 422, 'This attempt is not an Anthropic agent call.');
         abort_unless($attempt->status === 'started' && ! $attempt->prediction_id, 409, 'This attempt was already sent. Reconcile instead of sending again.');
         $canonical = ['prompt' => $input['prompt'], 'system' => $input['system'], 'maxTokens' => $input['max_tokens'], 'image' => $input['image'] ?? null];
         // Tool mode: the worker hashes the serialised history and tool list as strings, so both sides agree byte for byte.
@@ -49,7 +49,7 @@ class AnthropicGateway
         abort_unless(hash_equals($attempt->request_hash, $hash), 409, 'The call does not match the recorded attempt.');
 
         // Output tokens are bounded by what was approved with the run.
-        $policy = data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'execution_policy.agent', []);
+        $policy = data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'execution_policy.'.$attempt->kind, []);
         abort_unless((int) $input['max_tokens'] <= (int) ($policy['max_output_tokens'] ?? 8192), 422, 'The output limit is above what this run approved.');
 
         $content = [];

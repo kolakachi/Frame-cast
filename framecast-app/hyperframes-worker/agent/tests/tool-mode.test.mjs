@@ -2,11 +2,11 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile} from 'node:fs/promises';import {tmpdir} from 'node:os';
 import {runAgent} from '../runner.mjs';import {Workspace} from '../workspace.mjs';
 const use=(id,name,input)=>({type:'tool_use',id,name,input});
-async function harness(turns,{limits={},requireVisualReview=true,tools}={}){
+async function harness(turns,{limits={},requireVisualReview=true,tools,context={}}={}){
  const dir=await mkdtemp(tmpdir()+'/tool-');await writeFile(dir+'/index.html','<html></html>');
  let i=0;const seen=[];
  const provider={id:'t',maxCallUsd:0,complete:async args=>{seen.push(args);const t=turns[i++]??turns.at(-1);return {content:t,text:'',predictionId:'p'+i,metrics:{}};}};
- const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[],dir+'-work'),provider,context:{brief:'x',toolMode:true},limits:{calls:6,repairs:3,budgetUsd:0,...limits},requireVisualReview,
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[],dir+'-work'),provider,context:{brief:'x',toolMode:true,...context},limits:{calls:6,repairs:3,budgetUsd:0,...limits},requireVisualReview,
   tools:(typeof tools==='function'?tools(dir):tools)??{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
  return {state,seen,dir};
 }
@@ -75,4 +75,32 @@ test('catalog searches through the host tool; an over-long query is refused as m
   [use('e','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('f','finish',{summary:'Done'})],
  ],{tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),catalog:async a=>{seen.push(a.query);return {results:[{name:'browser-device-stage'}]};}}});
  assert.equal(state.status,'preview_ready');assert.deepEqual(seen,['browser frame']);assert.equal(state.repairs,1);
+});
+test('the critic has the last word: a revise verdict returns directives and blocks finish until the next passing review; a pass finishes with its scores',async()=>{
+ const critics=[],strips=[];
+ const verdicts=[{ok:true,verdict:'revise',scores:{hook:5,hierarchy:7,density:6,energy:7,performance:7},mean:6.4,directives:['2 s: make the headline three times larger'],note:''},
+  {ok:true,verdict:'pass',scores:{hook:8,hierarchy:9,density:8,energy:8,performance:8},mean:8.2,directives:[],note:'Lands'}];
+ const {state,seen}=await harness([
+  [use('a','write',{path:'index.html',content:'<html><script>window.__timelines["main"]=1;</script></html>'}),use('b','preview',{times:[1]})],
+  [use('c','visual_review',{decision:'pass',findings:'Good',scores:[{time:1,score:9,problems:[]}]}),use('d','finish',{summary:'Done'})],
+  [use('e','patch',{path:'index.html',before:'main',after:'main2'}),use('f','preview',{times:[1]})],
+  [use('g','visual_review',{decision:'pass',findings:'Better',scores:[{time:1,score:9,problems:[]}]}),use('h','finish',{summary:'Done'})],
+ ],{limits:{calls:8,repairs:3,criticCalls:2},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
+  strip:async()=>{strips.push(1);return {ok:true,providerImage:'data:image/jpeg;base64,Yg=='};},
+  critic:async a=>{critics.push(a);return verdicts[critics.length-1];}})});
+ assert.equal(state.status,'preview_ready');assert.equal(critics.length,2);assert.equal(strips.length,2,'a strip per critic round');
+ assert.equal(critics[0].sheet.image,'data:image/jpeg;base64,YQ==');assert.equal(critics[0].strip,'data:image/jpeg;base64,Yg==');assert.equal(critics[1].round,2);
+ const r=seen[2].messages.at(-1).content.filter(b=>b.type==='tool_result');
+ assert.match(r[0].content,/directives/);assert.match(r[0].content,/three times larger/);
+ assert.equal(r[1].is_error,true,'finish is refused until the next passing review');assert.match(r[1].content,/Visual review is required/);
+ assert.match(state.summary,/Critic: hook 8, hierarchy 9/);assert.equal(state.criticCalls,2);
+});
+test('without a critic tool the review pass finishes as before; a look run asks for no strip',async()=>{
+ const strips=[];
+ const {state}=await harness([
+  [use('a','write',{path:'index.html',content:'<html>1</html>'}),use('b','preview',{times:[1]})],
+  [use('c','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]})],
+ ],{limits:{calls:4,repairs:2,criticCalls:1},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),strip:async()=>{strips.push(1);return {ok:true};},
+  critic:async()=>({ok:true,verdict:'pass',scores:{hook:8,hierarchy:8,density:8,energy:8,performance:8},mean:8,directives:[],note:''})}),context:{lookOnly:true}});
+ assert.equal(state.status,'preview_ready');assert.equal(strips.length,0,'no strip for stills');
 });

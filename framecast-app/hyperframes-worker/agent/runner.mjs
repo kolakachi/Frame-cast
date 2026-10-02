@@ -1,4 +1,6 @@
 import {readFile,writeFile,rename} from 'node:fs/promises';
+import {preflight} from './preflight.mjs';
+import {criticLine} from './critic.mjs';
 import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings,duckingFindings} from './timing-check.mjs';
@@ -9,7 +11,7 @@ import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{}}) {
-  const cap={calls:12,repairs:2,runs:24,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
+  const cap={calls:12,repairs:2,runs:24,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
   let state;
@@ -100,9 +102,12 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           text=old.replace(action.before,action.after);
         }
         if(action.path==='index.html')assertLockedSource(context,text);
+        // Pre-flight: fix what has one right answer, name the rest, before a check call is spent.
+        const flight=action.path.startsWith('work/')?{text,fixed:[],warnings:[]}:preflight({path:action.path,text,assets:workspace.assets.map(a=>a.path)});
+        text=flight.text;
         await workspace.write(action.path,text);
         if(action.path.startsWith('work/'))result={written:action.path,note:'Scratch file; run it with the run action.'};
-        else {state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision};}
+        else {state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision,...(flight.fixed.length?{fixed:flight.fixed}:{}),...(flight.warnings.length?{warnings:flight.warnings}:{})};}
       } catch(e) {
         // Only known pre-write authoring rejections are repairable. Filesystem,
         // sandbox and uncertain write failures still stop the run.
@@ -177,7 +182,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
       if(!result.ok)result=repeated(result);else state.lastFindings=null;
-      if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
+      if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     }
     else if(action.type==='check') {
@@ -189,15 +194,29 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     } else if(action.type==='snapshot') {
       if(state.checkedRevision!==state.revision)throw Error('Check the current draft before snapshots');
       result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));
-      if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;await keepGood();result={...result,providerImage:undefined};}
+      if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined};}
     } else if(action.type==='visual_review') {
       if(!reviewImage || state.snapshotRevision!==state.revision)throw Error('Visual review requires current host-provided snapshot');
       state.reviewImage=null;
       state.scores=action.scores.map(x=>({time:x.time,score:x.score,problems:x.problems.slice(0,3)}));
       const scoreLine=' Review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.';
-      if(action.decision==='pass'){state.reviewedRevision=state.revision;if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine).slice(0,1900);}}
+      if(action.decision==='pass'){
+        state.reviewedRevision=state.revision;
+        // The critic has the last word: a separate reviewer with the frames and, for a motion build, the strip across the video.
+        let verdict=null;
+        if(requireVisualReview&&tools.critic&&(state.criticCalls??0)<cap.criticCalls){
+          state.criticCalls=(state.criticCalls??0)+1;progress('The critic is reviewing');
+          let strip=null;if(!context.lookOnly&&tools.strip)strip=(await bounded(()=>tools.strip({signal:boundedSignal})).catch(()=>null))?.providerImage??null;
+          verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
+          state.critic=verdict;
+        }
+        if(verdict&&verdict.verdict==='revise'){
+          state.reviewedRevision=-1;
+          result={decision:'pass',scores:state.scores,critic:{scores:verdict.scores,directives:verdict.directives,note:verdict.note},next:'The critic asks for changes before this can finish: address each directive with patches, then preview and review again.'+((state.criticCalls??0)>=cap.criticCalls?' This was the last critic round; the next passing review finishes.':'')};
+        } else if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine+(verdict?' '+criticLine(verdict):state.critic?' '+criticLine(state.critic)+' Last directives not all confirmed.':'')).slice(0,1900);}
+      }
       else {state.reviewedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Visual repair limit reached');}
-      result={decision:action.decision,findings:action.findings,scores:state.scores,...(action.decision==='repair'?{next:'Fix the lowest-scoring frames first: '+state.scores.filter(x=>x.score<8).sort((a,b)=>a.score-b.score).flatMap(x=>x.problems).slice(0,3).join('; ')}:{})};
+      if(!result)result={decision:action.decision,findings:action.findings,scores:state.scores,...(action.decision==='repair'?{next:'Fix the lowest-scoring frames first: '+state.scores.filter(x=>x.score<8).sort((a,b)=>a.score-b.score).flatMap(x=>x.problems).slice(0,3).join('; ')}:{})};
     } else if(action.type==='finish') {
       if(requireVisualReview && state.reviewedRevision!==state.revision)throw Error('Visual review is required');
       if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');

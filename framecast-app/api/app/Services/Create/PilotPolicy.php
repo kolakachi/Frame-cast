@@ -35,6 +35,8 @@ class PilotPolicy
                 'cost_limit_microusd'=>450000,'max_calls'=>16,'max_output_tokens'=>16384,'context_bytes'=>96000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
+                // The critic: a separate reviewer, two short low-effort calls with the frames and the strip.
+                'critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>25,'effort'=>'low','cost_limit_microusd'=>100000,'max_calls'=>2,'max_output_tokens'=>2048],
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

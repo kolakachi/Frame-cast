@@ -180,7 +180,7 @@ class ConversationService
                 $fromLook = ! empty($baseMeta['look']) && (bool) preg_match('/\b(approve|approved|looks? good|go ahead|build (it|the motion)|animate it)\b/i', $lastUser);
                 $lookFirst = $paid && isset($policy['agent']) && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && ! $fromLook
                     && ((! $base && ! empty($plan['look_first'])) || ! empty($baseMeta['look']));
-                if ($lookFirst) $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8);
+                if ($lookFirst) { $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8); if (isset($policy['critic'])) $policy['critic']['max_calls'] = 1; }
                 $resolvedPack = StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
                     DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all());
                 // Media is approved as a ceiling, not an item list: the plan's items are the estimate; the agent may buy

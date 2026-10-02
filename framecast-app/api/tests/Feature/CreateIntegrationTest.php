@@ -364,7 +364,10 @@ class CreateIntegrationTest extends TestCase
         // Media is approved as a ceiling: 1.5x the estimate, with room for six more purchases.
         $this->assertSame([(int) ceil(($imageCredits + 0 + 3) * 1.5), 3 + 6], [$media['total_credits'], $media['max_calls']]);
         $agent = $q->payload_json['execution_policy']['agent'];
-        $this->assertSame($agent['credits'] * $agent['max_calls'] + $media['total_credits'], (int) $q->credits_max, 'one approval covers the build and the media ceiling');
+        // The critic comes with the Anthropic build policy; a Replicate build has none.
+        $critic = $q->payload_json['execution_policy']['critic'] ?? ['credits' => 0, 'max_calls' => 0];
+        if ($agent['provider'] === 'anthropic') $this->assertSame([2, 'low'], [$critic['max_calls'], $critic['effort']], 'two low-effort critic rounds come with every paid build');
+        $this->assertSame($agent['credits'] * $agent['max_calls'] + $critic['credits'] * $critic['max_calls'] + $media['total_credits'], (int) $q->credits_max, 'one approval covers the build, the critic and the media ceiling');
 
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
         $calls = [];
@@ -870,6 +873,7 @@ class CreateIntegrationTest extends TestCase
         $plans->select($this->owner, $c->id, $plan['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['look_first' => true]);
         $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
         $this->assertSame([true, false, 8], [$q->payload_json['look_first'], $q->payload_json['from_look'], $q->payload_json['execution_policy']['agent']['max_calls']], 'the look run is short');
+        $this->assertSame(1, $q->payload_json['execution_policy']['critic']['max_calls'], 'one critic round on the stills');
 
         // The look version is recorded as such; approving it quotes the motion build from it.
         $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-look', true);
@@ -948,8 +952,9 @@ class CreateIntegrationTest extends TestCase
         // The worker hashes {prompt, system, maxTokens, image, messagesJson, toolsJson} as JSON; the gateway must agree.
         $hash = hash('sha256', json_encode(['prompt' => 'tool-mode call 1', 'system' => 'sys', 'maxTokens' => 4096, 'image' => null, 'messagesJson' => $messagesJson, 'toolsJson' => $toolsJson], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS));
         $a = $attempts->begin($run->id, $claim['lease_token'], 'agent-1', 'agent', $hash);
-        Http::fake(['api.anthropic.com/*' => Http::response(['id' => 'msg_tool', 'stop_reason' => 'tool_use', 'usage' => ['input_tokens' => 100, 'output_tokens' => 50],
-            'content' => [['type' => 'text', 'text' => 'Writing.'], ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'write', 'input' => ['path' => 'index.html']], ['type' => 'server_tool_use', 'id' => 'x']]])]);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()->push(['id' => 'msg_tool', 'stop_reason' => 'tool_use', 'usage' => ['input_tokens' => 100, 'output_tokens' => 50],
+            'content' => [['type' => 'text', 'text' => 'Writing.'], ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'write', 'input' => ['path' => 'index.html']], ['type' => 'server_tool_use', 'id' => 'x']]])
+            ->push(['id' => 'msg_critic', 'stop_reason' => 'end_turn', 'usage' => ['input_tokens' => 90, 'output_tokens' => 40], 'content' => [['type' => 'text', 'text' => '{"scores":{}}']]])]);
         $out = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $a['id'], ['prompt' => 'tool-mode call 1', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => $toolsJson]);
         $this->assertSame(['text', 'tool_use'], array_column($out['content'], 'type'), 'content blocks come back; unknown block types are dropped');
         $this->assertSame('tool_use', $out['stop_reason']);
@@ -960,6 +965,16 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('"input":{}', $sent->body(), 'an empty tool_use input stays an object');
         // A history with an unknown block type is refused before any call.
         $b = $attempts->begin($run->id, $claim['lease_token'], 'agent-2', 'agent', 'h2');
+        // The critic is a separate kind with its own, smaller policy; the gateway reads that policy's limits.
+        $input['execution_policy']['critic'] = ['provider' => 'anthropic', 'model' => 'claude-opus-5-5', 'credits' => 25, 'effort' => 'low', 'cost_limit_microusd' => 100000, 'max_calls' => 2, 'max_output_tokens' => 2048];
+        DB::table('composition_runs')->where('id', $run->id)->update(['input_json' => json_encode($input)]);
+        $criticHash = hash('sha256', json_encode(['prompt' => 'critic call 1', 'system' => 'critic', 'maxTokens' => 2048, 'image' => null, 'messagesJson' => $messagesJson, 'toolsJson' => '[]'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS));
+        $cr = $attempts->begin($run->id, $claim['lease_token'], 'critic-1', 'critic', $criticHash);
+        // The output limit is part of the recorded request: a call with a different one is a different call.
+        $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $cr['id'], ['prompt' => 'critic call 1', 'system' => 'critic', 'max_tokens' => 4096, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => '[]']));
+        $verdict = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $cr['id'], ['prompt' => 'critic call 1', 'system' => 'critic', 'max_tokens' => 2048, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => '[]']);
+        $this->assertSame('end_turn', $verdict['stop_reason']);
+        Http::assertSent(fn ($r) => $r['max_tokens'] === 2048 && $r['output_config']['effort'] === 'low' && ! isset($r['tools']));
         $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $b['id'], ['prompt' => 'p', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => json_encode([['role' => 'user', 'content' => [['type' => 'document']]]]), 'tools_json' => '[]']));
         $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'document']]]], []));
         $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'text', 'text' => 'x']]]], [['name' => 'Bad Name', 'input_schema' => []]]));
