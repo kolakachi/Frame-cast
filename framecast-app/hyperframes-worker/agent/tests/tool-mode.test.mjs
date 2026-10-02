@@ -116,3 +116,8 @@ test('earlier file writes leave the history so a build of large files fits the c
  assert.match(first.content[0].input.content,/^\[written earlier, 30\d+ bytes/,'the old write is a placeholder');
  assert.ok(Buffer.byteLength(JSON.stringify(seen[2].messages))<40000);
 });
+test('the first turn is a cache breakpoint',async()=>{
+ const {seen}=await harness([[use('a','write',{path:'index.html',content:'<html>1</html>'}),use('b','preview',{times:[1]})],[use('c','visual_review',{decision:'pass',findings:'x',scores:[{time:1,score:9,problems:[]}]}),use('d','finish',{summary:'Done'})]]);
+ const first=seen[1].messages[0];assert.ok(first.content.some(b=>b.type==='text'&&b.cache_control?.type==='ephemeral'),'the context block is the breakpoint');
+ assert.equal(first.content.filter(b=>/^Remaining calls/.test(b.text||'')).length,0,'the budget line moves with the last turn');
+});

@@ -46,3 +46,10 @@ test('an exhausted allowance stops before any attempt is recorded',async()=>{
   assert.equal(result.state.status,'budget_exhausted');assert.equal(began,0,'no attempt is begun, so nothing is left held');assert.equal(result.state.pending,null);
  }finally{await rm(directory,{recursive:true,force:true});}
 });
+
+test('the instruction keeps only the sentences this run can use',async()=>{
+ const {trimInstruction}=await import('../composition-agent.mjs');
+ const text='Always true. When lookOnly is true do stills. When planMedia has a talking_shot clip, lip-sync. Sound mix: a music file is the bed. Use preview before finishing.';
+ assert.equal(trimInstruction(text,{lookOnly:false,talking:true,music:false}),'Always true. When planMedia has a talking_shot clip, lip-sync. Use preview before finishing.');
+ assert.equal(trimInstruction(text,{}),text,'unknown flags keep the sentence');
+});

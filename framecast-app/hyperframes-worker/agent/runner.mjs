@@ -235,7 +235,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   };
   // Tool mode: the conversation is a real message history; a turn may carry several tool calls.
   const toolMode=context.toolMode===true;
-  const turns=()=>{state.turns??=[{role:'user',content:[...(initialImage&&/^data:image\/(png|jpeg);base64,/.test(initialImage)?[{type:'image',source:{type:'base64',media_type:initialImage.startsWith('data:image/png')?'image/png':'image/jpeg',data:initialImage.split(',')[1]}}]:[]),{type:'text',text:JSON.stringify({context})}]}];return state.turns;};
+  const turns=()=>{state.turns??=[{role:'user',content:[...(initialImage&&/^data:image\/(png|jpeg);base64,/.test(initialImage)?[{type:'image',source:{type:'base64',media_type:initialImage.startsWith('data:image/png')?'image/png':'image/jpeg',data:initialImage.split(',')[1]}}]:[]),{type:'text',text:JSON.stringify({context}),cache_control:{type:'ephemeral'}}]}];return state.turns;};
   // Keep the history inside the context budget: only the latest frames stay as an image, old tool results shrink.
   const compactTurns=()=>{
     const t=turns();let lastImage=-1;
@@ -280,7 +280,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         compactTurns();
         const history=turns();
         // The last user turn carries the call budget so the model paces itself.
-        const last=history.at(-1);if(last.role==='user'){last.content=last.content.filter(b=>!(b.type==='text'&&/^Remaining calls:/.test(b.text||'')));last.content.push({type:'text',text:'Remaining calls: '+(cap.calls-state.calls)+'. Revision: '+state.revision+'.'});}
+        for(const m of history)if(m.role==='user')m.content=m.content.filter(b=>!(b.type==='text'&&/^Remaining calls:/.test(b.text||'')));
+        const last=history.at(-1);if(last.role==='user')last.content.push({type:'text',text:'Remaining calls: '+(cap.calls-state.calls)+'. Revision: '+state.revision+'.'});
         const response=await bounded(()=>provider.complete({prompt:'tool-mode call '+state.calls,system:toolHostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,messages:structuredClone(history),tools:toolDefinitions,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
         boundedSignal.throwIfAborted();
         state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});

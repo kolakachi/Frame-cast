@@ -32,7 +32,7 @@ class PilotPolicy
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
                 // 16 calls (owner, 2026-10-01): UI-heavy parity builds with visual repairs need 14 to 16;
                 // plain builds still finish in 7 to 8. Builds with a character get 20 (ConversationService).
-                'cost_limit_microusd'=>450000,'max_calls'=>16,'max_output_tokens'=>16384,'context_bytes'=>96000,
+                'cost_limit_microusd'=>450000,'max_calls'=>16,'max_output_tokens'=>16384,'context_bytes'=>128000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
                 // The critic: a separate reviewer, two short low-effort calls with the frames and the strip.
