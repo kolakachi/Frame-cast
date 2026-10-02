@@ -76,19 +76,13 @@ else {
 // Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
 if(operation==='check'&&result.ok)result.pacing=await pacing();
 if(operation==='strip'&&result.ok){
- const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort();
+ // One image-sequence input and the tile filter: thirty separate inputs exhaust the sandbox's thread limit.
+ const shots=(await readdir(out)).filter(n=>/^frame-\d+-at-[0-9.]+s\.png$/.test(n)).sort();
  if(!shots.length)throw Error('Strip returned no images');
+ for(const [i,n] of shots.entries())await copyFile(out+'/'+n,out+'/s-'+String(i).padStart(2,'0')+'.png');
  const cell=dims[0]>dims[1]?[192,108]:dims[0]===dims[1]?[144,144]:[108,192],cols=10,rows=Math.ceil(shots.length/cols);
- const inputs=shots.flatMap(n=>['-i',out+'/'+n]);
- const filters=shots.map((_,i)=>`[${i}:v]scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black,drawtext=text='${shots[i].replace(/^.*at-([0-9.]+)s.*$/,'$1')}':fontcolor=white:fontsize=14:x=3:y=3[c${i}]`).join(';')
-  +';'+Array.from({length:rows},(_,r)=>shots.slice(r*cols,r*cols+cols).map((_,i)=>`[c${r*cols+i}]`).join('')+`hstack=inputs=${Math.min(cols,shots.length-r*cols)}[r${r}]`).join(';')
-  +(rows>1?';'+Array.from({length:rows},(_,r)=>`[r${r}]`).join('')+`vstack=inputs=${rows}[strip]`:';[r0]copy[strip]');
- try{await promisify(execFile)('ffmpeg',['-y',...inputs,'-filter_complex',filters,'-map','[strip]','-frames:v','1',out+'/strip.jpg'],{timeout:60000,maxBuffer:1000000});}
- catch{ // uneven last row or no drawtext: fall back to a plain grid without labels
-  const f2=shots.map((_,i)=>`[${i}:v]scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black[c${i}]`).join(';')+';'+shots.map((_,i)=>`[c${i}]`).join('')+`hstack=inputs=${shots.length}[strip]`;
-  await promisify(execFile)('ffmpeg',['-y',...inputs,'-filter_complex',f2,'-map','[strip]','-frames:v','1',out+'/strip.jpg'],{timeout:60000,maxBuffer:1000000});
- }
- result={ok:true,frames:shots.length,every_seconds:0.5};
+ await promisify(execFile)('ffmpeg',['-y','-threads','1','-framerate','1','-i',out+'/s-%02d.png','-vf',`scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black,tile=${cols}x${rows}:padding=2:color=black`,'-frames:v','1','-q:v','4',out+'/strip.jpg'],{timeout:60000,maxBuffer:1000000});
+ result={ok:true,frames:shots.length,every_seconds:0.5,columns:cols};
 }
 if(operation==='snapshot'&&result.ok){
  const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort().slice(0,5);
