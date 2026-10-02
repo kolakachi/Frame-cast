@@ -197,6 +197,12 @@ class PlanService
         return $out;
     }
 
+    /** @return array<int, array{role: string, content: string}> */
+    private function messagesOf(object $c): array
+    {
+        return DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all();
+    }
+
     private function context(User $user, object $c): array
     {
         $settings = json_decode($c->settings_json, true) ?: [];
@@ -228,6 +234,8 @@ class PlanService
             'recent_style_packs' => DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->orderByDesc('created_at')->limit(6)->pluck('input_json')
                 ->map(fn ($j) => data_get(json_decode($j, true), 'style_pack.slug'))->filter()->unique()->take(3)->values()->all(),
             'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
+            // Finished registry blocks and components the builder can mount by name; a beat lists what it uses.
+            'registry' => RegistryCatalogue::shortlist((string) (collect($this->messagesOf($c))->last()['content'] ?? ''), $settings),
             // The user's edits to the last plan are their decisions; a new plan starts from them.
             'previous_plan' => ($prev = DB::table('create_plans')->where('conversation_id', $c->id)->orderByDesc('created_at')->first())
                 ? ['summary' => json_decode($prev->plan_json, true)['summary'] ?? '', 'approved_copy' => json_decode($prev->plan_json, true)['selections']['callouts'] ?? [],
@@ -261,6 +269,8 @@ class PlanService
             'reads' => collect((array) ($s['reads'] ?? []))->map(fn ($r) => $str($r, 90))->filter()->take(4)->values()->all(),
             // Art direction per beat: where things sit and how big, and the colour field behind them.
             'layout' => $str($s['layout'] ?? '', 140), 'field' => $str($s['field'] ?? '', 40),
+            // Registry items this beat mounts; only names the sandbox ships.
+            'uses' => collect((array) ($s['uses'] ?? []))->filter(fn ($n) => RegistryCatalogue::has(is_string($n) ? $n : null))->unique()->take(2)->values()->all(),
         ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(8)->values()->all();
         $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
         $known = collect(CapabilityCatalogue::forWorkspace($workspaceId))->keyBy('kind');

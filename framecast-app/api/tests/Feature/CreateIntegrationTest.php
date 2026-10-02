@@ -140,7 +140,7 @@ class CreateIntegrationTest extends TestCase
         $plan = $p['plan'];
         $this->assertSame('anthropic:claude-opus-5-5', $p['provider']);
         $this->assertSame([$asset->id], array_column($plan['reused'], 'asset_id'), 'only this conversation\'s source files');
-        $blank = ['state_in' => '', 'state_out' => '', 'reads' => [], 'layout' => '', 'field' => ''];
+        $blank = ['state_in' => '', 'state_out' => '', 'reads' => [], 'layout' => '', 'field' => '', 'uses' => []];
         $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take', ...$blank], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped', ...$blank]], $plan['scenes']);
         $this->assertCount(1, $plan['decisions'], 'a decision with one option is dropped');
         $this->assertSame('introstyle', $plan['decisions'][0]['id']);
@@ -844,10 +844,20 @@ class CreateIntegrationTest extends TestCase
         $plans = app(\App\Services\Create\PlanService::class);
         $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'silent']];
         $raw = ['summary' => 'x', 'left_out' => '', 'signature_move' => 'A giant-type wipe of FLOW into the dashboard beat',
-            'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 3, 'layout' => 'Two columns: bust left at half height, headline right', 'field' => '#0E0B12']]];
+            'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 3, 'layout' => 'Two columns: bust left at half height, headline right', 'field' => '#0E0B12',
+                'uses' => ['browser-device-stage', 'not-a-real-item', 'cta-lockup', 'browser-device-stage', 'light-leak']]]];
         $p = $plans->normalize($raw, $ctx, $this->workspace->id);
         $this->assertSame(['Two columns: bust left at half height, headline right', '#0E0B12'], [$p['scenes'][0]['layout'], $p['scenes'][0]['field']]);
         $this->assertSame('A giant-type wipe of FLOW into the dashboard beat', $p['signature_move']);
+        $this->assertSame(['browser-device-stage', 'cta-lockup'], $p['scenes'][0]['uses'], 'only shipped registry items, at most two, no repeats');
+        // The planner's shortlist: the core set plus the tags the brief suggests, bounded.
+        $list = \App\Services\Create\RegistryCatalogue::shortlist('A 15 s demo of our SaaS dashboard for an ad', ['aspect_ratio' => '9:16']);
+        $names = array_column($list, 'name');
+        $this->assertLessThanOrEqual(70, count($list));
+        $this->assertContains('cta-lockup', $names);
+        $this->assertContains('browser-device-stage', $names);
+        $this->assertTrue(count(array_filter($list, fn ($i) => in_array('captions', $i['tags'], true) || in_array('mock-ui', $i['tags'], true) || in_array('product-demo', $i['tags'], true))) >= 5, 'the brief\'s kinds are represented');
+        $this->assertSame(['name', 'type', 'what', 'tags', 'duration', 'mount', 'variables'], array_keys($list[0]));
     }
 
     public function test_design_first_makes_a_cheap_look_run_and_approving_it_builds_the_motion(): void

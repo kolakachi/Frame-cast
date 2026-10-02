@@ -58,7 +58,7 @@ export function mountKind(type,html){
 }
 const sha=b=>createHash('sha256').update(b).digest('hex');
 
-export async function vendorRegistry({source,out,catalog}){
+export async function vendorRegistry({source,out,catalog,shortlist=null}){
  await rm(out,{recursive:true,force:true});await mkdir(out,{recursive:true});
  const items=[],excluded=[],files={};
  for(const kind of ['blocks','components']){
@@ -96,13 +96,15 @@ export async function vendorRegistry({source,out,catalog}){
  const manifest={source:'https://github.com/heygen-com/hyperframes (registry/, Apache-2.0)',vendored_at:new Date().toISOString().slice(0,10),items:items.length,excluded,files};
  await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,1));
  await writeFile(catalog,JSON.stringify({source:manifest.source,items},null,0));
+ // The planner's shortlist: enough to choose by, small enough for a prompt.
+ if(shortlist)await writeFile(shortlist,JSON.stringify(items.map(i=>({name:i.name,type:i.type,title:i.title,what:i.description.length>120?i.description.slice(0,117)+'…':i.description,tags:i.tags.slice(0,6),duration:i.duration,mount:i.mount,variables:i.variables.map(v=>v.id)})),null,0));
  return {items,excluded};
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===path.resolve(new URL(import.meta.url).pathname)){
  const arg=k=>{const i=process.argv.indexOf('--'+k);return i>0?process.argv[i+1]:null;};
- const source=arg('source'),out=arg('out')||'runtime/registry',catalog=arg('catalog')||'runtime/registry-catalog.json';
+ const source=arg('source'),out=arg('out')||'runtime/registry',catalog=arg('catalog')||'runtime/registry-catalog.json',shortlist=arg('shortlist');
  if(!source)throw Error('--source <hyperframes/registry> is required');
- const r=await vendorRegistry({source,out,catalog});
+ const r=await vendorRegistry({source,out,catalog,shortlist});
  console.log('vendored',r.items.length,'items; excluded',r.excluded.length,r.excluded.map(e=>e.name+' ('+e.reason+')').join('; '));
 }
