@@ -41,8 +41,9 @@ class ReplicateVeoAdapter
     }
 
     /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = []): string
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = [], string $aspectRatio = '9:16'): string
     {
+        if (! in_array($aspectRatio, ['9:16', '16:9'], true)) throw new \InvalidArgumentException('Native talking video supports portrait or landscape.');
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
 
         // Gemini Omni 1.1 accepts only prompt, image, last_frame,
@@ -54,7 +55,7 @@ class ReplicateVeoAdapter
             $target = max(1, min(self::OMNI_MAX_SECONDS, $seconds));
             $input = [
                 'prompt' => rtrim($prompt, " \t\n")." Keep the clip to about {$target} seconds.",
-                'aspect_ratio' => '9:16',
+                'aspect_ratio' => $aspectRatio,
                 // No 480p on this model; the draft tier never reaches it.
                 'resolution' => in_array($resolution, ['360p', '720p', '1080p', '4k'], true) ? $resolution : '720p',
             ];
@@ -70,7 +71,7 @@ class ReplicateVeoAdapter
         } else {
             $input = [
                 'prompt' => $prompt,
-                'aspect_ratio' => '9:16',
+                'aspect_ratio' => $aspectRatio,
                 // Seedance offers 480p (draft) and 720p; Veo stays 720p.
                 'resolution' => in_array($resolution, ['480p', '720p'], true) ? $resolution : '720p',
                 'generate_audio' => true,

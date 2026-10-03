@@ -59,6 +59,7 @@ class CreateController extends Controller
         // Storage keys, worker credentials and source HTML never enter the browser response.
         return response()->json(['data' => [
             'conversation' => $c,
+            'credit_availability' => $this->service->creditAvailability($r->user()),
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at']),
             'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
                 $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
@@ -214,17 +215,18 @@ class CreateController extends Controller
         $input = $r->validate(['expected_version' => 'required|integer|min:0', 'callouts' => 'sometimes|array|max:6', 'callouts.*' => 'nullable|string|max:120',
             'choices' => 'sometimes|array|max:3', 'choices.*' => 'string|max:32', 'kept' => 'sometimes|array|max:8', 'kept.*' => 'string|max:80',
             'narration' => 'sometimes|array|max:8', 'narration.*' => 'nullable|string|max:160', 'voice' => 'sometimes|string|max:40',
-            'style' => 'sometimes|array', 'style.route' => 'required_with:style|in:pack,saved,reference,free', 'style.pack' => 'nullable|string|max:40', 'look_first' => 'sometimes|boolean']);
+            'style' => 'sometimes|array', 'style.route' => 'required_with:style|in:pack,saved,reference,free', 'style.pack' => 'nullable|string|max:40', 'omitted_performance' => 'sometimes|array|max:24', 'omitted_performance.*' => 'string|max:40', 'look_first' => 'sometimes|boolean', 'character_approval' => 'sometimes|string|regex:/^[a-f0-9]{64}$/']);
         return response()->json(['data' => app(\App\Services\Create\PlanService::class)->select($r->user(), $id, $planId, $input['expected_version'], $input)]);
     }
 
     public function quote(Request $r, string $id)
     {
-        $input = $r->validate(['expected_version'=>'required|integer|min:0','variant_count'=>'sometimes|integer|min:1|max:3','retry_run_id'=>'sometimes|uuid']);
+        $input = $r->validate(['expected_version'=>'required|integer|min:0','variant_count'=>'sometimes|integer|min:1|max:3','retry_run_id'=>'sometimes|uuid','build_stage'=>'sometimes|in:storyboard,full_video']);
         $variants=app(\App\Services\Create\VariantService::class);
-        $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1);
+        $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1,$input['build_stage']??null);
         return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'expires_at' => $q->expires_at,
-            'variants'=>count($q->payload_json['variant_quotes']??[1]),'plan_media'=>array_map(fn($m)=>['kind'=>$m['kind'],'description'=>$m['description'],'credits'=>$m['credits']],$q->payload_json['plan_media']??[]),'media_estimate'=>$q->payload_json['media_estimate']??0,'media_ceiling'=>$q->payload_json['media_ceiling']??0,'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
+            'credit_availability' => $this->service->creditAvailability($r->user()),
+            'build_stage'=>$q->payload_json['build_stage']??null,'variants'=>count($q->payload_json['variant_quotes']??[1]),'plan_media'=>array_map(fn($m)=>['kind'=>$m['kind'],'description'=>$m['description'],'credits'=>$m['credits']],$q->payload_json['plan_media']??[]),'media_estimate'=>$q->payload_json['media_estimate']??0,'media_ceiling'=>$q->payload_json['media_ceiling']??0,'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
             'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief with our AI providers. Your brief and approved media may be sent to them. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
     }
 

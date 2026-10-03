@@ -28,9 +28,9 @@ class CapabilityCatalogue
             // Generated audio on Replicate, priced at the usual peg (cost / $0.004):
             // ElevenLabs Music is $0.0083 per second of output; Stable Audio 2.5 is $0.20 a file.
             ['kind' => 'music', 'what' => 'An original instrumental music bed made for this video, sized to its length', 'credits' => self::musicCredits(15)],
-            ['kind' => 'character_poses', 'what' => 'One consistent character (a saved character, your own mascot image, or a new original one) in up to 5 poses, cut out on transparent backgrounds', 'credits' => self::POSE_CREDITS],
-            ['kind' => 'talking_shot', 'what' => 'The character lip-syncing the first line of the script for the hook (2 to 4 s), made from its talking pose and the narration', 'credits' => CreditService::spokespersonCost(4.0)],
-            ['kind' => 'talking_take', 'what' => 'The character lip-syncing the whole narration (up to 15 s) from its talking pose: the A-roll, so the presenter performs on camera through the video. Choose this instead of talking_shot when the presenter should speak throughout', 'credits' => CreditService::spokespersonCost(15.0)],
+            ['kind' => 'character_poses', 'what' => 'One character preview in the requested style for approval; additional poses are quoted only after approval', 'credits' => self::CHARACTER_MASTER_CREDITS],
+            ['kind' => 'talking_shot', 'what' => 'The character performing the first approved script line with native speech (4 s); explicitly selected cloned voice uses audio-driven lip-sync', 'credits' => TalkingPresenter::route('talking_shot', null)['credits']],
+            ['kind' => 'talking_take', 'what' => 'The character performing the full approved script with native speech (up to 15 s), without a separate voiceover. Explicit cloned voice uses audio-driven lip-sync', 'credits' => TalkingPresenter::route('talking_take', null)['credits']],
             ['kind' => 'sfx', 'what' => 'A set of up to 6 short sound effects (clicks, whooshes, pops) for on-screen beats', 'credits' => self::SFX_CREDITS],
             // library_music is withheld: the workspace library holds placeholder
             // tracks, not licensed music (2026-10-01). Restore once real tracks exist.
@@ -55,6 +55,8 @@ class CapabilityCatalogue
     public const SFX_CREDITS = 50;
     /** Nano Banana Pro at 35 credits an image: a base character plus up to 5 poses. Cut-outs are negligible. */
     public const POSE_CREDITS = 210;
+    public const CHARACTER_MASTER_CREDITS = 35;
+    public const CHARACTER_VARIANT_CREDITS = 35;
 
     /** One second of padding so the bed covers the whole video. */
     public static function musicCredits(int $seconds): int
@@ -66,6 +68,20 @@ class CapabilityCatalogue
     {
         if (! Schema::hasTable('brand_kits')) return [];
         return DB::table('brand_kits')->where('workspace_id', $workspaceId)->limit(5)->pluck('name')->filter()->values()->all();
+    }
+
+    /** Actual colours, scoped to this workspace; names alone cannot guide a palette. */
+    public static function brandPalettes(int $workspaceId): array
+    {
+        if (! Schema::hasTable('brand_kits')) return [];
+        return DB::table('brand_kits')->where('workspace_id', $workspaceId)->limit(5)->get()->map(function ($kit) {
+            $colours = [];
+            foreach (['primary_color', 'secondary_color', 'accent_color'] as $key) {
+                $hex = $kit->{$key} ?? null;
+                if (is_string($hex) && preg_match('/^#(?:[a-f0-9]{3}|[a-f0-9]{6})$/i', $hex)) $colours[$key] = $hex;
+            }
+            return ['id' => $kit->id, 'name' => $kit->name, 'colours' => $colours];
+        })->all();
     }
 
     public static function credits(string $kind, int $workspaceId): ?int

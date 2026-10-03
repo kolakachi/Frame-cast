@@ -15,15 +15,15 @@ async function setup(){
  return {directory,files};
 }
 test('frozen conversation and roles reach agent; every call is accounted; base edit survives',async()=>{
- const {directory,files}=await setup();let began=0,settled=0;const contexts=[];
+ const {directory,files}=await setup();let began=0,settled=0;const contexts=[],trace=[];
  try{
   const execute=async(base)=>{
    const p=offlineContractProvider(base);
-   return executeCompositionAgent({directory,input:{messages:[{role:'user',content:'Keep the product unchanged'}],base_bundle:base,base_revision_id:base?'r1':null,execution_policy:{agent:{max_calls:5}}},manifest:files,provider:{...p,complete:args=>{contexts.push(JSON.parse(args.prompt).context);return p.complete(args);}},begin:async()=>({id:String(++began),may_execute:true}),settle:async()=>{settled++;},receipt:()=>({status:'succeeded',cost_microusd:0}),invoke:async()=>({ok:true}),guidanceDirectory:root+'agent/guidance'});
+   return executeCompositionAgent({onTrace:async event=>{trace.push(event);if(base)throw Error('telemetry unavailable');},directory,input:{messages:[{role:'user',content:'Keep the product unchanged'}],base_bundle:base,base_revision_id:base?'r1':null,base_review:{status:'needs_attention',findings:['Maya is still photoreal.']},execution_policy:{agent:{max_calls:5}}},manifest:files,provider:{...p,complete:args=>{contexts.push(JSON.parse(args.prompt).context);return p.complete(args);}},begin:async()=>({id:String(++began),may_execute:true}),settle:async()=>{settled++;},receipt:()=>({status:'succeeded',cost_microusd:0}),invoke:async()=>({ok:true}),guidanceDirectory:root+'agent/guidance'});
   };
-  const first=await execute(null);assert.equal(first.state.status,'preview_ready');assert.equal(began,5);assert.equal(settled,5);
+  const first=await execute(null);assert.equal(first.state.status,'preview_ready');assert.ok(trace.some(e=>e.tool==='patch'&&e.status==='started'));assert.ok(trace.some(e=>e.tool==='patch'&&e.status==='succeeded'));assert.ok(trace.every(e=>!('content' in e)));assert.equal(began,5);assert.equal(settled,5);
   assert.match(first.bundle['index.html'],/Local agent proof/);
-  assert.equal(contexts[0].brief,'Keep the product unchanged');assert.equal(contexts[0].assets[1].renderable,false);
+  assert.equal(contexts[0].brief,'Keep the product unchanged');assert.deepEqual(contexts[0].previousReview.findings,['Maya is still photoreal.']);assert.equal(contexts[0].assets[1].renderable,false);
   await assert.rejects(access(directory+'/project/reference.png'));
   assert.equal(await readFile(directory+'/project/source.png','utf8'),'source');
   await rm(directory+'/agent-state.json');
@@ -52,4 +52,20 @@ test('the instruction keeps only the sentences this run can use',async()=>{
  const text='Always true. When lookOnly is true do stills. When planMedia has a talking_shot clip, lip-sync. Sound mix: a music file is the bed. Use preview before finishing.';
  assert.equal(trimInstruction(text,{lookOnly:false,talking:true,music:false}),'Always true. When planMedia has a talking_shot clip, lip-sync. Use preview before finishing.');
  assert.equal(trimInstruction(text,{}),text,'unknown flags keep the sentence');
+});
+
+test('prepared mascot runtime is discoverable and its limits are readable through the agent tool',async()=>{
+ const {directory,files}=await setup();let calls=0;
+ try{
+  const delegate=offlineContractProvider();
+  const result=await executeCompositionAgent({directory,input:{messages:[{role:'user',content:'Inspect the optional mascot adapter'}],execution_policy:{agent:{max_calls:6}}},manifest:files,
+   provider:{id:'offline-mascot-guide',maxCallUsd:0,complete:async args=>{
+    const ctx=JSON.parse(args.prompt).context;
+    assert.ok(ctx.runtimeFiles.some(f=>f.path==='wyv-mascot.js'&&f.purpose.includes('Not an image-to-rig converter')));
+    if(calls++===0)return {text:JSON.stringify({type:'read',path:'kit/mascot.md'})};
+    if(calls===2){assert.match(args.prompt,/not a replacement for Hyperframes/);assert.match(args.prompt,/No random repeated mouth opening/);}
+    return delegate.complete(args);
+   }},begin:async()=>({id:String(calls),may_execute:true}),settle:async()=>{},receipt:()=>({status:'succeeded',cost_microusd:0}),invoke:async()=>({ok:true}),guidanceDirectory:root+'agent/guidance'});
+  assert.equal(result.state.status,'preview_ready');assert.equal(calls,6);
+ }finally{await rm(directory,{recursive:true,force:true});}
 });

@@ -5,26 +5,26 @@ import {accountedCall} from './accounted-call.mjs';
 
 // Uses the app's shared image adapter request and pricing. Only frozen source bytes
 // become provider inputs; reference-only uploads cannot accidentally be copied.
-export async function executeImage({directory,input,manifest,token,begin,settle,bindPrediction,signal,fetchImpl=fetch}) {
+export async function executeImage({directory,input,manifest,token,gateway,begin,settle,bindPrediction,signal,fetchImpl=fetch}) {
  const model=input.execution_policy?.media?.model,animation=model==='wan-video/wan-2.5-i2v';
- if(!['google/nano-banana','wan-video/wan-2.5-i2v'].includes(model)||!token)throw Error('Unsupported image execution');
- const request={...input.media_input};
+ if(!['google/nano-banana','wan-video/wan-2.5-i2v'].includes(model)||(!token&&!gateway))throw Error('Unsupported image execution');
+ const request=gateway?await gateway.prepare():{...input.media_input};
  const sources=manifest.filter(f=>f.purpose==='source');
  if(sources.length>4||sources.some(f=>f.asset_type!=='image'||f.bytes>10*1024*1024))throw Error('Use up to four source images, each at most 10 MB for generation');
  if(animation && sources.length!==1)throw Error('One source image is required');
- const urls=await Promise.all(sources.map(async f=>uploadProviderImage({bytes:await readFile(directory+'/inputs/'+f.path),type:f.mime_type,token,signal,fetchImpl})));
- if(animation)request.image=urls[0];else if(urls.length)request.image_input=urls;
+ const urls=gateway?[]:await Promise.all(sources.map(async f=>uploadProviderImage({bytes:await readFile(directory+'/inputs/'+f.path),type:f.mime_type,token,signal,fetchImpl})));
+ if(!gateway){if(animation)request.image=urls[0];else if(urls.length)request.image_input=urls;}
  const api=async(route,body)=>{
   const r=await fetchImpl('https://api.replicate.com/v1/'+route,{method:body?'POST':'GET',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','Cancel-After':animation?'300s':'120s'},body:body?JSON.stringify(body):undefined,signal});
   if(!r.ok)throw Error('Image provider HTTP '+r.status);return r.json();
  };
  const prediction=await accountedCall({key:'media-1',kind:'media',input:request,begin,settle,
   execute:async attempt=>{
-   let p=await api('models/'+model+'/predictions',{input:request});
+   let p=gateway?await gateway.call(attempt,{input:request}):await api('models/'+model+'/predictions',{input:request});
    if(!/^[a-zA-Z0-9_-]+$/.test(p.id??''))throw Error('Missing prediction ID');
    await writeFile(directory+'/media-prediction.json',JSON.stringify({id:p.id}),{flag:'wx',mode:0o600});
    await bindPrediction(attempt,p.id);
-   while(['starting','processing'].includes(p.status)){await sleep(1500,undefined,{signal});p=await api('predictions/'+p.id);}
+   while(['starting','processing'].includes(p.status)){await sleep(1500,undefined,{signal});p=gateway?await gateway.call(attempt,{input:request,poll:true}):await api('predictions/'+p.id);}
    if(p.status!=='succeeded')throw Error('Image provider did not succeed. Review the recorded prediction before retrying.');
    return p;
   },receipt:p=>({status:'succeeded',prediction_id:p.id})});

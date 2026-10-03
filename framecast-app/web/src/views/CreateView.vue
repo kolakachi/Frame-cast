@@ -8,6 +8,8 @@ import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
 import UiSelect from '../components/UiSelect.vue'
 import CreateDialog from '../components/create/CreateDialog.vue'
 import ThinkingLine from '../components/create/ThinkingLine.vue'
+import StoryboardCarousel from '../components/create/StoryboardCarousel.vue'
+import { conversationTimeline, acceptConversationResponse } from '../lib/createConversation.js'
 import { VOICE_DESCRIPTIONS, voiceHeadline } from '../lib/voices.js'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -54,8 +56,12 @@ const checkIssues = computed(() => {
     ...(c.loudness?.status === 'check_failed' ? ['The sound level could not be checked.'] : []),
   ].slice(0, 8)
 })
+const timeline = computed(() => conversationTimeline(data.value?.messages || [], currentRevision.value))
 const imageOutput = computed(() => outputMeta.value.settings?.output_kind === 'image')
-async function approveLook() { prompt.value = 'Approve the look and build the motion.'; await send() }
+async function approveLook() {
+  if (!currentPlan.value) { error.value = 'Review a current plan before building the full video.'; return }
+  await reviewPlanCost(currentPlan.value, 'full_video', currentPlan.value.character_preview?.token)
+}
 function changeLook() { prompt.value = 'Keep the look, but change '; nextTick(() => composer.value?.focus()) }
 async function editResult() {if(imageOutput.value && !currentRevision.value.output_asset_id){await saveOutput();if(!currentRevision.value.output_asset_id)return}prompt.value = imageOutput.value ? 'Keep this image, but change ' : 'Keep this video, but change '; nextTick(()=>composer.value?.focus())}
 async function animateResult(){await guarded(async()=>{const rev=currentRevision.value;if(!rev.output_asset_id)throw Error('Save the image to Assets first.');const c=(await api.post('/create/conversations',{output_kind:'video',video_mode:'animate_image',duration_seconds:5,aspect_ratio:outputMeta.value.settings.aspect_ratio,audio:'silent',origin_conversation_id:id.value,origin_revision_id:rev.id})).data.data;await api.post(`/create/conversations/${c.id}/attachments`,{asset_id:rev.output_asset_id,purpose:'source',reuse_confirmed:true,expected_version:0});await router.push({name:'create',params:{conversationId:c.id}});await refresh();prompt.value='Animate this image with gentle motion. Keep the objects and composition consistent.';nextTick(()=>composer.value?.focus())})}
@@ -64,6 +70,8 @@ function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON
 
 const workspaceStore = useWorkspaceStore()
 const credits = computed(() => workspaceStore.usage?.credits_balance)
+const creditAvailability = computed(() => data.value?.credit_availability)
+const quoteCreditAvailability = computed(() => quote.value?.credit_availability || creditAvailability.value)
 const panelTab = ref('details'), panelHeading = ref(null)
 let panelReturnFocus = null
 function togglePanel() { if (details.value) { closePanel(); return } panelReturnFocus = document.activeElement; openSettings(); nextTick(() => panelHeading.value?.focus()) }
@@ -120,26 +128,31 @@ const plans = computed(() => data.value?.plans || [])
 const planByMessage = computed(() => Object.fromEntries(plans.value.map(p => [p.message_id, p])))
 const currentPlan = computed(() => [...plans.value].reverse().find(p => p.status === 'proposed' && !p.stale) || null)
 const stalePlan = computed(() => [...plans.value].reverse().find(p => p.status === 'proposed' && p.stale) || null)
-const planDrafts = ref({}), planning = ref(false)
+const planDrafts = ref({}), planning = ref(false), characterReview = ref(null)
 let planKey = null
 // Drafts are created before render (pre-flush watcher), never during it.
 watch(() => data.value?.plans, list => {
   for (const p of list || []) {
     if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
     const sel = p.plan.selections
-    planDrafts.value[p.id] = { callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept] }
+    planDrafts.value[p.id] = { omitted_performance: [...(sel.omitted_performance || [])], callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept] }
   }
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
 function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
-  return JSON.stringify([d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort()]) !== JSON.stringify([sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort()])
+  return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort()]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort()])
 }
 function optionCredits(p) {
   const d = planDrafts.value[p.id] || p.plan.selections
-  const media = (p.plan.media || []).reduce((n, m) => n + (m.credits || 0), 0)
-  return media + (p.plan.decisions || []).reduce((n, dec) => n + ((dec.options.find(o => o.id === d.choices[dec.id]) || {}).credits || 0), 0)
+  const items = [...(p.plan.media || [])]
+  for (const decision of p.plan.decisions || []) {
+    const option = decision.options.find(o => o.id === d.choices[decision.id])
+    if (option?.kind === 'media' && !items.some(m => m.kind === option.tool)) items.push({kind:option.tool, credits:option.credits || 0})
+  }
+  const nativeTake = d.voice !== 'clone' && items.some(m => m.kind === 'talking_take')
+  return items.filter(m => !nativeTake || !['voiceover','cloned_voiceover'].includes(m.kind)).reduce((n, m) => n + (m.credits || 0), 0)
 }
 // How the voice says brand names; changes only what is spoken.
 const pronOpen = ref(false), pronRows = ref([])
@@ -175,13 +188,44 @@ async function makePlan() {
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
-  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept })
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, omitted_performance: d.omitted_performance || [], callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept })
   const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
 }
-async function reviewPlanCost(p) {
+async function reviewPlanCost(p, buildStage = null, displayedCharacterToken = null) {
   if (planDirty(p)) { let ok = true; await guarded(async () => { try { await savePlanEdits(p) } catch (e) { ok = false; throw e } }); if (!ok) return }
-  await plan()
+  const latest = plans.value.find(row => row.id === p.id) || p
+  const selection = latest.plan.selections
+  const selectedKinds = [...(latest.plan.media || []).map(m => m.kind), ...(latest.plan.decisions || []).map(d => d.options.find(o => o.id === selection.choices[d.id])?.tool)]
+  const stage = buildStage || (selection.look_first ? 'storyboard' : 'full_video')
+  if (paid.value && stage === 'full_video' && selectedKinds.some(k => ['character_poses', 'talking_take', 'talking_shot'].includes(k)) && !latest.character_preview?.approved) {
+    // The storyboard shows this exact master beside its approval button. A changed
+    // plan/preview still needs a fresh review, never silent approval of new bytes.
+    if (displayedCharacterToken && displayedCharacterToken === latest.character_preview?.token) {
+      await approveCharacterPreview(latest)
+      return
+    }
+    characterReview.value = latest
+    return
+  }
+  await plan(null, buildStage)
 }
+async function approveCharacter() {
+  await approveCharacterPreview(characterReview.value)
+}
+async function approveCharacterPreview(p) {
+  if (!p?.character_preview) return
+  let ok = false
+  await guarded(async () => {
+    await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, character_approval: p.character_preview.token })
+    await refresh(); characterReview.value = null; ok = true
+  })
+  if (ok) await plan(null, 'full_video')
+}
+async function prepareCharacterStoryboard() {
+  characterReview.value = null
+  await plan(null, 'storyboard')
+}
+
 // ---- free edits (text and colours) ----
 const autoRan = ref(null), leversOpen = ref(false), leverDraft = ref({})
 let editKey = null
@@ -207,6 +251,7 @@ async function applyPlanFreeEdit(values) {
     freePlanKey = null; selectedRevision.value = null; await refresh()
   })
 }
+let refreshRequest = 0, refreshApplied = 0
 let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
@@ -253,9 +298,10 @@ async function loadHistory() {
 }
 async function refresh() {
   if (!id.value || !available.value) return
-  const expected = id.value, ticket = epoch
+  const expected = id.value, ticket = epoch, request = ++refreshRequest
   const result = await api.get(base(expected))
-  if(ticket !== epoch || id.value !== expected) return
+  if(ticket !== epoch || id.value !== expected || !acceptConversationResponse(data.value?.conversation?.version, result.data.data.conversation.version, request, refreshApplied)) return
+  refreshApplied = request
   const previousTitle = data.value?.conversation.title
   data.value = result.data.data
   if(previousTitle !== data.value.conversation.title) rename.value = data.value.conversation.title
@@ -280,8 +326,8 @@ async function setCeiling() {
   await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { media_ceiling_credits: v } }); quote.value = null; await refresh(); await plan() })
 }
 const reviewScores = computed(() => outputMeta.value?.review || [])
-const needsAnotherRound = computed(() => reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8))
-async function keepImproving() { prompt.value = 'Keep this video and fix the open issues from the last review.'; await send() }
+const needsAnotherRound = computed(() => outputMeta.value.creative_review?.status === 'incomplete' || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
+async function keepImproving() { prompt.value = 'Keep this video, complete its creative review and fix the open issues: ' + (outputMeta.value.creative_review?.findings || []).join('; '); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
 async function chooseStyle(value) {
   if(!conversation.value) { pendingStyleId.value = value; return }
@@ -337,6 +383,11 @@ async function send() {
   if(!prompt.value.trim() || hasUpload.value) return
   const text = prompt.value.trim()
   await guarded(async () => {
+    for (const u of [...uploads.value]) {
+      if (u.error && u.state === 'ready') throw Error(u.error)
+      if (u.purpose === 'source' && !u.confirmed) throw Error('Confirm permission to reuse your attachment, or select Reference.')
+      if (!await upload(u, true)) throw Error(u.error || 'Upload did not finish. Your message has not been sent.')
+    }
     const target = await ensureConversation()
     // Links in the brief are studied first: video posts as style references, other pages as brand pages.
     const known = new Set((data.value?.attachments || []).map(a => a.source?.requested_url).filter(Boolean))
@@ -361,9 +412,9 @@ async function send() {
   // The plan turn follows every brief. It is free; failure leaves the brief saved.
   if (!error.value && canWrite.value && !active.value) await makePlan()
 }
-async function plan(retryRunId = null) { await guarded(async () => {
+async function plan(retryRunId = null, buildStage = null) { await guarded(async () => {
   providerApproved.value=false
-  quote.value = (await api.post(`${base()}/quotes`,{expected_version:conversation.value.version,variant_count:variantCount.value,...(typeof retryRunId === 'string' ? {retry_run_id:retryRunId} : {})})).data.data
+  quote.value = (await api.post(`${base()}/quotes`,{expected_version:conversation.value.version,variant_count:variantCount.value,...(buildStage ? {build_stage:buildStage} : {}),...(typeof retryRunId === 'string' ? {retry_run_id:retryRunId} : {})})).data.data
   approvalKey = crypto.randomUUID(); clock.value = Date.now()
   // Owner decision: small jobs just run and show their cost. The server re-checks eligibility.
   if (quote.value.auto_run) {
@@ -422,8 +473,8 @@ function chooseFiles(files) {
   dragging.value = false
 }
 function removeUpload(u) { if(u.preview_url) URL.revokeObjectURL(u.preview_url); uploads.value = uploads.value.filter(x => x !== u) }
-async function upload(u) {
-  if(uploadRunning || busy.value || u.error && u.state === 'ready' || u.purpose === 'source' && !u.confirmed) return
+async function upload(u, fromSend = false) {
+  if(uploadRunning || (busy.value && !fromSend) || u.error && u.state === 'ready' || u.purpose === 'source' && !u.confirmed) return
   uploadRunning = true; u.state = 'uploading'; u.error = ''; u.progress = 0
   let target
   try {
@@ -432,8 +483,8 @@ async function upload(u) {
     if(u.purpose === 'source') form.append('reuse_confirmed','1')
     const result = await api.post(`${base(target)}/uploads`,form,{headers:{'Content-Type':'multipart/form-data'},onUploadProgress:event => {u.progress = Math.min(99,Math.round(100*(event.loaded/(event.total || u.file.size))))}})
     if(id.value === target) { data.value = result.data.data; rename.value = data.value.conversation.title; quote.value = null }
-    removeUpload(u); await loadHistory()
-  } catch(e) { u.state = 'failed'; u.error = message(e); if(e.response?.status === 409) { conflict.value = true; await refresh().catch(()=>{}) } }
+    removeUpload(u); await loadHistory(); return true
+  } catch(e) { u.state = 'failed'; u.error = message(e); if(e.response?.status === 409) { conflict.value = true; await refresh().catch(()=>{}) } return false }
   finally { uploadRunning = false }
 }
 async function restore() { await guarded(async () => { await api.post(`${base()}/revisions/${currentRevision.value.id}/restore`,{expected_version:conversation.value.version}); selectedRevision.value = null; quote.value = null; await refresh() }) }
@@ -468,6 +519,7 @@ watch(showHistory, open => {if(open) loadHistory()})
 watch(compareOpen, open => {if(!open) {compareEpoch++; if(compareMedia.value) URL.revokeObjectURL(compareMedia.value); compareMedia.value = ''}})
 watch(() => currentRevision.value?.id, loadArtifact)
 watch(id, async (value, old) => {
+  characterReview.value = null
   persistDraft(old,prompt.value); epoch++; data.value = null; selectedRevision.value = null; quote.value = null; sendingKey = null; error.value = ''; conflict.value = false; showHistory.value = false; details.value = false; compareOpen.value = false
   prompt.value = readDraft(value)
   // ensureConversation transfers pending local files into the newly created chat.
@@ -496,7 +548,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         <div><div class="crumb">Create</div><h1>{{ conversation?.title || 'New creation' }}</h1></div>
         <span v-if="headStatus" :class="['status', `status--${headStatus.cls}`]">{{ headStatus.text }}</span>
         <div class="header-actions">
-          <span v-if="credits !== null && credits !== undefined" class="credits" :title="`${credits.toLocaleString()} credits available`">{{ credits.toLocaleString() }} cr</span>
+          <span v-if="creditAvailability" class="credits" :title="`${creditAvailability.total.toLocaleString()} total · ${creditAvailability.reserved.toLocaleString()} reserved for unfinished work`">{{ creditAvailability.available.toLocaleString() }} cr available</span>
+          <span v-else-if="credits !== null && credits !== undefined" class="credits" :title="`${credits.toLocaleString()} total credits; availability is checked before approval`">{{ credits.toLocaleString() }} cr total</span>
           <button v-if="conversation" type="button" class="quiet" :disabled="locked" @click="router.push({name:'create'})">+ New creation</button>
           <button type="button" class="quiet" :disabled="locked" aria-haspopup="dialog" @click="showHistory = true">Recent conversations</button>
           <button v-if="conversation" type="button" class="quiet" :aria-expanded="details" aria-controls="details-panel" @click="togglePanel">Details &amp; versions</button>
@@ -516,7 +569,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             </div>
             <div v-if="conversation?.archived_at" class="icard"><div class="icard__body"><p>This conversation is archived. Its briefs and versions are preserved.</p></div><div class="icard__foot"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="updateConversation(false)">Restore conversation</button></div></div>
 
-            <template v-for="m in data?.messages || []" :key="m.id">
+            <template v-for="m in timeline" :key="m.id">
               <div v-if="m.role === 'user'" class="user-message message">
                 <div v-if="messageAttachments[m.id]?.length" class="attachments">
                   <span v-for="a in messageAttachments[m.id]" :key="a.asset_id" class="chip">
@@ -528,7 +581,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </div>
                 <p>{{ m.content }}</p>
               </div>
-              <div v-else class="assistant-message message">
+              <div v-else-if="m.eventType === 'message'" class="assistant-message message">
                 <span class="speaker">WyvStudio <time>{{ time(m.created_at) }}</time></span>
                 <template v-if="planByMessage[m.id]">
                   <details v-if="planByMessage[m.id].status !== 'proposed'" class="run-card"><summary>Earlier plan · {{ planByMessage[m.id].plan.summary }}</summary></details>
@@ -559,16 +612,47 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                               <option v-for="v in voiceOptions(draftFor(planByMessage[m.id]).voice)" :key="v.key" :value="v.key">{{ v.label }}</option>
                             </select>
                           </label>
-                          <span class="claims__note">Only these words are spoken. Approving the plan approves this script. <button type="button" class="quiet quiet--sm" @click="openPronunciations">Pronunciations</button></span>
+                          <span class="claims__note">This is the approved script. Talking presenters generate their own voice unless you explicitly select a cloned voice; catalogue voice selection applies to separate narration. <button type="button" class="quiet quiet--sm" @click="openPronunciations">Pronunciations</button></span>
                         </div>
+                        <div v-if="planByMessage[m.id].plan.creative_intent?.reason" class="checks">
+                          <b>Creative approach</b>
+                          <p>{{ planByMessage[m.id].plan.creative_intent.reason }}</p>
+                          <small v-if="planByMessage[m.id].plan.creative_intent.edit_scope === 'timing_only'" class="muted">Adjusting timing while keeping your approved script, voice and on-screen copy.</small>
+                        </div>
+                        <div v-if="planByMessage[m.id].plan.character_performance?.length" class="checks">
+                          <b>Character actions</b>
+                          <p class="muted">These movements must be present in the full video. A storyboard only previews the look.</p>
+                          <div v-for="action in planByMessage[m.id].plan.character_performance" :key="action.id">
+                            <p>{{ action.action }} · {{ action.start ?? '?' }}–{{ action.end ?? '?' }}s</p>
+                            <label v-if="planDrafts[planByMessage[m.id].id]" class="voice-pick">
+                              <input v-model="planDrafts[planByMessage[m.id].id].omitted_performance" type="checkbox" :value="action.id" :disabled="!canWrite || locked" /> Leave this action out
+                            </label>
+                          </div>
+                          <p v-for="issue in planByMessage[m.id].performance_issues || []" :key="issue.id" class="notice">{{ issue.action }}: {{ issue.message }}</p>
+                          <small class="muted">Save changes to update these checks. Replan to remove any media you no longer need.</small>
+                        </div>
+                        <div v-if="planByMessage[m.id].plan.requirements?.length" class="checks"><b>What this creation needs to include</b><ul><li v-for="r in planByMessage[m.id].plan.requirements" :key="r.id || r.source_quote">{{ r.text }} <small>· {{ r.provenance === 'reference' ? 'Interpreted from your reference' : 'From your brief' }}<span v-if="r.order_unresolved || r.evidence_status === 'unverified'"> · Needs clarification</span></small></li></ul></div>
+                        <details v-if="planByMessage[m.id].plan.requirement_history?.length" class="checks"><summary>Changes to requirements</summary><ul><li v-for="(r, i) in planByMessage[m.id].plan.requirement_history" :key="i">{{ r.action === 'remove' ? 'Removed' : 'Replaced' }}: {{ r.previous_text }} · Your instruction: “{{ r.source_quote }}”</li></ul></details>
+                        <div v-if="planByMessage[m.id].plan.direction_notes?.length" class="checks"><b>Suggestions and open questions</b><ul><li v-for="(r, i) in planByMessage[m.id].plan.direction_notes" :key="i">{{ r.provenance === 'unknown' ? 'Unresolved' : 'Suggested' }}: {{ r.text }}</li></ul></div>
+                        <p v-if="planByMessage[m.id].plan.character_style" class="muted">Character appearance: {{ planByMessage[m.id].plan.character_style }}</p>
                         <label v-if="planByMessage[m.id].plan.style" class="voice-pick style-line"><span class="muted">Style</span>
                           <select :value="planDrafts[planByMessage[m.id].id]?.style ?? styleKey(planByMessage[m.id].plan.selections.style)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" aria-label="Style this video starts from" @change="planDrafts[planByMessage[m.id].id].style = $event.target.value">
                             <option v-for="o in styleOptions(planByMessage[m.id])" :key="o.key" :value="o.key">{{ o.label }}</option>
                           </select>
                           <span v-if="planByMessage[m.id].plan.style.why" class="muted">{{ planByMessage[m.id].plan.style.why }}</span>
                         </label>
+                        <div v-if="planByMessage[m.id].plan.colour_treatment" class="claims">
+                          <b>Colour direction</b>
+                          <span class="muted">{{ planByMessage[m.id].plan.colour_treatment.source_note || 'Proposed palette' }}</span>
+                          <div v-for="(colour, role) in planByMessage[m.id].plan.colour_treatment.roles" :key="role" class="voice-pick">
+                            <span aria-hidden="true" :style="{ backgroundColor: colour.hex, width: '1rem', height: '1rem', borderRadius: '50%', border: '1px solid currentColor', display: 'inline-block' }"></span>
+                            <span>{{ role }} · {{ colour.hex }}{{ colour.locked ? ' · Keep fixed' : '' }}</span>
+                          </div>
+                          <span>{{ planByMessage[m.id].plan.colour_treatment.usage }}</span>
+                          <small class="muted">To change this direction, describe the colours you want and plan again.</small>
+                        </div>
                         <ul v-if="(styleNotes[planStyleKey(planByMessage[m.id])] || []).length" class="style-notes"><li v-for="(n, i) in styleNotes[planStyleKey(planByMessage[m.id])]" :key="i">{{ n }}</li></ul>
-                        <label v-if="planByMessage[m.id].plan.style && !planByMessage[m.id].plan.free_edit && conversation && !conversation.head_revision_id" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Design first: one frame per beat for you to approve before the motion is built <small class="muted">(a short, cheap run)</small></span></label>
+                        <label v-if="planByMessage[m.id].plan.style && !planByMessage[m.id].plan.free_edit && conversation" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Storyboard only: silent still frames for approval before the full video <small class="muted">(audio and motion are priced separately when you build the full video)</small></span></label>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
                           <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
@@ -581,6 +665,14 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     </div>
                     <details v-if="!planByMessage[m.id].stale" class="more">
                       <summary>View details</summary>
+                      <div v-if="planByMessage[m.id].plan.reference_observations?.length" class="checks">
+                        <b>What we’re taking from your reference</b>
+                        <div v-for="observation in planByMessage[m.id].plan.reference_observations" :key="observation.asset_id">
+                          <p v-if="observation.preserve">Keep: {{ observation.preserve }}</p>
+                          <p v-if="observation.replace">Change: {{ observation.replace }}</p>
+                          <p v-if="observation.uncertain" class="muted">To check: {{ observation.uncertain }}</p>
+                        </div>
+                      </div>
                       <div class="more__body">
                         <div class="plan-cols">
                           <div class="plan-col"><span class="legend ok">REUSED</span><ul><li v-for="r in planByMessage[m.id].plan.reused" :key="r.asset_id">{{ r.title }} <small>{{ r.use }}</small></li><li v-if="!planByMessage[m.id].plan.reused.length" class="muted">Nothing supplied</li></ul></div>
@@ -606,32 +698,28 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </template>
                 <p v-else>{{ m.content }}</p>
               </div>
-            </template>
-
-            <div v-if="data?.runs?.some(r => ['failed','cancelled','needs_input'].includes(r.status))" class="assistant-message">
-              <details class="run-card"><summary>Earlier attempts</summary><p v-for="run in data.runs.filter(r => ['failed','cancelled','needs_input'].includes(r.status))" :key="run.id" class="run-line">{{ run.status === 'needs_input' ? 'Your input is needed' : run.status === 'failed' ? 'Stopped' : 'Cancelled' }} · {{ run.error || run.stage }}<button v-if="run.status === 'failed' && canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active" @click="plan(run.id)">Review cost to retry</button></p></details>
-            </div>
-
-            <div v-if="currentRevision" class="assistant-message">
+            <div v-if="m.eventType === 'revision' && currentRevision" class="assistant-message">
               <span class="speaker">WyvStudio <time>{{ time(currentRevision.created_at) }}</time></span>
+              <h3 v-if="outputMeta.look">Storyboard preview · no audio or motion</h3>
               <p>{{ currentRevision.summary }}</p>
               <p v-if="currentRevision.conflict" class="notice">{{ outputMeta.variant_group ? 'An alternative variation. Inspect it, then restore it as a new version to make it current.' : 'Your brief changed while this was being made. This draft is kept; your current version did not change.' }}</p>
               <p v-if="isOldRevision" class="notice">You are viewing version {{ currentRevision.number }}. Version {{ currentNumber }} is still current. Download uses the version shown here.</p>
               <div :class="['result', currentRevision.export_job_id || (imageOutput && currentRevision.output_asset_id) ? 'result--done' : '']">
                 <div class="result__stage">
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
-                  <img v-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
+                  <StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
+                  <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
                   <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /></div>
                   <p v-if="artifactGone && !artifactLoading" class="muted">{{ artifactGone }}</p>
                   <button v-if="!media && !artifactLoading && !artifactGone" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
                 </div>
                 <div class="result__meta">
-                  <b>Version {{ currentRevision.number }}{{ imageOutput ? ' · image' : ' · video' }}</b>
+                  <b>Version {{ currentRevision.number }}{{ outputMeta.look ? ' · storyboard' : imageOutput ? ' · image' : ' · video' }}</b>
                   <span class="muted">{{ outputMeta.fixture === false ? (currentRevision.export_job_id ? 'Saved to Videos' : currentRevision.output_asset_id ? 'Saved to Assets' : 'Preview') : 'Local sample preview' }}</span>
                   <span :class="['status', isOldRevision ? 'status--neutral' : 'status--ok']">{{ isOldRevision ? 'EARLIER' : 'CURRENT' }}</span>
                 </div>
                 <div v-if="delivery_checks" class="checks" role="status" aria-label="Before you post">
-                  <b>{{ checkIssues.length ? 'Before you post' : 'Ready to post' }}</b>
+                  <b>{{ checkIssues.length ? 'Before you post' : 'Delivery checks complete' }}</b>
                   <ul>
                     <li v-for="(t, i) in checkIssues" :key="i" class="checks__warn">{{ t }}</li>
                     <li v-if="delivery_checks.loudness?.status === 'levelled'">Sound levelled from {{ delivery_checks.loudness.from }} to {{ delivery_checks.loudness.lufs }} LUFS for social playback.</li>
@@ -639,29 +727,44 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
                   </ul>
                 </div>
+                <div v-if="outputMeta.creative_review" class="checks" role="status">
+                  <b>{{ outputMeta.creative_review.status === 'passed' ? 'Creative review passed' : 'Draft — review incomplete' }}</b>
+                  <ul v-if="outputMeta.creative_review.findings?.length"><li v-for="(finding, i) in outputMeta.creative_review.findings" :key="i">{{ finding }}</li></ul>
+                  <p v-else-if="outputMeta.creative_review.status !== 'passed'">This version has not completed an independent creative review.</p>
+                  <ul v-if="outputMeta.creative_review.requirement_checks?.length"><li v-for="r in outputMeta.creative_review.requirement_checks" :key="r.id"><b>{{ ({ fulfilled: 'Fulfilled', unmet: 'Not met', unverified: 'Not verified', deferred: 'For the full video' })[r.status] || 'Not verified' }}</b> · {{ r.text }}<small v-if="r.evidence"> — {{ r.evidence }}</small></li></ul>
+                </div>
                 <p v-if="reviewScores.length" class="review-line muted">Review scores by frame: <b v-for="s in reviewScores" :key="s.time" :class="{ low: s.score < 8 }">{{ s.time }}s {{ s.score }}</b></p>
-                <p v-if="outputMeta.look && !isOldRevision" class="look-note">This is the look: one frame per beat, held in place. Approve it and the motion gets built from these frames, or say what to change.</p>
+                <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
+                <section v-if="outputMeta.look && !isOldRevision && currentPlan?.character_preview" class="checks character-approval-inline" aria-label="Character look for this video">
+                  <b>Character look for this video</b>
+                  <div class="character-review-grid">
+                    <figure v-for="image in currentPlan.character_preview.images" :key="image.asset_id">
+                      <img :src="image.preview_url" :alt="image.name || 'Character preview'" />
+                    </figure>
+                  </div>
+                  <p>{{ currentPlan.character_preview.approved ? 'This approved look will guide the poses and talking clips.' : 'Approving the design also approves this character look for the poses and talking clips. You’ll review the cost before generation starts.' }}</p>
+                </section>
                 <form v-if="paid && canWrite && !conversation.archived_at" class="note-form" @submit.prevent="saveNote">
                   <input v-model="noteText" class="input" maxlength="400" placeholder="What worked, what to change next time (kept for this style)" aria-label="Note for this style" />
                   <button type="submit" class="btn btn--ghost btn--sm" :disabled="!noteText.trim()">Save note</button>
                   <small v-if="noteSaved" class="muted">Saved for {{ noteSaved }}</small>
                 </form>
                 <div class="result__actions">
-                  <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve the look</button>
+                  <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve design & create video · review cost</button>
                   <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
                   <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
                   <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
-                  <button v-if="canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
-                  <button v-if="canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
+                  <button v-if="!outputMeta.look && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
+                  <button v-if="!outputMeta.look && canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
                   <button v-if="canWrite && !conversation.archived_at && currentRevision.share_enabled" type="button" class="btn btn--ghost" @click="requestDelivery('unshare')">Turn off share link</button>
-                  <button v-if="canWrite && !conversation.archived_at && !imageOutput && currentRevision.export_job_id" type="button" class="btn btn--outline" @click="requestDelivery('schedule')">Schedule post</button>
+                  <button v-if="!outputMeta.look && canWrite && !conversation.archived_at && !imageOutput && currentRevision.export_job_id" type="button" class="btn btn--outline" @click="requestDelivery('schedule')">Schedule post</button>
                   <button v-if="paid && imageOutput && currentRevision.output_asset_id && canWrite && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="animateResult">Animate image</button>
                   <button v-if="canWrite && !conversation.archived_at && !active && editableFields.length" type="button" class="btn btn--ghost" :aria-expanded="leversOpen" @click="openLevers">Edit text and colours <span class="tier tier--free">FREE</span></button>
                   <button v-if="paid && !isOldRevision" type="button" class="btn btn--ghost" @click="editResult">Edit with a prompt</button>
                   <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
                   <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
                   <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
-                  <button v-if="!imageOutput && media" type="button" class="btn btn--ghost btn--safe" :aria-pressed="safeZones" @click="safeZones = !safeZones">Show safe margins</button>
+                  <button v-if="!outputMeta.look && !imageOutput && media" type="button" class="btn btn--ghost btn--safe" :aria-pressed="safeZones" @click="safeZones = !safeZones">Show safe margins</button>
                 </div>
                 <div v-if="leversOpen" class="levers">
                   <div class="levers__grid">
@@ -678,6 +781,11 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </div>
               </div>
             </div>
+            </template>
+
+            <div v-if="data?.runs?.some(r => ['failed','cancelled','needs_input'].includes(r.status))" class="assistant-message">
+              <details class="run-card"><summary>Earlier attempts</summary><p v-for="run in data.runs.filter(r => ['failed','cancelled','needs_input'].includes(r.status))" :key="run.id" class="run-line">{{ run.status === 'needs_input' ? 'Your input is needed' : run.status === 'failed' ? 'Stopped' : 'Cancelled' }} · {{ run.error || run.stage }}<button v-if="run.status === 'failed' && canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active" @click="plan(run.id)">Review cost to retry</button></p></details>
+            </div>
 
             <div v-if="active" class="assistant-message" aria-live="polite">
               <div :class="['icard', active.status === 'needs_attention' ? 'icard--warn' : 'icard--info']">
@@ -693,6 +801,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               <div class="icard icard--warn">
                 <div class="icard__body">
                   <p class="icard__summary">{{ quote.paid ? 'Here is what this will cost.' : 'This renders the fixed local sample.' }} {{ quote.description }}</p>
+                  <p v-if="quote.build_stage === 'storyboard'" class="notice">Storyboard only: silent still frames. Audio and animation are deferred to the full video build.</p>
+                  <p v-else-if="quote.build_stage === 'full_video'" class="notice">Full video: build the motion and approved audio.</p>
                   <p v-if="quote.settings?.video_mode === 'animate_image'" class="muted">{{ quote.settings.duration_seconds }} seconds · 480p image animation · silent. Generated motion may change details; check before use.</p>
                   <p v-if="quote.variants > 1" class="muted">{{ quote.variants }} variations, each with its own result. A finished variation is kept if another one fails.</p>
                   <label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to our AI providers (Anthropic, Replicate). I have permission to use any people, products and claims in it.</label>
@@ -712,6 +822,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <small class="muted">The agent may buy more media under this ceiling; anything over it waits for your approval.</small>
                   </div>
                   <div class="cost-line"><b>{{ quote.paid ? `Up to ${quote.credits_max} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
+                  <p v-if="quoteCreditAvailability" class="muted">{{ quoteCreditAvailability.available.toLocaleString() }} available · {{ quoteCreditAvailability.reserved.toLocaleString() }} reserved for unfinished work · {{ quoteCreditAvailability.total.toLocaleString() }} total credits. Availability is checked again when you approve.</p>
                   <span class="spacer" />
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
                   <button v-if="expiredQuote" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="plan">Refresh plan</button>
@@ -746,7 +857,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <img v-if="u.file.type.startsWith('image/') && u.preview_url" :src="u.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', u.file.type.startsWith('audio/') ? 'thumb--audio' : 'thumb--video']" />
                 <div>
                   <b :title="u.file.name">{{ u.file.name }}</b>
-                  <small>{{ u.error || (u.state === 'uploading' ? `uploading · ${u.progress}%` : `${(u.file.size / 1048576).toFixed(1)} MB · ready`) }}</small>
+                  <small>{{ u.error || (u.state === 'uploading' ? `uploading · ${u.progress}%` : `${(u.file.size / 1048576).toFixed(1)} MB · uploads when you send`) }}</small>
                   <div v-if="u.state === 'uploading'" class="upload__bar"><span :style="{ width: u.progress + '%' }" /></div>
                   <label v-if="u.purpose === 'source' && u.state !== 'uploading'" class="consent consent--sm"><input v-model="u.confirmed" type="checkbox" /> I own this or have permission to reuse it.</label>
                 </div>
@@ -833,6 +944,24 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         </aside>
       </div>
       <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
+      <CreateDialog :open="!!characterReview" title="Approve your character’s look" @close="characterReview=null">
+        <template v-if="characterReview">
+          <p>This preview becomes the reference for every pose and talking clip. Check the face, proportions, outfit and visual treatment before continuing.</p>
+          <div v-if="characterReview.character_preview" class="character-review-grid">
+            <figure v-for="image in characterReview.character_preview.images" :key="image.asset_id">
+              <img :src="image.preview_url" :alt="image.name" /><figcaption>{{ image.name }}</figcaption>
+            </figure>
+          </div>
+          <p v-else>Start with a storyboard to create one character preview. Approve its look before we generate additional poses or the full video.</p>
+          <p v-if="characterReview.plan.character_style"><strong>Requested style:</strong> {{ characterReview.plan.character_style }}</p>
+          <p v-if="error" class="create-error">{{ error }}</p>
+          <div class="row-actions">
+            <button v-if="characterReview.character_preview" type="button" class="btn btn--primary" :disabled="locked" @click="approveCharacter">Approve character · review video cost</button>
+            <button v-else type="button" class="btn btn--primary" :disabled="locked" @click="prepareCharacterStoryboard">Review storyboard cost</button>
+            <button type="button" class="btn btn--ghost" @click="characterReview=null; changeLook()">Request changes</button>
+          </div>
+        </template>
+      </CreateDialog>
       <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
       <CreateDialog :open="showHistory" title="Recent conversations" drawer @close="showHistory = false">
@@ -893,12 +1022,16 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form><UiSelect v-model="purpose" label="How to use this asset" :options="[{value:'reference',label:'Reference only'},{value:'source',label:'Reuse in my creation'}]" /><p class="muted">A reference helps describe a style. It does not give permission to copy footage, people or branding.</p><label v-if="purpose === 'source'" class="consent"><input v-model="reuseConfirmed" type="checkbox" /> I own this media or have permission to reuse it.</label>
         <div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked || purpose === 'source' && !reuseConfirmed" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
       </CreateDialog>
-      <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><img v-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
+      <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
+                  <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
     </main>
   </div>
 </template>
 
 <style scoped>
+.character-review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}.character-review-grid figure{margin:0}.character-review-grid img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:12px;background:#111}.character-review-grid figcaption{font-size:12px;color:var(--color-text-secondary);margin-top:6px}
+.character-approval-inline .character-review-grid{grid-template-columns:repeat(auto-fit,minmax(110px,160px));margin:10px 0}
+
 /* Tokens from the approved create-ui mockup, on the app's own accent. */
 .link-form{display:flex;flex-direction:column;gap:10px}.link-form__label{font-size:13px;color:var(--text-2)}.link-form__note{font-size:12px;line-height:1.45;margin:0}.link-form__actions{display:flex;justify-content:flex-end;gap:8px}
 .style-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px;max-width:180px}

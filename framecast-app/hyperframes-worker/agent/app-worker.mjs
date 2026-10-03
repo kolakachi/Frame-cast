@@ -1,9 +1,11 @@
+import {createTrajectory} from './trajectory.mjs';
+import {reviewStatus} from './review-status.mjs';
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
 // Credentials stay on the host; no shell text or Docker socket enters the sandbox.
 import {readFile,writeFile,mkdir,copyFile,access,readdir,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {PilotBudget} from './pilot-budget.mjs';
-import {ReplicateProvider} from './replicate.mjs';
+import {ReplicateGatewayProvider} from './replicate-gateway.mjs';
 import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
@@ -51,6 +53,10 @@ async function execute(run){
  await mkdir(dir+'/project');
  for(const name of ['index.html','product.svg'])await copyFile(root+'/fixtures/'+name,dir+'/project/'+name);
  await writeFile(dir+'/output-settings.json',JSON.stringify(run.input.mode==='fixture'?{aspect_ratio:'9:16',duration_seconds:15}:run.input.settings),{flag:'wx'});
+ const trajectory=createTrajectory({file:dir+'/trajectory.jsonl',send:events=>request('runs/'+run.id+'/trajectory',{lease_token:run.lease_token,events},false,10000)});
+ const trace=async event=>{try{await trajectory.record(event);}catch{console.error('Local trajectory write failed for '+run.id);}};
+ const flushTrace=async()=>{try{await trajectory.flush();}catch{console.error('Trajectory sync pending for '+run.id);}};
+ await trace({phase:'run',status:'started',summary:'Worker claimed run'});
  let seq=0,cancelled=false,lost=false,heartbeatBusy=false,stage='Preparing the local sample';
  const aborter=new AbortController();
  // One slow heartbeat is not a lost lease (a busy single-threaded dev server
@@ -61,6 +67,7 @@ async function execute(run){
   if(heartbeatBusy)return;heartbeatBusy=true;
   try{const state=await request('runs/'+run.id+'/heartbeat',{lease_token:run.lease_token,sequence:++seq,stage},false,45000);cancelled||=state.cancel_requested;lastBeat=Date.now();}
   catch(e){if(/HTTP (403|404|409)\b/.test(String(e.message))||Date.now()-lastBeat>60000)lost=true;}finally{heartbeatBusy=false;}
+  void flushTrace();
   if(cancelled||lost||stopping){aborter.abort();try{await exec(docker,['rm','-f',container]);}catch{/* final inspection below decides whether cancellation is safe */}}
  }
  await beat();
@@ -82,15 +89,9 @@ async function execute(run){
    for(const file of manifest)if(file.purpose==='source')await copyFile(dir+'/inputs/'+file.path,dir+'/project/'+file.name);
    stage='Applying your changes';
   }
-  let providerToken;
   const viaGateway=paid&&run.input.execution_policy?.agent?.provider==='anthropic'&&!run.input.execution_policy?.media;
   if(paid){
    if(process.env.CREATE_AGENT_LIVE!=='1')throw Error('Live local host is not enabled');
-  }
-  if(paid&&!viaGateway){
-   const env=await readFile(root+'/../api/.env','utf8');
-   providerToken=env.split('\n').find(l=>l.startsWith('REPLICATE_API_TOKEN='))?.split('=').slice(1).join('=').trim().replace(/^['"]|['"]$/g,'');
-   if(!providerToken)throw Error('Missing local provider credential');
   }
   // Claude API calls keep their own local $5 test ledger so they never draw on the Replicate pilot's.
   // Opus test ledger: uncapped by owner decision on 2026-10-01 (was $5, then $6, $6.50, $7.10). Each run is
@@ -102,7 +103,9 @@ async function execute(run){
   const bindPrediction=(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId});
   if(paid&&run.input.execution_policy?.media){
    stage=run.input.settings.output_kind==='image'?'Creating your image':'Animating your image';
-   const image=await executeImage({directory:dir,input:run.input,manifest,token:providerToken,begin,settle,bindPrediction,signal:aborter.signal,fetchImpl:async(url,options)=>{if(options?.method==='POST' && String(url).endsWith('/predictions'))reservation=await pilotBudget.reserve(run.input.execution_policy.media.model,run.input.execution_policy.media.cost_limit_microusd/1e6);return fetch(url,options);}});
+   reservation=await pilotBudget.reserve(run.input.execution_policy.media.model,run.input.execution_policy.media.cost_limit_microusd/1e6);
+   const gateway={prepare:()=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token},false,300000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)};
+   const image=await executeImage({directory:dir,input:run.input,manifest,gateway,begin,settle,bindPrediction,signal:aborter.signal});
    if(image.type==='video/mp4'){await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/prepare-animation.mjs',id],{timeout:120000,maxBuffer:1000000});image.artifact=dir+'/animation-silent.mp4';}
    await beat();if(cancelled||lost||stopping)throw Error('Stopped before delivering image');
    await finish(run,{status:'preview_ready',summary:image.summary,bundle:image.bundle},image.artifact,image.type);
@@ -113,7 +116,7 @@ async function execute(run){
   const callCapUsd=(run.input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6;
   const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:callCapUsd,
     call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,300000)})
-   :paid?new ReplicateProvider({contract:JSON.parse(await readFile(root+'/agent/contracts/sonnet.json','utf8')),token:providerToken,enabled:true,maxCallUsd:.3}):offlineContractProvider(run.input.base_bundle,manifest);
+   :paid?new ReplicateGatewayProvider({maxCallUsd:callCapUsd,upload:image=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token,image},false,120000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)}):offlineContractProvider(run.input.base_bundle,manifest);
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
   if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd);};
   let agentResult;
@@ -133,23 +136,34 @@ async function execute(run){
    const mediaCredits=planMedia.reduce((n,m)=>n+(Number(m.charged_credits)||0),0);
    const onProgress=p=>{const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · '+credits+' credits so far').slice(0,250);};
    // A purchase the agent decides on, within the approved ceiling; the API refuses anything over it (402).
-   const buy=async({kind,description,signal})=>{
+   const buy=async({kind,description,requirement_ids=[],signal})=>{
     let r;
-    try{r=await request('runs/'+run.id+'/plan-media/adhoc',{lease_token:run.lease_token,kind,description},false,900000);}
+    try{r=await request('runs/'+run.id+'/plan-media/adhoc',{lease_token:run.lease_token,kind,description,requirement_ids},false,900000);}
     catch(e){const m=String(e.message);return {ok:false,over_ceiling:/HTTP 402/.test(m),error:m.replace(/^Coordinator returned HTTP \d+: ?/,'').slice(0,300)};}
     if(r.status!=='succeeded')return {ok:false,error:r.error||'The item could not be made.'};
     const files=[];
-    for(const f of [r.file,...(r.more_files||[])].filter(Boolean)){const name=await stageFile(f,{manifest,directory:dir+'/inputs',download,signal,kind,description});files.push({name,sha256:f.sha256,asset_id:f.asset_id});}
-    planMedia.push({kind,description,status:'succeeded',file:files[0]?.name,charged_credits:r.charged_credits});
-    return {ok:true,kind,description,charged_credits:r.charged_credits,reused:!!r.reused,files,...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(Array.isArray(r.poses)?{poses:r.poses}:{}),...(typeof r.line==='string'?{line:r.line}:{})};
+    for(const f of [r.file,...(r.more_files||[])].filter(Boolean)){const name=await stageFile(f,{manifest,directory:dir+'/inputs',download,signal,kind,description,taskId:r.task_id??null,requirementIds:r.requirement_ids??[]});files.push({name,sha256:f.sha256,asset_id:f.asset_id});}
+    planMedia.push({task_id:r.task_id??null,requirement_ids:r.requirement_ids??[],kind,description,status:'succeeded',file:files[0]?.name,charged_credits:r.charged_credits});
+    return {ok:true,task_id:r.task_id??null,requirement_ids:r.requirement_ids??[],kind,description,charged_credits:r.charged_credits,reused:!!r.reused,files,...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(Array.isArray(r.poses)?{poses:r.poses}:{}),...(typeof r.line==='string'?{line:r.line}:{})};
    };
-   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,onProgress,buy,
+   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,onProgress,onTrace:trace,buy,
     transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),
     settle,receipt:output=>paid?({status:'succeeded',prediction_id:output.predictionId}):({status:'succeeded',cost_microusd:0}),
-    invoke:async(operation,{times=[],signal,op,input,params,cmd,args}={})=>{if(operation==='media')await writeFile(dir+'/media-request.json',JSON.stringify({op,input,params:params??{}}),{mode:0o600});if(operation==='run')await writeFile(dir+'/run-request.json',JSON.stringify({cmd,args}),{mode:0o600});await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));if(operation==='media')await unlink(dir+'/media-request.json').catch(()=>{});if(operation==='run')await unlink(dir+'/run-request.json').catch(()=>{});if(paid&&operation==='snapshot'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/snapshot/contact-sheet.jpg')).toString('base64');if(paid&&operation==='strip'&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/strip/strip.jpg')).toString('base64');return result;}});
+    invoke:async(operation,{times=[],signal,op,input,params,cmd,args}={})=>{
+     const payload=operation==='media'?{op,input,params:params??{}}:
+      operation==='run'?{cmd,args}:operation==='inspect_reference'?{input,params}:null;
+     const requestFile=dir+'/'+operation+'-request.json';
+     if(payload)await writeFile(requestFile,JSON.stringify(payload),{mode:0o600});
+     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});
+     const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));
+     if(payload)await unlink(requestFile).catch(()=>{});
+     const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg'})[operation];
+     if(paid&&imageFile&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/'+imageFile)).toString('base64');
+     return result;
+    }});
    if(['needs_input','awaiting_media_approval'].includes(agentResult.state.status)){
     await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
    }
@@ -181,7 +195,7 @@ async function execute(run){
   await accountedCall({key:'render-1',kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
-   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status!=='ready')throw Error('Render did not validate');return report;},
+   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
@@ -206,6 +220,7 @@ async function execute(run){
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
   const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?fitSummary(agentResult.state.summary??'',cutNote(agentResult.state.edits)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
+  result.creative_review=agentResult?.state?reviewStatus(agentResult.state):{status:'incomplete',findings:['This output has not received an independent creative review.']};
   // The agent's last review scores travel with the version, so the card can offer another round.
   if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);
   // Persist completion before sending: a callback failure must not trigger rendering again.
@@ -215,6 +230,7 @@ async function execute(run){
   console.log(JSON.stringify({run:run.id,status:'preview_ready'}));
  }catch(e){
   clearInterval(timer);
+  await trace({phase:'run',status:'failed',summary:'Worker encountered an error',detail:e.message});
   let stopped=false;
   try{await exec(docker,['rm','-f',container]);stopped=true;}catch{
    try{const {stdout}=await exec(docker,['ps','-a','--filter','name=^/'+container+'$','--format','{{.Names}}']);stopped=!stdout.trim();}catch{/* Docker unreachable: unknown */}
@@ -224,8 +240,10 @@ async function execute(run){
   await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,...result}),{mode:0o600});
   // If completion may already be accepted, the server rejects a conflicting result.
   if(!lost)try{await finish(run,result);}catch{}
+  await flushTrace();
+  if(stopped)try{await request('runs/'+run.id+'/stopped',{lease_token:run.lease_token,sandbox_stopped:true});}catch{/* Terminal runs reject this; uncertain holds remain if acknowledgement is lost. */}
   console.error(JSON.stringify({run:run.id,status:lost?'needs_attention':result.status}));
- }finally{clearInterval(timer);}
+ }finally{clearInterval(timer);await trace({phase:'run',status:'finished',summary:'Worker execution ended; see authoritative run status and receipts'});await flushTrace();}
 }
 while(!stopping){
  try{const run=await request('claim',{});if(run)await execute(run);else if(process.argv.includes('--once'))break;}

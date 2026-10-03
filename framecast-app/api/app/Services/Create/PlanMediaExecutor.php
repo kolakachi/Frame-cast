@@ -18,11 +18,12 @@ use RuntimeException;
 class PlanMediaExecutor
 {
     /** Kinds this executor can make; the catalogue must not offer anything outside it. */
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'talking_shot', 'talking_take', 'brand_kit'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
     {
+        if (in_array($kind, ['ai_image', 'animate_image', 'music', 'sfx', 'character_poses', 'character_variants'], true)) $description .= RequirementContract::prompt($ctx['task_requirements'] ?? []);
         $portrait = in_array($ctx['aspect_ratio'] ?? '9:16', ['9:16', '4:5'], true);
         return match ($kind) {
             'stock_video', 'stock_image' => $this->stock($kind, $description, $portrait, $dir),
@@ -32,7 +33,8 @@ class PlanMediaExecutor
             'library_music' => $this->music($description, $ctx, $dir),
             'music' => $this->generatedMusic($description, $ctx, $dir),
             'sfx' => $this->soundSheet($description, $dir),
-            'character_poses' => $this->characterPoses($description, $ctx, $dir),
+            'character_poses' => $this->characterMaster($description, $ctx, $dir),
+            'character_variants' => $this->characterVariants($description, $ctx, $dir),
             'talking_shot' => $this->talkingShot($ctx, $dir),
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
@@ -69,10 +71,19 @@ class PlanMediaExecutor
         return ['path' => $path, 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($path), 'title' => 'AI image · '.Str::limit($prompt, 60, '…'), 'provider_id' => 'img-'.Str::uuid()];
     }
 
-    /** Animates the first supplied photo; the plan item describes the motion. */
+    public static function animationSource(array $ctx): ?string
+    {
+        if (($ctx['animation_subject'] ?? '') !== 'approved_character') return collect($ctx['source_images'] ?? [])->first();
+        $files = $ctx['approved_character_files'] ?? [];
+        if (count($files) !== 1) throw new RuntimeException('Character animation requires exactly one approved master.');
+        app(InputSnapshotService::class)->verify($files);
+        return \Illuminate\Support\Facades\Storage::disk('local')->path($files[0]['storage_path']);
+    }
+
+    /** Character motion uses the verified approved master; generic motion uses a source photo. */
     private function animate(string $prompt, array $ctx, string $dir): array
     {
-        $photo = collect($ctx['source_images'] ?? [])->first();
+        $photo = self::animationSource($ctx);
         if (! $photo) throw new RuntimeException('Animation needs a photo you supplied. Attach one and plan again.');
         // Replicate accepts small inline images; keep the still under 1 MB.
         $small = $dir.'/still.jpg';
@@ -122,55 +133,78 @@ class PlanMediaExecutor
         return ['path' => $path, 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($path), 'title' => 'Music · '.Str::limit($description, 60, '…'), 'provider_id' => 'music-'.Str::uuid()];
     }
 
+    public static function characterTreatment(string $style): string
+    {
+        return trim($style) !== ''
+            ? 'Keep the reference character recognisable: identity, distinctive features and outfit. Redraw the character itself in this requested treatment: '.$style.'. This changes the rendering and texture, not the identity. Do not return the original photo with a dotted overlay or place the treatment only on the background.'
+            : 'Same character exactly: same body shape, colours, face, details and texture.';
+    }
+
     public const DEFAULT_POSES = ['talking, mid-sentence, friendly', 'waving hello', 'pointing to one side', 'surprised', 'thumbs up'];
 
-    /**
-     * One character in several poses, identity kept by Nano Banana Pro from a
-     * single reference, each cut out on a transparent background. The
-     * reference is a saved workspace character named in the description, the
-     * first supplied image, or a new original character drawn first.
-     */
-    private function characterPoses(string $description, array $ctx, string $dir): array
+    public static function requestedPoses(string $description): array
     {
-        [$who, $list] = array_pad(explode(':', $description, 2), 2, '');
-        // A narrator is a bust (the way a presenter is framed); anything else is full body.
+        [, $list] = array_pad(explode(':', $description, 2), 2, '');
+        return array_values(array_slice(array_filter(array_map('trim', preg_split('/[,;\n]+/', $list))), 0, 5)) ?: self::DEFAULT_POSES;
+    }
+
+    /** One style decision, one image. The storyboard reuses it until the user approves. */
+    private function characterMaster(string $description, array $ctx, string $dir): array
+    {
+        [$who] = explode(':', $description, 2);
         $bust = (bool) preg_match('/\b(bust|shoulders up|head and shoulders|chest up|presenter)\b/i', $description);
-        $framing = $bust ? 'Bust shot from the chest up, facing the camera, head and shoulders filling the frame' : 'Full body';
-        $poses = array_values(array_slice(array_filter(array_map('trim', preg_split('/[,;\n]+/', $list))), 0, 5)) ?: self::DEFAULT_POSES;
-        $nano = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class);
-        $refUrl = null; $name = 'Character';
+        $framing = $bust ? 'Bust shot from the chest up, front view, head and shoulders filling the frame' : 'Full body, front view';
+        $refs = []; $name = 'Character';
         $saved = \App\Models\Character::where('workspace_id', $ctx['workspace_id'])->where('status', '!=', 'archived')->get()
             ->first(fn ($c) => $c->name && str_contains(mb_strtolower($description), mb_strtolower($c->name)));
-        $refAsset = $saved ? Asset::find($saved->reference_asset_id ?: $saved->preview_asset_id) : null;
+        $refAsset = $saved ? Asset::where('workspace_id', $ctx['workspace_id'])->where('status', '!=', 'archived')->find($saved->reference_asset_id ?: $saved->preview_asset_id) : null;
         if ($refAsset?->storage_url) {
-            $refUrl = $this->replicateUpload((string) app(StorageService::class)->get((string) $refAsset->storage_url), $refAsset->mime_type ?: 'image/png');
+            $refs[] = $this->replicateUpload((string) app(StorageService::class)->get((string) $refAsset->storage_url), $refAsset->mime_type ?: 'image/png');
             $name = $saved->name;
         } elseif ($photo = collect($ctx['source_images'] ?? [])->first()) {
-            $refUrl = $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
+            $refs[] = $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
             $name = 'Your character';
-        } else {
-            $base = $nano->generate(trim($who) !== '' ? trim($who).'. '.$framing.', front view, plain flat cream background, centred.' : 'An original friendly mascot character. '.$framing.', front view, plain flat cream background.', '3d', '1:1');
-            $refUrl = $base['image_url'] ?? $this->replicateUpload(base64_decode((string) ($base['image_b64'] ?? '')), 'image/png');
         }
-        $keep = ' Same character exactly: same body shape, colours, face, details and texture. '.$framing.', plain flat cream background, centred, nothing else in frame.';
-        $files = [];
+        $hasIdentity = count($refs) > 0;
+        foreach (array_slice($ctx['character_style_images'] ?? [], 0, 3) as $image) {
+            $refs[] = $this->replicateUpload((string) file_get_contents($image), (new \finfo(FILEINFO_MIME_TYPE))->file($image));
+        }
+        $style = trim((string) ($ctx['character_style'] ?? ''));
+        $roles = $hasIdentity
+            ? 'Image 1 supplies identity only: preserve its recognisable face, hair and outfit. Any later images are STYLE REFERENCES ONLY: match their character proportions, surface treatment, dot scale, shading and edge language, not their person, mascot, text or branding. '
+            : 'Create the original character described below. All supplied images are STYLE REFERENCES ONLY: borrow their rendering treatment, not their character identity, text or branding. ';
+        $treatment = $hasIdentity ? self::characterTreatment($style) : 'Use this rendering treatment for the original character: '.($style ?: 'the visual treatment in the style references').'.';
+        $prompt = $roles.'Character: '.trim($who).'. '.$treatment.' '.$framing.'. Neutral friendly expression, one character only, plain flat cream background, no contact sheet. Establish ONE consistent master design; do not blend photographic, cartoon and comic treatments.';
+        $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, $style ?: '3d', '1:1', ['reference_image_urls' => $refs]);
+        $src = $r['image_url'] ?? $this->replicateUpload(base64_decode((string) ($r['image_b64'] ?? '')), 'image/png');
+        $cut = $this->replicate('851-labs/background-remover', ['image' => $src, 'format' => 'png', 'background_type' => 'rgba']);
+        return ['path' => $this->fetch($cut, $dir.'/master.png'), 'mime' => 'image/png', 'title' => $name.' · character preview',
+            'provider_id' => 'master-'.Str::uuid(), 'extra' => [], 'poses' => ['approved design preview'], 'character_contract' => CharacterApproval::CONTRACT];
+    }
+
+    /** Every pose starts from the exact approved stylized master, never the original photograph or a preceding pose. */
+    private function characterVariants(string $description, array $ctx, string $dir): array
+    {
+        $master = $ctx['approved_character_files'][0] ?? null;
+        if (! $master) throw new RuntimeException('Approve the character preview before generating poses.');
+        app(InputSnapshotService::class)->verify([$master]);
+        $refUrl = $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($master['storage_path']), $master['mime_type']);
+        $files = []; $poses = self::requestedPoses($description);
         foreach ($poses as $i => $pose) {
-            // A dropped connection mid-sheet shouldn't lose the poses already paid for.
-            $r = retry(3, fn () => $nano->generate('The character from the reference image, '.$pose.'.'.$keep, '3d', '1:1', ['reference_image_url' => $refUrl]),
-                3000, fn ($e) => $e instanceof \Illuminate\Http\Client\ConnectionException);
+            $prompt = 'Edit the approved character in image 1 into this pose/expression: '.$pose.'. Keep the EXACT same character design: face, eye/head proportions, hair, outfit, body proportions, crop, palette, lighting, shading, halftone/dither dot scale and edge treatment. Change only pose/expression. Do not restyle or return a photographic alternative. One character, plain flat cream background.';
+            $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, 'approved character design', '1:1', ['reference_image_url' => $refUrl]);
             $src = $r['image_url'] ?? $this->replicateUpload(base64_decode((string) ($r['image_b64'] ?? '')), 'image/png');
-            $cut = retry(3, fn () => $this->replicate('851-labs/background-remover', ['image' => $src, 'format' => 'png', 'background_type' => 'rgba']),
-                3000, fn ($e) => $e instanceof \Illuminate\Http\Client\ConnectionException);
-            $path = $this->fetch($cut, $dir.'/pose-'.$i.'.png');
-            $files[] = ['path' => $path, 'title' => $name.' · '.Str::limit($pose, 40, '…'), 'pose' => $pose];
+            $cut = $this->replicate('851-labs/background-remover', ['image' => $src, 'format' => 'png', 'background_type' => 'rgba']);
+            $files[] = ['path' => $this->fetch($cut, $dir.'/pose-'.$i.'.png'), 'title' => 'Character · '.Str::limit($pose, 40, '…'), 'pose' => $pose];
         }
-        return ['path' => $files[0]['path'], 'mime' => 'image/png', 'title' => $files[0]['title'], 'provider_id' => 'poses-'.Str::uuid(), 'extra' => array_slice($files, 1), 'poses' => array_column($files, 'pose')];
+        return ['path' => $files[0]['path'], 'mime' => 'image/png', 'title' => $files[0]['title'], 'provider_id' => 'poses-'.Str::uuid(),
+            'extra' => array_slice($files, 1), 'poses' => $poses, 'character_contract' => CharacterApproval::CONTRACT, 'master_sha256' => $master['sha256']];
     }
 
     /**
      * The character lip-syncing the first narration line, for the hook: its talking
      * pose plus that line cut from the bought narration (so the clip and the voice
-     * share one timeline), through the workspace's lipsync engine (OmniHuman by default).
+     * share one timeline), through the workspace's lipsync engine (VEED Fabric).
      */
     private function talkingShot(array $ctx, string $dir, bool $whole = false): array
     {
@@ -178,11 +212,13 @@ class PlanMediaExecutor
         $line = $whole ? trim(implode(' ', array_map('strval', (array) ($ctx['narration'] ?? [])))) : trim((string) (($ctx['narration'] ?? [])[0] ?? ''));
         if ($line === '' || empty($ctx['plan_id'])) throw new RuntimeException('A talking shot needs a narration script.');
         $item = fn (array $kinds) => \Illuminate\Support\Facades\DB::table('create_plan_media')->where('plan_id', $ctx['plan_id'])->whereIn('kind', $kinds)->where('status', 'succeeded')->first();
-        $poses = $item(['character_poses']); $voice = $item(['voiceover', 'cloned_voiceover']);
-        if (! $poses || ! $voice) throw new RuntimeException('A talking shot needs the character poses and the narration first.');
-        $p = json_decode((string) $poses->record_json, true) ?: []; $v = json_decode((string) $voice->record_json, true) ?: [];
+        $route = $ctx['talking_route'] ?? TalkingPresenter::route($whole ? 'talking_take' : 'talking_shot', $ctx['voice'] ?? null, (int) ($ctx['duration_seconds'] ?? 15));
+        $native = ($route['speech_mode'] ?? null) === 'native';
+        $poses = ! empty($ctx['approved_character_media_id']) ? \Illuminate\Support\Facades\DB::table('create_plan_media')->where('plan_id', $ctx['plan_id'])->where('id', $ctx['approved_character_media_id'])->where('status', 'succeeded')->first() : null; $voice = $native ? null : $item(($ctx['voice'] ?? null) === 'clone' ? ['cloned_voiceover'] : ['voiceover', 'cloned_voiceover']);
+        if (! $poses || (! $native && ! $voice)) throw new RuntimeException('A talking shot needs the character poses and the narration first.');
+        $p = json_decode((string) $poses->record_json, true) ?: []; $v = json_decode((string) $voice?->record_json, true) ?: [];
         $files = array_values(array_filter([$p['file'] ?? null, ...(array) ($p['more_files'] ?? [])]));
-        if (! $files || empty($v['file'])) throw new RuntimeException('The character poses or the narration are missing.');
+        if (! $files || (! $native && empty($v['file']))) throw new RuntimeException('The character poses or the narration are missing.');
         $i = 0; foreach ((array) ($p['poses'] ?? []) as $k => $name) if (preg_match('/talk|speak|say/i', (string) $name) && isset($files[$k])) { $i = $k; break; }
         $storage = app(StorageService::class);
         $read = function (array $f) use ($storage): array {
@@ -191,11 +227,17 @@ class PlanMediaExecutor
             if (! is_string($bytes) || $bytes === '') throw new RuntimeException('A bought file could not be read.');
             return [$bytes, (string) ($a->mime_type ?: 'application/octet-stream')];
         };
-        [$image, $imageMime] = $read($files[$i]);
+        if (! empty($ctx['approved_character_files'])) {
+            $frozen = collect($ctx['approved_character_files'])->firstWhere('asset_id', $files[$i]['asset_id']);
+            if (! $frozen) throw new RuntimeException('The talking pose is not one of the approved images.');
+            app(InputSnapshotService::class)->verify([$frozen]);
+            $image = \Illuminate\Support\Facades\Storage::disk('local')->get($frozen['storage_path']); $imageMime = $frozen['mime_type'];
+        } else [$image, $imageMime] = $read($files[$i]);
+        if ($native) return $this->nativeTalking($line, $image, $imageMime, $ctx, $route, $dir, $whole);
         [$audio, $audioMime] = $read($v['file']);
         $narration = $dir.'/narration.'.(str_contains($audioMime, 'mpeg') || str_contains($audioMime, 'mp3') ? 'mp3' : 'wav');
         file_put_contents($narration, $audio);
-        $end = $whole ? min(15.0, max(1.5, round((float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $narration])->output()), 2))) : $this->firstLineEnd($narration, $audioMime, $line);
+        $end = $whole ? min((float) ($route['seconds'] ?? 15), max(1.5, round((float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $narration])->output()), 2))) : $this->firstLineEnd($narration, $audioMime, $line);
         Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $narration, '-t', (string) $end, '-c:a', 'pcm_s16le', $dir.'/line.wav']);
         if (! is_file($dir.'/line.wav')) throw new RuntimeException('The first line could not be cut from the narration.');
         $adapter = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
@@ -205,6 +247,27 @@ class PlanMediaExecutor
         if (! $url) throw new RuntimeException(($whole ? 'The talking take' : 'The talking shot').' took too long to make.');
         $path = $this->fetch($url, $dir.'/talking.mp4');
         return ['path' => $path, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'), 'provider_id' => 'talk-'.preg_replace('/[^a-zA-Z0-9_-]/', '', $id), 'line' => $line, 'seconds' => $end];
+    }
+
+    private function nativeTalking(string $line, string $image, string $mime, array $ctx, array $route, string $dir, bool $whole): array
+    {
+        $adapter = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
+        $spoken = self::pronounce($line, (int) $ctx['workspace_id']);
+        $prompt = 'Animate the supplied character as a talking presenter. Preserve its identity, styling, texture and clothing, including halftone or illustration treatment if present. '
+            .'One continuous performance, natural gestures, clear synchronized native speech. Speak only this approved script in '.($ctx['language'] ?? 'en').': '
+            .json_encode($spoken, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            .'. Complete every word. No additional dialogue, music, subtitles, logos or on-screen text. Keep the character clearly framed.';
+        $prompt .= RequirementContract::prompt($ctx['task_requirements'] ?? []);
+        $id = $adapter->start($prompt, $route['seconds'], $this->replicateUpload($image, $mime), $route['engine'], [], null, '720p', [], $ctx['aspect_ratio'] ?? '9:16');
+        $url = $adapter->pollUntilDone($id, 840);
+        if (! $url) throw new RuntimeException('The native talking video did not finish.');
+        $path = $this->fetch($url, $dir.'/talking.mp4');
+        $probe = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type:format=duration', '-of', 'json', $path]);
+        $meta = json_decode($probe->output(), true) ?: [];
+        if (! $probe->successful() || ! collect($meta['streams'] ?? [])->contains('codec_type', 'audio')
+            || ! collect($meta['streams'] ?? [])->contains('codec_type', 'video')) throw new RuntimeException('The native talking result is missing its video or audio track.');
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'),
+            'provider_id' => $id, 'line' => $line, 'seconds' => (float) ($meta['format']['duration'] ?? 0), 'speech_mode' => 'native', 'engine' => $route['engine']];
     }
 
     /** Where the first script line ends in the narration, from word timings; a sensible length when unsure. */

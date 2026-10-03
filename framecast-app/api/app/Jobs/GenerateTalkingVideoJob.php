@@ -177,7 +177,7 @@ class GenerateTalkingVideoJob implements ShouldQueue
                 'animation_prediction_id' => $predictionId,
                 // Record what actually ran, so a later look at the scene says
                 // which model produced the clip rather than which is default now.
-                'lipsync_engine_used' => $engineKey ?: (string) config('services.lipsync.default', 'omni_human'),
+                'lipsync_engine_used' => array_key_exists((string) $engineKey, (array) config('services.lipsync.engines', [])) ? $engineKey : 'fabric',
             ]);
 
             $videoUrl = $adapter->pollUntilDone($predictionId);

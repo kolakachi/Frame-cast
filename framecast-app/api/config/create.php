@@ -6,11 +6,14 @@ return [
     'workspaces' => array_filter(array_map('intval', explode(',', (string) env('CREATE_WORKSPACES', '')))),
     'worker_token' => env('CREATE_WORKER_TOKEN', ''),
     'mode' => env('CREATE_MODE', 'fixture'),
+    // Native script-to-speech video. Cloned voices use the separate audio-driven route.
+    'native_talking_engine' => env('CREATE_NATIVE_TALKING_ENGINE', 'omni'),
     // Local-only opt-in; both a durable budget identity and a spending ceiling are required.
     'paid_execution_enabled' => (bool) env('CREATE_PAID_EXECUTION_ENABLED', false),
     'pilot_budget_id' => env('CREATE_PILOT_BUDGET_ID', ''),
     'pilot_budget_microusd' => (int) env('CREATE_PILOT_BUDGET_MICROUSD', 0),
-    // Planning is free to the user; WyvStudio pays for one model call per plan.
+    // Planning is free to the user; WyvStudio funds up to three bounded calls with reference inspection.
+    'inspection_node' => env('CREATE_INSPECTION_NODE', 'node'),
     // offline = deterministic planner (always used in fixture mode);
     // replicate = a Claude model on Replicate; anthropic = Claude API directly.
     'planner' => env('CREATE_PLANNER', 'offline'),

@@ -34,7 +34,9 @@ use Illuminate\Support\Facades\Route;
 // Private local coordinator. Separate credential, no browser/session access.
 Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (): void {
     Route::post('/claim', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'claim']);
+    Route::post('/runs/{id}/stopped', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'stopped']);
     Route::post('/runs/{id}/heartbeat', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'heartbeat']);
+    Route::post('/runs/{id}/trajectory', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'trajectory']);
     Route::post('/runs/{id}/inputs/{assetId}', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'inputFile'])->whereNumber('assetId');
     Route::post('/runs/{id}/derived', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'derived']);
     Route::post('/runs/{id}/attempts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'beginAttempt']);
@@ -42,6 +44,8 @@ Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (
     Route::post('/runs/{id}/plan-media/adhoc', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'planMediaAdHoc']);
     Route::post('/runs/{id}/plan-media/{index}', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'planMedia'])->whereNumber('index');
     Route::post('/runs/{id}/transcripts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'transcript']);
+    Route::post('/runs/{id}/replicate/prepare', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'prepareReplicate']);
+    Route::post('/runs/{id}/attempts/{attemptId}/replicate', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'replicate']);
     Route::post('/runs/{id}/attempts/{attemptId}/anthropic', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'anthropic']);
     Route::post('/runs/{id}/attempts/{attemptId}/settle', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'settleAttempt']);
     Route::post('/runs/{id}/finish', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'finish']);
@@ -373,7 +377,7 @@ Route::prefix('v1')->group(function (): void {
             return response()->json([
                 'data' => [
                     'engines' => $engines,
-                    'default' => (string) config('services.lipsync.default', 'omni_human'),
+                    'default' => (string) config('services.lipsync.default', 'fabric'),
                     'min_seconds' => \App\Services\CreditService::SPOKESPERSON_MIN_SECONDS,
                 ],
                 'meta' => [],
@@ -462,6 +466,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/api-keys/{keyId}/rotate', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'rotate'])->whereNumber('keyId');
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
+            Route::get('/create-trajectories', [\App\Http\Controllers\Api\V1\Admin\CreateTrajectoryController::class, 'index']);
+            Route::get('/create-trajectories/{id}', [\App\Http\Controllers\Api\V1\Admin\CreateTrajectoryController::class, 'show'])->whereUuid('id');
             Route::get('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'index']);
             Route::post('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'store']);
             Route::patch('/affiliates/{id}', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'update'])->whereNumber('id');

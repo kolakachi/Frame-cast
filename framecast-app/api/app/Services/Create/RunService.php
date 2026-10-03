@@ -23,8 +23,9 @@ class RunService
                 ]);
                 DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'updated_at' => now()]);
             }
-            if (DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested', 'needs_attention'])->exists()) return null;
-            $query = DB::table('composition_runs')->where('status', 'queued')->whereIn('workspace_id', config('create.workspaces', []))->orderBy('created_at');
+            if (DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested'])->exists()
+                || DB::table('composition_runs')->where('status', 'needs_attention')->whereNull('worker_stopped_at')->exists()) return null;
+            $query = DB::table('composition_runs')->where('status', 'queued')->whereIn('workspace_id', config('create.workspaces', []))->whereNotExists(fn ($q) => $q->selectRaw('1')->from('composition_runs as held')->whereColumn('held.conversation_id', 'composition_runs.conversation_id')->where('held.status', 'needs_attention'))->orderBy('created_at');
             $run = $query->lockForUpdate()->first();
             if (! $run) return null;
             $token = Str::random(64);
@@ -35,6 +36,22 @@ class RunService
             $input = json_decode($run->input_json, true);
             $input['input_files'] = array_map(function ($file) { unset($file['storage_path']); return $file; }, $input['input_files'] ?? []);
             return ['id' => $run->id, 'lease_token' => $token, 'input' => $input];
+        });
+    }
+
+    /** Called by the authenticated host only after its sandbox has stopped. Billing remains held. */
+    public function workerStopped(string $id, string $token): array
+    {
+        return DB::transaction(function () use ($id, $token) {
+            $run = $this->leased($id, $token);
+            abort_unless(in_array($run->status, ['needs_attention', 'running', 'cancel_requested'], true), 409);
+            DB::table('composition_runs')->where('id', $id)->update([
+                'status' => 'needs_attention', 'worker_stopped_at' => now(), 'lease_hash' => null, 'lease_expires_at' => null,
+                'stage' => 'Worker stopped; external work needs reconciliation', 'updated_at' => now(),
+            ]);
+            // A stopped host consumes no execution slot, but uncertain spend stays reserved.
+            DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'capacity_slots' => 0, 'updated_at' => now()]);
+            return ['status' => 'needs_attention', 'hold_retained' => true];
         });
     }
 
@@ -171,6 +188,23 @@ class RunService
         });
     }
 
+    public static function creativeReview(mixed $value, array $plan = [], bool $lookOnly = false): array
+    {
+        $value = is_array($value) ? $value : [];
+        $findings = array_values(array_slice(array_map(fn ($x) => mb_substr($x, 0, 300), array_filter((array) ($value['findings'] ?? []), 'is_string')), 0, 8));
+        $checks = collect(is_array($value['performance_checks'] ?? null) ? $value['performance_checks'] : [])
+            ->filter(fn ($r) => is_array($r) && is_string($r['id'] ?? null) && preg_match('/^perf-[a-z0-9-]{1,35}$/', $r['id']))
+            ->take(24)->map(fn ($r) => ['id' => $r['id'],
+                'status' => in_array($r['status'] ?? '', ['pass', 'fail', 'unverified', 'deferred'], true) ? $r['status'] : 'unverified',
+                'evidence' => mb_substr(is_string($r['evidence'] ?? null) ? $r['evidence'] : '', 0, 400),
+                'source' => 'critic_interpretation'])->values()->all();
+        $requirements = RequirementContract::review($value['requirement_checks'] ?? [], $plan, $lookOnly);
+        $unverifiedRequirements = collect($requirements)->contains(fn ($r) => ! in_array($r['status'], ['fulfilled', 'deferred'], true));
+        $unverified = collect($checks)->contains(fn ($r) => in_array($r['status'], ['fail', 'unverified'], true) || trim($r['evidence']) === '');
+        return ['status' => ($value['status'] ?? null) === 'passed' && ! $findings && ! $unverified && ! $unverifiedRequirements ? 'passed' : 'incomplete', 'findings' => $findings,
+            ...($requirements ? ['requirement_checks' => $requirements] : []), ...($checks ? ['performance_checks' => $checks] : [])];
+    }
+
     /** The agent's last review scores, one per sampled frame, bounded. */
     public static function reviewScores(mixed $r): array
     {
@@ -252,7 +286,7 @@ class RunService
                 DB::table('composition_revisions')->insert([
                     'id' => $revision, 'conversation_id' => $c->id, 'run_id' => $id,
                     'number' => 1 + (int) DB::table('composition_revisions')->where('conversation_id', $c->id)->max('number'), 'parent_revision_id' => $input['base_revision_id'],
-                    'metadata_json'=>json_encode(['look'=>(bool)($input['look_first'] ?? false),'review'=>self::reviewScores($result['review'] ?? null),'delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
+                    'metadata_json'=>json_encode(['requirements_schema'=>$input['plan']['requirements_schema'] ?? null,'requirements'=>$input['plan']['requirements'] ?? [],'look'=>(bool)($input['look_first'] ?? false),'creative_review'=>self::creativeReview($result['creative_review'] ?? null, $input['plan'] ?? [], (bool) ($input['look_first'] ?? false)),'review'=>self::reviewScores($result['review'] ?? null),'delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
                     'bundle_json' => json_encode($bundle), 'bundle_hash' => hash('sha256', json_encode($bundle)),
                     'artifact_path' => $artifactPath, 'artifact_hash' => $artifactHash, 'summary' => $result['summary'],
                     'conflict' => $conflict, 'created_at' => now(),

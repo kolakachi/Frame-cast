@@ -24,11 +24,32 @@ class WorkerController extends Controller
         return response()->json(['data' => $this->runs->claim()]);
     }
 
+    public function stopped(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'sandbox_stopped' => 'required|accepted']);
+        return response()->json(['data' => $this->runs->workerStopped($id, $input['lease_token'])]);
+    }
+
     public function heartbeat(Request $r, string $id)
     {
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'sequence' => 'required|integer|min:1', 'stage' => 'required|string|max:200']);
         return response()->json(['data' => $this->runs->heartbeat($id, $input['lease_token'], $input['sequence'], $input['stage'])]);
+    }
+
+    public function trajectory(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $v = $r->validate(['lease_token' => 'required|string|size:64', 'events' => 'required|array|min:1|max:50',
+            'events.*.sequence' => 'required|integer|min:1|max:2000', 'events.*.at' => 'required|date',
+            'events.*.phase' => 'required|in:tool,run,limitation', 'events.*.status' => 'required|in:started,succeeded,failed,finished,reported',
+            'events.*.tool' => 'nullable|string|max:100', 'events.*.call' => 'nullable|integer|min:0|max:10000',
+            'events.*.revision' => 'nullable|integer|min:0|max:10000', 'events.*.duration_ms' => 'nullable|integer|min:0|max:86400000',
+            'events.*.summary' => 'required|string|max:1200', 'events.*.detail' => 'nullable|string|max:1200',
+            'events.*.input_hash' => 'nullable|regex:/^[a-f0-9]{64}$/', 'events.*.output_hash' => 'nullable|regex:/^[a-f0-9]{64}$/']);
+        app(\App\Services\Create\TrajectoryService::class)->append($id, $v['lease_token'], $v['events']);
+        return response()->json(['data' => ['recorded' => true]]);
     }
 
     public function inputFile(Request $r, string $id, int $assetId)
@@ -103,9 +124,9 @@ class WorkerController extends Controller
     public function planMediaAdHoc(Request $r, string $id)
     {
         $this->authorizeWorker($r);
-        $input = $r->validate(['lease_token' => 'required|string|size:64', 'kind' => 'required|string|max:40', 'description' => 'required|string|max:200']);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'kind' => 'required|string|max:40', 'description' => 'required|string|max:200', 'requirement_ids' => 'sometimes|array|max:24', 'requirement_ids.*' => 'string|distinct|max:80']);
         set_time_limit(900);
-        return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produceAdHoc($id, $input['lease_token'], $input['kind'], $input['description'])]);
+        return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produceAdHoc($id, $input['lease_token'], $input['kind'], $input['description'], $input['requirement_ids'] ?? [])]);
     }
 
     public function transcript(Request $r, string $id)
@@ -113,6 +134,22 @@ class WorkerController extends Controller
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'asset_id' => 'required|integer|min:1']);
         return response()->json(['data' => app(\App\Services\Create\TranscriptService::class)->forRun($id, $input['lease_token'], (int) $input['asset_id'])]);
+    }
+
+    public function prepareReplicate(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'image' => 'nullable|string|max:1500000']);
+        $gateway = app(\App\Services\Create\ReplicateGateway::class);
+        return response()->json(['data' => isset($input['image']) ? $gateway->uploadImage($id, $input['lease_token'], $input['image']) : $gateway->prepareMedia($id, $input['lease_token'])]);
+    }
+
+    public function replicate(Request $r, string $id, string $attemptId)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'input' => 'required|array', 'poll' => 'sometimes|boolean']);
+        $raw = json_decode($r->getContent(), true, 32, JSON_THROW_ON_ERROR);
+        return response()->json(['data' => app(\App\Services\Create\ReplicateGateway::class)->prediction($id, $input['lease_token'], $attemptId, $raw['input'], (bool) ($input['poll'] ?? false))]);
     }
 
     public function anthropic(Request $r, string $id, string $attemptId)

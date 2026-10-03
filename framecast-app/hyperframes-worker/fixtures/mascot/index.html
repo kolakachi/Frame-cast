@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Prepared mascot motion proof</title>
+<script src="gsap.min.js"></script><script src="wyv-mascot.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#183c3c}#main{width:1280px;height:720px;position:relative;overflow:hidden;background:#edf3ed}.eyebrow{position:absolute;left:64px;top:48px;font-size:15px;letter-spacing:3px;color:#49726d}.copy{position:absolute;left:64px;top:145px;width:610px}.copy h1{font-size:68px;line-height:1.06;margin:0 0 24px;letter-spacing:-3px}.copy p{font-size:23px;line-height:1.5;max-width:515px;color:#54736c}.badge{display:inline-block;padding:12px 20px;border:1px solid #bed2c9;border-radius:30px;font-size:17px}.foot{position:absolute;left:64px;bottom:38px;color:#54736c;font-size:16px}#mascot-wrap{position:absolute;left:695px;top:70px;width:500px;height:570px;background:#d9e8df;border-radius:160px 160px 36px 36px}svg{width:500px;height:570px}#cue{position:absolute;right:65px;bottom:32px;font-size:18px;color:#245348}
+</style></head><body><main id="main" data-composition-id="main" data-width="1280" data-height="720" data-duration="6">
+<div class="eyebrow">WYVSTUDIO / LOCAL MOTION PROOF</div><div class="copy"><h1>A face that<br>actually reacts.</h1><p>Prepared artwork. Blinking eyes.<br>A curious glance. A changing expression.</p><div class="badge">Original test mascot · not Maya</div></div>
+<div id="mascot-wrap"><svg id="mascot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 456" role="img" aria-label="Original mint robot mascot with animated facial layers">
+<defs><linearGradient id="body" x2="0" y2="1"><stop stop-color="#264e49"/><stop offset="1" stop-color="#14362f"/></linearGradient><linearGradient id="face" x2="0" y2="1"><stop stop-color="#f9fff3"/><stop offset="1" stop-color="#c1ddba"/></linearGradient></defs>
+<ellipse cx="200" cy="415" rx="125" ry="18" fill="#17382f" opacity=".12"/>
+<path d="M83 406Q84 306 139 297L261 297Q316 308 317 406Z" fill="url(#body)"/>
+<path d="M170 297L200 328L230 297" fill="none" stroke="#c5e48a" stroke-width="5"/>
+<circle cx="200" cy="366" r="17" fill="#c5e48a"/><path d="M192 367L198 373L210 359" fill="none" stroke="#224e3a" stroke-width="4"/>
+<g data-rig-part="head">
+<path d="M200 104V66" stroke="#315b4b" stroke-width="9"/><circle cx="200" cy="58" r="13" fill="#ec9f6b"/>
+<rect x="72" y="165" width="33" height="80" rx="16" fill="#739684"/><rect x="295" y="165" width="33" height="80" rx="16" fill="#739684"/>
+<rect x="90" y="102" width="220" height="203" rx="73" fill="url(#face)" stroke="#50755d" stroke-width="3"/>
+<path d="M122 153Q143 139 165 150M235 150Q257 139 279 153" fill="none" stroke="#426344" stroke-width="7" stroke-linecap="round"/>
+<g data-rig-part="left-eye"><ellipse cx="146" cy="191" rx="25" ry="31" fill="#fffef5"/><g data-rig-part="left-pupil"><ellipse cx="147" cy="194" rx="12" ry="17" fill="#173d32"/><circle cx="151" cy="188" r="4" fill="white"/></g></g>
+<g data-rig-part="right-eye"><ellipse cx="254" cy="191" rx="25" ry="31" fill="#fffef5"/><g data-rig-part="right-pupil"><ellipse cx="253" cy="194" rx="12" ry="17" fill="#173d32"/><circle cx="257" cy="188" r="4" fill="white"/></g></g>
+<ellipse cx="123" cy="239" rx="18" ry="9" fill="#dfa486" opacity=".6"/><ellipse cx="277" cy="239" rx="18" ry="9" fill="#dfa486" opacity=".6"/>
+<g data-rig-mouth="rest"><path d="M181 252Q200 260 219 252" fill="none" stroke="#244832" stroke-width="6" stroke-linecap="round"/></g>
+<g data-rig-mouth="smile" opacity="0"><path d="M172 246Q200 255 228 246Q220 276 200 276Q180 276 172 246" fill="#234833"/><path d="M179 251Q200 257 221 251L216 260H184Z" fill="#fffbed"/></g>
+<g data-rig-mouth="open" opacity="0"><ellipse cx="200" cy="259" rx="21" ry="22" fill="#234833"/><ellipse cx="200" cy="270" rx="12" ry="6" fill="#dca48e"/></g>
+<g data-rig-mouth="round" opacity="0"><ellipse cx="200" cy="257" rx="13" ry="17" fill="#234833"/></g>
+</g></svg></div><div class="foot">Silent technical fixture · no generated media · no automatic lip-sync</div><div id="cue">Neutral</div>
+</main><script>
+const tl=gsap.timeline({paused:true});
+window.rig=WyvMascot.attach(tl,document.querySelector('#mascot'),{
+duration:6,blinks:[{at:.8,duration:.24},{at:4.8,duration:.22}],
+head:[{at:1.6,duration:.4,x:0,y:-3,tilt:-6},{at:3.2,duration:.5,x:0,y:0,tilt:0}],
+gaze:[{at:1.6,duration:.2,x:-5,y:0},{at:3.2,duration:.2,x:0,y:0}],
+mouths:[{at:1.6,shape:'round'},{at:2.6,shape:'smile'},{at:4.2,shape:'open'},{at:5.2,shape:'rest'}]
+});
+// Keep the outer mascot stationary: the proof must show internal performance.
+tl.set('#cue',{textContent:'Blink'},.8).set('#cue',{textContent:'Curious glance'},1.6).set('#cue',{textContent:'Smile'},2.6).set('#cue',{textContent:'Surprise'},4.2).set('#cue',{textContent:'Neutral'},5.2);
+window.__timelines=window.__timelines||{};window.__timelines.main=tl;
+</script></body></html>

@@ -4,10 +4,53 @@ namespace App\Services\Create;
 use App\Models\Workspace;
 use App\Services\Developer\OperationAccounting;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ReconciliationService
 {
+    /** Retain the full ceiling of every uncertain call, but free work never started.
+     * Operator must first stop the original host/container. No provider is called.
+     */
+    public function releaseUnstarted(string $runId, bool $workerStopped): array
+    {
+        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled') && $workerStopped, 403);
+        return DB::transaction(function () use ($runId) {
+            $unlocked = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
+            $workspace = Workspace::findOrFail($unlocked->workspace_id);
+            Workspace::whereIn('id', array_unique([$workspace->id, $workspace->creditRootId()]))->orderBy('id')->lockForUpdate()->get();
+            $run = DB::table('composition_runs')->where('id', $runId)->lockForUpdate()->firstOrFail();
+            abort_unless(in_array($run->status, ['needs_attention', 'failed'], true)
+                && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409);
+            $op = DB::table('api_operations')->where('id', $run->operation_id)->lockForUpdate()->firstOrFail();
+            abort_unless(in_array($op->status, ['running', 'needs_attention'], true), 409);
+            $attempts = DB::table('composition_attempts')->where('run_id', $runId)->lockForUpdate()->get();
+            $jobs = DB::table('api_operation_jobs')->where('operation_id', $op->id)->lockForUpdate()->get();
+            // Unknown dependencies must never be assumed to have no remaining cost.
+            abort_if($jobs->contains(fn ($job) => !$attempts->contains(fn ($a) => $job->id === 'create-call-'.$a->id)), 409, 'Unmapped operation jobs require review; hold unchanged.');
+            $remaining = 0;
+            foreach ($attempts as $a) {
+                abort_unless($a->operation_id === $op->id, 409);
+                if (!self::hasSettlement($a)) $remaining += max(0, (int) $a->credit_limit - (int) $a->charged_credits);
+            }
+            abort_unless($remaining > 0 && $remaining <= (int) $op->reserved_credits, 409, 'Use verified settlement recovery, or review the hold mismatch.');
+            $released = (int) $op->reserved_credits - $remaining;
+            DB::table('composition_runs')->where('id', $runId)->update(['status' => 'needs_attention', 'worker_stopped_at' => now(),
+                'lease_hash' => null, 'lease_expires_at' => null, 'stage' => 'Worker stopped; external work needs reconciliation', 'updated_at' => now()]);
+            DB::table('api_operations')->where('id', $op->id)->update(['status' => 'needs_attention', 'producer_closed' => true,
+                'capacity_slots' => 0, 'reserved_credits' => $remaining, 'updated_at' => now()]);
+            Log::warning('create.reservation_recovery', ['run_id' => $runId, 'operation_id' => $op->id, 'released_credits' => $released,
+                'retained_credits' => $remaining, 'reason' => 'Stopped worker; full uncertain-call ceilings retained; unstarted work released']);
+            return ['released_credits' => $released, 'retained_credits' => $remaining];
+        });
+    }
+
+    private static function hasSettlement(object $attempt): bool
+    {
+        return in_array($attempt->status, ['succeeded', 'failed'], true) && $attempt->result_hash
+            && $attempt->cost_microusd !== null;
+    }
+
     /** Caller has verified external terminal status AND confirmed the host stopped.
      * Resolve a late receipt without issuing another provider request/render.
      */
@@ -54,9 +97,22 @@ class ReconciliationService
     {
         abort_unless(app()->environment(['local','testing']) && config('create.enabled') && $workerStopped, 403);
         return DB::transaction(function () use ($runId) {
+            $unlocked = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
+            $workspace = Workspace::findOrFail($unlocked->workspace_id);
+            Workspace::whereIn('id', array_unique([$workspace->id, $workspace->creditRootId()]))->orderBy('id')->lockForUpdate()->get();
             $run = DB::table('composition_runs')->where('id',$runId)->lockForUpdate()->firstOrFail();
             abort_unless($run->status === 'needs_attention', 409, 'Only a held run can be closed.');
+            abort_unless(in_array((int) $run->workspace_id, config('create.workspaces', []), true), 403);
             abort_if(AttemptService::unresolved($run->id), 409, 'Some calls are still unresolved; reconcile them with a verified receipt.');
+            $attempts = DB::table('composition_attempts')->where('run_id', $runId)->lockForUpdate()->get();
+            abort_if($attempts->contains(fn ($a) => !self::hasSettlement($a)), 409, 'A terminal label without a settlement receipt is not proof of billing. Hold retained.');
+            // Repair stranded jobs only from settled attempts, never from a status label alone.
+            foreach ($attempts as $a) {
+                abort_unless($a->operation_id === $run->operation_id, 409);
+                DB::table('api_operation_jobs')->where('operation_id', $run->operation_id)->where('id', 'create-call-'.$a->id)
+                    ->whereIn('status', ['pending', 'running', 'released'])->update(['status' => $a->status === 'succeeded' ? 'completed' : 'failed', 'updated_at' => now()]);
+            }
+            abort_if(DB::table('api_operation_jobs')->where('operation_id', $run->operation_id)->whereIn('status', ['pending', 'running', 'released'])->exists(), 409, 'Unresolved operation jobs remain; hold retained.');
             // Same order as reconcile(): reopen, then close, so the hold is released and the operation settles.
             DB::table('api_operations')->where('id',$run->operation_id)->update(['status'=>'running']);
             OperationAccounting::close($run->operation_id);

@@ -33,7 +33,7 @@ class ReplicateFabricAdapter
     public static function engine(?string $key = null): array
     {
         $engines = (array) config('services.lipsync.engines', []);
-        $key = $key && isset($engines[$key]) ? $key : (string) config('services.lipsync.default', 'omni_human');
+        $key = $key && isset($engines[$key]) ? $key : (string) config('services.lipsync.default', 'fabric');
 
         return ($engines[$key] ?? null)
             ?: ($engines['fabric'] ?? ['model' => 'veed/fabric-1.0', 'resolution_key' => 'resolution', 'resolution' => '480p']);

@@ -7,14 +7,14 @@ async function guidance(cards){
  for(const [name,text] of Object.entries(cards))await writeFile(path.join(dir,'cards',name+'.md'),text);
  return dir;
 }
-test('the route follows the pack, then the plan and brief',()=>{
+test('legacy packs remain usable; unclassified topic words get neutral guidance',()=>{
  assert.equal(cardRoute({stylePack:{slug:'mascot-explainer'}}),'mascot');
  assert.equal(cardRoute({stylePack:{slug:'launch-reel'},brief:'a ugc ad'}),'product','the pack wins over the brief');
  assert.equal(cardRoute({stylePack:{slug:'kinetic-type'}}),'motion');
- assert.equal(cardRoute({brief:'A 15 s UGC ad for our sale'}),'ad');
- assert.equal(cardRoute({brief:'Show the dashboard of our SaaS app'}),'product');
- assert.equal(cardRoute({plan:{summary:'A presenter character explains the offer'}}),'ad','ad words win over mascot words');
- assert.equal(cardRoute({brief:'Our logo, animated'}),'motion');
+ assert.equal(cardRoute({brief:'A 15 s UGC ad for our sale'}),'general');
+ assert.equal(cardRoute({brief:'Show the dashboard of our SaaS app'}),'general');
+ assert.equal(cardRoute({plan:{summary:'A presenter character explains the offer'}}),'general','topic words alone cannot classify the requested format');
+ assert.equal(cardRoute({brief:'Our logo, animated'}),'general');
  for(const r of ['product','ad','mascot','motion'])assert.deepEqual(cardsFor(r).slice(0,2),ALWAYS);
  assert.deepEqual(cardsFor('product'),['seams','principles','launch','demo-loop']);
 });
@@ -38,5 +38,17 @@ test('the shipped cards are pinned, each under 4,000 bytes, and every route fits
  const names=await availableCards(dir);
  if(!names.length)return; // not yet written in this checkout
  for(const n of names){const text=await readCard(dir,n);assert.ok(Buffer.byteLength(text)<=4000,n+' is over 4,000 bytes');assert.match(text.split('\n')[0],/Distilled from/,n+' names its sources');}
- for(const r of ['product','ad','mascot','motion']){const {text}=await loadCards(dir,r);assert.ok(Buffer.byteLength(text)<=PINNED_BUDGET);}
+ for(const r of ['product','ad','mascot','motion','editorial','footage','still','general']){const {text}=await loadCards(dir,r);assert.ok(Buffer.byteLength(text)<=PINNED_BUDGET);}
+});
+
+test('declared intent outranks a stale pack and routes only relevant doctrine',()=>{
+ const pick=(format,motion='restrained')=>cardRoute({stylePack:{slug:'mascot-explainer'},brief:'UGC animation avatar software tutorial',plan:{creative_intent:{format,motion}}});
+ assert.equal(pick('educational','kinetic'),'editorial');
+ assert.equal(pick('talking_head','natural'),'footage');
+ assert.equal(pick('footage_edit','natural'),'footage');
+ assert.equal(pick('slideshow','none'),'still');
+ assert.equal(pick('still_image','none'),'still');
+ assert.equal(pick('character_animation','kinetic'),'mascot');
+ assert.equal(pick('motion_graphics','kinetic'),'motion');
+ for(const route of ['editorial','footage','still','general'])assert.deepEqual(cardsFor(route),['intent']);
 });

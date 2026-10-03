@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import api from "../services/api";
+import CreateTrajectories from "../components/admin/CreateTrajectories.vue";
 import NotifBell from "../components/NotifBell.vue";
 import { useAuthStore } from "../stores/auth";
 
@@ -1722,6 +1723,7 @@ onMounted(() => {
       </div>
       <nav class="gm-nav">
         <div class="nav-section-label">Overview</div>
+        <button :class="['nav-item', activeView === 'create-trajectories' ? 'active' : '']" @click="navigate('create-trajectories')">Create trajectories</button>
         <button
           :class="['nav-item', activeView === 'dashboard' ? 'active' : '']"
           @click="navigate('dashboard')"
@@ -2020,6 +2022,7 @@ onMounted(() => {
       </div>
 
       <div class="gm-content">
+        <CreateTrajectories v-if="activeView === 'create-trajectories'" />
         <!-- ═══ DASHBOARD ═══ -->
         <template v-if="activeView === 'dashboard'">
           <div v-if="dashLoading" class="gm-spinner-wrap">

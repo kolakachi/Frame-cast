@@ -31,4 +31,4 @@ Distilled from HyperFrames hyperframes-creative (heygen-com/hyperframes, Apache-
 - Direct each beat as an experience: a concept, a motion verb per element (SLAMS, SLIDES, DRAWS, FLOATS, TYPES ON; no verb, not designed), depth layers, a sound cue.
 - One event per beat; state_in and state_out concrete, every on-screen word verbatim. Beats 1.5-3.5 s; a 5-7 word line gets 2-2.5 s; first visible motion within 0.2 s.
 - Name the rhythm before building (fast-fast-SLOW-fast-HIT-hold): one held beat where nothing moves and the line lands, the signature move on its beat, one seam direction.
-- Brand wins: hex, families and weights from the kit or capture, never memory; sizes and intensity adapt for video. After building, check every colour and face against the spec.
+- Resolve colour and type from the explicit brief and approved plan, respecting explicit brand locks. A kit, capture or saved style supplies defaults, not an unconditional override. Borrowing reference motion and borrowing its palette are separate choices. After building, check colours and type against the approved treatment.

@@ -247,13 +247,12 @@ class UgcPlanTest extends TestCase
         }
     }
 
-    public function test_a_dearer_engine_costs_more_than_a_cheaper_one(): void
+    public function test_retired_engine_uses_fabric_pricing_and_cannot_select_omnihuman(): void
     {
-        $this->assertGreaterThan(
-            CreditService::spokespersonCost(20.0, 'fabric'),
-            CreditService::spokespersonCost(20.0, 'omni_human'),
-            'omni-human bills $0.14/s against Fabric\'s $0.08/s at 480p',
-        );
+        $this->assertSame('fabric', config('services.lipsync.default'));
+        $this->assertArrayNotHasKey('omni_human', config('services.lipsync.engines'));
+        $this->assertSame('veed/fabric-1.0', \App\Services\Generation\Video\ReplicateFabricAdapter::engine('omni_human')['model']);
+        $this->assertSame(CreditService::spokespersonCost(20, 'fabric'), CreditService::spokespersonCost(20, 'omni_human'));
     }
 
     public function test_cost_scales_with_length_instead_of_flattening(): void

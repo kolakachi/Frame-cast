@@ -326,9 +326,9 @@ class CreditService
         $engines = (array) config('services.lipsync.engines', []);
         $key = $engineKey && isset($engines[$engineKey])
             ? $engineKey
-            : (string) config('services.lipsync.default', 'omni_human');
+            : (string) config('services.lipsync.default', 'fabric');
 
-        return (float) ($engines[$key]['cost_usd_per_second'] ?? 0.14);
+        return (float) ($engines[$key]['cost_usd_per_second'] ?? $engines['fabric']['cost_usd_per_second'] ?? 0.08);
     }
 
     /** Upstream COGS (USD) for a spokesperson clip — the engine's rate × length. */

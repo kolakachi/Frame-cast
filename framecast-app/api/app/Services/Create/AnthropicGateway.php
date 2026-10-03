@@ -40,7 +40,6 @@ class AnthropicGateway
         app(RunService::class)->validateResultLease($runId, $lease);
         $attempt = DB::table('composition_attempts')->where('run_id', $runId)->where('id', $attemptId)->firstOrFail();
         abort_unless($attempt->provider === 'anthropic' && in_array($attempt->kind, ['agent', 'critic'], true), 422, 'This attempt is not an Anthropic agent call.');
-        abort_unless($attempt->status === 'started' && ! $attempt->prediction_id, 409, 'This attempt was already sent. Reconcile instead of sending again.');
         $canonical = ['prompt' => $input['prompt'], 'system' => $input['system'], 'maxTokens' => $input['max_tokens'], 'image' => $input['image'] ?? null];
         // Tool mode: the worker hashes the serialised history and tool list as strings, so both sides agree byte for byte.
         $toolMode = is_string($input['messages_json'] ?? null) && $input['messages_json'] !== '';
@@ -78,13 +77,16 @@ class AnthropicGateway
             'system' => [['type' => 'text', 'text' => $input['system'], 'cache_control' => ['type' => 'ephemeral']]],
             'messages' => $messages, ...($tools ? ['tools' => $tools] : [])];
         // A failure to connect means nothing was sent, so it is safe to try again.
-        $response = null; $notSent = false;
+        $journal = app(DispatchJournal::class);
+        $saved = $journal->claim($attemptId);
+        $response = $saved ? new \Illuminate\Http\Client\Response(new \GuzzleHttp\Psr7\Response($saved['status'], $saved['headers'], $saved['body'])) : null;
+        $notSent = false;
         for ($try = 1; $try <= 3 && ! $response; $try++) {
             try {
                 $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
                     ->acceptJson()->connectTimeout(10)->timeout(280)->post('https://api.anthropic.com/v1/messages', $body);
                 // Overloaded or rate-limited: refused and not billed, so a short wait and another try is safe.
-                if (in_array($response->status(), [429, 500, 502, 503, 529], true) && $try < 3) {
+                if (in_array($response->status(), [429, 529], true) && $try < 3) {
                     \Illuminate\Support\Facades\Log::warning('Create gateway call refused, retrying', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'status' => $response->status()]);
                     $response = null; $notSent = true; sleep(4 * $try);
                 }
@@ -108,7 +110,12 @@ class AnthropicGateway
             $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
             abort(502, 'The model call did not complete. The run needs a recovery check; nothing is repeated automatically.');
         }
+        $journal->save($attemptId, ['status' => $response->status(), 'headers' => ['request-id' => $response->header('request-id')], 'body' => $response->body(), 'rates' => config('create.anthropic_rates')]);
         if (! $response->successful()) {
+            if ($response->status() >= 500 && $response->status() !== 529) {
+                $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
+                abort(502, 'Provider outcome is uncertain; the saved response needs reconciliation.');
+            }
             // Refused requests are not billed. The request id is the receipt; without one, reconcile.
             $requestId = (string) $response->header('request-id');
             if (! preg_match('/^[a-zA-Z0-9_-]{1,160}$/D', $requestId)) {
@@ -125,9 +132,9 @@ class AnthropicGateway
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D', $id), 502, 'The model response had no usable id.');
         $u = $response->json('usage', []);
         [$in, $out, $write, $read] = array_map(fn ($k) => (int) ($u[$k] ?? 0), ['input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens']);
-        $r = config('create.anthropic_rates');
+        $r = $saved['rates'] ?? config('create.anthropic_rates');
         $cost = (int) ceil($in * $r['input'] + $out * $r['output'] + $write * $r['cache_write'] + $read * $r['cache_read']);
-        $attempts->bindPrediction($runId, $lease, $attemptId, $id);
+        if ($attempt->status === 'started') $attempts->bindPrediction($runId, $lease, $attemptId, $id);
         if ($cost > (int) $attempt->cost_limit_microusd) {
             $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
             abort(409, 'The call cost more than its approved ceiling; held for review.');

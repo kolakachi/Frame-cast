@@ -32,11 +32,14 @@ export async function runOp({runDir,request,hyperframesBin=process.env.HYPERFRAM
   // Node runs under its permission model: the work and project folders only, no child processes.
   node:[process.execPath,['--permission','--allow-fs-read='+realWork,'--allow-fs-read='+realProject,'--allow-fs-write='+realWork,'--allow-fs-write='+realProject,...args]],
   hyperframes:[process.execPath,[hyperframesBin,...args]],
+  remotion:[process.execPath,['/opt/worker/scripts/remotion-tool.mjs',realProject,...args]],
  })[cmd];
  const env={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:process.env.HOME||'/tmp',HYPERFRAMES_BROWSER_PATH:process.env.HYPERFRAMES_BROWSER_PATH||'',HYPERFRAMES_NO_TELEMETRY:'1',NO_COLOR:'1'};
  const started=Date.now();let exit=0,stdout='',stderr='';
- try{({stdout,stderr}=await exec(program[0],program[1],{cwd:work,env,timeout:timeoutMs,maxBuffer:8*1024*1024,killSignal:'SIGKILL'}));}
- catch(e){exit=e.killed||e.signal?124:(Number.isInteger(e.code)?e.code:1);stdout=e.stdout||'';stderr=(e.stderr||'')+(e.killed||e.signal?'\n[stopped after '+Math.round(timeoutMs/1000)+' s]':e.code==='ENOENT'?'\n[program not available]':'');}
+ let child;
+ try{const pending=exec(program[0],program[1],{cwd:work,env,timeout:timeoutMs,detached:cmd==='remotion',maxBuffer:8*1024*1024,killSignal:'SIGKILL'});child=pending.child;({stdout,stderr}=await pending);}
+ catch(e){if(cmd==='remotion'&&child?.pid)try{process.kill(-child.pid,'SIGKILL');}catch{}
+ exit=e.killed||e.signal?124:(Number.isInteger(e.code)?e.code:1);stdout=e.stdout||'';stderr=(e.stderr||'')+(e.killed||e.signal?'\n[stopped after '+Math.round(timeoutMs/1000)+' s]':e.code==='ENOENT'?'\n[program not available]':'');}
  // Sort out the project folder: restore protected files, drop what the renderer cannot stage, list what is new.
  const outputs=[],removed=[],restored=[];
  for(const name of await readdir(project)){
@@ -46,6 +49,7 @@ export async function runOp({runDir,request,hyperframesBin=process.env.HYPERFRAM
    await rm(file,{recursive:true,force:true});await copyFile(path.join(backup,name),file);restored.push(name);continue;
   }
   if(!st.isFile()||!OUTPUT_NAME.test(name)||st.size===0||st.size>200*1024*1024){await rm(file,{recursive:true,force:true});removed.push(name);continue;}
+  if(cmd==='remotion'&&exit!==0){await rm(file);removed.push(name);continue;}
   outputs.push({path:name,sha256:await sha(file),bytes:st.size});
  }
  for(const [name] of before)try{await lstat(path.join(project,name));}catch{await copyFile(path.join(backup,name),path.join(project,name));restored.push(name);}

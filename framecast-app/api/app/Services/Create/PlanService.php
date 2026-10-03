@@ -44,13 +44,17 @@ class PlanService
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
         abort_if($today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
 
+        $deadline = microtime(true) + 100;
         $context = $this->context($user, $c);
+        $context['_planner_deadline'] = $deadline;
         try {
             $result = $this->planner()->plan($context);
         } catch (\Throwable $e) {
             report($e);
             abort(502, 'The planner could not make a plan just now. Nothing was charged; try again.');
         }
+        // Only host tool receipts can establish inspection evidence; model-written receipts are discarded.
+        $context['_reference_evidence'] = $result['reference_evidence'] ?? [];
         $plan = $this->normalize($result['plan'], $context, (int) $user->workspace_id);
 
         return DB::transaction(function () use ($user, $id, $version, $key, $hash, $plan, $result, $briefs) {
@@ -110,8 +114,18 @@ class PlanService
                 abort_if(array_diff($kept, $plan['kept_as_is']) !== [], 422, 'Only listed items can be kept as-is.');
                 $sel['kept'] = $kept;
             }
+            if (array_key_exists('omitted_performance', $input)) {
+                $ids = array_values(array_unique((array) $input['omitted_performance']));
+                abort_if(array_diff($ids, array_column($plan['character_performance'] ?? [], 'id')) !== [], 422, 'Only listed character actions can be removed.');
+                $sel['omitted_performance'] = $ids;
+            }
             $plan['selections'] = $sel;
             $plan['credits'] = $this->credits($plan);
+            if (array_key_exists('character_approval', $input)) {
+                $candidate = CharacterApproval::candidate($this->quotePlan($plan, $planId), json_decode($c->settings_json, true), (int) $c->workspace_id);
+                abort_unless($candidate && hash_equals($candidate['token'], (string) $input['character_approval']), 409, 'Character images changed. Review the current images.');
+                $plan['selections']['character_approval'] = $candidate['token'];
+            }
             DB::table('create_plans')->where('id', $planId)->update(['plan_json' => json_encode($plan), 'updated_at' => now()]);
             DB::table('create_conversations')->where('id', $id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
             return $this->present(DB::table('create_plans')->where('id', $planId)->first(), DB::table('create_conversations')->where('id', $id)->first());
@@ -124,11 +138,18 @@ class PlanService
         if (! \Illuminate\Support\Facades\Schema::hasTable('create_plans')) return null;
         $row = DB::table('create_plans')->where('conversation_id', $c->id)->where('status', 'proposed')->orderByDesc('created_at')->first();
         if (! $row || (new self(app(ConversationService::class)))->stale($row, $c)) return null;
-        $p = json_decode($row->plan_json, true); $s = $p['selections'];
-        return ['plan_id' => $row->id, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
+        return self::quotePlan(json_decode($row->plan_json, true), $row->id);
+    }
+
+    public static function quotePlan(array $p, string $planId): array
+    {
+        $s = $p['selections'];
+        $omittedIds = collect($p['character_performance'] ?? [])->filter(fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))->flatMap(fn ($r) => $r['requirement_ids'] ?? [])->unique()->all();
+        $activeRequirements = RequirementContract::excluding($p['requirements'] ?? [], $omittedIds);
+        return ['omitted_requirements' => array_values(array_filter($p['requirements'] ?? [], fn ($r) => in_array($r['id'] ?? '', $omittedIds, true))), 'requirements_schema' => $p['requirements_schema'] ?? null, 'requirement_history' => $p['requirement_history'] ?? [], 'direction_notes' => $p['direction_notes'] ?? [], 'reference_evidence' => $p['reference_evidence'] ?? [], 'creative_intent' => $p['creative_intent'] ?? null, 'omitted_character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => ! in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'reference_observations' => $p['reference_observations'] ?? [], 'character_approval' => $s['character_approval'] ?? null, 'requirements' => $activeRequirements, 'character_style' => $p['character_style'] ?? '', 'plan_id' => $planId, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
-            'media' => $p['media'], 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false)];
+            'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false)];
     }
 
     public function stale(object $plan, object $c): bool
@@ -139,7 +160,9 @@ class PlanService
 
     public function present(object $row, object $c): array
     {
-        return ['id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
+        $p = json_decode($row->plan_json, true);
+        $candidate = CharacterApproval::candidate(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), (int) $c->workspace_id);
+        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p)), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => $candidate['images'], 'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? ''))] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
             'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at];
     }
 
@@ -170,16 +193,16 @@ class PlanService
         $a = data_get($asset->metadata_json, 'reference_analysis');
         if (! is_array($a)) return null;
         return array_filter(['from' => data_get($asset->metadata_json, 'reference_source.platform'), 'duration_seconds' => $a['duration_seconds'] ?? null,
-            'shots' => $a['shots'] ?? null, 'average_shot_seconds' => $a['average_shot_seconds'] ?? null,
+            'cut_candidates_seconds' => array_slice((array) ($a['cuts'] ?? []), 0, 24), 'sampling_limit' => 'Sampled frames and heuristic cuts, not exhaustive motion or audio analysis', 'shots' => $a['shots'] ?? null, 'average_shot_seconds' => $a['average_shot_seconds'] ?? null,
             'speech' => isset($a['transcript']) ? mb_substr((string) $a['transcript'], 0, 600) : null, 'notes' => $a['notes'] ?? null,
             // From a web page: claims the page makes. Not approved; only approved_facts may go on screen.
             'page_claims_not_approved' => ! empty($a['suggested_claims']) ? array_column($a['suggested_claims'], 'text') : null], fn ($v) => $v !== null);
     }
 
-    /** Reference frames and the page capture as planner images: [['label' => ..., 'media_type' => ..., 'data' => base64], ...], at most three. */
+    /** Reference frames and the page capture as planner images: [['label' => ..., 'media_type' => ..., 'data' => base64], ...], at most four including a transition sheet. */
     private function planImages(User $user, array $files): array
     {
-        $out = [];
+        $out = []; $transitions = [];
         foreach ($files as $f) {
             if (count($out) >= 3 || ($f['purpose'] ?? '') !== 'reference') continue;
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($f['asset_id']);
@@ -188,19 +211,20 @@ class PlanService
                 if ($asset->asset_type === 'video') {
                     $path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset);
                     if ($path) $out[] = ['label' => 'Reference video "'.$asset->title.'": '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($path))];
-                } elseif ($asset->asset_type === 'image' && data_get($asset->metadata_json, 'reference_source.platform') === 'page') {
+                    if ($detail = app(\App\Services\Create\References\ReferenceSheets::class)->transitionsFor($asset)) $transitions[] = ['label' => 'Cut windows for reference '.$asset->id.'; each row is before/at/after, seconds '.json_encode($detail['times']).'. No audio observed.', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($detail['path']))];
+                } elseif ($asset->asset_type === 'image' && in_array($asset->mime_type, ['image/png', 'image/jpeg', 'image/webp'], true)) {
                     $bytes = app(\App\Services\Media\StorageService::class)->get((string) $asset->storage_url);
-                    if (is_string($bytes) && $bytes !== '' && strlen($bytes) <= 1_000_000) $out[] = ['label' => 'The brand page capture', 'media_type' => str_contains((string) $asset->mime_type, 'png') ? 'image/png' : 'image/jpeg', 'data' => base64_encode($bytes)];
+                    if (is_string($bytes) && $bytes !== '' && strlen($bytes) <= 1_000_000) $out[] = ['label' => 'Reference image '.$asset->id.': '.$asset->title, 'media_type' => $asset->mime_type, 'data' => base64_encode($bytes)];
                 }
             } catch (\Throwable) { /* the notes still describe it */ }
         }
-        return $out;
+        return array_slice([...$out, ...$transitions], 0, 4);
     }
 
     /** @return array<int, array{role: string, content: string}> */
     private function messagesOf(object $c): array
     {
-        return DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all();
+        return DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content', 'sequence'])->map(fn ($m) => (array) $m)->all();
     }
 
     private function context(User $user, object $c): array
@@ -213,7 +237,8 @@ class PlanService
                 'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null] : null;
         })->filter()->values()->all();
         return [
-            'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content'])->map(fn ($m) => (array) $m)->all(),
+            '_workspace_id' => (int) $user->workspace_id,
+            'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content', 'sequence'])->map(fn ($m) => (array) $m)->all(),
             // Text and colour fields of the current version; a request that only changes these is free.
             'current_variables' => ($head = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('bundle_json') : null)
                 ? array_map(fn ($d) => ['id' => $d['id'], 'type' => $d['type'], 'label' => $d['label'] ?? $d['id'], 'current' => $d['default'] ?? null],
@@ -233,12 +258,14 @@ class PlanService
             'pinned_style_rules' => StylePacks::exists($settings['style_pack'] ?? null) ? (string) file_get_contents(StylePacks::dir().'/'.$settings['style_pack'].'/STYLE.md') : null,
             'recent_style_packs' => DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->orderByDesc('created_at')->limit(6)->pluck('input_json')
                 ->map(fn ($j) => data_get(json_decode($j, true), 'style_pack.slug'))->filter()->unique()->take(3)->values()->all(),
+            'brand_palettes' => CapabilityCatalogue::brandPalettes((int) $user->workspace_id),
             'tools' => CapabilityCatalogue::forWorkspace((int) $user->workspace_id), 'brand_kits' => CapabilityCatalogue::brandKits((int) $user->workspace_id),
             // Finished registry blocks and components the builder can mount by name; a beat lists what it uses.
             'registry' => RegistryCatalogue::shortlist((string) (collect($this->messagesOf($c))->last()['content'] ?? ''), $settings),
             // The user's edits to the last plan are their decisions; a new plan starts from them.
             'previous_plan' => ($prev = DB::table('create_plans')->where('conversation_id', $c->id)->orderByDesc('created_at')->first())
-                ? ['summary' => json_decode($prev->plan_json, true)['summary'] ?? '', 'approved_copy' => json_decode($prev->plan_json, true)['selections']['callouts'] ?? [],
+                ? ['brief_sequence' => (int) $prev->brief_sequence, 'reference_evidence' => json_decode($prev->plan_json, true)['reference_evidence'] ?? [], 'requirement_history' => json_decode($prev->plan_json, true)['requirement_history'] ?? [], 'creative_intent' => json_decode($prev->plan_json, true)['creative_intent'] ?? null, 'approved_narration' => json_decode($prev->plan_json, true)['selections']['narration'] ?? [], 'approved_voice' => json_decode($prev->plan_json, true)['selections']['voice'] ?? null, 'character_performance' => json_decode($prev->plan_json, true)['character_performance'] ?? [], 'omitted_performance' => json_decode($prev->plan_json, true)['selections']['omitted_performance'] ?? [], 'requirements' => json_decode($prev->plan_json, true)['requirements'] ?? [], 'character_style' => json_decode($prev->plan_json, true)['character_style'] ?? '', 'summary' => json_decode($prev->plan_json, true)['summary'] ?? '', 'approved_copy' => json_decode($prev->plan_json, true)['selections']['callouts'] ?? [],
+                    'colour_treatment' => json_decode($prev->plan_json, true)['colour_treatment'] ?? null,
                     'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? []] : null,
         ];
     }
@@ -254,15 +281,20 @@ class PlanService
             return rtrim($space > $n * 0.6 ? mb_substr($cut, 0, $space) : $cut, " ,;:-").'…';
         };
         $slug = fn ($v) => mb_substr(preg_replace('/[^a-z0-9_-]/', '', strtolower(is_string($v) ? $v : '')), 0, 32);
+        $intent = CreativeIntent::normalize($raw['creative_intent'] ?? null, $ctx);
         $summary = $str($raw['summary'] ?? '', 600);
         abort_if($summary === '', 502, 'The planner returned an empty plan. Nothing was charged; try again.');
+        $userText = implode("\n", array_column(array_filter($ctx['messages'] ?? [], fn ($m) => ($m['role'] ?? '') === 'user'), 'content'));
+        $contract = RequirementContract::normalize($raw, $ctx);
+        $requirements = $contract['requirements'];
+        $characterStyle = $str($raw['character_style'] ?? '', 240);
         $image = ($ctx['settings']['output_kind'] ?? 'video') === 'image';
         $duration = (float) ($ctx['settings']['duration_seconds'] ?? 15);
         $sources = collect($ctx['files'])->where('purpose', 'source')->keyBy('asset_id');
         $reused = collect((array) ($raw['reused'] ?? []))->filter(fn ($r) => is_array($r) && $sources->has((int) ($r['asset_id'] ?? 0)))
             ->map(fn ($r) => ['asset_id' => (int) $r['asset_id'], 'title' => $sources[(int) $r['asset_id']]['title'], 'use' => $str($r['use'] ?? '', 120)])->unique('asset_id')->values()->all();
         $scenes = $image ? [] : collect((array) ($raw['scenes'] ?? []))->filter(fn ($s) => is_array($s))->map(fn ($s) => [
-            'label' => $str($s['label'] ?? '', 40), 'start' => round(max(0, min($duration, (float) ($s['start'] ?? 0))), 1),
+            'requirement_ids' => $s['requirement_ids'] ?? [], 'label' => $str($s['label'] ?? '', 40), 'start' => round(max(0, min($duration, (float) ($s['start'] ?? 0))), 1),
             'end' => round(max(0, min($duration, (float) ($s['end'] ?? 0))), 1), 'idea' => $str($s['idea'] ?? '', 160),
             // The director's plan: what is on screen at each end of the beat, and what the viewer must understand, in order.
             'state_in' => $str($s['state_in'] ?? '', 120), 'state_out' => $str($s['state_out'] ?? '', 120),
@@ -278,13 +310,15 @@ class PlanService
             $options = collect((array) ($d['options'] ?? []))->filter(fn ($o) => is_array($o))->map(function ($o) use ($str, $slug, $known) {
                 $media = ($o['kind'] ?? '') === 'media' && $known->has($o['tool'] ?? '');
                 return ['id' => $slug($o['id'] ?? $o['label'] ?? ''), 'label' => $str($o['label'] ?? '', 60), 'detail' => $str($o['detail'] ?? '', 160),
-                    'kind' => $media ? 'media' : 'included', 'tool' => $media ? $o['tool'] : null, 'credits' => $media ? (int) $known[$o['tool']]['credits'] : 0];
+                    'requirement_ids' => $o['requirement_ids'] ?? [], 'kind' => $media ? 'media' : 'included', 'tool' => $media ? $o['tool'] : null,
+                    'subject' => $media && $o['tool'] === 'animate_image' && ($o['subject'] ?? '') === 'approved_character' ? 'approved_character' : 'source',
+                    'credits' => $media ? (int) $known[$o['tool']]['credits'] : 0];
             })->filter(fn ($o) => $o['id'] !== '' && $o['label'] !== '')->unique('id')->take(3)->values()->all();
             return ['id' => $slug($d['id'] ?? $d['question'] ?? ''), 'question' => $str($d['question'] ?? '', 120), 'options' => $options];
         })->filter(fn ($d) => $d['id'] !== '' && $d['question'] !== '' && count($d['options']) >= 2)->unique('id')->take(3)->values()->all();
         $kept = collect((array) ($raw['kept_as_is'] ?? []))->map(fn ($t) => $str($t, 80))->filter()->unique()->take(8)->values()->all();
         $media = collect((array) ($raw['media'] ?? []))->filter(fn ($m) => is_array($m) && $known->has($m['kind'] ?? ''))
-            ->map(fn ($m) => ['kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'credits' => (int) $known[$m['kind']]['credits']])->take(6)
+            ->map(fn ($m) => ['requirement_ids' => $m['requirement_ids'] ?? [], 'kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'subject' => ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character') ? 'approved_character' : 'source', 'credits' => (int) $known[$m['kind']]['credits']])->take(6)
             // A talking shot or take is made from the poses and the narration, so it is always bought after them.
             ->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true) ? 1 : 0, SORT_NUMERIC, false)->values()->all();
         // The spoken script: short lines, sized to the video, only when the video should speak.
@@ -302,17 +336,33 @@ class PlanService
         if ($silent) $narration = [];
         $voiceKeys = array_column($ctx['voices'] ?? [], 'key');
         $voice = in_array($raw['voice'] ?? null, $voiceKeys, true) ? $raw['voice'] : \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE;
+        // A timing correction must not rewrite or silently truncate the approved script/voice.
+        if (($intent['edit_scope'] ?? '') === 'timing_only') {
+            $narration = $silent ? [] : ($ctx['previous_plan']['approved_narration'] ?? $narration);
+            $voice = $ctx['previous_plan']['approved_voice'] ?? $voice;
+            $callouts = $ctx['previous_plan']['approved_copy'] ?? $callouts;
+        }
         // A script needs a voice to say it: make sure the plan buys one.
         if ($narration && ! collect($media)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true))) {
             $kind = $voice === 'clone' && $known->has('cloned_voiceover') ? 'cloned_voiceover' : 'voiceover';
             if ($known->has($kind)) $media[] = ['kind' => $kind, 'description' => 'Narration of the approved script', 'credits' => (int) $known[$kind]['credits']];
         }
         $style = StylePacks::route(is_array($raw['style'] ?? null) ? $raw['style'] : [], $ctx);
-        $plan = ['summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
+        $colour = ColourTreatment::normalize($raw['colour_treatment'] ?? null, $ctx['previous_plan']['colour_treatment'] ?? null);
+        $observations = collect((array) ($raw['reference_observations'] ?? []))->filter(fn ($r) => is_array($r) && collect($ctx['files'] ?? [])->contains(fn ($f) => $f['purpose'] === 'reference' && $f['asset_id'] === ($r['asset_id'] ?? null)))->take(4)->map(fn ($r) => ['asset_id' => $r['asset_id'], 'observed' => $str($r['observed'] ?? '', 500), 'preserve' => $str($r['preserve'] ?? '', 400), 'replace' => $str($r['replace'] ?? '', 400), 'uncertain' => $str($r['uncertain'] ?? '', 240), 'evidence_ids' => array_values(array_intersect(array_filter((array) ($r['evidence_ids'] ?? []), 'is_string'), array_column(array_filter($ctx['_reference_evidence'] ?? [], fn ($e) => $e['asset_id'] === $r['asset_id']), 'id'))), 'evidence_status' => 'planner_interpretation_of_samples'])->all();
+        $scenes = RequirementContract::bind($scenes, $contract, 'scene');
+        $media = RequirementContract::bind($media, $contract, 'task');
+        foreach ($decisions as &$decision) {
+            foreach ($decision['options'] as &$option) $option['requirement_ids'] = RequirementContract::links($option['requirement_ids'] ?? [], array_column($requirements, null, 'id'), $contract['_aliases']);
+            unset($option);
+        }
+        unset($decision);
+        $plan = ['requirements_schema' => RequirementContract::VERSION, 'requirement_history' => $contract['requirement_history'], 'direction_notes' => $contract['direction_notes'], 'reference_evidence' => $contract['reference_evidence'], 'creative_intent' => $intent, 'character_performance' => CharacterPerformance::normalize($raw['character_performance'] ?? [], [...$ctx, '_requirement_contract' => $contract]), 'reference_observations' => $observations, 'colour_treatment' => $colour, 'summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
+            'requirements' => $requirements, 'character_style' => $characterStyle,
             'look_first' => (bool) ($raw['look_first'] ?? false),
-            'selections' => ['callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+            'selections' => ['omitted_performance' => $ctx['previous_plan']['omitted_performance'] ?? [], 'callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
         // A text/colour-only request becomes a free edit, validated against the real fields.
         $free = [];
         if (is_array($raw['free_edit'] ?? null) && ! empty($ctx['current_variables'])) {
@@ -325,11 +375,53 @@ class PlanService
         return $plan;
     }
 
+    /** Resolve selected purchases once, for both pricing and execution. Dependencies come first. */
+    public static function selectedMedia(array $plan): array
+    {
+        $items = $plan['media'] ?? [];
+        foreach ($plan['decisions'] ?? [] as $decision) {
+            $option = collect($decision['options'])->firstWhere('id', $plan['selections']['choices'][$decision['id']] ?? null);
+            if (($option['kind'] ?? '') !== 'media') continue;
+            abort_unless(in_array($option['tool'] ?? null, PlanMediaExecutor::KINDS, true), 422, 'This plan option has no supported media tool. Plan again.');
+            $matched = false;
+            foreach ($items as &$item) {
+                if ($item['kind'] === $option['tool'] && ($option['tool'] !== 'animate_image' || ($item['subject'] ?? 'source') === ($option['subject'] ?? 'source'))) {
+                    if (! empty($option['requirement_ids'])) $item['requirement_ids'] = array_values(array_unique(array_merge($item['requirement_ids'] ?? [], $option['requirement_ids'])));
+                    $matched = true; break;
+                }
+            }
+            unset($item);
+            if (! $matched) {
+                $items[] = ['requirement_ids' => $option['requirement_ids'] ?? [], 'kind' => $option['tool'], 'description' => $option['detail'] ?: $option['label'], 'subject' => $option['subject'] ?? 'source', 'credits' => (int) $option['credits']];
+            }
+        }
+        $voice = $plan['selections']['voice'] ?? $plan['voice'] ?? null;
+        $hasTake = collect($items)->contains('kind', 'talking_take');
+        if (($hasTake || (collect($items)->contains('kind', 'talking_shot') && count($plan['selections']['narration'] ?? $plan['narration'] ?? []) <= 1)) && $voice !== 'clone') {
+            $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
+        }
+        return collect($items)->map(function ($m) use ($voice, $plan) {
+            if (in_array($m['kind'], ['talking_shot', 'talking_take'], true)) $m = array_merge($m, TalkingPresenter::route($m['kind'], $voice));
+            if ($voice !== 'clone' && $m['kind'] === 'cloned_voiceover') {
+                $m['kind'] = 'voiceover';
+                $m['credits'] = \App\Services\CreditService::TTS_GEMINI;
+            }
+            if ($voice === 'clone' && $m['kind'] === 'voiceover') {
+                $m['kind'] = 'cloned_voiceover';
+                $m['credits'] = \App\Services\CreditService::TTS_CLONE;
+            }
+            if (($plan['requirements_schema'] ?? null) === RequirementContract::VERSION) {
+                $m['id'] ??= 'task-'.substr(hash('sha256', $m['kind'].'|'.$m['description']), 0, 20);
+                $m['requirements'] = RequirementContract::targets($m, $plan);
+                $m['requirement_ids'] = array_column($m['requirements'], 'id');
+            }
+            return $m;
+        })->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true) ? 1 : 0)->values()->all();
+    }
+
     /** Media the plan would add on top of building the composition. */
     private function credits(array $plan): array
     {
-        $media = array_sum(array_column($plan['media'], 'credits'));
-        $choices = collect($plan['decisions'])->sum(fn ($d) => collect($d['options'])->firstWhere('id', $plan['selections']['choices'][$d['id']] ?? null)['credits'] ?? 0);
-        return ['media' => $media + $choices];
+        return ['media' => array_sum(array_column(self::selectedMedia($plan), 'credits'))];
     }
 }

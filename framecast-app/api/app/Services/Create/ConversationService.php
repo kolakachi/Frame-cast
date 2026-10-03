@@ -12,6 +12,15 @@ class ConversationService
 {
     public const ACTIVE = ['queued', 'running', 'cancel_requested', 'needs_attention'];
 
+    public function creditAvailability(User $user): array
+    {
+        $workspace = Workspace::findOrFail($user->workspace_id);
+        $pool = Workspace::findOrFail($workspace->creditRootId());
+        $total = (int) $pool->creditsBalance();
+        $reserved = OperationAccounting::reserved($pool->id);
+        return ['total' => $total, 'reserved' => $reserved, 'available' => max(0, $total - $reserved)];
+    }
+
     public function authorize(User $user, bool $write = false): void
     {
         abort_unless(app()->environment(['local', 'testing']) && config('create.enabled')
@@ -105,9 +114,10 @@ class ConversationService
         });
     }
 
-    public function quote(User $user, string $id, int $version): ApiQuote
+    public function quote(User $user, string $id, int $version, ?string $buildStage = null): ApiQuote
     {
         $this->authorize($user, true);
+        abort_unless($buildStage === null || in_array($buildStage, ['storyboard', 'full_video'], true), 422, 'Choose storyboard or full video.');
         // Never present a fixture as AI output or silently enable an unpriced provider.
         abort_unless(config('create.mode') === 'fixture' || (config('create.mode') === 'agent' && PilotPolicy::enabled()), 503, 'Paid local generation is not enabled.');
         $c = $this->conversation($user, $id);
@@ -143,10 +153,10 @@ class ConversationService
             abort(422, 'Inherited and new attachments exceed the local preview size limit.');
         }
         try {
-            return DB::transaction(function () use ($user, $id, $version, $files, $attachments) {
+            return DB::transaction(function () use ($user, $id, $version, $files, $attachments, $buildStage) {
                 $c = $this->conversation($user, $id, true);
                 abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
-                $messages = DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['role', 'content'])->all();
+                $messages = DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'sequence', 'role', 'content'])->all();
                 abort_if(! count($messages), 422, 'Add a brief first.');
                 $base = $c->head_revision_id ? DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $c->head_revision_id)->firstOrFail() : null;
                 $settings=json_decode($c->settings_json,true);
@@ -167,19 +177,72 @@ class ConversationService
                 }
                 // Plan items the app buys before the build, each at its catalogue price, all under this one approval.
                 $plan = PlanService::forQuote($c);
+                \App\Services\Create\Planning\PlannerReferenceInspector::verifyEvidence($plan ?? [], $files);
                 $planMedia = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && $plan
-                    ? collect($plan['media'] ?? [])->filter(fn ($m) => in_array($m['kind'] ?? '', PlanMediaExecutor::KINDS, true))->take(6)
-                        ->map(fn ($m) => ['kind' => $m['kind'], 'description' => (string) $m['description'],
-                        'credits' => $m['kind'] === 'music' ? CapabilityCatalogue::musicCredits((int) ($settings['duration_seconds'] ?? 15)) : (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)])->values()->all()
+                    ? collect($plan['media'] ?? [])->filter(fn ($m) => in_array($m['kind'] ?? '', PlanMediaExecutor::KINDS, true))
+                        ->map(function ($m, $i) use ($settings, $user, $plan) {
+                            $item = ['id' => $m['id'] ?? null, 'requirement_ids' => $m['requirement_ids'] ?? [], 'requirements' => $m['requirements'] ?? [], 'plan_item_index' => $i, 'kind' => $m['kind'], 'description' => (string) $m['description'], 'subject' => $m['subject'] ?? 'source',
+                                ...($m['kind'] === 'character_poses' ? ['character_contract' => CharacterApproval::CONTRACT] : []),
+                                'credits' => $m['kind'] === 'music' ? CapabilityCatalogue::musicCredits((int) ($settings['duration_seconds'] ?? 15)) : (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)];
+                            return in_array($m['kind'], ['talking_shot', 'talking_take'], true)
+                                ? array_merge($item, TalkingPresenter::route($m['kind'], $plan['voice'] ?? null, (int) ($settings['duration_seconds'] ?? 15))) : $item;
+                        })->values()->all()
                     : [];
+                if (collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true))) {
+                    abort_unless(! empty($plan['narration']) && collect($planMedia)->contains('kind', 'character_poses'),
+                        422, 'The talking presenter needs character poses and a script in this plan. Plan again before building.');
+                    if (($plan['voice'] ?? null) === 'clone') abort_unless(collect($planMedia)->contains('kind', 'cloned_voiceover'),
+                        422, 'The cloned presenter needs a cloned voiceover in the plan.');
+                }
+                if (collect($planMedia)->contains(fn ($m) => ($m['speech_mode'] ?? '') === 'native')) {
+                    abort_unless(in_array($settings['aspect_ratio'], ['9:16', '16:9'], true), 422, 'Native talking video currently supports 9:16 or 16:9.');
+                }
                 // A character build needs room for the scored review to converge: 20 calls (owner, 2026-10-01).
                 if ($paid && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = 20;
                 // Design first: the look run builds one still per beat (cheap: 8 calls) for approval; approving it builds the motion from those stills.
                 $baseMeta = $base ? (json_decode((string) $base->metadata_json, true) ?: []) : [];
-                $lastUser = (string) (collect($messages)->where('role', 'user')->last()->content ?? '');
-                $fromLook = ! empty($baseMeta['look']) && (bool) preg_match('/\b(approve|approved|looks? good|go ahead|build (it|the motion)|animate it)\b/i', $lastUser);
-                $lookFirst = $paid && isset($policy['agent']) && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && ! $fromLook
-                    && ((! $base && ! empty($plan['look_first'])) || ! empty($baseMeta['look']));
+                // Stage is explicit and frozen in the quote. Chat wording never authorizes a transition.
+                $stage = $buildStage ?? (! empty($plan['look_first']) ? 'storyboard' : 'full_video');
+                $lookFirst = $paid && isset($policy['agent']) && ($settings['output_kind'] ?? 'video') === 'video'
+                    && ($settings['video_mode'] ?? 'composition') === 'composition' && $stage === 'storyboard';
+                $fromLook = ! empty($baseMeta['look']) && ! $lookFirst;
+                if ($paid && ! $lookFirst && $plan && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition') CharacterPerformance::assertReady($plan, $settings, $planMedia);
+                if (! $lookFirst && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot', 'talking_take'], true) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) {
+                    $approved = CharacterApproval::requireApproved($plan, $settings, (int) $user->workspace_id);
+                    foreach ($planMedia as &$motionItem) {
+                        if ($motionItem['kind'] === 'animate_image' && ($motionItem['subject'] ?? '') === 'approved_character') $motionItem['master_sha256'] = $approved['files'][0]['sha256'];
+                    }
+                    unset($motionItem);
+                    $master = collect($planMedia)->firstWhere('kind', 'character_poses');
+                    if ($master) {
+                        // A separate, deterministic cache slot keeps the approved master immutable.
+                        $planMedia[] = ['id' => ($master['id'] ?? 'character').'-variants', 'requirement_ids' => $master['requirement_ids'] ?? [], 'requirements' => $master['requirements'] ?? [], 'plan_item_index' => 1000000 + $master['plan_item_index'], 'kind' => 'character_variants',
+                            'description' => $master['description'], 'master_sha256' => $approved['files'][0]['sha256'],
+                            'credits' => count(PlanMediaExecutor::requestedPoses($master['description'])) * CapabilityCatalogue::CHARACTER_VARIANT_CREDITS];
+                    }
+                }
+                // Superseded generated character assets must not leak into a rebuilt storyboard.
+                // A new approved design starts from the brief, not source code still pointing at old poses.
+                if ($lookFirst && collect($planMedia)->contains('kind', 'character_poses') && ! CharacterApproval::candidate($plan, $settings, (int) $user->workspace_id)) {
+                    $oldIds = DB::table('create_plan_media')->where('conversation_id', $id)->whereIn('kind', ['character_poses', 'character_variants'])->get()->flatMap(function ($row) {
+                        $r = json_decode($row->record_json ?? '{}', true);
+                        return array_column(array_filter([$r['file'] ?? null, ...($r['more_files'] ?? [])]), 'asset_id');
+                    })->all();
+                    $files = array_values(array_filter($files, fn ($f) => ! in_array($f['asset_id'], $oldIds, true)));
+                    $base = null;
+                }
+                if ($lookFirst) {
+                    $planMedia = array_values(array_filter($planMedia, fn ($m) => ! in_array($m['kind'], PlanMediaService::PRODUCTION_ONLY, true)));
+                }
+                foreach ($planMedia as &$mediaItem) {
+                    if (in_array($mediaItem['kind'], ['talking_shot', 'talking_take'], true)) continue;
+                    $context = ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null, 'aspect_ratio' => $settings['aspect_ratio'], 'character_style' => $plan['character_style'] ?? ''];
+                    if ($mediaItem['kind'] === 'voiceover' && collect($planMedia)->contains(fn ($m) => $m['kind'] === 'talking_shot' && ($m['speech_mode'] ?? '') === 'native')) $context['narration'] = array_slice($context['narration'], 1);
+                    $hash = CharacterApproval::mediaHash($mediaItem, $context);
+                    $cached = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('item_index', $mediaItem['plan_item_index'])->where('status', 'succeeded')->where('description_hash', $hash)->first();
+                    if ($cached) { $mediaItem['reuse_media_id'] = $cached->id; $mediaItem['credits'] = 0; }
+                }
+                unset($mediaItem);
                 if ($lookFirst) { $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8); if (isset($policy['critic'])) $policy['critic']['max_calls'] = 1; }
                 $resolvedPack = StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
                     DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all());
@@ -198,11 +261,12 @@ class ConversationService
                     'execution_policy' => $policy, 'pilot_budget_id'=>$paid ? config('create.pilot_budget_id') : null,
                     'input_files' => $files, 'base_bundle' => $base ? json_decode($base->bundle_json, true) : null,
                     'base_bundle_hash' => $base?->bundle_hash,
+                    'base_review' => $baseMeta['creative_review'] ?? null,
                     'media_input'=>$mediaInput,
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
-                    'look_first'=>$lookFirst, 'from_look'=>$fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
+                    'build_stage'=>$lookFirst ? 'storyboard' : 'full_video', 'look_first'=>$lookFirst, 'from_look'=>$fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
                     'style_pack'=>$resolvedPack,
@@ -253,10 +317,12 @@ class ConversationService
                 abort_unless((int) $c->version === $p['version'] && $c->head_revision_id === $p['base_revision_id'], 409, 'The brief changed. Review a new quote.');
                 abort_unless($p['mode']===config('create.mode') && ($p['mode']==='fixture' || PilotPolicy::enabled()),503);
                 if($auto) { abort_unless($this->autoRunEligible($user,$c,$quote),409,'This job needs your approval.'); $p['auto_run']=true; $providerApproved=$providerApproved || (bool)$c->provider_consent_at; }
+                if (($p['build_stage'] ?? '') === 'full_video' && ! empty($p['plan']['character_performance'])) CharacterPerformance::assertReady($p['plan'], $p['settings'], $p['plan_media'] ?? []);
+                if (($p['build_stage'] ?? '') === 'full_video' && collect($p['plan_media'] ?? [])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) CharacterApproval::requireApproved($p['plan'], $p['settings'], (int) $user->workspace_id);
                 $free=!empty($p['free_edit']);
                 if($p['mode']==='agent' && $free) { abort_unless(($p['execution_policy']['render']['credits']??1)===0 && count($p['execution_policy'])===1,422,'Invalid free edit.'); }
                 elseif($p['mode']==='agent') { abort_unless($providerApproved,422,'Confirm sending this brief and approved media to our AI providers.'); abort_unless(($p['pilot_budget_id']??null)===config('create.pilot_budget_id'),409,'Pilot approval changed. Get a fresh quote.'); PilotPolicy::admit($p['execution_policy']); }
-                abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->whereIn('status', self::ACTIVE)->when($p['variant_group']??null,fn($q,$group)=>$q->where(fn($q)=>$q->whereNull('input_json->variant_group')->orWhere('input_json->variant_group','!=',$group)))->exists(), 409, 'Another creation is active or awaiting recovery.');
+                abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where(fn ($q) => $q->whereIn('status', ['queued', 'running', 'cancel_requested'])->orWhere(fn ($q) => $q->where('status', 'needs_attention')->where(fn ($q) => $q->where('conversation_id', $id)->orWhereNull('worker_stopped_at'))))->when($p['variant_group']??null,fn($q,$group)=>$q->where(fn($q)=>$q->whereNull('input_json->variant_group')->orWhere('input_json->variant_group','!=',$group)))->exists(), 409, 'Another creation is active or awaiting recovery.');
                 abort_if(! $free && DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->whereNull('input_json->free_edit')->count() >= (int) config('create.run_daily_limit', 10), 429, 'Local pilot daily limit reached.');
                 if($p['mode']==='agent' && $providerApproved && ! $c->provider_consent_at) DB::table('create_conversations')->where('id',$id)->update(['provider_consent_at'=>now()]);
                 foreach ($p['input_files'] ?? [] as $file) {
@@ -266,7 +332,26 @@ class ConversationService
                     abort_if(DB::table('composition_runs')->where('input_json->retry_of',$p['retry_of'])->exists(),409,'Retry already approved.');
                     abort_unless(DB::table('composition_runs')->where('id',$p['retry_of'])->where('workspace_id',$user->workspace_id)->where('status','failed')->exists() && !AttemptService::unresolved($p['retry_of']),409,'Original outcome is not retryable.');
                 }
-                $operation = OperationAccounting::reserve($quote, null);
+                try {
+                    $operation = OperationAccounting::reserve($quote, null);
+                } catch (\DomainException $e) {
+                    // Expected admission failures must not become a generic HTTP 500.
+                    if ($e->getMessage() === 'insufficient_credits') {
+                        $credits = $this->creditAvailability($user);
+                        $required = (int) $quote->credits_max;
+                        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                            'message' => sprintf('This creation needs %s available credits. You have %s available (%s total; %s reserved for unfinished work).',
+                                number_format($required), number_format($credits['available']), number_format($credits['total']), number_format($credits['reserved'])),
+                            'code' => 'insufficient_credits', 'credit_availability' => $credits,
+                            'required_credits' => $required, 'shortfall' => max(0, $required - $credits['available']),
+                        ], 402));
+                    }
+                    match ($e->getMessage()) {
+                        'too_many_active_videos' => abort(429, 'This workspace has reached its simultaneous video limit. Wait for active work to finish or resolve paused work, then try again.'),
+                        'operation_busy' => abort(409, 'This operation is busy. Wait a moment, then try again.'),
+                        default => throw $e,
+                    };
+                }
                 $runId = (string) Str::uuid();
                 DB::table('composition_runs')->insert(['id' => $runId, 'conversation_id' => $id, 'workspace_id' => $user->workspace_id,
                     'quote_id' => $quoteId, 'operation_id' => $operation, 'idempotency_key' => $key, 'request_hash' => $hash,

@@ -48,7 +48,8 @@ class StylePacks
         $pack = $raw['pack'] ?? null;
         // The user's pick in the composer wins over the planner's.
         if (self::exists($pinned)) { $route = 'pack'; $pack = $pinned; }
-        elseif (! empty($ctx['house_style'])) $route = 'saved';
+        // A house style is a default, not an override of a deliberate planner route.
+        elseif (! in_array($raw['route'] ?? null, self::ROUTES, true) && ! empty($ctx['house_style'])) $route = 'saved';
         if ($route === 'pack' && ! self::exists($pack)) $route = 'free';
         if ($route === 'saved' && empty($ctx['house_style'])) $route = 'free';
         if ($route === 'reference' && ! $studied) $route = 'free';

@@ -8,15 +8,15 @@ use Illuminate\Support\Str;
 /** Each variation owns its hold, attempts and immutable result. A group approval is atomic. */
 class VariantService
 {
-    public function quote(User $user,string $id,int $version,int $count): ApiQuote
+    public function quote(User $user,string $id,int $version,int $count, ?string $buildStage = null): ApiQuote
     {
         abort_unless($count>=1 && $count<=3,422,'Choose at most three variations.');
         $service=app(ConversationService::class);
-        if($count===1) return $service->quote($user,$id,$version);
+        if($count===1) return $service->quote($user,$id,$version,$buildStage);
         abort_unless(PilotPolicy::enabled() && config('create.mode')==='agent',422,'Variations require prompt generation.');
         $group=(string)Str::uuid();$quotes=[];
         for($i=1;$i<=$count;$i++) {
-            $q=$service->quote($user,$id,$version);$p=$q->payload_json;
+            $q=$service->quote($user,$id,$version,$buildStage);$p=$q->payload_json;
             $p['variant_group']=$group;$p['variant_index']=$i;
             $p['variant_direction']=['Quiet editorial composition','Bold graphic composition','Airy minimal composition'][$i-1];
             if($p['media_input']) $p['media_input']['prompt'].=' Visual variation: '.$p['variant_direction'].'. Preserve supplied subjects and facts.';
@@ -24,7 +24,7 @@ class VariantService
         }
         return ApiQuote::create(['id'=>ApiQuote::newId(),'workspace_id'=>$user->workspace_id,'created_by_user_id'=>$user->id,
             'payload_json'=>['kind'=>'composition_variant_group','conversation_id'=>$id,'version'=>$version,'mode'=>'agent',
-                'settings'=>$quotes[0]->payload_json['settings'],'variant_quotes'=>array_map(fn($q)=>$q->id,$quotes),'variant_group'=>$group],
+                'settings'=>$quotes[0]->payload_json['settings'],'build_stage'=>$quotes[0]->payload_json['build_stage'] ?? null,'variant_quotes'=>array_map(fn($q)=>$q->id,$quotes),'variant_group'=>$group],
             'credits_min'=>0,'credits_max'=>array_sum(array_map(fn($q)=>$q->credits_max,$quotes)),'expires_at'=>$quotes[0]->expires_at]);
     }
 

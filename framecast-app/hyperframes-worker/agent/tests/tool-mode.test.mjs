@@ -1,6 +1,18 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile} from 'node:fs/promises';import {tmpdir} from 'node:os';
 import {runAgent} from '../runner.mjs';import {Workspace} from '../workspace.mjs';
+import {parseAction,actionFromToolUse} from '../protocol.mjs';
+test('requirement links work in native and envelope purchases and reach the host',async()=>{
+ const id='req-'+'a'.repeat(20), input={kind:'sfx',description:'Whoosh',requirement_ids:[id]};
+ assert.deepEqual(parseAction(JSON.stringify({type:'buy',...input})),actionFromToolUse({name:'buy',input}));
+ assert.equal(parseAction(JSON.stringify({type:'buy',kind:'sfx',description:'Whoosh'})).kind,'sfx');
+ assert.throws(()=>actionFromToolUse({name:'buy',input:{...input,requirement_ids:['invented']}}));
+ const calls=[];
+ const {state}=await harness([[use('a','buy',input)],[use('b','needs_input',{question:'Continue?'})]],{tools:{buy:async args=>{calls.push(args);return {ok:true,task_id:'task-test',requirement_ids:[id],files:[],charged_credits:0};}}});
+ assert.deepEqual(calls[0].requirement_ids,[id]);
+ assert.equal(calls.length,1);
+ assert.equal(state.status,'needs_input');
+});
 const use=(id,name,input)=>({type:'tool_use',id,name,input});
 async function harness(turns,{limits={},requireVisualReview=true,tools,context={}}={}){
  const dir=await mkdtemp(tmpdir()+'/tool-');await writeFile(dir+'/index.html','<html></html>');
@@ -86,10 +98,11 @@ test('the critic has the last word: a revise verdict returns directives and bloc
   [use('e','patch',{path:'index.html',before:'main',after:'main2'}),use('f','preview',{times:[1]})],
   [use('g','visual_review',{decision:'pass',findings:'Better',scores:[{time:1,score:9,problems:[]}]}),use('h','finish',{summary:'Done'})],
  ],{limits:{calls:8,repairs:3,criticCalls:2},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
-  strip:async()=>{strips.push(1);return {ok:true,providerImage:'data:image/jpeg;base64,Yg=='};},
+  strip:async()=>{strips.push(1);return {ok:true,providerImage:'data:image/jpeg;base64,Yg==',coverage:{duration_seconds:30,times:[.5,29.5]}};},
   critic:async a=>{critics.push(a);return verdicts[critics.length-1];}})});
  assert.equal(state.status,'preview_ready');assert.equal(critics.length,2);assert.equal(strips.length,2,'a strip per critic round');
  assert.equal(critics[0].sheet.image,'data:image/jpeg;base64,YQ==');assert.equal(critics[0].strip,'data:image/jpeg;base64,Yg==');assert.equal(critics[1].round,2);
+ assert.deepEqual(critics[0].stripEvidence,{duration_seconds:30,times:[.5,29.5]});
  const r=seen[2].messages.at(-1).content.filter(b=>b.type==='tool_result');
  assert.match(r[0].content,/directives/);assert.match(r[0].content,/three times larger/);
  assert.equal(r[1].is_error,true,'finish is refused until the next passing review');assert.match(r[1].content,/Visual review is required/);
@@ -145,4 +158,78 @@ test('layout findings that survive two repairs become advisory and the build goe
   [use('g','visual_review',{decision:'pass',findings:'Readable in the frames',scores:[{time:1,score:8,problems:[]}]}),use('h','finish',{summary:'Done'})],
  ],{limits:{calls:8,repairs:8},tools:dir=>({check:async()=>{checks++;return structuredClone(fail);},snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})})});
  assert.equal(state.status,'preview_ready',state.reason);assert.equal(checks,3);assert.equal(state.repairs,2);
+});
+
+test('the protected review window uses the critic before another author call',async()=>{
+ for(const verdict of ['pass','revise']){
+  let reviews=0;
+  const {state,seen}=await harness([[use('w','write',{path:'index.html',content:'<html>Ready</html>'}),use('p','preview',{times:[1]})]],{
+   limits:{calls:2,criticCalls:1,reviewReserveMs:1000},context:{lookOnly:false},
+   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
+    strip:async()=>({ok:true,providerImage:'data:image/jpeg;base64,Yg==',coverage:{duration_seconds:30,times:[.5,29.5]}}),
+    critic:async args=>{assert.deepEqual(args.stripEvidence,{duration_seconds:30,times:[.5,29.5]});reviews++;return {verdict,scores:{hook:8,hierarchy:8,density:8,energy:8,performance:8},directives:verdict==='revise'?['Improve the opening']:[]};}}});
+  assert.equal(reviews,1);assert.equal(seen.length,1);assert.equal(state.status,'preview_ready');assert.equal(state.pending,null);
+  assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,verdict==='pass'?'passed':'incomplete');
+ }
+});
+test('an uncertain final critic call remains fenced for reconciliation',async()=>{
+ const {state}=await harness([[use('w','write',{path:'index.html',content:'<html>Ready</html>'}),use('p','preview',{times:[1]})]],{
+  limits:{calls:2,criticCalls:1,reviewReserveMs:1000},context:{lookOnly:true},tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),critic:async()=>{throw Error('connection lost');}}});
+ assert.equal(state.status,'needs_attention');assert.equal(state.pending.purpose,'final_review');
+});
+
+test('upstream skill reads are routed to guidance rather than composition files',async()=>{
+ const reads=[];
+ const {state}=await harness([[use('r','read',{path:'skills/hyperframes/product-launch-video/SKILL.md'}),use('q','needs_input',{question:'Which product should I feature?'})]],{
+  tools:{guidance:async name=>{reads.push(name);return 'Workflow reference';}}});
+ assert.deepEqual(reads,['skills/hyperframes/product-launch-video/SKILL.md']);assert.equal(state.status,'needs_input');
+});
+
+test('Barty adapter instructions route through guidance',async()=>{
+ const reads=[];
+ await harness([[use('r','read',{path:'kit/barty.md'}),use('q','needs_input',{question:'Which product?'})]],{tools:{guidance:async name=>{reads.push(name);return 'Adapter reference';}}});
+ assert.deepEqual(reads,['kit/barty.md']);
+});
+
+test('reference images reach the agent without becoming assets or approving the rendered draft',async()=>{
+ const inspected=[];
+ const {state,seen}=await harness([
+  [use('r','inspect_reference',{input:'ref.mp4',params:{mode:'sequence',start:1,end:1.2,every_frame:true,page:1}})],
+  [use('no','visual_review',{decision:'pass',findings:'A reference is not output',scores:[{time:1,score:9,problems:[]}]}),use('w','write',{path:'index.html',content:'<html>new output</html>'}),use('p','preview',{times:[1]})],
+  [use('v','visual_review',{decision:'pass',findings:'Output reviewed',scores:[{time:1,score:9,problems:[]}]}),use('f','finish',{summary:'Done'})],
+ ],{context:{assets:[{name:'ref.mp4',purpose:'reference',asset_type:'video',renderable:false}]},tools:{
+  inspect_reference:async a=>{inspected.push(a);return {ok:true,renderable:false,frames:[{cell:1,requested_seconds:1}],providerImage:'data:image/jpeg;base64,Yg=='};},
+  check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
+ }});
+ assert.equal(state.status,'preview_ready');assert.equal(inspected.length,1);
+ assert.equal(inspected[0].params.every_frame,true);assert.equal(inspected[0].params.page,1);
+ assert.equal(state.inspectionHistory.length,1);assert.equal(state.inspectionHistory[0].renderable,false);assert.equal(state.inspectionHistory[0].providerImage,undefined);
+ const ref=seen[1].messages.at(-1).content[0];
+ assert.equal(ref.content[1].type,'image');assert.equal(ref.content[1].source.data,'Yg==');
+ assert.match(ref.content[0].text,/"renderable":false/);assert.doesNotMatch(ref.content[0].text,/base64/);
+ assert.match(seen[2].messages.at(-1).content[0].content,/requires current host-provided snapshot/);
+ assert.equal(state.snapshotRevision,1);assert.equal(state.referenceInspections,1);
+ assert.ok(!state.messages.some(m=>m.role==='tool'&&JSON.stringify(m.content).includes('base64')),'image bytes never pollute textual history');
+});
+
+test('unlisted and source attachments cannot invoke reference inspection',async()=>{
+ let calls=0;
+ const {state,seen}=await harness([
+  [use('r','inspect_reference',{input:'source.png',params:{mode:'frames',times:[0]}}),use('x','inspect_reference',{input:'missing.png',params:{mode:'frames',times:[0]}}),use('w','write',{path:'index.html',content:'<html>ok</html>'}),use('p','preview',{times:[1]})],
+  [use('v','visual_review',{decision:'pass',findings:'ok',scores:[{time:1,score:9,problems:[]}]}),use('f','finish',{summary:'Done'})],
+ ],{context:{assets:[{name:'source.png',purpose:'source',asset_type:'image'}]},tools:{inspect_reference:async()=>{calls++;return {ok:true};},check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
+ assert.equal(calls,0);assert.equal(state.status,'preview_ready');
+ assert.equal(seen[1].messages.at(-1).content[0].is_error,true);
+});
+
+test('the agent logs a limitation while useful work continues and the report is persisted',async()=>{
+ const {state,seen,dir}=await harness([
+  [use('l','report_limitation',{category:'quality',summary:'The pose does not match the treatment',evidence:'The supplied image looks photographic',impact:'The character style would be wrong',workaround:'Prepare layout without claiming the character is complete',requested_change:'Approve a corrected pose before video purchase'}),use('w','write',{path:'index.html',content:'<html>draft</html>'}),use('p','preview',{times:[1]})],
+  [use('v','visual_review',{decision:'pass',findings:'Layout okay',scores:[{time:1,score:9,problems:[]}]}),use('f','finish',{summary:'Draft with character correction still pending'})],
+ ]);
+ assert.equal(state.status,'preview_ready');assert.equal(state.revision,1);assert.equal(state.calls,2);
+ assert.equal(state.limitations[0].source,'agent_report');assert.equal(state.reservedUsd,0);
+ const result=seen[1].messages.at(-1).content[0];assert.match(result.content,/fix_workflow_or_model_first/);assert.match(result.content,/"authorization_changed":false/);
+ const report=JSON.parse(await readFile(dir+'/s.limitations.json','utf8'));
+ assert.equal(report.status,'preview_ready');assert.equal(report.records.length,1);assert.equal(report.records[0].category,'quality');
 });

@@ -164,6 +164,7 @@ test('a draft that passed checks and snapshots is delivered when the call limit 
  const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
  assert.equal(state.status,'preview_ready');assert.match(state.summary,/visual review/);
+ assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,'incomplete');
  const dir2=await mkdtemp(tmpdir()+'/lim2-');await writeFile(dir2+'/index.html','<html></html>');let j=0;
  const failing=await runAgent({stateFile:dir2+'/s.json',workspace:new Workspace(dir2,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[j++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:false,diagnostics:{ok:false,errors:[{code:'x'}]}}),snapshot:async()=>({ok:true})}});
@@ -223,4 +224,21 @@ test('a visual review that passes a frame under 8 is rejected and the agent is t
  assert.ok(tool.some(c=>/cannot pass/.test(c)),'the pass was refused');
  assert.ok(tool.some(c=>/Fix the lowest-scoring frames first: Subject tiny; Text covers the card/.test(c)),'the repair names the worst problems');
  assert.deepEqual(state.scores.map(x=>x.score),[9,6]);
+});
+
+test('JSON action mode carries reference evidence once and keeps output review separate',async t=>{
+ const refImage='data:image/jpeg;base64,Yg==',outputImage='data:image/jpeg;base64,YQ==';
+ const h=await harness(t,[
+  action({type:'inspect_reference',input:'ref.png',params:{mode:'frames',times:[0]}}),
+  action({type:'write',path:'index.html',content:'<html>Own output</html>'}),
+  action({type:'preview',times:[1]}),
+  action({type:'visual_review',decision:'pass',findings:'Output checked',scores:[{time:1,score:9,problems:[]}]}),
+  action({type:'finish',summary:'Done'}),
+ ],{tools:{inspect_reference:async()=>({ok:true,renderable:false,providerImage:refImage}),check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:outputImage})}});
+ h.args.context.assets=[{name:'ref.png',purpose:'reference',asset_type:'image'}];h.args.requireVisualReview=true;
+ const state=await h.run();assert.equal(state.status,'preview_ready');
+ assert.equal(h.seen[1].image,refImage);assert.equal(JSON.parse(h.seen[1].prompt).attachedSnapshot,null);
+ assert.match(JSON.parse(h.seen[1].prompt).attachedReference.instruction,/reference evidence/);
+ assert.equal(h.seen[2].image,undefined);assert.equal(h.seen[3].image,outputImage);
+ assert.deepEqual(h.args.workspace.assets.map(a=>a.path),['product.png']);
 });

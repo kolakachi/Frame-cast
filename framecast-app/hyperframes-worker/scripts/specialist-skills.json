@@ -1,0 +1,7 @@
+{
+  "iart-ads": {"repository":"https://github.com/iart-ai/ad-video-skills","commit":"0de0f2a1c1f42a98103fc0ec436509276428372c","license":"MIT","runtime":"remotion","names":["ad-creative-video","launch-video","testimonial-video"],"routes":["ad"]},
+  "iart-motion": {"repository":"https://github.com/iart-ai/motion-design-skills","commit":"3c129f769d90a1328c209c386492333c9ac62312","license":"MIT","runtime":"mixed-design-guidance","names":["animation-principles","beat-sync-editing","color-motion","logo-animation","motion-art-direction","motion-background","shot-composition"],"routes":["motion","mascot","product"]},
+  "iart-type": {"repository":"https://github.com/iart-ai/kinetic-typography-skills","commit":"fccc94bd325d824235ee9e715e65abde57b6513a","license":"MIT","runtime":"gsap-or-remotion","names":["kinetic-typography"],"routes":["motion","ad"]},
+  "iart-product": {"repository":"https://github.com/iart-ai/ecommerce-video-skills","commit":"2bd0dd19c9b2df5230f5d8f7453861b9681e49b4","license":"MIT","runtime":"remotion","names":["product-demo-video","promo-video"],"routes":["product"]},
+  "barty": {"repository":"https://github.com/Barty-Bart/motion-graphics","commit":"e8d610adcf946367430c8b43a97aad8059befaad","license":"MIT; bundled icons ISC (see upstream engine)","runtime":"barty-motion-engine","names":["motion-broll"],"routes":["speech-broll"]}
+}

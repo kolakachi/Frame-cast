@@ -188,21 +188,12 @@ return [
     | Lip-sync engines
     |--------------------------------------------------------------------------
     |
-    | Both take a still plus audio and return a talking video; they differ in
-    | output size, speed and input shape, so each carries its own.
-    |
-    | Benchmarked on one still and one 10.1s read (2026-09-14):
-    |   fabric      512x768,  109s predict, duration exact
-    |   omni_human  896x1344, 167s predict, duration exact
-    | A third candidate, wan-2.2-s2v, was rejected: it returned 9.81s of video
-    | for 10.12s of audio, cutting the end off the read.
-    |
-    | `resolution_key` names the input the engine wants its size under, or null
-    | where it has none. `output` is what it actually renders, used to price it.
+    | VEED Fabric takes a still image plus approved audio for lip-sync.
+    | Native speech generation uses the normal video model adapters instead.
     |
     */
     'lipsync' => [
-        'default' => env('LIPSYNC_ENGINE', 'omni_human'),
+        'default' => 'fabric',
         'engines' => [
             // cost_usd_per_second is what the provider charges. Credits are
             // derived from it (CreditService::spokespersonCost), so adding an
@@ -216,17 +207,6 @@ return [
                 // $0.08/s at 480p, $0.15/s at 720p — the configured resolution
                 // decides which applies.
                 'cost_usd_per_second' => env('FABRIC_RESOLUTION', '480p') === '720p' ? 0.15 : 0.08,
-            ],
-            'omni_human' => [
-                'label'          => 'OmniHuman — sharper, slower',
-                'model'          => env('REPLICATE_OMNIHUMAN_MODEL', 'bytedance/omni-human'),
-                'resolution_key' => null,
-                'resolution'     => null,
-                'output'         => '896x1344',
-                // One rate, no resolution option: 896x1344 for $0.14/s. Dearer
-                // than Fabric at 480p, slightly cheaper than Fabric at 720p and
-                // sharper than either.
-                'cost_usd_per_second' => 0.14,
             ],
         ],
     ],

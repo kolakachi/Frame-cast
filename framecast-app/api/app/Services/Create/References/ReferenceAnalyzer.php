@@ -59,7 +59,7 @@ class ReferenceAnalyzer
             .'{"summary": "one sentence", "look": "under 25 words", "palette": ["#hex", ...up to 5], "type": "typography, under 20 words or none", '
             .'"motion": "under 25 words", "structure": "how it opens, builds and ends, under 30 words", "borrow": ["up to 4 techniques"], '
             .'"avoid_copying": ["specific characters, logos, text or footage that belong to the original"], '
-            .'"fingerprint": {"structure": "under 15 words", "opening": "under 15 words", "signature_shot": "the one move it is remembered for, under 15 words", "camera_path": "under 12 words", "score_shape": "music or sound shape, under 12 words", "ending": "under 12 words"}, '
+            .'"fingerprint": {"structure": "under 15 words", "opening": "under 15 words", "signature_shot": "the one move it is remembered for, under 15 words", "camera_path": "under 12 words", "score_shape": "unknown: no audio supplied to this visual analysis", "ending": "under 12 words"}, '
             .'"recipes": ["up to 3 named motion moves worth building, e.g. giant-type wipe, stamp, field flip, one shape morphing"]}';
         $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
         $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(60)

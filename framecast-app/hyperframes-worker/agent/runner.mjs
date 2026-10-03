@@ -1,3 +1,6 @@
+import {actionEvent} from './trajectory.mjs';
+import {recordCapability} from './capability-evidence.mjs';
+import {recordLimitation,observeToolResult,observeStop} from './limitations.mjs';
 import {readFile,writeFile,rename} from 'node:fs/promises';
 import {preflight} from './preflight.mjs';
 import {criticLine} from './critic.mjs';
@@ -10,7 +13,7 @@ import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
-export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{}}) {
+export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
   const cap={calls:12,repairs:2,runs:24,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
@@ -22,28 +25,56 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   state ??= {identity,status:'running',calls:0,repairs:0,runs:0,reservedUsd:0,reservedOutputTokens:0,elapsedMs:0,messages:[],revision:0,checkedRevision:-1,snapshotRevision:-1,reviewedRevision:-1,pending:null};
   state.bundleHash ??= await workspace.fingerprint();
   const started=Date.now(),previousElapsed=state.elapsedMs;
-  const save=async()=>{state.elapsedMs=previousElapsed+Date.now()-started;await writeFile(stateFile+'.tmp',JSON.stringify(state,null,2),{mode:0o600});await rename(stateFile+'.tmp',stateFile);};
+  const save=async()=>{state.elapsedMs=previousElapsed+Date.now()-started;await writeFile(stateFile+'.tmp',JSON.stringify(state,null,2),{mode:0o600});await rename(stateFile+'.tmp',stateFile);
+    // A derived owner diagnostic, separate from render assets and model context.
+    // The authoritative records are in state; a report-file error must not stop paid work.
+    const reportFile=stateFile.replace(/\.json$/,'')+'.limitations.json';
+    try{await writeFile(reportFile+'.tmp',JSON.stringify({schema:1,status:state.status,calls:state.calls,revision:state.revision,
+      capabilities:state.capability_evidence??[],records:state.limitations??[],overflow:state.limitation_overflow??0,authorization_changed:false},null,2),{mode:0o600});await rename(reportFile+'.tmp',reportFile);}
+    catch{state.limitation_report_write_failed=true;}
+  };
   // What the agent is doing and what it has spent so far, for the chat's activity line.
   const spentUsd=()=>(state.usage||[]).reduce((n,u)=>n+(Number(u.costUsd)||0),0);
   const progress=(doing)=>{try{onProgress({doing,call:state.calls,calls:cap.calls,spentUsd:spentUsd(),revision:state.revision});}catch{/* reporting never stops a build */}};
-  if(state.pending){state.status='needs_attention';state.reason='Interrupted action: reconcile before retrying';await save();return state;}
-  const gate=briefGate(context);if(gate){Object.assign(state,gate);await save();return state;}
+  if(state.pending){state.status='needs_attention';state.reason='Interrupted action: reconcile before retrying';observeStop(state,state.reason);await save();return state;}
+  const gate=briefGate(context);if(gate){Object.assign(state,gate);observeStop(state,gate.question||gate.reason||gate.proposal||'Brief requires clarification');await save();return state;}
   const timeout=AbortSignal.timeout(Math.max(1,cap.elapsedMs-state.elapsedMs));
   const boundedSignal=signal?AbortSignal.any([signal,timeout]):timeout;
   // The last draft that passed every check and was snapshotted, kept so a run
   // that hits its deadline or call limit mid-repair still delivers a valid video.
-  const keepGood=async()=>{if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)return;const files={};for(const f of ['index.html','style.css','main.js']){try{files[f]=await workspace.read(f);}catch{/* not every draft has every file */}}state.lastGood={revision:state.revision,files};};
+  const keepGood=async()=>{if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)return;const files={};for(const f of await workspace.sourceFiles()){try{files[f]=await workspace.read(f);}catch{/* not every draft has every file */}}state.lastGood={revision:state.revision,files};};
   const deliverGood=async why=>{
-    for(const [f,t] of Object.entries(state.lastGood.files))await workspace.write(f,t);
+    await workspace.restoreSources(state.lastGood.files);
     state.bundleHash=await workspace.fingerprint();state.revision=state.lastGood.revision;state.checkedRevision=state.snapshotRevision=state.revision;
     const last=state.scores?' Last review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.':'';
-    state.status='preview_ready';state.summary=('This is the last version that passed every automated check (layout, timing, contrast and grounded numbers). '+why+last).slice(0,1900);
+    state.recoveredDraft=true;state.status='preview_ready';state.summary=('Draft — review incomplete. '+why+last).slice(0,1900);
   };
   const bounded = work => new Promise((resolve,reject)=>{
     const abort=()=>reject(Error('Run cancelled or deadline exceeded'));
     boundedSignal.addEventListener('abort',abort,{once:true});
     Promise.resolve().then(()=>{boundedSignal.throwIfAborted();return work();}).then(resolve,reject).finally(()=>boundedSignal.removeEventListener('abort',abort));
   });
+  // A host-owned final review cannot be skipped by an author that keeps editing.
+  // It uses the already-approved critic allowance, never an extra author call.
+  const finalReview=async()=>{
+    if(!requireVisualReview||!tools.critic||!cap.reviewReserveMs||state.pending||
+       (state.criticCalls??0)>=cap.criticCalls||state.checkedRevision!==state.revision||
+       state.snapshotRevision!==state.revision||!state.reviewImage)return false;
+    await workspace.verifyAssets();
+    let strip=null,stripEvidence=null;
+    if(!context.lookOnly&&tools.strip){const captured=await bounded(()=>tools.strip({signal:boundedSignal}));strip=captured?.providerImage??null;stripEvidence=captured?.coverage??null;}
+    state.criticCalls=(state.criticCalls??0)+1;
+    state.pending={kind:'provider',purpose:'final_review',revision:state.revision};await save();
+    progress('Reviewing the final draft');
+    const verdict=await bounded(()=>tools.critic({sheet:{image:state.reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,
+      authorScores:state.scores??[],findings:'Final review before the authoring allowance ends.',round:state.criticCalls,signal:boundedSignal}));
+    state.pending=null;state.critic=verdict;state.criticRevision=state.revision;
+    state.reviewedRevision=verdict.verdict==='pass'?state.revision:-1;
+    if(verdict.verdict==='revise')observeToolResult(state,{type:'critic'},{critic:verdict});
+    state.status='preview_ready';
+    state.summary=(verdict.verdict==='pass'?'Final creative review completed. ':'Draft — review incomplete. The critic requests changes; continue with a follow-up revision. ')+criticLine(verdict);
+    await save();return true;
+  };
   // When a repair leaves the same findings in place, say so plainly; the usual
   // cause is intentional layering (animated words, stacked cards) that must be
   // declared rather than rewritten again.
@@ -56,6 +87,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     // Layout findings that survive two repairs stop blocking: the review and the critic see the frames and judge them.
     const LAYOUT=/^(content_overlap|text_occluded|text_box_overflow)$/;
     if(state.findingsRepeats>=3&&errs.every(e=>LAYOUT.test(e.code||''))){
+      state.layoutAdvisories=errs;
       return {...result,ok:true,diagnostics:{ok:true,advisory:errs,note:'These layout findings survived two repairs and no longer block: they are advisory now. Judge them in the frames; fix what the review shows is really unreadable.'}};
     }
     return {...result,diagnostics:{...result.diagnostics,repeated:true,note:'These exact findings survived your last repair. Do not rewrite the same code again.'+(overlap?' If the overlap is intended (per-word or per-letter animation, stacked layers), add data-layout-allow-overlap (or data-layout-allow-occlusion) to the containing element instead.':' Change approach or remove the element.')}};
@@ -83,13 +115,33 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   };
   // A plain label for an action, for the activity line.
   const describe=a=>({read:'Reading '+(a.path||''),write:'Writing '+(a.path||''),patch:'Editing '+(a.path||''),check:'Checking the draft',preview:'Checking the draft and capturing frames',snapshot:'Capturing frames',
-    timeline:'Reading the timeline',primitives:'Listing options',assets:'Listing files',visual_review:'Reviewing the frames',finish:'Finishing',needs_input:'Asking you a question',propose_media:'Proposing media',
-    catalog:'Searching the registry: '+(a.query||'').slice(0,40),media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),buy:'Buying '+(a.kind||'').replace('_',' '),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
+    report_limitation:'Recording a limitation',timeline:'Reading the timeline',primitives:'Listing options',assets:'Listing files',visual_review:'Reviewing the frames',finish:'Finishing',needs_input:'Asking you a question',propose_media:'Proposing media',
+    inspect_reference:'Inspecting reference details',catalog:'Searching the registry: '+(a.query||'').slice(0,40),media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),buy:'Buying '+(a.kind||'').replace('_',' '),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
   // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
-  const dispatch=async(action,reviewImage)=>{
+  const executeAction=async(action,reviewImage)=>{
     let result;
-      if(action.type==='read')result={text:(action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/registry.md'||action.path.startsWith('cards/'))&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+      if(action.type==='read')result={text:(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path.startsWith('cards/'))&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+    else if(action.type==='report_limitation') {
+      const item=recordLimitation(state,{...action,source:'agent_report',code:action.category});
+      result={recorded:item.recorded!==false,id:item.id,assessment:item.assessment,authorization_changed:false,
+        next:'This report is for review. Continue useful work with existing tools and approvals; disclose any unmet requirement in your result.'};
+    }
+    else if(action.type==='inspect_reference') {
+      if(!tools.inspect_reference)result={error:'Reference inspection is not installed'};
+      else if(!(context.assets??[]).some(f=>f.name===action.input&&f.purpose==='reference'&&['video','image'].includes(f.asset_type)))result={error:'Inspection requires a reference image or video from context.assets'};
+      else if((state.referenceInspections??0)>=8)result={error:'Reference inspection limit reached (8 per run); use the evidence already collected'};
+      else {
+        state.referenceInspections=(state.referenceInspections??0)+1;
+        result=await bounded(()=>tools.inspect_reference({input:action.input,params:action.params,signal:boundedSignal}));
+        const {providerImage,...metadata}=result;
+        // A reference image must never satisfy the rendered-draft review gate.
+        state.inspectionImage=result.ok?providerImage:null;
+        state.inspectionEvidence=result.ok?metadata:null;
+        if(result.ok)state.inspectionHistory=[...(state.inspectionHistory??[]),metadata].slice(-8);
+        result=metadata;
+      }
+    }
     else if(action.type==='catalog') {
       if(!tools.catalog)throw Error('The registry catalogue is not available in this run');
       result=await tools.catalog({query:action.query});
@@ -178,22 +230,22 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     }
     else if(action.type==='buy') {
       if(!tools.buy)throw Error('Purchases are not available in this run');
-      result=await bounded(()=>tools.buy({kind:action.kind,description:action.description,signal:boundedSignal}));
+      result=await bounded(()=>tools.buy({kind:action.kind,description:action.description,requirement_ids:action.requirement_ids??[],signal:boundedSignal}));
       // Bought files join the protected assets and the plan media the checks know about.
-      if(result?.ok){for(const f of result.files||[])if(!workspace.assets.some(a=>a.path===f.path))workspace.assets.push({path:f.path,sha256:f.sha256});(context.planMedia??=[]).push({kind:action.kind,description:action.description,status:'succeeded',file:result.files?.[0]?.path,charged_credits:result.charged_credits});}
+      if(result?.ok){for(const f of result.files||[])if(!workspace.assets.some(a=>a.path===f.path))workspace.assets.push({path:f.path,sha256:f.sha256});(context.planMedia??=[]).push({task_id:result.task_id??null,requirement_ids:result.requirement_ids??[],kind:action.kind,description:action.description,status:'succeeded',file:result.files?.[0]?.path,charged_credits:result.charged_credits});}
       else if(++state.repairs>cap.repairs)throw Error('Purchase repair limit reached');
     }
     else if(action.type==='preview') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
-      if(!result.ok)result=repeated(result);else state.lastFindings=null;
+      if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
       if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     }
     else if(action.type==='check') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
-      if(!result.ok)result=repeated(result);else state.lastFindings=null;
+      if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
       if(result.ok)state.checkedRevision=state.revision;
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     } else if(action.type==='snapshot') {
@@ -211,9 +263,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         let verdict=null;
         if(requireVisualReview&&tools.critic&&(state.criticCalls??0)<cap.criticCalls){
           state.criticCalls=(state.criticCalls??0)+1;progress('The critic is reviewing');
-          let strip=null;if(!context.lookOnly&&tools.strip)strip=(await bounded(()=>tools.strip({signal:boundedSignal})).catch(()=>null))?.providerImage??null;
-          verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
-          state.critic=verdict;
+          let strip=null,stripEvidence=null;if(!context.lookOnly&&tools.strip){const captured=await bounded(()=>tools.strip({signal:boundedSignal})).catch(()=>null);strip=captured?.providerImage??null;stripEvidence=captured?.coverage??null;}
+          verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
+          state.critic=verdict;state.criticRevision=state.revision;
         }
         if(verdict&&verdict.verdict==='revise'){
           state.reviewedRevision=-1;
@@ -227,16 +279,34 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');
       state.status='preview_ready';state.summary=action.summary;
     } else if(action.type==='needs_input') {
+      recordLimitation(state,{source:'runtime',category:'input',code:'clarification_requested',tool:'needs_input',summary:'The agent requested clarification',evidence:action.question,impact:'The run needs user input or must disclose unfinished work.',workaround:'Clarify the missing requirement; assess whether an existing asset or reasonable default was overlooked.',requested_change:''});
       // On the last call, a draft that passed every check is delivered with the open issues, not held back.
       if(state.calls>=cap.calls-1&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
-        state.status='preview_ready';state.summary=('Draft delivered at the call limit. It passes every automated check; open issues from the last review: '+action.question).slice(0,1900);
+        state.recoveredDraft=true;state.status='preview_ready';state.summary=('Draft — review incomplete. Call limit reached; open issues: '+action.question).slice(0,1900);
       } else if(state.calls>=cap.calls-1&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
       else {state.status='needs_input';state.question=action.question;}
     }
-    else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;}
+    else if(action.type==='propose_media') {state.status='awaiting_media_approval';state.proposal=action.description;recordLimitation(state,{source:'runtime',category:'budget',code:'media_approval_requested',tool:'propose_media',summary:'Additional media approval requested',evidence:'The agent paused with a media proposal.',impact:'New media cannot be purchased without approval.',workaround:'Reuse approved assets where suitable or obtain approval for a revised quote.',requested_change:''});}
+    recordCapability(state,action,result);
+    if(action.type!=='report_limitation')observeToolResult(state,action,result);
     await workspace.verifyAssets();boundedSignal.throwIfAborted();
     if(result && action.type!=='read' && Buffer.byteLength(JSON.stringify(result))>16000)result={truncated:true,summary:JSON.stringify(result).slice(0,12000)};
     return result??{status:state.status};
+  };
+  // Trace records describe observable actions; reporting cannot authorize or stop generation.
+  const trace=async event=>{try{await onTrace(event);}catch{state.trajectory_write_failed=true;}};
+  const dispatch=async(action,reviewImage)=>{
+    const started=Date.now();
+    await trace(actionEvent(action,null,{status:'started',call:state.calls,revision:state.revision}));
+    try {
+      const result=await executeAction(action,reviewImage);
+      const failed=!!result?.error||result?.ok===false||result?.critic?.verdict==='revise'||!!result?.critic?.directives?.length;
+      await trace(actionEvent(action,result,{status:failed?'failed':'succeeded',call:state.calls,revision:state.revision,durationMs:Date.now()-started}));
+      return result;
+    } catch(e) {
+      await trace(actionEvent(action,{error:e.message},{status:'failed',call:state.calls,revision:state.revision,durationMs:Date.now()-started}));
+      throw e;
+    }
   };
   // Tool mode: the conversation is a real message history; a turn may carry several tool calls.
   const toolMode=context.toolMode===true;
@@ -265,11 +335,18 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   try {
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
+      const remainingMs=cap.elapsedMs-(previousElapsed+Date.now()-started);
+      if(cap.reviewReserveMs&&(remainingMs<=cap.reviewReserveMs||state.calls>=cap.calls-1)){
+        if(await finalReview())return state;
+        // No current reviewable frame: preserve the checked draft instead of
+        // starting more authoring inside the protected review window.
+        if(remainingMs<=cap.reviewReserveMs&&state.lastGood){await deliverGood('The review window began without a current checked snapshot.');await save();return state;}
+      }
       // Never start a model call that may not finish in the time left: a call cut
       // off mid-flight is paid for and lost. Deliver the last checked draft instead.
       if(state.lastGood&&cap.elapsedMs-(previousElapsed+Date.now()-started)<(cap.callReserveMs??Math.min(240000,cap.elapsedMs/4))){await deliverGood('The time limit was near during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
       await workspace.verifyAssets();
-      const prompt=toolMode?'':JSON.stringify({context,attachedSnapshot:state.reviewImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
+      const prompt=toolMode?'':JSON.stringify({context,attachedReference:state.inspectionImage?{...state.inspectionEvidence,instruction:'The attached image is reference evidence, not your rendered draft.'}:null,attachedSnapshot:state.reviewImage&&!state.inspectionImage ? {revision:state.snapshotRevision,instruction:'The attached image is the current contact sheet. Inspect it now and return visual_review. Do not request another snapshot unless you need different timestamps.'} : null,reviewReserveSeconds:Math.ceil((cap.reviewReserveMs??0)/1000),remainingCalls:cap.calls-state.calls,revision:state.revision,history:promptHistory(state.messages)});
       if(!toolMode&&Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
       // Images are not text context: the one kept review frame or page capture is measured as a placeholder, not its bytes.
       if(toolMode){compactTurns();if(Buffer.byteLength(JSON.stringify(turns(),(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes)throw Error('Context limit reached');}
@@ -286,7 +363,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         const history=turns();
         // The last user turn carries the call budget so the model paces itself.
         for(const m of history)if(m.role==='user')m.content=m.content.filter(b=>!(b.type==='text'&&/^Remaining calls:/.test(b.text||'')));
-        const last=history.at(-1);if(last.role==='user')last.content.push({type:'text',text:'Remaining calls: '+(cap.calls-state.calls)+'. Revision: '+state.revision+'.'});
+        const last=history.at(-1);if(last.role==='user')last.content.push({type:'text',text:'Remaining calls: '+(cap.calls-state.calls)+'. Revision: '+state.revision+'. The final '+Math.ceil((cap.reviewReserveMs??0)/1000)+' seconds are reserved for review; prepare a checked preview before then.'});
         const response=await bounded(()=>provider.complete({prompt:'tool-mode call '+state.calls,system:toolHostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,messages:structuredClone(history),tools:toolDefinitions,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
         boundedSignal.throwIfAborted();
         state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
@@ -303,6 +380,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           let action,result;
           try{action=actionFromToolUse(u);}catch(e){
             if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
+            await trace(actionEvent({type:'invalid_action'},{error:e.message},{status:'failed',call:state.calls,revision:state.revision}));
+            observeToolResult(state,{type:'invalid_action'},{error:e.message});
             results.push({type:'tool_result',tool_use_id:u.id,is_error:true,content:JSON.stringify({error:e.message})});continue;
           }
           state.pending={kind:'tool',action};await save();progress(describe(action));
@@ -311,11 +390,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           catch(e){
             if(!MISUSE.test(String(e.message))||boundedSignal.aborted)throw e;
             if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
-            result={error:e.message};
+            result={error:e.message};observeToolResult(state,action,result);
           }
           state.pending=null;state.messages.push({role:'tool',content:result});await save();
           // New frames travel back as an image in the tool result, for the next turn's review.
-          const img=state.reviewImage&&state.reviewImage!==before&&/^data:image\/(png|jpeg);base64,/.test(state.reviewImage)?state.reviewImage:null;
+          const candidate=action.type==='inspect_reference'?state.inspectionImage:state.reviewImage&&state.reviewImage!==before?state.reviewImage:null;
+          const img=/^data:image\/(png|jpeg);base64,/.test(candidate??'')?candidate:null;
+          state.inspectionImage=null;
           results.push({type:'tool_result',tool_use_id:u.id,...(result?.error?{is_error:true}:{}),content:img?[{type:'text',text:JSON.stringify(result)},{type:'image',source:{type:'base64',media_type:img.startsWith('data:image/png')?'image/png':'image/jpeg',data:img.split(',')[1]}}]:JSON.stringify(result)});
           if(state.status!=='running')break;
         }
@@ -323,7 +404,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         if(state.status!=='running')return state;
         continue;
       }
-      const response=await bounded(()=>provider.complete({prompt,system:hostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,image:reviewImage||initialImage,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
+      const response=await bounded(()=>provider.complete({prompt,system:hostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,image:state.inspectionImage||reviewImage||initialImage,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
+      state.inspectionImage=null;
       boundedSignal.throwIfAborted();
       state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(prompt),systemBytes:Buffer.byteLength(hostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
       // Persist returned output before dispatch. Never repeat an uncertain paid create.
@@ -332,6 +414,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       try {action=parseAction(response.text);} catch(e) {
         if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
         const cut=response.stopReason==='max_tokens'||/Unterminated|Unexpected end/i.test(e.message);
+        await trace(actionEvent({type:'invalid_action'},{error:e.message},{status:'failed',call:state.calls,revision:state.revision}));
+            observeToolResult(state,{type:'invalid_action'},{error:e.message});
         state.messages.push({role:'tool',content:{error:e.message,...(cut?{hint:'Your reply was cut off by the output limit (thinking counts toward it). Split the work into smaller writes: index.html with markup only, then style.css and main.js as separate write actions, each under 6,000 characters, linked from index.html.'}:{})}});await save();continue;
       }
       state.pending={kind:'tool',action};await save();progress(describe(action));
@@ -339,11 +423,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.pending=null;state.messages.push({role:'tool',content:result});await save();
       if(state.status!=='running')return state;
     }
+    if(await finalReview())return state;
+    observeStop(state,'Model call limit reached');
     // Out of calls right after a draft passed every check and was snapshotted:
     // deliver it rather than discard a valid video, and say review was skipped.
     if(state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0&&!state.pending){
       state.status='preview_ready';
-      state.summary='This version passed every automated check (layout, timing, contrast and grounded numbers). The call limit was reached before the final visual review, so give it a look before posting.';
+      state.recoveredDraft=true;
+      state.summary='Draft — review incomplete. The call limit was reached before the final visual review. Review this version before posting.';
       await save();return state;
     }
     if(state.lastGood&&!state.pending){await deliverGood('The call limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
@@ -356,12 +443,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
     if(exhausted&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
       const why=e.code==='NOT_SENT'?'The model was unavailable':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
-      state.pending=null;try{await deliverGood(why+' during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}catch{/* fall through to the failure below */}
+      state.pending=null;try{await deliverGood(why+' during a later repair, so that repair is not included. Give it a look before posting.');observeStop(state,why);await save();return state;}catch{/* fall through to the failure below */}
     }
     state.status=state.pending?.kind==='provider'?'needs_attention':boundedSignal.aborted?'cancelled':'failed';
-    if(e.code==='BUDGET_EXHAUSTED'){state.pending=null;state.status='budget_exhausted';state.reason=e.message;await save();return state;}
+    if(e.code==='BUDGET_EXHAUSTED'){state.pending=null;state.status='budget_exhausted';state.reason=e.message;observeStop(state,state.reason);await save();return state;}
     state.failureDetail=e.message;
     state.reason=state.pending?.kind==='provider'?'Provider outcome needs reconciliation; do not resubmit automatically':e.message;
+    observeStop(state,state.reason);
     await save();return state;
   }
 }

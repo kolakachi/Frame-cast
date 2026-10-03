@@ -1,9 +1,19 @@
-import {mkdir,readdir,copyFile,lstat,writeFile,readFile} from 'node:fs/promises';
+import {mkdir,readdir,copyFile,lstat,writeFile,readFile,unlink} from 'node:fs/promises';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {inspectionReport} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
-if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip'].includes(operation))throw Error('Invalid local job');
+if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip','inspect_reference'].includes(operation))throw Error('Invalid local job');
+if(operation==='inspect_reference'){
+ const {inspectReference}=await import('./reference-inspection.mjs');
+ const dir='/output/live/'+id;
+ await mkdir(dir+'/inspect_reference',{recursive:true});
+ let result;
+ try{result=await inspectReference({runDir:dir,request:JSON.parse(await readFile(dir+'/inspect_reference-request.json','utf8'))});}
+ catch(e){result={ok:false,error:String(e.message).slice(0,600)};}
+ await writeFile(dir+'/inspect_reference/result.json',JSON.stringify(result,null,2));
+ process.exit(0);
+}
 if(operation==='run'){
  // One allowlisted program in the run's work folder; the request was written by the host.
  const {runOp}=await import('./run-tool.mjs');
@@ -28,11 +38,16 @@ if(operation==='media'){
 }
 const source='/output/live/'+id,root='/tmp/live-project',out=source+'/'+operation;
 await mkdir(root,{recursive:true});await mkdir(out,{recursive:true});await mkdir(process.env.HOME,{recursive:true});
+// Repeated reviews must not mix timestamps from earlier revisions or durations.
+if(operation==='strip'||operation==='snapshot')for(const file of await readdir(out)){
+ if(/^frame-\d+-at-[0-9.]+s\.png$/.test(file)||/^s-\d+\.png$/.test(file))await unlink(out+'/'+file);
+}
 for(const file of await readdir(source+'/project')){
  if(!/^[a-zA-Z0-9_.-]+\.(html|css|js|png|jpg|webp|svg|ttf|mp4|mp3|wav)$/.test(file)||(await lstat(source+'/project/'+file)).isSymbolicLink())throw Error('Invalid staged file');
  await copyFile(source+'/project/'+file,root+'/'+file);
 }
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
+for(const f of ['barty-motion.js','barty-hyperframes.js','wyv-mascot.js'])await copyFile('/opt/worker/runtime/'+f,root+'/'+f);
 // Licensed display and text fonts (SIL OFL), vendored in runtime/fonts.
 for(const f of ['inter.ttf','anton.ttf','bebas-neue.ttf','playfair.ttf','space-grotesk.ttf','caveat.ttf'])await copyFile('/opt/worker/runtime/fonts/'+f,root+'/'+f);
 // Registry items the composition wires (data-composition-src) are staged from the vendored registry, with the libraries they load.
@@ -67,8 +82,8 @@ if(operation==='delivery'){
 else if(operation==='render')result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');
- // The strip: a frame every half second across the whole video, for the critic's view of pacing and motion.
- const stripTimes=operation==='strip'?Array.from({length:Math.min(30,Math.floor(settings.duration_seconds*2))},(_,i)=>(i*0.5+0.25).toFixed(2)).join(','):null;
+ // Keep the 30-frame budget but cover the end of longer videos as well.
+ const stripTimes=operation==='strip'?(await import('./review-sampling.mjs')).reviewSampling(settings.duration_seconds).times.join(','):null;
  const args=operation==='timeline'?['timeline','--json']:operation==='check'?['check',root,'--json']:['snapshot',root,'--at',stripTimes??times,'--no-end','--describe','false','--output',out];
  try {const {stdout,stderr}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',...args],{cwd:root,timeout:120000,maxBuffer:16000000});await writeFile(out+'/command.log',stdout+stderr);result={ok:operation==='check'?JSON.parse(stdout).ok===true:true,diagnostics:operation==='timeline'?JSON.parse(stdout):operation==='check'?inspectionReport(stdout):'Snapshots captured'};}
  catch(e){await writeFile(out+'/command.log',(e.stdout||'')+(e.stderr||''));result={ok:false,diagnostics:operation==='check'?inspectionReport(e.stdout||e.stderr||e.message):(e.stdout||e.stderr||e.message).slice(0,12000)};}
@@ -82,7 +97,10 @@ if(operation==='strip'&&result.ok){
  for(const [i,n] of shots.entries())await copyFile(out+'/'+n,out+'/s-'+String(i).padStart(2,'0')+'.png');
  const cell=dims[0]>dims[1]?[192,108]:dims[0]===dims[1]?[144,144]:[108,192],cols=10,rows=Math.ceil(shots.length/cols);
  await promisify(execFile)('ffmpeg',['-y','-threads','1','-framerate','1','-i',out+'/s-%02d.png','-vf',`scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black,tile=${cols}x${rows}:padding=2:color=black`,'-frames:v','1','-q:v','4',out+'/strip.jpg'],{timeout:60000,maxBuffer:1000000});
- result={ok:true,frames:shots.length,every_seconds:0.5,columns:cols};
+ const sampling=(await import('./review-sampling.mjs')).reviewSampling(settings.duration_seconds);
+ const actualTimes=shots.map(n=>Number(n.match(/at-([0-9.]+)s/)[1]));
+ if(actualTimes.length!==sampling.times.length||actualTimes.some((t,i)=>Math.abs(t-sampling.times[i])>.01))throw Error('Review strip frame coverage did not match requested timestamps');
+ result={ok:true,frames:shots.length,every_seconds:sampling.every_seconds,columns:cols,coverage:{...sampling,times:actualTimes}};
 }
 if(operation==='snapshot'&&result.ok){
  const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort().slice(0,5);

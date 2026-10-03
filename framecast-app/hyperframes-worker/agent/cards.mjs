@@ -8,22 +8,29 @@ import {digest} from './workspace.mjs';
 
 export const ALWAYS=['seams','principles'];
 // Two more cards by the kind of video; the rest stay readable on demand.
-export const BY_ROUTE={product:['launch','demo-loop'],ad:['ad-anatomy','design'],mascot:['design','animation'],motion:['design','animation']};
+export const BY_ROUTE={product:['launch','demo-loop'],ad:['ad-anatomy','design'],mascot:['design','animation'],motion:['design','animation'],editorial:['intent'],footage:['intent'],still:['intent'],general:['intent']};
 export const PINNED_BUDGET=16500;
 
-// The kind of video, from the pack the build starts from, then the plan's route, then the brief's words.
+// Approved intent wins; older plans can use their selected pack, otherwise stay neutral.
 export function cardRoute({stylePack,plan,brief='',settings={}}={}){
+ const intent=plan?.creative_intent;
+ if(intent?.format){
+  if(intent.motion==='none'||intent.format==='still_image'||intent.format==='slideshow')return 'still';
+  if(intent.format==='educational')return 'editorial';
+  if(['footage_edit','talking_head'].includes(intent.format))return 'footage';
+  if(intent.format==='character_animation')return 'mascot';
+  if(intent.format==='motion_graphics'&&intent.motion==='kinetic')return 'motion';
+  return 'general';
+ }
  const slug=String(stylePack?.slug||stylePack?.name||'').toLowerCase();
  if(/mascot|character|explainer/.test(slug))return 'mascot';
  if(/launch|product|data|saas|demo/.test(slug))return 'product';
  if(/kinetic|editorial|type|logo/.test(slug))return 'motion';
- const text=(String(brief)+' '+String(plan?.summary||'')+' '+String(settings.output_kind||'')).toLowerCase();
- if(/\b(ugc|ad|ads|offer|sale|promo|tiktok|reels|shorts|testimonial|creator|discount)\b/.test(text))return 'ad';
- if(/\b(mascot|character|presenter|avatar|cartoon)\b/.test(text))return 'mascot';
- if(/\b(app|saas|dashboard|demo|product|feature|website|screen|ui|software|tool)\b/.test(text))return 'product';
- return 'motion';
+ // Topic words cannot distinguish "a UGC ad" from "a tutorial about UGC ads".
+ // Legacy/unclassified briefs get neutral guidance; the agent infers from the full context.
+ return settings.output_kind==='image'?'still':'general';
 }
-export function cardsFor(route){return [...ALWAYS,...(BY_ROUTE[route]||BY_ROUTE.motion)];}
+export function cardsFor(route){return ['editorial','footage','still','general'].includes(route)?BY_ROUTE[route]:[...ALWAYS,...(BY_ROUTE[route]||BY_ROUTE.general)];}
 
 // Writes cards/manifest.json with a hash per card (run after editing a card).
 export async function pinCards(directory){

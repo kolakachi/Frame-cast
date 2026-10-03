@@ -35,3 +35,13 @@ test('a pose sheet stages every pose file with its label',async()=>{
  assert.deepEqual(r[0].files,[{file:a.f.name,pose:'talking'},{file:c.f.name,pose:'pointing'}]);
  assert.equal(manifest.length,2);
 });
+
+test('frozen task and requirement identities survive successful and failed media handoff',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/pm-'),manifest=[];
+ const approved=[{...items[0],id:'task-approved',requirement_ids:['req-00000000000000000001']},{...items[1],id:'task-voice',requirement_ids:['req-00000000000000000002']}];
+ const result=await buyPlanMedia({items:approved,directory:dir,manifest,produce:async i=>i?{status:'failed',error:'Missing audio'}:{status:'succeeded',file,requirement_ids:['untrusted-return']},download:async()=>ok()});
+ assert.equal(result[0].task_id,'task-approved');
+ assert.deepEqual(result[0].requirement_ids,approved[0].requirement_ids);
+ assert.deepEqual(result[1].requirement_ids,approved[1].requirement_ids);
+ assert.deepEqual(manifest[0].plan_media.requirement_ids,approved[0].requirement_ids);
+});

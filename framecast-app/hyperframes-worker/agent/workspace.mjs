@@ -1,4 +1,4 @@
-import {readFile,writeFile,rename,realpath,lstat,readdir,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,rename,realpath,lstat,readdir,mkdir,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 export const digest = value => createHash('sha256').update(value).digest('hex');
@@ -22,6 +22,12 @@ export class Workspace {
     const temp = `${file}.tmp`;
     // Exclusive temp creation avoids following a pre-existing temp symlink.
     await writeFile(temp, text, {flag:'wx',mode:0o600}); await rename(temp,file);
+  }
+  async sourceFiles() { return (await readdir(this.root)).filter(f=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(f)).sort(); }
+  async restoreSources(files) {
+    for(const name of Object.keys(files))await this.resolve(name,true);
+    for(const name of await this.sourceFiles())if(!(name in files))await unlink(await this.resolve(name));
+    for(const [name,text] of Object.entries(files))await this.write(name,text);
   }
   async fingerprint() {
     const files=(await readdir(this.root)).filter(f=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(f)).sort();
