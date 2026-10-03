@@ -67,7 +67,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     if(!context.lookOnly&&tools.strip){const captured=await bounded(()=>tools.strip({signal:boundedSignal}));strip=captured?.providerImage??null;stripEvidence=captured?.coverage??null;}
     state.criticCalls=(state.criticCalls??0)+1;
     state.pending={kind:'provider',purpose:'final_review',revision:state.revision};await save();
-    progress('Reviewing the final draft');
+    progress('Taking a final look');
     const verdict=await bounded(()=>tools.critic({sheet:{image:finalImage(),reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,
       authorScores:state.scores??[],findings:'Final review before the authoring allowance ends.',round:state.criticCalls,signal:boundedSignal}));
     state.pending=null;state.critic=verdict;state.criticRevision=state.revision;
@@ -116,9 +116,10 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };
   // A plain label for an action, for the activity line.
-  const describe=a=>({read:'Reading '+(a.path||''),write:'Writing '+(a.path||''),patch:'Editing '+(a.path||''),check:'Checking the draft',preview:'Checking the draft and capturing frames',snapshot:'Capturing frames',
-    report_limitation:'Recording a limitation',timeline:'Reading the timeline',primitives:'Listing options',assets:'Listing files',visual_review:'Reviewing the frames',finish:'Finishing',needs_input:'Asking you a question',propose_media:'Proposing media',
-    inspect_reference:'Inspecting reference details',catalog:'Searching the registry: '+(a.query||'').slice(0,40),media:'Media: '+(a.op||''),transcript:'Transcribing '+(a.input||''),buy:'Buying '+(a.kind||'').replace('_',' '),run:'Running '+(a.cmd||'')+' '+((a.args||[]).slice(0,2).join(' '))})[a.type]||a.type;
+  // What the user sees while the build works: plain and calm, never a file, tool or command name.
+  const describe=a=>({read:'Looking over the work',write:'Shaping the scenes',patch:'Refining the scenes',check:'Checking the details',preview:'Checking how it looks',snapshot:'Checking how it looks',
+    report_limitation:'Making a note',timeline:'Checking the timing',primitives:'Getting organised',assets:'Getting organised',visual_review:'Reviewing the frames',finish:'Wrapping up',needs_input:'Preparing a question for you',propose_media:'Suggesting extra media',
+    inspect_reference:'Studying your reference',catalog:'Choosing design pieces',media:'Preparing your media',transcript:'Listening to the narration',buy:'Getting media for your video',run:'Preparing your media'})[a.type]||'Working on your video';
   // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
   const executeAction=async(action,reviewImage)=>{
@@ -265,7 +266,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         // The critic has the last word: a separate reviewer with the frames and, for a motion build, the strip across the video.
         let verdict=null;
         if(requireVisualReview&&tools.critic&&(state.criticCalls??0)<cap.criticCalls){
-          state.criticCalls=(state.criticCalls??0)+1;progress('The critic is reviewing');
+          state.criticCalls=(state.criticCalls??0)+1;progress('Taking a second look');
           let strip=null,stripEvidence=null;if(!context.lookOnly&&tools.strip){const captured=await bounded(()=>tools.strip({signal:boundedSignal})).catch(()=>null);strip=captured?.providerImage??null;stripEvidence=captured?.coverage??null;}
           verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
           state.critic=verdict;state.criticRevision=state.revision;

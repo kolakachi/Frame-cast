@@ -46,15 +46,18 @@ const outputMeta = computed(() => {try{return JSON.parse(currentRevision.value?.
 const delivery_checks = computed(() => outputMeta.value?.delivery_checks || null)
 const checkIssues = computed(() => {
   const c = delivery_checks.value; if(!c) return []
-  const at = f => (f.time != null ? ` at ${f.time}s` : '')
-  const name = f => (String(f.message || '').match(/"([^"]{1,80})"/)?.[1]) || (f.selector || 'Some text').replace(/^#/, '')
-  return [
-    ...(c.safe_area || []).map(f => `"${name(f)}"${at(f)} sits where the app's captions and buttons cover it. Move it up, or ask for a change.`),
-    ...(c.edges || []).map(f => `"${name(f)}"${at(f)} runs off the edge of the frame.`),
-    ...(c.contrast || []).map(f => `"${name(f)}"${at(f)} is hard to read against its background.`),
-    ...(c.pacing || []).map(f => f.code === 'blank_frames' ? `The screen is empty${at(f)}.` : `"${name(f)}"${at(f)} leaves the screen before most people can read it.`),
-    ...(c.loudness?.status === 'check_failed' ? ['The sound level could not be checked.'] : []),
-  ].slice(0, 8)
+  // Plain words only: grouped by kind with the moments, never element selectors.
+  const when = list => { const t = [...new Set(list.map(f => f.time).filter(v => v != null).map(v => Math.round(v * 10) / 10))].sort((a, b) => a - b).slice(0, 4); return t.length ? ` (around ${t.map(v => v + 's').join(', ')})` : '' }
+  const quoted = f => String(f.message || '').match(/^"([^"]{1,60})"/)?.[1]
+  const out = []
+  if (c.safe_area?.length) out.push(`Some text sits where the app's buttons and captions will cover it${when(c.safe_area)}.`)
+  if (c.edges?.length) out.push(`Something runs off the edge of the frame${when(c.edges)}.`)
+  if (c.contrast?.length) out.push(`Some text may be hard to read against its background${when(c.contrast)}.`)
+  const blank = (c.pacing || []).filter(f => f.code === 'blank_frames'), fast = (c.pacing || []).filter(f => f.code !== 'blank_frames')
+  if (blank.length) out.push(`The screen is empty for a moment${when(blank)}.`)
+  if (fast.length) { const q = fast.map(quoted).filter(Boolean); out.push(q.length === 1 ? `"${q[0]}" leaves the screen before most people can read it.` : `Some text leaves the screen before most people can read it${when(fast)}.`) }
+  if (c.loudness?.status === 'check_failed') out.push('The sound level could not be checked.')
+  return out
 })
 const timeline = computed(() => conversationTimeline(data.value?.messages || [], currentRevision.value))
 const imageOutput = computed(() => outputMeta.value.settings?.output_kind === 'image')
@@ -335,6 +338,11 @@ async function setCeiling() {
   await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { media_ceiling_credits: v } }); quote.value = null; await refresh(); await plan() })
 }
 const reviewScores = computed(() => outputMeta.value?.review || [])
+// The review's suggestions in plain words: no requirement bookkeeping, and for a storyboard nothing about audio, timing or export.
+const reviewNotes = computed(() => (outputMeta.value.creative_review?.findings || [])
+  .filter(f => !/^(Unmet requirement|Requirement ")/i.test(f))
+  .filter(f => !outputMeta.value.look || !/\b(audio|narration|voice|music|sfx|sync|export|timing)\b/i.test(f))
+  .slice(0, 3))
 const needsAnotherRound = computed(() => outputMeta.value.creative_review?.status === 'incomplete' || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
 async function keepImproving() { prompt.value = 'Keep this video, complete its creative review and fix the open issues: ' + (outputMeta.value.creative_review?.findings || []).join('; '); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
@@ -729,20 +737,19 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <span class="muted">{{ outputMeta.fixture === false ? (currentRevision.export_job_id ? 'Saved to Videos' : currentRevision.output_asset_id ? 'Saved to Assets' : 'Preview') : 'Local sample preview' }}</span>
                   <span :class="['status', isOldRevision ? 'status--neutral' : 'status--ok']">{{ isOldRevision ? 'EARLIER' : 'CURRENT' }}</span>
                 </div>
-                <div v-if="delivery_checks" class="checks" role="status" aria-label="Before you post">
+                <div v-if="delivery_checks && !outputMeta.look" class="checks" role="status" aria-label="Before you post">
                   <b>{{ checkIssues.length ? 'Before you post' : 'Delivery checks complete' }}</b>
                   <ul>
                     <li v-for="(t, i) in checkIssues" :key="i" class="checks__warn">{{ t }}</li>
-                    <li v-if="delivery_checks.loudness?.status === 'levelled'">Sound levelled from {{ delivery_checks.loudness.from }} to {{ delivery_checks.loudness.lufs }} LUFS for social playback.</li>
-                    <li v-else-if="delivery_checks.loudness?.status === 'ok'">Sound level is right for social ({{ delivery_checks.loudness.lufs }} LUFS).</li>
+                    <li v-if="delivery_checks.loudness?.status === 'levelled'">Sound level adjusted for social playback.</li>
+                    <li v-else-if="delivery_checks.loudness?.status === 'ok'">Sound level is right for social.</li>
                     <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
                   </ul>
                 </div>
                 <div v-if="outputMeta.creative_review" class="checks" role="status">
-                  <b>{{ outputMeta.creative_review.status === 'passed' ? 'Creative review passed' : 'Draft — review incomplete' }}</b>
-                  <ul v-if="outputMeta.creative_review.findings?.length"><li v-for="(finding, i) in outputMeta.creative_review.findings" :key="i">{{ finding }}</li></ul>
-                  <p v-else-if="outputMeta.creative_review.status !== 'passed'">This version has not completed an independent creative review.</p>
-                  <ul v-if="outputMeta.creative_review.requirement_checks?.length"><li v-for="r in outputMeta.creative_review.requirement_checks" :key="r.id"><b>{{ ({ fulfilled: 'Fulfilled', unmet: 'Not met', unverified: 'Not verified', deferred: 'For the full video' })[r.status] || 'Not verified' }}</b> · {{ r.text }}<small v-if="r.evidence"> — {{ r.evidence }}</small></li></ul>
+                  <b>{{ outputMeta.creative_review.status === 'passed' ? 'Creative review passed' : outputMeta.look ? 'Notes for the next round' : 'Still being refined' }}</b>
+                  <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
+                  <p v-else-if="outputMeta.creative_review.status !== 'passed'">{{ outputMeta.look ? 'Look over the stills and tell us what to change, or build the full video.' : 'This version has not finished its review yet. Keep improving to complete it.' }}</p>
                 </div>
                 <p v-if="reviewScores.length" class="review-line muted">Review scores by frame: <b v-for="s in reviewScores" :key="s.time" :class="{ low: s.score < 8 }">{{ s.time }}s {{ s.score }}</b></p>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>

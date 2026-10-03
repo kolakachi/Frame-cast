@@ -215,7 +215,7 @@ async function execute(run){
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));
   await beat();
   if(lost)throw Error('Worker lease lost; keep output for reconciliation');
-  if(cancelled||stopping){await finish(run,{status:'cancelled',summary:'Local render stopped'});return;}
+  if(cancelled||stopping){await finish(run,{status:'cancelled',summary:'Stopped. Earlier versions are safe.'});return;}
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
@@ -237,7 +237,7 @@ async function execute(run){
    try{const {stdout}=await exec(docker,['ps','-a','--filter','name=^/'+container+'$','--format','{{.Names}}']);stopped=!stdout.trim();}catch{/* Docker unreachable: unknown */}
   }
   const uncertain=e.code==='ATTEMPT_NEEDS_ATTENTION';
-  const result={status:stopped&&!uncertain?(cancelled||stopping?'cancelled':'failed'):'needs_attention',summary:uncertain?'Attempt outcome needs reconciliation; do not repeat it.':stopped?'Local render stopped without a usable result. See the local worker journal.':'Worker state is unknown. Reconcile before retrying.'};
+  const result={status:stopped&&!uncertain?(cancelled||stopping?'cancelled':'failed'):'needs_attention',summary:uncertain?'This build stopped while a step was in progress. We are checking it before anything runs again; earlier versions are safe.':stopped?'This build stopped before it finished. You are only charged for the work it did, and earlier versions are safe. Try again, or change the brief.':'This build lost contact before it finished. We are checking it before anything runs again; earlier versions are safe.'};
   await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,...result}),{mode:0o600});
   // If completion may already be accepted, the server rejects a conflicting result.
   if(!lost)try{await finish(run,result);}catch{}
