@@ -1,4 +1,14 @@
+> Harness/workflow update (2026-10-03): W1–W5 implementation and W6 acceptance are tracked in [the current integration progress document](create-agent-integration-progress.md#harness-and-workflow-closeout--2026-10-03). Godmode diagnostics is G1, pending. Historical unknown billing, paid creative acceptance and production release remain open.
+
+> Current routing (2026-10-03): VEED Fabric is the only supported audio-driven lip-sync engine. ByteDance OmniHuman is removed; mentions below describe historical decisions. Native speech uses normal video models (Gemini Omni, Veo, Seedance).
+
 # Create: reference-parity todo
+
+> **Urgent owner priority (2026-10-03):** [P0 — Visual detail and motion fidelity](create-agent-integration-progress.md#p0--visual-detail-and-motion-fidelity-urgent-owner-priority) is the canonical next-work checklist (V1–V8), for reference-based and description-only videos. Adaptive frame inspection, explicit requirements, character approval before storyboarding, real performance tasks and temporal/audio review remain open. Older completed pose, talking-shot and critique entries do not establish this acceptance; static fallback cannot satisfy required character performance. Additional engine/recipe work follows this priority.
+
+> **Latest V2 update (2026-10-03):** durable requirements, action ordering, amendment history, task/purchase links and individual review checks are implemented and verified offline (142 API tests, 106 worker tests, frontend build). Local API/worker refresh and live acceptance are still pending. Follow the [V2 completion checklist](create-agent-integration-progress.md#v2-completion-checklist--current); next implementation is V3 character approval before storyboarding. Existing saved runs were not retroactively upgraded.
+
+> Current integration/quality work (2026-10-02): see [Create agent integration progress](create-agent-integration-progress.md). Entries below retain historical checkpoints, including conflicting completion statements; they do not supersede the new tracker or establish creative/production acceptance. Full reconciliation remains open.
 
 **Goal.** From one brief, a reference video and the brand's website, Create makes a 15-second video of the same standard as the sample. Same kind of craft, never the same content.
 

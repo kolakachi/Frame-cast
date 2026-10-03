@@ -61,8 +61,9 @@ Settings (the panel beside the composer): length, aspect ratio, approved facts, 
 |---|---|---|
 | Run stays **queued** | No worker is running | Start the worker |
 | "The approved local test budget cannot cover this run" | The ceiling can't fit the run's worst case | Raise `CREATE_PILOT_BUDGET_MICROUSD`, restart the API, send again |
-| `insufficient_credits` | Workspace 1 is out of local test credits | `app(CreditService::class)->grant(1, 4000, 'local test: ...')` in tinker |
-| Run **needs attention** | A paid call's outcome is unknown | Check `composition_attempts`; if every call is settled, `ReconciliationService::closeSettled($runId, true)` closes it. Never update attempt rows by hand without also closing their `api_operation_jobs`, or credits stay reserved |
+| `insufficient_credits` | The quote exceeds available credits (total minus all pool reservations) | Read the total/reserved/available breakdown. Inspect holds before adding test credits; a positive balance does not mean the entire balance is spendable. |
+| Run **needs attention** | A paid call's outcome is unknown | Check `composition_attempts`; after confirming the original host/container stopped, `ReconciliationService::closeSettled($runId, true)` closes only receipt-backed terminal attempts and repairs their stranded job rows. A manually changed terminal label is not proof of settlement. |
+| Old stopped run holds its entire quote | Unstarted work may still be reserved alongside an uncertain call | After verifying the original host/container stopped, use `php artisan create:quarantine-run <run> --worker-stopped --release-unstarted`. This retains the full remaining credit ceiling of uncertain calls, refuses unmapped jobs, revokes the lease and releases only unstarted allowance. It neither grants credits nor retries generation. |
 | "Local render stopped without a usable result" | Generic failure | The reason is in `hyperframes-worker/artifacts/live/app-<run id>/failure.json` and `agent-state.json` (`failureDetail`) |
 
 Only one run is processed at a time; a run that needs attention blocks the queue until it is resolved. Never restart the API while a build is mid-call: the call is paid for and lost.
@@ -79,3 +80,53 @@ Only one run is processed at a time; a run that needs attention blocks the queue
 3. Stop the worker.
 
 In fixture mode, Create renders a fixed offline sample and makes no paid calls.
+
+
+## Offline Barty adapter acceptance (2026-10-02)
+
+This invokes the production composition runner and live render tools with a scripted
+provider, **not** a live model. It does not consume the application queue or make
+provider calls. The report labels supplied transcript timings as fixture metadata.
+Run from `framecast-app/hyperframes-worker` on macOS (Samantha voice installed):
+
+```sh
+mkdir -p /tmp/wyv-barty-agent-proof
+say -v Samantha -r 175 -o /tmp/wyv-barty-agent-proof/one.aiff 'One idea.'
+say -v Samantha -r 175 -o /tmp/wyv-barty-agent-proof/two.aiff 'A new perspective.'
+say -v Samantha -r 175 -o /tmp/wyv-barty-agent-proof/three.aiff 'Ready to create.'
+docker compose -f compose.local.yml build smoke
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --shm-size 512m \
+  --tmpfs /tmp:rw,size=4294967296,mode=1777 \
+  -v /tmp/wyv-barty-agent-proof:/output \
+  wyv-hyperframes-proof-smoke:latest node scripts/barty-agent-fixture.mjs
+```
+
+The fixture replaces only `/output/live/barty-agent`, a dedicated test folder.
+Outputs: `barty-agent-report.json`, `barty-agent-original.mp4`,
+`barty-agent-edited.mp4`, sampled screenshots and detailed render logs.
+It verifies adapter discovery/read access, both speech-timed builds, colour
+preservation, unchanged source hashes and decoded export audio correlation.
+A pass does not assert live model creativity, ASR accuracy or UI acceptance.
+
+
+## Offline Remotion integration acceptance
+
+From `framecast-app/hyperframes-worker`:
+
+```sh
+mkdir -p /tmp/wyv-remotion-proof
+docker compose -f compose.local.yml build smoke
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --shm-size 512m \
+  --tmpfs /tmp:rw,size=4294967296,mode=1777 \
+  -v /tmp/wyv-remotion-proof:/output \
+  wyv-hyperframes-proof-smoke:latest node scripts/remotion-fixture.mjs
+```
+
+This replaces only `/output/live/remotion-proof` and uses a scripted provider.
+It renders native React stills/clips, exports through Hyperframes, edits and checks
+source preservation plus rejected-import behavior. Outputs include
+`remotion-report.json`, `remotion-original.mp4` and `remotion-edited.mp4`.
+No app queue, provider credential, network connection or paid call is used.
+See [Remotion integration](remotion-integration.md) for supported imports and release gaps.

@@ -1,4 +1,12 @@
+> Harness/workflow update (2026-10-03): W1–W5 implementation and W6 acceptance are tracked in [the current integration progress document](create-agent-integration-progress.md#harness-and-workflow-closeout--2026-10-03). Godmode diagnostics is G1, pending. Historical unknown billing, paid creative acceptance and production release remain open.
+
 # Create / Hyperframes — implementation TODO
+
+> **Urgent owner priority (2026-10-03):** implement [P0 — Visual detail and motion fidelity](create-agent-integration-progress.md#p0--visual-detail-and-motion-fidelity-urgent-owner-priority), V1–V8, before additional engine integrations or model comparisons. That canonical checklist covers reference and description-only requirements, adaptive frame inspection, character performance, composition, temporal/audio review and bounded repairs. Existing engineering checkmarks do not mean this creative workflow is complete. Historical phase/budget notes below are not current spending authorization.
+
+> **Latest V2 update (2026-10-03):** durable requirements, action ordering, amendment history, task/purchase links and individual review checks are implemented and verified offline (142 API tests, 106 worker tests, frontend build). Local API/worker refresh and live acceptance are still pending. Follow the [V2 completion checklist](create-agent-integration-progress.md#v2-completion-checklist--current); next implementation is V3 character approval before storyboarding. Existing saved runs were not retroactively upgraded.
+
+> Current integration/quality work (2026-10-02): see [Create agent integration progress](create-agent-integration-progress.md). Entries below retain historical checkpoints, including conflicting completion statements; they do not supersede the new tracker or establish creative/production acceptance. Full reconciliation remains open.
 
 Status: **E0 complete; E1 creative/model evaluation deferred by user; E2 local/offline engineering complete; E3 conversation UI in progress; E4–E6 pending. Paid-provider acceptance remains gated.**
 Created: 2026-09-28.
