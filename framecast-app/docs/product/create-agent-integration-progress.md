@@ -33,6 +33,26 @@ Execution order: **V1 + V2 → V3 + V4 → V5 → V6 + V7 → V8 acceptance**. A
 
 V2 remains unchecked at the acceptance level until these last checks pass. **Next implementation: V3 — approve the character master before building its storyboard**, followed by remaining V4 performance-task coverage. V6 audio/temporal verification and V7 reserved review/repair capacity remain separate work; repeated call-limit drafts are not completed reviews.
 
+### Seventh slice — the planner sees the whole reference (2026-10-03, owner: "go")
+
+Evidence: conversation `dd410f7a`, full build `7e766c06` ($6.99, 49 calls). The planner chose from 16 single frames of a 26 s / 790-frame reference, so moments under a second were never seen (the cat sticker at 2.8–3.5 s, the 0→10k counter, text typing on, the blurred push into the profile). The uploaded reference's audio was never studied. Result: a plan of generic step cards, placeholder UI, 85% static frames, ~9 s without voice, and narration chopped mid-word.
+
+1. **Reference study at attach time** (V1). Study each video reference once, in the background, when it is attached (uploads and links), cached by source hash:
+   - [ ] every shot: cut detection, frames inside every shot, denser where shots are short;
+   - [ ] short moments: every frame of a second where the picture changes inside a shot (stickers, counters, typing);
+   - [ ] a per-shot list of what is on screen (text, stickers/memes, UI, camera move, transition), with times;
+   - [ ] sound: word-timed transcript, speech/music/silence map, and derived pacing (words per second, pauses before reveals, text-to-speech delay, cut rate);
+   - [ ] planning reads the finished study instead of sampling inside the planning request.
+2. **Plans that use the study** (V2):
+   - [ ] every reference moment gets an explicit keep / replace / drop with the beat that carries it; nothing disappears silently;
+   - [ ] real UI: when page captures exist the plan names the screens to rebuild; placeholders only when nothing real exists;
+   - [ ] length from narration: speech that fills less of the video than the brief needs leads to an explicit choice (slower voice, shorter video, more script).
+3. **Build checks** (V5): still stretches over ~1.5 s, text too small or frames mostly empty, audio cut only between words, fades on every audio edge, music under the voice and faded at the end, continuous narration preferred, brand pronunciation (WyvStudio, not "Weave Studio").
+4. **Review that hears and keeps time** (V6): the export's audio against the script (complete, in sync, voice clear over music) fills the sound requirements; timing compared with the reference (cut rate, pace, text-to-speech delay).
+5. **Reliability** (V7): Stop keeps the last draft that passed checks; a briefly unavailable model is retried instead of ending the build.
+
+Order: 1 and 2 (started 2026-10-03), then the audio part of 3, then the rest.
+
 ### First implementation slice — prepared mascot rig (2026-10-03)
 
 Following the owner's request to begin the rig approach, V4/V5 now have a **locally verified optional adapter**, not a completed general character workflow. The canonical V1–V8 items remain open.
