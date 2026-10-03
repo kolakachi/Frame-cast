@@ -1273,6 +1273,9 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $cr['id'], ['prompt' => 'critic call 1', 'system' => 'critic', 'max_tokens' => 4096, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => '[]']));
         $verdict = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $cr['id'], ['prompt' => 'critic call 1', 'system' => 'critic', 'max_tokens' => 2048, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => '[]']);
         $this->assertSame('end_turn', $verdict['stop_reason']);
+        $settled = DB::table('composition_attempts')->where('id', $cr['id'])->first();
+        $this->assertSame((int) ceil($settled->cost_microusd / 4000), (int) $settled->charged_credits, 'a critic call is charged its real cost, not its reservation');
+        $this->assertLessThan(25, (int) $settled->charged_credits);
         Http::assertSent(fn ($r) => $r['max_tokens'] === 2048 && $r['output_config']['effort'] === 'low' && ! isset($r['tools']));
         $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $b['id'], ['prompt' => 'p', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => json_encode([['role' => 'user', 'content' => [['type' => 'document']]]]), 'tools_json' => '[]']));
         $this->rejected(422, fn () => \App\Services\Create\AnthropicGateway::checkToolMessages([['role' => 'user', 'content' => [['type' => 'document']]]], []));

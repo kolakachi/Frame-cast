@@ -268,3 +268,16 @@ test('unlimited limits: more tool calls per turn, larger results and larger sour
  await assert.rejects(()=>new Workspace(dir,[]).write('index.html',big),/too large/);
  await new Workspace(dir,[],null,1_000_000).write('index.html',big);
 });
+test('a review that stops improving ends the build with the best draft and its open notes, however many calls remain',async()=>{
+ let rounds=0;
+ const flat={ok:true,verdict:'revise',scores:{hook:7,hierarchy:6,density:6,energy:6,performance:6},mean:6.2,directives:['Fill the lower third'],note:''};
+ const turn=k=>[use('p'+k,'patch',{path:'index.html',before:'v'+k,after:'v'+(k+1)}),use('q'+k,'preview',{times:[1]})];
+ const review=k=>[use('r'+k,'visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]})];
+ const {state}=await harness([
+  [use('a','write',{path:'index.html',content:'<html>v0</html>'}),use('b','preview',{times:[1]})],review(0),turn(0),review(1),turn(1),review(2),turn(2),review(3),
+ ],{limits:{calls:200,repairs:100,criticCalls:10},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
+  critic:async()=>{rounds++;return rounds===1?flat:{...flat,mean:6.3};}})});
+ assert.equal(state.status,'preview_ready');assert.equal(rounds,3,'one baseline round, then two without improvement');
+ assert.match(state.summary,/stopped improving after 3 rounds/);assert.match(state.summary,/Fill the lower third/);
+ assert.ok(state.calls<10,'it did not run on toward the call limit');
+});

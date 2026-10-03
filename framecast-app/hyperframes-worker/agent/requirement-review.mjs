@@ -8,6 +8,8 @@ export function requirementChecks(raw,requirements,{lookOnly=false}={}){
   const timed=c&&Number.isFinite(c.start)&&Number.isFinite(c.end)&&c.start>=0&&c.end>=c.start&&c.end<=86400;
   let evidence=c&&typeof c.evidence==='string'?c.evidence.trim().slice(0,400):'No unique evidence returned for this requirement.';
   if(status==='deferred'&&!(lookOnly&&r.review_stage==='production')){status='unverified';evidence='This requirement cannot be deferred at this stage.';}
+  // Stills cannot show sound, timing or motion: on a storyboard those are checked on the full video.
+  if(lookOnly&&r.review_stage==='production'&&status!=='unmet'&&status!=='fulfilled'){status='deferred';evidence='Checked on the full video.';}
   if((c?.version??1)!==(r.version??1)){status='unverified';evidence='The review belongs to an older requirement version.';}
   if(r.order_unresolved||r.evidence_status==='unverified'){status='unverified';evidence='Requirement order or source evidence needs clarification.';}
   // The current critic receives images only. It cannot certify speech/sound from them.

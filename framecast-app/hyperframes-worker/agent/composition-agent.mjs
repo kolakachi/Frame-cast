@@ -46,7 +46,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const criticPolicy=input.execution_policy?.critic??null;let criticCall=0;
  const critic=paid&&criticPolicy&&provider.complete?async({sheet,strip,stripEvidence,authorScores,findings,round,signal})=>{
   const messages=criticMessages({brief:messages0.at(-1).content,plan:input.plan??null,lookOnly:input.look_first===true,route,sheet,strip,stripEvidence,authorScores,findings,fingerprint:input.style_pack?.fingerprint??null,round});
-  const args={prompt:'critic call '+(++criticCall),system:criticSystem,maxTokens:Math.min(2048,criticPolicy.max_output_tokens??2048),messages,tools:[],signal};
+  const args={prompt:'critic call '+(++criticCall),system:criticSystem,maxTokens:Number(criticPolicy.max_output_tokens)||4096,messages,tools:[],signal};
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
   const out=await accountedCall({key:'critic-'+criticCall,kind:'critic',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:null,messagesJson:JSON.stringify(messages),toolsJson:'[]'},begin,settle,
    execute:attemptId=>provider.complete({...args,attemptId,recordPrediction:async()=>{},onPrediction:async id=>{if(!bindPrediction)throw Error('Prediction recorder is required');await bindPrediction(attemptId,id);}}),receipt});

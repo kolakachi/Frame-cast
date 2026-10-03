@@ -93,3 +93,15 @@ test('critic receives frozen reference observations and coverage linked to requi
  assert.match(text,/Speech not inspected/);assert.match(text,/"next_page":2/);
  assert.match(text,/not verified truth/);
 });
+test('a storyboard defers what stills cannot show and is blocked only by explicit misses',async()=>{
+ const reqs=[{id:'req-aaaaaaaaaaaaaaaaaaaa',text:'Friendly voice',category:'audio',review_stage:'production',version:1},
+  {id:'req-bbbbbbbbbbbbbbbbbbbb',text:'White backgrounds',category:'style',review_stage:'design',version:1},
+  {id:'req-cccccccccccccccccccc',text:'Check the exported video',category:'other',review_stage:'design',version:1}];
+ const reply=status=>JSON.stringify({scores:{hook:8,hierarchy:8,density:8,energy:8,performance:8},verdict:'pass',unmet_requirements:['Audio unverified at LOOK'],
+  requirement_checks:[{id:'req-bbbbbbbbbbbbbbbbbbbb',version:1,status,evidence:'White fields throughout',start:0,end:10}],directives:[],note:'ok'});
+ const look=parseCriticVerdict(reply('fulfilled'),{requirements:reqs,lookOnly:true});
+ assert.equal(look.verdict,'pass','audio is deferred and an unverifiable process check does not block a storyboard');
+ assert.equal(look.requirement_checks.find(c=>c.id==='req-aaaaaaaaaaaaaaaaaaaa').status,'deferred');
+ assert.equal(parseCriticVerdict(reply('unmet'),{requirements:reqs,lookOnly:true}).verdict,'revise','an explicit miss still blocks');
+ assert.equal(parseCriticVerdict(reply('fulfilled'),{requirements:reqs,lookOnly:false}).verdict,'revise','the full video still needs every check');
+});

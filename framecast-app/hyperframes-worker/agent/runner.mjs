@@ -271,7 +271,22 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
           state.critic=verdict;state.criticRevision=state.revision;
         }
+        // Convergence: two critic rounds in a row without the mean improving by 0.3 (an unreadable reply counts as no
+        // improvement) end the build with this draft and the critic's open notes, however many calls remain.
+        let stalled=false;
         if(verdict&&verdict.verdict==='revise'){
+          const mean=verdict.ok&&Number.isFinite(verdict.mean)?verdict.mean:null;
+          const improved=mean!==null&&(state.criticBest==null||mean>=state.criticBest+0.3);
+          if(mean!==null&&(state.criticBest==null||mean>state.criticBest))state.criticBest=mean;
+          state.criticStall=improved?0:(state.criticStall??0)+1;
+          stalled=state.criticStall>=(state.criticBest==null?3:2);
+        }
+        if(verdict&&verdict.verdict==='revise'&&stalled){
+          state.reviewedRevision=-1;state.status='preview_ready';
+          state.summary=('The review stopped improving after '+state.criticCalls+' rounds, so this is the best draft so far. '+criticLine(verdict)+' Open notes: '+(verdict.directives||[]).filter(d=>!/^Unmet requirement/.test(d)).slice(0,3).join(' ')).slice(0,1900);
+          observeStop(state,'Review stopped improving');
+          result={decision:'pass',scores:state.scores,critic:{scores:verdict.scores,directives:verdict.directives,note:verdict.note},next:'Delivered: the review stopped improving.'};
+        } else if(verdict&&verdict.verdict==='revise'){
           state.reviewedRevision=-1;
           result={decision:'pass',scores:state.scores,critic:{scores:verdict.scores,directives:verdict.directives,note:verdict.note},next:'The critic asks for changes before this can finish: address each directive with patches, then preview and review again.'+((state.criticCalls??0)>=cap.criticCalls?' This was the last critic round; the next passing review finishes.':'')};
         } else if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine+(verdict?' '+criticLine(verdict):state.critic?' '+criticLine(state.critic)+' Last directives not all confirmed.':'')).slice(0,1900);}

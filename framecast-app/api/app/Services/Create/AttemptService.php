@@ -81,7 +81,7 @@ class AttemptService
                     && $verified->predictionId === $prediction && $verified->costMicrousd === $cost, 409, 'Verified provider state and billing evidence are required. Hold retained.');
             }
             abort_unless($attempt->provider === 'offline' || $status === 'unknown' || (is_string($prediction) && strlen($prediction) > 0), 422, 'Provider receipt ID is required.');
-            $credits = $verified && str_starts_with($verified->evidence,'pilot-tariff:') && in_array($attempt->kind,['agent','plan_media'],true) ? min((int)$attempt->credit_limit,(int)ceil($cost/4000)) : ($status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0));
+            $credits = $verified && str_starts_with($verified->evidence,'pilot-tariff:') && in_array($attempt->kind,['agent','critic','plan_media'],true) ? min((int)$attempt->credit_limit,(int)ceil($cost/4000)) : ($status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0));
             $previous = Context::getHidden(OperationAccounting::CONTEXT);
             try {
                 Context::addHidden(OperationAccounting::CONTEXT, $run->operation_id);
