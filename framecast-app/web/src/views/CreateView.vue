@@ -396,8 +396,11 @@ async function send() {
     if (links.length) { pendingText.value = text; prompt.value = '' }
     for (const url of links) {
       linkStudying.value = url
-      linkKeys[url] ||= crypto.randomUUID()
-      const r = await api.post(`${base(target)}/references`, { url, idempotency_key: linkKeys[url], expected_version: conversation.value.version }, { timeout: 150000 })
+      // One key per link per conversation: a retry replays safely, and the same link in a new conversation is a new request.
+      const linkId = `${target}|${url}`
+      linkKeys[linkId] ||= crypto.randomUUID()
+      const r = await api.post(`${base(target)}/references`, { url, idempotency_key: linkKeys[linkId], expected_version: conversation.value.version }, { timeout: 150000 })
+      delete linkKeys[linkId]
       if (id.value === target) data.value = r.data.data
     }
     linkStudying.value = ''
