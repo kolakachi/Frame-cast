@@ -47,4 +47,12 @@ class BriefSettingsTest extends TestCase
         $this->assertSame(['aspect_ratio' => '1:1'], $r['changes']);
         $this->assertSame([], $r['questions']);
     }
+
+    public function test_a_list_of_formats_is_content_not_a_format_change(): void
+    {
+        $settings = ['output_kind' => 'video', 'aspect_ratio' => '16:9', 'duration_seconds' => 30];
+        $r = BriefSettings::infer('Make each panel large. Label the format tiles 9:16, 1:1, 4:5 and 16:9. Merge the two closing cards into one.', $settings);
+        $this->assertSame([], $r['changes'], 'several ratios named: the video keeps its shape');
+        $this->assertSame(['aspect_ratio' => '1:1'], BriefSettings::infer('Make it square instead.', $settings)['changes']);
+    }
 }

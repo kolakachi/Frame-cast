@@ -32,12 +32,10 @@ class BriefSettings
         $text = ' '.preg_replace('/\s+/', ' ', mb_strtolower($unquoted)).' ';
         $video = ($settings['output_kind'] ?? 'video') === 'video';
 
-        foreach (self::RATIOS as $pattern => $ratio) {
-            if (preg_match($pattern, $text)) {
-                if (($settings['aspect_ratio'] ?? null) !== $ratio) $changes['aspect_ratio'] = $ratio;
-                break;
-            }
-        }
+        // A format is set only when the message names exactly one. Several ("label the tiles 9:16, 1:1, 4:5 and
+        // 16:9") are content, not a request to change the video's shape.
+        $named = array_values(array_unique(array_filter(array_map(fn ($pattern) => preg_match($pattern, $text) ? self::RATIOS[$pattern] : null, array_keys(self::RATIOS)))));
+        if (count($named) === 1 && ($settings['aspect_ratio'] ?? null) !== $named[0]) $changes['aspect_ratio'] = $named[0];
 
         if ($video && preg_match('/\b(\d{1,3})\s*(?:-|\s)?\s*(seconds?|secs?|s)\b/', $text, $m) && ! preg_match('/\b\d{1,3}\s*(?:-|\s)?\s*(minutes?|mins?)\b/', $text)) {
             $seconds = (int) $m[1];
