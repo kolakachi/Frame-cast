@@ -6,7 +6,7 @@ import {preflight} from './preflight.mjs';
 import {criticLine} from './critic.mjs';
 import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
-import {rowsOf,timingFindings,duckingFindings} from './timing-check.mjs';
+import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings} from './timing-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
@@ -97,6 +97,24 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // Words the user approved or wrote; numbers on screen must come from here.
   const allowedText=()=>[context.brief,...(context.messages||[]).filter(m=>m.role==='user').map(m=>m.content),...(context.approvedFacts||[]),
     ...(context.plan?.on_screen_copy||[]),...(context.plan?.narration||[]),context.settings?.caption_text||''].join('\n');
+  // Audio clips must start and stop where their file is quiet: narration in a pause, music and effects faded.
+  const audioEdgeCheck=async(rows,html)=>{
+    if(!tools.media)return [];
+    const asset=p=>workspace.assets.find(a=>a.path===p);
+    const roots=new Set((context.planMedia||[]).filter(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.file).map(m=>m.file));
+    const isVoice=src=>{let a=src;for(let i=0;i<8&&a;i++){if(roots.has(a))return true;const x=asset(a);a=x?.derivedFrom??x?.origin??null;}return false;};
+    const made=op=>new Set(workspace.assets.filter(a=>(Array.isArray(op)?op:[op]).includes(a.operation)).map(a=>a.path));
+    const clips=audioEdges({rows,html,durations:state.durations||{},derived:made(['trim','cut','remove_silence','run']),faded:made('fade')}).filter(c=>asset(c.src));
+    state.levels??={};state.pauses??={};
+    const voices=new Set(clips.map(c=>c.src).filter(isVoice));
+    for(const src of new Set(clips.map(c=>c.src))){
+      const have=state.levels[src]??={};
+      const at=[...new Set(clips.filter(c=>c.src===src).flatMap(c=>c.edges.map(e=>e.probe)))].filter(t=>!(t in have)).slice(0,60);
+      if(at.length){const r=await bounded(()=>tools.media({op:'levels',input:src,params:{at},signal:boundedSignal})).catch(()=>null);for(const [t,db] of r?.levels||[])have[t]=db;for(const t of at)if(!(t in have))have[t]=null;}
+      if(voices.has(src)&&!state.pauses[src]){const r=await bounded(()=>tools.media({op:'silences',input:src,params:{noise_db:-35,min_silence:.1},signal:boundedSignal})).catch(()=>null);state.pauses[src]=r?.silences||[];}
+    }
+    return audioEdgeFindings({clips,levels:state.levels,voices,pauses:state.pauses,transcripts:state.transcripts||{}});
+  };
   // Timing rules the renderer cannot see: spoken cues and media shorter than its slot.
   const timing=async()=>{
     if(!tools.timeline)return {ok:true};
@@ -112,6 +130,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     }
     const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
     errors.push(...duckingFindings({rows,planMedia:context.planMedia||[]}));
+    errors.push(...await audioEdgeCheck(rows,html));
     errors.push(...numberFindings(html,allowedText()));
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };

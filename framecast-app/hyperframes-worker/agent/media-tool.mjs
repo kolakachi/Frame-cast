@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readdir,lstat,readFile,unlink} from 'node:fs/promises';import {createHash} from 'node:crypto';
 const run=promisify(execFile);
 const FF={timeout:150000,maxBuffer:32*1024*1024};
-export const OPS=['probe','silences','beats','duck','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
+export const OPS=['probe','silences','levels','beats','duck','fade','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
 const LOOKS={
  warm:'colorbalance=rs=.06:gs=.01:bs=-.06,eq=saturation=1.08',
  cool:'colorbalance=rs=-.05:gs=.0:bs=.07,eq=saturation=1.02',
@@ -31,6 +31,18 @@ async function silences(file,db,d){
  const {stderr}=await run('ffmpeg',['-hide_banner','-nostats','-i',file,'-af',`silencedetect=n=${db}dB:d=${d}`,'-f','null','-'],FF);
  const out=[];let start=null;
  for(const line of stderr.split('\n')){const s=line.match(/silence_start: ([\d.]+)/),e=line.match(/silence_end: ([\d.]+)/);if(s)start=Number(s[1]);if(e&&start!==null){out.push([start,Number(e[1])]);start=null;}}
+ return out;
+}
+// Mean loudness (dBFS) over a short window starting at each time; quiet windows are where audio can start or stop cleanly.
+export async function levels(file,times,duration,len=.06){
+ const out=[];
+ for(const t of times){
+  const s=Math.max(0,Math.min(t,duration-len)),e=Math.min(duration,s+len);
+  if(e-s<.01){out.push([t,null]);continue;}
+  const {stderr}=await run('ffmpeg',['-hide_banner','-nostats','-ss',fx(s),'-t',fx(e-s),'-i',file,'-map','0:a:0?','-af','volumedetect','-f','null','-'],FF).catch(e=>({stderr:e.stderr||''}));
+  const m=String(stderr).match(/mean_volume:\s*(-?[\d.]+|-inf)\s*dB/);
+  out.push([t,!m||m[1]==='-inf'?-91:Number(m[1])]);
+ }
  return out;
 }
 function keepFrom(silent,duration,pad){
@@ -76,9 +88,11 @@ export async function mediaOp({projectDir,request,nextName}){
  if(isStill&&op!=='grade'&&op!=='crop')throw Error('That operation needs a video or audio file');
  if(!isStill&&info.duration>180)throw Error('Clips longer than 3 minutes are not supported yet');
  if(op==='beats'){if(!info.has_audio)throw Error('No audio to find beats in');return {ok:true,info,beats:await musicBeats(file,info.duration)};}
- if(op==='silences'){const s=await silences(file,num(params.noise_db,-60,-20,-35),num(params.min_silence,.2,3,.4));return {ok:true,info,silences:s};}
+ if(op==='silences'){const s=await silences(file,num(params.noise_db,-60,-20,-35),num(params.min_silence,.05,3,.4));return {ok:true,info,silences:s};}
+ if(op==='levels'){if(!info.has_audio)throw Error('No audio to measure');const at=params.at;if(!Array.isArray(at)||!at.length||at.length>60)throw Error('at must list 1 to 60 times');
+  return {ok:true,info,levels:await levels(file,at.map(t=>num(t,0,info.duration+.5)),info.duration)};}
  const audioOnly=!info.has_video&&!isStill;
- const ext=isStill?(op==='frame'?'png':input.split('.').pop()==='jpg'?'jpg':'png'):op==='frame'?'png':audioOnly?'wav':'mp4';
+ const ext=isStill?(op==='frame'?'png':input.split('.').pop()==='jpg'?'jpg':'png'):op==='frame'?'png':audioOnly||op==='fade'?'wav':'mp4';
  const output=nextName(op,ext),out=projectDir+'/'+output;
  let args,map=null;
  const enc=audioOnly?['-c:a','pcm_s16le']:videoOut;
@@ -92,6 +106,13 @@ export async function mediaOp({projectDir,request,nextName}){
    const s=await silences(file,num(params.noise_db,-60,-20,-35),num(params.min_silence,.2,3,.5));const k=keepFrom(s,info.duration,num(params.pad,0,.5,.08));
    if(!s.length)return {ok:true,info,output:null,note:'No silences long enough to remove.'};
    args=concatArgs(file,k,info).concat(enc);map=sourceMap(k);break;}
+  case 'fade':{
+   // A slice of the audio with its edges faded, so it starts and stops without a click or a cut-off note; fade_out about 1 s for music at the end.
+   if(!info.has_audio)throw Error('No audio to fade');
+   const s=num(params.start,0,info.duration,0),e=num(params.end,0,info.duration,info.duration);if(e-s<.2)throw Error('Fade must keep at least 0.2 seconds');
+   const fi=num(params.fade_in,0,5,.02),fo=num(params.fade_out,0,10,.05);if(fi+fo>e-s)throw Error('Fades are longer than the slice');
+   args=['-i',file,'-vn','-af',`atrim=start=${fx(s)}:end=${fx(e)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${fx(Math.max(fi,.001))},afade=t=out:st=${fx(e-s-Math.max(fo,.001))}:d=${fx(Math.max(fo,.001))}`,'-c:a','pcm_s16le'];
+   map=sourceMap([[s,e]]);break;}
   case 'clean_audio':{if(!info.has_audio)throw Error('No audio to clean');args=['-i',file,'-af','highpass=f=80,lowpass=f=12000,afftdn=nf=-25',...(info.has_video?['-c:v','copy']:[]),...(audioOnly?['-c:a','pcm_s16le']:['-c:a','aac','-b:a','160k'])];break;}
   case 'duck':{
    // Music pulled down under the voice as it speaks (about 14 dB on speech peaks), back up in the gaps.
