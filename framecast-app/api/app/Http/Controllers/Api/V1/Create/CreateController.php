@@ -70,7 +70,10 @@ class CreateController extends Controller
                     'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
             })->filter()->values(),
             'revisions' => $revisions,
-            'runs' => DB::table('composition_runs')->where('conversation_id', $id)->orderBy('created_at')->get(['id', 'status', 'stage', 'error', 'created_at']),
+            // held_credits: what a run still holds of its approval (released as it settles), shown beside an active build.
+            'runs' => DB::table('composition_runs')->leftJoin('api_operations', 'api_operations.id', '=', 'composition_runs.operation_id')
+                ->where('composition_runs.conversation_id', $id)->orderBy('composition_runs.created_at')
+                ->get(['composition_runs.id', 'composition_runs.status', 'composition_runs.stage', 'composition_runs.error', 'composition_runs.created_at', 'api_operations.reserved_credits as held_credits']),
             'plans' => \Illuminate\Support\Facades\Schema::hasTable('create_plans') ? DB::table('create_plans')->where('conversation_id', $id)->orderBy('created_at')->get()->map(fn ($p) => app(\App\Services\Create\PlanService::class)->present($p, $c))->values() : [],
         ]]);
     }

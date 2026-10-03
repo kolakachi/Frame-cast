@@ -552,7 +552,8 @@ class CreateIntegrationTest extends TestCase
         $breakdown = ['total' => 2510, 'reserved' => 1889, 'available' => 621];
         $this->assertSame($breakdown, $this->conversations->creditAvailability($this->owner));
         $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
-        $this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->assertJsonPath('data.credit_availability', $breakdown);
+        $this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->assertJsonPath('data.credit_availability', $breakdown)
+            ->assertJsonPath('data.runs.0.held_credits', 1889); // what this run holds, shown beside an active build
         $version = (int) $this->conversations->conversation($this->owner, $c->id)->version;
         $this->actingAs($this->owner)->postJson('/api/v1/create/conversations/'.$c->id.'/quotes', ['expected_version' => $version])->assertOk()->assertJsonPath('data.credit_availability', $breakdown);
         $q = $this->conversations->quote($this->owner, $c->id, $version);

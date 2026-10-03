@@ -72,6 +72,13 @@ const workspaceStore = useWorkspaceStore()
 const credits = computed(() => workspaceStore.usage?.credits_balance)
 const creditAvailability = computed(() => data.value?.credit_availability)
 const quoteCreditAvailability = computed(() => quote.value?.credit_availability || creditAvailability.value)
+// One number everywhere: the balance, as the dashboard shows it. Holds for unfinished work are explained, not subtracted.
+const balance = computed(() => creditAvailability.value?.total ?? (credits.value ?? null))
+const balanceTitle = computed(() => {
+  const a = creditAvailability.value
+  if (!a || !a.reserved) return 'Your credit balance'
+  return `${a.reserved.toLocaleString()} held for unfinished work · ${a.available.toLocaleString()} free to start new work`
+})
 const panelTab = ref('details'), panelHeading = ref(null)
 let panelReturnFocus = null
 function togglePanel() { if (details.value) { closePanel(); return } panelReturnFocus = document.activeElement; openSettings(); nextTick(() => panelHeading.value?.focus()) }
@@ -551,8 +558,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         <div><div class="crumb">Create</div><h1>{{ conversation?.title || 'New creation' }}</h1></div>
         <span v-if="headStatus" :class="['status', `status--${headStatus.cls}`]">{{ headStatus.text }}</span>
         <div class="header-actions">
-          <span v-if="creditAvailability" class="credits" :title="`${creditAvailability.total.toLocaleString()} total · ${creditAvailability.reserved.toLocaleString()} reserved for unfinished work`">{{ creditAvailability.available.toLocaleString() }} cr available</span>
-          <span v-else-if="credits !== null && credits !== undefined" class="credits" :title="`${credits.toLocaleString()} total credits; availability is checked before approval`">{{ credits.toLocaleString() }} cr total</span>
+          <span v-if="balance !== null" class="credits" :title="balanceTitle">{{ balance.toLocaleString() }} cr</span>
           <button v-if="conversation" type="button" class="quiet" :disabled="locked" @click="router.push({name:'create'})">+ New creation</button>
           <button type="button" class="quiet" :disabled="locked" aria-haspopup="dialog" @click="showHistory = true">Recent conversations</button>
           <button v-if="conversation" type="button" class="quiet" :aria-expanded="details" aria-controls="details-panel" @click="togglePanel">Details &amp; versions</button>
@@ -795,7 +801,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <div class="icard__body working">
                   <ThinkingLine v-if="active.status !== 'needs_attention'" :key="active.id" :label="active.stage" :started-at="active.created_at" :detail="active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.'" /><div v-else class="working__row"><div><div class="working__label">{{ active.stage }}</div><div class="working__step">{{ active.status === 'needs_attention' ? 'This run needs a recovery check before it continues. Earlier versions are safe, and nothing retries on its own.' : 'You can leave this page. Earlier versions stay downloadable while this runs.' }}</div></div></div><div v-if="autoRan !== null" class="auto-tag-row"><span v-if="autoRan !== null" class="tier tier--quoted auto-tag">RAN AUTOMATICALLY · UP TO {{ autoRan }} CREDITS</span></div>
                 </div>
-                <div v-if="canWrite && active.status !== 'needs_attention'" class="icard__foot"><span class="spacer" /><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active.status === 'cancel_requested'" @click="cancel">{{ active.status === 'cancel_requested' ? 'Stopping…' : 'Stop · keeps what is done so far' }}</button></div>
+                <div v-if="canWrite && active.status !== 'needs_attention'" class="icard__foot"><small v-if="active.held_credits" class="muted">{{ Number(active.held_credits).toLocaleString() }} credits held for this build · only what it uses is charged</small><span class="spacer" /><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active.status === 'cancel_requested'" @click="cancel">{{ active.status === 'cancel_requested' ? 'Stopping…' : 'Stop · keeps what is done so far' }}</button></div>
               </div>
             </div>
 
@@ -825,7 +831,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <small class="muted">The agent may buy more media under this ceiling; anything over it waits for your approval.</small>
                   </div>
                   <div class="cost-line"><b>{{ quote.paid ? `Up to ${quote.credits_max} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
-                  <p v-if="quoteCreditAvailability" class="muted">{{ quoteCreditAvailability.available.toLocaleString() }} available · {{ quoteCreditAvailability.reserved.toLocaleString() }} reserved for unfinished work · {{ quoteCreditAvailability.total.toLocaleString() }} total credits. Availability is checked again when you approve.</p>
+                  <p v-if="quoteCreditAvailability" class="muted">Balance {{ quoteCreditAvailability.total.toLocaleString() }}<template v-if="quoteCreditAvailability.reserved"> · {{ quoteCreditAvailability.reserved.toLocaleString() }} held for unfinished work · {{ quoteCreditAvailability.available.toLocaleString() }} free for this approval</template>. Checked again when you approve.</p>
                   <span class="spacer" />
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
                   <button v-if="expiredQuote" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="plan">Refresh plan</button>
