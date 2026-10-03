@@ -274,3 +274,10 @@ test('Stop before any draft passed its checks ends the build cancelled',async t=
  const r=await h.run();
  assert.equal(r.status,'cancelled');assert.match(r.reason,/before any version passed its checks/);assert.equal(h.seen.length,0);
 });
+test('on the storyboard, held stills are not a still-stretch finding, so finish is not held for them',async t=>{
+ const still={code:'still_stretch',severity:'error',time:0,message:'Nothing on screen moves',fixHint:'x'};
+ const tools={check:async()=>({ok:true,pacing:[still]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
+ const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Storyboard'})],{tools});
+ h.args.context={...h.args.context,lookOnly:true};
+ assert.equal((await h.run()).status,'preview_ready');assert.equal(h.seen.length,3);
+});

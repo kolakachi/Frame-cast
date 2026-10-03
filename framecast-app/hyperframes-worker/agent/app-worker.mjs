@@ -219,7 +219,7 @@ async function execute(run){
     const sandbox=JSON.parse(await readFile(dir+'/delivery/result.json','utf8'));
     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
     const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});
-    deliveryChecks=deliverySummary(sandbox,loudness);
+    deliveryChecks=deliverySummary(run.input.look_first===true?{...sandbox,pacing:(sandbox.pacing||[]).filter(f=>f.code!=='still_stretch')}:sandbox,loudness);
    }catch{deliveryChecks=null;}
   }
   clearInterval(timer);
