@@ -233,3 +233,27 @@ test('the agent logs a limitation while useful work continues and the report is 
  const report=JSON.parse(await readFile(dir+'/s.limitations.json','utf8'));
  assert.equal(report.status,'preview_ready');assert.equal(report.records.length,1);assert.equal(report.records[0].category,'quality');
 });
+test('history trimming counts text, not image bytes, and never shortens the file the model just read',async()=>{
+ const big='<html>'+'x'.repeat(5000)+'</html>';
+ const largeImage='data:image/jpeg;base64,'+'A'.repeat(300000);
+ const {seen}=await harness([
+  [use('a','write',{path:'index.html',content:big}),use('b','preview',{times:[1]})],
+  [use('c','read',{path:'index.html'})],
+  [use('d','visual_review',{decision:'pass',findings:'x',scores:[{time:1,score:9,problems:[]}]}),use('e','finish',{summary:'Done'})],
+ ],{limits:{calls:5,repairs:2,contextBytes:96000},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:largeImage})})});
+ const readResult=seen[2].messages.at(-1).content.find(b=>b.type==='tool_result');
+ assert.ok(!/shortened/.test(readResult.content),'the read came back whole');
+ assert.ok(readResult.content.length>5000);
+});
+test('the host final review still runs after the author has reviewed the same revision',async()=>{
+ const critics=[];
+ const {state}=await harness([
+  [use('a','write',{path:'index.html',content:'<html>1</html>'}),use('b','preview',{times:[1]})],
+  [use('c','visual_review',{decision:'repair',findings:'Cards too small',scores:[{time:1,score:6,problems:['small']}]})],
+  [{type:'text',text:'thinking'}],
+ ],{limits:{calls:3,repairs:4,criticCalls:1,reviewReserveMs:1000},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
+  critic:async a=>{critics.push(a);return {ok:true,verdict:'revise',scores:{hook:6,hierarchy:6,density:6,energy:6,performance:6},mean:6,directives:['Fill the frame'],note:''};}})});
+ assert.equal(critics.length,1,'the final review ran on the reviewed frames');
+ assert.equal(critics[0].sheet.image,'data:image/jpeg;base64,YQ==');
+ assert.equal(state.status,'preview_ready');assert.match(state.summary,/Critic/);
+});

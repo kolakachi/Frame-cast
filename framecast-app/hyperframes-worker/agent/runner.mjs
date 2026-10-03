@@ -56,17 +56,19 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   });
   // A host-owned final review cannot be skipped by an author that keeps editing.
   // It uses the already-approved critic allowance, never an extra author call.
+  // The latest frames of the current revision: unreviewed ones first, else the ones the author already reviewed.
+  const finalImage=()=>state.reviewImage||(state.reviewedImageRevision===state.revision?state.reviewedImage:null)||null;
   const finalReview=async()=>{
     if(!requireVisualReview||!tools.critic||!cap.reviewReserveMs||state.pending||
        (state.criticCalls??0)>=cap.criticCalls||state.checkedRevision!==state.revision||
-       state.snapshotRevision!==state.revision||!state.reviewImage)return false;
+       state.snapshotRevision!==state.revision||!finalImage())return false;
     await workspace.verifyAssets();
     let strip=null,stripEvidence=null;
     if(!context.lookOnly&&tools.strip){const captured=await bounded(()=>tools.strip({signal:boundedSignal}));strip=captured?.providerImage??null;stripEvidence=captured?.coverage??null;}
     state.criticCalls=(state.criticCalls??0)+1;
     state.pending={kind:'provider',purpose:'final_review',revision:state.revision};await save();
     progress('Reviewing the final draft');
-    const verdict=await bounded(()=>tools.critic({sheet:{image:state.reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,
+    const verdict=await bounded(()=>tools.critic({sheet:{image:finalImage(),reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,
       authorScores:state.scores??[],findings:'Final review before the authoring allowance ends.',round:state.criticCalls,signal:boundedSignal}));
     state.pending=null;state.critic=verdict;state.criticRevision=state.revision;
     state.reviewedRevision=verdict.verdict==='pass'?state.revision:-1;
@@ -254,7 +256,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined};}
     } else if(action.type==='visual_review') {
       if(!reviewImage || state.snapshotRevision!==state.revision)throw Error('Visual review requires current host-provided snapshot');
-      state.reviewImage=null;
+      // The author has seen these frames; the host's final review may still need them for the same revision.
+      state.reviewedImage=state.reviewImage;state.reviewedImageRevision=state.snapshotRevision;state.reviewImage=null;
       state.scores=action.scores.map(x=>({time:x.time,score:x.score,problems:x.problems.slice(0,3)}));
       const scoreLine=' Review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.';
       if(action.decision==='pass'){
@@ -317,7 +320,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content)&&b.content.some(x=>x.type==='image'))lastImage=k;});
     t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
     // A file written in an earlier turn is on disk: its text leaves the history (the model reads it back if it needs it).
-    const over=()=>Buffer.byteLength(JSON.stringify(t))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes;
+    // Measured as text: the one kept image is sent as an image, so its base64 does not count against the text budget.
+    const over=()=>Buffer.byteLength(JSON.stringify(t,(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes;
     const lastAssistant=t.map(m=>m.role).lastIndexOf('assistant');
     const shrinkWrites=(m)=>{for(const b of m.content)if(b.type==='tool_use'&&b.input&&typeof b.input==='object'){
       if(b.name==='write'&&typeof b.input.content==='string'&&b.input.content.length>200)b.input={path:b.input.path,content:'[written earlier, '+Buffer.byteLength(b.input.content)+' bytes; read the file to see it]'};
@@ -327,7 +331,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     if(over()&&lastAssistant>0)shrinkWrites(t[lastAssistant]);
     let guard=0;
     while(over()&&guard++<200){
-      const m=t.slice(1).find(m=>m.role==='user'&&m.content.some(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400));
+      // The newest results (a file just read, a check just run) are what the next call works from: never shorten them.
+      const m=t.slice(1,-1).find(m=>m.role==='user'&&m.content.some(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400));
       if(!m)break;
       for(const b of m.content)if(b.type==='tool_result'&&typeof b.content==='string'&&b.content.length>400)b.content=b.content.slice(0,300)+' …[earlier result shortened]';
     }
