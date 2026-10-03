@@ -191,6 +191,8 @@ async function makePlan() {
       planKey = null; quote.value = null; await refresh()
       await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     })
+    // A long planning request can lose its connection after the server has saved the plan: look before reporting a failure.
+    if (error.value) { await refresh().catch(() => {}); if (currentPlan.value) { error.value = ''; planKey = null } }
   } finally { planning.value = false }
 }
 async function savePlanEdits(p) {
@@ -841,10 +843,10 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             </div>
             <div v-if="pendingText" class="user-message message">{{ pendingText }}</div>
             <div v-if="linkStudying" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :key="linkStudying" :steps="studySteps" :detail="linkStudying" :step-seconds="5" /></div>
-            <div v-if="planning" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :steps="planSteps" detail="Planning is free. You see the cost before anything is spent." :step-seconds="4" /></div>
+            <div v-if="planning" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :steps="planSteps" detail="Studying your references and planning can take a few minutes. Planning is free; you see the cost before anything is spent." :step-seconds="4" /></div>
             <div v-else-if="!quote && conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at && !currentPlan" class="next-step">
               <p v-if="kind === 'image' && !paid" class="muted">Your image brief is saved. Image generation and editing are not enabled in this local preview yet.</p>
-              <button v-if="!stalePlan" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan">Plan it</button>
+              <template v-if="!stalePlan"><p v-if="error" class="muted">Planning didn't finish. Your brief is saved; try planning again.</p><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan">{{ error ? 'Plan again' : 'Plan it' }}</button></template>
             </div>
             <div ref="end" />
           </div>
