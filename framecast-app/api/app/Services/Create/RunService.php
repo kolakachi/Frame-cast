@@ -272,7 +272,8 @@ class RunService
             abort_unless($input['mode'] === 'fixture' || ($input['mode']==='agent' && PilotPolicy::enabled()), 503, 'Paid settlement is not enabled.');
             $status = $result['status'];
             abort_if($status !== 'needs_attention' && AttemptService::unresolved($id), 409, 'External attempts require settlement before closing this run.');
-            if ($run->status === 'cancel_requested') abort_unless(in_array($status, ['cancelled', 'needs_attention'], true), 409, 'Stop the worker before acknowledging cancellation.');
+            // Stop keeps the last version that passed every check: the worker may deliver it instead of cancelling.
+            if ($run->status === 'cancel_requested') abort_unless(in_array($status, ['cancelled', 'needs_attention', 'preview_ready'], true), 409, 'Stop the worker before acknowledging cancellation.');
             if ($status === 'preview_ready') {
                 abort_unless($artifactPath && $artifactHash, 422, 'A verified encoded preview is required.');
                 $bundle = $result['bundle'];

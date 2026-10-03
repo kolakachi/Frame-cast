@@ -1889,15 +1889,26 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(0, (int) DB::table('api_operations')->value('reserved_credits'));
     }
 
-    public function test_running_cancellation_waits_for_worker_and_rejects_ready_callback(): void
+    public function test_running_cancellation_waits_for_worker_and_may_end_cancelled_or_with_the_last_checked_version(): void
     {
         [$c, , $run] = $this->admitted(); $lease = $this->runs->claim();
         $this->runs->cancel($this->workspace->id, $c->id, $run->id);
         $this->assertSame('running', DB::table('api_operations')->value('status'));
         $this->assertTrue($this->runs->heartbeat($run->id, $lease['lease_token'], 1, 'Rendering')['cancel_requested']);
-        $this->rejected(409, fn () => $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'Ready', 'bundle' => []], 'fake', 'hash'));
+        $this->rejected(422, fn () => $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'Ready', 'bundle' => []], 'fake', 'hash'));
+        $this->rejected(409, fn () => $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'failed', 'summary' => 'x'], null, null));
         $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'cancelled', 'summary' => 'Stopped'], null, null);
         $this->assertSame('cancelled', DB::table('composition_runs')->value('status'));
+    }
+
+    public function test_stop_keeps_the_last_checked_version_when_the_worker_delivers_it(): void
+    {
+        [$c, , $run] = $this->admitted(); $lease = $this->runs->claim();
+        $this->runs->cancel($this->workspace->id, $c->id, $run->id);
+        $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'Stopped at your request. This is the last version that passed every check.', 'bundle' => ['index.html' => '<html></html>']], 'private/v1.mp4', 'h');
+        $this->assertSame('preview_ready', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->assertSame(1, DB::table('composition_revisions')->where('run_id', $run->id)->count());
+        $this->assertSame(0, (int) DB::table('api_operations')->value('reserved_credits'), 'the hold is released');
     }
 
     public function test_expired_lease_keeps_capacity_and_rejects_late_completion(): void

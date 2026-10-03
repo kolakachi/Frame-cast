@@ -256,3 +256,21 @@ test('a draft with no open pacing errors finishes at once',async t=>{
  const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'})],{tools});
  assert.equal((await h.run()).status,'preview_ready');
 });
+test('Stop after a checked draft lets the step finish and keeps that draft, not the later unchecked edit',async t=>{
+ let stop=false;
+ const h=await harness(t,[action({type:'patch',path:'index.html',before:'Original',after:'Checked'}),action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'patch',path:'index.html',before:'Checked',after:'Half-done'}),action({type:'finish',summary:'never'})]);
+ h.args.stopRequested=()=>stop;
+ const provider=h.args.provider,complete=provider.complete;let n=0;
+ provider.complete=async r=>{if(++n===4)stop=true;return complete(r);};
+ const r=await h.run();
+ assert.equal(r.status,'preview_ready');assert.equal(r.stoppedByUser,true);
+ assert.match(r.summary,/^Stopped at your request\. This is the last version that passed every check\./);
+ assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>Checked</h1>','the unchecked edit made after Stop is rolled back');
+ assert.equal(h.seen.length,4,'no model call after Stop');
+});
+test('Stop before any draft passed its checks ends the build cancelled',async t=>{
+ const h=await harness(t,[action({type:'patch',path:'index.html',before:'Original',after:'Draft'}),action({type:'check'})]);
+ h.args.stopRequested=()=>true;
+ const r=await h.run();
+ assert.equal(r.status,'cancelled');assert.match(r.reason,/before any version passed its checks/);assert.equal(h.seen.length,0);
+});

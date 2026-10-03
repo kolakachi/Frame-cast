@@ -13,7 +13,7 @@ import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
-export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
+export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
   const cap={calls:12,repairs:2,runs:24,inspections:8,resultBytes:16000,usesPerTurn:8,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
@@ -48,6 +48,17 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     state.bundleHash=await workspace.fingerprint();state.revision=state.lastGood.revision;state.checkedRevision=state.snapshotRevision=state.revision;
     const last=state.scores?' Last review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.':'';
     state.recoveredDraft=true;state.status='preview_ready';state.summary=('Draft — review incomplete. '+why+last).slice(0,1900);
+  };
+  // The user pressed Stop: the step in progress has finished, so nothing is left in doubt. Keep the last
+  // version that passed every check; with none, the build ends cancelled.
+  const stopNow=async()=>{
+    if(!stopRequested())return false;
+    if(state.lastGood){
+      await deliverGood('');
+      const last=state.scores?' Last review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.':'';
+      state.stoppedByUser=true;state.summary=('Stopped at your request. This is the last version that passed every check.'+last).slice(0,1900);
+    } else {state.status='cancelled';state.reason='Stopped at your request before any version passed its checks.';}
+    observeStop(state,'Stopped at your request');await save();return true;
   };
   const bounded = work => new Promise((resolve,reject)=>{
     const abort=()=>reject(Error('Run cancelled or deadline exceeded'));
@@ -385,6 +396,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   try {
     while(state.calls<cap.calls) {
       boundedSignal.throwIfAborted();
+      if(await stopNow())return state;
       const remainingMs=cap.elapsedMs-(previousElapsed+Date.now()-started);
       if(cap.reviewReserveMs&&(remainingMs<=cap.reviewReserveMs||state.calls>=cap.calls-1)){
         if(await finalReview())return state;
@@ -449,6 +461,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           state.inspectionImage=null;
           results.push({type:'tool_result',tool_use_id:u.id,...(result?.error?{is_error:true}:{}),content:img?[{type:'text',text:JSON.stringify(result)},{type:'image',source:{type:'base64',media_type:img.startsWith('data:image/png')?'image/png':'image/jpeg',data:img.split(',')[1]}}]:JSON.stringify(result)});
           if(state.status!=='running')break;
+          // Stop: finish this step, skip the rest of the turn; the loop top keeps the last checked version.
+          if(stopRequested())break;
         }
         history.push({role:'user',content:results});await save();
         if(state.status!=='running')return state;
@@ -472,6 +486,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       const result=await dispatch(action,reviewImage);
       state.pending=null;state.messages.push({role:'tool',content:result});await save();
       if(state.status!=='running')return state;
+      if(await stopNow())return state;
     }
     if(await finalReview())return state;
     observeStop(state,'Model call limit reached');
@@ -487,6 +502,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     throw Error('Model call limit reached');
   } catch(e) {
     if(e.code==='NOT_STARTED'||e.code==='NOT_SENT')state.pending=null;
+    // Stop pressed while waiting out a busy model: nothing was sent, so keep the last checked version.
+    if(e.code==='NOT_SENT'&&!signal?.aborted&&stopRequested())try{if(await stopNow())return state;}catch{/* fall through */}
     // Out of time (not cancelled by the user) with no paid call in doubt: deliver the last checked draft.
     // Running out of something (time, calls, context, output, repairs, the model itself), with no paid
     // call in doubt and not the user's own cancel, delivers the last checked draft. Rule breaks still fail.

@@ -18,6 +18,11 @@ export class PilotBudget {
    row.upperBoundUsd=row.reservedUsd;row.predictionId=prediction_id;row.costMicrousd=cost_microusd;row.status='metered';row.reservedUsd=Math.min(row.upperBoundUsd,cost_microusd/1e6*1.2+.005);
   });
  }
+ // A call the app confirms was never sent gives its reservation back, so waiting out a busy model does not use the allowance.
+ async release(id){
+  if(!id)return;
+  return this.ledger.update(ledger=>{const row=ledger.calls.find(c=>c.id===id);if(row&&row.status==='reserved'&&!row.predictionId){row.status='not_sent';row.reservedUsd=0;}});
+ }
  // unlimited: the run's approved policy lifted its limits (CREATE_UNLIMITED, local only); any ceiling up to $5 is accepted
  // for a known model, and the app gateway still meters and charges every call at its real cost.
  async reserve(model,usd,{unlimited=false}={}){

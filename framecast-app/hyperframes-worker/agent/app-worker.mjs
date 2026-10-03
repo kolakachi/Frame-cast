@@ -58,6 +58,9 @@ async function execute(run){
  const flushTrace=async()=>{try{await trajectory.flush();}catch{console.error('Trajectory sync pending for '+run.id);}};
  await trace({phase:'run',status:'started',summary:'Worker claimed run'});
  let seq=0,cancelled=false,lost=false,heartbeatBusy=false,stage='Preparing the local sample';
+ // Where the build is, for Stop: while designing, Stop lets the current step finish and keeps the last checked
+ // version; once rendering, the render finishes and is delivered. Before that, and on shutdown, it stops at once.
+ let phase='prepare',stopSeenAt=null;const STOP_GRACE_MS=360000;
  const aborter=new AbortController();
  // One slow heartbeat is not a lost lease (a busy single-threaded dev server
  // queues it behind a long model call). The lease is lost when the app rejects
@@ -68,6 +71,10 @@ async function execute(run){
   try{const state=await request('runs/'+run.id+'/heartbeat',{lease_token:run.lease_token,sequence:++seq,stage},false,45000);cancelled||=state.cancel_requested;lastBeat=Date.now();}
   catch(e){if(/HTTP (403|404|409)\b/.test(String(e.message))||Date.now()-lastBeat>60000)lost=true;}finally{heartbeatBusy=false;}
   void flushTrace();
+  if(cancelled&&!lost&&!stopping&&(phase==='agent'||phase==='render')){
+   stopSeenAt??=Date.now();stage=phase==='agent'?'Stopping: finishing this step and keeping your last checked version':'Stopping: finishing the render of your last version';
+   if(phase==='render'||Date.now()-stopSeenAt<STOP_GRACE_MS)return;
+  }
   if(cancelled||lost||stopping){aborter.abort();try{await exec(docker,['rm','-f',container]);}catch{/* final inspection below decides whether cancellation is safe */}}
  }
  await beat();
@@ -120,6 +127,7 @@ async function execute(run){
    :paid?new ReplicateGatewayProvider({maxCallUsd:callCapUsd,upload:image=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token,image},false,120000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)}):offlineContractProvider(run.input.base_bundle,manifest);
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
   if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd,{unlimited});};
+  if(paid)provider.release=async()=>{await pilotBudget.release(reservation);reservation=null;};
   let agentResult;
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.
@@ -135,7 +143,7 @@ async function execute(run){
    const assetIds=new Map(manifest.map(f=>[f.name,f.asset_id]));
    // The activity line: what the agent is doing, the call count and the credits so far (model calls plus purchases).
    const mediaCredits=planMedia.reduce((n,m)=>n+(Number(m.charged_credits)||0),0);
-   const onProgress=p=>{const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · '+credits+' credits so far').slice(0,250);};
+   const onProgress=p=>{if(stopSeenAt)return;const credits=Math.round(p.spentUsd/0.004)+mediaCredits;stage=(p.doing+' · '+credits+' credits so far').slice(0,250);};
    // A purchase the agent decides on, within the approved ceiling; the API refuses anything over it (402).
    const buy=async({kind,description,requirement_ids=[],signal})=>{
     let r;
@@ -147,7 +155,8 @@ async function execute(run){
     planMedia.push({task_id:r.task_id??null,requirement_ids:r.requirement_ids??[],kind,description,status:'succeeded',file:files[0]?.name,charged_credits:r.charged_credits});
     return {ok:true,task_id:r.task_id??null,requirement_ids:r.requirement_ids??[],kind,description,charged_credits:r.charged_credits,reused:!!r.reused,files,...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(Array.isArray(r.poses)?{poses:r.poses}:{}),...(typeof r.line==='string'?{line:r.line}:{})};
    };
-   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,onProgress,onTrace:trace,buy,
+   phase='agent';
+   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
     transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
@@ -169,6 +178,8 @@ async function execute(run){
     await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
    }
    if(agentResult.state.status!=='preview_ready')throw Object.assign(Error(agentResult.state.reason??'Agent needs input before rendering'),{code:agentResult.state.status==='needs_attention'?'ATTEMPT_NEEDS_ATTENTION':'AGENT_STOPPED'});
+   // From here a finished version exists: Stop lets it be saved and rendered.
+   phase='render';
   }
   // Derived media becomes a permanent source before rendering: upload it, give
   // it its stored name, and point the composition at that name, so later
@@ -192,7 +203,7 @@ async function execute(run){
     for(const [k,v] of Object.entries(agentResult.bundle))agentResult.bundle[k]=v.split(d.path).join(record.name);
    }
   }
-  stage=paid?'Rendering your video':'Rendering the local sample';
+  phase='render';if(!stopSeenAt)stage=paid?'Rendering your video':'Rendering the local sample';
   await accountedCall({key:'render-1',kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
@@ -201,7 +212,7 @@ async function execute(run){
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
   let deliveryChecks=null;
-  if(!(cancelled||stopping||lost)){
+  if(!(stopping||lost)){
    stage='Checking the final video';
    try{
     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:unlimited?900000:200000,maxBuffer:2000000});
@@ -215,7 +226,8 @@ async function execute(run){
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));
   await beat();
   if(lost)throw Error('Worker lease lost; keep output for reconciliation');
-  if(cancelled||stopping){await finish(run,{status:'cancelled',summary:'Stopped. Earlier versions are safe.'});return;}
+  if(stopping){await finish(run,{status:'cancelled',summary:'Stopped. Earlier versions are safe.'});return;}
+  // A user Stop after a checked version exists still delivers that version (the app accepts it while stopping).
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));

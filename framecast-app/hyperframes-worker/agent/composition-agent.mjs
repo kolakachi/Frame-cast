@@ -10,13 +10,30 @@ import {criticSystem,criticMessages,parseCriticVerdict} from './critic.mjs';
 
 // The instruction only carries the sentences this run can use: a sentence about a thing the run does not have is context spent on nothing.
 const INSTRUCTION_GATES=[[/\blookOnly\b/,'lookOnly'],[/\bfromLook\b/,'fromLook'],[/\bstyleNotes\b/,'styleNotes'],[/\bbaseFiles\b/,'baseFiles'],[/\bmusicBeats\b/,'musicBeats'],[/talking_shot|talking_take/,'talking'],[/character_poses/,'poses'],[/\bhouseStyle\b/,'houseStyle'],[/web page reference/,'page'],[/\bsfx\b/,'sfx'],[/narration \(|includes narration|has narration/,'narration'],[/music file|Sound mix/,'music'],[/caption_text/,'captions'],[/footage has speech/,'speech'],[/When a plan is present/,'plan']];
+// A model that is busy or briefly unreachable (the app confirms nothing was sent or charged) is waited out
+// and asked again, instead of ending the build. Any other failure is passed on unchanged.
+export const BUSY_WAITS_MS=[20000,60000,120000];
+export async function whenModelFree(call,{signal,waits=BUSY_WAITS_MS,release,onWait,stop=()=>false}={}){
+ for(let i=0;;i++){
+  try{return await call();}
+  catch(e){
+   if(e.code!=='NOT_SENT')throw e;
+   await release?.();
+   if(i>=waits.length||signal?.aborted||stop())throw e;
+   onWait?.(i+1,waits[i]);
+   // Waits end early on Stop (the not-sent error is passed on) or on abort.
+   await new Promise((resolve,reject)=>{const end=Date.now()+waits[i];const t=setInterval(()=>{if(stop()){clearInterval(t);reject(e);}else if(Date.now()>=end){clearInterval(t);resolve();}},Math.min(1000,waits[i]));signal?.addEventListener('abort',()=>{clearInterval(t);reject(signal.reason??Error('Aborted'));},{once:true});});
+  }
+ }
+}
+
 export function trimInstruction(text,flags){
  return text.split('. ').filter(sentence=>{const gate=INSTRUCTION_GATES.find(([re])=>re.test(sentence));return !gate||flags[gate[1]]!==false;}).join('. ');
 }
 
 // Dependencies are host-owned. Neither a prompt nor a tool result chooses the
 // provider, accounting policy, filesystem root or executable.
-export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,onProgress,onTrace}) {
+export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,stopRequested=()=>false,onProgress,onTrace}) {
  const assets=[];
  for(const file of manifest){
   // Reference-only media is described in context, never made renderable.
@@ -44,12 +61,18 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const otherCards=(await availableCards(guidanceDirectory)).filter(n=>!cards.names.includes(n));
  // The critic runs under its own approved policy: separate calls, low effort, no tools.
  const criticPolicy=input.execution_policy?.critic??null;let criticCall=0;
- const critic=paid&&criticPolicy&&provider.complete?async({sheet,strip,stripEvidence,authorScores,findings,round,signal})=>{
+ // The last progress report, so a wait for a busy model can say so without losing the spend shown.
+ let lastProgress={doing:'',spentUsd:0};const relay=p=>{lastProgress=p;onProgress?.(p);};
+ const busyNote=()=>{try{onProgress?.({...lastProgress,doing:'The model is busy, trying again in a moment'});}catch{/* reporting never stops a build */}};
+ let busy=0;
+ const critic=paid&&criticPolicy&&provider.complete?async({sheet,strip,stripEvidence,authorScores,findings,round,signal})=>{busy=0;
   const messages=criticMessages({brief:messages0.at(-1).content,plan:input.plan??null,lookOnly:input.look_first===true,route,sheet,strip,stripEvidence,authorScores,findings,fingerprint:input.style_pack?.fingerprint??null,round});
   const args={prompt:'critic call '+(++criticCall),system:criticSystem,maxTokens:Number(criticPolicy.max_output_tokens)||4096,messages,tools:[],signal};
+  const out=await whenModelFree(async()=>{
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
-  const out=await accountedCall({key:'critic-'+criticCall,kind:'critic',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:null,messagesJson:JSON.stringify(messages),toolsJson:'[]'},begin,settle,
+  return accountedCall({key:'critic-'+criticCall+(busy++?'-'+busy:''),kind:'critic',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:null,messagesJson:JSON.stringify(messages),toolsJson:'[]'},begin,settle,
    execute:attemptId=>provider.complete({...args,attemptId,recordPrediction:async()=>{},onPrediction:async id=>{if(!bindPrediction)throw Error('Prediction recorder is required');await bindPrediction(attemptId,id);}}),receipt});
+  },{signal,release:provider.release,onWait:busyNote,stop:stopRequested});
   const text=Array.isArray(out.content)?out.content.filter(b=>b.type==='text').map(b=>b.text).join('\n'):(out.text||'');
   return parseCriticVerdict(text,{requirements:input.plan?.requirements??[],performance:input.plan?.character_performance??[],lookOnly:input.look_first===true});
  }:null;
@@ -57,6 +80,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const accountedProvider={id:provider.id,maxCallUsd:provider.maxCallUsd,complete:async args=>{
   if(provider.prepareImage && args.image)args={...args,image:await provider.prepareImage(args.image,args.signal)};
   // A failed reservation means no call was started: nothing to reconcile.
+  return whenModelFree(async()=>{
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
   return accountedCall({
   // The hash covers exactly what the gateway will hash: tool-mode history and tools as strings.
@@ -66,7 +90,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
    if(!bindPrediction)throw Error('Prediction recorder is required');
    await bindPrediction(attemptId,id);await args.onPrediction(id);
   }}),receipt,
- });}};
+ });},{signal:args.signal,release:provider.release,onWait:busyNote,stop:stopRequested});}};
  const dims=({'9:16':[1080,1920],'16:9':[1920,1080],'1:1':[1080,1080],'4:5':[1080,1350]})[settings.aspect_ratio??'9:16'];
  const unlimited=input.execution_policy?.agent?.unlimited===true;
  const workspace=new Workspace(directory+'/project',assets,directory+'/work',unlimited?1_000_000:128_000);
@@ -84,7 +108,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  let initialImage;
  const page=manifest.find(f=>f.purpose==='reference'&&f.asset_type==='image'&&f.reference?.from==='page');
  if(page){try{const bytes=await readFile(directory+'/inputs/'+page.path);if(bytes.length<=1000000)initialImage='data:image/jpeg;base64,'+bytes.toString('base64');}catch{/* the notes still describe it */}}
- const state=await runAgent({initialImage,onProgress,onTrace,stateFile:directory+'/agent-state.json',workspace,provider:accountedProvider,
+ const state=await runAgent({initialImage,stopRequested,onProgress:relay,onTrace,stateFile:directory+'/agent-state.json',workspace,provider:accountedProvider,
   context:{renderAdapters:[{engine:'remotion',tool:'run',guide:'kit/remotion.md',purpose:'Native React motion clips/stills with editable .js source; integrate outputs into the existing Hyperframes composition. No automatic HTML conversion.'}],skillLibrary:await skillCatalogue(guidanceDirectory,{route,speech:planMedia.some(m=>['voiceover','cloned_voiceover','talking_take','talking_shot'].includes(m.kind))||manifest.some(f=>f.purpose==='source'&&f.asset_type==='audio')}),colourTreatment:input.plan?.colour_treatment??null,brief:messages.at(-1).content,messages,previousReview:input.base_review??null,baseRevision:input.base_revision_id,
    // An edit starts with the current source in hand, so no calls go on reading it (bounded; larger bundles are read on demand).
    baseFiles:input.base_bundle&&Object.values(input.base_bundle).reduce((n,t)=>n+Buffer.byteLength(String(t)),0)<=30000?input.base_bundle:null,
