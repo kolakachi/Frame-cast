@@ -2320,6 +2320,25 @@ class CreateIntegrationTest extends TestCase
         config(['create.pilot_budget_microusd'=>4700000]);
         $this->rejected(402,fn()=>\App\Services\Create\PilotPolicy::admit($q->payload_json['execution_policy']));
     }
+    public function test_the_planner_accounts_for_every_reference_moment_and_states_a_length_choice(): void
+    {
+        $study = ['summary' => 's', 'duration_seconds' => 26, 'moments' => [['id' => 'm1', 'start' => 0, 'end' => 2, 'kind' => 'hook'], ['id' => 'm2', 'start' => 2.8, 'end' => 3.5, 'kind' => 'sticker'], ['id' => 'm3', 'start' => 4, 'end' => 6, 'kind' => 'text']],
+            'speech' => ['text' => 'x', 'words' => [['x', 0.1, 0.4]], 'pauses' => []], 'pacing' => ['shots' => 9]];
+        $brief = \App\Services\Create\PlanService::studyBrief(1523, $study);
+        $this->assertSame(['1523:m1', '1523:m2', '1523:m3'], array_column($brief['moments'], 'id'), 'moment ids carry the asset id');
+        $ctx = ['files' => [['asset_id' => 1523, 'purpose' => 'reference', 'asset_type' => 'video', 'reference' => ['study' => $brief]]], 'voices' => [], 'settings' => ['duration_seconds' => 30, 'audio' => 'original']];
+        $raw = ['summary' => 'x', 'left_out' => '', 'narration' => ['Want to create your first UGC ad? Start here.', 'First, give WyvStudio your product and a clear idea.'],
+            'reference_decisions' => [['moment' => '1523:m1', 'decision' => 'keep', 'beat' => 'Hook', 'how' => 'Same bold two-line hook'],
+                ['moment' => '1523:m2', 'decision' => 'drop', 'beat' => '', 'how' => 'No mascot or sticker in the brief'], ['moment' => '1523:m9', 'decision' => 'keep', 'beat' => 'x', 'how' => 'invented'],
+                ['moment' => '1523:m1', 'decision' => 'replace', 'beat' => 'x', 'how' => 'duplicate']]];
+        $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
+        $this->assertSame(['1523:m1', '1523:m2'], array_column($p['reference_decisions'], 'moment'), 'unknown and duplicate moments are dropped');
+        $this->assertSame(['1523:m3'], $p['reference_unaccounted'], 'a moment the plan did not decide on is listed, not lost');
+        $this->assertMatchesRegularExpression('/narration runs about \d+ s of this 30 s video/', (string) $p['length_note']);
+        $p2 = app(\App\Services\Create\PlanService::class)->normalize([...$raw, 'length_choice' => 'A shorter 20 s video'], $ctx, (int) $this->workspace->id);
+        $this->assertStringContainsString('A shorter 20 s video', $p2['length_note']);
+    }
+
     public function test_unlimited_local_testing_lifts_limits_and_the_spend_cap_but_never_outside_local(): void {
         $this->pilot();
         config(['create.unlimited'=>true,'create.agent_provider'=>'anthropic','create.agent_model'=>'claude-opus-5-5','services.anthropic.key'=>'k','create.pilot_budget_microusd'=>0]);

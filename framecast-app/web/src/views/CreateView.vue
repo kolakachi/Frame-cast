@@ -343,6 +343,10 @@ const reviewNotes = computed(() => (outputMeta.value.creative_review?.findings |
   .filter(f => !/^(Unmet requirement|Requirement ")/i.test(f))
   .filter(f => !outputMeta.value.look || !/\b(audio|narration|voice|music|sfx|sync|export|timing)\b/i.test(f))
   .slice(0, 3))
+function referenceTally(plan) {
+  const d = plan.reference_decisions || [], n = k => d.filter(x => x.decision === k).length
+  return `${d.length + (plan.reference_unaccounted || []).length} moments seen · ${n('keep')} kept · ${n('replace')} changed · ${n('drop')} left out`
+}
 const needsAnotherRound = computed(() => outputMeta.value.creative_review?.status === 'incomplete' || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
 async function keepImproving() { prompt.value = 'Keep this video, complete its creative review and fix the open issues: ' + (outputMeta.value.creative_review?.findings || []).join('; '); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
@@ -633,7 +637,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           </label>
                           <span class="claims__note">This is the approved script. Talking presenters generate their own voice unless you explicitly select a cloned voice; catalogue voice selection applies to separate narration. <button type="button" class="quiet quiet--sm" @click="openPronunciations">Pronunciations</button></span>
                         </div>
-                        <div v-if="planByMessage[m.id].plan.creative_intent?.reason" class="checks">
+                        <p v-if="planByMessage[m.id].plan.length_note" class="muted">{{ planByMessage[m.id].plan.length_note }}</p>
+                      <div v-if="planByMessage[m.id].plan.creative_intent?.reason" class="checks">
                           <b>Creative approach</b>
                           <p>{{ planByMessage[m.id].plan.creative_intent.reason }}</p>
                           <small v-if="planByMessage[m.id].plan.creative_intent.edit_scope === 'timing_only'" class="muted">Adjusting timing while keeping your approved script, voice and on-screen copy.</small>
@@ -684,6 +689,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     </div>
                     <details v-if="!planByMessage[m.id].stale" class="more">
                       <summary>View details</summary>
+                      <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
+                        <b>Moments from your reference</b>
+                        <p class="muted">{{ referenceTally(planByMessage[m.id].plan) }}</p>
+                        <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}</li></ul>
+                        <p v-if="planByMessage[m.id].plan.reference_unaccounted?.length" class="muted">{{ planByMessage[m.id].plan.reference_unaccounted.length }} more {{ planByMessage[m.id].plan.reference_unaccounted.length === 1 ? 'moment was' : 'moments were' }} not planned yet; ask for them if they matter.</p>
+                      </div>
                       <div v-if="planByMessage[m.id].plan.reference_observations?.length" class="checks">
                         <b>What we’re taking from your reference</b>
                         <div v-for="observation in planByMessage[m.id].plan.reference_observations" :key="observation.asset_id">

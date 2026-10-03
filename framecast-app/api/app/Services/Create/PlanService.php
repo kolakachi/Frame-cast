@@ -44,6 +44,8 @@ class PlanService
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
         abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
 
+        // Every attached reference video is studied before planning (normally already done in the background at attach time).
+        $this->studyReferences($user, $c);
         // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
         $deadline = microtime(true) + (PilotPolicy::unlimited() ? 280 : 100);
         if (PilotPolicy::unlimited()) set_time_limit(320);
@@ -193,12 +195,42 @@ class PlanService
     public static function referenceBrief(Asset $asset): ?array
     {
         $a = data_get($asset->metadata_json, 'reference_analysis');
-        if (! is_array($a)) return null;
-        return array_filter(['from' => data_get($asset->metadata_json, 'reference_source.platform'), 'duration_seconds' => $a['duration_seconds'] ?? null,
+        $study = data_get($asset->metadata_json, 'reference_study');
+        if (! is_array($a) && ! is_array($study)) return null;
+        $brief = is_array($a) ? array_filter(['from' => data_get($asset->metadata_json, 'reference_source.platform'), 'duration_seconds' => $a['duration_seconds'] ?? null,
             'cut_candidates_seconds' => array_slice((array) ($a['cuts'] ?? []), 0, 24), 'sampling_limit' => 'Sampled frames and heuristic cuts, not exhaustive motion or audio analysis', 'shots' => $a['shots'] ?? null, 'average_shot_seconds' => $a['average_shot_seconds'] ?? null,
             'speech' => isset($a['transcript']) ? mb_substr((string) $a['transcript'], 0, 600) : null, 'notes' => $a['notes'] ?? null,
             // From a web page: claims the page makes. Not approved; only approved_facts may go on screen.
-            'page_claims_not_approved' => ! empty($a['suggested_claims']) ? array_column($a['suggested_claims'], 'text') : null], fn ($v) => $v !== null);
+            'page_claims_not_approved' => ! empty($a['suggested_claims']) ? array_column($a['suggested_claims'], 'text') : null], fn ($v) => $v !== null) : [];
+        if (is_array($study)) $brief['study'] = self::studyBrief((int) $asset->id, $study);
+        return $brief ?: null;
+    }
+
+    /** The study as the planner reads it: moment ids carry the asset id so decisions can name them. */
+    public static function studyBrief(int $assetId, array $s): array
+    {
+        $speech = is_array($s['speech'] ?? null) ? $s['speech'] : null;
+        return array_filter([
+            'how_to_use' => 'Account for every moment id in reference_decisions. Times are seconds in the reference.',
+            'summary' => $s['summary'] ?? null, 'duration_seconds' => $s['duration_seconds'] ?? null, 'coverage' => $s['coverage'] ?? null,
+            'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
+            'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + array_diff_key($m, ['id' => 1]), (array) ($s['moments'] ?? [])),
+            'speech' => $speech ? array_filter(['text' => mb_substr((string) ($speech['text'] ?? ''), 0, 1200), 'first_word_at' => $speech['first_word_at'] ?? null, 'last_word_at' => $speech['last_word_at'] ?? null,
+                'pauses' => array_slice((array) ($speech['pauses'] ?? []), 0, 12),
+                'timed_words' => mb_substr(collect($speech['words'] ?? [])->map(fn ($w) => $w[1].' '.$w[0])->implode(' | '), 0, 3000)], fn ($v) => $v !== null && $v !== '' && $v !== []) : null,
+        ], fn ($v) => $v !== null && $v !== []);
+    }
+
+    /** Studies any attached reference video that has no study for its current bytes; failures leave planning on the older evidence. */
+    private function studyReferences(User $user, object $c): void
+    {
+        if (config('create.mode') === 'fixture') return;
+        foreach (DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'reference')->pluck('asset_id') as $id) {
+            $asset = Asset::where('workspace_id', $user->workspace_id)->find($id);
+            if (! $asset || $asset->asset_type !== 'video') continue;
+            try { app(\App\Services\Create\References\ReferenceStudy::class)->forAsset($asset); }
+            catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('Create reference study failed', ['asset' => $id, 'error' => mb_substr($e->getMessage(), 0, 300)]); }
+        }
     }
 
     /** Reference frames and the page capture as planner images: [['label' => ..., 'media_type' => ..., 'data' => base64], ...], at most four including a transition sheet. */
@@ -206,11 +238,18 @@ class PlanService
     {
         $out = []; $transitions = [];
         foreach ($files as $f) {
-            if (count($out) >= 3 || ($f['purpose'] ?? '') !== 'reference') continue;
+            if (count($out) >= 6 || ($f['purpose'] ?? '') !== 'reference') continue;
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($f['asset_id']);
             if (! $asset) continue;
             try {
-                if ($asset->asset_type === 'video') {
+                $study = data_get($asset->metadata_json, 'reference_study');
+                if ($asset->asset_type === 'video' && ! empty($study['sheets'])) {
+                    // The whole-reference study: frames inside every shot and close-ups where the picture changes.
+                    foreach (array_slice($study['sheets'], 0, 3) as $k => $sheet) {
+                        $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($sheet['path']);
+                        if (is_string($bytes) && $bytes !== '') $out[] = ['label' => 'Reference video "'.$asset->title.'" study sheet '.($k + 1).' of '.count($study['sheets']).': cells left to right, then down, at seconds '.json_encode($sheet['times']), 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)];
+                    }
+                } elseif ($asset->asset_type === 'video') {
                     $path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset);
                     if ($path) $out[] = ['label' => 'Reference video "'.$asset->title.'": '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($path))];
                     if ($detail = app(\App\Services\Create\References\ReferenceSheets::class)->transitionsFor($asset)) $transitions[] = ['label' => 'Cut windows for reference '.$asset->id.'; each row is before/at/after, seconds '.json_encode($detail['times']).'. No audio observed.', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($detail['path']))];
@@ -220,7 +259,7 @@ class PlanService
                 }
             } catch (\Throwable) { /* the notes still describe it */ }
         }
-        return array_slice([...$out, ...$transitions], 0, 4);
+        return array_slice([...$out, ...$transitions], 0, 7);
     }
 
     /** @return array<int, array{role: string, content: string}> */
@@ -365,6 +404,19 @@ class PlanService
             'requirements' => $requirements, 'character_style' => $characterStyle,
             'look_first' => (bool) ($raw['look_first'] ?? false),
             'selections' => ['omitted_performance' => $ctx['previous_plan']['omitted_performance'] ?? [], 'callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+        // The reference study's moments: every one gets an explicit keep, replace or drop, and nothing disappears silently.
+        $known = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
+        $refDecisions = collect((array) ($raw['reference_decisions'] ?? []))->filter(fn ($d) => is_array($d) && in_array($d['moment'] ?? null, $known, true) && in_array($d['decision'] ?? null, ['keep', 'replace', 'drop'], true))
+            ->unique('moment')->map(fn ($d) => ['moment' => $d['moment'], 'decision' => $d['decision'], 'beat' => $str($d['beat'] ?? '', 40), 'how' => $str($d['how'] ?? '', 140)])->values()->all();
+        $plan['reference_decisions'] = $refDecisions;
+        $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
+        // Length from narration: a script that fills clearly less of the video than its length leads to a stated choice, not silent holds.
+        $words = str_word_count(implode(' ', $narration));
+        $videoSeconds = (float) ($ctx['settings']['duration_seconds'] ?? 0);
+        $plan['length_choice'] = $str($raw['length_choice'] ?? '', 160) ?: null;
+        $plan['length_note'] = $words > 0 && $videoSeconds > 0 && $words / 2.4 < 0.85 * $videoSeconds
+            ? 'The narration runs about '.round($words / 2.4).' s of this '.round($videoSeconds).' s video.'.($plan['length_choice'] ? ' '.$plan['length_choice'] : ' Choose a slower voice, a shorter video or more script, or the rest is music-only holds.')
+            : null;
         // A text/colour-only request becomes a free edit, validated against the real fields.
         $free = [];
         if (is_array($raw['free_edit'] ?? null) && ! empty($ctx['current_variables'])) {
