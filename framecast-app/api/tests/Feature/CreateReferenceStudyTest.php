@@ -71,6 +71,10 @@ class CreateReferenceStudyTest extends TestCase
         $this->assertEqualsWithDelta(0.1, $here['text_after_spoken_seconds'], 0.01, 'the text appears 0.1 s after "Here" is said');
         $this->assertSame(['text_reveal' => 'text lands with the spoken words', 'signature' => 'the sliding badge'], $study['patterns']);
         Http::assertSent(fn ($req) => collect($req['messages'][0]['content'])->where('type', 'image')->count() === count($study['sheets']));
+        $this->assertSame('ok', $study['moments_status']);
+        $this->assertTrue(ReferenceStudy::reusable($study, str_repeat('a', 64)));
+        $this->assertFalse(ReferenceStudy::reusable([...$study, 'moments_status' => 'failed'], str_repeat('a', 64)), 'a study whose moment list failed is made again');
+        $this->assertFalse(ReferenceStudy::reusable($study, str_repeat('b', 64)), 'different bytes, new study');
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
     }
 

@@ -32,12 +32,12 @@ class ReferenceStudy
         if (! is_string($bytes) || $bytes === '') return null;
         $sha = hash('sha256', $bytes);
         $have = data_get($asset->metadata_json, 'reference_study');
-        if (is_array($have) && ($have['source_sha256'] ?? null) === $sha && ($have['version'] ?? 0) === self::VERSION) return $have;
+        if (self::reusable($have, $sha)) return $have;
         // One study per source at a time; a second caller waits for the first instead of paying twice.
         return Cache::lock('create-reference-study:'.$sha, 600)->block(300, function () use ($asset, $bytes, $sha) {
             $asset->refresh();
             $have = data_get($asset->metadata_json, 'reference_study');
-            if (is_array($have) && ($have['source_sha256'] ?? null) === $sha && ($have['version'] ?? 0) === self::VERSION) return $have;
+            if (self::reusable($have, $sha)) return $have;
             $dir = sys_get_temp_dir().'/create-study-'.Str::uuid();
             @mkdir($dir, 0700, true);
             try {
@@ -51,6 +51,12 @@ class ReferenceStudy
                 @rmdir($dir);
             }
         });
+    }
+
+    /** A cached study is reused unless its moment list failed (a provider outage or billing stop): then it is made again. */
+    public static function reusable(mixed $have, string $sha): bool
+    {
+        return is_array($have) && ($have['source_sha256'] ?? null) === $sha && ($have['version'] ?? 0) === self::VERSION && ($have['moments_status'] ?? 'ok') !== 'failed';
     }
 
     /** The full study of a local file. Sheets are stored under create/reference-studies/<sha>/. */
@@ -74,7 +80,11 @@ class ReferenceStudy
             'shots' => $shots, 'cuts' => $cuts, 'change_windows' => $windows, 'samples' => $samples, 'sheets' => $sheets, 'speech' => $speech,
             'pacing' => self::pacing($shots, $duration, $speech), 'moments' => [], 'patterns' => null, 'summary' => null,
             'coverage' => count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
-        if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) $study = [...$study, ...$this->moments($study)];
+        $study['moments_status'] = 'skipped';
+        if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) {
+            $found = $this->moments($study);
+            $study = [...$study, ...$found, 'moments_status' => $found ? 'ok' : 'failed'];
+        }
         $study['moments'] = self::withSpokenDelay($study['moments'], $speech);
         $study['pacing']['text_to_speech_delay_seconds'] = self::medianDelay($study['moments']);
         return $study;
@@ -247,7 +257,7 @@ class ReferenceStudy
             $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(180)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
         } catch (\Throwable) { return []; }
-        if (! $r->successful()) return [];
+        if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return []; }
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
         $start = strpos($text, '{'); $end = strrpos($text, '}');
         $json = $start !== false && $end !== false ? json_decode(substr($text, $start, $end - $start + 1), true) : null;
