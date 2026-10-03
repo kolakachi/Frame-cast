@@ -23,6 +23,20 @@ class ReferenceStudy
     public const VERSION = 1;
     private const MAX_SAMPLES = 80;
     private const PER_SHEET = 20;
+    /** A frame counts as a new look when it differs from the last kept frame by this share of its pixels' brightness. */
+    public const LOOK_THRESHOLD = 0.02;
+
+    /**
+     * How much of the reference is looked at. standard: frames inside every shot plus close-ups where the picture
+     * changes (at most 80). every_look: one frame for every distinct look in the video, with no cap, for calibrating
+     * coverage of busy references. While restrictions are off (CREATE_UNLIMITED) every_look is the default.
+     */
+    public static function coverageMode(): string
+    {
+        $mode = (string) config('create.reference_coverage', '');
+        if (in_array($mode, ['standard', 'every_look'], true)) return $mode;
+        return \App\Services\Create\PilotPolicy::unlimited() ? 'every_look' : 'standard';
+    }
 
     /** The study for this asset's current bytes, making it on first use; null for non-video or unreadable sources. */
     public function forAsset(Asset $asset): ?array
@@ -56,7 +70,8 @@ class ReferenceStudy
     /** A cached study is reused unless its moment list failed (a provider outage or billing stop): then it is made again. */
     public static function reusable(mixed $have, string $sha): bool
     {
-        return is_array($have) && ($have['source_sha256'] ?? null) === $sha && ($have['version'] ?? 0) === self::VERSION && ($have['moments_status'] ?? 'ok') !== 'failed';
+        return is_array($have) && ($have['source_sha256'] ?? null) === $sha && ($have['version'] ?? 0) === self::VERSION && ($have['moments_status'] ?? 'ok') !== 'failed'
+            && ($have['coverage_mode'] ?? 'standard') === self::coverageMode();
     }
 
     /** The full study of a local file. Sheets are stored under create/reference-studies/<sha>/. */
@@ -72,14 +87,18 @@ class ReferenceStudy
         $cuts = self::cuts($scores);
         $shots = self::shots($cuts, $duration);
         $windows = self::changeWindows($scores, $shots);
-        $samples = self::samples($shots, $windows, $duration);
+        $fps = $den > 0 ? $num / $den : 0.0;
+        $mode = self::coverageMode();
+        $looks = $mode === 'every_look' ? $this->looks($file, $fps) : null;
+        $samples = $looks !== null ? self::lookSamples($looks, $duration, $fps) : self::samples($shots, $windows, $duration);
         $sheets = $this->sheets($file, $samples, $sha, $work);
         $speech = $hasAudio ? $this->speech($file, $duration) : null;
         $study = ['version' => self::VERSION, 'source_sha256' => $sha, 'duration_seconds' => $duration, 'fps' => $den > 0 ? round($num / $den, 2) : null,
             'width' => $video['width'] ?? null, 'height' => $video['height'] ?? null, 'has_audio' => $hasAudio,
+            'coverage_mode' => $mode, 'frames' => $looks['frames'] ?? null, 'looks' => $looks ? count($looks['looks']) : null,
             'shots' => $shots, 'cuts' => $cuts, 'change_windows' => $windows, 'samples' => $samples, 'sheets' => $sheets, 'speech' => $speech,
             'pacing' => self::pacing($shots, $duration, $speech), 'moments' => [], 'patterns' => null, 'summary' => null,
-            'coverage' => count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
+            'coverage' => ($looks !== null ? count($samples).' frames, one for every distinct look in '.$looks['frames'].' frames' : count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change').'; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
         $study['moments_status'] = 'skipped';
         if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) {
             $found = $this->moments($study);
@@ -100,6 +119,41 @@ class ReferenceStudy
             elseif ($t !== null && preg_match('/scene_score=([0-9.]+)/', $line, $m)) { $out[] = [round($t, 2), (float) $m[1]]; $t = null; }
         }
         return $out;
+    }
+
+    /**
+     * Every distinct look: decode every frame small and grey, and start a new look whenever a frame differs from the
+     * last kept one by more than LOOK_THRESHOLD. Returns the total frame count and [[start seconds, seconds held], ...].
+     */
+    private function looks(string $file, float $fps): ?array
+    {
+        $w = 160; $h = 90;
+        $r = Process::timeout(600)->run(['ffmpeg', '-v', 'error', '-i', $file, '-an', '-vf', "scale={$w}:{$h},format=gray", '-f', 'rawvideo', '-']);
+        $raw = $r->output(); $size = $w * $h; $n = intdiv(strlen($raw), $size);
+        if (! $r->successful() || $n === 0 || $fps <= 0) return null;
+        $frame = fn (int $i) => array_values(unpack('C*', substr($raw, $i * $size, $size)));
+        $grid = fn (array $px) => array_values(array_filter($px, fn ($k) => $k % 4 === 0, ARRAY_FILTER_USE_KEY));
+        $kept = $grid($frame(0)); $starts = [0];
+        for ($i = 1; $i < $n; $i++) {
+            $cur = $grid($frame($i)); $sum = 0;
+            foreach ($cur as $k => $v) $sum += abs($v - $kept[$k]);
+            if ($sum / (count($cur) * 255) > self::LOOK_THRESHOLD) { $starts[] = $i; $kept = $cur; }
+        }
+        $looks = [];
+        foreach ($starts as $k => $i) $looks[] = [round($i / $fps, 3), round((($starts[$k + 1] ?? $n) - $i) / $fps, 3)];
+        return ['frames' => $n, 'looks' => $looks];
+    }
+
+    /** One frame per look, from the middle of the look (a held screen is seen settled, a passing one as it passes). */
+    public static function lookSamples(array $looks, float $duration, float $fps): array
+    {
+        $step = $fps > 0 ? 1 / $fps : 0.01;
+        $pick = [];
+        foreach ($looks['looks'] as [$start, $held]) {
+            $t = round(min(max(0.0, $start + $held / 2), max(0.0, $duration - $step)), 3);
+            if (! $pick || $t - end($pick) >= $step * 0.5) $pick[] = $t;
+        }
+        return $pick;
     }
 
     /** Hard cuts: a large change, merged when they cluster. */
@@ -236,7 +290,9 @@ class ReferenceStudy
     private function moments(array $study): array
     {
         $content = [];
-        foreach (array_slice($study['sheets'], 0, 4) as $i => $sheet) {
+        $every = ($study['coverage_mode'] ?? 'standard') === 'every_look';
+        // The API reads at most 100 images in one request; every_look sends them all up to that limit.
+        foreach (array_slice($study['sheets'], 0, $every ? 90 : 4) as $i => $sheet) {
             $bytes = Storage::disk('local')->get($sheet['path']);
             if (! is_string($bytes) || $bytes === '') continue;
             $content[] = ['type' => 'text', 'text' => 'Sheet '.($i + 1).': cells left to right, then down, at seconds '.json_encode($sheet['times'])];
@@ -251,11 +307,12 @@ class ReferenceStudy
             .'{"summary": "one sentence on how it works", "moments": [{"start": seconds, "end": seconds, "kind": "hook|text|stat|ui|zoom|sticker|character|transition|cta|logo|other", '
             .'"on_screen_text": "exact words on screen or empty", "visual": "what is shown, under 20 words", "motion": "how it moves or changes, under 15 words", '
             .'"transition_in": "cut|wipe|zoom|fade|whip|none|unknown", "spoken": "words said during it or empty"}], '
-            .'"patterns": {"text_reveal": "how text appears relative to the voice", "emphasis": "how key words are emphasised", "pacing": "rhythm of holds and changes", "signature": "the move it is remembered for"}}. At most 30 moments.'];
+            .'"patterns": {"text_reveal": "how text appears relative to the voice", "emphasis": "how key words are emphasised", "pacing": "rhythm of holds and changes", "signature": "the move it is remembered for"}}.'
+            .($every ? ' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes). List as many moments as the video has.' : ' At most 30 moments.')];
         $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
         try {
-            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(180)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
+            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($every ? 600 : 180)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $every ? 32000 : 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
         } catch (\Throwable) { return []; }
         if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return []; }
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
@@ -263,13 +320,14 @@ class ReferenceStudy
         $json = $start !== false && $end !== false ? json_decode(substr($text, $start, $end - $start + 1), true) : null;
         if (! is_array($json)) return [];
         $u = $r->json('usage', []);
-        return ['moments' => self::normalizeMoments((array) ($json['moments'] ?? []), (float) $study['duration_seconds']),
+        return ['moments' => self::normalizeMoments((array) ($json['moments'] ?? []), (float) $study['duration_seconds'], $every ? null : 30),
+            'usage' => ['input_tokens' => $u['input_tokens'] ?? null, 'output_tokens' => $u['output_tokens'] ?? null, 'images' => count(array_filter($content, fn ($c) => $c['type'] === 'image'))],
             'patterns' => collect(['text_reveal', 'emphasis', 'pacing', 'signature'])->mapWithKeys(fn ($k) => [$k => mb_substr(trim((string) data_get($json, 'patterns.'.$k, '')), 0, 200)])->filter()->all() ?: null,
             'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 300) ?: null,
             'model' => $model, 'cost_microusd' => (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 5 + ((int) ($u['output_tokens'] ?? 0)) * 25)];
     }
 
-    public static function normalizeMoments(array $raw, float $duration): array
+    public static function normalizeMoments(array $raw, float $duration, ?int $max = 30): array
     {
         $s = fn ($v, $n) => mb_substr(trim((string) $v), 0, $n);
         $kinds = ['hook', 'text', 'stat', 'ui', 'zoom', 'sticker', 'character', 'transition', 'cta', 'logo', 'other'];
@@ -280,7 +338,7 @@ class ReferenceStudy
             $out[] = ['id' => 'm'.(count($out) + 1), 'start' => $a, 'end' => $b, 'kind' => in_array($m['kind'] ?? '', $kinds, true) ? $m['kind'] : 'other',
                 'on_screen_text' => $s($m['on_screen_text'] ?? '', 160), 'visual' => $s($m['visual'] ?? '', 160), 'motion' => $s($m['motion'] ?? '', 120),
                 'transition_in' => $s($m['transition_in'] ?? '', 20), 'spoken' => $s($m['spoken'] ?? '', 200)];
-            if (count($out) >= 30) break;
+            if ($max !== null && count($out) >= $max) break;
         }
         usort($out, fn ($x, $y) => $x['start'] <=> $y['start']);
         foreach ($out as $i => &$m) $m['id'] = 'm'.($i + 1);

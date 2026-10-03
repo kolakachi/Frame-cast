@@ -78,4 +78,28 @@ class CreateReferenceStudyTest extends TestCase
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
     }
 
+    public function test_every_look_coverage_takes_one_frame_per_distinct_look_with_no_cap(): void
+    {
+        Storage::fake('local');
+        config(['create.reference_coverage' => 'every_look', 'create.mode' => 'fixture']);
+        $this->assertSame('every_look', ReferenceStudy::coverageMode());
+        $dir = sys_get_temp_dir().'/study-'.uniqid(); mkdir($dir);
+        // 3 s at 10 fps: a held red second, a white square stepping across the second (ten looks), a held blue second.
+        $r = Process::run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:d=1:r=10', '-f', 'lavfi', '-i', 'color=c=black:s=320x180:d=1:r=10',
+            '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:d=1:r=10', '-f', 'lavfi', '-i', 'color=c=white:s=60x60:d=1:r=10',
+            '-filter_complex', "[1:v][3:v]overlay=x='floor(t*10)*26':y=60[b];[0:v][b][2:v]concat=n=3:v=1:a=0[v]", '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', $dir.'/ref.mp4']);
+        $this->assertTrue($r->successful(), $r->errorOutput());
+        $study = app(ReferenceStudy::class)->study($dir.'/ref.mp4', str_repeat('c', 64), $dir);
+        $this->assertSame('every_look', $study['coverage_mode']);
+        $this->assertSame(30, $study['frames']);
+        $this->assertGreaterThanOrEqual(11, $study['looks'], 'each step of the square is its own look');
+        $this->assertLessThanOrEqual(14, $study['looks'], 'held seconds are one look each');
+        $this->assertCount($study['looks'], $study['samples']);
+        $this->assertSame(count($study['samples']), array_sum(array_map(fn ($s) => count($s['times']), $study['sheets'])));
+        $this->assertTrue(ReferenceStudy::reusable([...$study, 'moments_status' => 'ok'], str_repeat('c', 64)));
+        config(['create.reference_coverage' => 'standard']);
+        $this->assertFalse(ReferenceStudy::reusable([...$study, 'moments_status' => 'ok'], str_repeat('c', 64)), 'a different coverage mode studies again');
+        foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
+    }
+
 }

@@ -13,6 +13,8 @@ return [
     // Local testing without limits (owner, 2026-10-03): call, repair, time, size and spend limits are lifted
     // so trajectories show where limits are needed. Ignored outside local/testing. Safety boundaries stay.
     'unlimited' => (bool) env('CREATE_UNLIMITED', false),
+    // Reference study coverage: standard or every_look (one frame per distinct look, uncapped). Empty: every_look while unlimited.
+    'reference_coverage' => (string) env('CREATE_REFERENCE_COVERAGE', ''),
     'pilot_budget_id' => env('CREATE_PILOT_BUDGET_ID', ''),
     'pilot_budget_microusd' => (int) env('CREATE_PILOT_BUDGET_MICROUSD', 0),
     // Planning is free to the user; WyvStudio funds up to three bounded calls with reference inspection.

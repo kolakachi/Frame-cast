@@ -29,12 +29,14 @@
         <env name="CREATE_PILOT_BUDGET_ID" value="" force="true"/>
         <env name="CREATE_PILOT_BUDGET_MICROUSD" value="0" force="true"/>
         <env name="CREATE_UNLIMITED" value="false" force="true"/>
+        <env name="CREATE_REFERENCE_COVERAGE" value="standard" force="true"/>
         <server name="DEVELOPER_OPERATION_ACCOUNTING" value="false" force="true"/>
         <server name="CREATE_AGENT_PROVIDER" value="replicate" force="true"/>
         <server name="CREATE_PLANNER" value="offline" force="true"/>
         <server name="CREATE_MODE" value="fixture" force="true"/>
         <server name="CREATE_PAID_EXECUTION_ENABLED" value="false" force="true"/>
         <server name="CREATE_UNLIMITED" value="false" force="true"/>
+        <server name="CREATE_REFERENCE_COVERAGE" value="standard" force="true"/>
         <server name="CREATE_PILOT_BUDGET_ID" value="" force="true"/>
         <server name="CREATE_PILOT_BUDGET_MICROUSD" value="0" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
