@@ -198,7 +198,7 @@ class ConversationService
                     abort_unless(in_array($settings['aspect_ratio'], ['9:16', '16:9'], true), 422, 'Native talking video currently supports 9:16 or 16:9.');
                 }
                 // A character build needs room for the scored review to converge: 20 calls (owner, 2026-10-01).
-                if ($paid && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = 20;
+                if ($paid && ! PilotPolicy::unlimited() && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = 20;
                 // Design first: the look run builds one still per beat (cheap: 8 calls) for approval; approving it builds the motion from those stills.
                 $baseMeta = $base ? (json_decode((string) $base->metadata_json, true) ?: []) : [];
                 // Stage is explicit and frozen in the quote. Chat wording never authorizes a transition.
@@ -243,7 +243,7 @@ class ConversationService
                     if ($cached) { $mediaItem['reuse_media_id'] = $cached->id; $mediaItem['credits'] = 0; }
                 }
                 unset($mediaItem);
-                if ($lookFirst) { $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8); if (isset($policy['critic'])) $policy['critic']['max_calls'] = 1; }
+                if ($lookFirst && ! PilotPolicy::unlimited()) { $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8); if (isset($policy['critic'])) $policy['critic']['max_calls'] = 1; }
                 $resolvedPack = StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
                     DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all());
                 // Media is approved as a ceiling, not an item list: the plan's items are the estimate; the agent may buy
@@ -251,10 +251,12 @@ class ConversationService
                 $mediaEstimate = array_sum(array_column($planMedia, 'credits'));
                 $mediaCeiling = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition'
                     ? max($mediaEstimate, isset($settings['media_ceiling_credits']) ? (int) $settings['media_ceiling_credits'] : (int) ceil($mediaEstimate * 1.5)) : 0;
+                // Testing without limits: the agent may buy what it needs; each purchase is still priced and recorded.
+                if ($mediaCeiling > 0 && PilotPolicy::unlimited()) $mediaCeiling = max($mediaCeiling, 100000);
                 if ($mediaCeiling > 0) {
                     $top = max(array_merge([0], array_column($planMedia, 'credits'), array_map(fn ($t) => (int) $t['credits'], array_filter(CapabilityCatalogue::forWorkspace((int) $user->workspace_id), fn ($t) => in_array($t['kind'], PlanMediaExecutor::KINDS, true)))));
                     $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
-                        'max_calls' => count($planMedia) + 6, 'total_credits' => $mediaCeiling];
+                        'max_calls' => count($planMedia) + (PilotPolicy::unlimited() ? 100 : 6), 'total_credits' => $mediaCeiling];
                 }
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
                     'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->orderBy('asset_id')->get(['asset_id','purpose'])->all(),

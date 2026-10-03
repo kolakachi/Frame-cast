@@ -278,7 +278,7 @@ class RunService
                 $bundle = $result['bundle'];
                 abort_unless(isset($bundle['index.html']), 422);
                 foreach ($bundle as $name => $contents) {
-                    abort_unless(preg_match('/^[a-zA-Z0-9_-]+\.(html|css|js)$/D', $name) && is_string($contents) && strlen($contents) <= 128000, 422, 'Invalid source bundle.');
+                    abort_unless(preg_match('/^[a-zA-Z0-9_-]+\.(html|css|js)$/D', $name) && is_string($contents) && strlen($contents) <= (PilotPolicy::unlimited() ? 1000000 : 128000), 422, 'Invalid source bundle.');
                 }
                 ksort($bundle);
                 $revision = (string) Str::uuid();

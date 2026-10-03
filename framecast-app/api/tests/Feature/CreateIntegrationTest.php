@@ -2316,6 +2316,25 @@ class CreateIntegrationTest extends TestCase
         config(['create.pilot_budget_microusd'=>4700000]);
         $this->rejected(402,fn()=>\App\Services\Create\PilotPolicy::admit($q->payload_json['execution_policy']));
     }
+    public function test_unlimited_local_testing_lifts_limits_and_the_spend_cap_but_never_outside_local(): void {
+        $this->pilot();
+        config(['create.unlimited'=>true,'create.agent_provider'=>'anthropic','create.agent_model'=>'claude-opus-5-5','services.anthropic.key'=>'k','create.pilot_budget_microusd'=>0]);
+        $this->assertTrue(\App\Services\Create\PilotPolicy::unlimited());
+        $this->assertTrue(\App\Services\Create\PilotPolicy::enabled(), 'no spend cap is needed to enable paid testing');
+        $p = \App\Services\Create\PilotPolicy::execution(['output_kind'=>'video','duration_seconds'=>15]);
+        $this->assertSame([200, 32000, 600000, true, 5000000, 1250], [$p['agent']['max_calls'], $p['agent']['max_output_tokens'], $p['agent']['context_bytes'], $p['agent']['unlimited'], $p['agent']['cost_limit_microusd'], $p['agent']['credits']]);
+        $this->assertSame(10, $p['critic']['max_calls']);
+        \App\Services\Create\PilotPolicy::admit($p); // no budget check
+        // Each call still settles at its real cost within the raised per-call ceiling.
+        $this->assertSame(1250 * 4000, $p['agent']['cost_limit_microusd']);
+        // Outside local/testing the switch is ignored.
+        $env = app()['env']; app()['env'] = 'production';
+        try { $this->assertFalse(\App\Services\Create\PilotPolicy::unlimited()); } finally { app()['env'] = $env; }
+        config(['create.unlimited'=>false]);
+        $this->assertFalse(\App\Services\Create\PilotPolicy::enabled(), 'without the switch, paid testing needs a spend cap again');
+        config(['create.pilot_budget_microusd'=>5000000]);
+        $this->assertSame(16, \App\Services\Create\PilotPolicy::execution(['output_kind'=>'video','duration_seconds'=>15])['agent']['max_calls']);
+    }
     public function test_pilot_metering_is_provider_verified_and_charged_once(): void {
         $this->pilot();$c=$this->brief();$q=$this->conversations->quote($this->owner,$c->id,1);
         $run=$this->conversations->approve($this->owner,$c->id,$q->id,'approve',true);$claim=$this->runs->claim();

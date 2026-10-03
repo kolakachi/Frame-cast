@@ -9,7 +9,17 @@ class PilotPolicy
     public static function enabled(): bool
     {
         return app()->environment(['local','testing']) && config('create.paid_execution_enabled')
-            && config('create.pilot_budget_id') && config('create.pilot_budget_microusd',0)>0;
+            && config('create.pilot_budget_id') && (self::unlimited() || config('create.pilot_budget_microusd',0)>0);
+    }
+
+    /**
+     * Local testing without limits: no spend cap, and call/repair/time/size limits raised far past any
+     * expected build. Never in production. Sandbox isolation, app-only providers, consent, source
+     * protection and per-call cost recording are unchanged.
+     */
+    public static function unlimited(): bool
+    {
+        return app()->environment(['local','testing']) && (bool) config('create.unlimited');
     }
 
     public static function execution(array $settings): array
@@ -28,6 +38,14 @@ class PilotPolicy
             // Thinking is output. With style packs and craft rules pinned, even medium effort spends most of
             // 8k tokens planning a first draft and gets cut off, so every build gets 16k and the matching cap.
             $effort=(string)config('create.agent_effort','medium');
+            if(self::unlimited()) {
+                // Per-call ceilings sized so a long, thinking-heavy call settles at its real cost (1 credit = $0.004).
+                return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>1250,'effort'=>$effort,
+                    'cost_limit_microusd'=>5000000,'max_calls'=>200,'max_output_tokens'=>32000,'context_bytes'=>600000,
+                    'tool_mode'=>(bool) config('create.tool_mode', false),'unlimited'=>true],
+                    'critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>250,'effort'=>'low','cost_limit_microusd'=>1000000,'max_calls'=>10,'max_output_tokens'=>8192],
+                    'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+            }
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
                 // 16 calls (owner, 2026-10-01): UI-heavy parity builds with visual repairs need 14 to 16;
@@ -54,6 +72,7 @@ class PilotPolicy
     public static function admit(array $policy): void
     {
         abort_unless(self::enabled(),503);
+        if(self::unlimited()) return; // No spend cap while testing; every call is still recorded at its cost.
         if(DB::connection()->getDriverName()==='pgsql') DB::select('select pg_advisory_xact_lock(783430)');
         $used=0;
         foreach(DB::table('composition_runs')->get(['id','input_json','status']) as $run) {

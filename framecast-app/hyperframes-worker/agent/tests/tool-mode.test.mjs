@@ -257,3 +257,14 @@ test('the host final review still runs after the author has reviewed the same re
  assert.equal(critics[0].sheet.image,'data:image/jpeg;base64,YQ==');
  assert.equal(state.status,'preview_ready');assert.match(state.summary,/Critic/);
 });
+test('unlimited limits: more tool calls per turn, larger results and larger source files are honoured',async()=>{
+ const writes=Array.from({length:12},(_,i)=>use('w'+i,'write',{path:'f'+i+'.js',content:'//'+i}));
+ const {state}=await harness([[...writes,use('p','write',{path:'index.html',content:'<html>1</html>'}),use('q','finish',{summary:'x'})]],
+  {requireVisualReview:false,limits:{calls:1,usesPerTurn:20,resultBytes:64000}});
+ assert.equal(state.revision,13,'all thirteen writes in one turn ran');
+ const {mkdtemp}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/ws-');
+ const big='x'.repeat(200_000);
+ await assert.rejects(()=>new Workspace(dir,[]).write('index.html',big),/too large/);
+ await new Workspace(dir,[],null,1_000_000).write('index.html',big);
+});

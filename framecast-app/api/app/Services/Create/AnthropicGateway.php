@@ -15,8 +15,9 @@ class AnthropicGateway
     /** Tool-mode history must be a bounded, well-formed conversation: known roles and block types, few images, modest size. */
     public static function checkToolMessages(mixed $messages, mixed $tools): void
     {
-        abort_unless(is_array($messages) && count($messages) >= 1 && count($messages) <= 120, 422, 'Invalid tool conversation.');
-        abort_unless(is_array($tools) && count($tools) <= 24, 422, 'Invalid tool list.');
+        $unlimited = PilotPolicy::unlimited();
+        abort_unless(is_array($messages) && count($messages) >= 1 && count($messages) <= ($unlimited ? 2000 : 120), 422, 'Invalid tool conversation.');
+        abort_unless(is_array($tools) && count($tools) <= ($unlimited ? 64 : 24), 422, 'Invalid tool list.');
         foreach ($tools as $t) abort_unless(is_array($t) && preg_match('/^[a-z_]{2,40}$/', (string) ($t['name'] ?? '')) && is_array($t['input_schema'] ?? null), 422, 'Invalid tool definition.');
         $images = 0;
         foreach ($messages as $m) {
@@ -28,8 +29,8 @@ class AnthropicGateway
                 foreach ([$b, ...$inner] as $x) {
                     if (($x['type'] ?? '') !== 'image') continue;
                     $src = $x['source'] ?? [];
-                    abort_unless(($src['type'] ?? '') === 'base64' && in_array($src['media_type'] ?? '', ['image/png', 'image/jpeg'], true) && is_string($src['data'] ?? null) && strlen($src['data']) <= 1_400_000, 422, 'Only inline PNG or JPEG images are accepted.');
-                    abort_if(++$images > 4, 422, 'Too many images in one request.');
+                    abort_unless(($src['type'] ?? '') === 'base64' && in_array($src['media_type'] ?? '', ['image/png', 'image/jpeg'], true) && is_string($src['data'] ?? null) && strlen($src['data']) <= ($unlimited ? 6_800_000 : 1_400_000), 422, 'Only inline PNG or JPEG images are accepted.');
+                    abort_if(++$images > ($unlimited ? 20 : 4), 422, 'Too many images in one request.');
                 }
             }
         }
@@ -53,7 +54,7 @@ class AnthropicGateway
 
         $content = [];
         if (! empty($input['image'])) {
-            abort_unless(preg_match('~^data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$~', $input['image'], $m) && strlen($m[2]) <= 1_400_000, 422, 'Only an inline review image is accepted.');
+            abort_unless(preg_match('~^data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$~', $input['image'], $m) && strlen($m[2]) <= (PilotPolicy::unlimited() ? 6_800_000 : 1_400_000), 422, 'Only an inline review image is accepted.');
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $m[1], 'data' => $m[2]]];
         }
         $content[] = ['type' => 'text', 'text' => $input['prompt']];
@@ -69,7 +70,7 @@ class AnthropicGateway
             $tools = json_decode((string) ($input['tools_json'] ?? '[]'), false, 16);
         }
         // Opus can take over two minutes to write a full composition with its thinking.
-        set_time_limit(320);
+        set_time_limit(PilotPolicy::unlimited() ? 960 : 320);
         $attempts = app(AttemptService::class);
         $body = ['model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
             // The effort approved with the run, so a later settings change never alters a build in flight.
@@ -84,7 +85,7 @@ class AnthropicGateway
         for ($try = 1; $try <= 3 && ! $response; $try++) {
             try {
                 $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
-                    ->acceptJson()->connectTimeout(10)->timeout(280)->post('https://api.anthropic.com/v1/messages', $body);
+                    ->acceptJson()->connectTimeout(10)->timeout(PilotPolicy::unlimited() ? 900 : 280)->post('https://api.anthropic.com/v1/messages', $body);
                 // Overloaded or rate-limited: refused and not billed, so a short wait and another try is safe.
                 if (in_array($response->status(), [429, 529], true) && $try < 3) {
                     \Illuminate\Support\Facades\Log::warning('Create gateway call refused, retrying', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'status' => $response->status()]);

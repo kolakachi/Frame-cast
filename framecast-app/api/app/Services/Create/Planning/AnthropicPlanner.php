@@ -47,16 +47,18 @@ class AnthropicPlanner implements Planner
         $messages = [['role' => 'user', 'content' => PlanPrompt::userContent($context)]];
         $inspector = app(PlannerReferenceInspector::class);
         $calls = []; $evidence = []; $inspections = []; $requests = 0; $plan = null;
-        $maxCalls = $eligible ? 3 : 2;
+        $unlimited = \App\Services\Create\PilotPolicy::unlimited();
+        $maxCalls = $unlimited ? ($eligible ? 8 : 3) : ($eligible ? 3 : 2);
         // Ceiling is shared across all responses, including malformed-plan recovery.
-        $remainingOutput = 20000;
+        $remainingOutput = $unlimited ? 120000 : 20000;
+        $maxInspections = $unlimited ? 16 : 4; $inspectionTurns = $unlimited ? 6 : 2;
         $deadline = $context['_planner_deadline'] ?? microtime(true) + 100;
         $unreceipted = false;
         try {
             for ($turn = 0; $turn < $maxCalls; $turn++) {
                 $remainingSeconds = (int) floor($deadline - microtime(true));
                 if ($remainingSeconds < 1) throw new RuntimeException('Planner time budget exhausted.');
-                $tools = $eligible && $turn < 2 && $requests < 4;
+                $tools = $eligible && $turn < $inspectionTurns && $requests < $maxInspections;
                 $unreceipted = true;
                 $response = $this->request($messages, $effort, min($turn === 0 ? 12000 : 8000, $remainingOutput), $tools ? ($turn === 0 ? 'any' : 'auto') : ($eligible ? 'none' : null), $remainingSeconds);
                 $u = $response->json('usage', []);
@@ -75,7 +77,7 @@ class AnthropicPlanner implements Planner
                     foreach ($toolUses as $tool) {
                         $requests++;
                         try {
-                            if ($requests > 4 || ($tool['name'] ?? '') !== 'inspect_reference') throw new RuntimeException('Inspection unavailable.');
+                            if ($requests > $maxInspections || ($tool['name'] ?? '') !== 'inspect_reference') throw new RuntimeException('Inspection unavailable.');
                             $inspectionContext = $context + ['_planner_deadline' => $deadline];
                             $result = $inspector->inspect($inspectionContext, is_array($tool['input'] ?? null) ? $tool['input'] : []);
                             $evidence[] = $result['evidence'];
@@ -83,13 +85,13 @@ class AnthropicPlanner implements Planner
                             $blocks = [['type' => 'text', 'text' => json_encode($result['evidence'], JSON_THROW_ON_ERROR)], $result['image']];
                             $results[] = ['type' => 'tool_result', 'tool_use_id' => $tool['id'], 'content' => $blocks];
                         } catch (\Throwable $e) {
-                            $inspections[] = ['status' => 'unavailable', 'reason' => $requests > 4 ? 'inspection_limit' : 'invalid_or_unavailable_reference'];
+                            $inspections[] = ['status' => 'unavailable', 'reason' => $requests > $maxInspections ? 'inspection_limit' : 'invalid_or_unavailable_reference'];
                             $results[] = ['type' => 'tool_result', 'tool_use_id' => $tool['id'], 'is_error' => true,
                                 'content' => 'Inspection unavailable or outside limits. Use valid attached reference IDs and bounded params; state missing evidence in uncertain. Do not invent observations.'];
                         }
                     }
                     $messages[] = ['role' => 'user', 'content' => $results];
-                    if ($turn === 1 || $requests >= 4) $messages[] = ['role' => 'user', 'content' => 'Inspection budget reached. Return the final plan now using available evidence and explicit uncertainties.'];
+                    if ($turn === $inspectionTurns - 1 || $requests >= $maxInspections) $messages[] = ['role' => 'user', 'content' => 'Inspection budget reached. Return the final plan now using available evidence and explicit uncertainties.'];
                 } else {
                     $plan = PlanPrompt::extract(collect($content)->where('type', 'text')->pluck('text')->implode(''));
                     if ($plan) break;

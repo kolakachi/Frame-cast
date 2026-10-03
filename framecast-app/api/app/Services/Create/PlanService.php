@@ -42,9 +42,11 @@ class PlanService
         abort_if($briefs->isEmpty(), 422, 'Add a brief first.');
         $today = DB::table('create_plans')->join('create_conversations', 'create_conversations.id', '=', 'create_plans.conversation_id')
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
-        abort_if($today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
+        abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
 
-        $deadline = microtime(true) + 100;
+        // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
+        $deadline = microtime(true) + (PilotPolicy::unlimited() ? 280 : 100);
+        if (PilotPolicy::unlimited()) set_time_limit(320);
         $context = $this->context($user, $c);
         $context['_planner_deadline'] = $deadline;
         try {

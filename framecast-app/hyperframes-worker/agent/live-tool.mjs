@@ -20,7 +20,7 @@ if(operation==='run'){
  const dir='/output/live/'+id;
  await mkdir(dir+'/run',{recursive:true});
  let result;
- try{result=await runOp({runDir:dir,request:JSON.parse(await readFile(dir+'/run-request.json','utf8'))});}
+ try{const req=JSON.parse(await readFile(dir+'/run-request.json','utf8'));const timeoutMs=Number.isFinite(req.timeout_ms)?Math.min(900000,Math.max(10000,req.timeout_ms)):90000;delete req.timeout_ms;result=await runOp({runDir:dir,request:req,timeoutMs});}
  catch(e){result={ok:false,error:String(e.message).slice(0,600)};}
  await writeFile(dir+'/run/result.json',JSON.stringify(result,null,2));
  process.exit(0);

@@ -14,7 +14,7 @@ import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
-  const cap={calls:12,repairs:2,runs:24,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
+  const cap={calls:12,repairs:2,runs:24,inspections:8,resultBytes:16000,usesPerTurn:8,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
   let state;
@@ -132,7 +132,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     else if(action.type==='inspect_reference') {
       if(!tools.inspect_reference)result={error:'Reference inspection is not installed'};
       else if(!(context.assets??[]).some(f=>f.name===action.input&&f.purpose==='reference'&&['video','image'].includes(f.asset_type)))result={error:'Inspection requires a reference image or video from context.assets'};
-      else if((state.referenceInspections??0)>=8)result={error:'Reference inspection limit reached (8 per run); use the evidence already collected'};
+      else if((state.referenceInspections??0)>=cap.inspections)result={error:'Reference inspection limit reached ('+cap.inspections+' per run); use the evidence already collected'};
       else {
         state.referenceInspections=(state.referenceInspections??0)+1;
         result=await bounded(()=>tools.inspect_reference({input:action.input,params:action.params,signal:boundedSignal}));
@@ -293,7 +293,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     recordCapability(state,action,result);
     if(action.type!=='report_limitation')observeToolResult(state,action,result);
     await workspace.verifyAssets();boundedSignal.throwIfAborted();
-    if(result && action.type!=='read' && Buffer.byteLength(JSON.stringify(result))>16000)result={truncated:true,summary:JSON.stringify(result).slice(0,12000)};
+    if(result && action.type!=='read' && Buffer.byteLength(JSON.stringify(result))>cap.resultBytes)result={truncated:true,summary:JSON.stringify(result).slice(0,Math.floor(cap.resultBytes*0.75))};
     return result??{status:state.status};
   };
   // Trace records describe observable actions; reporting cannot authorize or stop generation.
@@ -374,7 +374,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
         const content=(Array.isArray(response.content)&&response.content.length?response.content:[{type:'text',text:response.text||''}]).map(b=>b.type==='tool_use'&&(!b.input||typeof b.input!=='object'||Array.isArray(b.input))?{...b,input:{}}:b);
         state.pending=null;history.push({role:'assistant',content});state.messages.push({role:'assistant',content:JSON.stringify(content.map(b=>b.type==='tool_use'?{tool:b.name,input:b.input}:{text:(b.text||'').slice(0,400)}))});await save();
-        const uses=content.filter(b=>b.type==='tool_use').slice(0,8);
+        const uses=content.filter(b=>b.type==='tool_use').slice(0,cap.usesPerTurn);
         if(!uses.length){
           if(++state.repairs>cap.repairs)throw Error('Action repair limit reached');
           const cut=response.stopReason==='max_tokens';

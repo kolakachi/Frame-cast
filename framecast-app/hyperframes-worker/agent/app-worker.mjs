@@ -113,9 +113,10 @@ async function execute(run){
   }
   const agentModel=run.input.execution_policy?.agent?.model;
   // The per-call cap approved with the run (deeper effort gets a higher one).
+  const unlimited=run.input.execution_policy?.agent?.unlimited===true;
   const callCapUsd=(run.input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6;
   const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:callCapUsd,
-    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,300000)})
+    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,unlimited?960000:300000)})
    :paid?new ReplicateGatewayProvider({maxCallUsd:callCapUsd,upload:image=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token,image},false,120000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)}):offlineContractProvider(run.input.base_bundle,manifest);
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
   if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd);};
@@ -156,8 +157,8 @@ async function execute(run){
      const payload=operation==='media'?{op,input,params:params??{}}:
       operation==='run'?{cmd,args}:operation==='inspect_reference'?{input,params}:null;
      const requestFile=dir+'/'+operation+'-request.json';
-     if(payload)await writeFile(requestFile,JSON.stringify(payload),{mode:0o600});
-     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:180000,maxBuffer:2000000});
+     if(payload)await writeFile(requestFile,JSON.stringify(operation==='run'&&unlimited?{...payload,timeout_ms:600000}:payload),{mode:0o600});
+     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:unlimited?900000:180000,maxBuffer:8000000});
      const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));
      if(payload)await unlink(requestFile).catch(()=>{});
      const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg'})[operation];
@@ -195,7 +196,7 @@ async function execute(run){
   await accountedCall({key:'render-1',kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
-   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
+   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
@@ -203,7 +204,7 @@ async function execute(run){
   if(!(cancelled||stopping||lost)){
    stage='Checking the final video';
    try{
-    await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:200000,maxBuffer:2000000});
+    await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:unlimited?900000:200000,maxBuffer:2000000});
     const sandbox=JSON.parse(await readFile(dir+'/delivery/result.json','utf8'));
     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
     const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});

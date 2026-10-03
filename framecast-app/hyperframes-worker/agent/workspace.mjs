@@ -3,7 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 export const digest = value => createHash('sha256').update(value).digest('hex');
 export class Workspace {
-  constructor(root, assets = [], scratch = null) { this.root = root; this.assets = assets; this.scratch = scratch; }
+  constructor(root, assets = [], scratch = null, maxBytes = 128_000) { this.root = root; this.assets = assets; this.scratch = scratch; this.maxBytes = maxBytes; }
   async resolve(relative, write = false) {
     // Deliberately flat pilot source bundle. No directories, assets or runtime edits.
     // work/<name> is the run's scratch folder: scripts and data for the run action, never part of the bundle.
@@ -15,9 +15,9 @@ export class Workspace {
     catch (e) { if (!(write && e.code === 'ENOENT')) throw e; }
     return file;
   }
-  async read(relative) { const text = await readFile(await this.resolve(relative), 'utf8'); if(Buffer.byteLength(text)>128_000)throw Error('Source too large'); return text; }
+  async read(relative) { const text = await readFile(await this.resolve(relative), 'utf8'); if(Buffer.byteLength(text)>this.maxBytes)throw Error('Source too large'); return text; }
   async write(relative, text) {
-    if (Buffer.byteLength(text) > 128_000) throw Error('Source too large');
+    if (Buffer.byteLength(text) > this.maxBytes) throw Error('Source too large');
     const file = await this.resolve(relative, true);
     const temp = `${file}.tmp`;
     // Exclusive temp creation avoids following a pre-existing temp symlink.
