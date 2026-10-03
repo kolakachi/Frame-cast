@@ -145,7 +145,7 @@ class PlannerReferenceInspectionTest extends TestCase
         $inspector->shouldReceive('inspect')->once()->andReturn(['evidence' => $this->evidence(), 'image' => ['type' => 'image']]);
         $inspector->shouldReceive('close')->once(); $this->app->instance(PlannerReferenceInspector::class, $inspector);
         $unknown = $this->reply([['type' => 'text', 'text' => 'truncated']], 'msg2');
-        $unknown['usage'] = [];
+        $unknown['usage'] = []; $unknown['stop_reason'] = 'max_tokens';
         Http::fake(['api.anthropic.com/*' => Http::sequence()->push($this->reply([$this->tool()], 'msg1'))->push($unknown)
             ->push($this->reply([['type' => 'text', 'text' => '{"summary":"Recovered plan"}']], 'msg3'))]);
         $result = (new AnthropicPlanner('test', 'fake'))->plan($this->context());
@@ -155,6 +155,45 @@ class PlannerReferenceInspectionTest extends TestCase
         $this->assertSame('medium', $last['output_config']['effort']);
         $this->assertSame('none', $last['tool_choice']['type']);
         $this->assertStringContainsString('ref-proof', json_encode($last['messages']));
+    }
+    public function test_a_reply_without_the_plan_is_asked_for_it_once_and_a_draft_written_beside_an_inspection_is_the_fallback(): void
+    {
+        $inspector = \Mockery::mock(PlannerReferenceInspector::class);
+        $inspector->shouldReceive('inspect')->twice()->andReturn(['evidence' => $this->evidence(), 'image' => ['type' => 'image']]);
+        $inspector->shouldReceive('close')->twice(); $this->app->instance(PlannerReferenceInspector::class, $inspector);
+        $draft = [['type' => 'text', 'text' => '{"summary":"Draft plan","scenes":[]}'], $this->tool()];
+        $short = [['type' => 'text', 'text' => 'The plan above is final.']];
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push($this->reply($draft, 'a1'))->push($this->reply($short, 'a2'))->push($this->reply([['type' => 'text', 'text' => '{"summary":"Final plan","scenes":[]}']], 'a3'))
+            ->push($this->reply($draft, 'b1'))->push($this->reply($short, 'b2'))->push($this->reply($short, 'b3'))->push($this->reply($short, 'b4'))]);
+        $this->assertSame('Final plan', (new AnthropicPlanner('test', 'fake'))->plan($this->context())['plan']['summary']);
+        $ask = Http::recorded()[2][0]['messages'];
+        $this->assertSame('assistant', $ask[count($ask) - 2]['role'], 'the short reply stays in the conversation');
+        $this->assertStringContainsString('did not contain the plan', json_encode(end($ask)));
+        $this->assertStringContainsString('ref-proof', json_encode($ask), 'inspections are kept');
+        $this->assertSame('Draft plan', (new AnthropicPlanner('test', 'fake'))->plan($this->context())['plan']['summary'], 'a full plan written next to an inspection request is not thrown away');
+    }
+    public function test_a_plan_that_stops_short_or_points_at_missing_beats_goes_back_once_for_repair(): void
+    {
+        $inspector = \Mockery::mock(PlannerReferenceInspector::class);
+        $inspector->shouldReceive('close'); $this->app->instance(PlannerReferenceInspector::class, $inspector);
+        $short = ['summary' => 'Short', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4], ['label' => 'Step 1', 'start' => 5, 'end' => 9]],
+            'reference_decisions' => [['moment' => '21:m1', 'decision' => 'keep', 'beat' => 'Hook'], ['moment' => '21:m2', 'decision' => 'replace', 'beat' => 'CTA statement'], ['moment' => '21:m3', 'decision' => 'drop', 'beat' => '']]];
+        $problems = \App\Services\Create\Planning\PlanPrompt::problems($short, $this->context());
+        $this->assertCount(3, $problems, json_encode($problems));
+        $studied = ['settings' => ['duration_seconds' => 15], 'files' => [['reference' => ['study' => ['moments' => [['id' => '21:m1'], ['id' => '21:m2'], ['id' => '21:m3'], ['id' => '21:m4']]]]]]];
+        $this->assertStringContainsString('no keep, replace or drop decision: 21:m4.', implode(' ', \App\Services\Create\Planning\PlanPrompt::problems($short, $studied)));
+        $this->assertStringContainsString('end at 9', $problems[0]);
+        $this->assertStringContainsString('between 4 s and 5 s', $problems[1]);
+        $this->assertStringContainsString('21:m2', $problems[2]);
+        $fixed = ['summary' => 'Fixed', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 9], ['label' => 'CTA statement', 'start' => 9, 'end' => 15]]];
+        $this->assertSame([], \App\Services\Create\Planning\PlanPrompt::problems($fixed, $this->context()));
+        $text = fn ($p) => [['type' => 'text', 'text' => json_encode($p)]];
+        Http::fake(['api.anthropic.com/*' => Http::sequence()->push($this->reply($text($short), 'r1'))->push($this->reply($text($fixed), 'r2'))]);
+        $context = ['settings' => ['duration_seconds' => 15], 'files' => [], 'messages' => [['role' => 'user', 'content' => 'x']]];
+        $this->assertSame('Fixed', (new AnthropicPlanner('test', 'fake'))->plan($context + ['_planner_deadline' => microtime(true) + 300])['plan']['summary']);
+        $sent = Http::recorded()[1][0]['messages'];
+        $this->assertStringContainsString('21:m2', json_encode(end($sent)));
     }
     public function test_expired_planning_deadline_does_not_start_a_provider_call(): void
     {

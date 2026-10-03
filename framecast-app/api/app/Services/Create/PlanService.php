@@ -47,8 +47,8 @@ class PlanService
         // Every attached reference video is studied before planning (normally already done in the background at attach time).
         $this->studyReferences($user, $c);
         // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
-        $deadline = microtime(true) + (PilotPolicy::unlimited() ? 280 : 100);
-        if (PilotPolicy::unlimited()) set_time_limit(320);
+        $deadline = microtime(true) + (PilotPolicy::unlimited() ? 480 : 100);
+        if (PilotPolicy::unlimited()) set_time_limit(520);
         $context = $this->context($user, $c);
         $context['_planner_deadline'] = $deadline;
         try {
@@ -344,7 +344,8 @@ class PlanService
             'layout' => $str($s['layout'] ?? '', 140), 'field' => $str($s['field'] ?? '', 40),
             // Registry items this beat mounts; only names the sandbox ships.
             'uses' => collect((array) ($s['uses'] ?? []))->filter(fn ($n) => RegistryCatalogue::has(is_string($n) ? $n : null))->unique()->take(2)->values()->all(),
-        ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(8)->values()->all();
+        // A step-by-step reference easily needs a title card and a screen per step plus a hook and a close; cutting at 8 silently lost the ending.
+        ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(16)->values()->all();
         $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
         $known = collect(CapabilityCatalogue::forWorkspace($workspaceId))->keyBy('kind');
         $decisions = collect((array) ($raw['decisions'] ?? []))->filter(fn ($d) => is_array($d))->map(function ($d) use ($str, $slug, $known) {

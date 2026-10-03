@@ -100,6 +100,31 @@ TXT;
     }
 
     /** First JSON object in a model reply, or null. */
+    /** What makes a returned plan unusable as a whole: beats that stop short or leave holes, decisions pointing at beats that do not exist. */
+    public static function problems(array $plan, array $context): array
+    {
+        if (($context['settings']['output_kind'] ?? 'video') === 'image') return [];
+        $duration = (float) ($context['settings']['duration_seconds'] ?? 0);
+        $scenes = array_values(array_filter((array) ($plan['scenes'] ?? []), 'is_array'));
+        if (! $scenes) return [];
+        usort($scenes, fn ($a, $b) => (float) ($a['start'] ?? 0) <=> (float) ($b['start'] ?? 0));
+        $problems = [];
+        $last = max(array_map(fn ($s) => (float) ($s['end'] ?? 0), $scenes));
+        if ($duration > 0 && $last < $duration - 1) $problems[] = "The beats end at {$last} s but the video is {$duration} s long; plan what happens until the end.";
+        for ($i = 1; $i < count($scenes); $i++) {
+            $gapStart = (float) ($scenes[$i - 1]['end'] ?? 0); $gapEnd = (float) ($scenes[$i]['start'] ?? 0);
+            if ($gapEnd - $gapStart > 0.5) $problems[] = "Nothing is planned between {$gapStart} s and {$gapEnd} s.";
+        }
+        $labels = array_map(fn ($s) => mb_strtolower(trim((string) ($s['label'] ?? ''))), $scenes);
+        $missing = collect((array) ($plan['reference_decisions'] ?? []))->filter(fn ($d) => is_array($d) && in_array($d['decision'] ?? '', ['keep', 'replace'], true)
+            && ! in_array(mb_strtolower(trim((string) ($d['beat'] ?? ''))), $labels, true))->groupBy(fn ($d) => (string) ($d['beat'] ?? ''));
+        foreach ($missing as $beat => $ds) $problems[] = 'Reference moments '.implode(', ', $ds->pluck('moment')->all())." are placed in a beat called \"{$beat}\", which is not one of the beats.";
+        $known = collect($context['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
+        $undecided = array_values(array_diff($known, array_column(array_filter((array) ($plan['reference_decisions'] ?? []), 'is_array'), 'moment')));
+        if ($undecided) $problems[] = 'These reference moments have no keep, replace or drop decision: '.implode(', ', $undecided).'.';
+        return $problems;
+    }
+
     public static function extract(string $text): ?array
     {
         $start = strpos($text, '{'); $end = strrpos($text, '}');

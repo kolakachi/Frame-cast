@@ -46,11 +46,13 @@ class AnthropicPlanner implements Planner
         $eligible = ! empty($context['_workspace_id']) && collect($context['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'reference' && in_array($f['asset_type'] ?? '', ['image', 'video'], true));
         $messages = [['role' => 'user', 'content' => PlanPrompt::userContent($context)]];
         $inspector = app(PlannerReferenceInspector::class);
-        $calls = []; $evidence = []; $inspections = []; $requests = 0; $plan = null;
+        $calls = []; $evidence = []; $inspections = []; $requests = 0; $plan = null; $draft = null; $asked = false; $repairable = null;
         $unlimited = \App\Services\Create\PilotPolicy::unlimited();
-        $maxCalls = $unlimited ? ($eligible ? 8 : 3) : ($eligible ? 3 : 2);
+        $maxCalls = $unlimited ? ($eligible ? 10 : 4) : ($eligible ? 4 : 3);
         // Ceiling is shared across all responses, including malformed-plan recovery.
-        $remainingOutput = $unlimited ? 120000 : 20000;
+        $remainingOutput = $unlimited ? 120000 : 40000;
+        // A plan that accounts for every studied reference moment is long; one reply must have room for all of it.
+        $perCall = $unlimited ? 32000 : 24000;
         $maxInspections = $unlimited ? 16 : 4; $inspectionTurns = $unlimited ? 6 : 2;
         $deadline = $context['_planner_deadline'] ?? microtime(true) + 100;
         $unreceipted = false;
@@ -60,16 +62,19 @@ class AnthropicPlanner implements Planner
                 if ($remainingSeconds < 1) throw new RuntimeException('Planner time budget exhausted.');
                 $tools = $eligible && $turn < $inspectionTurns && $requests < $maxInspections;
                 $unreceipted = true;
-                $response = $this->request($messages, $effort, min($turn === 0 ? 12000 : 8000, $remainingOutput), $tools ? ($turn === 0 ? 'any' : 'auto') : ($eligible ? 'none' : null), $remainingSeconds);
+                $response = $this->request($messages, $effort, min($perCall, $remainingOutput), $tools ? ($turn === 0 ? 'any' : 'auto') : ($eligible ? 'none' : null), $remainingSeconds);
                 $u = $response->json('usage', []);
                 $calls[] = ['message_id' => $response->json('id'), 'input_tokens' => $u['input_tokens'] ?? null,
                     'output_tokens' => $u['output_tokens'] ?? null, 'cache_read_tokens' => $u['cache_read_input_tokens'] ?? null,
                     'cache_write_tokens' => $u['cache_creation_input_tokens'] ?? null, 'stop_reason' => $response->json('stop_reason')];
                 $unreceipted = false;
                 // Missing usage cannot grant more output budget.
-                $remainingOutput -= (int) ($u['output_tokens'] ?? ($turn === 0 ? 12000 : 8000));
+                $remainingOutput -= (int) ($u['output_tokens'] ?? $perCall);
                 $content = $response->json('content', []);
                 $toolUses = array_values(array_filter($content, fn ($b) => ($b['type'] ?? '') === 'tool_use'));
+                $text = collect($content)->where('type', 'text')->pluck('text')->implode('');
+                // A complete plan written next to a further inspection request is kept as a draft, not thrown away.
+                if ($toolUses && trim($text) !== '') $draft = PlanPrompt::extract($text) ?? $draft;
                 if ($toolUses) {
                     if (! $tools || count($toolUses) > 8) throw new RuntimeException('Planner exceeded the reference inspection protocol.');
                     $messages[] = ['role' => 'assistant', 'content' => $content];
@@ -93,14 +98,29 @@ class AnthropicPlanner implements Planner
                     $messages[] = ['role' => 'user', 'content' => $results];
                     if ($turn === $inspectionTurns - 1 || $requests >= $maxInspections) $messages[] = ['role' => 'user', 'content' => 'Inspection budget reached. Return the final plan now using available evidence and explicit uncertainties.'];
                 } else {
-                    $plan = PlanPrompt::extract(collect($content)->where('type', 'text')->pluck('text')->implode(''));
+                    $plan = PlanPrompt::extract($text);
+                    if ($plan && ! $repairable && ($problems = PlanPrompt::problems($plan, $context)) && $remainingOutput >= 4000 && $deadline - microtime(true) > 90 && $turn < $maxCalls - 1) {
+                        // A plan that stops short or points at beats it never made goes back once with what is wrong; the original stays the fallback.
+                        $repairable = $plan; $plan = null;
+                        $messages[] = ['role' => 'assistant', 'content' => $content];
+                        $messages[] = ['role' => 'user', 'content' => "The plan has these problems:\n- ".implode("\n- ", $problems)."\nReply with the complete corrected plan as one JSON object."];
+                        continue;
+                    }
                     if ($plan) break;
+                    if (! $asked && $response->json('stop_reason') !== 'max_tokens' && ($content || $draft)) {
+                        // The reply ended without the plan (often "the plan above is final"): ask for it once, keeping every inspection.
+                        $asked = true;
+                        if ($content) $messages[] = ['role' => 'assistant', 'content' => $content];
+                        $messages[] = ['role' => 'user', 'content' => 'That reply did not contain the plan. Reply now with the complete final plan as one JSON object, updated with everything the inspections showed.'];
+                        continue;
+                    }
                     if ($effort === 'medium') break;
                     // Retry the same evidence, not a fresh context that discards inspected details.
                     $effort = 'medium';
                 }
                 if ($remainingOutput < 1000) break;
             }
+            $plan ??= $repairable ?? $draft;
             if (! $plan) throw new RuntimeException('Planner returned no complete plan within its call budget.');
             $usage = ['message_id' => end($calls)['message_id'], 'calls' => $calls, 'call_count' => count($calls), 'inspection_attempts' => $inspections];
             foreach (['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'] as $field) {

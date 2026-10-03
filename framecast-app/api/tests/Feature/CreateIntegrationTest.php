@@ -167,7 +167,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(\App\Services\CreditService::animationCost('quick', '480p', 5), $gen['credits'], 'price comes from the catalogue, not the model');
         $this->assertSame(['ai_image'], array_column($plan['media'], 'kind'), 'unknown tools are dropped');
         $this->assertSame(app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null), $plan['media'][0]['credits']);
-        $this->assertSame(900, json_decode(DB::table('create_plans')->where('id', $p['id'])->value('usage_json'), true)['cache_read_tokens']);
+        // The hole between 4 s and 10 s sends the plan back once for repair, so two calls are recorded.
+        $this->assertSame(1800, json_decode(DB::table('create_plans')->where('id', $p['id'])->value('usage_json'), true)['cache_read_tokens']);
         Http::assertSent(fn ($r) => $r->url() === 'https://api.anthropic.com/v1/messages' && $r['model'] === 'claude-opus-5-5'
             && $r['system'][0]['cache_control']['type'] === 'ephemeral' && $r->hasHeader('x-api-key', 'test-key'));
     }
@@ -922,9 +923,9 @@ class CreateIntegrationTest extends TestCase
             ->push(['id' => 'msg_b', 'content' => [['type' => 'text', 'text' => '{"summary":"Second try.","scenes":[]}']], 'usage' => []])]);
         $planner = new \App\Services\Create\Planning\AnthropicPlanner('claude-opus-5-5', 'k');
         $this->assertSame('A plan.', $planner->plan(['files' => []])['plan']['summary']);
-        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'high' && $r['max_tokens'] === 12000);
+        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'high' && $r['max_tokens'] === 24000);
         $this->assertSame('Second try.', $planner->plan(['files' => []])['plan']['summary']);
-        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'medium' && $r['max_tokens'] === 8000);
+        Http::assertSent(fn ($r) => $r['output_config']['effort'] === 'medium' && $r['max_tokens'] === 16000);
         $this->assertSame(3, count(Http::recorded()));
     }
 
