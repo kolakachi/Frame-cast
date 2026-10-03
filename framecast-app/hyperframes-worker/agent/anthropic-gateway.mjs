@@ -10,7 +10,8 @@ export class AnthropicGatewayProvider {
   }
   async complete({prompt,system,maxTokens,image,messages,tools,attemptId,recordPrediction=async()=>{},signal}) {
     if(!attemptId)throw Error('Gateway calls need a recorded attempt');
-    if(!Number.isInteger(maxTokens)||maxTokens<256||maxTokens>16384)throw Error('Output token limit outside the gateway bounds');
+    // The app checks each call against its run's approved limit; this is only an outer bound (64k for unlimited local testing).
+    if(!Number.isInteger(maxTokens)||maxTokens<256||maxTokens>64000)throw Error('Output token limit outside the gateway bounds');
     if(image&&(!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>1400000))throw Error('Only inline PNG or JPEG review images are sent');
     signal?.throwIfAborted();
     let out;

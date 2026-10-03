@@ -119,7 +119,7 @@ async function execute(run){
     call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,unlimited?960000:300000)})
    :paid?new ReplicateGatewayProvider({maxCallUsd:callCapUsd,upload:image=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token,image},false,120000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)}):offlineContractProvider(run.input.base_bundle,manifest);
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
-  if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd);};
+  if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd,{unlimited});};
   let agentResult;
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.

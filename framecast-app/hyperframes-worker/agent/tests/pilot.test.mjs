@@ -22,3 +22,14 @@ test('pilot budget is durable, bounded and never releases an unknown reservation
  const l=JSON.parse(await readFile(file));assert.ok(l.calls.reduce((s,c)=>s+c.reservedUsd,0)<=5);assert.equal(l.calls[1].reservedUsd,.3);
  }finally{await rm(dir,{recursive:true,force:true})}
 });
+
+test('an unlimited run reserves its raised per-call ceiling; a normal run still accepts only the priced ones',async()=>{
+ const {PilotBudget}=await import('../pilot-budget.mjs');
+ const {mkdtemp}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const b=new PilotBudget((await mkdtemp(tmpdir()+'/pb-'))+'/ledger.json',null);
+ await assert.rejects(()=>b.reserve('claude-opus-5-5',5),/Unpriced/);
+ assert.ok(await b.reserve('claude-opus-5-5',5,{unlimited:true}));
+ await assert.rejects(()=>b.reserve('claude-opus-5-5',6,{unlimited:true}),/Unpriced/);
+ await assert.rejects(()=>b.reserve('some/other-model',1,{unlimited:true}),/Unpriced/);
+ assert.ok(await b.reserve('claude-opus-5-5',.45));
+});

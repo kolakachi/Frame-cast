@@ -18,8 +18,11 @@ export class PilotBudget {
    row.upperBoundUsd=row.reservedUsd;row.predictionId=prediction_id;row.costMicrousd=cost_microusd;row.status='metered';row.reservedUsd=Math.min(row.upperBoundUsd,cost_microusd/1e6*1.2+.005);
   });
  }
- async reserve(model,usd){
-  if(!((model==='anthropic/claude-4.5-sonnet'&&usd===.3)||(model==='claude-opus-5-5'&&(usd===.3||usd===.45))||(model==='google/nano-banana'&&usd===.1)||(model==='wan-video/wan-2.5-i2v'&&usd===.6)))throw Error('Unpriced pilot call');
+ // unlimited: the run's approved policy lifted its limits (CREATE_UNLIMITED, local only); any ceiling up to $5 is accepted
+ // for a known model, and the app gateway still meters and charges every call at its real cost.
+ async reserve(model,usd,{unlimited=false}={}){
+  const known=['anthropic/claude-4.5-sonnet','claude-opus-5-5','google/nano-banana','wan-video/wan-2.5-i2v'].includes(model);
+  if(unlimited?!(known&&Number.isFinite(usd)&&usd>0&&usd<=5):!((model==='anthropic/claude-4.5-sonnet'&&usd===.3)||(model==='claude-opus-5-5'&&(usd===.3||usd===.45))||(model==='google/nano-banana'&&usd===.1)||(model==='wan-video/wan-2.5-i2v'&&usd===.6)))throw Error('Unpriced pilot call');
   return this.ledger.update(ledger=>{
    const sum=ledger.calls.reduce((total,c)=>total+c.reservedUsd,0);
    if(this.cap!==null&&sum+usd>this.cap+1e-9)throw Object.assign(Error('Additional $'+this.cap+' pilot allowance exhausted'),{code:'BUDGET_EXHAUSTED'});
