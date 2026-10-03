@@ -38,20 +38,20 @@ V2 remains unchecked at the acceptance level until these last checks pass. **Nex
 Evidence: conversation `dd410f7a`, full build `7e766c06` ($6.99, 49 calls). The planner chose from 16 single frames of a 26 s / 790-frame reference, so moments under a second were never seen (the cat sticker at 2.8–3.5 s, the 0→10k counter, text typing on, the blurred push into the profile). The uploaded reference's audio was never studied. Result: a plan of generic step cards, placeholder UI, 85% static frames, ~9 s without voice, and narration chopped mid-word.
 
 1. **Reference study at attach time** (V1). Study each video reference once, in the background, when it is attached (uploads and links), cached by source hash:
-   - [ ] every shot: cut detection, frames inside every shot, denser where shots are short;
-   - [ ] short moments: every frame of a second where the picture changes inside a shot (stickers, counters, typing);
-   - [ ] a per-shot list of what is on screen (text, stickers/memes, UI, camera move, transition), with times;
-   - [ ] sound: word-timed transcript, speech/music/silence map, and derived pacing (words per second, pauses before reveals, text-to-speech delay, cut rate);
-   - [ ] planning reads the finished study instead of sampling inside the planning request.
+   - [x] every shot: cut detection, frames inside every shot, denser where shots are short;
+   - [x] short moments: five frames across each moment where the picture changes inside a shot (stickers, counters, typing);
+   - [x] a per-shot list of what is on screen (text, stickers/memes, UI, camera move, transition), with times (one model call; retried if it fails);
+   - [x] sound: word-timed transcript, pauses, words per second, speech share, cut rate, text-to-speech delay (music and beat map still to add);
+   - [x] planning reads the finished study and its sheets (studied in the background at attach, or before planning if not yet done).
 2. **Plans that use the study** (V2):
-   - [ ] every reference moment gets an explicit keep / replace / drop with the beat that carries it; nothing disappears silently;
-   - [ ] real UI: when page captures exist the plan names the screens to rebuild; placeholders only when nothing real exists;
-   - [ ] length from narration: speech that fills less of the video than the brief needs leads to an explicit choice (slower voice, shorter video, more script).
+   - [x] every reference moment gets an explicit keep / replace / drop with the beat that carries it; undecided moments are listed on the plan card;
+   - [x] real UI: when page captures exist the plan names the screens to rebuild; placeholders only when nothing real exists (instruction; no check yet);
+   - [x] length from narration: a script much shorter than the video leads to a stated choice, shown on the plan card.
 3. **Build checks** (V5): still stretches over ~1.5 s, text too small or frames mostly empty, audio cut only between words, fades on every audio edge, music under the voice and faded at the end, continuous narration preferred, brand pronunciation (WyvStudio, not "Weave Studio").
 4. **Review that hears and keeps time** (V6): the export's audio against the script (complete, in sync, voice clear over music) fills the sound requirements; timing compared with the reference (cut rate, pace, text-to-speech delay).
 5. **Reliability** (V7): Stop keeps the last draft that passed checks; a briefly unavailable model is retried instead of ending the build.
 
-Order: 1 and 2 (started 2026-10-03), then the audio part of 3, then the rest.
+Order: 1 and 2 (built 2026-10-03, commits 2249c9a4, 96e8b9bb; 804 API / 209 worker tests), then the audio part of 3, then the rest. First real study of the Instagram reference (asset 1523): 9 shots, 40 frames, the sticker window at 2.7–3.1 s found, speech 94% of the video at 3.6 words a second; the moment list waits on the Anthropic account's credit. Live acceptance pending.
 
 ### First implementation slice — prepared mascot rig (2026-10-03)
 
