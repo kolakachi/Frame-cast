@@ -53,8 +53,12 @@ const checkIssues = computed(() => {
   if (c.safe_area?.length) out.push(`Some text sits where the app's buttons and captions will cover it${when(c.safe_area)}.`)
   if (c.edges?.length) out.push(`Something runs off the edge of the frame${when(c.edges)}.`)
   if (c.contrast?.length) out.push(`Some text may be hard to read against its background${when(c.contrast)}.`)
-  const blank = (c.pacing || []).filter(f => f.code === 'blank_frames'), fast = (c.pacing || []).filter(f => f.code !== 'blank_frames')
+  const of = code => (c.pacing || []).filter(f => f.code === code)
+  const blank = of('blank_frames'), fast = of('reading_time'), still = of('still_stretch'), small = of('small_text'), sparse = of('mostly_empty')
   if (blank.length) out.push(`The screen is empty for a moment${when(blank)}.`)
+  if (still.length) out.push(`The picture stands still for a while${when(still)}.`)
+  if (small.length) out.push('Some text may be too small to read on a phone.')
+  if (sparse.length) out.push(`The frame looks mostly empty${when(sparse)}.`)
   if (fast.length) { const q = fast.map(quoted).filter(Boolean); out.push(q.length === 1 ? `"${q[0]}" leaves the screen before most people can read it.` : `Some text leaves the screen before most people can read it${when(fast)}.`) }
   if (c.loudness?.status === 'check_failed') out.push('The sound level could not be checked.')
   return out

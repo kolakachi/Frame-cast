@@ -7,12 +7,19 @@
 // - Blank frames: a stretch of at least BLANK seconds with nothing to look at.
 // - Slow drift: an element moving under about 1 px per frame for a second or
 //   more stutters on whole pixels instead of gliding.
+// - Still stretch: nothing on screen moves, fades, scales or changes for STILL
+//   seconds (playing video and canvas count as change). A beat marked data-hold
+//   may hold up to HOLD seconds; a final hold at the very end is allowed too.
+// - Small text: a sentence-sized line smaller than SMALL of the frame's short
+//   side, which a phone cannot read.
+// - Mostly empty: for EMPTY seconds the content covers under SPARSE of the frame
+//   and nothing spans half of it (full-frame backgrounds are not content).
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Short-form reading speed: about 17 characters a second plus a second to find the words.
-export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15};
+export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
 function serve(root,runtime){
@@ -33,11 +40,11 @@ function serve(root,runtime){
 }
 
 // Runs in the page: what is on screen right now.
-function sample(minFont){
+function sample(minFont,smallFont){
  const W=innerWidth,H=innerHeight,ids=window.__rcIds||(window.__rcIds=new WeakMap());let next=window.__rcNext||0;
  const key=el=>{if(!ids.has(el)){ids.set(el,++next);window.__rcNext=next;}return ids.get(el);};
  const shown=el=>{let o=1;for(let e=el;e&&e.nodeType===1;e=e.parentElement){const s=getComputedStyle(e);if(s.display==='none'||s.visibility==='hidden')return 0;o*=parseFloat(s.opacity);}return o;};
- const texts=[],things=[];
+ const texts=[],things=[],small=[];let held=false;
  for(const el of document.body.querySelectorAll('*')){
   if(['SCRIPT','STYLE'].includes(el.tagName))continue;
   const own=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').replace(/\s+/g,' ').trim();
@@ -50,13 +57,19 @@ function sample(minFont){
   const inside=r.left>=-1&&r.top>=-1&&r.right<=W+1&&r.bottom<=H+1;
   if(r.right<0||r.bottom<0||r.left>W||r.top>H)continue;
   const item={id:key(el),x:r.left,y:r.top,el};
-  things.push(item);
+  // What the eye can see change: place, size, visibility and the words themselves; playing pictures always change.
+  const live=['VIDEO','CANVAS'].includes(el.tagName);
+  const bg=!own&&!media&&r.width*r.height>=W*H*0.9;
+  if(el.closest('[data-hold]'))held=true;
+  const scale=el.offsetHeight?r.height/el.offsetHeight:1,size=own?parseFloat(getComputedStyle(el).fontSize)*scale:0;
+  if(own&&inside&&size<smallFont&&(own.split(' ').length>=4||own.length>=20))small.push({id:key(el),text:own.slice(0,60),size:Math.round(size)});
+  things.push({...item,w:r.width,h:r.height,sig:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height),Math.round(o*20),own.slice(0,40)].join(','),live,bg});
   if(own&&inside&&parseFloat(getComputedStyle(el).fontSize)>=minFont)texts.push({...item,text:(el.innerText||own).replace(/\s+/g,' ').trim()});
  }
  // An accent word inside a headline is part of that headline, not a block of its own.
  const top=texts.filter(x=>!texts.some(y=>y!==x&&y.el.contains(x.el)));
  const strip=({el,...x})=>x;
- return {texts:top.map(strip),things:things.map(strip)};
+ return {texts:top.map(strip),things:things.map(strip),small,held,W,H};
 }
 
 export async function readsCheck({root,width,height,duration,browserPath=process.env.HYPERFRAMES_BROWSER_PATH,rules=RULES}){
@@ -70,11 +83,11 @@ export async function readsCheck({root,width,height,duration,browserPath=process
   // The player API seeks the same way the renderer does (render mode: no playback, exact frames).
   await page.waitForFunction(()=>window.__player&&typeof window.__player.renderSeek==='function',{timeout:15000,polling:200});
   await page.evaluate(()=>{window.__player.enableRenderMode?.();return document.fonts?.ready;});
-  const minFont=Math.round(height*0.022),frames=[];
+  const minFont=Math.round(height*0.022),smallFont=Math.round(Math.min(width,height)*rules.small),frames=[];
   for(let t=0;t<=duration+1e-6;t+=rules.step){
    const at=Math.round(t*100)/100;
    await page.evaluate(async s=>{await window.__player.renderSeek(s);if(window.__hfWaitForSeekCompletion)await window.__hfWaitForSeekCompletion();},at);
-   frames.push({t:at,...await page.evaluate(sample,minFont)});
+   frames.push({t:at,...await page.evaluate(sample,minFont,smallFont)});
   }
   return findings(frames,duration,rules);
  }finally{await browser.close();server.close();}
@@ -118,8 +131,53 @@ export function findings(frames,duration,rules=RULES){
    track.set(x.id,s);
   }
  }
+ out.push(...visualFindings(frames,duration,rules));
  // One finding per moment, however many elements drift together.
  const moments=[...new Set(drifts.map(t=>Math.round(t)))].sort((a,b)=>a-b);
  if(moments.length)out.push({code:'slow_drift',severity:'warning',time:moments[0],message:`Elements drift under 1 px a frame around ${moments.map(t=>t+' s').join(', ')}; they will step on whole pixels instead of gliding.`,fixHint:'Move them further or faster, or carry the hold with scale, opacity or a counter.'});
- return out.slice(0,12);
+ return out.slice(0,16);
+}
+
+// Still stretches, small text and mostly empty frames, from the same samples.
+export function visualFindings(frames,duration,rules=RULES){
+ const out=[];
+ // Still: the same visible picture, frame after frame.
+ const sig=f=>f.things.some(x=>x.live)?null:f.things.map(x=>x.id+':'+x.sig).sort().join('|');
+ let from=0;
+ const flushStill=i=>{
+  const a=frames[from],b=frames[i-1];if(!a||!b)return;
+  const len=b.t-a.t+rules.step,heldAll=frames.slice(from,i).every(f=>f.held),toEnd=b.t>=duration-rules.step*1.5;
+  const allowed=toEnd?rules.endHold:heldAll?rules.hold:rules.still;
+  if(sig(a)!==null&&len>=allowed+1e-6)out.push({code:'still_stretch',severity:'error',time:a.t,
+   message:`Nothing on screen moves or changes from ${a.t.toFixed(1)} s to ${(a.t+len).toFixed(1)} s (${len.toFixed(1)} s).`,
+   fixHint:'Give the beat life: build its lines in on the words, push in slowly, pop a highlight, count a number, or cut sooner. If the stillness is the point, mark the beat data-hold (up to '+rules.hold+' s).'});
+ };
+ for(let i=1;i<=frames.length;i++){
+  if(i<frames.length&&sig(frames[i])!==null&&sig(frames[i])===sig(frames[from]))continue;
+  flushStill(i);from=i;
+ }
+ // Small text: one finding listing the lines, with when each first shows.
+ const seen=new Map();
+ for(const f of frames)for(const x of f.small||[])if(!seen.has(x.id))seen.set(x.id,{...x,t:f.t,n:0});
+ for(const f of frames)for(const x of f.small||[])seen.get(x.id).n++;
+ const small=[...seen.values()].filter(x=>x.n*rules.step>=0.5);
+ if(small.length){const min=Math.round(Math.min(frames[0]?.W||1080,frames[0]?.H||1920)*rules.small);
+  out.push({code:'small_text',severity:'error',time:small[0].t,message:`Too small to read on a phone (under ${min} px): ${small.slice(0,4).map(x=>`"${x.text}" ${x.size} px at ${x.t.toFixed(1)} s`).join('; ')}${small.length>4?` and ${small.length-4} more`:''}.`,
+   fixHint:`Set sentence text to at least ${min} px, or cut it to a short label.`});}
+ // Mostly empty: content covers little of the frame and nothing is big.
+ const sparse=f=>{
+  const W=f.W||1080,H=f.H||1920,content=f.things.filter(x=>!x.bg);
+  if(!content.length)return false;
+  if(content.some(x=>x.w>=W*0.5||x.h>=H*0.5))return false;
+  const g=12,cells=new Set();
+  for(const x of content)for(let i=Math.max(0,Math.floor(x.x/W*g));i<=Math.min(g-1,Math.floor((x.x+x.w)/W*g));i++)for(let j=Math.max(0,Math.floor(x.y/H*g));j<=Math.min(g-1,Math.floor((x.y+x.h)/H*g));j++)cells.add(i+','+j);
+  return cells.size/(g*g)<rules.sparse;
+ };
+ let start=null;
+ for(let i=0;i<=frames.length;i++){
+  const f=frames[i],on=f&&sparse(f);
+  if(on&&start===null)start=f.t;
+  if(!on&&start!==null){const len=frames[i-1].t-start+rules.step;if(len>=rules.empty)out.push({code:'mostly_empty',severity:'error',time:start,message:`From ${start.toFixed(1)} s for ${len.toFixed(1)} s the content fills under ${Math.round(rules.sparse*100)}% of the frame and nothing spans half of it.`,fixHint:'Scale the main element up so it fills at least half the width, or bring the next element in sooner.'});start=null;}
+ }
+ return out;
 }

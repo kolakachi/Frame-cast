@@ -242,3 +242,17 @@ test('JSON action mode carries reference evidence once and keeps output review s
  assert.equal(h.seen[2].image,undefined);assert.equal(h.seen[3].image,outputImage);
  assert.deepEqual(h.args.workspace.assets.map(a=>a.path),['product.png']);
 });
+test('finish is refused once while the checked draft has open pacing errors; finishing again with a reason is accepted',async t=>{
+ const still={code:'still_stretch',severity:'error',time:3,message:'Nothing on screen moves or changes from 3.0 s to 6.0 s (3.0 s).',fixHint:'Give the beat life'};
+ const tools={check:async()=>({ok:true,pacing:[still,{code:'slow_drift',severity:'warning',time:1,message:'drift'}]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
+ const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'}),action({type:'finish',summary:'Done. The 3 s hold on the price card is intentional: it is the moment to read the price.'})],{tools});
+ const r=await h.run();
+ assert.equal(r.status,'preview_ready');assert.equal(h.seen.length,4);
+ assert.match(h.seen[3].prompt,/Not finished: this draft still has these findings/);assert.match(h.seen[3].prompt,/still_stretch/);
+ assert.doesNotMatch(h.seen[3].prompt.split('Not finished')[1]??'',/slow_drift/,'warnings do not hold a finish');
+});
+test('a draft with no open pacing errors finishes at once',async t=>{
+ const tools={check:async()=>({ok:true,pacing:[{code:'slow_drift',severity:'warning',time:1,message:'drift'}]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
+ const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'})],{tools});
+ assert.equal((await h.run()).status,'preview_ready');
+});

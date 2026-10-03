@@ -261,14 +261,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
-      if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
+      if(result.ok){state.checkedRevision=state.revision;const pacing=result.pacing;state.pacing={revision:state.revision,findings:pacing||[]};result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     }
     else if(action.type==='check') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
-      if(result.ok)state.checkedRevision=state.revision;
+      if(result.ok){state.checkedRevision=state.revision;state.pacing={revision:state.revision,findings:result.pacing||[]};}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     } else if(action.type==='snapshot') {
       if(state.checkedRevision!==state.revision)throw Error('Check the current draft before snapshots');
@@ -315,7 +315,17 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     } else if(action.type==='finish') {
       if(requireVisualReview && state.reviewedRevision!==state.revision)throw Error('Visual review is required');
       if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');
-      state.status='preview_ready';state.summary=action.summary;
+      // Open pacing errors on this draft (stillness, small text, empty frames, reading time, blank frames) are sent back once:
+      // fix them, or finish again with a summary that says why each one is intentional.
+      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'):[];
+      const key=state.revision+':'+open.map(f=>f.code+'@'+f.time).join(',');
+      if(open.length&&state.pacingNoticed!==key){
+        state.pacingNoticed=key;
+        result={ok:false,error:'Not finished: this draft still has these findings. Fix them and check again, or finish again with a summary that says why each one is intentional.',findings:open.map(f=>({code:f.code,time:f.time,message:f.message,fixHint:f.fixHint}))};
+      } else {
+        if(open.length)state.pacingAccepted=open.map(f=>f.code);
+        state.status='preview_ready';state.summary=action.summary;
+      }
     } else if(action.type==='needs_input') {
       recordLimitation(state,{source:'runtime',category:'input',code:'clarification_requested',tool:'needs_input',summary:'The agent requested clarification',evidence:action.question,impact:'The run needs user input or must disclose unfinished work.',workaround:'Clarify the missing requirement; assess whether an existing asset or reasonable default was overlooked.',requested_change:''});
       // On the last call, a draft that passed every check is delivered with the open issues, not held back.

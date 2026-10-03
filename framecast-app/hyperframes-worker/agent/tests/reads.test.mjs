@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {findings,RULES} from '../reads-check.mjs';
+import {findings,visualFindings,RULES} from '../reads-check.mjs';
 const frames=(n,fn)=>Array.from({length:n},(_,i)=>({t:Math.round(i*RULES.step*100)/100,...fn(i*RULES.step)}));
 test('a headline that leaves before it can be read is flagged; one held long enough is not',()=>{
  const f=frames(151,t=>({texts:[...(t<1?[{id:1,x:0,y:0,text:'No camera or editing experience needed'}]:[]),...(t>=2&&t<6?[{id:2,x:0,y:0,text:'One video, four formats'}]:[])],things:[{id:9,x:0,y:0}]}));
@@ -19,4 +19,29 @@ test('slow drift is one advisory finding listing its moments',()=>{
  const f=frames(151,t=>({texts:[],things:[{id:1,x:t*10,y:0},{id:2,x:t*10,y:50}]}));
  const d=findings(f,15).filter(x=>x.code==='slow_drift');
  assert.equal(d.length,1);assert.equal(d[0].severity,'warning');
+});
+
+// Portrait frame; a thing is {id,x,y,w,h,sig}. sig changes when the element moves, fades or changes words.
+const W=1080,H=1920,box=(id,x,y,w,h,extra={})=>({id,x,y,w,h,sig:[x,y,w,h].map(Math.round).join(','),...extra});
+const bg={id:100,x:0,y:0,w:W,h:H,sig:'bg',bg:true};
+test('a picture that does not change for over 1.5 s is a still stretch; moving beats, playing video, a marked hold and the end card are not',()=>{
+ const f=frames(151,t=>({texts:[],small:[],W,H,held:t>=8&&t<10.5,things:[bg,
+  t<3?box(1,100+t*200,400,900,300):t<6?box(2,90,400,900,300):t<8?box(3,90,400,900,300,{live:true}):t<10.5?box(4,90,400,900,300):t<12.6?box(5,90,400,900,400*(t-10)):box(6,90,400,900,300)]}));
+ const s=visualFindings(f,15).filter(x=>x.code==='still_stretch');
+ assert.deepEqual(s.map(x=>x.time),[3],'only the 3 s held card mid-video: '+JSON.stringify(s.map(x=>x.message)));
+ assert.match(s[0].message,/from 3\.0 s to 6\.0 s \(3\.0 s\)/);
+ const long=frames(151,t=>({texts:[],small:[],W,H,held:true,things:[bg,box(1,90,400,900,t<4?300:301)]}));
+ assert.equal(visualFindings(long.slice(40),15).filter(x=>x.code==='still_stretch').length,1,'a marked hold still may not exceed 3 s');
+});
+test('sentence text too small for a phone is one finding listing the lines; a short label is not',()=>{
+ const f=frames(31,t=>({texts:[],W,H,held:false,things:[bg,box(1,0,0,900,900,{sig:String(t)})],small:t>=1&&t<2?[{id:7,text:'Generate your video then check the result',size:22}]:[]}));
+ const s=visualFindings(f,3).filter(x=>x.code==='small_text');
+ assert.equal(s.length,1);assert.match(s[0].message,/under 32 px\): "Generate your video then check the result" 22 px at 1\.0 s/);
+ const brief=frames(31,t=>({texts:[],W,H,held:false,things:[bg],small:t>=1&&t<1.3?[{id:7,text:'A passing line of small words',size:20}]:[]}));
+ assert.equal(visualFindings(brief,3).filter(x=>x.code==='small_text').length,0,'a line on screen under half a second is not counted');
+});
+test('a small card alone in a big frame is mostly empty; a big headline or a filled frame is not',()=>{
+ const f=frames(61,t=>({texts:[],small:[],W,H,held:false,things:[bg,t<3?box(1,400,800,280,200,{sig:String(t)}):box(2,60,600,960,300,{sig:String(t)})]}));
+ const e=visualFindings(f,6).filter(x=>x.code==='mostly_empty');
+ assert.equal(e.length,1);assert.equal(e[0].time,0);assert.match(e[0].message,/for 3\.0 s/);
 });
