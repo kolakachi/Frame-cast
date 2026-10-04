@@ -106,7 +106,8 @@ Goal: a full build of the Maya prompt that matches reference 1471 (Pocketsflow, 
    - [x] the rig plays image patches on the narration: WyvMascot.face (wyv-mascot.js 1.1) builds base and patches from face.json and schedules timed sets: mouth per syllable vowel (open/oh/ee, flaps on long syllables, closes between words, whispers without vowels), automatic blinks, expressions on cue. In the fixture Maya talks through the hook and the on-air tile, blinks, winks and laughs; checked in the browser and in the render.
    - [ ] product: a character kit plan item (pose sheet + expression sheet, split and patched in the sandbox, staged with face.json) so real builds get this without the manual steps; the builder uses WyvMascot.face with narrationTiming words (documented in kit/mascot.md).
 4. **WyvStudio screens**: the Create chat, plan card and four-format export as clean high-resolution images from the create-ui mockups, attached as sources so the builder rebuilds them as live HTML.
-   - [ ] screens prepared
+   - [x] screens prepared (2026-10-04): captured from the create-ui mockups at 2x with their real fonts (Manrope, JetBrains Mono): phone (new creation), plan card before approval, the Create conversation and the All Videos grid (cropped clear of the account sidebar, so no name or email shows). Staged with Maya's face kit and three body poses as titled library assets in workspace 1 (ids 1569-1586).
+   - [x] face kits reach the build (2026-10-04): an asset's face_kit (the resting head's patch layout, patches as other assets) travels in the input snapshot; the planner sees the character's expressions; the worker gives the builder the staged file names ready for WyvMascot.face; attachment titles now reach the builder too.
 5. **Acceptance**: one full build, side by side with the reference at the same moments; owner verdict.
    - [ ] acceptance build reviewed
 

@@ -291,7 +291,8 @@ class PlanService
             return $asset ? ['asset_id' => (int) $asset->id, 'title' => (string) $asset->title, 'asset_type' => $asset->asset_type, 'purpose' => $a->purpose,
                 'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json,
                 'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null,
-                ...(is_array(data_get($asset->metadata_json, 'rig')) ? ['rig' => data_get($asset->metadata_json, 'rig')] : [])] : null;
+                ...(is_array(data_get($asset->metadata_json, 'rig')) ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),
+                ...(is_array(data_get($asset->metadata_json, 'face_kit')) ? ['face_kit' => ['expressions' => array_values(array_map(fn ($p) => (string) ($p['name'] ?? ''), (array) data_get($asset->metadata_json, 'face_kit.patches', [])))]] : [])] : null;
         })->filter()->values()->all();
         return [
             '_workspace_id' => (int) $user->workspace_id,
