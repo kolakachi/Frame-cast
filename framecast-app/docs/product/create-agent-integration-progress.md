@@ -128,7 +128,12 @@ Goal: a user brings any reference; the study says how each moment was made (gene
 
 - [x] **A1, parametric mascot spec and parts** (runtime/wyv-mascot3d.js): head (sphere, egg, round-square), hair (curls, waves, bob, spikes, bun; follows the head's shape; kept off the face), eyes (disc, oval, dot, highlight), brows, five mouth shapes, nose, cheeks, neck, collar, lathed bust with outfit colour and pocket; deterministic (Fibonacci placement, seeded).
 - [x] **A2, rig by construction**: head turn, tilt and nod on a neck pivot, body turn, bob, gaze, blink and wink, mouth per syllable on the narration's words (same cues as the 2D face kit), expressions (smile, surprised, laugh, wink). Finishes: clay, 1-bit ordered dither (matches the reference dot for dot), toon. Remotion 4.0.532 with three 0.186.1, @remotion/three and @react-three/fiber 9 in the sandbox. Proof: fixtures/mascot3d (perform at 60 fps, turnaround in two finishes, expressions, a second character from another spec).
-- [ ] A3 more finishes (halftone, plush, ceramic); A4 the agent designs the spec from a brief, brand or a reference's mascot and shows a turnaround for approval; A5 image-to-3D polish for detailed characters (head on still shoulders, palette remap, single dot layer, orientation check) and both routes wired into Create (Remotion adapter allowlist, character item, router rule).
+- [x] **A3, more finishes**: halftone, plush, ceramic.
+- [x] **A4, the planner designs the mascot**: MascotSpec (parts, colours, ranges) in the planning instruction; the plan carries `mascot3d`, the plan card shows "Your 3D mascot", the storyboard shows a three-angle turnaround for approval. Remotion adapter allows three and @remotion/three; builds render it through the real remotion-tool (swangle GL). Router: the study's per-moment method sends render_3d moments here.
+- [x] ~~Vector route~~ dropped (owner, 2026-10-04): the parametric spec covers it.
+- [ ] **Ears** (owner, 2026-10-04, from the fur-ball bear avatar test): an ears part (round/bear, pointed/cat, long/bunny, none) in the head colour with an inner colour; the planner picks it from the image. Related gaps seen on the same avatar: a head-only character (no bust, rests on its shadow), fur tufts over the head, a heart nose. Owner sent the test as is; corrections after the reference copy lands.
+- [ ] A5 image-to-3D for detailed characters as a priced plan item (needs a pricing decision), with the polish: head on still shoulders, palette remap, single dot layer, orientation check.
+- [ ] Acceptance: the reference copied exactly with the owner's avatar as a 3D mascot (conversation ce7c7e99, 2026-10-04).
 
 ### First implementation slice — prepared mascot rig (2026-10-03)
 
