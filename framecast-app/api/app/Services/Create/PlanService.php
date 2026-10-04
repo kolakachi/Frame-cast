@@ -383,7 +383,9 @@ class PlanService
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
         // Measured: the catalogue voices speak about 2 words a second with pauses; leave 1.5 s at the end.
-        $maxWords = (int) round(max(4, (int) ($ctx['settings']['duration_seconds'] ?? 15) - 1.5) * 2.0);
+        // Room for a natural read: about 2.8 words a second leaving a second at the end (a 15 s video holds 39 words).
+        // At 2 words a second the script was cut after a few lines, leaving the narration well short of the video.
+        $maxWords = (int) round(max(4, (int) ($ctx['settings']['duration_seconds'] ?? 15) - 1) * 2.8);
         $narration = [];
         foreach ((array) ($raw['narration'] ?? []) as $line) {
             $line = $str($line, 160);

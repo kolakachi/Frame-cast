@@ -2635,4 +2635,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertContains('No "left-eye" layer.', $asset->metadata_json['rig']['problems']);
         $this->assertSame(hash('sha256', $stored), $asset->metadata_json['sha256']);
     }
+
+    public function test_a_natural_script_for_fifteen_seconds_keeps_all_its_lines(): void
+    {
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']];
+        $lines = ['Want a video ad that actually sells?', 'No camera. No editing skills. No time.', 'Paste an idea, and WyvStudio turns it into a voiced, captioned video.', 'One video, four formats.', 'Start creating with WyvStudio.'];
+        $p = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'narration' => $lines], $ctx, (int) $this->workspace->id);
+        $this->assertSame($lines, $p['narration'], 'about 37 words fit 15 seconds at a natural pace');
+        $long = [...$lines, 'And another line that is far too much for a fifteen second video to carry well.'];
+        $this->assertCount(5, app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'narration' => $long], $ctx, (int) $this->workspace->id)['narration'], 'a script past the cap is still trimmed');
+    }
 }
