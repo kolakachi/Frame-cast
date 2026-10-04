@@ -20,7 +20,10 @@
   };
   const $ = el => typeof el === 'string' ? document.querySelector(el) : el;
   function stage(canvas, {fov = 30, active = null, draw}) {
-    canvas = $(canvas);
+    const sel = canvas; canvas = $(canvas);
+    // Plain errors the builder can act on in one step.
+    if (!window.W3) throw Error('W3D: three-wyv.js is not loaded; load it before wyv-3d.js');
+    if (!canvas || canvas.tagName !== 'CANVAS') throw Error('W3D: no <canvas> matches ' + (typeof sel === 'string' ? sel : 'the element given') + '; add it with width and height attributes');
     const T = W3.THREE, scene = new T.Scene(), cam = new T.PerspectiveCamera(fov, canvas.width / canvas.height, 0.1, 200), ctx = canvas.getContext('2d');
     let drawn = false;
     const s = {canvas, scene, cam, render(t) {
@@ -41,7 +44,9 @@
   // end in composition seconds (the mouth follows each syllable). expressions: [{at, duration, face:
   // 'smile'|'laugh'|'wink'|'surprised', gaze: [x, y]}] in composition seconds. blinks: times, or automatic.
   function mascot(canvas, {spec, words = [], active = null, place, expressions = [], blinks = null, cell = 2}) {
-    canvas = $(canvas);
+    const sel = canvas; canvas = $(canvas);
+    if (!canvas) throw Error('W3D: no <canvas> matches ' + sel + '; add it with width and height attributes');
+    if (typeof place !== 'function') throw Error('W3D.mascot ' + sel + ': place must be a function of t returning {cx, cy, r}');
     const m = W3.buildMascot(spec, {cell}), cues = W3.mouthCues(words, 0), bl = blinks || W3.autoBlinks(60, (active ? active[0] : 0) + 0.4);
     return stage(canvas, {active, draw: (t, scene, cam) => {
       if (!m.root.parent) scene.add(m.root);

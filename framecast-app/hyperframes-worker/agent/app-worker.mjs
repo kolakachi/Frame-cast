@@ -14,6 +14,7 @@ import {cutTimes,outputPace,paceNotes} from './pace-review.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
+import {findResume} from './resume.mjs';
 import {accountedCall} from './accounted-call.mjs';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
@@ -51,7 +52,7 @@ async function execute(run){
  await mkdir(dir,{recursive:true});
  // A prior process may have spent/rendered. Never replay an interrupted run.
  try{await access(dir+'/started.json');throw Error('Run journal exists; reconcile instead of replaying');}catch(e){if(e.code!=='ENOENT')throw e;}
- await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString()}),{flag:'wx',mode:0o600});
+ await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString(),conversationId:run.input.conversation_id??null,planId:run.input.plan?.plan_id??null,stage:run.input.build_stage??null}),{flag:'wx',mode:0o600});
  // The app listens to a sound file the build made (its export, or narration it edited) and returns the words.
  const listen=async file=>{const form=new FormData();form.set('lease_token',run.lease_token);form.set('file',new Blob([await readFile(file)]),path.basename(file));return request('runs/'+run.id+'/listen',form,true,180000);};
  await mkdir(dir+'/project');
@@ -160,7 +161,9 @@ async function execute(run){
     return {ok:true,task_id:r.task_id??null,requirement_ids:r.requirement_ids??[],kind,description,charged_credits:r.charged_credits,reused:!!r.reused,files,...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(Array.isArray(r.poses)?{poses:r.poses}:{}),...(typeof r.line==='string'?{line:r.line}:{})};
    };
    phase='agent';
-   agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
+   const resume=run.input.mode==='agent'&&!run.input.base_bundle&&!run.input.from_look?await findResume(run,root+'/artifacts/live'):null;
+   if(resume)await trace({phase:'run',status:'started',summary:'Continuing from the build that stopped',detail:resume.from});
+   agentResult=await executeCompositionAgent({directory:dir,input:resume?{...run.input,resume}:run.input,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
     transcribe:async({input})=>{const assetId=assetIds.get(input);
      // A file the build made itself (edited narration) is listened to directly.
      if(!assetId){if(!/^[a-zA-Z0-9_.-]+\.(wav|mp3|mp4)$/.test(input))throw Error('Only audio or video can be transcribed');const r=await listen(dir+'/project/'+input);return {text:r.text,words:r.words,segments:r.segments||[],provider:r.provider};}return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},

@@ -242,10 +242,17 @@ test('JSON action mode carries reference evidence once and keeps output review s
  assert.equal(h.seen[2].image,undefined);assert.equal(h.seen[3].image,outputImage);
  assert.deepEqual(h.args.workspace.assets.map(a=>a.path),['product.png']);
 });
-test('finish is refused once while the checked draft has open pacing errors; finishing again with a reason is accepted',async t=>{
+test('open pacing errors are notes: the user reviews the result, so finish is accepted at once',async t=>{
+ const still={code:'still_stretch',severity:'error',time:3,message:'Nothing on screen moves or changes from 3.0 s to 6.0 s (3.0 s).',fixHint:'Give the beat life'};
+ const tools={check:async()=>({ok:true,pacing:[still]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
+ const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'})],{tools});
+ assert.equal((await h.run()).status,'preview_ready');assert.equal(h.seen.length,3);
+});
+test('when findings are set to block, finish is refused once while the checked draft has open pacing errors; finishing again with a reason is accepted',async t=>{
  const still={code:'still_stretch',severity:'error',time:3,message:'Nothing on screen moves or changes from 3.0 s to 6.0 s (3.0 s).',fixHint:'Give the beat life'};
  const tools={check:async()=>({ok:true,pacing:[still,{code:'slow_drift',severity:'warning',time:1,message:'drift'}]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
  const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'}),action({type:'finish',summary:'Done. The 3 s hold on the price card is intentional: it is the moment to read the price.'})],{tools});
+ h.args.context.findingsBlockFinish=true;
  const r=await h.run();
  assert.equal(r.status,'preview_ready');assert.equal(h.seen.length,4);
  assert.match(h.seen[3].prompt,/Not finished: this draft still has these findings/);assert.match(h.seen[3].prompt,/still_stretch/);
@@ -283,3 +290,14 @@ test('on the storyboard, held stills are not a still-stretch finding, so finish 
 });
 test('reading a file that is not there goes back to the builder instead of ending the run',async t=>{const h=await harness(t,[action({type:'read',path:'wyv-mascot3d.js'}),action({type:'needs_input',question:'Next?'})]);assert.equal((await h.run()).status,'needs_input');assert.match(h.seen[1].prompt,/kit\/remotion\.md/);});
 test('writing or reading a file name the composition cannot have goes back to the builder',async t=>{const h=await harness(t,[action({type:'write',path:'cards.txt',content:'notes'}),action({type:'read',path:'notes.md'}),action({type:'needs_input',question:'Next?'})]);assert.equal((await h.run()).status,'needs_input');assert.match(h.seen[1].prompt,/Source path is not allowed/);});
+test('an unexpected error after a checked draft delivers that draft instead of failing',async t=>{
+ const tools={check:async()=>({ok:true}),snapshot:async()=>({ok:true,paths:['frame.png']}),timeline:async()=>{throw Error('Renderer crashed');}};
+ const h=await harness(t,[action({type:'patch',path:'index.html',before:'Original',after:'Updated'}),action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'timeline'})],{tools});
+ const state=await h.run();
+ assert.equal(state.status,'preview_ready');assert.equal(state.recoveredDraft,true);assert.match(state.internalNote,/Renderer crashed/);
+ assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>Updated</h1>');
+});
+test('without a checked draft an unexpected error still fails',async t=>{
+ const tools={check:async()=>({ok:true}),snapshot:async()=>({ok:true,paths:['frame.png']}),timeline:async()=>{throw Error('Renderer crashed');}};
+ const h=await harness(t,[action({type:'timeline'})],{tools});assert.equal((await h.run()).status,'failed');
+});

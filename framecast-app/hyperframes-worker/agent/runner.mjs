@@ -401,7 +401,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       // fix them, or finish again with a summary that says why each one is intentional.
       const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'):[];
       const key=state.revision+':'+open.map(f=>f.code+'@'+f.time).join(',');
-      if(open.length&&state.pacingNoticed!==key){
+      // The user reviews the result: findings are notes on the version, never another round.
+      if(open.length&&state.pacingNoticed!==key&&context.findingsBlockFinish===true){
         state.pacingNoticed=key;
         result={ok:false,error:'Not finished: this draft still has these findings. Fix them and check again, or finish again with a summary that says why each one is intentional.',findings:open.map(f=>({code:f.code,time:f.time,message:f.message,fixHint:f.fixHint}))};
       } else {
@@ -579,7 +580,11 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     // Running out of something (time, calls, context, output, repairs, the model itself), with no paid
     // call in doubt and not the user's own cancel, delivers the last checked draft. Rule breaks still fail.
     const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
-    if(exhausted&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
+    // Any other unexpected error after a checked draft also delivers that draft (a stopped build should not throw
+    // away a storyboard that passed a minute earlier); integrity stops still fail: changed protected files, a path
+    // reaching outside the workspace, a locked source broken, or the build breaking its own workflow rules.
+    const integrity=/Protected asset|escaped workspace|Symlinks are not allowed|^Source path is not allowed$|[Ll]ocked/.test(String(e.message))||MISUSE.test(String(e.message));
+    if((exhausted||!integrity)&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
       const why=e.code==='NOT_SENT'?'The model was unavailable':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
       state.pending=null;try{await deliverGood(why+' during a later repair, so that repair is not included. Give it a look before posting.');observeStop(state,why);await save();return state;}catch{/* fall through to the failure below */}
     }

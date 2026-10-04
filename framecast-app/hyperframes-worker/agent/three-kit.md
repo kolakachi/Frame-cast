@@ -18,7 +18,10 @@ its pixel size as attributes (not CSS), positioned in its slot:
 ```html
 <canvas id="bear" width="1060" height="1080" style="position:absolute;left:860px;top:0" data-ref="1590:m1:0"></canvas>
 ```
-After registering every mascot and prop, start the clock once: `W3D.clock(tl, duration)`.
+After registering every mascot and prop, start the clock once: `W3D.clock(tl, duration)`. Register the timeline in an
+inline script at the end of index.html: `window.__timelines = window.__timelines || {}; window.__timelines.main = tl;`
+(never assign into `window.__timelines` before creating it). Build mascots and props after their canvases exist in the
+page (scripts at the end of body); W3D names the missing canvas or script if not.
 
 ## The mascot
 ```js
