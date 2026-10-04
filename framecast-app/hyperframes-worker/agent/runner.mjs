@@ -9,6 +9,7 @@ import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from
 import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
 import {beatFindings} from './narration-timing.mjs';
 import {moveFindings} from './move-check.mjs';
+import {layoutFindings} from './layout-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
@@ -64,7 +65,16 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // Every composition file except the kit's own runtime, for checks that read the source.
   const compositionSources=async()=>{let out=await workspace.read('index.html').catch(()=>'');for(const f of await workspace.sourceFiles().catch(()=>[]))if(f!=='index.html'&&!/^(gsap|wyv-|barty-)/.test(f))out+='\n'+await workspace.read(f).catch(()=>'');return out;};
   // Findings sent back once at finish (fix, or finish again saying why): pacing, plus reference moves the plan names but the build never uses.
-  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()}))];
+  // Copying exactly: every moment looked at in the reference first, and every marked element in its slot at its time.
+  const exactLayout=async()=>{
+   const layout=context.plan?.reference_match==='exact'?(context.plan.reference_layout||[]):[];
+   if(!layout.length||!tools.layout)return [];
+   const times=[...new Set(layout.map(m=>Number(m.at)).filter(Number.isFinite))];
+   const r=await bounded(()=>tools.layout({params:{times},signal:boundedSignal})).catch(e=>({ok:false,error:String(e.message)}));
+   if(!r?.ok)return [];
+   return layoutFindings({layout,measured:r.measured,inspectedTimes:state.inspectedTimes||[]});
+  };
+  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()})),...await exactLayout()];
   const stopNow=async()=>{
     if(!stopRequested())return false;
     if(state.lastGood){
@@ -209,6 +219,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       else if((state.referenceInspections??0)>=cap.inspections)result={error:'Reference inspection limit reached ('+cap.inspections+' per run); use the evidence already collected'};
       else {
         state.referenceInspections=(state.referenceInspections??0)+1;
+        // Which reference times were looked at, for copying exactly (every moment must be seen before it is built).
+        {const p=action.params||{};const ts=Array.isArray(p.times)?p.times:Number.isFinite(p.start)&&Number.isFinite(p.end)?[p.start,(p.start+p.end)/2,p.end]:[];
+         state.inspectedTimes=[...(state.inspectedTimes||[]),...ts.map(Number).filter(Number.isFinite)].slice(-400);}
         result=await bounded(()=>tools.inspect_reference({input:action.input,params:action.params,signal:boundedSignal}));
         const {providerImage,...metadata}=result;
         // A reference image must never satisfy the rendered-draft review gate.
