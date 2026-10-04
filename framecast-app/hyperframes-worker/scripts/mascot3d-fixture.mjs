@@ -11,6 +11,7 @@ const common={serveUrl,browserExecutable:'/usr/bin/chromium',logLevel:'error',ti
 const still=async(id,props,name,frame=0)=>{const c=await selectComposition({...common,id,inputProps:props});await renderStill({...common,composition:c,inputProps:props,frame,output:`${out}/${name}.png`,imageFormat:'png'});};
 for(const [i,y] of [-0.9,-0.45,0,0.45,0.9].entries())await still('Turnaround',{yaw:y,finish:'dither'},`turn-dither-${i}`);
 for(const [i,y] of [-0.6,0,0.6].entries())await still('Turnaround',{yaw:y,finish:'clay'},`turn-clay-${i}`);
+for(const fin of ['clay','dither','toon','halftone','plush','ceramic'])await still('Turnaround',{yaw:0.3,finish:fin},`finish-${fin}`);
 for(const f of ['smile','surprised','laugh','wink'])await still('Turnaround',{yaw:0,finish:'dither',face:f},`face-${f}`);
 for(const [i,y] of [-0.5,0,0.5].entries())await still('Variant',{yaw:y},`variant-${i}`);
 await still('Variant',{yaw:0,face:'surprised'},'variant-surprised');

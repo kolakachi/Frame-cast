@@ -11,7 +11,7 @@ import {useCurrentFrame, useVideoConfig} from 'remotion';
 import * as THREE from 'three';
 const h = React.createElement;
 
-export const FINISHES = ['clay', 'dither', 'toon'];
+export const FINISHES = ['clay', 'dither', 'toon', 'halftone', 'plush', 'ceramic'];
 export const DEFAULT_SPEC = {
   seed: 7,
   head: {shape: 'sphere', skin: '#efe6dc'},
@@ -78,6 +78,21 @@ void main(){
   } else if(finish==2){
     // Toon: three flat bands.
     float band=d>0.6?1.0:(d>0.25?0.9:0.8); c=color*mix(band,1.0,flatness);
+  } else if(finish==3){
+    // Halftone: round ink dots on a 45-degree grid, larger where the surface is darker; features stay solid.
+    vec2 q=gl_FragCoord.xy/(cell*3.0); q=vec2(q.x+q.y,q.y-q.x)*0.7071;
+    float lum=dot(color*light,vec3(0.299,0.587,0.114))/max(0.05,dot(color,vec3(0.299,0.587,0.114)));
+    float r=sqrt(clamp(1.0-lum,0.0,1.0))*0.72, dist=length(fract(q)-0.5);
+    float ink=1.0-smoothstep(r-0.06,r+0.06,dist);
+    c=mix(color*1.04,color*0.28,ink*(1.0-flatness));
+  } else if(finish==4){
+    // Plush: soft wrapped light, a bright fuzzy rim and fine fixed grain.
+    float wrap=(dot(n,L)+0.6)/1.6; float g=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);
+    c=color*mix(0.62+0.42*max(wrap,0.0)+0.35*rim, 1.0, flatness)*(0.95+0.1*g);
+  } else if(finish==5){
+    // Ceramic: smooth shading, a sharp glossy highlight and a soft edge reflection.
+    vec3 hv=normalize(L+vec3(0.0,0.0,1.0)); float spec=pow(max(dot(n,hv),0.0),70.0);
+    c=color*mix(0.5+0.55*d,1.0,flatness)+vec3(0.9)*spec*(1.0-flatness)+vec3(0.25)*rim*(1.0-flatness);
   }
   gl_FragColor=vec4(c,1.0);
 }`;

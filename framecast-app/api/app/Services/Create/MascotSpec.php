@@ -16,7 +16,7 @@ class MascotSpec
         'nose.style' => ['button', 'none'],
         'body.outfit' => ['sweater', 'tee', 'hoodie'],
         'body.collar' => ['turtleneck', 'crew'],
-        'finish' => ['clay', 'dither', 'toon'],
+        'finish' => ['clay', 'dither', 'toon', 'halftone', 'plush', 'ceramic'],
     ];
     private const COLOURS = ['head.skin', 'hair.color', 'eyes.color', 'brows.color', 'cheeks.color', 'body.color'];
 
