@@ -105,7 +105,7 @@ else {
 }
 // Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
 if(operation==='check'&&result.ok)result.pacing=await pacing();
-if(operation==='strip'&&result.ok){
+if(operation==='strip'&&result.ok)try{
  // One image-sequence input and the tile filter: thirty separate inputs exhaust the sandbox's thread limit.
  const shots=(await readdir(out)).filter(n=>/^frame-\d+-at-[0-9.]+s\.png$/.test(n)).sort();
  if(!shots.length)throw Error('Strip returned no images');
@@ -116,14 +116,15 @@ if(operation==='strip'&&result.ok){
  const actualTimes=shots.map(n=>Number(n.match(/at-([0-9.]+)s/)[1]));
  if(actualTimes.length!==sampling.times.length||actualTimes.some((t,i)=>Math.abs(t-sampling.times[i])>.01))throw Error('Review strip frame coverage did not match requested timestamps');
  result={ok:true,frames:shots.length,every_seconds:sampling.every_seconds,columns:cols,coverage:{...sampling,times:actualTimes}};
-}
-if(operation==='snapshot'&&result.ok){
+}catch(e){result={ok:false,error:'The review images could not be assembled; take the snapshot again.',diagnostics:String(e.stderr||e.message).slice(-1200)};}
+if(operation==='snapshot'&&result.ok)try{
  const shots=(await readdir(out)).filter(n=>n.endsWith('.png')).sort().slice(0,5);
  if(!shots.length)throw Error('Snapshot returned no images');
  const args=shots.flatMap(n=>['-i',out+'/'+n]);
  // Cells follow the output aspect, so a landscape frame is reviewed at full width, not letterboxed into a portrait cell.
  const cell=dims[0]>dims[1]?[480,270]:dims[0]===dims[1]?[360,360]:[270,480],fit=`scale=${cell[0]}:${cell[1]}:force_original_aspect_ratio=decrease,pad=${cell[0]}:${cell[1]}:(ow-iw)/2:(oh-ih)/2:black`;
- const filters=shots.map((_,i)=>`[${i}:v]${fit}[s${i}]`).join(';')+';'+shots.map((_,i)=>`[s${i}]`).join('')+`hstack=inputs=${shots.length}[sheet]`;
+ // hstack needs two inputs or more: a single frame is simply fitted.
+ const filters=shots.length===1?`[0:v]${fit}[sheet]`:shots.map((_,i)=>`[${i}:v]${fit}[s${i}]`).join(';')+';'+shots.map((_,i)=>`[s${i}]`).join('')+`hstack=inputs=${shots.length}[sheet]`;
  await promisify(execFile)('ffmpeg',['-y',...args,'-filter_complex',filters,'-map','[sheet]','-frames:v','1',out+'/contact-sheet.jpg'],{timeout:30000,maxBuffer:1000000});
  // A studied reference video gets a second row: its frames at the same moments, scaled to our length, so the review compares against it.
  try{
@@ -142,5 +143,5 @@ if(operation==='snapshot'&&result.ok){
    }
   }
  }catch(e){result={...result,reference_row_error:String(e.message).slice(0,200)};/* the review proceeds without the reference row */}
-}
+}catch(e){result={ok:false,error:'The review images could not be assembled; take the snapshot again.',diagnostics:String(e.stderr||e.message).slice(-1200)};}
 await writeFile(out+'/result.json',JSON.stringify(result,null,2));
