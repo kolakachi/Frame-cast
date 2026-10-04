@@ -208,7 +208,7 @@ class ConversationService
                 $lookFirst = $paid && isset($policy['agent']) && ($settings['output_kind'] ?? 'video') === 'video'
                     && ($settings['video_mode'] ?? 'composition') === 'composition' && $stage === 'storyboard';
                 $fromLook = ! empty($baseMeta['look']) && ! $lookFirst;
-                if ($paid && ! $lookFirst && $plan && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition') CharacterPerformance::assertReady($plan, $settings, $planMedia);
+                if ($paid && ! $lookFirst && $plan && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition') CharacterPerformance::assertReady($plan, $settings, $planMedia, CharacterPerformance::performers($id));
                 if (! $lookFirst && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot', 'talking_take'], true) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) {
                     $approved = CharacterApproval::requireApproved($plan, $settings, (int) $user->workspace_id);
                     foreach ($planMedia as &$motionItem) {
@@ -321,7 +321,7 @@ class ConversationService
                 abort_unless((int) $c->version === $p['version'] && $c->head_revision_id === $p['base_revision_id'], 409, 'The brief changed. Review a new quote.');
                 abort_unless($p['mode']===config('create.mode') && ($p['mode']==='fixture' || PilotPolicy::enabled()),503);
                 if($auto) { abort_unless($this->autoRunEligible($user,$c,$quote),409,'This job needs your approval.'); $p['auto_run']=true; $providerApproved=$providerApproved || (bool)$c->provider_consent_at; }
-                if (($p['build_stage'] ?? '') === 'full_video' && ! empty($p['plan']['character_performance'])) CharacterPerformance::assertReady($p['plan'], $p['settings'], $p['plan_media'] ?? []);
+                if (($p['build_stage'] ?? '') === 'full_video' && ! empty($p['plan']['character_performance'])) CharacterPerformance::assertReady($p['plan'], $p['settings'], $p['plan_media'] ?? [], $p['input_files'] ?? []);
                 if (($p['build_stage'] ?? '') === 'full_video' && collect($p['plan_media'] ?? [])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) CharacterApproval::requireApproved($p['plan'], $p['settings'], (int) $user->workspace_id);
                 $free=!empty($p['free_edit']);
                 if($p['mode']==='agent' && $free) { abort_unless(($p['execution_policy']['render']['credits']??1)===0 && count($p['execution_policy'])===1,422,'Invalid free edit.'); }

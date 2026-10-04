@@ -34,21 +34,33 @@ class CharacterPerformance
             if ($index < count($previous) && array_filter($links, fn ($link) => isset($previousRequirements[$link]) && ($requirements[$link]['version'] ?? 1) !== ($previousRequirements[$link]['version'] ?? 1))) continue;
             $result[$id] = ['requirement_ids' => $links, 'id' => $id, 'kind' => $kind, 'action' => mb_substr($action, 0, 240), 'source_quote' => $quote,
                 'start' => $valid ? $start : null, 'end' => $valid ? $end : null,
-                'route' => in_array($r['route'] ?? '', ['generated_video', 'prepared_rig'], true) ? $r['route'] : 'unresolved',
+                'route' => in_array($r['route'] ?? '', ['generated_video', 'prepared_rig', 'face_kit'], true) ? $r['route'] : 'unresolved',
                 'tool' => in_array($r['tool'] ?? '', ['animate_image', 'talking_shot', 'talking_take'], true) ? $r['tool'] : null];
         }
         abort_if(count($result) > 24, 422, 'This plan has too many character actions. Split it into shorter videos.');
         return array_values($result);
     }
 
-    public static function issues(array $plan, array $settings, array $media): array
+    /** @param array $files the conversation's attachments ({face_kit?, rig?}): a talking face or a ready rig performs without new media. */
+    public static function issues(array $plan, array $settings, array $media, array $files = []): array
     {
         $issues = []; $spans = [];
+        $faceKit = collect($files)->contains(fn ($f) => ! empty($f['face_kit']));
+        $rigReady = collect($files)->contains(fn ($f) => (bool) data_get($f, 'rig.ready'));
         foreach ($plan['character_performance'] ?? [] as $r) {
             $why = null;
             $tool = $r['tool'] ?? null;
             $item = collect($media)->first(fn ($m) => ($m['kind'] ?? '') === $tool && ($tool !== 'animate_image' || ($m['subject'] ?? '') === 'approved_character'));
             if (($r['start'] ?? null) === null || ($r['end'] ?? null) === null || $r['end'] > ($settings['duration_seconds'] ?? 15)) $why = 'Choose the scene timing for this action.';
+            // The character's own talking face (cut from an expression sheet) speaks, blinks and reacts; body actions need poses or animation.
+            elseif (($r['route'] ?? '') === 'face_kit') {
+                if (! $faceKit) $why = 'Attach the character\'s talking face, or choose a generated performance.';
+                elseif ($r['kind'] === 'body') $why = 'A talking face covers speech and expressions, not body actions; use the attached poses or an animation.';
+                elseif ($r['kind'] === 'speech' && (empty($plan['narration']) || ($settings['audio'] ?? 'original') === 'silent')) $why = 'Speaking on camera needs an approved script and audio enabled.';
+                if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
+                continue;
+            }
+            elseif (($r['route'] ?? '') === 'prepared_rig' && $rigReady && $r['kind'] === 'facial') continue;
             elseif (($r['route'] ?? '') === 'prepared_rig') $why = 'This character needs approved layered artwork. A flat image is not rig-ready; choose a generated performance or prepare the rig first.';
             elseif (($r['route'] ?? '') !== 'generated_video' || ! $item) $why = 'Add a character-animation or talking-video task to the plan; still poses cannot perform this action.';
             elseif ($r['kind'] === 'speech' && ! in_array($tool, ['talking_shot', 'talking_take'], true)) $why = 'Speaking on camera needs a talking-video task, not a silent animation.';
@@ -68,9 +80,16 @@ class CharacterPerformance
         return $issues;
     }
 
-    public static function assertReady(array $plan, array $settings, array $media): void
+    /** What a conversation's attachments can perform by themselves: a talking face (face_kit) or a ready layered rig. */
+    public static function performers(string $conversationId): array
     {
-        $issues = self::issues($plan, $settings, $media);
+        return \App\Models\Asset::whereIn('id', \Illuminate\Support\Facades\DB::table('create_attachments')->where('conversation_id', $conversationId)->pluck('asset_id'))->get()
+            ->map(fn ($a) => ['face_kit' => data_get($a->metadata_json, 'face_kit'), 'rig' => data_get($a->metadata_json, 'rig')])->all();
+    }
+
+    public static function assertReady(array $plan, array $settings, array $media, array $files = []): void
+    {
+        $issues = self::issues($plan, $settings, $media, $files);
         abort_if($issues !== [], 422, 'Character motion needs a plan update: '.($issues[0]['action'] ?? '').'. '.($issues[0]['message'] ?? ''));
     }
 }

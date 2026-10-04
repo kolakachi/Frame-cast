@@ -2393,6 +2393,24 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('do not say what now does their job (carried_by): 1523:m2', implode(' ', \App\Services\Create\Planning\PlanPrompt::problems($uncarried, $ctx)));
     }
 
+    public function test_an_attached_talking_face_performs_speech_and_expressions_without_new_media(): void
+    {
+        $perf = fn ($kind, $route) => ['id' => 'perf-'.$kind.$route, 'kind' => $kind, 'action' => $kind, 'start' => 0, 'end' => 3, 'route' => $route, 'tool' => null];
+        $plan = ['narration' => ['Want a video ad that sells?'], 'character_performance' => [$perf('speech', 'face_kit'), $perf('facial', 'face_kit')]];
+        $settings = ['duration_seconds' => 15, 'audio' => 'original'];
+        $kit = [['face_kit' => ['width' => 10, 'height' => 10, 'patches' => [['name' => 'mouth-open', 'asset_id' => 1]]], 'rig' => null]];
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($plan, $settings, [], $kit), 'no talking take or character master is needed');
+        $this->assertStringContainsString('talking face', \App\Services\Create\CharacterPerformance::issues($plan, $settings, [], [])[0]['message'], 'without the kit the route is not available');
+        $body = ['narration' => ['x'], 'character_performance' => [$perf('body', 'face_kit')]];
+        $this->assertStringContainsString('not body actions', \App\Services\Create\CharacterPerformance::issues($body, $settings, [], $kit)[0]['message']);
+        $silent = \App\Services\Create\CharacterPerformance::issues($plan, ['audio' => 'silent'] + $settings, [], $kit);
+        $this->assertStringContainsString('script and audio', $silent[0]['message']);
+        // A ready layered rig performs facial actions too; a flat image still cannot.
+        $rig = ['narration' => ['x'], 'character_performance' => [$perf('facial', 'prepared_rig')]];
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($rig, $settings, [], [['rig' => ['ready' => true]]]));
+        $this->assertNotSame([], \App\Services\Create\CharacterPerformance::issues($rig, $settings, [], [['rig' => ['ready' => false]]]));
+    }
+
     public function test_the_reference_moves_travel_from_study_to_plan(): void
     {
         $sys = \App\Services\Create\References\ReferenceStudy::normalizeSystems([

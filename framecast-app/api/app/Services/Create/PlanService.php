@@ -178,7 +178,9 @@ class PlanService
     {
         $p = json_decode($row->plan_json, true);
         $candidate = CharacterApproval::candidate(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), (int) $c->workspace_id);
-        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p)), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => $candidate['images'], 'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? ''))] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
+        // A talking face or a ready rig attached to the conversation performs without new media.
+        $performers = CharacterPerformance::performers($c->id);
+        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => $candidate['images'], 'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? ''))] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
             'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at];
     }
 
