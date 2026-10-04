@@ -110,7 +110,7 @@ class ReferenceStudy
             'coverage' => ($looks !== null ? count($samples).' frames, one for every distinct look in '.$looks['frames'].' frames' : count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change').'; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
         $study['moments_status'] = 'skipped';
         if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) {
-            $found = $this->moments($study);
+            $found = $this->moments($study, $file, $sha, $work);
             $study = [...$study, ...$found, 'moments_status' => $found ? 'ok' : 'failed'];
         }
         $study['moments'] = self::withSpokenDelay($study['moments'], $speech);
@@ -238,7 +238,7 @@ class ReferenceStudy
      * Sheets of twenty frames (five across), stored for the planner; each sheet records the seconds of its cells.
      * Under each frame: its time and the words being spoken then, so picture and speech are read together.
      */
-    private function sheets(string $file, array $samples, string $sha, string $work, ?array $speech = null): array
+    private function sheets(string $file, array $samples, string $sha, string $work, ?array $speech = null, string $name = 'sheet'): array
     {
         $font = collect(['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/lato/Lato-Medium.ttf'])->first(fn ($f) => is_file($f));
         $out = [];
@@ -258,7 +258,7 @@ class ReferenceStudy
             $rows = (int) ceil(count($times) / 5);
             $r = Process::timeout(60)->run(['ffmpeg', '-v', 'error', '-y', '-framerate', '1', '-i', $work.'/c-%02d.jpg', '-vf', "tile=5x{$rows}:padding=2:color=black", '-frames:v', '1', '-q:v', '4', $work.'/sheet.jpg']);
             if (! $r->successful() || ! is_file($work.'/sheet.jpg')) continue;
-            $path = 'create/reference-studies/'.$sha.'/sheet-'.($k + 1).'.jpg';
+            $path = 'create/reference-studies/'.$sha.'/'.$name.'-'.($k + 1).'.jpg';
             Storage::disk('local')->put($path, (string) file_get_contents($work.'/sheet.jpg'));
             $out[] = ['path' => $path, 'times' => $times, 'labels' => $labels, 'labelled' => (bool) $font];
         }
@@ -360,7 +360,7 @@ class ReferenceStudy
     }
 
     /** One model call: the sheets and the speech become a timed list of moments and the reference's patterns. */
-    private function moments(array $study): array
+    private function moments(array $study, ?string $file = null, ?string $sha = null, ?string $work = null): array
     {
         $content = [];
         $every = in_array($study['coverage_mode'] ?? 'standard', ['high', 'maximum', 'every_look'], true);
@@ -386,25 +386,62 @@ class ReferenceStudy
             .'"patterns": {"text_reveal": "how text appears relative to the voice", "emphasis": "how key words are emphasised", "pacing": "rhythm of holds and changes", "signature": "the move it is remembered for"}}.'
             .' A system is an element that recurs with the same look and behaviour (every Step card, every UI panel, the caption style): describe it once in systems and point each of its moments at it.'
             .($every ? ' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes). List as many moments as the video has.' : ' At most 30 moments.')];
+        // Maximum looks twice: the first reading lists what it could not tell; those stretches are then read frame by frame.
+        $maximum = $file !== null && in_array($study['coverage_mode'] ?? '', ['maximum', 'every_look'], true);
+        if ($maximum) $content[count($content) - 1]['text'] .= ' Also list open_questions: up to 4 short stretches (each under 2.5 s) where a move is too fast to read from these frames, as [{"start": seconds, "end": seconds, "question": "what you could not tell"}]; [] if none.';
         $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
+        $first = $this->ask($model, $content, $every);
+        if (! $first) return [];
+        [$json, $u] = $first;
+        $cost = self::cost($u); $passes = 1; $questions = []; $closeups = []; $images = count(array_filter($content, fn ($c) => $c['type'] === 'image'));
+        if ($maximum) {
+            $questions = collect((array) ($json['open_questions'] ?? []))->filter(fn ($q) => is_array($q) && is_numeric($q['start'] ?? null) && is_numeric($q['end'] ?? null))
+                ->map(fn ($q) => ['start' => round(max(0.0, (float) $q['start']), 2), 'end' => round(min((float) $study['duration_seconds'], max((float) $q['start'] + 0.2, min((float) $q['end'], (float) $q['start'] + 2.5))), 2),
+                    'question' => mb_substr(trim((string) ($q['question'] ?? '')), 0, 160)])->take(4)->values()->all();
+            $second = [['type' => 'text', 'text' => 'Your first reading of this reference, as JSON: '.json_encode(array_intersect_key($json, array_flip(['summary', 'moments', 'systems', 'patterns'])))]];
+            foreach ($questions as $k => $q) {
+                $fps = (float) (($study['fps'] ?? 0) ?: 30); $frames = [];
+                for ($t = $q['start']; $t <= $q['end'] + 1e-6; $t += 1 / $fps) $frames[] = round($t, 3);
+                $step = max(1, (int) ceil(count($frames) / 20));
+                $pick = array_values(array_filter($frames, fn ($i) => $i % $step === 0, ARRAY_FILTER_USE_KEY));
+                $sheet = $this->sheets($file, $pick, (string) $sha, (string) $work, $study['speech'] ?? null, 'closeup-'.($k + 1))[0] ?? null;
+                $bytes = $sheet ? Storage::disk('local')->get($sheet['path']) : null;
+                if (! is_string($bytes) || $bytes === '') continue;
+                $closeups[] = $sheet['path'];
+                $second[] = ['type' => 'text', 'text' => 'Close-up of '.$q['start'].' to '.$q['end'].' s, consecutive frames left to right then down, each labelled with its time and the words being spoken. Your question: '.$q['question']];
+                $second[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]];
+            }
+            if ($closeups) {
+                $second[] = ['type' => 'text', 'text' => 'Answer each question from these frame-by-frame close-ups, then reply with the complete corrected reading as JSON in exactly the same shape (summary, moments with purpose and system, systems, patterns). Keep everything the close-ups do not change.'];
+                $again = $this->ask($model, $second, true);
+                if ($again && ! empty($again[0]['moments']) && is_array($again[0]['moments'])) { $json = $again[0]; $passes = 2; }
+                if ($again) { $cost += self::cost($again[1]); $images += count($closeups); }
+            }
+        }
+        $systems = self::normalizeSystems((array) ($json['systems'] ?? []));
+        return ['moments' => self::normalizeMoments((array) ($json['moments'] ?? []), (float) $study['duration_seconds'], $every ? null : 30, array_column($systems, 'id')),
+            'systems' => $systems, 'passes' => $passes, 'open_questions' => $questions, 'closeup_sheets' => $closeups,
+            'usage' => ['input_tokens' => $u['input_tokens'] ?? null, 'output_tokens' => $u['output_tokens'] ?? null, 'images' => $images],
+            'patterns' => collect(['text_reveal', 'emphasis', 'pacing', 'signature'])->mapWithKeys(fn ($k) => [$k => mb_substr(trim((string) data_get($json, 'patterns.'.$k, '')), 0, 200)])->filter()->all() ?: null,
+            'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 300) ?: null,
+            'model' => $model, 'cost_microusd' => $cost];
+    }
+
+    /** One reading by the model: the parsed JSON and its usage, or null (logged) when the call or the reply fails. */
+    private function ask(string $model, array $content, bool $long): ?array
+    {
         try {
-            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($every ? 600 : 180)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $every ? 32000 : 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
-        } catch (\Throwable) { return []; }
-        if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return []; }
+            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
+        } catch (\Throwable) { return null; }
+        if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return null; }
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
         $start = strpos($text, '{'); $end = strrpos($text, '}');
         $json = $start !== false && $end !== false ? json_decode(substr($text, $start, $end - $start + 1), true) : null;
-        if (! is_array($json)) return [];
-        $u = $r->json('usage', []);
-        $systems = self::normalizeSystems((array) ($json['systems'] ?? []));
-        return ['moments' => self::normalizeMoments((array) ($json['moments'] ?? []), (float) $study['duration_seconds'], $every ? null : 30, array_column($systems, 'id')),
-            'systems' => $systems,
-            'usage' => ['input_tokens' => $u['input_tokens'] ?? null, 'output_tokens' => $u['output_tokens'] ?? null, 'images' => count(array_filter($content, fn ($c) => $c['type'] === 'image'))],
-            'patterns' => collect(['text_reveal', 'emphasis', 'pacing', 'signature'])->mapWithKeys(fn ($k) => [$k => mb_substr(trim((string) data_get($json, 'patterns.'.$k, '')), 0, 200)])->filter()->all() ?: null,
-            'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 300) ?: null,
-            'model' => $model, 'cost_microusd' => (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 5 + ((int) ($u['output_tokens'] ?? 0)) * 25)];
+        return is_array($json) ? [$json, $r->json('usage', [])] : null;
     }
+
+    private static function cost(array $u): int { return (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 5 + ((int) ($u['output_tokens'] ?? 0)) * 25); }
 
     /** Recurring systems: ids s1.., at most 12, each described once. */
     public static function normalizeSystems(array $raw): array

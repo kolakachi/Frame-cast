@@ -136,4 +136,33 @@ class CreateReferenceStudyTest extends TestCase
         $this->assertFalse(ReferenceStudy::beatMap(array_fill(0, 800, -90.0), [])['present'], 'silence has no pulse');
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
     }
+
+    public function test_maximum_reads_the_unclear_stretches_again_frame_by_frame(): void
+    {
+        Storage::fake('local');
+        $dir = sys_get_temp_dir().'/two-pass-'.uniqid(); mkdir($dir);
+        $r = Process::run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:d=3:r=24', '-f', 'lavfi', '-i', 'color=c=white:s=60x60:d=3:r=24',
+            '-filter_complex', "[0:v][1:v]overlay=x='if(between(t,1,2),(t-1)*260,-80)':y=60[v]", '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', $dir.'/ref.mp4']);
+        $this->assertTrue($r->successful(), $r->errorOutput());
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5']);
+        $first = ['summary' => 'A square crosses a blue card.', 'moments' => [['start' => 1, 'end' => 2, 'kind' => 'sticker', 'visual' => 'white square', 'motion' => 'moves', 'purpose' => 'adds motion']],
+            'systems' => [], 'patterns' => [], 'open_questions' => [['start' => 1, 'end' => 9, 'question' => 'Does the square ease in or move at constant speed?']]];
+        $second = ['summary' => 'A square glides across at constant speed.', 'moments' => [['start' => 1, 'end' => 2, 'kind' => 'sticker', 'visual' => 'white square', 'motion' => 'slides left to right at constant speed', 'purpose' => 'adds motion']], 'systems' => [], 'patterns' => []];
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['usage' => ['input_tokens' => 1000, 'output_tokens' => 100], 'content' => [['type' => 'text', 'text' => json_encode($first)]]])
+            ->push(['usage' => ['input_tokens' => 2000, 'output_tokens' => 200], 'content' => [['type' => 'text', 'text' => json_encode($second)]]])]);
+        $study = app(ReferenceStudy::class)->study($dir.'/ref.mp4', str_repeat('e', 64), $dir, 'maximum');
+        $this->assertSame(2, $study['passes']);
+        $this->assertSame([['start' => 1.0, 'end' => 3.0, 'question' => 'Does the square ease in or move at constant speed?']], $study['open_questions'], 'a stretch is at most 2.5 s and inside the video');
+        $this->assertSame('slides left to right at constant speed', $study['moments'][0]['motion'], 'the close reading replaces the first');
+        Storage::disk('local')->assertExists($study['closeup_sheets'][0]);
+        $this->assertSame(3000 * 5 + 300 * 25, $study['cost_microusd'], 'both readings are counted');
+        $sent = Http::recorded();
+        $this->assertStringContainsString('open_questions', json_encode($sent[0][0]['messages']));
+        $this->assertStringContainsString('Close-up of 1 to 3 s', json_encode($sent[1][0]['messages']));
+        $this->assertStringContainsString('Your first reading', json_encode($sent[1][0]['messages']));
+        Http::fake(['api.anthropic.com/*' => Http::response(['usage' => [], 'content' => [['type' => 'text', 'text' => json_encode($first)]]])]);
+        $this->assertSame(1, app(ReferenceStudy::class)->study($dir.'/ref.mp4', str_repeat('f', 64), $dir, 'high')['passes'] ?? 1, 'High reads once');
+        foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
+    }
 }
