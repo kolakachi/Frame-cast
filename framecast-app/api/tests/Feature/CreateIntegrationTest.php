@@ -2523,7 +2523,13 @@ class CreateIntegrationTest extends TestCase
         $prompt = \App\Services\Create\Planning\PlanPrompt::system();
         $this->assertStringNotContainsString('{MOVES}', $prompt);
         $this->assertStringContainsString('through (push into an element', $prompt);
-        $this->assertSame(3, \App\Services\Create\References\ReferenceStudy::VERSION, 'studies made before moves were tagged are made again');
+        $this->assertGreaterThanOrEqual(3, \App\Services\Create\References\ReferenceStudy::VERSION, 'studies made before moves were tagged are made again');
+        // How each moment and element was made travels with it, for routing; the whole video's type and measured look too.
+        $methods = \App\Services\Create\References\ReferenceStudy::normalizeSystems([['id' => 's1', 'name' => 'mascot', 'method' => 'render_3d'], ['id' => 's2', 'name' => 'x', 'method' => 'magic']]);
+        $this->assertSame(['render_3d', null], array_map(fn ($x) => $x['method'] ?? null, $methods));
+        $brief = \App\Services\Create\PlanService::studyBrief(1, ['summary' => 's', 'video_type' => 'mascot_explainer', 'fps' => 60, 'treatment' => ['dither_share' => 0.52, 'dither_step_px' => 2, 'look' => 'ordered_dither'], 'moments' => [], 'systems' => []]);
+        $this->assertSame(['mascot_explainer', 60, 'ordered_dither'], [$brief['video_type'], $brief['fps'], $brief['treatment']['look']]);
+        $this->assertStringContainsString('render_3d → mascot3d', \App\Services\Create\Planning\PlanPrompt::system());
     }
 
     public function test_unlimited_local_testing_lifts_limits_and_the_spend_cap_but_never_outside_local(): void {

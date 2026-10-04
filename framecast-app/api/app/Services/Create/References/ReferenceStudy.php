@@ -21,7 +21,9 @@ use Illuminate\Support\Str;
 class ReferenceStudy
 {
     // 2: frames labelled with the words being spoken; recurring systems; a purpose for each moment.
-    public const VERSION = 3;
+    public const VERSION = 4;
+    public const METHODS = ['motion_graphics', 'render_3d', 'generated_video', 'footage', 'presenter', 'screen_recording', 'stock', 'still', 'audiogram'];
+    public const VIDEO_TYPES = ['ugc_ad', 'faceless_explainer', 'product_ad', 'saas_motion', 'mascot_explainer', 'podcast_clip', 'other'];
     private const MAX_SAMPLES = 80;
     private const PER_SHEET = 20;
     /** A frame counts as a new look when it differs from the last kept frame by this share of its pixels' brightness. */
@@ -103,6 +105,38 @@ class ReferenceStudy
             foreach (glob($dir.'/*') ?: [] as $f) @unlink($f);
             @rmdir($dir);
         }
+    }
+
+    /**
+     * How the picture is shaded, measured on full-resolution frames: ordered dither shows as 8x8 blocks of
+     * near-pure black and white pixels that flip value at a fixed step (1 or 2 px). Returns the share of
+     * non-blank blocks that are dithered, the step, and a label when it is clearly a dithered look.
+     */
+    private function treatment(string $file, array $samples): array
+    {
+        $times = array_values(array_filter(array_map('floatval', array_slice($samples, 0, 40)), fn ($t) => $t >= 0));
+        $times = $times ? array_values(array_unique(array_map(fn ($i) => $times[(int) floor($i * (count($times) - 1) / 5)], range(0, 5)))) : [];
+        $probe = json_decode(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', $file])->output(), true);
+        $w = (int) data_get($probe, 'streams.0.width'); $hgt = (int) data_get($probe, 'streams.0.height');
+        if (! $times || $w < 64 || $hgt < 64) return ['dither_share' => null];
+        $blocks = 0; $dithered = 0; $step1 = 0; $step2 = 0;
+        foreach ($times as $t) {
+            $raw = Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-ss', (string) $t, '-i', $file, '-frames:v', '1', '-vf', 'format=gray', '-f', 'rawvideo', '-'])->output();
+            if (strlen($raw) < $w * $hgt) continue;
+            for ($by = 0; $by + 8 <= $hgt; $by += 16) for ($bx = 0; $bx + 8 <= $w; $bx += 16) {
+                $bin = 0; $flips1 = 0; $flips2 = 0; $min = 255; $max = 0;
+                for ($y = $by; $y < $by + 8; $y++) for ($x = $bx; $x < $bx + 8; $x++) {
+                    $v = ord($raw[$y * $w + $x]); $min = min($min, $v); $max = max($max, $v);
+                    if ($v < 50 || $v > 205) $bin++;
+                    if ($x + 2 < $bx + 8) { $a = ord($raw[$y * $w + $x + 1]); $b = ord($raw[$y * $w + $x + 2]); if (abs($v - $a) > 150) $flips1++; if (abs($v - $b) > 150) $flips2++; }
+                }
+                if ($max - $min < 40) continue; // blank or flat
+                $blocks++;
+                if ($bin >= 56 && max($flips1, $flips2) >= 14) { $dithered++; $flips2 > $flips1 * 1.3 ? $step2++ : $step1++; }
+            }
+        }
+        $share = $blocks ? round($dithered / $blocks, 3) : null;
+        return ['dither_share' => $share, 'dither_step_px' => $dithered ? ($step2 > $step1 ? 2 : 1) : null, 'look' => $share !== null && $share >= 0.15 ? 'ordered_dither' : null];
     }
 
     /** The key time of a moment: late enough that its elements have arrived. */
@@ -193,6 +227,7 @@ class ReferenceStudy
             'shots' => $shots, 'cuts' => $cuts, 'change_windows' => $windows, 'samples' => $samples, 'sheets' => $sheets, 'speech' => $speech,
             'pacing' => self::pacing($shots, $duration, $speech), 'music' => $hasAudio ? self::beatMap($this->lowBand($file), $cuts) : null, 'moments' => [], 'systems' => [], 'patterns' => null, 'summary' => null,
             'coverage' => ($looks !== null ? count($samples).' frames, one for every distinct look in '.$looks['frames'].' frames' : count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change').'; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
+        $study['treatment'] = $this->treatment($file, $samples);
         $study['moments_status'] = 'skipped';
         if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) {
             $found = $this->moments($study, $file, $sha, $work);
@@ -465,11 +500,12 @@ class ReferenceStudy
             .'{"summary": "one sentence on how it works", "moments": [{"start": seconds, "end": seconds, "kind": "hook|text|stat|ui|zoom|sticker|character|transition|cta|logo|other", '
             .'"on_screen_text": "exact words on screen or empty", "visual": "what is shown, under 20 words", "motion": "how it moves or changes, under 15 words", '
             .'"transition_in": "cut|wipe|zoom|fade|whip|none|unknown", "spoken": "words said during it or empty", '
-            .'"purpose": "what it does for the viewer, under 12 words (sets up the promise, proves a claim, adds a beat of fun, hands attention to the next step)", "system": "id of the recurring system it belongs to, or empty", "move": "the move that reproduces it, from the list below, or empty"}], '
+            .'"purpose": "what it does for the viewer, under 12 words (sets up the promise, proves a claim, adds a beat of fun, hands attention to the next step)", "system": "id of the recurring system it belongs to, or empty", "move": "the move that reproduces it, from the list below, or empty", "method": "how it was made: '.implode('|', self::METHODS).'"}], '
             .'"systems": [{"id": "s1", "name": "short name (step card, UI panel, caption, emphasis word, sticker)", "look": "how it looks: layout, type, colour, size, under 30 words", '
-            .'"entry": "how it arrives", "active": "what it does while on screen", "hold": "how long it stays and why", "exit": "how it leaves", "move": "the move that reproduces how it arrives or transitions, from the list below"}], '
+            .'"entry": "how it arrives", "active": "what it does while on screen", "hold": "how long it stays and why", "exit": "how it leaves", "move": "the move that reproduces how it arrives or transitions, from the list below", "method": "how it was made: '.implode('|', self::METHODS).'"}], "video_type": "'.implode('|', self::VIDEO_TYPES).'", '
             .'"patterns": {"text_reveal": "how text appears relative to the voice", "emphasis": "how key words are emphasised", "pacing": "rhythm of holds and changes", "signature": "the move it is remembered for"}}.'
             .' A system is an element that recurs with the same look and behaviour (every Step card, every UI panel, the caption style): describe it once in systems and point each of its moments at it.'
+            .' Method: motion_graphics is designed type, shapes and UI animated in software; render_3d is a 3D-rendered object or character (clay, toy-like, CG product), whatever its shading (dithered, toon); generated_video is footage from an AI video model (organic motion, morphing details, unstable text); footage is real camera video; presenter is a person talking to camera (real or AI); screen_recording is a real app or site captured; stock is licensed footage or photos; still is a single image held or moved; audiogram is audio shown as a waveform.'
             .' Name each system\'s and each moment\'s move from this list, choosing what the frames show, not the nearest word: '.\App\Services\Create\MotionMoves::prompt().'.'
             .($every ? ' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes). List as many moments as the video has.' : ' At most 30 moments.')];
         // Maximum looks twice: the first reading lists what it could not tell; those stretches are then read frame by frame.
@@ -505,8 +541,9 @@ class ReferenceStudy
             }
         }
         $systems = self::normalizeSystems((array) ($json['systems'] ?? []));
+        $videoType = in_array($json['video_type'] ?? null, self::VIDEO_TYPES, true) ? $json['video_type'] : null;
         return ['moments' => self::normalizeMoments((array) ($json['moments'] ?? []), (float) $study['duration_seconds'], $every ? null : 30, array_column($systems, 'id')),
-            'systems' => $systems, 'passes' => $passes, 'open_questions' => $questions, 'closeup_sheets' => $closeups,
+            'systems' => $systems, 'video_type' => $videoType, 'passes' => $passes, 'open_questions' => $questions, 'closeup_sheets' => $closeups,
             'usage' => ['input_tokens' => $u['input_tokens'] ?? null, 'output_tokens' => $u['output_tokens'] ?? null, 'images' => $images],
             'patterns' => collect(['text_reveal', 'emphasis', 'pacing', 'signature'])->mapWithKeys(fn ($k) => [$k => mb_substr(trim((string) data_get($json, 'patterns.'.$k, '')), 0, 200)])->filter()->all() ?: null,
             'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 300) ?: null,
@@ -538,7 +575,8 @@ class ReferenceStudy
             if (! is_array($x) || $s($x['name'] ?? '', 60) === '') continue;
             $out[] = ['id' => preg_match('/^s\d{1,2}$/', (string) ($x['id'] ?? '')) ? (string) $x['id'] : 's'.(count($out) + 1), 'name' => $s($x['name'], 60), 'look' => $s($x['look'] ?? '', 200),
                 'entry' => $s($x['entry'] ?? '', 120), 'active' => $s($x['active'] ?? '', 120), 'hold' => $s($x['hold'] ?? '', 120), 'exit' => $s($x['exit'] ?? '', 120)]
-                + (($m = \App\Services\Create\MotionMoves::valid($x['move'] ?? null)) ? ['move' => $m] : []);
+                + (($m = \App\Services\Create\MotionMoves::valid($x['move'] ?? null)) ? ['move' => $m] : [])
+                + (in_array($x['method'] ?? null, self::METHODS, true) ? ['method' => $x['method']] : []);
             if (count($out) >= 12) break;
         }
         return array_values(collect($out)->unique('id')->all());
@@ -556,7 +594,8 @@ class ReferenceStudy
                 'on_screen_text' => $s($m['on_screen_text'] ?? '', 160), 'visual' => $s($m['visual'] ?? '', 160), 'motion' => $s($m['motion'] ?? '', 120),
                 'transition_in' => $s($m['transition_in'] ?? '', 20), 'spoken' => $s($m['spoken'] ?? '', 200),
                 'purpose' => $s($m['purpose'] ?? '', 120), 'system' => in_array($m['system'] ?? '', $systemIds, true) ? $m['system'] : '']
-                + (($move = \App\Services\Create\MotionMoves::valid($m['move'] ?? null)) ? ['move' => $move] : []);
+                + (($move = \App\Services\Create\MotionMoves::valid($m['move'] ?? null)) ? ['move' => $move] : [])
+                + (in_array($m['method'] ?? null, self::METHODS, true) ? ['method' => $m['method']] : []);
             if ($max !== null && count($out) >= $max) break;
         }
         usort($out, fn ($x, $y) => $x['start'] <=> $y['start']);

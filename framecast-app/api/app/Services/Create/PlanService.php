@@ -247,6 +247,7 @@ class PlanService
         return array_filter([
             'how_to_use' => 'Account for every moment id in reference_decisions. Times are seconds in the reference.',
             'summary' => $s['summary'] ?? null, 'duration_seconds' => $s['duration_seconds'] ?? null, 'coverage' => $s['coverage'] ?? null,
+            'video_type' => $s['video_type'] ?? null, 'fps' => $s['fps'] ?? null, 'treatment' => ! empty($s['treatment']['look']) ? $s['treatment'] : null,
             'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
             'music' => ! empty($s['music']['present']) ? array_intersect_key($s['music'], array_flip(['tempo_bpm', 'beat_seconds', 'cuts_on_beat', 'confidence'])) : null,
             // With a layout pass (copying exactly), each moment also says where its elements sit at its key time.
