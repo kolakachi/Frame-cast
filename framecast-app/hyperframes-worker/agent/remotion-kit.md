@@ -35,6 +35,7 @@ in the final composition and inspect rendered frames before finishing.
 
 
 ## 3D characters (wyv-mascot3d.js)
+For a mascot or object that fills a slot, draw it inside the composition instead (kit/three.md): it stays in its slot, needs no matching background and is measured by the layout check. Remotion clips are for 3D that fills no slot.
 When plan.mascot3d is present (or a reference's mascot is a 3D render), render the character with the parametric mascot: it is rigged by construction (head turn, tilt and nod on the neck, blink, wink, gaze, mouth shapes on the narration's words, expressions) and needs no image generation.
 ```js
 import React from 'react';

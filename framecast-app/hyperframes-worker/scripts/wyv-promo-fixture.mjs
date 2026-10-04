@@ -7,13 +7,12 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {createRequire} from 'node:module';
 import {renderRun} from './lib/render-run.mjs';
 const run=promisify(execFile),req=createRequire('/opt/worker/node_modules/hyperframes/package.json'),puppeteer=req('puppeteer-core');
-const src='/opt/worker/fixtures/wyv-promo',work='/opt/worker/.wyv-promo',root='/tmp/wyv-promo',out='/output/wyv-promo';
-for(const d of [work,root,out,out+'/stills'])await mkdir(d,{recursive:true});
-for(const f of await readdir(src))await copyFile(src+'/'+f,work+'/'+f);
-await copyFile('/opt/worker/runtime/wyv-mascot3d.js',work+'/wyv-mascot3d.js');
-// The 3D runtime as one browser script (no React or Remotion: the mascot and prop builders only).
-await run('/opt/worker/node_modules/.bin/esbuild',['w3-entry.js','--bundle','--format=iife','--minify','--alias:react=./shim-react.js','--alias:remotion=./shim-remotion.js','--outfile=three-wyv.js','--log-level=warning'],{cwd:work});
-for(const f of ['index.html','w3-stage.js','three-wyv.js'])await copyFile(work+'/'+f,root+'/'+f);
+const src='/opt/worker/fixtures/wyv-promo',root='/tmp/wyv-promo',out='/output/wyv-promo';
+for(const d of [root,out,out+'/stills'])await mkdir(d,{recursive:true});
+// The 3D runtime as one browser script (three.js with the mascot and prop builders; no React or Remotion),
+// built the same way as the image's runtime/three-wyv.js.
+await run('/opt/worker/node_modules/.bin/esbuild',['/opt/worker/runtime/three/entry.js','--bundle','--format=iife','--minify','--alias:react=/opt/worker/runtime/three/shim-react.js','--alias:remotion=/opt/worker/runtime/three/shim-remotion.js','--outfile='+root+'/three-wyv.js','--log-level=warning']);
+await copyFile(src+'/index.html',root+'/index.html');await copyFile('/opt/worker/runtime/wyv-3d.js',root+'/wyv-3d.js');
 await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');
 for(const f of ['inter.ttf','playfair.ttf'])await copyFile('/opt/worker/runtime/fonts/'+f,root+'/'+f);
 await writeFile(root+'/timing.js','window.TIMING='+await readFile('/vo/timing.json','utf8')+';');

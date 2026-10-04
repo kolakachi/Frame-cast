@@ -19,6 +19,8 @@ COPY agent ./agent
 COPY runtime ./runtime
 COPY --from=registry /registry ./runtime/registry
 COPY --from=registry /registry-catalog.json ./runtime/registry-catalog.json
+# three.js with the mascot and prop builders as one browser script, for 3D drawn inside compositions (wyv-3d.js).
+RUN node_modules/.bin/esbuild runtime/three/entry.js --bundle --format=iife --minify --alias:react=./runtime/three/shim-react.js --alias:remotion=./runtime/three/shim-remotion.js --outfile=runtime/three-wyv.js --log-level=warning
 RUN node scripts/verify-runtime.mjs
 COPY fixtures ./fixtures
 USER node

@@ -3,7 +3,7 @@
 <!-- A WyvStudio promo built as one composition, moment for moment on the Pocketsflow reference: same timing,
      slots and moves, WyvStudio's content, orange for blue, our 3D mascot (from the owner's avatar) and our voice.
      Every frame is a function of time; the 3D is drawn on canvases from the same timeline. -->
-<script src="gsap.min.js"></script><script src="wyv-motion.js"></script><script src="three-wyv.js"></script><script src="w3-stage.js"></script><script src="timing.js"></script>
+<script src="gsap.min.js"></script><script src="wyv-motion.js"></script><script src="three-wyv.js"></script><script src="wyv-3d.js"></script><script src="timing.js"></script>
 <style>
 @font-face{font-family:Inter;src:url(inter.ttf);font-weight:100 900}
 @font-face{font-family:Playfair;src:url(playfair.ttf);font-weight:400 900}
@@ -219,39 +219,17 @@ canvas{position:absolute;display:block}
 <script>
 const tl=gsap.timeline({paused:true}), O='#FF6B35', T=W3.THREE;
 const WORDS=TIMING.words, at=(key,i=0)=>WORDS.filter(w=>w.line===key)[i].start, wordsOf=key=>WORDS.filter(w=>w.line===key).map(w=>w.start);
-const CUES=W3.mouthCues(WORDS.map(w=>({text:w.text,start:w.start,end:w.end})),0), BLINKS=[0.25,3.05,5.5,8.4,12.2,14.0];
-const ease3=x=>1-Math.pow(1-Math.max(0,Math.min(1,x)),3), lerp=(a,b,k)=>a+(b-a)*k;
-// A damped spring from 0 to 1 starting at t0 (closed form, so it is a pure function of time).
-const spring=(t,t0,w=13,z=0.5)=>{if(t<=t0)return 0;const u=t-t0,wd=w*Math.sqrt(1-z*z);return 1-Math.exp(-z*w*u)*(Math.cos(wd*u)+z*w/wd*Math.sin(wd*u));};
-const idle=(t,k=1)=>({bob:Math.sin(t*Math.PI*1.3)*0.025*k,tilt:Math.sin(t*Math.PI*0.9)*0.04*k,yaw:Math.sin(t*Math.PI*0.55)*0.07*k});
+const NARRATION=WORDS.map(w=>({text:w.text,start:w.start,end:w.end})), BLINKS=[0.25,3.05,5.5,8.4,12.2,14.0];
+const ease3=x=>1-Math.pow(1-Math.max(0,Math.min(1,x)),3), lerp=(a,b,k)=>a+(b-a)*k, spring=W3D.spring, idle=W3D.idle;
 
-// The owner's avatar as a 3D mascot: a round orange fur-ball bear with round ears, big glossy eyes, a heart nose
-// and blush cheeks, in the reference's 1-bit ordered dither.
+// The owner's avatar as a 3D mascot: a round fur-ball bear with round ears, big glossy eyes, a heart nose and blush
+// cheeks, in the reference's 1-bit ordered dither (light fur, darker ears where the reference has dark hair).
 const BEAR={seed:1595,head:{shape:'sphere',skin:'#f6e2cc'},hair:{style:'none'},ears:{style:'round',color:'#b88a63',inner:'#6e4a2c'},
  eyes:{style:'disc',size:1.3,spacing:1.05,color:'#121212',highlight:true},brows:{style:'none'},nose:{style:'heart',color:'#3a2140'},
  cheeks:{color:'#eea3b0'},mouth:{color:'#1b1b1b'},body:{outfit:'sweater',color:'#a9a9a9',collar:'turtleneck',pocket:false},finish:'dither'};
-
-const stages=[];
-// A mascot on a canvas: place(t) gives the head centre (cx, cy) and radius r in canvas pixels plus head/body angles.
-function mascot(id,active,place,expressions=[]){
- const cv=document.getElementById(id),m=W3.buildMascot(BEAR,{cell:2});
- stages.push(W3Stage(cv,{active,draw:(t,scene,cam)=>{
-  if(!m.root.parent)scene.add(m.root);
-  const p=place(t),dist=(cv.height/2)/p.r/Math.tan(15*Math.PI/180);cam.position.set(0,0,dist);cam.lookAt(0,0,0);
-  W3.applyRig(m,{x:(p.cx-cv.width/2)/p.r,y:-(p.cy-cv.height/2)/p.r-0.3,yaw:p.yaw||0,pitch:p.pitch||0,tilt:p.tilt||0,bodyYaw:p.bodyYaw||0},
-   W3.faceAt(t,{cues:CUES,blinks:BLINKS,expressions}));
- }}));
-}
-// A 3D object on a canvas, modelled in code, with the reference's product spin (a whip as it lands, then a drift).
-function prop(id,build,active,{spin=null,pitch=.42,scale=1,dist=8.2,yaw=.5}={}){
- const cv=document.getElementById(id);let holder=null,spinner=null;
- stages.push(W3Stage(cv,{active,draw:(t,scene,cam)=>{
-  if(!holder){const mat=(c,f=0)=>W3.finishMaterial(c,'dither',{cell:2,flat:f});holder=new T.Group();spinner=new T.Group();holder.add(spinner);
-   spinner.add(build({THREE:T,shapes:W3.shapes,mat,mesh:(g,c,f=0)=>new T.Mesh(g,mat(c,f))}));scene.add(holder);}
-  cam.position.set(0,0,dist);cam.lookAt(0,0,0);holder.rotation.set(pitch,0,0);holder.scale.setScalar(scale);
-  spinner.rotation.y=spin?W3.spinAt(t,spin):yaw+Math.sin(t*0.6)*0.15;
- }}));
-}
+// Each appearance of the bear is its own canvas in its scene's slot; place(t) gives its head centre and size there.
+const mascot=(id,active,place,expressions=[])=>W3D.mascot('#'+id,{spec:BEAR,words:NARRATION,blinks:BLINKS,active,place,expressions});
+const prop=(id,build,active,opts={})=>W3D.prop('#'+id,{build,active,...opts});
 // The three problem objects.
 const camera=({THREE,shapes,mesh})=>{const g=new THREE.Group();
  g.add(mesh(shapes.roundedBox(2.7,1.65,1.1,.2),'#d4d4d4'));
@@ -282,7 +260,7 @@ const sec=(text,t)=>tl.set('#tag',{textContent:text},t);
 const dark=(on,t)=>tl.set('#hud .mono',{color:on?'#9a9a9a':'#6b6b6b'},t);
 
 // 1. Hook (0–2.2): the bear slides in from the right and turns to us, whispers, then asks; the line builds on the voice.
-mascot('cv1',[0,2.36],t=>{const k=spring(t,0,11,.7),i=idle(t);return {cx:505+760*(1-k),cy:500,r:250,yaw:-.55*(1-spring(t,.12,9,.8))+i.yaw,bodyYaw:-.35*(1-k),tilt:i.tilt,pitch:i.bob};},
+mascot('cv1',[0,2.36],t=>{const k=spring(t,0,11,.7),i=idle(t);return {cx:505+760*(1-k),cy:500,r:250,yaw:-.55*(1-spring(t,.12,9,.8))+i.yaw,bodyYaw:-.35*(1-k),tilt:i.tilt,pitch:i.pitch};},
  [{at:.55,duration:.5,gaze:[-.7,-.1]},{at:1.95,duration:.4,face:'smile'}]);
 WM.pop(tl,'#bubble',.52,{origin:'100% 50%',duration:.35});
 WM.type(tl,'#bubbleText','psst…',.6,18);
@@ -309,7 +287,7 @@ tl.fromTo('.prow',{autoAlpha:0,y:24},{autoAlpha:1,y:0,duration:.35,stagger:.12,e
 mascot('cvA',[2.3,7.05],t=>{
  // Pops up from below at the left (2.35), then rides the device move to the middle, smaller.
  const up=spring(t,2.33,12,.45),move=ease3((t-4.38)/.4),i=idle(t);
- return {cx:lerp(430,1010,move),cy:lerp(560+620*(1-up),790,move),r:lerp(215,150,move),yaw:lerp(.12,-.18,move)+i.yaw,bodyYaw:lerp(.2,-.1,move),tilt:i.tilt,pitch:i.bob};},
+ return {cx:lerp(430,1010,move),cy:lerp(560+620*(1-up),790,move),r:lerp(215,150,move),yaw:lerp(.12,-.18,move)+i.yaw,bodyYaw:lerp(.2,-.1,move),tilt:i.tilt,pitch:i.pitch};},
  [{at:2.55,duration:.32,face:'wink'},{at:2.9,duration:1.25,gaze:[.75,-.05]},{at:4.15,duration:.3,face:'laugh'},{at:6.2,duration:.75,gaze:[.8,-.25]}]);
 mascot('cvAv',[4.6,7.05],t=>({cx:56,cy:58,r:38,yaw:Math.sin(t*1.7)*.12}),[{at:5.9,duration:.4,face:'smile'}]);
 prop('cvR1',camera,[4.6,7.05],{scale:.62,dist:8});prop('cvR2',scissors,[4.6,7.05],{scale:.6,dist:8});prop('cvR3',clock,[4.6,7.05],{scale:.6,dist:8});
@@ -327,7 +305,7 @@ WM.through(tl,{a:'#sceneA',from:'#go',b:'#s4',to:'#approve',at:7.02,inDuration:.
 tl.set('#cursor',{autoAlpha:0},7.02);
 prop('cvP',camera,[6.95,11.2],{scale:.5,dist:8});
 WM.type(tl,'#briefText','Cosy, warm, for Instagram',7.5,30);
-mascot('cv4',[7.0,11.2],t=>{const i=idle(t,1.2);return {cx:278,cy:226,r:118,yaw:i.yaw,tilt:i.tilt,pitch:i.bob};},
+mascot('cv4',[7.0,11.2],t=>{const i=idle(t,1.2);return {cx:278,cy:226,r:118,yaw:i.yaw,tilt:i.tilt,pitch:i.pitch};},
  [{at:9.2,duration:.35,face:'wink'},{at:10.62,duration:.5,face:'laugh'}]);
 const show=(sel,t)=>tl.fromTo(sel,{autoAlpha:0,y:12},{autoAlpha:1,y:0,duration:.25,ease:WM.ease.snappy},t);
 show('#l1',at('w1'));
@@ -348,7 +326,7 @@ tl.fromTo('#ring',{autoAlpha:0,scale:1.6},{autoAlpha:.85,scale:1,duration:.22,ea
 sec('// 05 — you',11.05);dark(true,11.05);
 WM.iris(tl,'#s5',10.92,{from:'#stamp',ringColor:'rgba(255,107,53,.6)',ringWidth:3,duration:.2});
 tl.set('#s4',{autoAlpha:0},11.25);
-mascot('cv5',[10.95,13.5],t=>{const k=spring(t,11.0,11,.55),i=idle(t);return {cx:385,cy:620+520*(1-k),r:178,yaw:-.18+i.yaw,tilt:i.tilt,pitch:i.bob};},
+mascot('cv5',[10.95,13.5],t=>{const k=spring(t,11.0,11,.55),i=idle(t);return {cx:385,cy:620+520*(1-k),r:178,yaw:-.18+i.yaw,tilt:i.tilt,pitch:i.pitch};},
  [{at:11.12,duration:.38,face:'wink'},{at:12.15,duration:.4,face:'smile'}]);
 WM.words(tl,'#h5 .l1 .w',[at('you')]);
 WM.writeOn(tl,'#dream',at('you',1)-.08,{duration:.4});
@@ -375,7 +353,7 @@ tl.fromTo('#stats',{autoAlpha:0},{autoAlpha:1,duration:.3},14.45);
 
 // The clock: every 3D stage and the timecode, drawn from the timeline's time.
 const tc=document.getElementById('tc'),p2=n=>String(n).padStart(2,'0');
-W3Clock(tl,stages,15,[t=>{const s=Math.floor(t),f=Math.floor((t-s)*60);tc.innerHTML='WYVSTUDIO&nbsp;&nbsp;00:00:'+p2(s)+':'+p2(f);}]);
+W3D.clock(tl,15,[t=>{const s=Math.floor(t),f=Math.floor((t-s)*60);tc.innerHTML='WYVSTUDIO&nbsp;&nbsp;00:00:'+p2(s)+':'+p2(f);}]);
 tl.to({},{duration:.01},14.99);
 window.__timelines=window.__timelines||{};window.__timelines.main=tl;
 </script></body></html>

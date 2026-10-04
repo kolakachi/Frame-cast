@@ -216,7 +216,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const executeAction=async(action,reviewImage)=>{
     let result;
       if(action.type==='read'){
-        const guide=(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/reference-moves.html'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path.startsWith('cards/'))&&tools.guidance;
+        const guide=(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/reference-moves.html'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path==='kit/three.md'||action.path==='kit/three-example.html'||action.path.startsWith('cards/'))&&tools.guidance;
         // A file that isn't there is the builder's mistake to correct, not the end of the run.
         try{result={text:guide?await tools.guidance(action.path):await workspace.read(action.path)};}
         catch(e){if(e?.code!=='ENOENT')throw e;result={error:'There is no '+action.path+' in the composition.'+(/^wyv-|^barty-/.test(action.path)?' Runtime modules are added when the composition is checked or rendered; their API is in the kit guides (kit/remotion.md for wyv-mascot3d.js, kit/mascot.md, kit/motion-kit.md).':' Read index.html, style.css, main.js or a kit/ guide.')};}
