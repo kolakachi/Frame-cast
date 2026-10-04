@@ -459,7 +459,10 @@ class PlanService
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
             'requirements' => $requirements, 'character_style' => $characterStyle,
-            'look_first' => (bool) ($raw['look_first'] ?? false),
+            // The user reviews the plan, then the video is built straight away. A separate look stage only when
+            // expensive media depends on an approved look (a character image, talking or animated character clips).
+            'look_first' => (bool) ($raw['look_first'] ?? false) && collect($media)->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)
+                || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character')),
             'selections' => ['omitted_performance' => $ctx['previous_plan']['omitted_performance'] ?? [], 'callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
         // The reference study's moments: every one gets an explicit keep, replace or drop, and nothing disappears silently.
         $known = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
@@ -489,6 +492,10 @@ class PlanService
                 'moments' => collect((array) ($x['moments'] ?? []))->map(fn ($m) => $str($m, 40))->filter()->take(12)->values()->all(),
                 'spin' => (bool) ($x['spin'] ?? false)])->unique('name')->take(8)->values()->all();
         if ($props) $plan['props3d'] = $props;
+        // Decided on the final media (a 3D mascot has dropped any character image by now); the selection follows it.
+        $plan['look_first'] = (bool) ($raw['look_first'] ?? false) && collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)
+            || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'));
+        $plan['selections']['look_first'] = $plan['look_first'];
         // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
         if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
         // Copying exactly: each kept or replaced moment becomes something the build is checked against, at its own

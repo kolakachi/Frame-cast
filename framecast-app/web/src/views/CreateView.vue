@@ -9,6 +9,7 @@ import UiSelect from '../components/UiSelect.vue'
 import CreateDialog from '../components/create/CreateDialog.vue'
 import ThinkingLine from '../components/create/ThinkingLine.vue'
 import StoryboardCarousel from '../components/create/StoryboardCarousel.vue'
+import MascotPreview from '../components/create/MascotPreview.vue'
 import { conversationTimeline, acceptConversationResponse } from '../lib/createConversation.js'
 import { VOICE_DESCRIPTIONS, voiceHeadline } from '../lib/voices.js'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
@@ -752,7 +753,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     </div>
                     <details v-if="!planByMessage[m.id].stale" class="more">
                       <summary>View details</summary>
-                      <div v-if="planByMessage[m.id].plan.mascot3d" class="checks"><b>Your 3D mascot</b><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. You'll see it from three angles in the storyboard before the full video.</p><p v-if="planByMessage[m.id].plan.mascot3d.missing" class="muted">Not possible yet: {{ planByMessage[m.id].plan.mascot3d.missing }}</p></div>
+                      <div v-if="planByMessage[m.id].plan.mascot3d" class="checks"><b>Your 3D mascot</b><MascotPreview :spec="planByMessage[m.id].plan.mascot3d.spec" /><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. Check it from every angle here before you approve; this is the character in your video.</p><p v-if="planByMessage[m.id].plan.mascot3d.missing" class="muted">Not possible yet: {{ planByMessage[m.id].plan.mascot3d.missing }}</p></div>
                       <div v-if="planByMessage[m.id].plan.props3d?.length" class="checks"><b>3D objects</b><p v-for="o in planByMessage[m.id].plan.props3d" :key="o.name" class="muted">{{ o.name }}<template v-if="o.looks">: {{ o.looks }}</template><template v-if="o.spin"> · spins as it lands</template></p><p class="muted">Modelled for this video in the same finish, no image generation.</p></div>
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>

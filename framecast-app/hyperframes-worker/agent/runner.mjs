@@ -74,7 +74,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
    if(!r?.ok)return [];
    return layoutFindings({layout,measured:r.measured,inspectedTimes:state.inspectedTimes||[]});
   };
-  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()})),...await exactLayout()];
+  // The exact-layout measurement opens its own browser, so it runs once on the finished version (a note for the
+  // user), not on every preview; it still runs on each check when findings are set to block finishing.
+  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()})),...(context.findingsBlockFinish===true?await exactLayout():[])];
   const stopNow=async()=>{
     if(!stopRequested())return false;
     if(state.lastGood){
@@ -408,6 +410,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         result={ok:false,error:'Not finished: this draft still has these findings. Fix them and check again, or finish again with a summary that says why each one is intentional.',findings:open.map(f=>({code:f.code,time:f.time,message:f.message,fixHint:f.fixHint}))};
       } else {
         if(open.length)state.pacingAccepted=open.map(f=>f.code);
+        // Notes on the finished version: how closely each reference moment's slots were kept (exact copies only).
+        if(context.findingsBlockFinish!==true)try{const lay=await exactLayout();if(lay.length)state.layoutNotes=lay.slice(0,12).map(f=>({code:f.code,time:f.time,message:String(f.message||'').slice(0,200)}));}catch{/* notes never stop delivery */}
         state.status='preview_ready';state.summary=action.summary;
       }
     } else if(action.type==='needs_input') {

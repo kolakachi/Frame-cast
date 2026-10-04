@@ -93,12 +93,13 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['spec' => ['seed' => 7, 'hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange'], $p['mascot3d']);
         // Its turnaround is the approval, so a character image is never bought for it; 3D objects are modelled, not bought.
         $q = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '',
-            'mascot3d' => ['spec' => ['head' => ['shape' => 'sphere'], 'hair' => ['style' => 'none'], 'finish' => 'dither'], 'why' => 'From the avatar', 'missing' => 'round ears and fur'],
+            'look_first' => true, 'mascot3d' => ['spec' => ['head' => ['shape' => 'sphere'], 'hair' => ['style' => 'none'], 'finish' => 'dither'], 'why' => 'From the avatar', 'missing' => 'round ears and fur'],
             'media' => [['kind' => 'character_poses', 'description' => 'Mascot master preview'], ['kind' => 'sfx', 'description' => 'Card thuds']],
             'props3d' => [['name' => 'laptop', 'looks' => 'open laptop, black screen with a play mark', 'moments' => ['1590:m6'], 'spin' => true], ['name' => ''], 'nonsense']],
             ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']], (int) $this->workspace->id);
         $this->assertSame('round ears and fur', $q['mascot3d']['missing']);
         $this->assertSame(['sfx'], array_column($q['media'], 'kind'));
+        $this->assertFalse($q['look_first'], 'no storyboard when nothing expensive depends on an approved look');
         $this->assertSame([['name' => 'laptop', 'looks' => 'open laptop, black screen with a play mark', 'moments' => ['1590:m6'], 'spin' => true]], $q['props3d']);
         $this->assertStringContainsString('design the mascot from that image', \App\Services\Create\Planning\PlanPrompt::system());
         // The approved plan the build receives carries the mascot and its objects (it once dropped them, so builds never saw them).
