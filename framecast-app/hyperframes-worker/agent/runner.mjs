@@ -94,14 +94,22 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const finalImage=()=>state.reviewImage||(state.reviewedImageRevision===state.revision?state.reviewedImage:null)||null;
   // Close inspection for the reviewer: text and pictures at each beat's key moment, and frames across each
   // requested character action that has a time.
+  // Copying exactly: every moment as a pair, the reference's frame beside ours at the same time.
+  const compareLook=async()=>{
+    const layout=context.plan?.reference_match==='exact'?(context.plan.reference_layout||[]):[];
+    const ref=(context.assets||[]).find(f=>f.purpose==='reference'&&f.asset_type==='video');
+    if(!layout.length||!ref||!tools.compare)return {};
+    const r=await bounded(()=>tools.compare({params:{reference:ref.name,moments:layout.map(m=>({id:m.moment,at:Number(m.at)}))},signal:boundedSignal})).catch(()=>null);
+    return r?.ok&&r.providerImage?{compare:r.providerImage,compareCells:r.cells||[]}:{};
+  };
   const closeLook=async()=>{
-    if(context.lookOnly||!tools.detail)return {};
+    if(context.lookOnly||!tools.detail)return compareLook();
     const scenes=context.plan?.scenes||[];
     const times=scenes.map(s=>+((Number(s.start)+Number(s.end))/2).toFixed(2)).filter(Number.isFinite).slice(0,6);
     const sequences=(context.plan?.character_performance||[]).filter(p=>Number.isFinite(Number(p.start))&&Number.isFinite(Number(p.end))).map(p=>[Number(p.start),Number(p.end),String(p.action||p.id||'action')]).slice(0,3);
     if(!times.length&&!sequences.length)return {};
     const r=await bounded(()=>tools.detail({params:{times,sequences},signal:boundedSignal})).catch(()=>null);
-    return r?.ok&&r.providerImage?{detail:r.providerImage,detailCells:r.cells||[]}:{};
+    return {...(r?.ok&&r.providerImage?{detail:r.providerImage,detailCells:r.cells||[]}:{}),...await compareLook()};
   };
   const finalReview=async()=>{
     if(!requireVisualReview||!tools.critic||!cap.reviewReserveMs||state.pending||

@@ -3,7 +3,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {inspectionReport} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
-if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip','inspect_reference','detail','layout'].includes(operation))throw Error('Invalid local job');
+if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip','inspect_reference','detail','layout','compare'].includes(operation))throw Error('Invalid local job');
 if(operation==='inspect_reference'){
  const {inspectReference}=await import('./reference-inspection.mjs');
  const dir='/output/live/'+id;
@@ -93,6 +93,13 @@ else if(operation==='detail'){
  const sequences=(Array.isArray(req.sequences)?req.sequences:[]).filter(s=>Array.isArray(s)&&num(s[0])&&num(s[1])&&Number(s[1])>Number(s[0])).map(s=>[Number(s[0]),Math.min(Number(s[1]),Number(s[0])+2.5),String(s[2]||'action').slice(0,40)]).slice(0,3);
  const {detailSheet}=await import('./detail-review.mjs');
  result=await detailSheet({root,width:dims[0],height:dims[1],times,sequences,out});
+}
+else if(operation==='compare'){
+ // Every moment of an exact copy beside the reference's frame at the same time, for the reviewer.
+ const req=JSON.parse(await readFile(source+'/compare-request.json','utf8'));
+ if(!/^[A-Za-z0-9._-]+$/.test(String(req.reference||'')))throw Error('Invalid reference');
+ const {compareSheet}=await import('./compare-review.mjs');
+ result=await compareSheet({root,width:dims[0],height:dims[1],reference:source+'/inputs/reference/'+req.reference,moments:Array.isArray(req.moments)?req.moments:[],out});
 }
 else if(operation==='layout'){
  // Where every marked element (data-ref) renders at each requested time, for copying a reference exactly.

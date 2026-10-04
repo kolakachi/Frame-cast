@@ -121,3 +121,18 @@ test('close inspection is a third image, with each cell named in order',async()=
  const two=criticMessages({brief:'b',plan:{scenes:[]},sheet:{image:png},detail:png,detailCells:[]})[0];
  assert.match(two.content[0].text,/Image 2: close inspection/,'without a strip it is the second image');
 });
+
+test('an exact copy is reviewed moment by moment against the reference',async()=>{
+ const {criticMessages}=await import('../critic.mjs');
+ const png='data:image/png;base64,iVBORw0KGgo=';
+ const plan={reference_match:'exact',reference_layout:[{moment:'1471:m14',content:'Script tile in the checkout slot',move:'type'}],scenes:[]};
+ const [m]=criticMessages({brief:'copy it',plan,sheet:{image:png},compare:png,compareCells:[{id:'1471:m14',at:7.85}]});
+ assert.equal(m.content.filter(c=>c.type==='image').length,2,'the comparison is its own image');
+ assert.match(m.content[0].text,/Image 2: every moment as a pair/);
+ assert.match(m.content[0].text,/Any mismatched moment means the verdict is revise/);
+ assert.match(m.content[0].text,/1471:m14 7\.85s/);
+ const [loose]=criticMessages({brief:'b',plan:{scenes:[]},sheet:{image:png}});
+ assert.doesNotMatch(loose.content[0].text,/copies the reference exactly/);
+ const [look]=criticMessages({brief:'b',plan,lookOnly:true,sheet:{image:png}});
+ assert.match(look.content[0].text,/one at each reference moment/);
+});

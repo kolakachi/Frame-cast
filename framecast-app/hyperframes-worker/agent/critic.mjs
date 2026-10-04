@@ -23,7 +23,7 @@ Reply with one JSON object and nothing else: {"scores":{"hook":n,"hierarchy":n,"
 const clip=(s,n)=>{s=String(s??'');return s.length>n?s.slice(0,n)+'…':s;};
 const img=data=>{const m=/^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(String(data||''));return m?{type:'image',source:{type:'base64',media_type:m[1],data:m[2]}}:null;};
 // The one user turn the critic gets.
-export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stripEvidence,detail,detailCells,authorScores,findings,fingerprint,round=1}){
+export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint,round=1}){
  const beats=(plan?.scenes||[]).map(s=>`${s.start}-${s.end}s ${s.label}: ${s.idea||''}${s.uses?.length?' [uses '+s.uses.join(', ')+']':''}`).join('\n');
  const text=[
   `Brief: ${clip(brief,900)}`,
@@ -41,14 +41,18 @@ export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stri
   (plan?.asks||[]).some(a=>a.file)?`The user uploaded these for specific beats; check each appears where planned: ${JSON.stringify(plan.asks.filter(a=>a.file).map(a=>({what:a.what,beat:a.beat})))}`:'',
   fingerprint?`Reference fingerprint: ${clip(JSON.stringify(fingerprint),500)}`:'',
   route?`Kind of video: ${route}.`:'',
-  lookOnly?'This is the LOOK stage: stills only, one per beat. Assess design/readability against intent; do not require motion, implied motion or audio. The strip is absent on purpose.':'',
+  lookOnly?(plan?.reference_match==='exact'?'This is the LOOK stage of an exact copy: stills only, one at each reference moment\'s time. Assess layout against the reference at every moment and design/readability; do not require motion, implied motion or audio. The strip is absent on purpose.':'This is the LOOK stage: stills only, one per beat. Assess design/readability against intent; do not require motion, implied motion or audio. The strip is absent on purpose.'):'',
   authorScores?.length?`The author's own scores: ${authorScores.map(x=>x.time+'s '+x.score).join(', ')}. Findings: ${clip(findings,400)}`:'',
   `Review round ${round}. Image 1: our contact sheet${sheet&&sheet.reference?' (bottom row: the reference at the same moments)':''}.${strip?' Image 2: sampled strip; use the coverage above.':''}${detail?` Image ${strip?3:2}: close inspection at full resolution, six cells across, in this order: ${clip(JSON.stringify((detailCells||[]).map(c=>c.t+'s '+c.what)),900)}. Judge legibility, type quality, logo and picture sharpness and cropping from the crops, and whether each requested action reads across its frames.`:''}`,
  ].filter(Boolean).join('\n\n');
- const content=[{type:'text',text}];
+ // Copying exactly: every moment is judged against the reference beside it, not only the sampled frames.
+ const n=1+(strip?1:0)+(detail?1:0)+1;
+ const exact=compare?`This video copies the reference exactly. Image ${n}: every moment as a pair, the reference on the left and ours on the right at the same time, in this order: ${clip(JSON.stringify((compareCells||[]).map(c=>c.id+' '+c.at+'s')),900)}. Each moment must match its reference: the same elements in the same slots, sizes and order, the same transition state, the mascot in the same place doing the same thing, with the user's content, brand colour and character swapped in. The layout requirements: ${clip(JSON.stringify((plan?.reference_layout||[]).map(m=>({moment:m.moment,content:m.content,move:m.move}))),1500)}. For every moment that does not match, add a directive naming the moment id and what differs (where it sits, what is missing, what is extra). Any mismatched moment means the verdict is revise.`:'';
+ const content=[{type:'text',text:exact?text+'\n\n'+exact:text}];
  const a=img(sheet?.image);if(a)content.push(a);
  const b=img(strip);if(b)content.push(b);
  const c=img(detail);if(c)content.push(c);
+ const d=img(compare);if(d)content.push(d);
  return [{role:'user',content}];
 }
 // The verdict, validated; a malformed reply is a revise with its text as the only directive.
