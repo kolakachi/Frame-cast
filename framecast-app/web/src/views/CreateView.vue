@@ -427,11 +427,13 @@ const claimsDoneKey = () => 'create-claims-done:' + (id.value || '')
 function loadClaimsDone() { try { claimsDone.value = JSON.parse(localStorage.getItem(claimsDoneKey()) || '{}') } catch { claimsDone.value = {} } }
 watch(id, loadClaimsDone, { immediate: true })
 function markClaimsDone(a) { claimsDone.value = { ...claimsDone.value, [a.asset_id]: true }; try { localStorage.setItem(claimsDoneKey(), JSON.stringify(claimsDone.value)) } catch {} }
+// A page's claims are settled once any of them is approved or the user chose Not now; both places that list them hide then.
+const approvedFacts = computed(() => { try { return JSON.parse(conversation.value?.settings_json || '{}').approved_facts || [] } catch { return [] } })
+const claimsSettled = a => !!claimsDone.value[a.asset_id] || (a.suggested_claims || []).some(c => approvedFacts.value.includes(c.text))
+const approvedFrom = a => (a.suggested_claims || []).filter(c => approvedFacts.value.includes(c.text)).length
 const openClaims = computed(() => {
-  let facts = []; try { facts = JSON.parse(conversation.value?.settings_json || '{}').approved_facts || [] } catch {}
   const pending = new Set(pendingAttachments.value.map(a => a.asset_id))
-  return (data.value?.attachments || []).filter(a => a.suggested_claims?.length && !pending.has(a.asset_id) && !claimsDone.value[a.asset_id]
-    && !a.suggested_claims.some(c => facts.includes(c.text)))
+  return (data.value?.attachments || []).filter(a => a.suggested_claims?.length && !pending.has(a.asset_id) && !claimsSettled(a))
 })
 const VIDEO_HOSTS = ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
 const studySteps = computed(() => {
@@ -956,7 +958,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
                 <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small><small v-if="a.rig" class="ref-note">{{ a.rig.ready ? 'Character rig ready: it can blink, look around, tilt its head and change between four mouth shapes.' : 'Not ready to animate: ' + (a.rig.problems || []).slice(0, 3).join(' ') }}</small>
-                  <div v-if="a.suggested_claims?.length && canWrite" class="claims">
+                  <small v-if="a.suggested_claims?.length && claimsSettled(a) && approvedFrom(a)" class="muted">{{ approvedFrom(a) }} {{ approvedFrom(a) === 1 ? 'claim' : 'claims' }} added to approved facts ✓</small>
+                  <div v-if="a.suggested_claims?.length && canWrite && !claimsSettled(a)" class="claims">
                     <small class="muted">Claims on this page. Tick the ones that may appear on screen:</small>
                     <label v-for="(c, i) in a.suggested_claims" :key="i" class="claims__row" :title="'From the page: ' + c.quote"><input v-model="claimPicks[a.asset_id + ':' + i]" type="checkbox" /> {{ c.text }}</label>
                     <button type="button" class="quiet quiet--sm" :disabled="locked" @click="approveClaims(a)">Add to approved facts</button>
