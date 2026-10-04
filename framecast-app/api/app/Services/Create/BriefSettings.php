@@ -23,7 +23,7 @@ class BriefSettings
         'greek', 'hebrew', 'thai', 'vietnamese', 'indonesian', 'malay', 'tagalog', 'urdu', 'bengali', 'tamil', 'ukrainian', 'czech', 'romanian', 'hungarian'];
 
     /** @return array{changes: array<string,mixed>, questions: string[]} */
-    public static function infer(string $brief, array $settings): array
+    public static function infer(string $brief, array $settings, bool $referenceVideo = false): array
     {
         $changes = [];
         $questions = [];
@@ -74,6 +74,10 @@ class BriefSettings
             }
         }
 
+        // How closely to follow an attached reference, when the brief says so (planning asks when it does not).
+        $match = ReferenceMatch::answer($brief);
+        if ($video && $referenceVideo && $match && ($settings['reference_match'] ?? null) !== $match) $changes['reference_match'] = $match;
+
         return ['changes' => $changes, 'questions' => $questions];
     }
 
@@ -105,6 +109,7 @@ class BriefSettings
                 'language' => 'language '.(array_search($value, self::LANGUAGES, true) ? ucfirst(array_search($value, self::LANGUAGES, true)) : $value),
                 'audio' => $value === 'silent' ? 'audio off' : 'original audio kept',
                 'captions' => 'captions off',
+                'reference_match' => $value === 'exact' ? 'the reference matched exactly (same timing, layout, transitions and mascot placement, with your brand and content)' : 'the reference used as inspiration',
                 default => "$key $value",
             };
         }

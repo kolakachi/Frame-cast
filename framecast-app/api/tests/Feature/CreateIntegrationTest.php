@@ -79,6 +79,37 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(5, DB::table('create_messages')->where('conversation_id', $c->id)->count());
     }
 
+    public function test_how_closely_to_follow_a_reference_video_is_settled_before_planning(): void
+    {
+        $m = fn ($t) => \App\Services\Create\ReferenceMatch::infer($t);
+        $this->assertSame('exact', $m('The plan is to create a video from the reference video, copy it frame by frame, but replace the avatar with ours. The component placements should remain.'));
+        $this->assertSame('exact', $m('Recreate the attached reference move for move with my brand.'));
+        $this->assertSame('inspired', $m('Something inspired by this reference, my own layout.'));
+        $this->assertNull($m('A promo for my shoes using the attached video.'), 'neither: ask');
+        $this->assertNull($m('Show exactly four formats.'), 'an unrelated "exactly" is not a copy request');
+        $this->assertNull($m('Copy it frame by frame but loosely.'), 'both: ask');
+        $this->assertNull($m('Put "copy it frame by frame" on screen.'), 'quoted copy is content');
+        $this->assertSame('exact', \App\Services\Create\ReferenceMatch::answer('Exactly.'));
+        $this->assertSame('inspired', \App\Services\Create\ReferenceMatch::answer('inspired'));
+
+        $ref = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'ref.mp4', 'storage_url' => 'create-upload://r', 'status' => 'active']);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->attach($this->owner, $c->id, $ref->id, 'reference', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A promo for WyvStudio from this.', 'expected_version' => 1, 'idempotency_key' => 'b1']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $v = (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $asked = $plans->propose($this->owner, $c->id, $v, 'p1');
+        $this->assertSame('reference_match', $asked['needs_answer']);
+        $this->assertSame(0, DB::table('create_plans')->where('conversation_id', $c->id)->count(), 'nothing is planned until it is settled');
+        $this->assertSame(\App\Services\Create\ReferenceMatch::QUESTION, DB::table('create_messages')->where('conversation_id', $c->id)->orderByDesc('sequence')->value('content'));
+        $plans->propose($this->owner, $c->id, $v + 1, 'p2');
+        $this->assertSame(1, DB::table('create_messages')->where('conversation_id', $c->id)->where('content', \App\Services\Create\ReferenceMatch::QUESTION)->count(), 'asked once');
+        // The answer sets it, and says so.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'exactly', 'expected_version' => $v + 1, 'idempotency_key' => 'b2']);
+        $this->assertSame('exact', json_decode($this->conversations->conversation($this->owner, $c->id)->settings_json, true)['reference_match']);
+        $this->assertStringContainsString('matched exactly', DB::table('create_messages')->where('conversation_id', $c->id)->orderByDesc('sequence')->value('content'));
+    }
+
     public function test_offline_plan_is_a_free_assistant_turn_with_editable_selections(): void
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

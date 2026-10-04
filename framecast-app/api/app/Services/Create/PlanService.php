@@ -44,6 +44,26 @@ class PlanService
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
         abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
 
+        // With a reference video, how closely to follow it is decided before planning: from Details, from the
+        // brief, or by asking (a copy and an inspiration plan differently, so the planner does not guess).
+        $settings = json_decode($c->settings_json, true) ?: [];
+        $hasReferenceVideo = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')
+            ->where('create_attachments.conversation_id', $id)->where('create_attachments.purpose', 'reference')->where('assets.asset_type', 'video')->exists();
+        if ($hasReferenceVideo && ($settings['output_kind'] ?? 'video') === 'video' && empty($settings['reference_match'])) {
+            $match = ReferenceMatch::infer($briefs->pluck('content')->implode("\n"));
+            if (! $match) {
+                $last = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->first();
+                if (! $last || $last->content !== ReferenceMatch::QUESTION) {
+                    $next = (int) $c->version + 1;
+                    DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => ReferenceMatch::QUESTION,
+                        'idempotency_key' => 'reference-match:'.$key, 'request_hash' => hash('sha256', ReferenceMatch::QUESTION), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+                    DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+                }
+                return ['needs_answer' => 'reference_match', 'question' => ReferenceMatch::QUESTION];
+            }
+            DB::table('create_conversations')->where('id', $id)->update(['settings_json' => json_encode(OutputSettings::normalize([...$settings, 'reference_match' => $match]))]);
+            $c = $this->conversations->conversation($user, $id);
+        }
         // Every attached reference video is studied before planning (normally already done in the background at attach time).
         $this->studyReferences($user, $c);
         // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
@@ -449,6 +469,8 @@ class PlanService
                 + ($x['decision'] !== 'drop' && ($move = MotionMoves::valid($x['move'] ?? null) ?? MotionMoves::valid($systems[$x['system']]['move'] ?? null)) ? ['move' => $move] : []) + [
                 'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
+        // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
+        if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
         // Real things only the user has (screens, logo, photos, people, recordings): at most five, each with its beat and fallback.
         $labels = array_column($scenes, 'label');

@@ -78,7 +78,9 @@ class ConversationService
             // advances the version like any other change, which invalidates
             // an older quote the same way a settings edit does.
             $settings = json_decode($c->settings_json, true) ?: [];
-            $inferred = BriefSettings::infer($input['content'], $settings);
+            $referenceVideo = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')
+                ->where('create_attachments.conversation_id', $id)->where('create_attachments.purpose', 'reference')->where('assets.asset_type', 'video')->exists();
+            $inferred = BriefSettings::infer($input['content'], $settings, $referenceVideo);
             $replies = [];
             if ($inferred['changes'] !== []) {
                 $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'])));
