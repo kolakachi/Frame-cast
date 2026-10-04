@@ -11,9 +11,12 @@ class CharacterPerformance
         $result = [];
         $previous = $context['previous_plan']['character_performance'] ?? [];
         $previousRequirements = array_column($context['previous_plan']['requirements'] ?? [], null, 'id');
-        // Short follow-ups must not erase an earlier performance promise.
+        // Short follow-ups must not erase an earlier performance promise, but a re-planned one for the same
+        // words of the brief (same kind and quote, e.g. now through the attached talking face) replaces it.
+        $replanned = collect(is_array($raw) ? $raw : [])->filter(fn ($r) => is_array($r))->map(fn ($r) => ($r['kind'] ?? '').'|'.trim((string) ($r['source_quote'] ?? '')))->flip();
         foreach ([...$previous, ...(is_array($raw) ? $raw : [])] as $index => $r) {
             if (! is_array($r)) continue;
+            if ($index < count($previous) && $replanned->has(($r['kind'] ?? '').'|'.trim((string) ($r['source_quote'] ?? '')))) continue;
             $quote = trim(is_string($r['source_quote'] ?? null) ? $r['source_quote'] : '');
             $action = mb_substr(trim(is_string($r['action'] ?? null) ? $r['action'] : ''), 0, 240);
             $kind = $r['kind'] ?? '';

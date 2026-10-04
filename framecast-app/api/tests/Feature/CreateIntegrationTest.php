@@ -2405,6 +2405,12 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('not body actions', \App\Services\Create\CharacterPerformance::issues($body, $settings, [], $kit)[0]['message']);
         $silent = \App\Services\Create\CharacterPerformance::issues($plan, ['audio' => 'silent'] + $settings, [], $kit);
         $this->assertStringContainsString('script and audio', $silent[0]['message']);
+        // Re-planning the same words of the brief through the face replaces the earlier route; untouched promises carry on.
+        $ctx = ['messages' => [['role' => 'user', 'content' => 'she talks with the narration, blinks, winks on the punchline']], 'settings' => $settings,
+            'previous_plan' => ['character_performance' => [['kind' => 'speech', 'action' => 'speaks', 'source_quote' => 'she talks with the narration, blinks', 'start' => 0, 'end' => 15, 'route' => 'generated_video', 'tool' => 'talking_take'],
+                ['kind' => 'facial', 'action' => 'winks', 'source_quote' => 'winks on the punchline', 'start' => 1, 'end' => 2, 'route' => 'generated_video', 'tool' => 'talking_take']]]];
+        $now = \App\Services\Create\CharacterPerformance::normalize([['kind' => 'speech', 'action' => 'speaks via her face kit', 'source_quote' => 'she talks with the narration, blinks', 'start' => 0, 'end' => 12, 'route' => 'face_kit', 'tool' => null]], $ctx);
+        $this->assertSame([['facial', 'generated_video'], ['speech', 'face_kit']], array_map(fn ($r) => [$r['kind'], $r['route']], $now));
         // A ready layered rig performs facial actions too; a flat image still cannot.
         $rig = ['narration' => ['x'], 'character_performance' => [$perf('facial', 'prepared_rig')]];
         $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($rig, $settings, [], [['rig' => ['ready' => true]]]));
