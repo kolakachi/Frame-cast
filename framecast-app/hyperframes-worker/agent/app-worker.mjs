@@ -172,8 +172,9 @@ async function execute(run){
      const payload=operation==='media'?{op,input,params:params??{}}:
       operation==='run'?{cmd,args}:operation==='inspect_reference'?{input,params}:operation==='detail'?{times:params?.times??[],sequences:params?.sequences??[]}:operation==='layout'?{times:params?.times??[]}:operation==='compare'?{reference:params?.reference,moments:params?.moments??[]}:null;
      const requestFile=dir+'/'+operation+'-request.json';
-     if(payload)await writeFile(requestFile,JSON.stringify(operation==='run'&&unlimited?{...payload,timeout_ms:600000}:payload),{mode:0o600});
-     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:unlimited?900000:180000,maxBuffer:8000000});
+     // A command that runs past its limit is stuck, not slow: a 3D clip render gets 5 minutes, anything else 90 s.
+     if(payload)await writeFile(requestFile,JSON.stringify(operation==='run'?{...payload,timeout_ms:cmd==='remotion'&&args?.[0]==='render'?300000:90000}:payload),{mode:0o600});
+     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:unlimited?900000:operation==='run'?360000:180000,maxBuffer:8000000});
      const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));
      if(payload)await unlink(requestFile).catch(()=>{});
      const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg',detail:'detail/detail.jpg',compare:'compare/compare.jpg'})[operation];

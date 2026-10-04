@@ -1356,7 +1356,9 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('"input":{}', json_encode($out['content'][2]), 'a tool call with no fields goes back out as an object');
         $this->assertSame('tool_use', $out['stop_reason']);
         $sent = Http::recorded()[0][0]; $sentBody = json_decode($sent->body(), true);
-        $this->assertSame($messages, $sentBody['messages'], 'the history goes to the provider as the worker wrote it');
+        // The history goes as the worker wrote it, with a cache marker on its last block so the next turn reads it cheaply.
+        $cached = $messages; $last = count($cached) - 1; $cached[$last]['content'][count($cached[$last]['content']) - 1]['cache_control'] = ['type' => 'ephemeral'];
+        $this->assertSame($cached, $sentBody['messages'], 'the history goes to the provider as the worker wrote it, cached to its end');
         $this->assertSame($tools, $sentBody['tools']);
         $this->assertStringContainsString('"properties":{}', $sent->body(), 'an empty schema stays an object');
         $this->assertStringContainsString('"input":{}', $sent->body(), 'an empty tool_use input stays an object');

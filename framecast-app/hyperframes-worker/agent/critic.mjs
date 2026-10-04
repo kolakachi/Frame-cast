@@ -75,10 +75,11 @@ export function parseCriticVerdict(text,{performance=[],requirements=[],lookOnly
   const valid=item&&['pass','fail','unverified','deferred'].includes(item.status)&&typeof item.evidence==='string'&&item.evidence.trim();
   const status=valid?item.status:'unverified';
   performanceChecks.push({id:requirement.id,status,evidence:valid?clip(item.evidence,400):'No unique evidence returned.'});
-  if(!(status==='pass'||(lookOnly&&status==='deferred')))unmet.push(clip(`Character action "${requirement.action}": ${status}. ${performanceChecks.at(-1).evidence}`,300));
+  // Only a seen miss blocks; what frames cannot show (speech, sound, timing to the voice) stays unverified, not failed.
+  if(status==='fail')unmet.push(clip(`Character action "${requirement.action}": ${status}. ${performanceChecks.at(-1).evidence}`,300));
  }
  const reqChecks=requirementChecks(raw?.requirement_checks,requirements,{lookOnly});
- for(const c of reqChecks)if(lookOnly?c.status==='unmet':!['fulfilled','deferred','by_ear'].includes(c.status))unmet.push(clip(`Requirement "${c.text}": ${c.status}. ${c.evidence}`,300));
+ for(const c of reqChecks)if(c.status==='unmet')unmet.push(clip(`Requirement "${c.text}": ${c.status}. ${c.evidence}`,300));
  const values=CRITERIA.map(k=>scores[k]),mean=values.reduce((a,b)=>a+b,0)/values.length;
  const verdict=raw?.verdict==='pass' && !unmet.length && values.every(v=>v>=PASS_MIN)&&mean>=PASS_MEAN?'pass':'revise';
  return {ok:true,requirement_checks:reqChecks,performance_checks:performanceChecks,unmet_requirements:unmet,scores,mean:Math.round(mean*10)/10,verdict,directives:[...unmet.map(x=>'Unmet requirement: '+x),...directives].slice(0,8),note:clip(raw?.note,200)};

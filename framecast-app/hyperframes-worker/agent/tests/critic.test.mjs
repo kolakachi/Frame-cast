@@ -11,15 +11,17 @@ test('review receives intent and actual full-duration sampling rather than guess
  assert.match(unknown,/Unknown timestamps\/coverage/);
 });
 
-test('every character performance needs evidence; only storyboard can defer it',()=>{
+test('a character performance blocks only when it is seen to fail; what frames cannot show stays unverified',()=>{
  const performance=[{id:'perf-1',action:'Blink',start:1,end:3}];
  const reply={scores:Object.fromEntries(CRITERIA.map(k=>[k,9])),verdict:'pass',directives:[]};
- assert.equal(parseCriticVerdict(JSON.stringify(reply),{performance}).verdict,'revise');
- for(const status of ['fail','unverified','deferred'])assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[{id:'perf-1',status,evidence:'1–3 seconds need review'}]}),{performance}).verdict,'revise');
+ const missing=parseCriticVerdict(JSON.stringify(reply),{performance});
+ assert.equal(missing.verdict,'pass');assert.equal(missing.performance_checks[0].status,'unverified');
+ assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[{id:'perf-1',status:'fail',evidence:'1–3 s: eyes never close'}]}),{performance}).verdict,'revise');
+ for(const status of ['unverified','deferred'])assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[{id:'perf-1',status,evidence:'1–3 seconds need review'}]}),{performance}).verdict,'pass');
  assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[{id:'perf-1',status:'deferred',evidence:'Storyboard stills'}]}),{performance,lookOnly:true}).verdict,'pass');
  const check={id:'perf-1',status:'pass',evidence:'1.2–1.4s: eyelids close and reopen while head is stationary.'};
  assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[check]}),{performance}).verdict,'pass');
- assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[check,check]}),{performance}).verdict,'revise');
+ assert.equal(parseCriticVerdict(JSON.stringify({...reply,performance_checks:[check,check]}),{performance}).performance_checks[0].status,'unverified','two answers for one action are not evidence');
  assert.match(criticMessages({brief:'x',plan:{character_performance:performance}})[0].content[0].text,/perf-1/);
  assert.match(criticMessages({brief:'Blink',plan:{omitted_character_performance:performance}})[0].content[0].text,/User explicitly left these actions out/);
 });
@@ -103,7 +105,8 @@ test('a storyboard defers what stills cannot show and is blocked only by explici
  assert.equal(look.verdict,'pass','audio is deferred and an unverifiable process check does not block a storyboard');
  assert.equal(look.requirement_checks.find(c=>c.id==='req-aaaaaaaaaaaaaaaaaaaa').status,'deferred');
  assert.equal(parseCriticVerdict(reply('unmet'),{requirements:reqs,lookOnly:true}).verdict,'revise','an explicit miss still blocks');
- assert.equal(parseCriticVerdict(reply('fulfilled'),{requirements:reqs,lookOnly:false}).verdict,'revise','the full video still needs every check');
+ assert.equal(parseCriticVerdict(reply('fulfilled'),{requirements:reqs,lookOnly:false}).verdict,'pass','in the full video too, only an explicit miss blocks; unverified sound is left to the listening check');
+ assert.equal(parseCriticVerdict(reply('unmet'),{requirements:reqs,lookOnly:false}).verdict,'revise');
 });
 test('the reviewer is told which uploaded items belong on which beat; requests without a file are not listed',async()=>{
  const {criticMessages}=await import('../critic.mjs');

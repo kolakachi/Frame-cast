@@ -69,6 +69,10 @@ class AnthropicGateway
             $messages = json_decode($input['messages_json'], false, 16);
             $tools = json_decode((string) ($input['tools_json'] ?? '[]'), false, 16);
         }
+        // The conversation so far is cached up to its last block, so the next turn reads it at a tenth of the price
+        // instead of resending ~50k tokens at full rate on every call.
+        if ($toolMode && is_array($messages) && ($last = end($messages)) && is_object($last) && is_array($last->content ?? null) && ($block = end($last->content)) && is_object($block))
+            $block->cache_control = (object) ['type' => 'ephemeral'];
         // Opus can take over two minutes to write a full composition with its thinking.
         set_time_limit(PilotPolicy::unlimited() ? 960 : 320);
         $attempts = app(AttemptService::class);

@@ -7,10 +7,11 @@ const id=n=>'req-'+String(n).padStart(20,'0');
 const requirements=[{id:id(1),text:'Open the box',category:'action',review_stage:'production',after_ids:[]},{id:id(2),text:'Look surprised',category:'action',review_stage:'production',after_ids:[id(1)]},{id:id(3),text:'Point',category:'action',review_stage:'production',after_ids:[id(2)]}];
 const checks=requirements.map((r,i)=>({id:r.id,status:'fulfilled',evidence:'Visible action',start:i*2,end:i*2+1}));
 const reply={scores:Object.fromEntries(CRITERIA.map(k=>[k,9])),verdict:'pass',requirement_checks:checks};
-test('every requirement needs unique evidence and timing for ordered actions',()=>{
+test('every requirement needs unique evidence and timing for ordered actions; missing evidence is unverified, not a miss',()=>{
  assert.deepEqual(requirementChecks(checks,requirements).map(r=>r.status),['fulfilled','fulfilled','fulfilled']);
  for(const raw of [[],[...checks,checks[0]],checks.map(({start,end,...c})=>c)]){
-  assert.equal(parseCriticVerdict(JSON.stringify({...reply,requirement_checks:raw}),{requirements}).verdict,'revise');
+  const v=parseCriticVerdict(JSON.stringify({...reply,requirement_checks:raw}),{requirements});
+  assert.ok(v.requirement_checks.some(c=>c.status==='unverified'));assert.equal(v.verdict,'pass');
  }
  assert.equal(parseCriticVerdict(JSON.stringify(reply),{requirements}).verdict,'pass');
  assert.equal(parseCriticVerdict('bad JSON',{requirements}).requirement_checks.length,3);

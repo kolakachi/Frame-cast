@@ -54,6 +54,9 @@ class AnthropicPlanner implements Planner
         // A plan that accounts for every studied reference moment is long; one reply must have room for all of it.
         $perCall = $unlimited ? 32000 : 24000;
         $maxInspections = $unlimited ? 16 : 4; $inspectionTurns = $unlimited ? 6 : 2;
+        // A studied reference has already been looked at closely: one round of inspection, then the plan is written once
+        // (more rounds made the planner write a full draft beside each request, then the plan again).
+        if (collect($context['files'] ?? [])->contains(fn ($f) => ! empty(data_get($f, 'reference.study')))) { $maxInspections = 4; $inspectionTurns = 1; }
         $deadline = $context['_planner_deadline'] ?? microtime(true) + 100;
         $unreceipted = false;
         try {
