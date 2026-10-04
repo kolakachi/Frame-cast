@@ -196,7 +196,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       errors.push(...clipUsageFindings({planMedia:context.planMedia||[],html:sources,rows,durations:state.durations||{},limitations:state.limitations||[]}));
     }
     // Beats start when their words are said (plan.scenes[].starts_on), measured on the narration as placed.
-    if(!context.lookOnly&&context.plan?.scenes?.some(sc=>sc.starts_on)){
+    // An exact copy keeps the reference's timing, so voice timing is not a rule there (it would fight the reference).
+    if(!context.lookOnly&&context.plan?.reference_match!=='exact'&&context.plan?.scenes?.some(sc=>sc.starts_on)){
       const asset=p=>workspace.assets.find(a=>a.path===p);
       const roots=new Set((context.planMedia||[]).filter(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.file).map(m=>m.file));
       const isVoice=src=>{let a=src;for(let i=0;i<8&&a;i++){if(roots.has(a))return true;const x=asset(a);a=x?.derivedFrom??x?.origin??null;}return false;};

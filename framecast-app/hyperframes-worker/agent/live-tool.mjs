@@ -114,7 +114,7 @@ else {
  // Keep the 30-frame budget but cover the end of longer videos as well.
  const stripTimes=operation==='strip'?(await import('./review-sampling.mjs')).reviewSampling(settings.duration_seconds).times.join(','):null;
  const args=operation==='timeline'?['timeline','--json']:operation==='check'?['check',root,'--json']:['snapshot',root,'--at',stripTimes??times,'--no-end','--describe','false','--output',out];
- try {const {stdout,stderr}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',...args],{cwd:root,timeout:120000,maxBuffer:16000000});await writeFile(out+'/command.log',stdout+stderr);result={ok:operation==='check'?JSON.parse(stdout).ok===true:true,diagnostics:operation==='timeline'?JSON.parse(stdout):operation==='check'?inspectionReport(stdout):'Snapshots captured'};}
+ try {const {stdout,stderr}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',...args],{cwd:root,timeout:120000,maxBuffer:16000000,env:{...process.env,PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS:'45000'}});await writeFile(out+'/command.log',stdout+stderr);result={ok:operation==='check'?JSON.parse(stdout).ok===true:true,diagnostics:operation==='timeline'?JSON.parse(stdout):operation==='check'?inspectionReport(stdout):'Snapshots captured'};}
  catch(e){await writeFile(out+'/command.log',(e.stdout||'')+(e.stderr||''));result={ok:false,diagnostics:operation==='check'?inspectionReport(e.stdout||e.stderr||e.message):(e.stdout||e.stderr||e.message).slice(0,12000)};}
 }
 // Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
