@@ -76,6 +76,91 @@ class ReferenceStudy
         });
     }
 
+    public const LAYOUT_VERSION = 1;
+    public const LAYOUT_ROLES = ['headline', 'text', 'card', 'tile', 'panel', 'phone', 'screen', 'button', 'mascot', 'logo', 'sticker', 'chart', 'cursor', 'image', 'other'];
+
+    /**
+     * Where each element sits at each moment (for copying a reference exactly): every moment's key frame is
+     * read at a larger size and each visible element boxed as a share of the frame. Made once, cached with the study.
+     */
+    public function layoutForAsset(Asset $asset): ?array
+    {
+        $study = data_get($asset->metadata_json, 'reference_study');
+        if (! is_array($study) || empty($study['moments'])) return null;
+        if ((int) data_get($study, 'layout.version') === self::LAYOUT_VERSION && ! empty($study['layout']['moments'])) return $study['layout'];
+        $bytes = app(StorageService::class)->get((string) $asset->storage_url);
+        if (! is_string($bytes) || $bytes === '') return null;
+        $dir = sys_get_temp_dir().'/create-layout-'.Str::uuid();
+        @mkdir($dir, 0700, true);
+        try {
+            file_put_contents($dir.'/in.mp4', $bytes);
+            $layout = $this->layout($dir.'/in.mp4', $study, $dir);
+            if (! $layout) return null;
+            $asset->refresh(); $meta = (array) $asset->metadata_json; $meta['reference_study']['layout'] = $layout;
+            $asset->forceFill(['metadata_json' => $meta])->save();
+            return $layout;
+        } finally {
+            foreach (glob($dir.'/*') ?: [] as $f) @unlink($f);
+            @rmdir($dir);
+        }
+    }
+
+    /** The key time of a moment: late enough that its elements have arrived. */
+    public static function keyTime(array $m, float $duration): float
+    {
+        $a = (float) ($m['start'] ?? 0); $b = (float) ($m['end'] ?? $a);
+        return round(min(max(0, $duration - 0.05), $a + max(0, $b - $a) * 0.65), 2);
+    }
+
+    private function layout(string $file, array $study, string $work): ?array
+    {
+        $duration = (float) ($study['duration_seconds'] ?? 0);
+        $moments = array_values(array_filter((array) $study['moments'], fn ($m) => isset($m['id'])));
+        if (! $moments || $duration <= 0) return null;
+        $font = collect(['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/lato/Lato-Medium.ttf'])->first(fn ($f) => is_file($f));
+        $content = []; $sheets = 0;
+        foreach (array_chunk($moments, 6) as $k => $chunk) {
+            foreach (glob($work.'/l-*.jpg') ?: [] as $f) @unlink($f);
+            foreach ($chunk as $i => $m) {
+                $t = self::keyTime($m, $duration);
+                // The frame at 640x360 with its moment id on a strip below it (never over the picture).
+                // No padding inside the picture, so boxes measured on it are boxes on the real frame, whatever its shape.
+                $vf = 'scale=640:360:force_original_aspect_ratio=decrease,pad=iw:ih+28:0:0:black';
+                if ($font) { file_put_contents($work.'/label.txt', $m['id'].'  '.number_format($t, 2).'s'); $vf .= ",drawtext=fontfile={$font}:textfile={$work}/label.txt:x=8:y=h-22:fontsize=18:fontcolor=white"; }
+                Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-y', '-ss', (string) $t, '-i', $file, '-frames:v', '1', '-vf', $vf, '-q:v', '3', sprintf('%s/l-%02d.jpg', $work, $i)]);
+            }
+            $rows = (int) ceil(count($chunk) / 3);
+            $r = Process::timeout(60)->run(['ffmpeg', '-v', 'error', '-y', '-framerate', '1', '-i', $work.'/l-%02d.jpg', '-vf', "tile=3x{$rows}:padding=4:color=white", '-frames:v', '1', '-q:v', '3', $work.'/layout.jpg']);
+            if (! $r->successful() || ! is_file($work.'/layout.jpg')) continue;
+            $content[] = ['type' => 'text', 'text' => 'Sheet '.($k + 1).': moments '.implode(', ', array_column($chunk, 'id')).', left to right, top to bottom.'];
+            $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) file_get_contents($work.'/layout.jpg'))]];
+            $sheets++;
+        }
+        if (! $sheets) return null;
+        $content[] = ['type' => 'text', 'text' => 'Each cell is one moment of a reference video at its key time; its moment id is on the strip below the picture. '
+            .'For every cell, list each visible element (at most 10, the most important first) with its role ('.implode(', ', self::LAYOUT_ROLES).'), a short label of what it is (e.g. "checkout tile", "mascot bust", "headline: Got something to sell?"), '
+            .'and its box as fractions of that picture (not the strip): [x, y, width, height], x and y from the top left, each 0 to 1, to two decimals. Measure carefully: the boxes are used to place the same elements in the same slots. '
+            .'Also give background: the picture\'s background in a few words. Reply with JSON only: {"moments": [{"moment": "m1", "background": "...", "elements": [{"role": "...", "label": "...", "box": [0.1, 0.2, 0.3, 0.4]}]}]}.'];
+        $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
+        [$json, $usage] = $this->ask($model, $content, true, 'high') ?? [null, []];
+        if (! is_array($json)) return null;
+        $ids = array_column($moments, 'id'); $out = [];
+        foreach ((array) ($json['moments'] ?? []) as $row) {
+            if (! is_array($row) || ! in_array($row['moment'] ?? null, $ids, true)) continue;
+            $els = [];
+            foreach (array_slice((array) ($row['elements'] ?? []), 0, 10) as $e) {
+                $raw = array_map('floatval', array_slice(array_values((array) ($e['box'] ?? [])), 0, 4));
+                if (count($raw) !== 4 || $raw[2] <= 0 || $raw[3] <= 0) continue;
+                [$x, $y] = [max(0, min(1, $raw[0])), max(0, min(1, $raw[1]))];
+                $b = [round($x, 3), round($y, 3), round(max(0.005, min(1 - $x, $raw[2])), 3), round(max(0.005, min(1 - $y, $raw[3])), 3)];
+                $els[] = ['role' => in_array($e['role'] ?? '', self::LAYOUT_ROLES, true) ? $e['role'] : 'other', 'label' => mb_substr(trim((string) ($e['label'] ?? '')), 0, 80), 'box' => $b];
+            }
+            $m = collect($moments)->firstWhere('id', $row['moment']);
+            $out[] = ['moment' => $row['moment'], 'at' => self::keyTime($m, $duration), 'background' => mb_substr(trim((string) ($row['background'] ?? '')), 0, 80), 'elements' => $els];
+        }
+        return $out ? ['version' => self::LAYOUT_VERSION, 'moments' => $out, 'cost_microusd' => self::cost($usage)] : null;
+    }
+
     /** A cached study is reused unless its moment list failed (a provider outage or billing stop): then it is made again. */
     public static function reusable(mixed $have, string $sha, ?string $mode = null): bool
     {
@@ -429,11 +514,11 @@ class ReferenceStudy
     }
 
     /** One reading by the model: the parsed JSON and its usage, or null (logged) when the call or the reply fails. */
-    private function ask(string $model, array $content, bool $long): ?array
+    private function ask(string $model, array $content, bool $long, string $effort = 'low'): ?array
     {
         try {
             $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
+                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => $effort], 'messages' => [['role' => 'user', 'content' => $content]]]);
         } catch (\Throwable) { return null; }
         if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return null; }
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');

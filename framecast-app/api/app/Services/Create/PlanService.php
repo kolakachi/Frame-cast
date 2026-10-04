@@ -249,7 +249,9 @@ class PlanService
             'summary' => $s['summary'] ?? null, 'duration_seconds' => $s['duration_seconds'] ?? null, 'coverage' => $s['coverage'] ?? null,
             'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
             'music' => ! empty($s['music']['present']) ? array_intersect_key($s['music'], array_flip(['tempo_bpm', 'beat_seconds', 'cuts_on_beat', 'confidence'])) : null,
-            'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + (($m['system'] ?? '') !== '' ? ['system' => $assetId.':'.$m['system']] : []) + array_diff_key($m, ['id' => 1, 'system' => 1]), (array) ($s['moments'] ?? [])),
+            // With a layout pass (copying exactly), each moment also says where its elements sit at its key time.
+            'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + (($m['system'] ?? '') !== '' ? ['system' => $assetId.':'.$m['system']] : []) + array_diff_key($m, ['id' => 1, 'system' => 1])
+                + (($l = collect(data_get($s, 'layout.moments', []))->firstWhere('moment', $m['id'])) ? ['layout' => array_intersect_key($l, array_flip(['at', 'background', 'elements']))] : []), (array) ($s['moments'] ?? [])),
             'systems' => array_map(fn ($x) => ['id' => $assetId.':'.$x['id']] + array_diff_key($x, ['id' => 1]), (array) ($s['systems'] ?? [])),
             'speech' => $speech ? array_filter(['text' => mb_substr((string) ($speech['text'] ?? ''), 0, 1200), 'first_word_at' => $speech['first_word_at'] ?? null, 'last_word_at' => $speech['last_word_at'] ?? null,
                 'pauses' => array_slice((array) ($speech['pauses'] ?? []), 0, 12),
@@ -264,7 +266,9 @@ class PlanService
         foreach (DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'reference')->pluck('asset_id') as $id) {
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($id);
             if (! $asset || $asset->asset_type !== 'video') continue;
-            try { app(\App\Services\Create\References\ReferenceStudy::class)->forAsset($asset, \App\Services\Create\References\ReferenceStudy::coverageMode(json_decode($c->settings_json, true)['reference_effort'] ?? null)); }
+            try { $studies = app(\App\Services\Create\References\ReferenceStudy::class); $studies->forAsset($asset, \App\Services\Create\References\ReferenceStudy::coverageMode(json_decode($c->settings_json, true)['reference_effort'] ?? null));
+                // Copying exactly: where every element sits at every moment, measured once and cached with the study.
+                if ((json_decode($c->settings_json, true)['reference_match'] ?? null) === 'exact') $studies->layoutForAsset($asset->refresh()); }
             catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('Create reference study failed', ['asset' => $id, 'error' => mb_substr($e->getMessage(), 0, 300)]); }
         }
     }
@@ -471,6 +475,17 @@ class PlanService
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
         // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
         if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
+        // Copying exactly: each kept or replaced moment becomes something the build is checked against, at its own
+        // time and with the reference's element slots; only the content inside the slots changes.
+        if (($plan['reference_match'] ?? null) === 'exact') {
+            $studied = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', [])))->keyBy('id');
+            $plan['reference_layout'] = collect($refDecisions)->filter(fn ($d) => $d['decision'] !== 'drop' && $studied->has($d['moment']))->map(function ($d) use ($studied) {
+                $m = $studied[$d['moment']];
+                return ['moment' => $d['moment'], 'beat' => $d['beat'], 'start' => $m['start'] ?? null, 'end' => $m['end'] ?? null,
+                    'at' => data_get($m, 'layout.at', $m['start'] ?? null), 'move' => $d['move'] ?? ($m['move'] ?? null), 'content' => $d['how'],
+                    'background' => data_get($m, 'layout.background'), 'elements' => array_values((array) data_get($m, 'layout.elements', []))];
+            })->values()->take(40)->all();
+        }
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
         // Real things only the user has (screens, logo, photos, people, recordings): at most five, each with its beat and fallback.
         $labels = array_column($scenes, 'label');

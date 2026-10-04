@@ -79,6 +79,29 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(5, DB::table('create_messages')->where('conversation_id', $c->id)->count());
     }
 
+    public function test_copying_exactly_turns_each_kept_moment_into_a_layout_requirement(): void
+    {
+        $this->assertSame(7.85, \App\Services\Create\References\ReferenceStudy::keyTime(['start' => 7.4, 'end' => 8.1], 15), 'late in the moment, once its elements have arrived');
+        $this->assertSame(14.95, \App\Services\Create\References\ReferenceStudy::keyTime(['start' => 14.6, 'end' => 15.2], 15), 'never past the end');
+        $tile = ['role' => 'tile', 'label' => 'checkout tile', 'box' => [0.05, 0.09, 0.29, 0.84]];
+        $study = ['summary' => 's', 'duration_seconds' => 15, 'pacing' => [],
+            'moments' => [['id' => 'm14', 'start' => 7.4, 'end' => 8.1, 'kind' => 'ui', 'move' => 'type'], ['id' => 'm18', 'start' => 9.7, 'end' => 10.6, 'kind' => 'ui']],
+            'layout' => ['version' => 1, 'moments' => [['moment' => 'm14', 'at' => 7.85, 'background' => 'light grid', 'elements' => [$tile]]]]];
+        $brief = \App\Services\Create\PlanService::studyBrief(1471, $study);
+        $this->assertSame([$tile], $brief['moments'][0]['layout']['elements'], 'the planner sees where each element sits');
+        $ctx = ['files' => [['asset_id' => 1471, 'purpose' => 'reference', 'asset_type' => 'video', 'reference' => ['study' => $brief]]], 'voices' => [],
+            'settings' => ['duration_seconds' => 15, 'audio' => 'original', 'reference_match' => 'exact']];
+        $raw = ['summary' => 'x', 'left_out' => '', 'reference_decisions' => [
+            ['moment' => '1471:m14', 'decision' => 'replace', 'beat' => 'Dashboard', 'how' => 'Script tile types in the checkout slot'],
+            ['moment' => '1471:m18', 'decision' => 'drop', 'beat' => '', 'how' => 'x', 'carried_by' => 'not needed: no figure']]];
+        $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
+        $this->assertSame('exact', $p['reference_match']);
+        $this->assertSame([['moment' => '1471:m14', 'beat' => 'Dashboard', 'start' => 7.4, 'end' => 8.1, 'at' => 7.85, 'move' => 'type', 'content' => 'Script tile types in the checkout slot',
+            'background' => 'light grid', 'elements' => [$tile]]], $p['reference_layout'], 'kept and replaced moments only, with the reference slots');
+        $loose = app(\App\Services\Create\PlanService::class)->normalize($raw, ['settings' => ['reference_match' => 'inspired'] + $ctx['settings']] + $ctx, (int) $this->workspace->id);
+        $this->assertArrayNotHasKey('reference_layout', $loose, 'inspired plans are not held to the layout');
+    }
+
     public function test_how_closely_to_follow_a_reference_video_is_settled_before_planning(): void
     {
         $m = fn ($t) => \App\Services\Create\ReferenceMatch::infer($t);
