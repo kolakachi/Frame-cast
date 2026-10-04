@@ -282,3 +282,4 @@ test('on the storyboard, held stills are not a still-stretch finding, so finish 
  assert.equal((await h.run()).status,'preview_ready');assert.equal(h.seen.length,3);
 });
 test('reading a file that is not there goes back to the builder instead of ending the run',async t=>{const h=await harness(t,[action({type:'read',path:'wyv-mascot3d.js'}),action({type:'needs_input',question:'Next?'})]);assert.equal((await h.run()).status,'needs_input');assert.match(h.seen[1].prompt,/kit\/remotion\.md/);});
+test('writing or reading a file name the composition cannot have goes back to the builder',async t=>{const h=await harness(t,[action({type:'write',path:'cards.txt',content:'notes'}),action({type:'read',path:'notes.md'}),action({type:'needs_input',question:'Next?'})]);assert.equal((await h.run()).status,'needs_input');assert.match(h.seen[1].prompt,/Source path is not allowed/);});

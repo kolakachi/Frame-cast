@@ -8,7 +8,11 @@ export class Workspace {
     // Deliberately flat pilot source bundle. No directories, assets or runtime edits.
     // work/<name> is the run's scratch folder: scripts and data for the run action, never part of the bundle.
     const scratch = this.scratch && relative.match(/^work\/([a-zA-Z0-9_-]+\.(mjs|js|cjs|json|txt|csv|svg))$/);
-    if (!scratch && !/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(relative)) throw Error('Source path is not allowed');
+    if (!scratch && !/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(relative)) {
+      // A path that reaches outside the workspace stops the run; a plain unusable file name is the builder's to correct.
+      if (/[\/\\]|\.\./.test(relative)) throw Error('Source path is not allowed');
+      throw Object.assign(Error('Source path is not allowed: composition files are named with letters, numbers, - and _ and end in .html, .css or .js (notes belong in comments).'), {code: 'AUTHORING_REJECTED'});
+    }
     if (scratch && write) await mkdir(this.scratch, {recursive: true});
     const root = await realpath(scratch ? this.scratch : this.root), file = path.join(root, scratch ? scratch[1] : relative);
     try { if ((await lstat(file)).isSymbolicLink()) throw Error('Symlinks are not allowed'); }
@@ -17,7 +21,7 @@ export class Workspace {
   }
   async read(relative) { const text = await readFile(await this.resolve(relative), 'utf8'); if(Buffer.byteLength(text)>this.maxBytes)throw Error('Source too large'); return text; }
   async write(relative, text) {
-    if (Buffer.byteLength(text) > this.maxBytes) throw Error('Source too large');
+    if (Buffer.byteLength(text) > this.maxBytes) throw Object.assign(Error('Source too large: split it across files.'), {code: 'AUTHORING_REJECTED'});
     const file = await this.resolve(relative, true);
     const temp = `${file}.tmp`;
     // Exclusive temp creation avoids following a pre-existing temp symlink.

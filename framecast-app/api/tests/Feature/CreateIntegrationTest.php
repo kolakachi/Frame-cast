@@ -1357,8 +1357,10 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('tool_use', $out['stop_reason']);
         $sent = Http::recorded()[0][0]; $sentBody = json_decode($sent->body(), true);
         // The history goes as the worker wrote it, with a cache marker on its last block so the next turn reads it cheaply.
-        $cached = $messages; $last = count($cached) - 1; $cached[$last]['content'][count($cached[$last]['content']) - 1]['cache_control'] = ['type' => 'ephemeral'];
-        $this->assertSame($cached, $sentBody['messages'], 'the history goes to the provider as the worker wrote it, cached to its end');
+        // The cache marker sits on the message before the newest assistant turn: the part that will not change.
+        $cached = $messages; $lastAssistant = max(array_keys(array_filter(array_column($cached, 'role'), fn ($r) => $r === 'assistant')));
+        $cached[$lastAssistant - 1]['content'][count($cached[$lastAssistant - 1]['content']) - 1]['cache_control'] = ['type' => 'ephemeral'];
+        $this->assertSame($cached, $sentBody['messages'], 'the history goes to the provider as the worker wrote it, cached to its settled part');
         $this->assertSame($tools, $sentBody['tools']);
         $this->assertStringContainsString('"properties":{}', $sent->body(), 'an empty schema stays an object');
         $this->assertStringContainsString('"input":{}', $sent->body(), 'an empty tool_use input stays an object');
