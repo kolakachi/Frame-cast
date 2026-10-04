@@ -111,6 +111,17 @@ Goal: a full build of the Maya prompt that matches reference 1471 (Pocketsflow, 
 5. **Acceptance**: one full build, side by side with the reference at the same moments; owner verdict.
    - [ ] acceptance build reviewed
 
+### Ninth slice — copying a reference exactly (owner: "lets enforce the 3 fully", 2026-10-04)
+
+Evidence: the storyboard for "copy it frame by frame" kept the plan's timing but simplified the 8.55 s dashboard into two cards. The builder never inspected the reference (0 calls in two runs), the study recorded no positions, the storyboard drew one frame per beat and the reviewer compared five sampled frames, mostly for timing. Layout and per-moment fidelity were never enforced.
+
+- [x] **Match the reference (exactly / inspired)**: a Details setting; the brief sets it when it says so (frame by frame, move for move, copy it, same layout…); with a reference video and no clear wording, planning asks first and the reply sets it. The plan card says which mode the plan was made under. (6cc44333)
+- [x] **The study measures placement** (exact only): a layout pass reads every moment's key frame at 640 px (no padding, so boxes are on the real frame) and boxes each element by role, at high effort, cached with the study. The planner sees the boxes; the plan turns each kept or replaced moment into reference_layout (time, beat, move, content, element slots). Moments the brand's material cannot reproduce (a 3D head turn from 2D art) keep the moment and state the closest equivalent. (ae8ca465)
+- [x] **The builder must look, and every slot is measured**: elements that fill a slot carry data-ref="<moment>:<index>" (a list when one element spans moments) and are built as HTML, not inside clips; a layout operation measures each at its moment's time in the render runtime; moments never inspected in the reference, unmarked, missing or misplaced elements (centre off by more than 8% of the frame or size off by more than ~1.6x) are sent back at finish. (6e2b8884)
+- [x] **Every moment reviewed beside the reference**: a comparison image pairs the reference frame and ours at each moment's time; any mismatched moment is a revise. Look stage of an exact copy: one still per moment. (73451b0d)
+- [ ] Acceptance: a fresh Maya build with the frame-by-frame brief; owner side-by-side verdict.
+- Noted: the study's own moment reading runs at low reasoning effort; worth re-testing at medium.
+
 ### First implementation slice — prepared mascot rig (2026-10-03)
 
 Following the owner's request to begin the rig approach, V4/V5 now have a **locally verified optional adapter**, not a completed general character workflow. The canonical V1–V8 items remain open.
