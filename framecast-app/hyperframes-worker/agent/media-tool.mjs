@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readdir,lstat,readFile,unlink} from 'node:fs/promises';import {createHash} from 'node:crypto';
 const run=promisify(execFile);
 const FF={timeout:150000,maxBuffer:32*1024*1024};
-export const OPS=['probe','silences','levels','beats','duck','fade','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
+export const OPS=['probe','silences','levels','beats','duck','fade','space','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
 const LOOKS={
  warm:'colorbalance=rs=.06:gs=.01:bs=-.06,eq=saturation=1.08',
  cool:'colorbalance=rs=-.05:gs=.0:bs=.07,eq=saturation=1.02',
@@ -113,6 +113,25 @@ export async function mediaOp({projectDir,request,nextName}){
    const fi=num(params.fade_in,0,5,.02),fo=num(params.fade_out,0,10,.05);if(fi+fo>e-s)throw Error('Fades are longer than the slice');
    args=['-i',file,'-vn','-af',`atrim=start=${fx(s)}:end=${fx(e)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${fx(Math.max(fi,.001))},afade=t=out:st=${fx(e-s-Math.max(fo,.001))}:d=${fx(Math.max(fo,.001))}`,'-c:a','pcm_s16le'];
    map=sourceMap([[s,e]]);break;}
+  case 'space':{
+   // Longer pauses in a voice, added only inside pauses it already has, so narration can spread over the beats
+   // without a word being cut. Each requested point moves to the middle of the nearest pause within 0.4 s.
+   if(!info.has_audio||info.has_video)throw Error('space works on an audio file');
+   const ins=params.insert;if(!Array.isArray(ins)||!ins.length||ins.length>20)throw Error('insert must list 1 to 20 [at_seconds, pause_seconds] pairs');
+   const pauses=await silences(file,-35,.08);
+   const points=ins.map(r=>{if(!Array.isArray(r)||r.length!==2)throw Error('Each insert is [at_seconds, pause_seconds]');
+    const at=num(r[0],0,info.duration),len=num(r[1],.05,5);
+    const near=pauses.map(([a,b])=>({mid:(a+b)/2,d:at<a?a-at:at>b?at-b:0})).sort((x,y)=>x.d-y.d)[0];
+    if(!near||near.d>.4)throw Error(`No pause within 0.4 s of ${fx(at)} s; the voice pauses at ${pauses.map(([a,b])=>fx(a)+'–'+fx(b)).join(', ')||'no point'} s`);
+    return [near.mid,len];}).sort((a,b)=>a[0]-b[0]);
+   for(let i=1;i<points.length;i++)if(points[i][0]-points[i-1][0]<.05)throw Error('Two inserts fall in the same pause; combine them');
+   const cuts=[0,...points.map(p=>p[0]),info.duration],parts=[],labels=[];map=[];let shift=0;
+   for(let i=0;i<cuts.length-1;i++){
+    const gap=points[i]?.[1]??0;
+    parts.push(`[0:a]atrim=start=${fx(cuts[i])}:end=${fx(cuts[i+1])},asetpts=PTS-STARTPTS${gap?`,apad=pad_dur=${fx(gap)}`:''}[s${i}]`);labels.push(`[s${i}]`);
+    map.push({out_start:+(cuts[i]+shift).toFixed(3),out_end:+(cuts[i+1]+shift).toFixed(3),src_start:cuts[i],src_end:cuts[i+1]});shift+=gap;
+   }
+   args=['-i',file,'-filter_complex',parts.join(';')+';'+labels.join('')+`concat=n=${labels.length}:v=0:a=1[out]`,'-map','[out]','-c:a','pcm_s16le'];break;}
   case 'clean_audio':{if(!info.has_audio)throw Error('No audio to clean');args=['-i',file,'-af','highpass=f=80,lowpass=f=12000,afftdn=nf=-25',...(info.has_video?['-c:v','copy']:[]),...(audioOnly?['-c:a','pcm_s16le']:['-c:a','aac','-b:a','160k'])];break;}
   case 'duck':{
    // Music pulled down under the voice as it speaks (about 14 dB on speech peaks), back up in the gaps.

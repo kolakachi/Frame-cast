@@ -59,3 +59,21 @@ test('levels and fade run on real audio: quiet in the pause, loud in the tone, a
   assert.equal(s.silences.length,1);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test('space lengthens the pauses a voice already has, never cuts a word, and its source map carries the transcript',async()=>{
+ const dir=await mkdtemp('/tmp/space-');
+ try{
+  // "word" 0–1 s, pause 1–1.5 s, "word" 1.5–2.5 s.
+  await run('ffmpeg',['-v','error','-y','-f','lavfi','-i','sine=frequency=300:duration=1:sample_rate=16000','-f','lavfi','-i','anullsrc=r=16000:cl=mono','-f','lavfi','-i','sine=frequency=500:duration=1:sample_rate=16000',
+   '-filter_complex','[1]atrim=duration=0.5[s];[0][s][2]concat=n=3:v=0:a=1','-c:a','pcm_s16le',dir+'/voice.wav']);
+  let n=0;const nextName=(op,ext)=>`derived-${++n}-${op}.${ext}`;
+  const r=await mediaOp({projectDir:dir,request:{op:'space',input:'voice.wav',params:{insert:[[1.1,2]]}},nextName});
+  assert.ok(Math.abs(r.info.duration-4.5)<0.06,'2 s added: '+r.info.duration);
+  assert.equal(r.source_map.length,2);assert.ok(Math.abs(r.source_map[0].src_end-1.25)<0.05,'the gap goes in the middle of the pause');
+  assert.ok(Math.abs(r.source_map[1].out_start-(r.source_map[1].src_start+2))<0.01);
+  const {mapThrough}=await import('../transcript-map.mjs');
+  assert.deepEqual(mapThrough([{text:'one',start:0.1,end:0.9},{text:'two',start:1.6,end:2.4}],[{operation:'space',sourceMap:r.source_map}]).map(w=>w.start),[0.1,3.6]);
+  const l=await mediaOp({projectDir:dir,request:{op:'levels',input:r.output,params:{at:[2]}},nextName});
+  assert.ok(l.levels[0][1]<-35,'the added time is silent');
+  await assert.rejects(mediaOp({projectDir:dir,request:{op:'space',input:'voice.wav',params:{insert:[[0.5,1]]}},nextName}),/No pause within 0.4 s of 0.500 s; the voice pauses at/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});

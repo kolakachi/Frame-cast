@@ -11,7 +11,10 @@ export const OUTPUT_NAME=/^[a-zA-Z0-9_.-]+\.(png|jpg|webp|svg|mp4|mp3|wav)$/;
 const sha=async f=>createHash('sha256').update(await readFile(f)).digest('hex');
 const clip=(s,n=6000)=>{s=String(s??'');return s.length>n?s.slice(0,n)+'\n…['+(s.length-n)+' more characters]':s;};
 
-export async function runOp({runDir,request,hyperframesBin=process.env.HYPERFRAMES_BIN??'/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',timeoutMs=90000}){
+// ffmpeg reports progress as it works; one that falls silent this long has stalled (a filter graph waiting on
+// itself, for example) and is stopped instead of holding the build until the time limit.
+export const STALL_MS=90000;
+export async function runOp({runDir,request,hyperframesBin=process.env.HYPERFRAMES_BIN??'/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs',timeoutMs=90000,stallMs=STALL_MS}){
  const {cmd,args}=request;checkRunArgs(cmd,args);
  const project=path.join(runDir,'project'),work=path.join(runDir,'work'),backup=path.join(runDir,'.run-backup');
  await mkdir(work,{recursive:true});await mkdir(project,{recursive:true});
@@ -37,9 +40,16 @@ export async function runOp({runDir,request,hyperframesBin=process.env.HYPERFRAM
  const env={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:process.env.HOME||'/tmp',HYPERFRAMES_BROWSER_PATH:process.env.HYPERFRAMES_BROWSER_PATH||'',HYPERFRAMES_NO_TELEMETRY:'1',NO_COLOR:'1'};
  const started=Date.now();let exit=0,stdout='',stderr='';
  let child;
- try{const pending=exec(program[0],program[1],{cwd:work,env,timeout:timeoutMs,detached:cmd==='remotion',maxBuffer:8*1024*1024,killSignal:'SIGKILL'});child=pending.child;({stdout,stderr}=await pending);}
+ let stalled=false,watch=null;
+ try{const pending=exec(program[0],program[1],{cwd:work,env,timeout:timeoutMs,detached:cmd==='remotion',maxBuffer:8*1024*1024,killSignal:'SIGKILL'});child=pending.child;
+  if(cmd==='ffmpeg'){let last=Date.now();const seen=()=>{last=Date.now();};child.stdout?.on('data',seen);child.stderr?.on('data',seen);
+   // Growing output files also count as progress, for commands run with quiet logging.
+   let bytes=-1;const size=async()=>{let n=0;for(const d of [work,project])for(const f of await readdir(d).catch(()=>[])){const st=await lstat(path.join(d,f)).catch(()=>null);if(st?.isFile())n+=st.size;}return n;};
+   watch=setInterval(async()=>{const now=await size();if(now!==bytes){bytes=now;seen();}if(Date.now()-last>stallMs){stalled=true;try{child.kill('SIGKILL');}catch{}}},Math.min(5000,stallMs));}
+  ({stdout,stderr}=await pending);}
  catch(e){if(cmd==='remotion'&&child?.pid)try{process.kill(-child.pid,'SIGKILL');}catch{}
- exit=e.killed||e.signal?124:(Number.isInteger(e.code)?e.code:1);stdout=e.stdout||'';stderr=(e.stderr||'')+(e.killed||e.signal?'\n[stopped after '+Math.round(timeoutMs/1000)+' s]':e.code==='ENOENT'?'\n[program not available]':'');}
+ exit=e.killed||e.signal?124:(Number.isInteger(e.code)?e.code:1);stdout=e.stdout||'';stderr=(e.stderr||'')+(stalled?'\n[stopped: no progress for '+Math.round(stallMs/1000)+' s; the command had stalled]':e.killed||e.signal?'\n[stopped after '+Math.round(timeoutMs/1000)+' s]':e.code==='ENOENT'?'\n[program not available]':'');}
+ finally{if(watch)clearInterval(watch);}
  // Sort out the project folder: restore protected files, drop what the renderer cannot stage, list what is new.
  const outputs=[],removed=[],restored=[];
  for(const name of await readdir(project)){

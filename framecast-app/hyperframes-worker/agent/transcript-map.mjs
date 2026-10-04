@@ -19,7 +19,7 @@ export function chainFor(path,assets){
 function mapStep(items,step){
  if(SAME_TIMING.has(step.operation))return items;
  if(step.operation==='speed'){const f=Number(step.params.factor);if(!(f>=.25&&f<=4))throw Error('Speed step has no usable factor');return items.map(w=>({...w,start:w.start/f,end:w.end/f}));}
- if(['trim','cut','remove_silence','fade'].includes(step.operation)){
+ if(['trim','cut','remove_silence','fade','space'].includes(step.operation)){
   if(!Array.isArray(step.sourceMap))throw Error('Cut step has no source map; transcribe the edited file directly');
   const out=[];
   for(const w of items){

@@ -44,3 +44,16 @@ test('a deleted protected file comes back; ffmpeg makes a project file from noth
  const bad=await runOp({runDir:dir,request:{cmd:'ffprobe',args:['project/missing.mp4']}});
  assert.equal(bad.ok,false);assert.notEqual(bad.exit,0);
 });
+test('an ffmpeg command that stops making progress is stopped early, not at the time limit',async()=>{
+ const dir=await runDir();
+ const t=Date.now();
+ // Endless silent input, no logging, output thrown away: nothing prints and no file grows.
+ const r=await runOp({runDir:dir,request:{cmd:'ffmpeg',args:['-loglevel','quiet','-f','lavfi','-i','anullsrc=r=8000','-f','null','-']},timeoutMs:60000,stallMs:2000});
+ assert.equal(r.exit,124);assert.match(r.stderr,/no progress for 2 s; the command had stalled/);
+ assert.ok(Date.now()-t<20000,'stopped well before the 60 s limit');
+});
+test('a quiet ffmpeg command that keeps writing its output is not stopped',async()=>{
+ const dir=await runDir();
+ const r=await runOp({runDir:dir,request:{cmd:'ffmpeg',args:['-y','-loglevel','quiet','-re','-f','lavfi','-i','sine=frequency=440:duration=4','project/tone.wav']},timeoutMs:60000,stallMs:2500});
+ assert.equal(r.exit,0,r.stderr);
+});
