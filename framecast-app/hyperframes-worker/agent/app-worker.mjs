@@ -180,6 +180,8 @@ async function execute(run){
    if(agentResult.state.status!=='preview_ready')throw Object.assign(Error(agentResult.state.reason??'Agent needs input before rendering'),{code:agentResult.state.status==='needs_attention'?'ATTEMPT_NEEDS_ATTENTION':'AGENT_STOPPED'});
    // From here a finished version exists: Stop lets it be saved and rendered.
    phase='render';
+   // The review detail users no longer see stays in the trajectory.
+   if(agentResult.state.internalNote)await trace({phase:'run',status:'delivered',summary:'Version delivered',detail:String(agentResult.state.internalNote).slice(0,1900)});
   }
   // Derived media becomes a permanent source before rendering: upload it, give
   // it its stored name, and point the composition at that name, so later

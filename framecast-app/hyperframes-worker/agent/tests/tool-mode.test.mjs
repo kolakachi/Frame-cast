@@ -106,7 +106,7 @@ test('the critic has the last word: a revise verdict returns directives and bloc
  const r=seen[2].messages.at(-1).content.filter(b=>b.type==='tool_result');
  assert.match(r[0].content,/directives/);assert.match(r[0].content,/three times larger/);
  assert.equal(r[1].is_error,true,'finish is refused until the next passing review');assert.match(r[1].content,/Visual review is required/);
- assert.match(state.summary,/Critic: hook 8, hierarchy 9/);assert.equal(state.criticCalls,2);
+ assert.match(state.internalNote,/Critic: hook 8, hierarchy 9/);assert.equal(state.summary,'Your video is ready.','users never see scores');assert.equal(state.criticCalls,2);
 });
 test('without a critic tool the review pass finishes as before; a look run asks for no strip',async()=>{
  const strips=[];
@@ -255,7 +255,7 @@ test('the host final review still runs after the author has reviewed the same re
   critic:async a=>{critics.push(a);return {ok:true,verdict:'revise',scores:{hook:6,hierarchy:6,density:6,energy:6,performance:6},mean:6,directives:['Fill the frame'],note:''};}})});
  assert.equal(critics.length,1,'the final review ran on the reviewed frames');
  assert.equal(critics[0].sheet.image,'data:image/jpeg;base64,YQ==');
- assert.equal(state.status,'preview_ready');assert.match(state.summary,/Critic/);
+ assert.equal(state.status,'preview_ready');assert.match(state.internalNote,/Critic/);
 });
 test('unlimited limits: more tool calls per turn, larger results and larger source files are honoured',async()=>{
  const writes=Array.from({length:12},(_,i)=>use('w'+i,'write',{path:'f'+i+'.js',content:'//'+i}));
@@ -278,6 +278,6 @@ test('a review that stops improving ends the build with the best draft and its o
  ],{limits:{calls:200,repairs:100,criticCalls:10},tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),
   critic:async()=>{rounds++;return rounds===1?flat:{...flat,mean:6.3};}})});
  assert.equal(state.status,'preview_ready');assert.equal(rounds,3,'one baseline round, then two without improvement');
- assert.match(state.summary,/stopped improving after 3 rounds/);assert.match(state.summary,/Fill the lower third/);
+ assert.match(state.internalNote,/stopped improving after 3 rounds/);assert.match(state.internalNote,/Fill the lower third/);assert.equal(state.summary,'Here is the best version so far. You can keep improving it.');
  assert.ok(state.calls<10,'it did not run on toward the call limit');
 });

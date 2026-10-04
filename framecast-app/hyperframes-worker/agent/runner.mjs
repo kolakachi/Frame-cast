@@ -43,11 +43,15 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // The last draft that passed every check and was snapshotted, kept so a run
   // that hits its deadline or call limit mid-repair still delivers a valid video.
   const keepGood=async()=>{if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)return;const files={};for(const f of await workspace.sourceFiles()){try{files[f]=await workspace.read(f);}catch{/* not every draft has every file */}}state.lastGood={revision:state.revision,files};};
+  // What the user reads about a delivered version: plain words, never scores, rounds or that a reviewer exists.
+  // The technical reason is kept in internalNote for the trajectory and for us.
+  const SAY={ready:'Your video is ready.',best:'Here is the best version so far. You can keep improving it.',stopped:'Stopped at your request. This is the last finished version.'};
   const deliverGood=async why=>{
     await workspace.restoreSources(state.lastGood.files);
     state.bundleHash=await workspace.fingerprint();state.revision=state.lastGood.revision;state.checkedRevision=state.snapshotRevision=state.revision;
     const last=state.scores?' Last review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.':'';
-    state.recoveredDraft=true;state.status='preview_ready';state.summary=('Draft — review incomplete. '+why+last).slice(0,1900);
+    state.internalNote=('Draft, review incomplete. '+why+last).slice(0,1900);
+    state.recoveredDraft=true;state.status='preview_ready';state.summary=SAY.best;
   };
   // The user pressed Stop: the step in progress has finished, so nothing is left in doubt. Keep the last
   // version that passed every check; with none, the build ends cancelled.
@@ -57,8 +61,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     if(!stopRequested())return false;
     if(state.lastGood){
       await deliverGood('');
-      const last=state.scores?' Last review scores: '+state.scores.map(x=>x.time+'s '+x.score).join(', ')+'.':'';
-      state.stoppedByUser=true;state.summary=('Stopped at your request. This is the last version that passed every check.'+last).slice(0,1900);
+      state.stoppedByUser=true;state.summary=SAY.stopped;
     } else {state.status='cancelled';state.reason='Stopped at your request before any version passed its checks.';}
     observeStop(state,'Stopped at your request');await save();return true;
   };
@@ -87,7 +90,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     state.reviewedRevision=verdict.verdict==='pass'?state.revision:-1;
     if(verdict.verdict==='revise')observeToolResult(state,{type:'critic'},{critic:verdict});
     state.status='preview_ready';
-    state.summary=(verdict.verdict==='pass'?'Final creative review completed. ':'Draft — review incomplete. The critic requests changes; continue with a follow-up revision. ')+criticLine(verdict);
+    state.internalNote=(verdict.verdict==='pass'?'Final creative review completed. ':'Draft, review incomplete: the critic requests changes. ')+criticLine(verdict);
+    state.summary=verdict.verdict==='pass'?SAY.ready:SAY.best;
     await save();return true;
   };
   // When a repair leaves the same findings in place, say so plainly; the usual
@@ -315,13 +319,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         }
         if(verdict&&verdict.verdict==='revise'&&stalled){
           state.reviewedRevision=-1;state.status='preview_ready';
-          state.summary=('The review stopped improving after '+state.criticCalls+' rounds, so this is the best draft so far. '+criticLine(verdict)+' Open notes: '+(verdict.directives||[]).filter(d=>!/^Unmet requirement/.test(d)).slice(0,3).join(' ')).slice(0,1900);
+          state.internalNote=('The review stopped improving after '+state.criticCalls+' rounds. '+criticLine(verdict)+' Open notes: '+(verdict.directives||[]).filter(d=>!/^Unmet requirement/.test(d)).slice(0,3).join(' ')).slice(0,1900);
+          state.summary=SAY.best;
           observeStop(state,'Review stopped improving');
           result={decision:'pass',scores:state.scores,critic:{scores:verdict.scores,directives:verdict.directives,note:verdict.note},next:'Delivered: the review stopped improving.'};
         } else if(verdict&&verdict.verdict==='revise'){
           state.reviewedRevision=-1;
           result={decision:'pass',scores:state.scores,critic:{scores:verdict.scores,directives:verdict.directives,note:verdict.note},next:'The critic asks for changes before this can finish: address each directive with patches, then preview and review again.'+((state.criticCalls??0)>=cap.criticCalls?' This was the last critic round; the next passing review finishes.':'')};
-        } else if(requireVisualReview){state.status='preview_ready';state.summary=(action.findings+scoreLine+(verdict?' '+criticLine(verdict):state.critic?' '+criticLine(state.critic)+' Last directives not all confirmed.':'')).slice(0,1900);}
+        } else if(requireVisualReview){state.status='preview_ready';state.internalNote=(action.findings+scoreLine+(verdict?' '+criticLine(verdict):state.critic?' '+criticLine(state.critic)+' Last directives not all confirmed.':'')).slice(0,1900);state.summary=verdict?.verdict==='pass'?SAY.ready:SAY.best;}
       }
       else {state.reviewedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Visual repair limit reached');}
       if(!result)result={decision:action.decision,findings:action.findings,scores:state.scores,...(action.decision==='repair'?{next:'Fix the lowest-scoring frames first: '+state.scores.filter(x=>x.score<8).sort((a,b)=>a.score-b.score).flatMap(x=>x.problems).slice(0,3).join('; ')}:{})};
@@ -343,7 +348,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       recordLimitation(state,{source:'runtime',category:'input',code:'clarification_requested',tool:'needs_input',summary:'The agent requested clarification',evidence:action.question,impact:'The run needs user input or must disclose unfinished work.',workaround:'Clarify the missing requirement; assess whether an existing asset or reasonable default was overlooked.',requested_change:''});
       // On the last call, a draft that passed every check is delivered with the open issues, not held back.
       if(state.calls>=cap.calls-1&&state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0){
-        state.recoveredDraft=true;state.status='preview_ready';state.summary=('Draft — review incomplete. Call limit reached; open issues: '+action.question).slice(0,1900);
+        state.recoveredDraft=true;state.status='preview_ready';state.internalNote=('Draft, review incomplete. Call limit reached; open issues: '+action.question).slice(0,1900);state.summary=SAY.best;
       } else if(state.calls>=cap.calls-1&&state.lastGood){await deliverGood('The call limit was reached during a repair; open issues from the last review: '+action.question);}
       else {state.status='needs_input';state.question=action.question;}
     }
@@ -497,7 +502,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     if(state.checkedRevision===state.revision&&state.snapshotRevision===state.revision&&state.revision>0&&!state.pending){
       state.status='preview_ready';
       state.recoveredDraft=true;
-      state.summary='Draft — review incomplete. The call limit was reached before the final visual review. Review this version before posting.';
+      state.internalNote='Draft, review incomplete. The call limit was reached before the final visual review.';state.summary=SAY.best;
       await save();return state;
     }
     if(state.lastGood&&!state.pending){await deliverGood('The call limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}

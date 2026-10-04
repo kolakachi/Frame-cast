@@ -163,7 +163,7 @@ test('a draft that passed checks and snapshots is delivered when the call limit 
  const steps=[{type:'write',path:'index.html',content:'<html><h1>Done</h1></html>'},{type:'preview',times:[1]}];let i=0;
  const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
- assert.equal(state.status,'preview_ready');assert.match(state.summary,/visual review/);
+ assert.equal(state.status,'preview_ready');assert.match(state.internalNote,/visual review/);
  assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,'incomplete');
  const dir2=await mkdtemp(tmpdir()+'/lim2-');await writeFile(dir2+'/index.html','<html></html>');let j=0;
  const failing=await runAgent({stateFile:dir2+'/s.json',workspace:new Workspace(dir2,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[j++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
@@ -177,7 +177,7 @@ test('on the last call a checked draft is delivered with its open issues instead
  const steps=[{type:'write',path:'index.html',content:'<html><h1>Draft</h1></html>'},{type:'preview',times:[1]},{type:'needs_input',question:'Tiles do not exit at 11.5 s.'}];let i=0;
  const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:3,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
- assert.equal(state.status,'preview_ready');assert.match(state.summary,/Tiles do not exit/);
+ assert.equal(state.status,'preview_ready');assert.match(state.internalNote,/Tiles do not exit/);
 });
 test('a question on the second-to-last call with an earlier checked draft delivers that draft, not the later edit',async()=>{
  const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
@@ -186,7 +186,7 @@ test('a question on the second-to-last call with an earlier checked draft delive
  const steps=[{type:'write',path:'index.html',content:'<html><h1>Good</h1></html>'},{type:'preview',times:[1]},{type:'patch',path:'index.html',before:'Good',after:'Half fixed'},{type:'needs_input',question:'The closing line repeats a word.'}];let i=0;
  const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:5,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
- assert.equal(state.status,'preview_ready');assert.match(state.summary,/repeats a word/);
+ assert.equal(state.status,'preview_ready');assert.match(state.internalNote,/repeats a word/);
  assert.match(await readFile(dir+'/index.html','utf8'),/Good/);
 });
 test('a question early in a build is still asked',async()=>{
@@ -206,7 +206,7 @@ test('running out of context after a checked draft delivers that draft',async()=
  const steps=[{type:'write',path:'index.html',content:'<html><h1>Good</h1></html>'},{type:'preview',times:[1]},{type:'patch',path:'index.html',before:'Good',after:'Good '+big}];let i=0;
  const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++]??{type:'check'})})},context:{brief:'x'},limits:{calls:8,repairs:3,budgetUsd:0,contextBytes:4500},
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
- assert.equal(state.status,'preview_ready');assert.match(state.summary,/Context limit reached/);
+ assert.equal(state.status,'preview_ready');assert.match(state.internalNote,/Context limit reached/);assert.doesNotMatch(state.summary,/review|limit|score/i);
  assert.equal(await readFile(dir+'/index.html','utf8'),'<html><h1>Good</h1></html>');
 });
 test('the last call within the per-run budget is not refused by rounding',async()=>{
@@ -264,7 +264,7 @@ test('Stop after a checked draft lets the step finish and keeps that draft, not 
  provider.complete=async r=>{if(++n===4)stop=true;return complete(r);};
  const r=await h.run();
  assert.equal(r.status,'preview_ready');assert.equal(r.stoppedByUser,true);
- assert.match(r.summary,/^Stopped at your request\. This is the last version that passed every check\./);
+ assert.equal(r.summary,'Stopped at your request. This is the last finished version.');
  assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>Checked</h1>','the unchecked edit made after Stop is rolled back');
  assert.equal(h.seen.length,4,'no model call after Stop');
 });

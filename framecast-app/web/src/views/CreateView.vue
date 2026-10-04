@@ -297,6 +297,14 @@ function stateLabel(c) { return c.archived_at ? 'Archived' : ({working:'In progr
 function date(value) { return new Date(value).toLocaleDateString(undefined,{month:'short',day:'numeric'}) }
 function message(e) { return e.response?.data?.message || e.response?.data?.error?.message || 'Could not complete this action. Please retry.' }
 // A failed download's reason arrives as a file, not JSON; read it so the real message is shown.
+// Versions saved before summaries were written for users may carry review internals; show them in plain words.
+function plainSummary(text) {
+  const t = String(text || '')
+  if (/^Stopped at your request/.test(t)) return 'Stopped at your request. This is the last finished version.'
+  if (/^Final creative review completed/.test(t)) return 'Your video is ready.'
+  if (/Critic:|review stopped improving|review incomplete|Last review scores|critic/i.test(t)) return 'Here is the best version so far. You can keep improving it.'
+  return t
+}
 async function blobMessage(e) {
   try { if (e?.response?.data instanceof Blob) { const j = JSON.parse(await e.response.data.text()); return j.message || j.error?.message || message(e) } } catch {}
   return e?.response ? message(e) : 'The video could not be loaded. Check your connection and retry.'
@@ -357,7 +365,7 @@ function referenceTally(plan) {
   return `${d.length + (plan.reference_unaccounted || []).length} moments seen · ${n('keep')} kept · ${n('replace')} changed · ${n('drop')} left out`
 }
 const needsAnotherRound = computed(() => outputMeta.value.creative_review?.status === 'incomplete' || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
-async function keepImproving() { prompt.value = 'Keep this video, complete its creative review and fix the open issues: ' + (outputMeta.value.creative_review?.findings || []).join('; '); await send() }
+async function keepImproving() { const notes = reviewNotes.value; prompt.value = 'Keep this video and improve it' + (notes.length ? ': ' + notes.join('; ') : '.'); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
 async function chooseStyle(value) {
   if(!conversation.value) { pendingStyleId.value = value; return }
@@ -757,7 +765,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="m.eventType === 'revision' && currentRevision" class="assistant-message">
               <span class="speaker">WyvStudio <time>{{ time(currentRevision.created_at) }}</time></span>
               <h3 v-if="outputMeta.look">Storyboard preview · no audio or motion</h3>
-              <p>{{ currentRevision.summary }}</p>
+              <p>{{ plainSummary(currentRevision.summary) }}</p>
               <p v-if="currentRevision.conflict" class="notice">{{ outputMeta.variant_group ? 'An alternative variation. Inspect it, then restore it as a new version to make it current.' : 'Your brief changed while this was being made. This draft is kept; your current version did not change.' }}</p>
               <p v-if="isOldRevision" class="notice">You are viewing version {{ currentRevision.number }}. Version {{ currentNumber }} is still current. Download uses the version shown here.</p>
               <div :class="['result', currentRevision.export_job_id || (imageOutput && currentRevision.output_asset_id) ? 'result--done' : '']">
@@ -783,12 +791,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
                   </ul>
                 </div>
-                <div v-if="outputMeta.creative_review" class="checks" role="status">
-                  <b>{{ outputMeta.creative_review.status === 'passed' ? 'Creative review passed' : outputMeta.look ? 'Notes for the next round' : 'Still being refined' }}</b>
+                <!-- Suggestions only, in plain words: users never see review scores or that a reviewer exists. -->
+                <div v-if="outputMeta.creative_review && outputMeta.creative_review.status !== 'passed' && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
+                  <b>{{ outputMeta.look ? 'Notes for the next round' : 'Ideas for the next version' }}</b>
                   <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
-                  <p v-else-if="outputMeta.creative_review.status !== 'passed'">{{ outputMeta.look ? 'Look over the stills and tell us what to change, or build the full video.' : 'This version has not finished its review yet. Keep improving to complete it.' }}</p>
+                  <p v-else>Look over the stills and tell us what to change, or build the full video.</p>
                 </div>
-                <p v-if="reviewScores.length" class="review-line muted">Review scores by frame: <b v-for="s in reviewScores" :key="s.time" :class="{ low: s.score < 8 }">{{ s.time }}s {{ s.score }}</b></p>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
                 <section v-if="outputMeta.look && !isOldRevision && currentPlan?.character_preview" class="checks character-approval-inline" aria-label="Character look for this video">
                   <b>Character look for this video</b>
