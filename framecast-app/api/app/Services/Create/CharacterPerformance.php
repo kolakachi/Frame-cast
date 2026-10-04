@@ -57,7 +57,10 @@ class CharacterPerformance
             $why = null;
             $tool = $r['tool'] ?? null;
             $item = collect($media)->first(fn ($m) => ($m['kind'] ?? '') === $tool && ($tool !== 'animate_image' || ($m['subject'] ?? '') === 'approved_character'));
-            if (($r['start'] ?? null) === null || ($r['end'] ?? null) === null || $r['end'] > ($settings['duration_seconds'] ?? 15)) $why = 'Choose the scene timing for this action.';
+            // A drawn character (3D mascot, face kit) buys nothing per action, so an action with no timing simply runs
+            // the whole video ("talks throughout", "blinks throughout"); bought clips still need their span.
+            $drawn = in_array($r['route'] ?? '', ['mascot3d', 'face_kit'], true);
+            if (! $drawn && (($r['start'] ?? null) === null || ($r['end'] ?? null) === null) || ($r['end'] ?? 0) > ($settings['duration_seconds'] ?? 15)) $why = 'Choose the scene timing for this action.';
             // The character's own talking face (cut from an expression sheet) speaks, blinks and reacts; body actions need poses or animation.
             elseif (($r['route'] ?? '') === 'face_kit') {
                 if (! $faceKit) $why = 'Attach the character\'s talking face, or choose a generated performance.';

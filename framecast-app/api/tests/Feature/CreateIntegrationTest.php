@@ -111,6 +111,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($plan, ['duration_seconds' => 15, 'audio' => 'original'], []));
         $this->assertStringContainsString('no arms', \App\Services\Create\CharacterPerformance::issues(['character_performance' => [['action' => 'waves at the viewer'] + $perf('body')]] + $plan, ['duration_seconds' => 15], [])[0]['message']);
         $this->assertSame([], \App\Services\Create\CharacterPerformance::issues(['character_performance' => [['action' => 'slides in from the edge and turns to face the viewer'] + $perf('body')]] + $plan, ['duration_seconds' => 15, 'audio' => 'original'], []), 'moving the whole figure needs no arms');
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues(['character_performance' => [['start' => null, 'end' => null] + $perf('speech')]] + $plan, ['duration_seconds' => 15, 'audio' => 'original'], []), 'a drawn character talking throughout needs no chosen span');
         $this->assertStringContainsString('no 3D mascot', \App\Services\Create\CharacterPerformance::issues(['narration' => ['x'], 'character_performance' => [$perf('facial')]], ['duration_seconds' => 15], [])[0]['message']);
     }
 
