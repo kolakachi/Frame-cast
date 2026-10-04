@@ -37,7 +37,7 @@ class CharacterPerformance
             if ($index < count($previous) && array_filter($links, fn ($link) => isset($previousRequirements[$link]) && ($requirements[$link]['version'] ?? 1) !== ($previousRequirements[$link]['version'] ?? 1))) continue;
             $result[$id] = ['requirement_ids' => $links, 'id' => $id, 'kind' => $kind, 'action' => mb_substr($action, 0, 240), 'source_quote' => $quote,
                 'start' => $valid ? $start : null, 'end' => $valid ? $end : null,
-                'route' => in_array($r['route'] ?? '', ['generated_video', 'prepared_rig', 'face_kit', 'poses'], true) ? $r['route'] : 'unresolved',
+                'route' => in_array($r['route'] ?? '', ['generated_video', 'prepared_rig', 'face_kit', 'poses', 'mascot3d'], true) ? $r['route'] : 'unresolved',
                 'tool' => in_array($r['tool'] ?? '', ['animate_image', 'talking_shot', 'talking_take'], true) ? $r['tool'] : null];
         }
         abort_if(count($result) > 24, 422, 'This plan has too many character actions. Split it into shorter videos.');
@@ -62,6 +62,14 @@ class CharacterPerformance
             elseif (($r['route'] ?? '') === 'face_kit') {
                 if (! $faceKit) $why = 'Attach the character\'s talking face, or choose a generated performance.';
                 elseif ($r['kind'] === 'body') $why = 'A talking face covers speech and expressions, not body actions; use the attached poses or an animation.';
+                elseif ($r['kind'] === 'speech' && (empty($plan['narration']) || ($settings['audio'] ?? 'original') === 'silent')) $why = 'Speaking on camera needs an approved script and audio enabled.';
+                if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
+                continue;
+            }
+            // The plan's 3D mascot speaks and makes expressions itself; it has no arms for gestures.
+            elseif (($r['route'] ?? '') === 'mascot3d') {
+                if (empty($plan['mascot3d'])) $why = 'This plan has no 3D mascot; design one or choose another route.';
+                elseif ($r['kind'] === 'body') $why = 'The 3D mascot turns, nods and bobs but has no arms yet; plan gestures as head and body moves or use poses.';
                 elseif ($r['kind'] === 'speech' && (empty($plan['narration']) || ($settings['audio'] ?? 'original') === 'silent')) $why = 'Speaking on camera needs an approved script and audio enabled.';
                 if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
                 continue;

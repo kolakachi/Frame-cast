@@ -473,6 +473,8 @@ class PlanService
                 + ($x['decision'] !== 'drop' && ($move = MotionMoves::valid($x['move'] ?? null) ?? MotionMoves::valid($systems[$x['system']]['move'] ?? null)) ? ['move' => $move] : []) + [
                 'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
+        // A parametric 3D mascot the planner designed for this brand (parts only, no media to buy).
+        if ($mascot = MascotSpec::normalize(data_get($raw, 'mascot3d.spec'))) $plan['mascot3d'] = ['spec' => $mascot, 'why' => $str(data_get($raw, 'mascot3d.why', ''), 160)];
         // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
         if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
         // Copying exactly: each kept or replaced moment becomes something the build is checked against, at its own

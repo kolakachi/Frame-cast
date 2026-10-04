@@ -379,6 +379,11 @@ const reviewNotes = computed(() => (outputMeta.value.creative_review?.findings |
   .filter(f => !/^(Unmet requirement|Requirement ")/i.test(f))
   .filter(f => !outputMeta.value.look || !/\b(audio|narration|voice|music|sfx|sync|export|timing)\b/i.test(f))
   .slice(0, 3))
+function mascotLine(m) {
+  const s = m?.spec || {}, hair = { curls: 'curly hair', waves: 'wavy hair', bob: 'a bob', spikes: 'spiky hair', bun: 'a bun', none: 'no hair' }[s.hair?.style] || 'hair'
+  const finish = { dither: 'black-and-white dithered 3D', toon: 'flat-shaded 3D', clay: 'clay 3D' }[s.finish] || '3D'
+  return `A ${finish} character with ${hair}${s.body?.collar === 'turtleneck' ? ', a turtleneck' : ''}${m.why ? '. ' + m.why : ''}.`
+}
 function referenceTally(plan) {
   const d = plan.reference_decisions || [], n = k => d.filter(x => x.decision === k).length
   return `${d.length + (plan.reference_unaccounted || []).length} moments seen · ${n('keep')} kept · ${n('replace')} changed · ${n('drop')} left out`
@@ -742,6 +747,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     </div>
                     <details v-if="!planByMessage[m.id].stale" class="more">
                       <summary>View details</summary>
+                      <div v-if="planByMessage[m.id].plan.mascot3d" class="checks"><b>Your 3D mascot</b><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. You'll see it from three angles in the storyboard before the full video.</p></div>
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>
                         <p v-if="planByMessage[m.id].plan.reference_match" class="muted">{{ planByMessage[m.id].plan.reference_match === 'exact' ? 'Matched exactly: every moment keeps its timing, layout, transition and mascot placement; your brand, voice and content go in each slot. Change this in Details.' : 'Inspired by it: its ideas and pacing, your own layout. Change this in Details.' }}</p>

@@ -79,6 +79,26 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(5, DB::table('create_messages')->where('conversation_id', $c->id)->count());
     }
 
+    public function test_the_planner_can_design_a_3d_mascot_from_parts(): void
+    {
+        $spec = \App\Services\Create\MascotSpec::normalize(['seed' => 11, 'head' => ['shape' => 'egg', 'skin' => '#E9E2DA'], 'hair' => ['style' => 'curls', 'color' => '#626262', 'volume' => 3],
+            'eyes' => ['style' => 'laser'], 'body' => ['color' => 'orange', 'collar' => 'turtleneck', 'pocket' => true], 'finish' => 'dither', 'arms' => ['wave']]);
+        $this->assertSame(['seed' => 11, 'head' => ['shape' => 'egg', 'skin' => '#e9e2da'], 'hair' => ['style' => 'curls', 'color' => '#626262', 'volume' => 1.3],
+            'body' => ['collar' => 'turtleneck', 'pocket' => true], 'finish' => 'dither'], $spec, 'only parts the builder has; colours as hex; numbers clamped');
+        $this->assertNull(\App\Services\Create\MascotSpec::normalize('a cute mascot'));
+        $this->assertStringContainsString('hair.style: curls|waves|bob|spikes|bun|none', \App\Services\Create\Planning\PlanPrompt::system());
+        $this->assertStringNotContainsString('{MASCOT}', \App\Services\Create\Planning\PlanPrompt::system());
+        $p = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'mascot3d' => ['spec' => ['hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange']],
+            ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']], (int) $this->workspace->id);
+        $this->assertSame(['spec' => ['seed' => 7, 'hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange'], $p['mascot3d']);
+        // Its speech and expressions need nothing bought; it has no arms for gestures.
+        $perf = fn ($kind) => ['id' => 'perf-'.$kind, 'kind' => $kind, 'action' => $kind, 'start' => 0, 'end' => 3, 'route' => 'mascot3d', 'tool' => null];
+        $plan = ['narration' => ['Want a video ad that sells?'], 'mascot3d' => $p['mascot3d'], 'character_performance' => [$perf('speech'), $perf('facial')]];
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($plan, ['duration_seconds' => 15, 'audio' => 'original'], []));
+        $this->assertStringContainsString('no arms', \App\Services\Create\CharacterPerformance::issues(['character_performance' => [$perf('body')]] + $plan, ['duration_seconds' => 15], [])[0]['message']);
+        $this->assertStringContainsString('no 3D mascot', \App\Services\Create\CharacterPerformance::issues(['narration' => ['x'], 'character_performance' => [$perf('facial')]], ['duration_seconds' => 15], [])[0]['message']);
+    }
+
     public function test_copying_exactly_turns_each_kept_moment_into_a_layout_requirement(): void
     {
         $this->assertSame(7.85, \App\Services\Create\References\ReferenceStudy::keyTime(['start' => 7.4, 'end' => 8.1], 15), 'late in the moment, once its elements have arrived');
