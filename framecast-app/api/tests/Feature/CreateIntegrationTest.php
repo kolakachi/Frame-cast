@@ -2393,6 +2393,35 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('do not say what now does their job (carried_by): 1523:m2', implode(' ', \App\Services\Create\Planning\PlanPrompt::problems($uncarried, $ctx)));
     }
 
+    public function test_the_reference_moves_travel_from_study_to_plan(): void
+    {
+        $sys = \App\Services\Create\References\ReferenceStudy::normalizeSystems([
+            ['id' => 's1', 'name' => 'iris wipe', 'look' => 'blue circle', 'move' => 'iris'], ['id' => 's2', 'name' => 'phone', 'move' => 'teleport'], ['id' => 's3', 'name' => 'button', 'move' => 'through']]);
+        $this->assertSame(['iris', null, 'through'], array_map(fn ($x) => $x['move'] ?? null, $sys), 'only moves from the kit are kept');
+        $moments = \App\Services\Create\References\ReferenceStudy::normalizeMoments([['start' => 10.6, 'end' => 11, 'kind' => 'sticker', 'move' => 'stamp'], ['start' => 1, 'end' => 2, 'kind' => 'text', 'move' => 'nope']], 15, 30, ['s1']);
+        $byId = collect($moments)->keyBy('id');
+        $this->assertSame([null, 'stamp'], [$byId['m1']['move'] ?? null, $byId['m2']['move'] ?? null], 'a moment keeps only a move from the kit');
+        $brief = \App\Services\Create\PlanService::studyBrief(1471, ['summary' => 's', 'duration_seconds' => 15, 'pacing' => [], 'systems' => $sys,
+            'moments' => array_map(fn ($m) => $m + ['system' => ''], $moments)]);
+        $ctx = ['files' => [['asset_id' => 1471, 'purpose' => 'reference', 'asset_type' => 'video', 'reference' => ['study' => $brief]]], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']];
+        $raw = ['summary' => 'x', 'left_out' => '',
+            'reference_decisions' => [['moment' => '1471:m1', 'decision' => 'replace', 'beat' => 'Payoff', 'how' => 'Done. stamp', 'move' => 'stamp'],
+                ['moment' => '1471:m2', 'decision' => 'drop', 'beat' => '', 'how' => 'x', 'carried_by' => 'not needed: y', 'move' => 'words']],
+            'reference_systems' => [['system' => '1471:s1', 'decision' => 'keep', 'spec' => 'orange iris'], ['system' => '1471:s3', 'decision' => 'adapt', 'spec' => 'Create video into the plan header', 'move' => 'through'],
+                ['system' => '1471:s2', 'decision' => 'adapt', 'spec' => 'panel to phone', 'move' => 'device']]];
+        $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
+        $moves = array_column($p['reference_systems'], 'move', 'system');
+        $this->assertSame('iris', $moves['1471:s1'], "the study's move is kept when the planner names none");
+        $this->assertSame('through', $moves['1471:s3']);
+        $this->assertSame('device', $moves['1471:s2'], "the planner's move wins where the study had none");
+        $this->assertSame('stamp', $p['reference_decisions'][0]['move']);
+        $this->assertArrayNotHasKey('move', $p['reference_decisions'][1], 'a dropped moment asks for no move');
+        $prompt = \App\Services\Create\Planning\PlanPrompt::system();
+        $this->assertStringNotContainsString('{MOVES}', $prompt);
+        $this->assertStringContainsString('through (push into an element', $prompt);
+        $this->assertSame(3, \App\Services\Create\References\ReferenceStudy::VERSION, 'studies made before moves were tagged are made again');
+    }
+
     public function test_unlimited_local_testing_lifts_limits_and_the_spend_cap_but_never_outside_local(): void {
         $this->pilot();
         config(['create.unlimited'=>true,'create.agent_provider'=>'anthropic','create.agent_model'=>'claude-opus-5-5','services.anthropic.key'=>'k','create.pilot_budget_microusd'=>0]);

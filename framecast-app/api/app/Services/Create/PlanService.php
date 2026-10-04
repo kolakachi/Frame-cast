@@ -435,12 +435,15 @@ class PlanService
         $known = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
         $refDecisions = collect((array) ($raw['reference_decisions'] ?? []))->filter(fn ($d) => is_array($d) && in_array($d['moment'] ?? null, $known, true) && in_array($d['decision'] ?? null, ['keep', 'replace', 'drop'], true))
             ->unique('moment')->map(fn ($d) => ['moment' => $d['moment'], 'decision' => $d['decision'], 'beat' => $str($d['beat'] ?? '', 40), 'how' => $str($d['how'] ?? '', 140)]
-                + ($d['decision'] === 'drop' && $str($d['carried_by'] ?? '', 140) !== '' ? ['carried_by' => $str($d['carried_by'], 140)] : []))->values()->all();
+                + ($d['decision'] === 'drop' && $str($d['carried_by'] ?? '', 140) !== '' ? ['carried_by' => $str($d['carried_by'], 140)] : [])
+                + ($d['decision'] !== 'drop' && ($move = MotionMoves::valid($d['move'] ?? null)) ? ['move' => $move] : []))->values()->all();
         $plan['reference_decisions'] = $refDecisions;
         // Recurring systems: one spec each, so every occurrence is built the same way. The study's own description travels with it.
         $systems = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.systems', [])))->keyBy('id');
         $plan['reference_systems'] = collect((array) ($raw['reference_systems'] ?? []))->filter(fn ($x) => is_array($x) && $systems->has($x['system'] ?? null) && in_array($x['decision'] ?? null, ['keep', 'adapt', 'drop'], true))
-            ->unique('system')->map(fn ($x) => ['system' => $x['system'], 'name' => $systems[$x['system']]['name'] ?? '', 'decision' => $x['decision'], 'spec' => $str($x['spec'] ?? '', 260),
+            // The move the build must use: the planner's, else the study's own reading of the frames.
+            ->unique('system')->map(fn ($x) => ['system' => $x['system'], 'name' => $systems[$x['system']]['name'] ?? '', 'decision' => $x['decision'], 'spec' => $str($x['spec'] ?? '', 260)]
+                + ($x['decision'] !== 'drop' && ($move = MotionMoves::valid($x['move'] ?? null) ?? MotionMoves::valid($systems[$x['system']]['move'] ?? null)) ? ['move' => $move] : []) + [
                 'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));

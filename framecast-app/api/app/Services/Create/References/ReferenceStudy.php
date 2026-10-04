@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
 class ReferenceStudy
 {
     // 2: frames labelled with the words being spoken; recurring systems; a purpose for each moment.
-    public const VERSION = 2;
+    public const VERSION = 3;
     private const MAX_SAMPLES = 80;
     private const PER_SHEET = 20;
     /** A frame counts as a new look when it differs from the last kept frame by this share of its pixels' brightness. */
@@ -380,11 +380,12 @@ class ReferenceStudy
             .'{"summary": "one sentence on how it works", "moments": [{"start": seconds, "end": seconds, "kind": "hook|text|stat|ui|zoom|sticker|character|transition|cta|logo|other", '
             .'"on_screen_text": "exact words on screen or empty", "visual": "what is shown, under 20 words", "motion": "how it moves or changes, under 15 words", '
             .'"transition_in": "cut|wipe|zoom|fade|whip|none|unknown", "spoken": "words said during it or empty", '
-            .'"purpose": "what it does for the viewer, under 12 words (sets up the promise, proves a claim, adds a beat of fun, hands attention to the next step)", "system": "id of the recurring system it belongs to, or empty"}], '
+            .'"purpose": "what it does for the viewer, under 12 words (sets up the promise, proves a claim, adds a beat of fun, hands attention to the next step)", "system": "id of the recurring system it belongs to, or empty", "move": "the move that reproduces it, from the list below, or empty"}], '
             .'"systems": [{"id": "s1", "name": "short name (step card, UI panel, caption, emphasis word, sticker)", "look": "how it looks: layout, type, colour, size, under 30 words", '
-            .'"entry": "how it arrives", "active": "what it does while on screen", "hold": "how long it stays and why", "exit": "how it leaves"}], '
+            .'"entry": "how it arrives", "active": "what it does while on screen", "hold": "how long it stays and why", "exit": "how it leaves", "move": "the move that reproduces how it arrives or transitions, from the list below"}], '
             .'"patterns": {"text_reveal": "how text appears relative to the voice", "emphasis": "how key words are emphasised", "pacing": "rhythm of holds and changes", "signature": "the move it is remembered for"}}.'
             .' A system is an element that recurs with the same look and behaviour (every Step card, every UI panel, the caption style): describe it once in systems and point each of its moments at it.'
+            .' Name each system\'s and each moment\'s move from this list, choosing what the frames show, not the nearest word: '.\App\Services\Create\MotionMoves::prompt().'.'
             .($every ? ' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes). List as many moments as the video has.' : ' At most 30 moments.')];
         // Maximum looks twice: the first reading lists what it could not tell; those stretches are then read frame by frame.
         $maximum = $file !== null && in_array($study['coverage_mode'] ?? '', ['maximum', 'every_look'], true);
@@ -451,7 +452,8 @@ class ReferenceStudy
         foreach ($raw as $x) {
             if (! is_array($x) || $s($x['name'] ?? '', 60) === '') continue;
             $out[] = ['id' => preg_match('/^s\d{1,2}$/', (string) ($x['id'] ?? '')) ? (string) $x['id'] : 's'.(count($out) + 1), 'name' => $s($x['name'], 60), 'look' => $s($x['look'] ?? '', 200),
-                'entry' => $s($x['entry'] ?? '', 120), 'active' => $s($x['active'] ?? '', 120), 'hold' => $s($x['hold'] ?? '', 120), 'exit' => $s($x['exit'] ?? '', 120)];
+                'entry' => $s($x['entry'] ?? '', 120), 'active' => $s($x['active'] ?? '', 120), 'hold' => $s($x['hold'] ?? '', 120), 'exit' => $s($x['exit'] ?? '', 120)]
+                + (($m = \App\Services\Create\MotionMoves::valid($x['move'] ?? null)) ? ['move' => $m] : []);
             if (count($out) >= 12) break;
         }
         return array_values(collect($out)->unique('id')->all());
@@ -468,7 +470,8 @@ class ReferenceStudy
             $out[] = ['id' => 'm'.(count($out) + 1), 'start' => $a, 'end' => $b, 'kind' => in_array($m['kind'] ?? '', $kinds, true) ? $m['kind'] : 'other',
                 'on_screen_text' => $s($m['on_screen_text'] ?? '', 160), 'visual' => $s($m['visual'] ?? '', 160), 'motion' => $s($m['motion'] ?? '', 120),
                 'transition_in' => $s($m['transition_in'] ?? '', 20), 'spoken' => $s($m['spoken'] ?? '', 200),
-                'purpose' => $s($m['purpose'] ?? '', 120), 'system' => in_array($m['system'] ?? '', $systemIds, true) ? $m['system'] : ''];
+                'purpose' => $s($m['purpose'] ?? '', 120), 'system' => in_array($m['system'] ?? '', $systemIds, true) ? $m['system'] : '']
+                + (($move = \App\Services\Create\MotionMoves::valid($m['move'] ?? null)) ? ['move' => $move] : []);
             if ($max !== null && count($out) >= $max) break;
         }
         usort($out, fn ($x, $y) => $x['start'] <=> $y['start']);

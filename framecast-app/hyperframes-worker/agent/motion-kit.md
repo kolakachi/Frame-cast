@@ -26,6 +26,20 @@ Hide the outgoing scene once the transition is done (`tl.set('#a', {autoAlpha: 0
 - `WM.stamp(tl, '#stamp', at, {rotation: -8})`: a badge (a bordered word such as "Handled.") slams in, overshoots and settles. Use once, on the payoff.
 - `WM.field(tl, '#stage', '#FF6B35', at)`: the background cuts to a new colour on a hit. Flip fields on key beats; keep text contrast when you do.
 
+## Reference moves
+When the plan names a move (plan.reference_systems[].move, reference_decisions[].move), build that element with the recipe below; the check sends back a named move the composition never calls. kit/reference-moves.html is a worked 15-second example using all of them on one timeline. Elements start hidden (visibility:hidden); each move makes them visible itself.
+- `words` → `WM.words(tl, '#h .w', [1.1, 1.3, 1.45])`: a headline builds word by word; one time per word span, from narrationTiming.
+- `write_on` → `WM.writeOn(tl, '#emph', at, {duration: .45, underline: '#emph .u'})`: an emphasis word (script or italic) is written on left to right, then underlined. Start it so the last letter lands as the word is said.
+- `iris` → `WM.iris(tl, '#next', at, {from: '#dot', ringColor: 'rgba(255,255,255,.8)'})`: the next full-frame scene opens as a circle growing from an element (the dot of a question mark, a stamp, a word), with faint echo rings. Hide the old scene once it is covered.
+- `toss` → `WM.toss(tl, '#card', at, {rotation: -4, from: 'right'})`: a card is thrown in spinning and lands upright. Stagger cards about 0.4 s.
+- `pop` → `WM.pop(tl, '#bubble', at, {origin: '100% 100%'})`: a bubble, tile, chip or sticker appears from a point with a bounce; set origin to its tail or anchor.
+- `device` → `WM.device(tl, '#panel', at, {to: {left, top, width, height, radius}, content: '#panelContent', chrome: '#bezel'})`: a full-bleed panel (position:absolute, at full size when the timeline is built) shrinks into a phone or laptop screen, carrying its content layer; the bezel fades in as it lands. Then swap the screen's content.
+- `through` → `WM.through(tl, {a: '#sceneA', from: '#button', b: '#sceneB', to: '#header', at})`: push into an element until it fills the frame, hold, then open out of another element in the next scene: a match cut on shape (a dark button becomes a dark header). Both scenes are full-frame layers at the stage's top left; pick a `to` element with the same colour and shape as `from`.
+- `fly` → `WM.fly(tl, '#chip', '#total', at, {duration: .5})`, then `WM.count(tl, '#total', 12, 15, at + .5, .3)`: a chip arcs into a target that updates on arrival.
+- `stamp`, `type`, `count`, `cursor`, `press`, `morph`, `whip`, `wipe`, `push`, `giant_wipe` (`WM.giantWipe`) and `field` are the recipes above.
+- A stamp or bubble that is meant to sit over other text: add `data-layout-allow-overlap data-layout-allow-occlusion` to it.
+- Move ids that are not here (`custom`) are built by hand from the plan's spec.
+
 ## Good habits
 - One idea per interaction: move, then press, then show the result; leave about 0.3 s between them.
 - Use `WM.ease.heavy` for headlines and `WM.ease.snappy` for UI, so type feels weighty and UI feels quick.

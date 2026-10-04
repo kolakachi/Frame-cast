@@ -8,6 +8,7 @@ import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse}
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
 import {beatFindings} from './narration-timing.mjs';
+import {moveFindings} from './move-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
@@ -60,6 +61,10 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // version that passed every check; with none, the build ends cancelled.
   // The storyboard is one still per beat on purpose: stillness is not a finding there.
   const ownStage=list=>(list||[]).filter(f=>!(context.lookOnly&&f.code==='still_stretch'));
+  // Every composition file except the kit's own runtime, for checks that read the source.
+  const compositionSources=async()=>{let out=await workspace.read('index.html').catch(()=>'');for(const f of await workspace.sourceFiles().catch(()=>[]))if(f!=='index.html'&&!/^(gsap|wyv-|barty-)/.test(f))out+='\n'+await workspace.read(f).catch(()=>'');return out;};
+  // Findings sent back once at finish (fix, or finish again saying why): pacing, plus reference moves the plan names but the build never uses.
+  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()}))];
   const stopNow=async()=>{
     if(!stopRequested())return false;
     if(state.lastGood){
@@ -192,7 +197,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
   const executeAction=async(action,reviewImage)=>{
     let result;
-      if(action.type==='read')result={text:(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path.startsWith('cards/'))&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
+      if(action.type==='read')result={text:(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/reference-moves.html'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path.startsWith('cards/'))&&tools.guidance?await tools.guidance(action.path):await workspace.read(action.path)};
     else if(action.type==='report_limitation') {
       const item=recordLimitation(state,{...action,source:'agent_report',code:action.category});
       result={recorded:item.recorded!==false,id:item.id,assessment:item.assessment,authorization_changed:false,
@@ -310,14 +315,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
-      if(result.ok){state.checkedRevision=state.revision;const pacing=ownStage(result.pacing);state.pacing={revision:state.revision,findings:pacing};result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
+      if(result.ok){state.checkedRevision=state.revision;const pacing=await softFindings(result.pacing);state.pacing={revision:state.revision,findings:pacing};result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     }
     else if(action.type==='check') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
-      if(result.ok){state.checkedRevision=state.revision;result={...result,pacing:ownStage(result.pacing)};state.pacing={revision:state.revision,findings:result.pacing};}
+      if(result.ok){state.checkedRevision=state.revision;result={...result,pacing:await softFindings(result.pacing)};state.pacing={revision:state.revision,findings:result.pacing};}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     } else if(action.type==='snapshot') {
       if(state.checkedRevision!==state.revision)throw Error('Check the current draft before snapshots');
