@@ -22,6 +22,8 @@ watch(() => props.src, async src => {
     video.addEventListener(event, done, { once: true }); video.addEventListener('error', fail, { once: true })
   })
   try {
+    // The version link lives on the API's origin; frames can only be copied from a CORS-enabled request.
+    if (!src.startsWith('blob:')) video.crossOrigin = 'anonymous'
     video.muted = true; video.preload = 'auto'; video.playsInline = true
     const ready = wait('loadeddata'); video.src = src; await ready
     if (cancelled) return
