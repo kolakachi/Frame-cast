@@ -62,7 +62,9 @@ class BriefSettings
         }
 
         if ($video) {
-            if (preg_match('/\b(silent|no audio|no sound|mute[d]?|without (?:audio|sound))\b/', $text)) {
+            // Silence is a setting only when the whole video is meant to be silent ("a silent video", "no audio",
+            // "mute it"), not when a passage should avoid silence ("so nothing sits silent at the end").
+            if (preg_match('/(?:^|[,;:]\s*)silent(?=\s*(?:[,;.]|$))|\b(silent (?:video|ad|clip|reel|version|promo|film)|(?:make|keep|render) it (?:silent|muted?)|(?:no|without) (?:audio|sound|music or voice)|muted? (?:video|version|audio)|mute (?:it|the audio|the sound))\b/', $text) && ! preg_match('/\bnot? (?:be )?(?:silent|muted?)\b|\bnothing (?:\w+ ){0,2}silent\b/', $text)) {
                 if (($settings['audio'] ?? 'original') !== 'silent') $changes['audio'] = 'silent';
             } elseif (preg_match('/\bkeep (?:the |my )?(?:original )?(?:audio|sound|voice)\b/', $text)) {
                 if (($settings['audio'] ?? 'original') !== 'original') $changes['audio'] = 'original';

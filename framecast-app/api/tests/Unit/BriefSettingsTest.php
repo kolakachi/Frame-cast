@@ -65,4 +65,13 @@ class BriefSettingsTest extends TestCase
         $this->assertSame(['duration_seconds' => 20], BriefSettings::infer('Make it 20 seconds with a 2 second logo hold.', $settings)['changes']);
         $this->assertSame(['duration_seconds' => 15], BriefSettings::infer('Create one 15-second 16:9 video.', $settings)['changes']);
     }
+
+    public function test_avoiding_silence_in_a_passage_does_not_turn_the_audio_off(): void
+    {
+        $settings = ['output_kind' => 'video', 'audio' => 'original'];
+        $this->assertArrayNotHasKey('audio', BriefSettings::infer('Write narration that fills about 13 of the 15 seconds, so nothing sits silent at the end.', $settings)['changes']);
+        $this->assertSame([], BriefSettings::infer('The mascot stays silent; a narrator voices the script.', $settings)['changes']);
+        $this->assertSame(['audio' => 'silent'], BriefSettings::infer('Make it a silent video with captions only.', $settings)['changes']);
+        $this->assertSame(['audio' => 'silent'], BriefSettings::infer('No audio please.', $settings)['changes']);
+    }
 }

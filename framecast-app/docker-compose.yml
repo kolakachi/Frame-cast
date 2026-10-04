@@ -47,6 +47,10 @@ services:
       REVERB_HOST: reverb
       REDIS_QUEUE_RETRY_AFTER: 2400
     working_dir: /var/www/html
+    # Create's uploads and reference studies live in the API's storage; the default queue studies references
+    # in the background, so it needs the same files.
+    volumes:
+      - api_storage:/var/www/html/storage/app
     depends_on:
       postgres:
         condition: service_healthy
