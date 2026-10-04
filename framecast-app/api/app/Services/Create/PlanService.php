@@ -66,6 +66,20 @@ class PlanService
         }
         // Every attached reference video is studied before planning (normally already done in the background at attach time).
         $this->studyReferences($user, $c);
+        // An exact copy runs as long as its reference (up to the 30 s Create makes), unless the user chose a length.
+        $settings = json_decode($c->settings_json, true) ?: [];
+        $lengthNote = null;
+        if (($settings['reference_match'] ?? null) === 'exact' && empty($settings['duration_chosen'])) {
+            $refSeconds = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')->where('create_attachments.conversation_id', $id)
+                ->where('create_attachments.purpose', 'reference')->where('assets.asset_type', 'video')->pluck('assets.metadata_json')
+                ->map(fn ($m) => (float) data_get(json_decode((string) $m, true), 'reference_study.duration_seconds', 0))->filter()->first();
+            $want = $refSeconds ? (int) max(5, min(30, round($refSeconds))) : null;
+            if ($want && $want !== (int) ($settings['duration_seconds'] ?? 15)) {
+                DB::table('create_conversations')->where('id', $id)->update(['settings_json' => json_encode(OutputSettings::normalize([...$settings, 'duration_seconds' => $want]))]);
+                $c = $this->conversations->conversation($user, $id);
+                $lengthNote = 'Length set to '.$want.' s to match the reference ('.round($refSeconds).' s'.($refSeconds > 30 ? '; Create makes up to 30 s' : '').'). Change it in Details.';
+            }
+        }
         // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
         $deadline = microtime(true) + (PilotPolicy::unlimited() ? 600 : 100);
         if (PilotPolicy::unlimited()) set_time_limit(640);
@@ -80,6 +94,7 @@ class PlanService
         // Only host tool receipts can establish inspection evidence; model-written receipts are discarded.
         $context['_reference_evidence'] = $result['reference_evidence'] ?? [];
         $plan = $this->normalize($result['plan'], $context, (int) $user->workspace_id);
+        if ($lengthNote) $plan['direction_notes'][] = ['text' => $lengthNote, 'provenance' => 'inferred'];
 
         return DB::transaction(function () use ($user, $id, $version, $key, $hash, $plan, $result, $briefs) {
             $c = $this->conversations->conversation($user, $id, true);
@@ -123,7 +138,11 @@ class PlanService
                 abort_unless($picked['route'] === ($want['route'] ?? null), 422, 'That style is not available for this brief.');
                 $sel['style'] = $picked;
             }
-            if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'];
+            if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'] || collect($plan['media'] ?? [])->contains('kind', 'reference_sheet');
+            if (array_key_exists('video_tier', $input)) {
+                abort_unless(in_array($input['video_tier'], ['standard', 'premium'], true), 422, 'Choose Standard or Premium.');
+                $sel['video_tier'] = $input['video_tier'];
+            }
             if (array_key_exists('voice', $input)) {
                 abort_unless(\App\Services\Generation\TTS\GeminiVoices::isGeminiVoice((string) $input['voice']) || $input['voice'] === 'clone', 422, 'Choose one of the listed voices.');
                 $sel['voice'] = (string) $input['voice'];
@@ -185,7 +204,7 @@ class PlanService
             'asks' => array_map(fn ($a) => $a + (is_int($s['asks'][$a['id']] ?? null) ? ['asset_id' => $s['asks'][$a['id']]] : (($s['asks'][$a['id']] ?? null) === 'skip' ? ['skipped' => true] : [])), $p['asks'] ?? []),
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
-            'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false)]
+            'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard']
             // What the build and its checks follow from a reference and the 3D route; without these the builder never sees them.
             + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d']));
     }
@@ -353,6 +372,7 @@ class PlanService
             'previous_plan' => ($prev = DB::table('create_plans')->where('conversation_id', $c->id)->orderByDesc('created_at')->first())
                 ? ['brief_sequence' => (int) $prev->brief_sequence, 'reference_evidence' => json_decode($prev->plan_json, true)['reference_evidence'] ?? [], 'requirement_history' => json_decode($prev->plan_json, true)['requirement_history'] ?? [], 'creative_intent' => json_decode($prev->plan_json, true)['creative_intent'] ?? null, 'approved_narration' => json_decode($prev->plan_json, true)['selections']['narration'] ?? [], 'approved_voice' => json_decode($prev->plan_json, true)['selections']['voice'] ?? null, 'character_performance' => json_decode($prev->plan_json, true)['character_performance'] ?? [], 'omitted_performance' => json_decode($prev->plan_json, true)['selections']['omitted_performance'] ?? [], 'requirements' => json_decode($prev->plan_json, true)['requirements'] ?? [], 'character_style' => json_decode($prev->plan_json, true)['character_style'] ?? '', 'summary' => json_decode($prev->plan_json, true)['summary'] ?? '', 'approved_copy' => json_decode($prev->plan_json, true)['selections']['callouts'] ?? [],
                     'colour_treatment' => json_decode($prev->plan_json, true)['colour_treatment'] ?? null,
+                    'video_tier' => json_decode($prev->plan_json, true)['selections']['video_tier'] ?? null,
                     'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? []] : null,
         ];
     }
@@ -407,9 +427,14 @@ class PlanService
         })->filter(fn ($d) => $d['id'] !== '' && $d['question'] !== '' && count($d['options']) >= 2)->unique('id')->take(3)->values()->all();
         $kept = collect((array) ($raw['kept_as_is'] ?? []))->map(fn ($t) => $str($t, 80))->filter()->unique()->take(8)->values()->all();
         $media = collect((array) ($raw['media'] ?? []))->filter(fn ($m) => is_array($m) && $known->has($m['kind'] ?? ''))
-            ->map(fn ($m) => ['requirement_ids' => $m['requirement_ids'] ?? [], 'kind' => $m['kind'], 'description' => $str($m['description'] ?? '', 200), 'subject' => ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character') ? 'approved_character' : 'source', 'credits' => (int) $known[$m['kind']]['credits']])->take(6)
-            // A talking shot or take is made from the poses and the narration, so it is always bought after them.
-            ->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true) ? 1 : 0, SORT_NUMERIC, false)->values()->all();
+            ->map(fn ($m) => ['requirement_ids' => $m['requirement_ids'] ?? [], 'kind' => $m['kind'], 'description' => $str($m['description'] ?? '', in_array($m['kind'], ShotRoute::KINDS, true) ? 400 : 200), 'subject' => ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character') ? 'approved_character' : 'source', 'credits' => (int) $known[$m['kind']]['credits']]
+                // Generated video keeps the planner's choice of engine, length, references and slot; ShotRoute checks it.
+                + (in_array($m['kind'], ShotRoute::KINDS, true) ? ShotRoute::plannerFields($m) : []))
+            // A story told in generated shots needs room: a sheet, several shots, a take, voice, music and sounds.
+            ->take(14)
+            // A talking shot or take is made from the poses and the narration, so it is always bought after them;
+            // generated shots and takes are made from the approved sheet, so after it.
+            ->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0, SORT_NUMERIC, false)->values()->all();
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
         // Measured: the catalogue voices speak about 2 words a second with pauses; leave 1.5 s at the end.
@@ -496,6 +521,13 @@ class PlanService
         $plan['look_first'] = (bool) ($raw['look_first'] ?? false) && collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)
             || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'));
         $plan['selections']['look_first'] = $plan['look_first'];
+        // Generated video: what its routing depends on, and the cast/world sheet is approved before any clip is bought.
+        if (collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ShotRoute::KINDS, true))) {
+            $plan['shot_context'] = ['has_avatar' => collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image'),
+                'aspect_ratio' => $ctx['settings']['aspect_ratio'] ?? '9:16'];
+            $plan['selections']['video_tier'] = in_array($ctx['previous_plan']['video_tier'] ?? null, ['standard', 'premium'], true) ? $ctx['previous_plan']['video_tier'] : 'standard';
+            if (collect($plan['media'])->contains('kind', 'reference_sheet')) $plan['look_first'] = $plan['selections']['look_first'] = true;
+        }
         // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
         if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
         // Copying exactly: each kept or replaced moment becomes something the build is checked against, at its own
@@ -560,6 +592,21 @@ class PlanService
             }
         }
         $voice = $plan['selections']['voice'] ?? $plan['voice'] ?? null;
+        // Generated shots and takes: engine, length, slot and price from what the models can do and the user's tier.
+        $shotCtx = ['video_tier' => $plan['selections']['video_tier'] ?? 'standard', 'has_avatar' => (bool) data_get($plan, 'shot_context.has_avatar', false),
+            'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'),
+            'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? []];
+        foreach ($items as &$shotItem) {
+            if (! in_array($shotItem['kind'], ShotRoute::KINDS, true)) continue;
+            $shotItem = array_merge($shotItem, match ($shotItem['kind']) {
+                'reference_sheet' => ShotRoute::sheet($shotItem),
+                'generated_shot' => ShotRoute::shot($shotItem, $shotCtx),
+                'ugc_take' => ShotRoute::take($shotItem, $shotCtx),
+            });
+        }
+        unset($shotItem);
+        // A UGC take speaks the script itself: no separate narration is bought.
+        if (collect($items)->contains('kind', 'ugc_take') && $voice !== 'clone') $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
         $hasTake = collect($items)->contains('kind', 'talking_take');
         if (($hasTake || (collect($items)->contains('kind', 'talking_shot') && count($plan['selections']['narration'] ?? $plan['narration'] ?? []) <= 1)) && $voice !== 'clone') {
             $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
@@ -580,7 +627,7 @@ class PlanService
                 $m['requirement_ids'] = array_column($m['requirements'], 'id');
             }
             return $m;
-        })->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true) ? 1 : 0)->values()->all();
+        })->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0)->values()->all();
     }
 
     /** Media the plan would add on top of building the composition. */

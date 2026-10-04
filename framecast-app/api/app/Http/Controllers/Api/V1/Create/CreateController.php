@@ -95,7 +95,7 @@ class CreateController extends Controller
             $changes = ['version' => $c->version + 1, 'updated_at' => now()];
             if(isset($input['settings'])) {
                 abort_if($c->archived_at || DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists(),409,'Wait for the current creation before changing settings.');
-                $settings=\App\Services\Create\OutputSettings::normalize(array_merge(json_decode($c->settings_json,true),$input['settings']));
+                $settings=\App\Services\Create\OutputSettings::normalize(array_merge(json_decode($c->settings_json,true),$input['settings'],isset($input['settings']['duration_seconds'])?['duration_chosen'=>true]:[]));
                 abort_if(!empty($settings['style_id']) && !DB::table('create_styles')->where('workspace_id',$r->user()->workspace_id)->where('id',$settings['style_id'])->exists(),422,'That style no longer exists.');
                 abort_unless($settings['output_kind']===(json_decode($c->settings_json,true)['output_kind']??'video'),422,'Start a new conversation for a different output type.');
                 $changes['settings_json']=json_encode($settings);

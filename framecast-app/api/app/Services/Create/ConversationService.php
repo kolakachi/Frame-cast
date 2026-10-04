@@ -83,7 +83,7 @@ class ConversationService
             $inferred = BriefSettings::infer($input['content'], $settings, $referenceVideo);
             $replies = [];
             if ($inferred['changes'] !== []) {
-                $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'])));
+                $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'], isset($inferred['changes']['duration_seconds']) ? ['duration_chosen' => true] : [])));
                 $replies[] = BriefSettings::describe($inferred['changes']);
             }
             array_push($replies, ...$inferred['questions']);
@@ -188,6 +188,8 @@ class ConversationService
                             $item = ['id' => $m['id'] ?? null, 'requirement_ids' => $m['requirement_ids'] ?? [], 'requirements' => $m['requirements'] ?? [], 'plan_item_index' => $i, 'kind' => $m['kind'], 'description' => (string) $m['description'], 'subject' => $m['subject'] ?? 'source',
                                 ...($m['kind'] === 'character_poses' ? ['character_contract' => CharacterApproval::CONTRACT] : []),
                                 'credits' => $m['kind'] === 'music' ? CapabilityCatalogue::musicCredits((int) ($settings['duration_seconds'] ?? 15)) : (int) (CapabilityCatalogue::credits($m['kind'], (int) $user->workspace_id) ?? 0)];
+                            // Generated video is priced by its route (engine and length), already resolved for the plan.
+                            if (in_array($m['kind'], ShotRoute::KINDS, true)) return [...$item, ...array_intersect_key($m, array_flip(ShotRoute::ROUTE_KEYS)), 'credits' => (int) ($m['credits'] ?? 0)];
                             return in_array($m['kind'], ['talking_shot', 'talking_take'], true)
                                 ? array_merge($item, TalkingPresenter::route($m['kind'], $plan['voice'] ?? null, (int) ($settings['duration_seconds'] ?? 15))) : $item;
                         })->values()->all()
@@ -197,6 +199,10 @@ class ConversationService
                         422, 'The talking presenter needs character poses and a script in this plan. Plan again before building.');
                     if (($plan['voice'] ?? null) === 'clone') abort_unless(collect($planMedia)->contains('kind', 'cloned_voiceover'),
                         422, 'The cloned presenter needs a cloned voiceover in the plan.');
+                }
+                if (collect($planMedia)->contains('kind', 'ugc_take')) {
+                    abort_unless(collect($planMedia)->where('kind', 'ugc_take')->every(fn ($m) => collect($m['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->isNotEmpty()),
+                        422, 'The UGC take needs a script to speak. Add narration and plan again.');
                 }
                 if (collect($planMedia)->contains(fn ($m) => ($m['speech_mode'] ?? '') === 'native')) {
                     abort_unless(in_array($settings['aspect_ratio'], ['9:16', '16:9'], true), 422, 'Native talking video currently supports 9:16 or 16:9.');
@@ -211,10 +217,12 @@ class ConversationService
                     && ($settings['video_mode'] ?? 'composition') === 'composition' && $stage === 'storyboard';
                 $fromLook = ! empty($baseMeta['look']) && ! $lookFirst;
                 if ($paid && ! $lookFirst && $plan && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition') CharacterPerformance::assertReady($plan, $settings, $planMedia, CharacterPerformance::performers($id));
-                if (! $lookFirst && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot', 'talking_take'], true) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) {
+                if (! $lookFirst && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot', 'talking_take', 'reference_sheet'], true) || ShotRoute::usesSheet($m) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) {
                     $approved = CharacterApproval::requireApproved($plan, $settings, (int) $user->workspace_id);
                     foreach ($planMedia as &$motionItem) {
                         if ($motionItem['kind'] === 'animate_image' && ($motionItem['subject'] ?? '') === 'approved_character') $motionItem['master_sha256'] = $approved['files'][0]['sha256'];
+                        // Clips are made from exactly the sheet the user approved.
+                        if (ShotRoute::usesSheet($motionItem)) $motionItem['sheet_sha256'] = hash('sha256', implode('|', array_column($approved['files'], 'sha256')));
                     }
                     unset($motionItem);
                     $master = collect($planMedia)->firstWhere('kind', 'character_poses');
@@ -324,7 +332,7 @@ class ConversationService
                 abort_unless($p['mode']===config('create.mode') && ($p['mode']==='fixture' || PilotPolicy::enabled()),503);
                 if($auto) { abort_unless($this->autoRunEligible($user,$c,$quote),409,'This job needs your approval.'); $p['auto_run']=true; $providerApproved=$providerApproved || (bool)$c->provider_consent_at; }
                 if (($p['build_stage'] ?? '') === 'full_video' && ! empty($p['plan']['character_performance'])) CharacterPerformance::assertReady($p['plan'], $p['settings'], $p['plan_media'] ?? [], $p['input_files'] ?? []);
-                if (($p['build_stage'] ?? '') === 'full_video' && collect($p['plan_media'] ?? [])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) CharacterApproval::requireApproved($p['plan'], $p['settings'], (int) $user->workspace_id);
+                if (($p['build_stage'] ?? '') === 'full_video' && collect($p['plan_media'] ?? [])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take', 'reference_sheet'], true) || ShotRoute::usesSheet($m) || ($m['kind'] === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'))) CharacterApproval::requireApproved($p['plan'], $p['settings'], (int) $user->workspace_id);
                 $free=!empty($p['free_edit']);
                 if($p['mode']==='agent' && $free) { abort_unless(($p['execution_policy']['render']['credits']??1)===0 && count($p['execution_policy'])===1,422,'Invalid free edit.'); }
                 elseif($p['mode']==='agent') { abort_unless($providerApproved,422,'Confirm sending this brief and approved media to our AI providers.'); abort_unless(($p['pilot_budget_id']??null)===config('create.pilot_budget_id'),409,'Pilot approval changed. Get a fresh quote.'); PilotPolicy::admit($p['execution_policy']); }

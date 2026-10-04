@@ -18,7 +18,7 @@ use RuntimeException;
 class PlanMediaExecutor
 {
     /** Kinds this executor can make; the catalogue must not offer anything outside it. */
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'reference_sheet', 'generated_shot', 'ugc_take'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -38,6 +38,9 @@ class PlanMediaExecutor
             'talking_shot' => $this->talkingShot($ctx, $dir),
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
+            'reference_sheet' => $this->referenceSheet($description, $ctx, $dir),
+            'generated_shot' => $this->generatedShot($description, $ctx, $dir),
+            'ugc_take' => $this->ugcTake($description, $ctx, $dir),
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
     }
@@ -286,6 +289,146 @@ class PlanMediaExecutor
             if ($matched < max(1, (int) ceil(count($tokens) * 0.6))) $end = null;
         } catch (\Throwable) { $end = null; }
         return round(max(1.5, min(4.5, ($end ?? 2.8) + 0.2)), 2);
+    }
+
+    /**
+     * The cast and world sheet: one still per subject in the video's look, used as reference images by every
+     * generated shot so the same character, place and product carry across them. A subject marked avatar is the
+     * user's own photo restyled into the look (identity from the photo, treatment from the references).
+     */
+    private function referenceSheet(string $description, array $ctx, string $dir): array
+    {
+        $subjects = $ctx['shot']['subjects'] ?? [];
+        if (! $subjects) throw new RuntimeException('The sheet lists no subjects. Plan again.');
+        $style = array_map(fn ($image) => $this->replicateUpload((string) file_get_contents($image), (new \finfo(FILEINFO_MIME_TYPE))->file($image)), array_slice($ctx['character_style_images'] ?? [], 0, 3));
+        $avatar = collect($ctx['source_images'] ?? [])->first();
+        $files = [];
+        foreach ($subjects as $k => $subject) {
+            $refs = $style; $roles = 'Any supplied images are STYLE REFERENCES ONLY: match their rendering, palette, line and lighting, not their characters, text or branding. ';
+            if (! empty($subject['avatar']) && $avatar) {
+                array_unshift($refs, $this->replicateUpload((string) file_get_contents($avatar), (new \finfo(FILEINFO_MIME_TYPE))->file($avatar)));
+                $roles = 'Image 1 supplies identity only: keep this person\'s recognisable face, hair and build. Any later images are STYLE REFERENCES ONLY. ';
+            }
+            $prompt = $roles.'Look of the whole video: '.trim($description).($ctx['character_style'] ? ' Treatment: '.$ctx['character_style'].'.' : '')
+                .' Reference still of '.$subject['name'].': '.$subject['looks'].'. Show it clearly and whole (a character full figure, a place as an establishing view, a product centred), evenly lit, one subject only, no text, no captions, no logos, no contact sheet.';
+            $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, $ctx['character_style'] ?: 'cinematic', $ctx['aspect_ratio'] ?? '9:16', ['reference_image_urls' => $refs]);
+            $path = $dir.'/sheet-'.$k.'.png';
+            if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
+            elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
+            else throw new RuntimeException('The image model returned nothing for '.$subject['name'].'.');
+            $files[] = ['path' => $path, 'title' => 'Sheet · '.$subject['name'], 'pose' => $subject['name']];
+        }
+        $first = array_shift($files);
+        return ['path' => $first['path'], 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($first['path']), 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(),
+            'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT];
+    }
+
+    /** Reference images for a shot, as Replicate file URLs with the name the prompt calls each by. */
+    private function shotReferences(array $shot, array $ctx): array
+    {
+        $out = [];
+        if (in_array('avatar', (array) ($shot['refs'] ?? []), true)) foreach (array_slice($ctx['source_images'] ?? [], 0, 2) as $photo)
+            $out[] = ['url' => $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo)), 'name' => 'the user (keep this exact person)'];
+        if (in_array('sheet', (array) ($shot['refs'] ?? []), true)) foreach ($ctx['sheet_files'] ?? [] as $f) {
+            app(InputSnapshotService::class)->verify([$f]);
+            $out[] = ['url' => $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']), 'name' => $f['name'] ?? 'the sheet'];
+        }
+        return $out;
+    }
+
+    /** The still a first-frame shot starts from: the user's photo or a named sheet subject. */
+    private function firstFrame(array $shot, array $ctx): string
+    {
+        if (($shot['first_frame'] ?? '') === 'avatar') {
+            $photo = collect($ctx['source_images'] ?? [])->first();
+            if (! $photo) throw new RuntimeException('This shot starts from your photo, but none is attached.');
+            return $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
+        }
+        $f = collect($ctx['sheet_files'] ?? [])->first(fn ($f) => mb_strtolower((string) ($f['name'] ?? '')) === mb_strtolower((string) $shot['first_frame'])) ?? ($ctx['sheet_files'][0] ?? null);
+        if (! $f) throw new RuntimeException('This shot starts from a sheet still that is not approved.');
+        app(InputSnapshotService::class)->verify([$f]);
+        return $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']);
+    }
+
+    private function shotPrompt(string $description, array $shot, array $refs): string
+    {
+        $named = $refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Keep every referenced character, place and product exactly as shown.' : '';
+        $sound = match ($shot['audio'] ?? 'ambient') {
+            'speech' => ' Sound: natural ambience, and the character says exactly: "'.str_replace('"', "'", (string) $shot['line']).'" — nothing else is spoken.',
+            'none' => ' Sound: quiet room tone only, no music, no dialogue.',
+            default => ' Sound: natural ambience for the scene only, no music, no dialogue.',
+        };
+        return trim($description).$named.$sound.' No on-screen text, captions, subtitles, logos, watermarks or user interface; keep the main subject centred and clear of the frame edges.';
+    }
+
+    /** One generated shot: references (the approved sheet, the user's avatar) or a first frame, on the routed engine. */
+    private function generatedShot(string $description, array $ctx, string $dir): array
+    {
+        $shot = $ctx['shot'] ?? [];
+        $engine = (string) ($shot['engine'] ?? '');
+        if (isset(ShotRoute::FIRST_FRAME[$engine])) {
+            $tier = ShotRoute::FIRST_FRAME[$engine]['tier'];
+            $r = app(I2VAdapter::class)->animate($this->firstFrame($shot, $ctx), $this->shotPrompt($description, $shot, []), $tier, (int) $shot['seconds'],
+                ['aspect_ratio' => $shot['aspect'] ?? ($ctx['aspect_ratio'] ?? '9:16'), \App\Services\CreditService::videoQualityParam($tier) => \App\Services\CreditService::videoQuality($tier, null)]);
+            $url = $r['video_url'] ?? null;
+            $id = 'shot-'.Str::uuid();
+        } elseif (isset(ShotRoute::REF[$engine])) {
+            $refs = $this->shotReferences($shot, $ctx);
+            $adapter = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
+            $id = $adapter->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], null, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
+            // A shot is one prediction; the worker waits up to 15 minutes for the whole item.
+            $url = $adapter->pollUntilDone($id, 780);
+        } else throw new RuntimeException('This shot has no video model. Plan again.');
+        if (! $url) throw new RuntimeException('The video model is still making this shot.');
+        $path = $this->fetch((string) $url, $dir.'/shot.mp4');
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => ShotRoute::label($engine).' · '.Str::limit($description, 50, '…'), 'provider_id' => preg_replace('/[^a-zA-Z0-9_-]/', '', (string) $id) ?: 'shot-'.Str::uuid(),
+            'engine' => $engine, 'seconds' => (float) ($shot['seconds'] ?? 0)];
+    }
+
+    /**
+     * A UGC take: the presenter speaking the script to camera with native speech. Each segment is one prediction
+     * from the same references (so the person stays the same), all started at once, then joined into one take;
+     * the cut between segments is a natural jump cut, and the build can hide it behind a layout change.
+     */
+    private function ugcTake(string $description, array $ctx, string $dir): array
+    {
+        $shot = $ctx['shot'] ?? [];
+        $engine = (string) ($shot['engine'] ?? 'omni');
+        $refs = match ($shot['presenter'] ?? 'none') {
+            'avatar' => $this->shotReferences(['refs' => ['avatar']], $ctx),
+            'sheet' => $this->shotReferences(['refs' => ['sheet']], $ctx),
+            default => [],
+        };
+        $adapter = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
+        $ids = [];
+        foreach ($shot['segments'] ?? [] as $k => $seg) {
+            $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
+            $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' — keep this exact person.' : '')
+                .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
+                .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
+                .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
+            $ids[] = $adapter->start($prompt, (int) $seg['seconds'], null, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
+        }
+        if (! $ids) throw new RuntimeException('The UGC take has nothing to say. Plan again with a script.');
+        $parts = [];
+        foreach ($ids as $k => $id) {
+            $url = $adapter->pollUntilDone($id, 780);
+            if (! $url) throw new RuntimeException('The video model is still making part '.($k + 1).' of the take.');
+            $parts[] = $this->fetch($url, $dir.'/part-'.$k.'.mp4');
+        }
+        $path = $dir.'/take.mp4';
+        if (count($parts) === 1) rename($parts[0], $path);
+        else {
+            // Re-encode on join: segments can differ slightly in size and timing.
+            $inputs = []; $filter = '';
+            foreach ($parts as $k => $part) { array_push($inputs, '-i', $part); $filter .= '['.$k.':v]scale=720:-2,setsar=1,fps=30['.'v'.$k.'];'; }
+            $filter .= implode('', array_map(fn ($k) => '[v'.$k.']['.$k.':a]', array_keys($parts))).'concat=n='.count($parts).':v=1:a=1[v][a]';
+            $p = Process::timeout(180)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', ...$inputs, '-filter_complex', $filter, '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', $path]);
+            if (! $p->successful() || ! is_file($path)) throw new RuntimeException('The take could not be joined.');
+        }
+        $lines = collect($shot['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->all();
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'UGC take · '.Str::limit(implode(' ', $lines), 40, '…'), 'provider_id' => 'take-'.preg_replace('/[^a-zA-Z0-9_-]/', '', implode('-', $ids)),
+            'line' => implode(' ', $lines), 'speech_mode' => 'native', 'engine' => $engine];
     }
 
     /** Upload bytes to Replicate's file store so a model can read a private image. */

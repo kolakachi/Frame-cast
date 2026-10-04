@@ -10,6 +10,8 @@ class OutputSettings
         'approved_facts.*'=>'string|max:500', 'output_kind'=>'sometimes|in:video,image','video_mode'=>'sometimes|in:composition,animate_image',
         'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid','style_id'=>'sometimes|nullable|uuid','style_pack'=>'sometimes|nullable|string|max:40',
         'motion_blur'=>'sometimes|boolean','reference_effort'=>'sometimes|nullable|in:standard,high,maximum','reference_match'=>'sometimes|nullable|in:inspired,exact','media_ceiling_credits'=>'sometimes|nullable|integer|min:0|max:20000',
+        // Set when the user picks the length (Details or the brief), so an exact copy does not override it with the reference's.
+        'duration_chosen'=>'sometimes|boolean',
     ]; }
     public static function normalize(array $input): array {
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');

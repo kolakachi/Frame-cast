@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
  */
 class PlanMediaService
 {
-    public const PRODUCTION_ONLY = ['voiceover', 'cloned_voiceover', 'music', 'sfx', 'talking_shot', 'talking_take', 'animate_image', 'character_variants'];
+    public const PRODUCTION_ONLY = ['voiceover', 'cloned_voiceover', 'music', 'sfx', 'talking_shot', 'talking_take', 'animate_image', 'character_variants', 'generated_shot', 'ugc_take'];
 
     public function produce(string $runId, string $lease, int $index): array
     {
@@ -23,7 +23,7 @@ class PlanMediaService
         abort_unless(is_array($item) && isset($input['plan']['plan_id']), 404, 'This run has no such plan item.');
         app(RunService::class)->validateResultLease($runId, $lease);
         abort_if(! empty($input['look_first']) && in_array($item['kind'], self::PRODUCTION_ONLY, true), 422, 'Audio and motion are deferred until the full video build.');
-        if (empty($input['look_first']) && collect($input['plan_media'])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true))) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
+        if (empty($input['look_first']) && collect($input['plan_media'])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take', 'reference_sheet'], true) || ShotRoute::usesSheet($m))) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
         abort_if($item['kind'] === 'character_poses' && ($item['character_contract'] ?? '') !== CharacterApproval::CONTRACT, 409, 'The character workflow changed. Review a fresh storyboard quote.');
         $planId = $input['plan']['plan_id'];
         $cacheIndex = (int) ($item['plan_item_index'] ?? $index);
@@ -42,6 +42,15 @@ class PlanMediaService
             $context['approved_character_media_id'] = $approved['media_id'];
             $context['approved_character_files'] = $approved['files'];
         }
+        // Generated video: the approved sheet's files and the user's avatar are its references.
+        if (in_array($item['kind'], ['generated_shot', 'ugc_take'], true)) {
+            if (ShotRoute::usesSheet($item)) {
+                $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
+                abort_unless(hash_equals(hash('sha256', implode('|', array_column($approved['files'], 'sha256'))), (string) ($item['sheet_sha256'] ?? '')), 409, 'The approved sheet changed. Review a fresh quote.');
+                $context['sheet_files'] = array_map(fn ($f, $k) => $f + ['name' => $approved['names'][$k] ?? null], $approved['files'], array_keys($approved['files']));
+            }
+        }
+        if (in_array($item['kind'], ShotRoute::KINDS, true)) $context['shot'] = array_intersect_key($item, array_flip(ShotRoute::ROUTE_KEYS));
         $hash = CharacterApproval::mediaHash($item, $context);
 
         $done = DB::table('create_plan_media')->where('plan_id', $planId)->where('item_index', $cacheIndex)->first();
@@ -65,7 +74,7 @@ class PlanMediaService
         $providerStarted = false;
         try {
             try {
-                if ($item['kind'] === 'character_poses') $context['character_style_images'] = app(References\ReferenceSheets::class)->characterStyleImages($input['input_files'] ?? [], $dir);
+                if (in_array($item['kind'], ['character_poses', 'reference_sheet'], true)) $context['character_style_images'] = app(References\ReferenceSheets::class)->characterStyleImages($input['input_files'] ?? [], $dir);
                 $providerStarted = true;
                 $made = app(PlanMediaExecutor::class)->produce($item['kind'], $item['description'], $context, $dir);
             } catch (\Throwable $e) {

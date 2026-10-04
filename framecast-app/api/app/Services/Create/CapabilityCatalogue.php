@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 class CapabilityCatalogue
 {
     public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'talking_shot', 'talking_take', 'brand_kit',
+        'reference_sheet', 'generated_shot', 'ugc_take',
         'transcript', 'stabilize', 'remove_silence', 'clean_audio', 'loudness', 'speed', 'crop', 'grade', 'trim'];
 
     public static function forWorkspace(int $workspaceId): array
@@ -24,6 +25,10 @@ class CapabilityCatalogue
             ['kind' => 'stock_image', 'what' => 'Licensed stock photo found by search', 'credits' => CreditService::STOCK],
             ['kind' => 'ai_image', 'what' => 'A new generated image or scene background', 'credits' => app(ImageAdapterFactory::class)->costFor(null)],
             ['kind' => 'animate_image', 'what' => 'A 5-second generated motion clip from a still', 'credits' => CreditService::animationCost('quick', '480p', 5)],
+            // Generated video. Priced per item from its engine and length (ShotRoute); the figure here is a typical item.
+            ['kind' => 'reference_sheet', 'what' => 'The cast and world sheet for generated shots: one still per subject (a character, a place, a product, up to 4) in the video\'s look, approved before any clip is made. 35 credits a subject', 'credits' => 2 * self::CHARACTER_MASTER_CREDITS],
+            ['kind' => 'generated_shot', 'what' => 'One generated video shot from the sheet or the user\'s avatar as references (Seedance 2.5 33/s, Omni 22/s, Veo 3.1 58/s) or from a first frame (Seedance Lite, Kling, Veo Fast, about 30-100 a clip), with its own ambient sound or a spoken line. Text and UI are never generated, always composed over it', 'credits' => 5 * ShotRoute::perSecond('seedance25')],
+            ['kind' => 'ugc_take', 'what' => 'A presenter (the user\'s avatar or a sheet character) speaking the script to camera with native speech, made in segments and joined into one continuous take (Omni 22/s, Veo 3.1 58/s on Premium); replaces the voiceover', 'credits' => 12 * ShotRoute::perSecond('omni')],
             ['kind' => 'voiceover', 'what' => 'Narration of approved lines in a catalogue voice, per line', 'credits' => CreditService::TTS_GEMINI],
             // Generated audio on Replicate, priced at the usual peg (cost / $0.004):
             // ElevenLabs Music is $0.0083 per second of output; Stable Audio 2.5 is $0.20 a file.

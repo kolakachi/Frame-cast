@@ -44,6 +44,12 @@ class ReferenceMatch
         $t = trim(mb_strtolower($text), " .!\t\n");
         if (preg_match('/^(exact(ly)?|copy( it)?|replicate|frame by frame)$/u', $t)) return 'exact';
         if (preg_match('/^(inspired|loosely|ideas|inspiration)$/u', $t)) return 'inspired';
-        return null;
+        // A short reply with a typo ("exaclty and also 16:9", "inpsired") still answers the question.
+        $words = preg_split('/[^\p{L}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY);
+        if (count($words) > 8) return null;
+        $near = fn (string $target, int $within) => collect($words)->contains(fn ($w) => mb_strlen($w) >= 4 && levenshtein($w, $target) <= $within);
+        $exact = $near('exactly', 2) || $near('exact', 1);
+        $inspired = $near('inspired', 2) || $near('loosely', 1);
+        return $exact === $inspired ? null : ($exact ? 'exact' : 'inspired');
     }
 }

@@ -16,8 +16,12 @@ class CharacterApproval
             'character_poses' => self::CONTRACT,
             'animate_image' => ($item['subject'] ?? '') === 'approved_character' ? self::CONTRACT.'|motion|'.($item['master_sha256'] ?? '') : '',
             'character_variants' => self::CONTRACT.'|'.($item['master_sha256'] ?? ''),
+            'reference_sheet' => self::CONTRACT.'|sheet',
+            // A clip made from the approved sheet belongs to that sheet's bytes as well as its own route.
+            'generated_shot', 'ugc_take' => 'shot|'.($item['sheet_sha256'] ?? ''),
             default => '',
         };
+        if (in_array($item['kind'], ShotRoute::KINDS, true)) $contract .= '|'.json_encode(array_intersect_key($item, array_flip(ShotRoute::ROUTE_KEYS)));
         return hash('sha256', $contract.$item['kind'].'|'.$item['description'].(! empty($item['requirements']) ? '|requirements:'.json_encode($item['requirements']) : '').'|'.json_encode([
             $context['talking_route'] ?? null, $context['narration'], $context['voice'], $context['aspect_ratio'], $context['character_style'],
         ]));
@@ -25,11 +29,12 @@ class CharacterApproval
 
     public static function candidate(array $plan, array $settings, int $workspace): ?array
     {
-        $pose = collect($plan['media'] ?? [])->firstWhere('kind', 'character_poses');
+        // The look the user approves: the character preview, or the cast and world sheet for generated shots.
+        $pose = collect($plan['media'] ?? [])->firstWhere('kind', 'character_poses') ?? collect($plan['media'] ?? [])->firstWhere('kind', 'reference_sheet');
         if (! $pose || empty($plan['plan_id'])) return null;
         $hash = self::mediaHash($pose, ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null,
             'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '']);
-        $row = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', 'character_poses')
+        $row = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', $pose['kind'])
             ->where('description_hash', $hash)->where('status', 'succeeded')->first();
         if (! $row) return null;
         $record = json_decode($row->record_json, true);
@@ -43,7 +48,7 @@ class CharacterApproval
             $images[] = ['asset_id' => (int) $a->id, 'name' => $a->title, 'preview_url' => app(StorageService::class)->url($a->storage_url)];
         }
         $token = hash('sha256', json_encode([$plan['plan_id'], $hash, array_map(fn ($f) => [$f['asset_id'], $f['sha256']], $files)]));
-        return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $files];
+        return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $files, 'kind' => $pose['kind'], 'names' => $record['poses'] ?? []];
     }
 
     public static function requireApproved(array $plan, array $settings, int $workspace): array

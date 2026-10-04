@@ -43,7 +43,8 @@ class ReplicateVeoAdapter
     /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
     public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = [], string $aspectRatio = '9:16'): string
     {
-        if (! in_array($aspectRatio, ['9:16', '16:9'], true)) throw new \InvalidArgumentException('Native talking video supports portrait or landscape.');
+        // Seedance 2.5 also makes square and 4:3 shapes (a split-screen half); the others are portrait or landscape.
+        if (! in_array($aspectRatio, $engine === 'seedance25' ? ['9:16', '16:9', '1:1', '4:3', '3:4', '21:9'] : ['9:16', '16:9'], true)) throw new \InvalidArgumentException('This video model supports portrait or landscape.');
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
 
         // Gemini Omni 1.1 accepts only prompt, image, last_frame,
