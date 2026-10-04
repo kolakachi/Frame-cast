@@ -108,7 +108,8 @@ class CreateIntegrationTest extends TestCase
         $perf = fn ($kind) => ['id' => 'perf-'.$kind, 'kind' => $kind, 'action' => $kind, 'start' => 0, 'end' => 3, 'route' => 'mascot3d', 'tool' => null];
         $plan = ['narration' => ['Want a video ad that sells?'], 'mascot3d' => $p['mascot3d'], 'character_performance' => [$perf('speech'), $perf('facial')]];
         $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($plan, ['duration_seconds' => 15, 'audio' => 'original'], []));
-        $this->assertStringContainsString('no arms', \App\Services\Create\CharacterPerformance::issues(['character_performance' => [$perf('body')]] + $plan, ['duration_seconds' => 15], [])[0]['message']);
+        $this->assertStringContainsString('no arms', \App\Services\Create\CharacterPerformance::issues(['character_performance' => [['action' => 'waves at the viewer'] + $perf('body')]] + $plan, ['duration_seconds' => 15], [])[0]['message']);
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues(['character_performance' => [['action' => 'slides in from the edge and turns to face the viewer'] + $perf('body')]] + $plan, ['duration_seconds' => 15, 'audio' => 'original'], []), 'moving the whole figure needs no arms');
         $this->assertStringContainsString('no 3D mascot', \App\Services\Create\CharacterPerformance::issues(['narration' => ['x'], 'character_performance' => [$perf('facial')]], ['duration_seconds' => 15], [])[0]['message']);
     }
 
@@ -147,6 +148,13 @@ class CreateIntegrationTest extends TestCase
         $this->assertNull($m('Put "copy it frame by frame" on screen.'), 'quoted copy is content');
         $this->assertSame('exact', \App\Services\Create\ReferenceMatch::answer('Exactly.'));
         $this->assertSame('inspired', \App\Services\Create\ReferenceMatch::answer('inspired'));
+        // Once set, a follow-up only changes it when it clearly says so ("like the reference" once flipped an exact copy).
+        $f = fn ($t) => \App\Services\Create\ReferenceMatch::change($t);
+        $this->assertNull($f('Put a 3D object in each problem card like the reference: a camera, scissors and a clock.'));
+        $this->assertNull($m('Put a 3D object in each card like the reference.'), '"like the reference" is not a request for inspiration');
+        $this->assertSame('inspired', $f('Actually, make it loosely inspired by the reference.'));
+        $this->assertSame('exact', $f('Copy it exactly.'));
+        $this->assertSame('exact', $f('exactly'));
 
         $ref = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'ref.mp4', 'storage_url' => 'create-upload://r', 'status' => 'active']);
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);

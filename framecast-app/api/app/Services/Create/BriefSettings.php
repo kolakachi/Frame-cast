@@ -75,7 +75,7 @@ class BriefSettings
         }
 
         // How closely to follow an attached reference, when the brief says so (planning asks when it does not).
-        $match = ReferenceMatch::answer($brief);
+        $match = empty($settings['reference_match']) ? ReferenceMatch::answer($brief) : ReferenceMatch::change($brief);
         if ($video && $referenceVideo && $match && ($settings['reference_match'] ?? null) !== $match) $changes['reference_match'] = $match;
 
         return ['changes' => $changes, 'questions' => $questions];

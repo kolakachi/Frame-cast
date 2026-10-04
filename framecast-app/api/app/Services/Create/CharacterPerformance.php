@@ -69,7 +69,8 @@ class CharacterPerformance
             // The plan's 3D mascot speaks and makes expressions itself; it has no arms for gestures.
             elseif (($r['route'] ?? '') === 'mascot3d') {
                 if (empty($plan['mascot3d'])) $why = 'This plan has no 3D mascot; design one or choose another route.';
-                elseif ($r['kind'] === 'body') $why = 'The 3D mascot turns, nods and bobs but has no arms yet; plan gestures as head and body moves or use poses.';
+                // Moving the whole figure (slide, pop, turn, bob, hop) needs no arms; hand and arm gestures do.
+                elseif ($r['kind'] === 'body' && preg_match('/\b(arms?|hands?|wav(e|es|ing)|point(s|ing)?|clap|thumbs?|grab|hold(s|ing)?|hug|shrug|gestur\w*|fist|salute|walk\w*|run(s|ning)?|jump\w*|dance\w*|legs?)\b/i', $r['action'] ?? '')) $why = 'The 3D mascot turns, nods and bobs but has no arms or legs yet; plan gestures as head and body moves or use poses.';
                 elseif ($r['kind'] === 'speech' && (empty($plan['narration']) || ($settings['audio'] ?? 'original') === 'silent')) $why = 'Speaking on camera needs an approved script and audio enabled.';
                 if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
                 continue;
