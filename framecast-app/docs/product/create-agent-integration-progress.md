@@ -60,6 +60,12 @@ Evidence: conversation `dd410f7a`, full build `7e766c06` ($6.99, 49 calls). The 
    - [x] Stop keeps the last checked version (2026-10-04): while designing, Stop lets the step in progress finish (no model call is cut off, so nothing is left in doubt), then delivers the last version that passed every check, rolling back any later unchecked edit; with none, the build ends cancelled. A render in progress finishes and is delivered. Hard stop after 6 minutes, on shutdown or a lost lease. The app accepts a delivered version while stopping.
    - [x] busy model (2026-10-04): a call the app confirms was never sent (overloaded or unreachable after the app's own two quick retries) is asked again after 20 s, 1 min and 2 min; the local reservation is given back each time; Stop ends the wait. Calls that may have been sent are never repeated.
 
+6. **Ask for what only the user has** (proposed 2026-10-04, owner: "add it to todo"; not started, decisions open):
+   - [ ] the planner lists real things the reference shows that we cannot truthfully make (product screens, logos, product photos, people, short screen recordings), each with its beat, the moments it serves, why it helps and the fallback without it (rebuilt from a page capture, or illustrative);
+   - [ ] the plan card shows them as "Could you upload these?" with an upload per item and "Go without"; nothing blocks the build, a skipped item uses its fallback;
+   - [ ] an upload attaches as a source tied to its item; the build uses it on that beat without re-planning, and the review checks it appears;
+   - Open decisions (recommended): ask on the plan card only, not mid-build; only real product/brand/people items, not stickers, memes or backgrounds; accept screen recordings up to ~30 s; at most ~5 items, ranked by impact. About half a day.
+
 Order: 1 and 2 (built 2026-10-03, commits 2249c9a4, 96e8b9bb; 804 API / 209 worker tests), then the audio part of 3, then the rest. First real study of the Instagram reference (asset 1523): 9 shots, 40 frames, the sticker window at 2.7–3.1 s found, speech 94% of the video at 3.6 words a second; the moment list waits on the Anthropic account's credit. Live acceptance pending.
 
 ### First implementation slice — prepared mascot rig (2026-10-03)
