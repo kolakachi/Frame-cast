@@ -9,6 +9,7 @@ import {ReplicateGatewayProvider} from './replicate-gateway.mjs';
 import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
+import {listenToExport} from './audio-review.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
@@ -50,6 +51,8 @@ async function execute(run){
  // A prior process may have spent/rendered. Never replay an interrupted run.
  try{await access(dir+'/started.json');throw Error('Run journal exists; reconcile instead of replaying');}catch(e){if(e.code!=='ENOENT')throw e;}
  await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString()}),{flag:'wx',mode:0o600});
+ // The app listens to a sound file the build made (its export, or narration it edited) and returns the words.
+ const listen=async file=>{const form=new FormData();form.set('lease_token',run.lease_token);form.set('file',new Blob([await readFile(file)]),path.basename(file));return request('runs/'+run.id+'/listen',form,true,180000);};
  await mkdir(dir+'/project');
  for(const name of ['index.html','product.svg'])await copyFile(root+'/fixtures/'+name,dir+'/project/'+name);
  await writeFile(dir+'/output-settings.json',JSON.stringify(run.input.mode==='fixture'?{aspect_ratio:'9:16',duration_seconds:15}:run.input.settings),{flag:'wx'});
@@ -157,7 +160,9 @@ async function execute(run){
    };
    phase='agent';
    agentResult=await executeCompositionAgent({directory:dir,input:run.input,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
-    transcribe:async({input})=>{const assetId=assetIds.get(input);if(!assetId)throw Error('Only supplied audio or video can be transcribed');return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
+    transcribe:async({input})=>{const assetId=assetIds.get(input);
+     // A file the build made itself (edited narration) is listened to directly.
+     if(!assetId){if(!/^[a-zA-Z0-9_.-]+\.(wav|mp3|mp4)$/.test(input))throw Error('Only audio or video can be transcribed');const r=await listen(dir+'/project/'+input);return {text:r.text,words:r.words,segments:r.segments||[],provider:r.provider};}return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
     provider,guidanceDirectory:root+'/agent/guidance',signal:aborter.signal,
     bindPrediction:(attemptId,predictionId)=>request('runs/'+run.id+'/attempts/'+attemptId+'/prediction',{lease_token:run.lease_token,prediction_id:predictionId}),
     begin:payload=>request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token}),
@@ -213,7 +218,7 @@ async function execute(run){
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
-  let deliveryChecks=null;
+  let deliveryChecks=null,audioReview=null;
   if(!(stopping||lost)){
    stage='Checking the final video';
    try{
@@ -223,6 +228,16 @@ async function execute(run){
     const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});
     deliveryChecks=deliverySummary(run.input.look_first===true?{...sandbox,pacing:(sandbox.pacing||[]).filter(f=>f.code!=='still_stretch')}:sandbox,loudness);
    }catch{deliveryChecks=null;}
+   // Listen to the export: narration against the script, text against speech, voice over music, the ending.
+   const plan=run.input.plan??{};
+   if(paid&&run.input.look_first!==true&&run.input.settings?.audio!=='silent'&&((plan.narration||[]).length||(plan.requirements||[]).length)){
+    stage='Listening to the final video';
+    try{
+     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
+     audioReview=await listenToExport({file:path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),html:await readFile(dir+'/project/index.html','utf8').catch(()=>''),requirements:plan.requirements||[],listen});
+     await trace({phase:'review',status:audioReview.summary.ok?'succeeded':'failed',summary:'Listened to the final video',detail:JSON.stringify(audioReview.summary).slice(0,1900)});
+    }catch(e){audioReview=null;await trace({phase:'review',status:'failed',summary:'Listening check unavailable',detail:String(e.message).slice(0,300)});}
+   }
   }
   clearInterval(timer);
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));
@@ -235,7 +250,12 @@ async function execute(run){
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
   const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?fitSummary(agentResult.state.summary??'',cutNote(agentResult.state.edits)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
+  // What was heard settles the requirements that wait for listening, and its problems join Before you post.
+  if(audioReview){
+   result.delivery_checks={...(result.delivery_checks||{}),audio:{ok:audioReview.summary.ok,problems:audioReview.summary.problems.slice(0,6),script_coverage:audioReview.summary.script_coverage??null}};
+  }
   result.creative_review=agentResult?.state?reviewStatus(agentResult.state):{status:'incomplete',findings:['This output has not received an independent creative review.']};
+  if(audioReview){const heardIds=new Set(audioReview.checks.map(c=>c.id));result.creative_review.requirement_checks=[...(result.creative_review.requirement_checks||[]).filter(c=>!heardIds.has(c.id)),...audioReview.checks].slice(0,24);}
   // The agent's last review scores travel with the version, so the card can offer another round.
   if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);
   // Persist completion before sending: a callback failure must not trigger rendering again.

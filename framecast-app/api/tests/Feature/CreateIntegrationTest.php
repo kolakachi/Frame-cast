@@ -473,6 +473,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertEquals(['ok' => false, 'safe_area' => [['selector' => '#cta', 'time' => 13.46, 'message' => 'Collides with the caption band']], 'edges' => [], 'contrast' => [],
             'pacing' => [], 'loudness' => ['status' => 'levelled', 'lufs' => -14.0, 'from' => -23.4, 'peak' => -1.6]], $meta['delivery_checks']);
         $this->assertNull(\App\Services\Create\RunService::deliveryChecks('nope'));
+        $heard = \App\Services\Create\RunService::deliveryChecks(['ok' => true, 'audio' => ['ok' => false, 'problems' => ['The music may be too loud under the voice.', 42], 'script_coverage' => 0.96123, 'mix' => ['secret' => 1]]]);
+        $this->assertSame(['ok' => false, 'problems' => ['The music may be too loud under the voice.'], 'script_coverage' => 0.961], $heard['audio'], 'what was heard is kept in plain words only');
         $this->assertSame(['status' => 'incomplete', 'findings' => ['Fix the headline']], $meta['creative_review']);
         $this->assertSame('incomplete', RunService::creativeReview(null)['status']);
         $this->assertSame('passed', RunService::creativeReview(['status' => 'passed'])['status']);

@@ -61,6 +61,7 @@ const checkIssues = computed(() => {
   if (sparse.length) out.push(`The frame looks mostly empty${when(sparse)}.`)
   if (fast.length) { const q = fast.map(quoted).filter(Boolean); out.push(q.length === 1 ? `"${q[0]}" leaves the screen before most people can read it.` : `Some text leaves the screen before most people can read it${when(fast)}.`) }
   if (c.loudness?.status === 'check_failed') out.push('The sound level could not be checked.')
+  for (const p of c.audio?.problems || []) out.push(p)
   return out
 })
 const timeline = computed(() => conversationTimeline(data.value?.messages || [], currentRevision.value))
