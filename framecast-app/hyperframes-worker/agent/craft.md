@@ -48,6 +48,12 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - Pose cuts and image transforms can support a deliberately illustrated sequence, but do not satisfy a request for blinking, facial performance, continuous gestures or speech. Use actual performance footage or prepared articulated artwork. For approved layered SVG mascots, read kit/mascot.md and use wyv-mascot.js for timed blinks, gaze, head tilt and mouth expressions. Flat images cannot be automatically rigged; missing layers/performance are an unmet requirement. Do not fake lip-sync with random mouth changes. Deliberate holds are allowed when the brief calls for them.
 - Declare composition variables fully: each `data-composition-variables` entry needs `id`, `label`, `type` and `default`.
 
+## Generated shots and UGC takes (when the plan bought them)
+- Each generated_shot is made for its beat and slot (plan media lists its beat, seconds, aspect and engine): place it there as a timed clip, object-fit cover, full length of its beat; text, captions and UI go over or beside it, never baked in. Its own sound is ambience: keep it low under narration (about 0.25 volume), or mute it when the beat has its own sound design; a shot with a spoken line plays that line at full volume.
+- A ugc_take is the voice track and the A-roll, like a talking take: one clip from start to end (never re-cut its words), audio at full volume, no narration file over it; narrationTiming comes from its own words. B-roll and UI cut in beside or over it.
+- Mixed layouts: keep the take playing and reshape it with WM.layout(tl, '#take', at, 'top' | 'bottom' | 'left' | 'right' | 'pip' | 'full') while the other region carries motion graphics or a generated shot; change layouts on the take's line breaks, and use duration 0 for a hard switch on a cut. The region beside it is a full composed panel (its own field colour), not leftover space.
+- The reference sheet's stills are references for the shots; in a storyboard they show the cast and world, in the final video use them only where the plan says.
+
 ## Before finishing
 - Every requested idea is present; every read has time; intentional holds remain intact. Inspect the full timeline for unintended blank intervals and missing content.
 

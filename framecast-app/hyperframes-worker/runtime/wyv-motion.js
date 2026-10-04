@@ -283,6 +283,36 @@
       return tl;
     },
 
+    /* layout: reshape a full-frame clip (a UGC take, a generated shot) into a region of the frame and back, while it
+       keeps playing: 'full', 'top', 'bottom', 'left', 'right', 'pip' (a corner card), or {x, y, w, h} in stage px.
+       The clip is scaled to cover the region and cropped to it (transforms and clip-path only, never left/top), so
+       a take can go full screen -> split -> full without a cut. Give the clip full-frame size and object-fit: cover.
+       opts: duration (0 = a hard switch; default .55), focus {x, y} (0..1, the point kept in view, default the
+       upper-middle where a face is), radius (px, for 'pip'), pip ('br' | 'bl' | 'tr' | 'tl'), stage. */
+    layout: function (tl, el, at, region, opts) {
+      el = $(el); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight;
+      var r = region, pad = Math.round(Math.min(W, H) * 0.04);
+      if (typeof r === 'string') {
+        var pw = Math.round(W * 0.34), ph = Math.round(pw * H / W), corner = opts.pip || 'br';
+        r = { full: { x: 0, y: 0, w: W, h: H }, top: { x: 0, y: 0, w: W, h: H / 2 }, bottom: { x: 0, y: H / 2, w: W, h: H / 2 },
+          left: { x: 0, y: 0, w: W / 2, h: H }, right: { x: W / 2, y: 0, w: W / 2, h: H },
+          pip: { x: corner.indexOf('l') >= 0 ? pad : W - pw - pad, y: corner.indexOf('t') === 0 ? pad : H - ph - pad, w: pw, h: ph } }[r];
+        if (!r) throw new Error('WM.layout: region must be full, top, bottom, left, right, pip or {x, y, w, h}');
+      }
+      var f = opts.focus || { x: 0.5, y: 0.4 }, s = Math.max(r.w / W, r.h / H);
+      // Keep the focus point as central in the region as covering allows.
+      var tx = r.x + r.w / 2 - s * W * f.x, ty = r.y + r.h / 2 - s * H * f.y;
+      tx = Math.min(r.x, Math.max(r.x + r.w - s * W, tx)); ty = Math.min(r.y, Math.max(r.y + r.h - s * H, ty));
+      var lx = (r.x - tx) / s, ly = (r.y - ty) / s, lr = (r.x + r.w - tx) / s, lb = (r.y + r.h - ty) / s;
+      var rad = (opts.radius == null ? (region === 'pip' ? 28 : 0) : opts.radius) / s;
+      var clip = 'inset(' + ly.toFixed(2) + 'px ' + (W - lr).toFixed(2) + 'px ' + (H - lb).toFixed(2) + 'px ' + lx.toFixed(2) + 'px round ' + rad.toFixed(2) + 'px)';
+      var to = { x: tx, y: ty, scale: s, clipPath: clip, transformOrigin: '0 0' };
+      var d = opts.duration == null ? 0.55 : opts.duration;
+      if (d <= 0) tl.set(el, to, at); else tl.to(el, Object.assign(to, { duration: d, ease: ease['default'] }), at);
+      return tl;
+    },
+
     /* fly: a chip leaves its place and arcs into a target (a "+$19" chip into the
        checkout total), shrinking as it lands. Pair it with WM.count on the target's
        number at at + duration. opts.lift: how high the arc rises in pixels. */

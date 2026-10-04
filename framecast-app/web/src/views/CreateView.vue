@@ -160,7 +160,26 @@ function planDirty(p) {
   const sel = p.plan.selections
   return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort()]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort()])
 }
+// Generated video is priced by its route (engine and length), which the server resolves for the saved selections.
+const GENERATED = ['reference_sheet', 'generated_shot', 'ugc_take']
+function routedMedia(p) { return p.media_routed?.length ? p.media_routed : (p.plan.media || []) }
+function hasGenerated(p) { return routedMedia(p).some(m => GENERATED.includes(m.kind)) }
+function mediaMeta(md) {
+  if (md.kind === 'reference_sheet') return 'Cast and world sheet: ' + (md.subjects || []).map(x => x.name).join(', ')
+  if (md.kind === 'generated_shot') return [md.engine_label, md.seconds ? md.seconds + ' s' : '', md.beat, md.audio === 'speech' ? 'speaks a line' : ''].filter(Boolean).join(' · ')
+  if (md.kind === 'ugc_take') return ['UGC take', md.engine_label, md.seconds ? md.seconds + ' s' : '', (md.segments || []).length > 1 ? md.segments.length + ' parts joined' : ''].filter(Boolean).join(' · ')
+  return ''
+}
+// Spend guard: a plan with costly generated media is confirmed explicitly before its cost is reviewed.
+const SPEND_CONFIRM = 300
+const spendOk = ref({})
+function needsSpendOk(p) { return paid.value && optionCredits(p) > SPEND_CONFIRM && !spendOk.value[p.id] }
+async function setVideoTier(p, tier) {
+  if ((p.plan.selections.video_tier || 'standard') === tier) return
+  await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, video_tier: tier }); quote.value = null; await refresh() })
+}
 function optionCredits(p) {
+  if (p.media_routed?.length && !planDirty(p)) return p.media_routed.reduce((n, m) => n + (m.credits || 0), 0)
   const d = planDrafts.value[p.id] || p.plan.selections
   const items = [...(p.plan.media || [])]
   for (const decision of p.plan.decisions || []) {
@@ -215,7 +234,7 @@ async function reviewPlanCost(p, buildStage = null, displayedCharacterToken = nu
   const selection = latest.plan.selections
   const selectedKinds = [...(latest.plan.media || []).map(m => m.kind), ...(latest.plan.decisions || []).map(d => d.options.find(o => o.id === selection.choices[d.id])?.tool)]
   const stage = buildStage || (selection.look_first ? 'storyboard' : 'full_video')
-  if (paid.value && stage === 'full_video' && selectedKinds.some(k => ['character_poses', 'talking_take', 'talking_shot'].includes(k)) && !latest.character_preview?.approved) {
+  if (paid.value && stage === 'full_video' && selectedKinds.some(k => ['character_poses', 'talking_take', 'talking_shot', 'reference_sheet'].includes(k)) && !latest.character_preview?.approved) {
     // The storyboard shows this exact master beside its approval button. A changed
     // plan/preview still needs a fresh review, never silent approval of new bytes.
     if (displayedCharacterToken && displayedCharacterToken === latest.character_preview?.token) {
@@ -787,19 +806,24 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           <div v-if="planByMessage[m.id].plan.scenes.length" class="plan-col plan-col--beats"><span class="legend info">BEATS</span><ul><li v-for="sc in planByMessage[m.id].plan.scenes" :key="sc.label + sc.start">{{ sc.label }} <small>{{ sc.start }}–{{ sc.end }}s</small><span v-if="sc.state_out" class="beat__state">{{ sc.state_in ? sc.state_in + ' → ' : '' }}{{ sc.state_out }}</span><span v-if="(sc.reads || []).length" class="beat__reads">{{ sc.reads.join(' · ') }}</span></li></ul></div>
                           <div class="plan-col"><span class="legend muted">OUTPUT</span><ul><li>{{ outputSummary }}</li></ul></div>
                         </div>
-                        <div v-if="planByMessage[m.id].plan.media.length" class="quote">
-                          <div v-for="md in planByMessage[m.id].plan.media" :key="md.kind + md.description" class="quote__line"><span>{{ md.description }}</span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
+                        <div v-if="routedMedia(planByMessage[m.id]).length" class="quote">
+                          <div v-for="md in routedMedia(planByMessage[m.id])" :key="md.kind + md.description" class="quote__line"><span>{{ md.description }}<small v-if="mediaMeta(md)" class="quote__meta">{{ mediaMeta(md) }}<template v-if="md.why"> — {{ md.why }}</template></small><small v-for="n in md.route_notes || []" :key="n" class="quote__meta">{{ n }}</small></span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
                         </div>
                       </div>
                     </details>
                     <div class="icard__foot">
                       <template v-if="planByMessage[m.id].stale"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--primary btn--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></template>
                       <template v-else>
+                        <div v-if="hasGenerated(planByMessage[m.id]) && canWrite" class="tier-pick" role="group" aria-label="Video quality">
+                          <span class="muted">Generated video</span>
+                          <button v-for="t in ['standard', 'premium']" :key="t" type="button" :class="['quiet', 'quiet--sm', (planByMessage[m.id].plan.selections.video_tier || 'standard') === t ? 'is-on' : '']" :disabled="locked" @click="setVideoTier(planByMessage[m.id], t)">{{ t === 'standard' ? 'Standard' : 'Premium (Veo 3.1 where it fits)' }}</button>
+                        </div>
                         <div class="cost-line"><b>{{ optionCredits(planByMessage[m.id]) ? `+${optionCredits(planByMessage[m.id])} credits for new media` : 'Planning was free' }}</b><span>· building is priced on the next step</span></div>
+                        <label v-if="paid && optionCredits(planByMessage[m.id]) > SPEND_CONFIRM" class="spend-guard"><input v-model="spendOk[planByMessage[m.id].id]" type="checkbox" /> This plan's media costs {{ optionCredits(planByMessage[m.id]) }} credits. I want to spend that.</label>
                         <span class="spacer" />
                         <UiSelect v-if="paid && canWrite" v-model="variantCount" label="Results" :options="[{value:1,label:'One result'},{value:2,label:'Two variations'},{value:3,label:'Three variations'}]" />
                         <button v-if="canWrite && planDirty(planByMessage[m.id])" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="guarded(() => savePlanEdits(planByMessage[m.id]))">Save changes</button>
-                        <button v-if="canWrite && !active && !quote && !(kind === 'image' && !paid)" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="reviewPlanCost(planByMessage[m.id])">{{ paid ? 'Review cost' : 'Review local sample plan' }}</button>
+                        <button v-if="canWrite && !active && !quote && !(kind === 'image' && !paid)" type="button" class="btn btn--primary btn--sm" :disabled="locked || needsSpendOk(planByMessage[m.id])" @click="reviewPlanCost(planByMessage[m.id])">{{ paid ? 'Review cost' : 'Review local sample plan' }}</button>
                       </template>
                     </div>
                   </div>
@@ -843,14 +867,15 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <p v-else>Look over the stills and tell us what to change, or build the full video.</p>
                 </div>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
-                <section v-if="outputMeta.look && !isOldRevision && currentPlan?.character_preview" class="checks character-approval-inline" aria-label="Character look for this video">
-                  <b>Character look for this video</b>
+                <section v-if="outputMeta.look && !isOldRevision && currentPlan?.character_preview" class="checks character-approval-inline" :aria-label="currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and world for the generated shots' : 'Character look for this video'">
+                  <b>{{ currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and world for the generated shots' : 'Character look for this video' }}</b>
                   <div class="character-review-grid">
                     <figure v-for="image in currentPlan.character_preview.images" :key="image.asset_id">
                       <img :src="image.preview_url" :alt="image.name || 'Character preview'" />
                     </figure>
                   </div>
-                  <p>{{ currentPlan.character_preview.approved ? 'This approved look will guide the poses and talking clips.' : 'Approving the design also approves this character look for the poses and talking clips. You’ll review the cost before generation starts.' }}</p>
+                  <p v-if="currentPlan.character_preview.kind === 'reference_sheet'">{{ currentPlan.character_preview.approved ? 'Every generated shot is made from these images.' : 'Approving the storyboard approves these images: every generated shot is made from them, so the people, places and products stay the same. You’ll review the cost before any clip is made.' }}</p>
+                  <p v-else>{{ currentPlan.character_preview.approved ? 'This approved look will guide the poses and talking clips.' : 'Approving the design also approves this character look for the poses and talking clips. You’ll review the cost before generation starts.' }}</p>
                 </section>
                 <form v-if="paid && canWrite && !conversation.archived_at" class="note-form" @submit.prevent="saveNote">
                   <input v-model="noteText" class="input" maxlength="400" placeholder="What worked, what to change next time (kept for this style)" aria-label="Note for this style" />
@@ -1078,7 +1103,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
           <p v-if="characterReview.plan.character_style"><strong>Requested style:</strong> {{ characterReview.plan.character_style }}</p>
           <p v-if="error" class="create-error">{{ error }}</p>
           <div class="row-actions">
-            <button v-if="characterReview.character_preview" type="button" class="btn btn--primary" :disabled="locked" @click="approveCharacter">Approve character · review video cost</button>
+            <button v-if="characterReview.character_preview" type="button" class="btn btn--primary" :disabled="locked" @click="approveCharacter">{{ characterReview.character_preview.kind === 'reference_sheet' ? 'Approve the cast and world · review video cost' : 'Approve character · review video cost' }}</button>
             <button v-else type="button" class="btn btn--primary" :disabled="locked" @click="prepareCharacterStoryboard">Review storyboard cost</button>
             <button type="button" class="btn btn--ghost" @click="characterReview=null; changeLook()">Request changes</button>
           </div>
@@ -1264,6 +1289,11 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .quote__items{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .quote__line{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--text-3)}
 .quote__line b{font:500 12px var(--mono);color:var(--text)}
+.quote__line > span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.quote__meta{font-size:11px;color:var(--text-3);opacity:.85}
+.tier-pick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}
+.tier-pick .is-on{color:var(--text);font-weight:600;text-decoration:underline}
+.spend-guard{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);width:100%}
 .levers{display:flex;flex-direction:column;gap:12px;padding:14px;border-top:1px solid var(--line);background:var(--bg-2)}
 .levers__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .levers__foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px}

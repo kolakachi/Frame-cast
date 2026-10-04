@@ -222,7 +222,9 @@ class PlanService
         // A talking face or a ready rig attached to the conversation performs without new media.
         $performers = CharacterPerformance::performers($c->id);
         return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => $candidate['images'], 'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? ''))] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
-            'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at];
+            'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at,
+            // What would be bought as the selections stand: generated shots with their engine, length and price.
+            'media_routed' => rescue(fn () => self::selectedMedia($p), [], false)];
     }
 
     /** What a reference teaches, compact for model context; null when it was never studied. */

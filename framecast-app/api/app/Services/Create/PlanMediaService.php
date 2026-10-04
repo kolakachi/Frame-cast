@@ -133,6 +133,7 @@ class PlanMediaService
         abort_if(count($requirementIds) > 24 || count(array_filter($requirementIds, 'is_string')) !== count($requirementIds) || array_diff($requirementIds, array_column($input['plan']['requirements'] ?? [], 'id')) !== [], 422, 'Only requirements in the approved plan may be linked to a purchase.');
         abort_unless(in_array($kind, PlanMediaExecutor::KINDS, true), 422, 'That kind of media cannot be bought.');
         abort_if(in_array($kind, ['character_poses', 'character_variants'], true), 422, 'Character design changes need a storyboard plan and approval. Do not purchase a replacement character during a build.');
+        abort_if(in_array($kind, ShotRoute::KINDS, true), 422, 'Generated shots, takes and sheets are planned and approved with the plan, not bought during a build. Use what was bought, or report the gap.');
         abort_if(! empty($input['look_first']) && in_array($kind, self::PRODUCTION_ONLY, true), 422, 'Audio and motion are deferred until the full video build.');
         $credits = $kind === 'music' ? CapabilityCatalogue::musicCredits((int) ($input['settings']['duration_seconds'] ?? 15)) : CapabilityCatalogue::credits($kind, (int) $run->workspace_id);
         abort_unless(is_int($credits) && $credits > 0, 422, 'That item is not for sale here.');

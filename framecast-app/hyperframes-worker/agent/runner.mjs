@@ -265,7 +265,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         }
         if(action.path==='index.html')assertLockedSource(context,text);
         // Pre-flight: fix what has one right answer, name the rest, before a check call is spent.
-        const flight=action.path.startsWith('work/')?{text,fixed:[],warnings:[]}:preflight({path:action.path,text,assets:workspace.assets.map(a=>a.path),audible:(context.planMedia||[]).filter(m=>['talking_shot','talking_take'].includes(m.kind)&&m.file).map(m=>m.file)});
+        const flight=action.path.startsWith('work/')?{text,fixed:[],warnings:[]}:preflight({path:action.path,text,assets:workspace.assets.map(a=>a.path),audible:(context.planMedia||[]).filter(m=>['talking_shot','talking_take','ugc_take'].includes(m.kind)&&m.file).map(m=>m.file)});
         text=flight.text;
         await workspace.write(action.path,text);
         if(action.path.startsWith('work/'))result={written:action.path,note:'Scratch file; run it with the run action.'};

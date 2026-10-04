@@ -66,3 +66,11 @@ test('everything bought with a picture is in the video; a talking take plays nea
  const css=clipUsageFindings({planMedia,html:html+'\n.bg{background:url(bg.png)}',rows:[{...rows[0],end:19}],durations:{'take.mp4':20},limitations:[{evidence:'city.mp4 shows the wrong city'}]});
  assert.deepEqual(css,[],'a stylesheet use counts, 19 of 20 s is enough, and the reported stock clip is excused');
 });
+
+test('a UGC take and generated shots must be in the video, the take nearly whole', () => {
+ const planMedia=[{kind:'ugc_take',status:'succeeded',file:'take.mp4',description:'founder to camera'},{kind:'generated_shot',status:'succeeded',file:'shot.mp4',description:'window push'},
+  {kind:'reference_sheet',status:'succeeded',file:'sheet.png',description:'cast'}];
+ const cut=clipUsageFindings({planMedia,html:'',rows:[{src:'take.mp4',start:0,end:9}],durations:{'take.mp4':14}});
+ assert.deepEqual(cut.map(f=>f.code).sort(),['bought_media_unused','talking_clip_cut_short'],'the shot is missing and the take is cut; the sheet is only a reference');
+ assert.equal(clipUsageFindings({planMedia,html:'',rows:[{src:'take.mp4',start:0,end:13.5},{src:'shot.mp4',start:2,end:6}],durations:{'take.mp4':14}}).length,0);
+});

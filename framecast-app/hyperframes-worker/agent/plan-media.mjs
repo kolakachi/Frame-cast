@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
 
-const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character preview',character_variants:'poses from your approved character',talking_shot:'the talking shot',talking_take:'the talking take',brand_kit:'your brand kit'};
+const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character preview',character_variants:'poses from your approved character',talking_shot:'the talking shot',reference_sheet:'the cast and world sheet',generated_shot:'a generated shot',ugc_take:'the UGC take',talking_take:'the talking take',brand_kit:'your brand kit'};
 
 // Asks the app to buy each approved plan item in order, then stages the
 // returned files as usable source footage. Uncertain paid outcomes stop at the
@@ -27,7 +27,9 @@ export async function buyPlanMedia({items,produce,download,directory,manifest,on
   signal?.throwIfAborted();
   onStage('Getting '+(LABEL[items[i].kind]||'plan media')+' ('+(i+1)+' of '+items.length+')');
   const r=await produce(i);
-  const out={task_id:items[i].id??null,requirement_ids:items[i].requirement_ids??[],kind:items[i].kind,description:items[i].description,status:r.status,speech_mode:r.speech_mode??'audio_driven',engine:r.engine??null,reused:!!r.reused,charged_credits:r.charged_credits??0,...(r.error?{error:r.error}:{}),...(r.brand?{brand:r.brand}:{}),...(typeof r.line==='string'?{line:r.line}:{}),...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(r.character_contract?{character_contract:r.character_contract}:{}),...(r.master_sha256?{master_sha256:r.master_sha256}:{})};
+  const out={task_id:items[i].id??null,requirement_ids:items[i].requirement_ids??[],kind:items[i].kind,description:items[i].description,status:r.status,speech_mode:r.speech_mode??'audio_driven',engine:r.engine??null,reused:!!r.reused,charged_credits:r.charged_credits??0,...(r.error?{error:r.error}:{}),...(r.brand?{brand:r.brand}:{}),...(typeof r.line==='string'?{line:r.line}:{}),...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(r.character_contract?{character_contract:r.character_contract}:{}),...(r.master_sha256?{master_sha256:r.master_sha256}:{}),
+   // Where a generated clip goes and what it is: the builder places it by these.
+   ...Object.fromEntries(['beat','seconds','aspect','audio','engine_label','why','segments'].filter(k=>items[i][k]!=null).map(k=>[k,items[i][k]]))};
   const stage=f=>stageFile(f,{manifest,directory,download,signal,kind:items[i].kind,description:items[i].description,taskId:items[i].id??null,requirementIds:items[i].requirement_ids??[]});
   if(r.status==='succeeded'&&r.file){
    out.file=await stage(r.file);
