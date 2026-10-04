@@ -383,6 +383,19 @@ async function ensureConversation() {
   return c.id
 }
 const linkStudying = ref(''), claimPicks = ref({}), pendingText = ref('')
+// Page claims stay offered after the message is sent (a link in a message is captured and sent at once),
+// until they are added to the approved facts or set aside for this conversation.
+const claimsDone = ref({})
+const claimsDoneKey = () => 'create-claims-done:' + (id.value || '')
+function loadClaimsDone() { try { claimsDone.value = JSON.parse(localStorage.getItem(claimsDoneKey()) || '{}') } catch { claimsDone.value = {} } }
+watch(id, loadClaimsDone, { immediate: true })
+function markClaimsDone(a) { claimsDone.value = { ...claimsDone.value, [a.asset_id]: true }; try { localStorage.setItem(claimsDoneKey(), JSON.stringify(claimsDone.value)) } catch {} }
+const openClaims = computed(() => {
+  let facts = []; try { facts = JSON.parse(conversation.value?.settings_json || '{}').approved_facts || [] } catch {}
+  const pending = new Set(pendingAttachments.value.map(a => a.asset_id))
+  return (data.value?.attachments || []).filter(a => a.suggested_claims?.length && !pending.has(a.asset_id) && !claimsDone.value[a.asset_id]
+    && !a.suggested_claims.some(c => facts.includes(c.text)))
+})
 const VIDEO_HOSTS = ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
 const studySteps = computed(() => {
   let host = ''; try { host = new URL(linkStudying.value).hostname.toLowerCase() } catch {}
@@ -401,7 +414,7 @@ async function approveClaims(a) {
     let current = []; try { current = JSON.parse(conversation.value.settings_json || '{}').approved_facts || [] } catch {}
     const facts = [...new Set([...current, ...picked])].slice(0, 20)
     await api.patch(base(), { expected_version: conversation.value.version, settings: { approved_facts: facts } })
-    claimPicks.value = {}; quote.value = null; await refresh()
+    claimPicks.value = {}; quote.value = null; markClaimsDone(a); await refresh()
   })
 }
 async function send() {
@@ -875,6 +888,17 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 
           <div v-if="canWrite && !conversation?.archived_at" class="composer-dock">
             <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; check the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
+            <div v-if="canWrite && openClaims.length" class="attached">
+              <div v-for="a in openClaims" :key="'c' + a.asset_id" class="upload">
+                <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else class="upload__thumb" />
+                <div><b :title="a.title">{{ a.title }}</b>
+                  <div class="claims">
+                    <small class="muted">Claims on this page. Tick the ones that may appear on screen:</small>
+                    <label v-for="(c, i) in a.suggested_claims" :key="i" class="claims__row" :title="'From the page: ' + c.quote"><input v-model="claimPicks[a.asset_id + ':' + i]" type="checkbox" /> {{ c.text }}</label>
+                    <span><button type="button" class="quiet quiet--sm" :disabled="locked" @click="approveClaims(a)">Add to approved facts</button> <button type="button" class="quiet quiet--sm" @click="markClaimsDone(a)">Not now</button></span>
+                  </div></div>
+              </div>
+            </div>
             <div v-if="uploads.length || pendingAttachments.length" class="attached">
               <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
