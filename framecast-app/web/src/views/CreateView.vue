@@ -306,6 +306,24 @@ function plainSummary(text) {
   if (/Critic:|review stopped improving|review incomplete|Last review scores|critic/i.test(t)) return 'Here is the best version so far. You can keep improving it.'
   return t
 }
+// Upload requests on the plan card: an upload answers one; going without keeps its fallback.
+const askUploading = ref('')
+function askState(p, a) { const v = p.plan.selections?.asks?.[a.id]; return typeof v === 'number' ? 'uploaded' : v === 'skip' ? 'skipped' : 'open' }
+async function answerAsk(p, a, file) {
+  askUploading.value = a.id
+  await guarded(async () => {
+    const before = new Set((data.value?.attachments || []).map(x => x.asset_id))
+    const form = new FormData(); form.append('asset_file', file); form.append('purpose', 'source'); form.append('reuse_confirmed', '1'); form.append('idempotency_key', crypto.randomUUID()); form.append('expected_version', conversation.value.version)
+    const result = await api.post(`${base()}/uploads`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    data.value = result.data.data
+    const added = (data.value.attachments || []).find(x => !before.has(x.asset_id))
+    if (!added) throw Error('The upload did not attach. Please retry.')
+    await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, asks: [{ id: a.id, asset_id: added.asset_id }] })
+    quote.value = null; await refresh()
+  })
+  askUploading.value = ''
+}
+async function skipAsk(p, a) { await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, asks: [{ id: a.id, skip: true }] }); quote.value = null; await refresh() }) }
 async function blobMessage(e) {
   try { if (e?.response?.data instanceof Blob) { const j = JSON.parse(await e.response.data.text()); return j.message || j.error?.message || message(e) } } catch {}
   return e?.response ? message(e) : 'The video could not be loaded. Check your connection and retry.'
@@ -731,6 +749,14 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                         <template v-if="planByMessage[m.id].plan.reference_systems?.length"><p class="muted">Repeated elements, built the same way each time:</p>
                         <ul><li v-for="x in planByMessage[m.id].plan.reference_systems" :key="x.system"><b>{{ x.name || 'Element' }}</b><template v-if="x.decision === 'drop'"> · left out</template><template v-else-if="x.beats?.length"> · {{ x.beats.join(', ') }}</template> — {{ x.spec }}</li></ul></template>
                         <p v-if="planByMessage[m.id].plan.reference_unaccounted?.length" class="muted">{{ planByMessage[m.id].plan.reference_unaccounted.length }} more {{ planByMessage[m.id].plan.reference_unaccounted.length === 1 ? 'moment was' : 'moments were' }} not planned yet; ask for them if they matter.</p>
+                      </div>
+                      <!-- Real things only the user has: upload one, or go without and the fallback is used. -->
+                      <div v-if="planByMessage[m.id].plan.asks?.length" class="checks">
+                        <b>Could you upload these?</b>
+                        <ul><li v-for="a in planByMessage[m.id].plan.asks" :key="a.id">{{ a.what }}<template v-if="a.beat"> · {{ a.beat }}</template> — {{ a.why }}<br><small class="muted">Without it: {{ a.fallback }}</small>
+                          <span v-if="askState(planByMessage[m.id], a) === 'open' && canWrite && !planByMessage[m.id].stale"> <label class="quiet quiet--sm">{{ askUploading === a.id ? 'Uploading…' : 'Upload' }}<input type="file" :accept="a.kind === 'recording' ? 'video/*' : 'image/*,video/*'" hidden :disabled="!!askUploading" @change="e => e.target.files[0] && answerAsk(planByMessage[m.id], a, e.target.files[0])" /></label> <button type="button" class="quiet quiet--sm" :disabled="!!askUploading" @click="skipAsk(planByMessage[m.id], a)">Go without</button></span>
+                          <small v-else-if="askState(planByMessage[m.id], a) !== 'open'" class="muted"> · {{ askState(planByMessage[m.id], a) === 'uploaded' ? 'Uploaded' : 'Going without it' }}</small>
+                        </li></ul>
                       </div>
                       <div v-if="planByMessage[m.id].plan.reference_observations?.length" class="checks">
                         <b>What we’re taking from your reference</b>

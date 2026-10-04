@@ -38,6 +38,7 @@ export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stri
   plan?.summary?`Plan: ${clip(plan.summary,300)}`:'',
   beats?`Beats:\n${clip(beats,1200)}`:'',
   plan?.signature_move?`Signature move: ${clip(plan.signature_move,160)}`:'',
+  (plan?.asks||[]).some(a=>a.file)?`The user uploaded these for specific beats; check each appears where planned: ${JSON.stringify(plan.asks.filter(a=>a.file).map(a=>({what:a.what,beat:a.beat})))}`:'',
   fingerprint?`Reference fingerprint: ${clip(JSON.stringify(fingerprint),500)}`:'',
   route?`Kind of video: ${route}.`:'',
   lookOnly?'This is the LOOK stage: stills only, one per beat. Assess design/readability against intent; do not require motion, implied motion or audio. The strip is absent on purpose.':'',

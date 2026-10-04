@@ -118,6 +118,17 @@ class PlanService
                 abort_if(array_diff($kept, $plan['kept_as_is']) !== [], 422, 'Only listed items can be kept as-is.');
                 $sel['kept'] = $kept;
             }
+            if (array_key_exists('asks', $input)) {
+                // An upload answers an ask; "go without" leaves its fallback. The file must be one of this conversation's attachments.
+                $known = array_column($plan['asks'] ?? [], 'id');
+                foreach ((array) $input['asks'] as $a) {
+                    abort_unless(in_array($a['id'] ?? '', $known, true), 422, 'That upload request is not in this plan.');
+                    if (! empty($a['skip'])) { $sel['asks'][$a['id']] = 'skip'; continue; }
+                    $assetId = (int) ($a['asset_id'] ?? 0);
+                    abort_unless($assetId && DB::table('create_attachments')->where('conversation_id', $id)->where('asset_id', $assetId)->exists(), 422, 'Attach the file to this conversation first.');
+                    $sel['asks'][$a['id']] = $assetId;
+                }
+            }
             if (array_key_exists('omitted_performance', $input)) {
                 $ids = array_values(array_unique((array) $input['omitted_performance']));
                 abort_if(array_diff($ids, array_column($plan['character_performance'] ?? [], 'id')) !== [], 422, 'Only listed character actions can be removed.');
@@ -151,6 +162,7 @@ class PlanService
         $omittedIds = collect($p['character_performance'] ?? [])->filter(fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))->flatMap(fn ($r) => $r['requirement_ids'] ?? [])->unique()->all();
         $activeRequirements = RequirementContract::excluding($p['requirements'] ?? [], $omittedIds);
         return ['omitted_requirements' => array_values(array_filter($p['requirements'] ?? [], fn ($r) => in_array($r['id'] ?? '', $omittedIds, true))), 'requirements_schema' => $p['requirements_schema'] ?? null, 'requirement_history' => $p['requirement_history'] ?? [], 'direction_notes' => $p['direction_notes'] ?? [], 'reference_evidence' => $p['reference_evidence'] ?? [], 'creative_intent' => $p['creative_intent'] ?? null, 'omitted_character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => ! in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'reference_observations' => $p['reference_observations'] ?? [], 'character_approval' => $s['character_approval'] ?? null, 'requirements' => $activeRequirements, 'character_style' => $p['character_style'] ?? '', 'plan_id' => $planId, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
+            'asks' => array_map(fn ($a) => $a + (is_int($s['asks'][$a['id']] ?? null) ? ['asset_id' => $s['asks'][$a['id']]] : (($s['asks'][$a['id']] ?? null) === 'skip' ? ['skipped' => true] : [])), $p['asks'] ?? []),
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
             'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false)];
@@ -429,6 +441,12 @@ class PlanService
                 'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
+        // Real things only the user has (screens, logo, photos, people, recordings): at most five, each with its beat and fallback.
+        $labels = array_column($scenes, 'label');
+        $plan['asks'] = collect((array) ($raw['asks'] ?? []))->filter(fn ($a) => is_array($a) && $str($a['what'] ?? '', 80) !== '' && in_array($a['kind'] ?? '', ['screen', 'logo', 'photo', 'recording', 'person'], true))
+            ->map(fn ($a) => ['id' => 'ask-'.substr(hash('sha256', mb_strtolower($str($a['what'], 80)).'|'.($a['beat'] ?? '')), 0, 8), 'what' => $str($a['what'], 80), 'kind' => $a['kind'], 'why' => $str($a['why'] ?? '', 120),
+                'beat' => in_array($a['beat'] ?? '', $labels, true) ? $a['beat'] : '', 'moments' => array_values(array_intersect((array) ($a['moments'] ?? []), $known)), 'fallback' => $str($a['fallback'] ?? '', 120)])
+            ->unique('id')->take(5)->values()->all();
         // The reference's rhythm travels to the build (and to the comparison after the render).
         $studied = collect($ctx['files'] ?? [])->first(fn ($f) => is_array(data_get($f, 'reference.study.pacing')));
         if ($studied) $plan['reference_pacing'] = array_filter(array_intersect_key((array) data_get($studied, 'reference.study.pacing'), array_flip(['average_shot_seconds', 'cuts_per_10_seconds', 'words_per_second', 'text_to_speech_delay_seconds']))

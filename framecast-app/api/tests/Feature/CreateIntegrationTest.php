@@ -2587,4 +2587,36 @@ class CreateIntegrationTest extends TestCase
         $this->conversations->attach($this->owner, $c->id, $asset->id, 'reference', 0);
         \Illuminate\Support\Facades\Bus::assertDispatched(\App\Jobs\StudyCreateReference::class, fn ($job) => $job->assetId === $asset->id && $job->mode === 'high');
     }
+
+    public function test_upload_requests_are_listed_answered_by_an_attachment_or_gone_without_and_reach_the_build(): void
+    {
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 30, 'audio' => 'original']];
+        $ask = fn ($what, $kind, $beat = 'Step 2') => ['what' => $what, 'kind' => $kind, 'why' => 'Shows the real thing', 'beat' => $beat, 'fallback' => 'Rebuilt from the site capture'];
+        $raw = ['summary' => 'x', 'left_out' => '', 'scenes' => [['label' => 'Step 2', 'start' => 0, 'end' => 30, 'idea' => 'x']],
+            'asks' => [$ask('Your script editor screen', 'screen'), $ask('A cat sticker', 'sticker'), $ask('Your logo', 'logo', 'Not a beat'), $ask('Product photo', 'photo'), $ask('Export flow recording', 'recording'), $ask('Founder', 'person'), $ask('Another screen', 'screen')]];
+        $n = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
+        $this->assertCount(5, $n['asks'], 'at most five');
+        $this->assertNotContains('A cat sticker', array_column($n['asks'], 'what'), 'never stickers or generated things');
+        $this->assertSame('', collect($n['asks'])->firstWhere('what', 'Your logo')['beat'], 'an unknown beat is cleared');
+        $this->assertMatchesRegularExpression('/^ask-[a-f0-9]{8}$/', $n['asks'][0]['id']);
+
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A tutorial video.', 'expected_version' => 0, 'idempotency_key' => 'ask-b1']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $p = $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'ask-plan');
+        $plan = json_decode(DB::table('create_plans')->where('id', $p['id'])->value('plan_json'), true);
+        $plan['asks'] = array_slice($n['asks'], 0, 2);
+        DB::table('create_plans')->where('id', $p['id'])->update(['plan_json' => json_encode($plan)]);
+        [$screen, $logo] = $plan['asks'];
+        $asset = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'title' => 'Editor', 'storage_url' => 'create-upload://editor', 'status' => 'active']);
+        $v = (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $this->rejected(422, fn () => $plans->select($this->owner, $c->id, $p['id'], $v, ['asks' => [['id' => $screen['id'], 'asset_id' => $asset->id]]]), 'the file must be attached first');
+        $this->conversations->attach($this->owner, $c->id, $asset->id, 'source', $v);
+        $v++;
+        $this->rejected(422, fn () => $plans->select($this->owner, $c->id, $p['id'], $v, ['asks' => [['id' => 'ask-00000000', 'skip' => true]]]));
+        $plans->select($this->owner, $c->id, $p['id'], $v, ['asks' => [['id' => $screen['id'], 'asset_id' => $asset->id], ['id' => $logo['id'], 'skip' => true]]]);
+        $quoted = \App\Services\Create\PlanService::quotePlan(json_decode(DB::table('create_plans')->where('id', $p['id'])->value('plan_json'), true), $p['id']);
+        $this->assertSame($asset->id, $quoted['asks'][0]['asset_id'], 'the build learns which file answers which request');
+        $this->assertTrue($quoted['asks'][1]['skipped']);
+    }
 }

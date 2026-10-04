@@ -105,3 +105,10 @@ test('a storyboard defers what stills cannot show and is blocked only by explici
  assert.equal(parseCriticVerdict(reply('unmet'),{requirements:reqs,lookOnly:true}).verdict,'revise','an explicit miss still blocks');
  assert.equal(parseCriticVerdict(reply('fulfilled'),{requirements:reqs,lookOnly:false}).verdict,'revise','the full video still needs every check');
 });
+test('the reviewer is told which uploaded items belong on which beat; requests without a file are not listed',async()=>{
+ const {criticMessages}=await import('../critic.mjs');
+ const plan={scenes:[],asks:[{id:'ask-1',what:'Your script editor screen',beat:'Step 2',file:'asset-77-x.png'},{id:'ask-2',what:'Your logo',beat:'Close',skipped:true}]};
+ const text=criticMessages({brief:'b',plan,sheet:{image:null}})[0].content[0].text;
+ assert.match(text,/The user uploaded these for specific beats; check each appears where planned: \[\{"what":"Your script editor screen","beat":"Step 2"\}\]/);
+ assert.doesNotMatch(text,/Your logo/);
+});
