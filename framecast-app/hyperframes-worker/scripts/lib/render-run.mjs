@@ -3,6 +3,7 @@ import {mkdir, writeFile, readFile, rename, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {commandFor} from './commands.mjs';
+import {inspectionReport} from '../../agent/inspection-report.mjs';
 
 // Local trusted-fixture adapter. Artifact consumers must require status=ready.
 // Never reuse a run directory or replace a previous revision's output.
@@ -24,11 +25,12 @@ export async function renderRun({motionBlur=false,project, outputRoot, signal, t
   const timer = setTimeout(() => { timedOut = true; stop(); }, timeoutMs);
   signal?.addEventListener('abort', stop);
   const assertActive = () => { if(signal?.aborted || timedOut) throw Error(timedOut ? 'Render deadline exceeded' : 'Render cancelled'); };
-  const command = async (executable, args, label) => {
+  const command = async (executable, args, label, {allowFailure = false} = {}) => {
     assertActive();
     const chunks = []; let length = 0;
     const result = await new Promise((resolve, reject) => {
-      child = spawn(executable, args, {detached:true, stdio:['ignore','pipe','pipe']});
+      // Heavy pages (a 3D bundle, many canvases) can take longer than HyperFrames' 10 s diagnostic page load.
+      child = spawn(executable, args, {detached:true, stdio:['ignore','pipe','pipe'], env:{...process.env, PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS:'45000'}});
       onStage(label);
       for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { length += chunk.length; if(length <= 2*1024*1024) chunks.push(chunk); });
       child.once('error', reject);
@@ -39,13 +41,17 @@ export async function renderRun({motionBlur=false,project, outputRoot, signal, t
     const log = Buffer.concat(chunks).toString();
     await writeFile(path.join(directory, `${label}.log`), log);
     assertActive();
-    if(result.code !== 0) throw Error(`${label} failed; inspect ${label}.log`);
+    if(result.code !== 0 && !allowFailure) throw Error(`${label} failed; inspect ${label}.log`);
     return log;
   };
   try {
     const cli = '/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs';
     const check = await commandFor(project, 'check');
-    await command(check.executable, check.args, 'check');
+    // Layout, contrast and motion findings are notes for the user, as in the build's own check: only what breaks
+    // the video (code that renders differently each time, a page that throws) stops the render.
+    const checkLog = await command(check.executable, check.args, 'check', {allowFailure: true});
+    const report = inspectionReport(checkLog.slice(checkLog.indexOf('{')));
+    if(!report.ok) throw Error('check failed; inspect check.log');
     // Motion blur: render four sub-frames per output frame (a 180-degree shutter at 24 fps) and blend them.
     const sub = partial + '.96.mp4';
     await command(process.execPath, [cli,'render',project,'--output',motionBlur ? sub : partial,'--fps',motionBlur ? '96' : '24','--workers','1','--quality','draft','--strict','--no-best-effort'], 'render');

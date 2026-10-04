@@ -13,3 +13,8 @@ test('numbers and ratios the user approved pass',()=>{
 test('script and style content is not visible text',()=>{
  assert.ok(!visibleText(html).includes('1080px'));assert.ok(!visibleText(html).includes('1200'));assert.ok(visibleText(html).includes('Save 20% today'));
 });
+test('colour variables are not on-screen numbers; an unapproved figure in a text variable still is',()=>{
+ const vars=JSON.stringify([{id:'color_background',type:'color',default:'#121212'},{id:'color_text',default:'#111'},{id:'headline',type:'string',default:'Save 40%'}]).replace(/"/g,'&quot;');
+ const found=numberFindings(`<html data-composition-variables='${vars}'><body><h1>Hello</h1></body></html>`,'');
+ assert.deepEqual(found.map(f=>f.message),['"40%" is on screen but not in the approved facts, copy or script.']);
+});

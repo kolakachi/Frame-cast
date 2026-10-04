@@ -127,6 +127,10 @@ TXT);
         $known = collect($context['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
         $undecided = array_values(array_diff($known, array_column(array_filter((array) ($plan['reference_decisions'] ?? []), 'is_array'), 'moment')));
         if ($undecided) $problems[] = 'These reference moments have no keep, replace or drop decision: '.implode(', ', $undecided).'.';
+        // Narration speaks about 2.4 words a second; a script that cannot fit is fixed here, not by speeding the voice.
+        $words = str_word_count(implode(' ', array_filter((array) ($plan['narration'] ?? []), 'is_string')));
+        $fits = (int) floor(max(1, $duration - 1.2) * 2.4);
+        if ($duration > 0 && $words > $fits) $problems[] = "The narration has {$words} words, about ".round($words / 2.4, 1)." s spoken, but the video is {$duration} s: cut it to about {$fits} words.";
         $uncarried = collect((array) ($plan['reference_decisions'] ?? []))->filter(fn ($d) => is_array($d) && ($d['decision'] ?? '') === 'drop' && trim((string) ($d['carried_by'] ?? '')) === '')->pluck('moment')->all();
         if ($uncarried) $problems[] = 'These dropped moments do not say what now does their job (carried_by): '.implode(', ', array_slice($uncarried, 0, 12)).'.';
         return $problems;

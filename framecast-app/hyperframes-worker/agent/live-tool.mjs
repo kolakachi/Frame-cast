@@ -52,6 +52,13 @@ for(const file of await readdir(source+'/project')){
  const html=await readFile(root+'/index.html','utf8').catch(()=>null);
  if(html&&html.includes('data-rig-src')){const placed=placeRigs(html,f=>readFileSync(root+'/'+f,'utf8'));if(placed!==html)await writeFile(root+'/index.html',placed);}
 }
+// Checks and snapshots look at the picture: the copy they load leaves out <audio> clips, whose WAVs the browser would
+// otherwise load and decode before the page counts as ready (about 25 s a check). The project, the render and the
+// audio checks keep them.
+if(operation==='check'||operation==='snapshot'||operation==='strip'){
+ const page=await readFile(root+'/index.html','utf8').catch(()=>null);
+ if(page&&/<audio\b/i.test(page))await writeFile(root+'/index.html',page.replace(/<audio\b[^>]*>(?:[\s\S]*?<\/audio>)?/gi,''));
+}
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
 for(const f of ['barty-motion.js','barty-hyperframes.js','wyv-mascot.js','three-wyv.js','wyv-3d.js'])await copyFile('/opt/worker/runtime/'+f,root+'/'+f);
 // Licensed display and text fonts (SIL OFL), vendored in runtime/fonts.
@@ -120,7 +127,8 @@ else {
   const report=operation==='check'?inspectionReport(e.stdout||e.stderr||e.message):null;result={ok:operation==='check'?report.ok:false,diagnostics:operation==='check'?report:(e.stdout||e.stderr||e.message).slice(0,12000)};}
 }
 // Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
-if(operation==='check'&&result.ok)result.pacing=await pacing();
+// Pacing (reading time, blank frames, drift) is a note now: measured once at delivery, not on every check (~27 s each).
+if(operation==='check'&&result.ok&&settings.findings_block_finish===true)result.pacing=await pacing();
 if(operation==='strip'&&result.ok)try{
  // One image-sequence input and the tile filter: thirty separate inputs exhaust the sandbox's thread limit.
  const shots=(await readdir(out)).filter(n=>/^frame-\d+-at-[0-9.]+s\.png$/.test(n)).sort();

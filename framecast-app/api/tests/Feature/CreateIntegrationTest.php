@@ -115,6 +115,16 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('no 3D mascot', \App\Services\Create\CharacterPerformance::issues(['narration' => ['x'], 'character_performance' => [$perf('facial')]], ['duration_seconds' => 15], [])[0]['message']);
     }
 
+    public function test_a_script_too_long_for_the_video_is_sent_back_at_planning(): void
+    {
+        $scenes = [['label' => 'All', 'start' => 0, 'end' => 15]];
+        $long = ['Want a video ad that sells?', 'No camera. No editing skills. No time.', 'WyvStudio turns your idea into a video.',
+            'One video becomes four ready-to-post formats, voiced and captioned.', 'No camera needed. No editing required. Start creating.'];
+        $problems = \App\Services\Create\Planning\PlanPrompt::problems(['scenes' => $scenes, 'narration' => $long], ['settings' => ['duration_seconds' => 15]]);
+        $this->assertNotEmpty(array_filter($problems, fn ($p) => str_contains($p, 'cut it to about 33 words')));
+        $this->assertSame([], \App\Services\Create\Planning\PlanPrompt::problems(['scenes' => $scenes, 'narration' => ['Want a video ad that sells?', 'Start creating.']], ['settings' => ['duration_seconds' => 15]]));
+    }
+
     public function test_copying_exactly_turns_each_kept_moment_into_a_layout_requirement(): void
     {
         $this->assertSame(7.85, \App\Services\Create\References\ReferenceStudy::keyTime(['start' => 7.4, 'end' => 8.1], 15), 'late in the moment, once its elements have arrived');
