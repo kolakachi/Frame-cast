@@ -27,6 +27,13 @@ Route::get('/media/assets/{assetId}', [AssetController::class, 'content'])
     ->middleware('signed')
     ->name('media.assets.content');
 
+// A Create version's video for the page's player: signed like asset content, so the browser streams it with
+// range requests instead of downloading the whole file through a cross-origin request first.
+Route::get('/media/create-versions/{revisionId}', [\App\Http\Controllers\Api\V1\Create\CreateController::class, 'signedVideo'])
+    ->whereUuid('revisionId')
+    ->middleware('signed')
+    ->name('media.create.version');
+
 Route::get('/media/assets/{assetId}/thumbnail', [AssetController::class, 'thumbnail'])
     ->whereNumber('assetId')
     ->middleware('signed')

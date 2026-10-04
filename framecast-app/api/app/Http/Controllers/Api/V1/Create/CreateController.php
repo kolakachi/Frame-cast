@@ -54,6 +54,13 @@ class CreateController extends Controller
             'share_enabled', 'metadata_json', 'id', 'number', 'output_asset_id', 'export_job_id', 'parent_revision_id', 'restored_from_id', 'run_id', 'summary', 'conflict', 'created_at', 'artifact_hash',
         ]);
         $revisions->each(function($revision)use($c){$revision->has_newer_changes=\App\Services\Create\DeliveryService::stale($c,$revision);});
+        // The player streams each version from a signed link; one link per 15-minute window, valid 30 to 45 minutes.
+        $expires = \Illuminate\Support\Carbon::createFromTimestamp((intdiv(now()->timestamp, 900) + 3) * 900);
+        $paths = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('artifact_path', 'id');
+        $revisions->each(function ($revision) use ($paths, $expires) {
+            $path = $paths[$revision->id] ?? null;
+            $revision->preview_url = $path && Storage::disk('local')->exists($path) ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', $expires, ['revisionId' => $revision->id]) : null;
+        });
         $bundles = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('bundle_json', 'id');
         $revisions->each(function($revision)use($bundles){$revision->variables=\App\Services\Create\CompositionVariables::declarations(json_decode($bundles[$revision->id] ?? '{}', true)['index.html'] ?? null);});
         // Storage keys, worker credentials and source HTML never enter the browser response.
@@ -262,6 +269,17 @@ class CreateController extends Controller
         $input = $r->validate(['expected_version'=>'required|integer|min:0']);
         return response()->json(['data'=>app(\App\Services\Create\CompositionOutputService::class)
             ->register($r->user(),$id,$revisionId,$input['expected_version'])]);
+    }
+
+    /** The version's video by signed link (no session): the link itself is the permission, and it expires. */
+    public function signedVideo(string $revisionId)
+    {
+        $revision = DB::table('composition_revisions')->where('id', $revisionId)->firstOrFail();
+        $workspace = DB::table('create_conversations')->where('id', $revision->conversation_id)->value('workspace_id');
+        abort_unless($workspace && \App\Models\Workspace::whereKey($workspace)->where('status', 'active')->exists(), 404);
+        abort_unless($revision->artifact_path && Storage::disk('local')->exists($revision->artifact_path), 404);
+        $ext = pathinfo($revision->artifact_path, PATHINFO_EXTENSION);
+        return response()->file(Storage::disk('local')->path($revision->artifact_path), ['Content-Type' => match ($ext) { 'png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp', default => 'video/mp4' }, 'Cache-Control' => 'private, max-age=600']);
     }
 
     public function artifact(Request $r, string $id, string $revisionId)

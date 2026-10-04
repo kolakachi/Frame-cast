@@ -296,6 +296,11 @@ function state(c) { return ['queued','running','cancel_requested'].includes(c.la
 function stateLabel(c) { return c.archived_at ? 'Archived' : ({working:'In progress',needs:'Needs attention',done:'Ready',draft:'Brief saved'})[state(c)] }
 function date(value) { return new Date(value).toLocaleDateString(undefined,{month:'short',day:'numeric'}) }
 function message(e) { return e.response?.data?.message || e.response?.data?.error?.message || 'Could not complete this action. Please retry.' }
+// A failed download's reason arrives as a file, not JSON; read it so the real message is shown.
+async function blobMessage(e) {
+  try { if (e?.response?.data instanceof Blob) { const j = JSON.parse(await e.response.data.text()); return j.message || j.error?.message || message(e) } } catch {}
+  return e?.response ? message(e) : 'The video could not be loaded. Check your connection and retry.'
+}
 const base = value => `/create/conversations/${value || id.value}`
 const draftKey = value => `create.draft.${auth.user?.id}.${auth.user?.workspace_id}.${value || 'new'}`
 function persistDraft(value, text) { try { text ? sessionStorage.setItem(draftKey(value),text) : sessionStorage.removeItem(draftKey(value)) } catch {} }
@@ -544,14 +549,18 @@ async function loadArtifact() {
   if(media.value) URL.revokeObjectURL(media.value)
   media.value = ''; artifactGone.value = ''; artifactLoading.value = Boolean(nextKey)
   if(!nextKey) return
+  // The player streams the version from its signed link; the download below is the fallback.
+  if(revision.preview_url) { media.value = revision.preview_url; artifactLoading.value = false; return }
   try { const result = await api.get(`${base(target)}/revisions/${revision.id}/artifact`,{responseType:'blob'}); if(ticket === mediaEpoch) media.value = URL.createObjectURL(result.data) }
-  catch(e) { if(ticket === mediaEpoch) {artifactGone.value = e?.response?.status === 410 || e?.response?.status === 404 ? message(e) : ''; if(!artifactGone.value) error.value = message(e); mediaKey = ''} }
+  catch(e) { const text = await blobMessage(e); if(ticket === mediaEpoch) {artifactGone.value = e?.response?.status === 410 || e?.response?.status === 404 ? text : ''; if(!artifactGone.value) error.value = text; mediaKey = ''} }
   finally { if(ticket === mediaEpoch) artifactLoading.value = false }
 }
 async function compare() {
   player.value?.pause(); compareOpen.value = true; const ticket = ++compareEpoch
+  const head = (data.value?.revisions || []).find(r => r.id === conversation.value.head_revision_id)
+  if(head?.preview_url) { compareMedia.value = head.preview_url; return }
   try { const result = await api.get(`${base()}/revisions/${conversation.value.head_revision_id}/artifact`,{responseType:'blob'}); if(ticket === compareEpoch && compareOpen.value) compareMedia.value = URL.createObjectURL(result.data) }
-  catch(e) { if(ticket === compareEpoch) error.value = message(e) }
+  catch(e) { const text = await blobMessage(e); if(ticket === compareEpoch) error.value = text }
 }
 function example(item) { if(!id.value) outputKind.value = item.kind; prompt.value = item.prompt; nextTick(()=>composer.value?.focus()) }
 watch(prompt, value => persistDraft(id.value,value))
