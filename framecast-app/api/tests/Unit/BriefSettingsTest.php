@@ -55,4 +55,14 @@ class BriefSettingsTest extends TestCase
         $this->assertSame([], $r['changes'], 'several ratios named: the video keeps its shape');
         $this->assertSame(['aspect_ratio' => '1:1'], BriefSettings::infer('Make it square instead.', $settings)['changes']);
     }
+
+    public function test_a_length_for_part_of_the_video_is_not_the_videos_length(): void
+    {
+        $settings = ['output_kind' => 'video', 'aspect_ratio' => '16:9', 'duration_seconds' => 30];
+        $r = BriefSettings::infer('Keep four steps. Only the last two cards merge, into one closing card of about 4 seconds.', $settings);
+        $this->assertSame([], $r['changes']);$this->assertSame([], $r['questions']);
+        $this->assertSame([], BriefSettings::infer('The first 3 seconds should hook hard.', $settings)['questions']);
+        $this->assertSame(['duration_seconds' => 20], BriefSettings::infer('Make it 20 seconds with a 2 second logo hold.', $settings)['changes']);
+        $this->assertSame(['duration_seconds' => 15], BriefSettings::infer('Create one 15-second 16:9 video.', $settings)['changes']);
+    }
 }

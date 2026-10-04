@@ -37,15 +37,19 @@ class BriefSettings
         $named = array_values(array_unique(array_filter(array_map(fn ($pattern) => preg_match($pattern, $text) ? self::RATIOS[$pattern] : null, array_keys(self::RATIOS)))));
         if (count($named) === 1 && ($settings['aspect_ratio'] ?? null) !== $named[0]) $changes['aspect_ratio'] = $named[0];
 
-        if ($video && preg_match('/\b(\d{1,3})\s*(?:-|\s)?\s*(seconds?|secs?|s)\b/', $text, $m) && ! preg_match('/\b\d{1,3}\s*(?:-|\s)?\s*(minutes?|mins?)\b/', $text)) {
-            $seconds = (int) $m[1];
+        // A length is the video's only when it is not about a part of it ("a closing card of about 4 seconds",
+        // "the first 3 seconds") and the message names one length.
+        $lengths = $video ? self::videoLengths($text) : [];
+        $minutes = array_values(array_filter($lengths, fn ($l) => $l[1] === 'min'));
+        if (count($lengths) === 1 && $lengths[0][1] === 's') {
+            $seconds = $lengths[0][0];
             if ($seconds >= 5 && $seconds <= 30) {
                 if ((int) ($settings['duration_seconds'] ?? 0) !== $seconds) $changes['duration_seconds'] = $seconds;
             } else {
                 $questions[] = "Create makes videos from 5 to 30 seconds. {$seconds} seconds is outside that. Should I make it 30 seconds, or would you rather shorten the brief?";
             }
-        } elseif ($video && preg_match('/\b(\d{1,3})\s*(minutes?|mins?)\b/', $text, $m)) {
-            $questions[] = "Create makes videos from 5 to 30 seconds, so {$m[1]} {$m[2]} is longer than this lane supports. Should I make a 30-second version?";
+        } elseif (count($lengths) === 1 && $minutes) {
+            $questions[] = "Create makes videos from 5 to 30 seconds, so {$minutes[0][0]} {$minutes[0][2]} is longer than this lane supports. Should I make a 30-second version?";
         }
 
         if (preg_match('/\b(?:in|into|to) ([a-z]+)\b/', $text, $m)) {
@@ -69,6 +73,23 @@ class BriefSettings
         }
 
         return ['changes' => $changes, 'questions' => $questions];
+    }
+
+    private const PARTS = 'card|beat|scene|step|shot|hold|intro|outro|hook|close|closing|ending|opening|transition|pause|segment|section|frame|sticker|title|cta|logo|slide|panel|each|per|every|first|last|final';
+
+    /** Distinct lengths that describe the whole video: [[number, 's'|'min', unit word], ...]. */
+    private static function videoLengths(string $text): array
+    {
+        preg_match_all('/\b(\d{1,3})\s*(?:-|\s)?\s*(seconds?|secs?|s|minutes?|mins?)\b/', $text, $all, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+        $out = [];
+        foreach ($all as $m) {
+            $before = substr($text, max(0, $m[0][1] - 40), min(40, $m[0][1]));
+            $after = substr($text, $m[0][1] + strlen($m[0][0]), 20);
+            if (preg_match('/\b('.self::PARTS.')s?\b/', $before.' '.$after)) continue;
+            $unit = str_starts_with($m[2][0], 'm') ? 'min' : 's';
+            $out[$m[1][0].$unit] = [(int) $m[1][0], $unit, $m[2][0]];
+        }
+        return array_values($out);
     }
 
     /** The sentence the conversation shows for applied changes. */
