@@ -1,3 +1,7 @@
+// Requirements a viewer hears rather than sees: speech, narration, sync, music and sound. The critic reviews silent
+// frames, so these are checked by listening to the export (audio-review.mjs), never passed or failed from pictures.
+export const HEARD=/\b(narrat\w*|voice\w*|spoken|speech|speak\w*|said|says|sync\w*|music|sound\w*|audio|sfx|whoosh\w*|clicks?|pronounc\w*)\b/i;
+export const heard=r=>r?.category==='audio'||HEARD.test(String(r?.text||''));
 // A review checks the frozen contract, not whichever requirements the critic remembers.
 export function requirementChecks(raw,requirements,{lookOnly=false}={}){
  const active=(Array.isArray(requirements)?requirements:[]).filter(r=>/^req-[a-f0-9]{20}$/.test(r?.id));
@@ -14,6 +18,8 @@ export function requirementChecks(raw,requirements,{lookOnly=false}={}){
   if(r.order_unresolved||r.evidence_status==='unverified'){status='unverified';evidence='Requirement order or source evidence needs clarification.';}
   // The current critic receives images only. It cannot certify speech/sound from them.
   if(r.category==='audio'&&status==='fulfilled'){status='unverified';evidence='Audio requires a separate audio check; frames do not verify it.';}
+  // Heard requirements wait for the listening check on the export instead of blocking the visual review.
+  if(!lookOnly&&heard(r)&&['unverified','unmet'].includes(status)){status='by_ear';evidence='Checked by listening to the finished video.';}
   if(status==='fulfilled'&&(r.category==='action'||r.after_ids?.length)&&!timed){status='unverified';evidence='The claimed action/order has no observed time range.';}
   return {id:r.id,text:r.text,version:r.version??1,status,evidence,...(timed?{start:c.start,end:c.end}:{})};
  });

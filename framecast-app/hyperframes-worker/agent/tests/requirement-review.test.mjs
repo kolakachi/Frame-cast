@@ -26,8 +26,8 @@ test('storyboards defer performance, never appearance; frames cannot certify sou
  const r=[{id:id(1),text:'Halftone',category:'appearance',review_stage:'design'},{id:id(2),text:'Narration',category:'audio',review_stage:'production'}];
  const deferred=r.map(x=>({id:x.id,status:'deferred',evidence:'Motion later'}));
  assert.deepEqual(requirementChecks(deferred,r,{lookOnly:true}).map(x=>x.status),['unverified','deferred']);
- assert.deepEqual(requirementChecks(deferred,r).map(x=>x.status),['unverified','unverified']);
- assert.equal(requirementChecks([{id:id(2),status:'fulfilled',evidence:'There is audio'}],[r[1]])[0].status,'unverified');
+ assert.deepEqual(requirementChecks(deferred,r).map(x=>x.status),['unverified','by_ear'],'sound waits for the listening check');
+ assert.equal(requirementChecks([{id:id(2),status:'fulfilled',evidence:'There is audio'}],[r[1]])[0].status,'by_ear','frames cannot certify sound');
 });
 test('requirements from a stale or recovered review cannot be attached to the delivered result',()=>{
  const state={revision:4,reviewedRevision:4,criticRevision:4,critic:{verdict:'pass',requirement_checks:checks}};
@@ -39,4 +39,18 @@ test('requirements from a stale or recovered review cannot be attached to the de
 test('a stable ID does not let old evidence certify an amended requirement',()=>{
  assert.equal(requirementChecks([checks[0]],[{...requirements[0],version:2}])[0].status,'unverified');
  assert.equal(requirementChecks([{...checks[0],version:2}],[{...requirements[0],version:2}])[0].status,'fulfilled');
+});
+
+test('heard requirements are left to the listening check and never block the visual review',async()=>{
+ const {parseCriticVerdict}=await import('../critic.mjs');
+ const reqs=[{id:id(1),text:'Use the supplied narration verbatim',category:'text'},{id:id(2),text:'Show each heading exactly when the narrator reaches those words',category:'timing'},{id:id(3),text:'Large bold text',category:'appearance'}];
+ const raw=JSON.stringify({scores:{hook:8,hierarchy:8,density:8,energy:8,performance:8},verdict:'pass',
+  unmet_requirements:['Narration is unverified: frames cannot confirm the script is spoken','The closing CTA text is missing'],
+  requirement_checks:[{id:id(1),version:1,status:'unverified',evidence:'No audio'},{id:id(2),version:1,status:'unmet',evidence:'Cannot hear'},{id:id(3),version:1,status:'fulfilled',evidence:'Big type',start:0,end:3}],directives:[]});
+ const v=parseCriticVerdict(raw,{requirements:reqs});
+ assert.deepEqual(v.requirement_checks.map(c=>c.status),['by_ear','by_ear','fulfilled']);
+ assert.deepEqual(v.unmet_requirements,['The closing CTA text is missing'],'a seen miss still counts; an unheard one does not');
+ assert.equal(v.verdict,'revise');
+ const clean=parseCriticVerdict(raw.replace(',"The closing CTA text is missing"',''),{requirements:reqs});
+ assert.equal(clean.verdict,'pass','sound alone no longer blocks a pass');
 });
