@@ -24,3 +24,12 @@ test('no layers or flat image can silently become a rig',()=>{
  assert.throws(()=>attach({add(){}},{namespaceURI:'http://www.w3.org/2000/svg',querySelectorAll:()=>[]},{duration:6}),/expected one layer/);
  assert.ok(!/<\/script/i.test(source),'safe for Hyperframes script inlining');
 });
+
+test('the talking face follows each syllable and closes between words',async()=>{
+ const {readFile}=await import('node:fs/promises');const g={};
+ new Function('globalThis',await readFile(new URL('../../runtime/wyv-mascot.js',import.meta.url),'utf8'))(g);
+ const cues=g.WyvMascot.mouthCues([{text:'psst',start:.6,end:.9},{text:'Got',start:1.1,end:1.28},{text:'a',start:1.3,end:1.4},{text:'product',start:1.45,end:1.9}],2);
+ assert.deepEqual(cues.map(c=>c.shape),['ee','rest','oh','open','oh','rest','oh','rest']);
+ assert.equal(cues[0].t,2.6,'cues are placed at the face start plus the word time');
+ assert.ok(cues.every((c,i)=>i===0||c.t>=cues[i-1].t),'in time order');
+});

@@ -73,5 +73,71 @@
     parent.add(tl, at); tl.paused(false);
     return {timeline: tl, score: spec, capabilities: ['blink', 'gaze', 'head-tilt', 'mouth-shapes'], limitations: ['prepared layered SVG only', 'no automatic lip-sync', 'no full-body actions or 3D turns']};
   }
-  global.WyvMascot = Object.freeze({version: '1.0.0', validate, attach});
+
+  /* A raster face: the resting head plus eye and mouth patches cut from an expression sheet
+   * (face.json: {base, width, height, patches: [{name, file, x, y, w, h}]}). The layers are
+   * built here from the manifest, so they always line up. Everything is a timed set: any seek is exact.
+   *   WyvMascot.face(tl, '#maya', {kit, src: 'maya-face/', words: [{text, start, end}], at: 0,
+   *     duration: 15, blinks: 'auto' | [times], expressions: [{at, duration, eyes: 'wink', mouth: 'smile'}]})
+   * words: the narration's word times (narrationTiming) placed on the timeline; the mouth follows each
+   * syllable's vowel (open, oh, ee) and closes between words. */
+  const VOWEL = c => /[a]/.test(c) ? 'open' : /[ouw]/.test(c) ? 'oh' : /[eiy]/.test(c) ? 'ee' : null;
+  function syllables(text) {
+    // A word without vowels (psst, hmm, shh) is a near-closed whisper.
+    const groups = String(text).toLowerCase().replace(/[^a-z]/g, '').match(/[aeiouy]+/g) || ['e'];
+    return groups.map(g => VOWEL(g[0]) || 'open');
+  }
+  function mouthCues(words, at) {
+    const cues = []; let last = null;
+    const put = (t, shape) => { if (shape !== last) { cues.push({t: +t.toFixed(3), shape}); last = shape; } };
+    (words || []).forEach((w, i) => {
+      const a = at + Number(w.start), b = at + Number(w.end); if (!(b > a)) return;
+      const parts = syllables(w.text || w.word || ''), step = (b - a) / parts.length;
+      parts.forEach((shape, k) => {
+        put(a + k * step, shape);
+        // Long syllables flap: the mouth half-closes before the next one.
+        if (step > 0.16 && k < parts.length - 1) put(a + k * step + step * 0.7, 'rest');
+      });
+      const next = words[i + 1], gap = next ? at + Number(next.start) - b : Infinity;
+      if (gap >= 0.09) put(b, 'rest');
+    });
+    return cues;
+  }
+  function face(tl, root, opts) {
+    if (!global.gsap || !tl || typeof tl.set !== 'function') throw Error('Mascot face: GSAP timeline required');
+    root = typeof root === 'string' ? document.querySelector(root) : root;
+    const kit = opts && opts.kit;
+    if (!root || !kit || !kit.base || !(kit.width > 0) || !(kit.height > 0) || !Array.isArray(kit.patches)) throw Error('Mascot face: element and face.json kit required');
+    const src = opts.src || '', at = Number(opts.at) || 0, duration = Number(opts.duration) || 15;
+    if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
+    root.style.aspectRatio = kit.width + ' / ' + kit.height;
+    const img = (file, box, name) => {
+      const el = document.createElement('img'); el.src = src + file; el.alt = ''; el.draggable = false;
+      el.style.cssText = 'position:absolute;display:block;left:' + (box.x / kit.width * 100) + '%;top:' + (box.y / kit.height * 100) + '%;width:' + (box.w / kit.width * 100) + '%;height:' + (box.h / kit.height * 100) + '%;' + (name ? 'opacity:0;' : '');
+      if (name) el.setAttribute('data-face', name);
+      root.appendChild(el); return el;
+    };
+    img(kit.base, {x: 0, y: 0, w: kit.width, h: kit.height});
+    const layers = {};
+    for (const p of kit.patches) layers[p.name] = img(p.file, p, p.name);
+    const has = n => !!layers[n];
+    // Each channel shows at most one patch; null is the resting face.
+    const show = (part, name, t) => {
+      const names = Object.keys(layers).filter(n => n.startsWith(part + '-'));
+      if (names.length) tl.set(names.map(n => layers[n]), {opacity: i => names[i] === part + '-' + name ? 1 : 0}, t);
+    };
+    // Expressions win over talking and blinking while they last.
+    const expressions = (opts.expressions || []).map(e => ({a: at + e.at, b: at + e.at + (e.duration || 0.6), eyes: e.eyes, mouth: e.mouth}));
+    const inExpr = (t, part) => expressions.some(e => e[part] && t >= e.a && t < e.b);
+    for (const c of mouthCues(opts.words, at)) if (!inExpr(c.t, 'mouth')) show('mouth', c.shape === 'rest' || !has('mouth-' + c.shape) ? null : c.shape, c.t);
+    let blinks = opts.blinks;
+    if (blinks === undefined || blinks === 'auto') { blinks = []; for (let t = at + 1.1, k = 0; t < at + duration - 0.3; k++, t += 2.9 + ((k * 7919) % 11) / 10) blinks.push(t - at); }
+    if (has('eyes-closed')) for (const b of blinks) { const t = at + b; if (inExpr(t, 'eyes') || inExpr(t + 0.13, 'eyes')) continue; show('eyes', 'closed', t); show('eyes', null, t + 0.13); }
+    for (const e of expressions) {
+      if (e.eyes && has('eyes-' + e.eyes)) { show('eyes', e.eyes, e.a); show('eyes', null, e.b); }
+      if (e.mouth && has('mouth-' + e.mouth)) { show('mouth', e.mouth, e.a); show('mouth', null, e.b); }
+    }
+    return tl;
+  }
+  global.WyvMascot = Object.freeze({version: '1.1.0', validate, attach, face, mouthCues});
 })(globalThis);

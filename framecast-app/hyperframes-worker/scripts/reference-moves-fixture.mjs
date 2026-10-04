@@ -9,11 +9,20 @@ import {renderRun} from './lib/render-run.mjs';
 const req=createRequire('/opt/worker/node_modules/hyperframes/package.json');
 const puppeteer=req('puppeteer-core'),sharp=req('sharp');
 const root='/tmp/reference-moves',out='/output/reference-moves';
+const report={checks:{},frames:[]};
 await mkdir(root,{recursive:true});await mkdir(out,{recursive:true});
 await copyFile('/opt/worker/fixtures/reference-moves/index.html',root+'/index.html');
 await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');
 for(const f of ['inter.ttf','playfair.ttf'])await copyFile('/opt/worker/runtime/fonts/'+f,root+'/'+f);
+await copyFile('/opt/worker/runtime/wyv-mascot.js',root+'/wyv-mascot.js');
+// The talking face: a face kit (face-patches.mjs) when one is mounted at /maya/face-kit, else a plain stand-in head.
+await mkdir(root+'/maya-face',{recursive:true});
+let faceKit;
+try{faceKit=JSON.parse(await (await import('node:fs/promises')).readFile('/maya/face-kit/face.json','utf8'));for(const f of [faceKit.base,...faceKit.patches.map(p=>p.file)])await copyFile('/maya/face-kit/'+f,root+'/maya-face/'+f);}
+catch{faceKit={base:'base.png',width:1024,height:1050,patches:[]};await sharp({create:{width:1024,height:1050,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1050"><circle cx="512" cy="380" r="260" fill="#bbb"/><rect x="200" y="660" width="624" height="390" rx="200" fill="#999"/></svg>')}]).png().toFile(root+'/maya-face/base.png');}
+await writeFile(root+'/maya-face.js','window.MAYA_FACE='+JSON.stringify(faceKit)+';');
+report.face=faceKit.patches.length?'kit':'stand-in';
 for(const pose of ['peek','wink','neutral','point']){
  const name='maya-'+pose+'.png';
  try{await access('/maya/'+name);await copyFile('/maya/'+name,root+'/'+name);}
@@ -22,7 +31,6 @@ for(const pose of ['peek','wink','neutral','point']){
 }
 
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,protocolTimeout:60000,args:['--no-sandbox']});
-const report={checks:{},frames:[]};
 try{
  const page=await browser.newPage();await page.setViewport({width:1920,height:1080});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -54,6 +62,13 @@ try{
  c.fly_and_count=at[9.3].total==='12'&&at[10.9].total==='23';
  c.stamp=Math.abs(at[10.9].stamp-1)<0.25;
  c.iris_to_black=at[12.0].s5&&!at[12.0].s4;
+ if(report.face==='kit'){
+  const face=await page.evaluate(()=>{const o=n=>{const el=document.querySelector('#m1 [data-face="'+n+'"]');return el?Number(getComputedStyle(el).opacity):null;};
+   const at=t=>{window.__timelines.main.seek(t,true);return {oh:o('mouth-oh'),ee:o('mouth-ee'),open:o('mouth-open'),closed:o('eyes-closed'),wink:o('eyes-wink'),smile:o('mouth-smile')};};
+   return {product:at(1.5),sell:at(1.9),blink:at(.45),wink:at(2.3),rest:at(.2)};});
+  report.faceStates=face;
+  c.face_talks=face.product.oh===1&&face.sell.ee===1&&face.blink.closed===1&&face.wink.wink===1&&face.wink.smile===1&&face.rest.oh===0&&face.rest.closed===0;
+ }
  c.lockup=at[14.9].mark==='WyvStudio'&&at[14.9].s6&&!at[14.9].s5;
  // Seeking is exact: a frame looks the same however the playhead got there.
  const shot=async t=>{log('shot',t);await seek(t);return page.screenshot({type:'png'});};

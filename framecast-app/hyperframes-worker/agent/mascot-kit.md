@@ -58,3 +58,17 @@ docker compose -f compose.local.yml run --rm -v "$PWD/artifacts/mascot-proof:/ou
 ```
 
 Uses the existing network-disabled proof container. Produces `mascot-proof.mp4`, screenshots, render/decode logs and `verification.json`. It tests exact layer-state restoration at cue boundaries, bounded screenshot differences (browser antialiasing), no autonomous movement, and eye-region motion in the encoded video. The original robot fixture is technical evidence, not an approved customer design or creative acceptance. The fixture is intentionally silent and does not establish speech synchronization.
+
+
+## A talking face from an expression sheet (raster)
+When the build has a face kit for the character (face.json with face-base.png and eye and mouth patches, cut from one expression sheet), use it wherever the character speaks or reacts on camera, chest-up:
+```js
+WyvMascot.face(tl, '#maya', {kit: FACE_KIT, src: 'maya-face/', at: 0, duration: 3,
+  words: [{text: 'Got', start: 1.1, end: 1.28}, ...],      // the narration's words, in seconds from `at`
+  blinks: 'auto',                                           // or a list of times
+  expressions: [{at: 2.16, duration: .5, eyes: 'wink', mouth: 'smile'}]});
+```
+- `#maya` is an empty element with a width; the rig builds the base and patches inside it and sets its aspect ratio. Move, scale, slide or pop the element itself with the motion kit; the face keeps talking.
+- `words` come from narrationTiming (shifted to the element's `at`); the mouth follows each syllable's vowel (open, oh, ee) and closes between words. Without words she stays at rest and still blinks.
+- Patch names: mouths `smile`, `open`, `oh`, `ee`, `gasp`, `laugh`; eyes `closed`, `wink`, `wide`, `laugh`. Use expressions for reactions (a wink on the punchline, a laugh on the payoff, wide eyes and gasp on a surprise).
+- Body poses (pointing, waving, holding something) are separate cut-out stills from the pose sheet: cut to them for gestures and come back to the talking face.
