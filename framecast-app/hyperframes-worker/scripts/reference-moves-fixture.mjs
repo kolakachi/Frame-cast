@@ -37,21 +37,21 @@ try{
   return {t,sceneAClip:document.querySelector('#sceneA').style.clipPath,sceneA:vis('#sceneA'),s1:vis('#s1'),s4:vis('#s4'),s5:vis('#s5'),s6:vis('#s6'),
    rings:[...document.querySelectorAll('[data-wm="iris-ring"]')].filter(r=>getComputedStyle(r).visibility!=='hidden'&&Number(getComputedStyle(r).opacity)>0.01).length,
    c1:{rotation:g('#c1','rotation'),alpha:g('#c1','autoAlpha'),x:g('#c1','x')},panel:{width:document.querySelector('#panel').offsetWidth,left:document.querySelector('#panel').offsetLeft},
-   sceneAScale:g('#sceneA','scale'),s4Scale:g('#s4','scale'),ready:document.querySelector('#ready').textContent,
+   sceneAScale:g('#sceneA','scale'),contentScale:g('#panelContent','scale'),contentAlpha:g('#panelContent','autoAlpha'),s4Scale:g('#s4','scale'),total:document.querySelector('#total').textContent,
    sellClip:document.querySelector('#sell').style.clipPath,underline:g('#u1','scaleX'),stamp:g('#stamp','scale'),mark:document.querySelector('#markText').textContent,
    words:[...document.querySelectorAll('#h1 .w')].map(w=>Number(gsap.getProperty(w,'autoAlpha')))};
  },t));
  const at={};
- for(const t of [0,1.0,1.5,2.0,2.35,2.75,3.2,4.2,4.7,5.3,6.6,6.85,7.15,7.6,10.3,10.9,11.25,12.0,13.0,13.45,14.0,14.9])at[t]=await state(t);
+ for(const t of [0,1.0,1.5,2.0,2.35,2.75,3.2,4.2,4.7,5.3,9.3,6.6,6.85,7.1,7.15,7.6,7.8,10.3,10.9,11.25,12.0,13.0,13.45,14.0,14.9])at[t]=await state(t);
  report.states=at;const c=report.checks;
  c.start_clean=at[0].rings===0&&!at[0].sceneA&&at[0].words.every(a=>a===0);
  c.words_build=at[1.0].words[0]===0&&at[1.5].words.slice(0,3).every(a=>a>0.9)&&at[1.5].words[3]===0;
  c.write_on=/inset\(-30% 100%/.test(at[1.5].sellClip)&&/inset\(-30% -8%/.test(at[2.35].sellClip)&&at[2.35].underline>0.9;
  c.iris_grows=/circle\(\d/.test(at[2.35].sceneAClip)&&at[2.35].rings>0&&at[2.75].sceneAClip==='none'&&!at[2.75].s1;
  c.toss_lands=at[1.0].c1.alpha===0&&at[4.2].c1.alpha===1&&Math.abs(at[4.2].c1.rotation+4)<0.5&&Math.abs(at[4.2].c1.x)<1;
- c.device_morph=at[4.2].panel.width===1920&&at[5.3].panel.width===470&&at[5.3].panel.left===1180;
- c.push_through=at[6.85].sceneAScale>1.2&&at[7.15].s4&&!at[7.15].sceneA&&at[7.15].s4Scale>1&&at[7.6].s4Scale===1;
- c.fly_and_count=at[10.3].ready==='3 of 4 ready'&&at[10.9].ready==='4 of 4 ready';
+ c.device_morph=at[4.2].panel.width===1920&&at[5.3].panel.width===470&&at[5.3].panel.left===1180&&at[4.7].contentScale<0.6&&at[4.7].contentAlpha===1;
+ c.push_through=at[6.85].sceneAScale>1.2&&at[7.1].s4&&!at[7.1].sceneA&&at[7.1].s4Scale>4&&at[7.8].s4Scale===1;
+ c.fly_and_count=at[9.3].total==='12'&&at[10.9].total==='23';
  c.stamp=Math.abs(at[10.9].stamp-1)<0.25;
  c.iris_to_black=at[12.0].s5&&!at[12.0].s4;
  c.lockup=at[14.9].mark==='WyvStudio'&&at[14.9].s6&&!at[14.9].s5;

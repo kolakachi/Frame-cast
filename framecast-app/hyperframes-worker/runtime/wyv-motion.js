@@ -195,7 +195,7 @@
       tl.set(b, { autoAlpha: 1 }, at)
         .fromTo(b, { clipPath: circle(0) }, { clipPath: circle('R'), duration: d, ease: 'power2.in', immediateRender: false }, at)
         .set(b, { clipPath: 'none' }, at + d);
-      var rings = opts.rings == null ? 3 : opts.rings;
+      var rings = opts.rings == null ? 2 : opts.rings;
       for (var i = 0; i < rings; i++) {
         var ring = document.createElement('div');
         ring.setAttribute('data-wm', 'iris-ring');
@@ -203,9 +203,10 @@
           ';border:' + (opts.ringWidth || 3) + 'px solid ' + (opts.ringColor || 'rgba(255,255,255,.7)') + ';visibility:hidden';
         stage.appendChild(ring);
         var t = at + i * 0.06;
+        // Echoes are faint and quick: they hint at the edge, they are not the move.
         tl.set(ring, { left: function () { return geo().c.x - 50; }, top: function () { return geo().c.y - 50; } }, t)
-          .fromTo(ring, { autoAlpha: 0.9 - i * 0.2, scale: 0.05 }, { scale: (function (k) { return function () { return geo().R / 50 * (1.04 + k * 0.05); }; })(i), autoAlpha: 0, duration: d + 0.1, ease: 'power2.in', immediateRender: false }, t)
-          .set(ring, { autoAlpha: 0 }, t + d + 0.1);
+          .fromTo(ring, { autoAlpha: 0.5 - i * 0.14, scale: 0.05 }, { scale: (function (k) { return function () { return geo().R / 50 * (0.55 + k * 0.12); }; })(i), autoAlpha: 0, duration: d * 0.75, ease: 'power2.out', immediateRender: false }, t)
+          .set(ring, { autoAlpha: 0 }, t + d * 0.75);
       }
       return tl;
     },
@@ -230,13 +231,20 @@
       return tl;
     },
 
-    /* device: a full-bleed panel shrinks into a device screen. The panel is
-       position:absolute; opts.to is the screen box in stage pixels {left, top, width,
-       height, radius}; opts.chrome (bezel, notch, status bar) fades in as it lands. */
+    /* device: a full-bleed panel shrinks into a device screen, carrying what is on
+       it. The panel is position:absolute; opts.to is the screen box in stage pixels
+       {left, top, width, height, radius}; opts.content (a full-frame layer inside the
+       panel) shrinks with it so nothing vanishes mid-move; opts.chrome (bezel, notch,
+       status bar) fades in as it lands. */
     device: function (tl, panel, at, opts) {
       panel = $(panel); opts = opts || {};
-      var to = opts.to, d = opts.duration || 0.8;
+      var to = opts.to, d = opts.duration || 0.5;
       tl.to(panel, { left: to.left, top: to.top, width: to.width, height: to.height, borderRadius: to.radius == null ? 48 : to.radius, duration: d, ease: 'expo.inOut' }, at);
+      if (opts.content) {
+        // The panel's starting size is its layout when the timeline is built (full-bleed).
+        var c = $(opts.content), k = to.width / panel.offsetWidth;
+        tl.to(c, { scale: k, y: (to.height - c.offsetHeight * k) / 2, transformOrigin: '0px 0px', duration: d, ease: 'expo.inOut' }, at);
+      }
       if (opts.chrome) tl.fromTo($(opts.chrome), { autoAlpha: 0, scale: 1.04 }, { autoAlpha: 1, scale: 1, duration: 0.3, ease: 'power2.out' }, at + d * 0.7);
       return tl;
     },
@@ -258,17 +266,20 @@
           return memo[k];
         };
       };
-      var at = opts.at, inD = opts.inDuration || 0.32, outD = opts.outDuration || 0.5, blur = blurFilter(stage, opts.blur == null ? 28 : opts.blur);
+      // hold: how long the incoming element stays full-frame before the pull back, so the swap reads.
+      var at = opts.at, inD = opts.inDuration || 0.32, outD = opts.outDuration || 0.5, hold = opts.hold == null ? 0.16 : opts.hold, blur = blurFilter(stage, opts.blur == null ? 28 : opts.blur);
       var full = into($(opts.from)), back = into($(opts.to));
       tl.set(a, { transformOrigin: '0px 0px', filter: 'url(#' + blur.id + ')' }, at - inD)
         .to(a, { x: function () { return full('x'); }, y: function () { return full('y'); }, scale: function () { return full('scale'); }, duration: inD, ease: 'expo.in' }, at - inD)
         .fromTo(blur.node, { attr: { stdDeviation: '0 0' } }, { attr: { stdDeviation: blur.max + ' 0' }, duration: inD, ease: 'expo.in', immediateRender: false }, at - inD)
         .set(a, { autoAlpha: 0 }, at)
-        .set(b, { autoAlpha: 1 }, at)
-        .fromTo(b, { x: function () { return back('x'); }, y: function () { return back('y'); }, scale: function () { return back('scale'); }, transformOrigin: '0px 0px', filter: 'url(#' + blur.id + ')' },
-          { x: 0, y: 0, scale: 1, duration: outD, ease: 'expo.out', immediateRender: false }, at)
-        .fromTo(blur.node, { attr: { stdDeviation: blur.max + ' 0' } }, { attr: { stdDeviation: '0 0' }, duration: outD, ease: 'expo.out', immediateRender: false }, at)
-        .set([a, b], { filter: 'none' }, at + outD);
+        // The incoming element is full-frame from the cut, holds, then pulls back.
+        .set(b, { autoAlpha: 1, x: function () { return back('x'); }, y: function () { return back('y'); }, scale: function () { return back('scale'); }, transformOrigin: '0px 0px', filter: 'url(#' + blur.id + ')' }, at)
+        .to(b, { x: 0, y: 0, scale: 1, duration: outD, ease: 'expo.inOut' }, at + hold)
+        .fromTo(blur.node, { attr: { stdDeviation: blur.max + ' 0' } }, { attr: { stdDeviation: '0 0' }, duration: 0.12, ease: 'power2.out', immediateRender: false }, at)
+        .fromTo(blur.node, { attr: { stdDeviation: '0 0' } }, { attr: { stdDeviation: blur.max * 0.5 + ' 0' }, duration: outD * 0.4, ease: 'power2.in', immediateRender: false }, at + hold)
+        .to(blur.node, { attr: { stdDeviation: '0 0' }, duration: outD * 0.6, ease: 'power2.out' }, at + hold + outD * 0.4)
+        .set([a, b], { filter: 'none' }, at + hold + outD);
       return tl;
     },
 
