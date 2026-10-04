@@ -83,6 +83,14 @@ Evidence: conversation `dd410f7a`, full build `7e766c06` ($6.99, 49 calls). The 
    - [ ] Maya's layered SVG (owner preparing), then a real rig build.
    - Also fixed: the close-inspection operation was missing from the sandbox tool's allowed list, so it would have failed silently in builds.
 
+9. **Sound measured, motion by kind, and a benchmark** (learned from veedstudio/open-edit, Apache-2.0, and the "Motion Engineering" article and yihui-dev/awesome-opus5-5-videos; owner: "add them", 2026-10-04; not started):
+   - [ ] **Speech found from the sound, not the transcript** (open-edit `speech-probe`): noise floor, speech onset and decay, and every pause, read from levels. Cut and pause points come from it; sound before the first transcribed word is reported (the reference's "psst" was merged into "Got" by the transcriber). Feeds the audio-edge check and where the space op adds pauses.
+   - [ ] **Crossfaded, frame-snapped joins** (open-edit `apply-edl`): every audio join in a media cut gets a short crossfade (about 40 ms) and every range snaps to the frame grid, so joins cannot click or stop abruptly; the audio-edge check then confirms rather than catches.
+   - [ ] **A motion rule per kind of object** (article): each recurring system gets a motion class (small controls snap, large panels settle, headlines arrive fast and hold, the camera moves slowly; springs only where they mean something). The builder follows it and the reviewer checks it, so not everything eases the same way.
+   - [ ] **Sound effects land** (article, "eyes closed" test): the listening check on the export also checks that effects fall on the cuts, presses and the logo landing they belong to.
+   - [ ] **Failed loads stop the render; renders are repeatable** (open-edit): a page error or an asset that fails to load ends the render with a clear error instead of a quiet gap; guidance asks for seeded randomness so the same composition renders the same way.
+   - [ ] **Benchmark set** (awesome-opus5-5-videos): 10 to 15 of its product and explainer prompts run through Create after the items above, compared with the originals, gaps tracked. Internal testing only: each prompt and video belongs to its creator. Costs credits and model calls per run.
+
 Order: 1 and 2 (built 2026-10-03, commits 2249c9a4, 96e8b9bb; 804 API / 209 worker tests), then the audio part of 3, then the rest. First real study of the Instagram reference (asset 1523): 9 shots, 40 frames, the sticker window at 2.7–3.1 s found, speech 94% of the video at 3.6 words a second; the moment list waits on the Anthropic account's credit. Live acceptance pending.
 
 ### First implementation slice — prepared mascot rig (2026-10-03)
@@ -245,6 +253,9 @@ Priority: complete the urgent V1–V8 workflow above and its representative sequ
 - [ ] **L6 — Reference-to-output motion comparison.** Extend R1/Q2: inspect the reference transition and the corresponding rendered segment with aligned timestamps and comparable contact sheets. Report differences in timing, movement, layout and requested treatment; carry findings into repair. Sampling is not exhaustive semantic verification, and audio needs its own check.
 - [ ] **L7 — Batch variants from an approved result.** After L1/L2 acceptance, support several products or supplied data rows with a batch quote/ceiling, shared asset reuse, per-item status, cancellation and idempotent recovery. Validate each item and retain automated checks on every output; deeper review can prioritize exceptions. One failure must not repurchase or overwrite successful siblings.
 - [ ] **L8 — Small proven component library.** Begin with accepted talking-character introductions, product reveals, browser demonstrations and kinetic headlines. Store previews, supported inputs, dependencies and compatibility limits. Let the agent discover/reuse or author something new; avoid fixed palettes and compulsory templates. Promote only reviewed examples, with provenance and applicable asset permissions.
+- [ ] **L9 — Re-render only what changed** (from open-edit `render --from/--to`): cache rendered segments and re-render only the edited stretch, so review fixes and follow-up revisions are faster. Depends on how the HyperFrames render can be split; the full render stays the delivered file's source of truth until proven equal.
+- [ ] **L10 — Re-compose each format, don't crop** (from the "Motion Engineering" article): 9:16, 1:1, 4:5 and 16:9 versions built from the same assets and beats, each with its own type scale, density and camera path. Matches the product's "one video, 4 formats" claim; builds on L1/L2.
+- [ ] **L11 — 3D, shader and particle building blocks** (from awesome-opus5-5-videos, where most showreels use canvas, three.js and shaders): particle bursts, shader wipes, 3D product turns, added to the L8 library once reviewed.
 
 ## Harness and workflow closeout — 2026-10-03
 
