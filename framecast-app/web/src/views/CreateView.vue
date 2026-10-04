@@ -727,7 +727,9 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>
                         <p class="muted">{{ referenceTally(planByMessage[m.id].plan) }}</p>
-                        <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}</li></ul>
+                        <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}<template v-if="d.carried_by"> · its job: {{ d.carried_by }}</template></li></ul>
+                        <template v-if="planByMessage[m.id].plan.reference_systems?.length"><p class="muted">Repeated elements, built the same way each time:</p>
+                        <ul><li v-for="x in planByMessage[m.id].plan.reference_systems" :key="x.system"><b>{{ x.name || 'Element' }}</b><template v-if="x.decision === 'drop'"> · left out</template><template v-else-if="x.beats?.length"> · {{ x.beats.join(', ') }}</template> — {{ x.spec }}</li></ul></template>
                         <p v-if="planByMessage[m.id].plan.reference_unaccounted?.length" class="muted">{{ planByMessage[m.id].plan.reference_unaccounted.length }} more {{ planByMessage[m.id].plan.reference_unaccounted.length === 1 ? 'moment was' : 'moments were' }} not planned yet; ask for them if they matter.</p>
                       </div>
                       <div v-if="planByMessage[m.id].plan.reference_observations?.length" class="checks">

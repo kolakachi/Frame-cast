@@ -178,7 +178,7 @@ class PlannerReferenceInspectionTest extends TestCase
         $inspector = \Mockery::mock(PlannerReferenceInspector::class);
         $inspector->shouldReceive('close'); $this->app->instance(PlannerReferenceInspector::class, $inspector);
         $short = ['summary' => 'Short', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4], ['label' => 'Step 1', 'start' => 5, 'end' => 9]],
-            'reference_decisions' => [['moment' => '21:m1', 'decision' => 'keep', 'beat' => 'Hook'], ['moment' => '21:m2', 'decision' => 'replace', 'beat' => 'CTA statement'], ['moment' => '21:m3', 'decision' => 'drop', 'beat' => '']]];
+            'reference_decisions' => [['moment' => '21:m1', 'decision' => 'keep', 'beat' => 'Hook'], ['moment' => '21:m2', 'decision' => 'replace', 'beat' => 'CTA statement'], ['moment' => '21:m3', 'decision' => 'drop', 'beat' => '', 'carried_by' => 'not needed: the brief leaves it out']]];
         $problems = \App\Services\Create\Planning\PlanPrompt::problems($short, $this->context());
         $this->assertCount(3, $problems, json_encode($problems));
         $studied = ['settings' => ['duration_seconds' => 15], 'files' => [['reference' => ['study' => ['moments' => [['id' => '21:m1'], ['id' => '21:m2'], ['id' => '21:m3'], ['id' => '21:m4']]]]]]];

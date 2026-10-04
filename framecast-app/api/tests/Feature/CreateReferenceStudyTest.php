@@ -49,7 +49,8 @@ class CreateReferenceStudyTest extends TestCase
         config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5']);
         Http::fake(['api.anthropic.com/*' => Http::response(['usage' => ['input_tokens' => 1000, 'output_tokens' => 200], 'content' => [['type' => 'text', 'text' => json_encode([
             'summary' => 'Three colour cards with a sliding badge.',
-            'moments' => [['start' => 0, 'end' => 2, 'kind' => 'hook', 'on_screen_text' => 'Grow fast', 'visual' => 'red card', 'motion' => 'none', 'transition_in' => 'none', 'spoken' => 'Grow fast'],
+            'systems' => [['id' => 's1', 'name' => 'Colour card', 'look' => 'Full-frame flat colour', 'entry' => 'hard cut', 'active' => 'holds', 'hold' => '2 s', 'exit' => 'hard cut'], ['name' => '']],
+            'moments' => [['start' => 0, 'end' => 2, 'kind' => 'hook', 'on_screen_text' => 'Grow fast', 'visual' => 'red card', 'motion' => 'none', 'transition_in' => 'none', 'spoken' => 'Grow fast', 'purpose' => 'sets up the promise', 'system' => 's1'],
                 ['start' => 3, 'end' => 4, 'kind' => 'sticker', 'on_screen_text' => '', 'visual' => 'white badge slides across', 'motion' => 'slides left to right', 'transition_in' => 'none', 'spoken' => ''],
                 ['start' => 2.4, 'end' => 5, 'kind' => 'text', 'on_screen_text' => 'Here is how', 'visual' => 'blue card', 'motion' => 'none', 'transition_in' => 'cut', 'spoken' => 'Here is how']],
             'patterns' => ['text_reveal' => 'text lands with the spoken words', 'signature' => 'the sliding badge']])]]])]);
@@ -72,6 +73,14 @@ class CreateReferenceStudyTest extends TestCase
         $this->assertSame(['text_reveal' => 'text lands with the spoken words', 'signature' => 'the sliding badge'], $study['patterns']);
         Http::assertSent(fn ($req) => collect($req['messages'][0]['content'])->where('type', 'image')->count() === count($study['sheets']));
         $this->assertSame('ok', $study['moments_status']);
+        // Recurring systems are described once; moments point at them and say what they do for the viewer.
+        $this->assertSame([['id' => 's1', 'name' => 'Colour card', 'look' => 'Full-frame flat colour', 'entry' => 'hard cut', 'active' => 'holds', 'hold' => '2 s', 'exit' => 'hard cut']], $study['systems']);
+        $this->assertSame(['sets up the promise', 's1'], [$study['moments'][0]['purpose'], $study['moments'][0]['system']]);
+        $this->assertSame('', $study['moments'][1]['system'], 'an unknown system is not invented');
+        // Frames are labelled with the words being spoken then; the model is told so.
+        $this->assertTrue($study['sheets'][0]['labelled']);
+        $this->assertSame('Grow fast.', $study['sheets'][0]['labels'][array_search(collect($study['samples'])->first(fn ($t) => $t >= 0.2 && $t <= 1.4), $study['sheets'][0]['times'])] ?? null);
+        Http::assertSent(fn ($req) => str_contains(json_encode($req['messages']), 'the words being spoken then'));
         $this->assertTrue(ReferenceStudy::reusable($study, str_repeat('a', 64)));
         $this->assertFalse(ReferenceStudy::reusable([...$study, 'moments_status' => 'failed'], str_repeat('a', 64)), 'a study whose moment list failed is made again');
         $this->assertFalse(ReferenceStudy::reusable($study, str_repeat('b', 64)), 'different bytes, new study');

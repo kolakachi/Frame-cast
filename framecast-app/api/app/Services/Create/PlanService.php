@@ -214,7 +214,8 @@ class PlanService
             'how_to_use' => 'Account for every moment id in reference_decisions. Times are seconds in the reference.',
             'summary' => $s['summary'] ?? null, 'duration_seconds' => $s['duration_seconds'] ?? null, 'coverage' => $s['coverage'] ?? null,
             'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
-            'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + array_diff_key($m, ['id' => 1]), (array) ($s['moments'] ?? [])),
+            'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + (($m['system'] ?? '') !== '' ? ['system' => $assetId.':'.$m['system']] : []) + array_diff_key($m, ['id' => 1, 'system' => 1]), (array) ($s['moments'] ?? [])),
+            'systems' => array_map(fn ($x) => ['id' => $assetId.':'.$x['id']] + array_diff_key($x, ['id' => 1]), (array) ($s['systems'] ?? [])),
             'speech' => $speech ? array_filter(['text' => mb_substr((string) ($speech['text'] ?? ''), 0, 1200), 'first_word_at' => $speech['first_word_at'] ?? null, 'last_word_at' => $speech['last_word_at'] ?? null,
                 'pauses' => array_slice((array) ($speech['pauses'] ?? []), 0, 12),
                 'timed_words' => mb_substr(collect($speech['words'] ?? [])->map(fn ($w) => $w[1].' '.$w[0])->implode(' | '), 0, 3000)], fn ($v) => $v !== null && $v !== '' && $v !== []) : null,
@@ -408,8 +409,15 @@ class PlanService
         // The reference study's moments: every one gets an explicit keep, replace or drop, and nothing disappears silently.
         $known = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
         $refDecisions = collect((array) ($raw['reference_decisions'] ?? []))->filter(fn ($d) => is_array($d) && in_array($d['moment'] ?? null, $known, true) && in_array($d['decision'] ?? null, ['keep', 'replace', 'drop'], true))
-            ->unique('moment')->map(fn ($d) => ['moment' => $d['moment'], 'decision' => $d['decision'], 'beat' => $str($d['beat'] ?? '', 40), 'how' => $str($d['how'] ?? '', 140)])->values()->all();
+            ->unique('moment')->map(fn ($d) => ['moment' => $d['moment'], 'decision' => $d['decision'], 'beat' => $str($d['beat'] ?? '', 40), 'how' => $str($d['how'] ?? '', 140)]
+                + ($d['decision'] === 'drop' && $str($d['carried_by'] ?? '', 140) !== '' ? ['carried_by' => $str($d['carried_by'], 140)] : []))->values()->all();
         $plan['reference_decisions'] = $refDecisions;
+        // Recurring systems: one spec each, so every occurrence is built the same way. The study's own description travels with it.
+        $systems = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.systems', [])))->keyBy('id');
+        $plan['reference_systems'] = collect((array) ($raw['reference_systems'] ?? []))->filter(fn ($x) => is_array($x) && $systems->has($x['system'] ?? null) && in_array($x['decision'] ?? null, ['keep', 'adapt', 'drop'], true))
+            ->unique('system')->map(fn ($x) => ['system' => $x['system'], 'name' => $systems[$x['system']]['name'] ?? '', 'decision' => $x['decision'], 'spec' => $str($x['spec'] ?? '', 260),
+                'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
+                'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
         // Length from narration: a script that fills clearly less of the video than its length leads to a stated choice, not silent holds.
         $words = str_word_count(implode(' ', $narration));

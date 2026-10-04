@@ -2354,6 +2354,31 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('A shorter 20 s video', $p2['length_note']);
     }
 
+    public function test_recurring_systems_get_one_spec_and_a_dropped_moment_says_what_carries_its_job(): void
+    {
+        $study = ['summary' => 's', 'duration_seconds' => 26,
+            'systems' => [['id' => 's1', 'name' => 'Step card', 'look' => 'Black frame, white bold Step N, boxed serif label', 'entry' => 'bounces in', 'active' => 'holds', 'hold' => '1.2 s', 'exit' => 'hard cut']],
+            'moments' => [['id' => 'm1', 'start' => 4.6, 'end' => 5.6, 'kind' => 'text', 'purpose' => 'names the first step', 'system' => 's1'],
+                ['id' => 'm2', 'start' => 2.8, 'end' => 3.5, 'kind' => 'sticker', 'purpose' => 'adds a beat of fun', 'system' => '']]];
+        $brief = \App\Services\Create\PlanService::studyBrief(1523, $study);
+        $this->assertSame('1523:s1', $brief['moments'][0]['system'], 'a moment points at its system by full id');
+        $this->assertSame('1523:s1', $brief['systems'][0]['id']);
+        $this->assertSame('adds a beat of fun', $brief['moments'][1]['purpose']);
+        $ctx = ['files' => [['asset_id' => 1523, 'purpose' => 'reference', 'asset_type' => 'video', 'reference' => ['study' => $brief]]], 'voices' => [], 'settings' => ['duration_seconds' => 30, 'audio' => 'original']];
+        $raw = ['summary' => 'x', 'left_out' => '',
+            'reference_decisions' => [['moment' => '1523:m1', 'decision' => 'keep', 'beat' => 'Step 1', 'how' => 'Same card'],
+                ['moment' => '1523:m2', 'decision' => 'drop', 'beat' => '', 'how' => 'No mascot', 'carried_by' => 'Hook: "first" pops in orange with a wink']],
+            'reference_systems' => [['system' => '1523:s1', 'decision' => 'keep', 'spec' => 'Black card, white Step N, serif label box, bounce in', 'beats' => ['Step 1', 'Step 2']], ['system' => '1523:s9', 'decision' => 'keep', 'spec' => 'invented']]];
+        $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
+        $this->assertSame('Hook: "first" pops in orange with a wink', $p['reference_decisions'][1]['carried_by']);
+        $this->assertArrayNotHasKey('carried_by', $p['reference_decisions'][0], 'only a dropped moment carries its job elsewhere');
+        $this->assertCount(1, $p['reference_systems'], 'unknown systems are dropped');
+        $this->assertSame(['system' => '1523:s1', 'name' => 'Step card', 'decision' => 'keep', 'spec' => 'Black card, white Step N, serif label box, bounce in', 'beats' => ['Step 1', 'Step 2'],
+            'reference' => ['look' => 'Black frame, white bold Step N, boxed serif label', 'entry' => 'bounces in', 'active' => 'holds', 'hold' => '1.2 s', 'exit' => 'hard cut']], $p['reference_systems'][0]);
+        $uncarried = [...$raw, 'reference_decisions' => [$raw['reference_decisions'][0], array_diff_key($raw['reference_decisions'][1], ['carried_by' => 1])], 'scenes' => [['label' => 'Step 1', 'start' => 0, 'end' => 30]]];
+        $this->assertStringContainsString('do not say what now does their job (carried_by): 1523:m2', implode(' ', \App\Services\Create\Planning\PlanPrompt::problems($uncarried, $ctx)));
+    }
+
     public function test_unlimited_local_testing_lifts_limits_and_the_spend_cap_but_never_outside_local(): void {
         $this->pilot();
         config(['create.unlimited'=>true,'create.agent_provider'=>'anthropic','create.agent_model'=>'claude-opus-5-5','services.anthropic.key'=>'k','create.pilot_budget_microusd'=>0]);
