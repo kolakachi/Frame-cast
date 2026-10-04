@@ -3,7 +3,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {inspectionReport} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
-if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip','inspect_reference'].includes(operation))throw Error('Invalid local job');
+if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip','inspect_reference','detail'].includes(operation))throw Error('Invalid local job');
 if(operation==='inspect_reference'){
  const {inspectReference}=await import('./reference-inspection.mjs');
  const dir='/output/live/'+id;
@@ -45,6 +45,12 @@ if(operation==='strip'||operation==='snapshot')for(const file of await readdir(o
 for(const file of await readdir(source+'/project')){
  if(!/^[a-zA-Z0-9_.-]+\.(html|css|js|png|jpg|webp|svg|ttf|mp4|mp3|wav)$/.test(file)||(await lstat(source+'/project/'+file)).isSymbolicLink())throw Error('Invalid staged file');
  await copyFile(source+'/project/'+file,root+'/'+file);
+}
+// Prepared character rigs named by placeholder are placed inline before anything reads the page.
+{
+ const {placeRigs}=await import('./rig-place.mjs');const {readFileSync}=await import('node:fs');
+ const html=await readFile(root+'/index.html','utf8').catch(()=>null);
+ if(html&&html.includes('data-rig-src')){const placed=placeRigs(html,f=>readFileSync(root+'/'+f,'utf8'));if(placed!==html)await writeFile(root+'/index.html',placed);}
 }
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
 for(const f of ['barty-motion.js','barty-hyperframes.js','wyv-mascot.js'])await copyFile('/opt/worker/runtime/'+f,root+'/'+f);

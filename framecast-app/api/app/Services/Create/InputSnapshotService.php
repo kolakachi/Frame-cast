@@ -12,7 +12,7 @@ class InputSnapshotService
 {
     private const TYPES = ['image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg'],
         'image/webp' => ['image', 'webp'], 'video/mp4' => ['video', 'mp4'],
-        'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav']];
+        'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/svg+xml' => ['image', 'svg']];
 
     public function inherited(string $conversationId, ?string $revisionId): array
     {
@@ -68,6 +68,7 @@ class InputSnapshotService
                     abort_if($stored + $total + $bytes > (int) config('create.input_workspace_bytes', 1073741824), 422, 'Local input storage limit reached. Clean up expired previews before adding media.');
                     $file = stream_get_meta_data($tmp)['uri'];
                     $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file);
+                    if (! isset(self::TYPES[$mime]) && $asset->mime_type === 'image/svg+xml' && RigSvg::looksLike((string) file_get_contents($file, false, null, 0, 4096))) $mime = 'image/svg+xml';
                     abort_unless(isset(self::TYPES[$mime]) && self::TYPES[$mime][0] === $asset->asset_type, 422, 'Unsupported attachment format. Use PNG, JPEG, WebP, MP4, MP3 or WAV.');
                     $hash = hash_file('sha256', $file);
                     $name = 'asset-'.$asset->id.'-'.$hash.'.'.self::TYPES[$mime][1];
@@ -83,6 +84,7 @@ class InputSnapshotService
                         'sha256' => $hash, 'bytes' => $bytes, 'mime_type' => $mime, 'asset_type' => $asset->asset_type,
                         'storage_path' => $path, 'duration_seconds' => $asset->duration_seconds,
                         'transcript' => mb_substr((string) $asset->transcript_text, 0, 20000),
+                        ...(is_array(data_get($asset->metadata_json, 'rig')) ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),
                         ...($attachment->purpose === 'reference' && ($brief = PlanService::referenceBrief($asset)) ? ['reference' => $brief] : [])];
                     $total += $bytes;
                 } finally { fclose($stream); fclose($tmp); }

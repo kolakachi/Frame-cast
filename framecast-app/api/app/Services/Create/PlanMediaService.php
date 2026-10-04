@@ -144,7 +144,8 @@ class PlanMediaService
 
     private function context(object $run, array $input): array
     {
-        $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')
+        // A layered rig SVG is placed by the build, not sent to an image model as a photo reference.
+        $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => ($f['mime_type'] ?? '') !== 'image/svg+xml')
             ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
         return ['character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images,

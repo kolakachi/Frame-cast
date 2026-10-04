@@ -290,7 +290,8 @@ class PlanService
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($a->asset_id);
             return $asset ? ['asset_id' => (int) $asset->id, 'title' => (string) $asset->title, 'asset_type' => $asset->asset_type, 'purpose' => $a->purpose,
                 'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json,
-                'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null] : null;
+                'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null,
+                ...(is_array(data_get($asset->metadata_json, 'rig')) ? ['rig' => data_get($asset->metadata_json, 'rig')] : [])] : null;
         })->filter()->values()->all();
         return [
             '_workspace_id' => (int) $user->workspace_id,

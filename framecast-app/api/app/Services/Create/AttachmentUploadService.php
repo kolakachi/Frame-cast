@@ -10,20 +10,27 @@ use Illuminate\Support\Str;
 class AttachmentUploadService
 {
     public const TYPES = ['image/png'=>['image','png'], 'image/jpeg'=>['image','jpg'], 'image/webp'=>['image','webp'],
-        'video/mp4'=>['video','mp4'], 'audio/mpeg'=>['audio','mp3'], 'audio/wav'=>['audio','wav'], 'audio/x-wav'=>['audio','wav']];
+        'video/mp4'=>['video','mp4'], 'audio/mpeg'=>['audio','mp3'], 'audio/wav'=>['audio','wav'], 'audio/x-wav'=>['audio','wav'], 'image/svg+xml'=>['image','svg']];
 
     public function upload(User $user, string $conversationId, UploadedFile $file, string $purpose, string $key, int $version): Asset
     {
         $service = app(ConversationService::class);
         $service->authorize($user, true);
-        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file->getRealPath());
+        $path = $file->getRealPath(); $size = (int) $file->getSize(); $rig = null;
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
+        // An SVG (a character drawn in layers for the rig) is cleaned before it is stored, and checked against the rig contract.
+        if (! isset(self::TYPES[$mime]) && $size <= RigSvg::MAX_BYTES && RigSvg::looksLike((string) file_get_contents($path, false, null, 0, 4096))) $mime = 'image/svg+xml';
+        if ($mime === 'image/svg+xml') {
+            $prepared = RigSvg::prepare((string) file_get_contents($path));
+            $path = tempnam(sys_get_temp_dir(), 'rig'); file_put_contents($path, $prepared['svg']); $size = (int) filesize($path); $rig = $prepared['rig'];
+        }
         $type = self::TYPES[$mime] ?? null;
-        abort_unless($file->isValid() && $type && $file->getSize() > 0 && $file->getSize() <= config('create.input_file_bytes'), 422, 'Use PNG, JPEG, WebP, MP4, MP3 or WAV, up to 100 MB per file.');
+        abort_unless($file->isValid() && $type && $size > 0 && $size <= config('create.input_file_bytes'), 422, 'Use PNG, JPEG, WebP, SVG, MP4, MP3 or WAV, up to 100 MB per file.');
         abort_unless(in_array($purpose,['source','reference'],true),422);
-        $hash = hash_file('sha256',$file->getRealPath());
+        $hash = hash_file('sha256',$path);
         $written = null;
         try {
-            return DB::transaction(function () use ($user,$conversationId,$file,$purpose,$key,$version,$service,$type,$mime,$hash,&$written) {
+            return DB::transaction(function () use ($user,$conversationId,$file,$path,$size,$rig,$purpose,$key,$version,$service,$type,$mime,$hash,&$written) {
                 Workspace::whereKey($user->workspace_id)->lockForUpdate()->firstOrFail();
                 $c = $service->conversation($user,$conversationId,true);
                 abort_if($c->archived_at,409,'Restore this conversation before adding files.');
@@ -39,19 +46,19 @@ class AttachmentUploadService
                 $attached = DB::table('create_attachments')->where('conversation_id',$c->id);
                 abort_if((clone $attached)->count() >= 20,422,'Use at most 20 attachments.');
                 $total = Asset::whereIn('id',(clone $attached)->pluck('asset_id'))->sum('file_size_bytes');
-                abort_if($total + $file->getSize() > config('create.input_total_bytes'),422,'Use at most 200 MB of attachments per conversation.');
+                abort_if($total + $size > config('create.input_total_bytes'),422,'Use at most 200 MB of attachments per conversation.');
                 $stored = Asset::where('workspace_id',$user->workspace_id)->where('storage_url','like','create-upload://%')->sum('file_size_bytes');
-                abort_if($stored + $file->getSize() > config('create.input_workspace_bytes'),422,'Local upload storage is full. Existing files are preserved.');
+                abort_if($stored + $size > config('create.input_workspace_bytes'),422,'Local upload storage is full. Existing files are preserved.');
                 $suffix = $user->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
                 $written = 'create/uploads/'.$suffix;
-                $stream = fopen($file->getRealPath(),'rb');
+                $stream = fopen($path,'rb');
                 try { abort_unless(Storage::disk('local')->put($written,$stream,['visibility'=>'private']),503,'Upload storage is unavailable.'); }
                 finally { if(is_resource($stream)) fclose($stream); }
                 $asset = Asset::create(['workspace_id'=>$user->workspace_id,'created_by_user_id'=>$user->id,
                     'title'=>mb_substr(basename($file->getClientOriginalName()),0,255),'asset_type'=>$type[0],
-                    'storage_url'=>'create-upload://'.$suffix,'mime_type'=>$mime,'file_size_bytes'=>$file->getSize(),
+                    'storage_url'=>'create-upload://'.$suffix,'mime_type'=>$mime,'file_size_bytes'=>$size,
                     'transcription_status'=>'not_requested','status'=>'active','restriction_scope'=>'workspace',
-                    'metadata_json'=>['create_upload_key'=>$key,'conversation_id'=>$conversationId,'sha256'=>$hash,'purpose'=>$purpose]]);
+                    'metadata_json'=>['create_upload_key'=>$key,'conversation_id'=>$conversationId,'sha256'=>$hash,'purpose'=>$purpose]+($rig?['rig'=>$rig]:[])]);
                 $service->attach($user,$conversationId,$asset->id,$purpose,$version);
                 return $asset;
             });

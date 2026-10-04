@@ -536,9 +536,9 @@ async function attach(asset) {
 }
 async function detach(asset) { await guarded(async () => { await api.delete(`${base()}/attachments/${asset.asset_id}`,{data:{expected_version:conversation.value.version}}); quote.value = null; await refresh() }) }
 function chooseFiles(files) {
-  const allowed = capabilities.value?.uploads?.mime_types || ['image/png','image/jpeg','image/webp','video/mp4','audio/mpeg','audio/wav','audio/x-wav']
+  const allowed = capabilities.value?.uploads?.mime_types || ['image/png','image/jpeg','image/webp','image/svg+xml','video/mp4','audio/mpeg','audio/wav','audio/x-wav']
   for(const file of Array.from(files || [])) {
-    const validation = file.size > (capabilities.value?.uploads?.max_file_bytes || 104857600) ? 'This file is larger than 100 MB.' : !allowed.includes(file.type) ? 'Use PNG, JPEG, WebP, MP4, MP3 or WAV.' : null
+    const validation = file.size > (capabilities.value?.uploads?.max_file_bytes || 104857600) ? 'This file is larger than 100 MB.' : !allowed.includes(file.type) ? 'Use PNG, JPEG, WebP, SVG, MP4, MP3 or WAV.' : null
     if(uploads.value.length + (data.value?.attachments?.length || 0) >= 20) { error.value = 'Use at most 20 attachments.'; break }
     uploads.value.push({key:crypto.randomUUID(),file,progress:0,state:'ready',error:validation,purpose:'reference',confirmed:false,preview_url:validation ? '' : URL.createObjectURL(file)})
   }
@@ -948,7 +948,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="uploads.length || pendingAttachments.length" class="attached">
               <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
-                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small>
+                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small><small v-if="a.rig" class="ref-note">{{ a.rig.ready ? 'Character rig ready: it can blink, look around, tilt its head and change between four mouth shapes.' : 'Not ready to animate: ' + (a.rig.problems || []).slice(0, 3).join(' ') }}</small>
                   <div v-if="a.suggested_claims?.length && canWrite" class="claims">
                     <small class="muted">Claims on this page. Tick the ones that may appear on screen:</small>
                     <label v-for="(c, i) in a.suggested_claims" :key="i" class="claims__row" :title="'From the page: ' + c.quote"><input v-model="claimPicks[a.asset_id + ':' + i]" type="checkbox" /> {{ c.text }}</label>
@@ -1047,7 +1047,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
           </template>
         </aside>
       </div>
-      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
+      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
       <CreateDialog :open="!!characterReview" title="Approve your character’s look" @close="characterReview=null">
         <template v-if="characterReview">
           <p>This preview becomes the reference for every pose and talking clip. Check the face, proportions, outfit and visual treatment before continuing.</p>

@@ -2619,4 +2619,20 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($asset->id, $quoted['asks'][0]['asset_id'], 'the build learns which file answers which request');
         $this->assertTrue($quoted['asks'][1]['skipped']);
     }
+
+    public function test_an_uploaded_character_svg_is_stored_clean_with_its_rig_check_and_reaches_the_build(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" onload="x()"><g id="head"><circle r="1"/></g></svg>';
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('maya.svg', $svg);
+        $asset = app(\App\Services\Create\AttachmentUploadService::class)->upload($this->owner, $c->id, $file, 'source', 'svg-1', 0);
+        $this->assertSame('image/svg+xml', $asset->mime_type);
+        $this->assertStringEndsWith('.svg', $asset->storage_url);
+        $stored = app(\App\Services\Media\StorageService::class)->get($asset->storage_url);
+        $this->assertStringNotContainsString('onload', $stored, 'the stored file is the cleaned one');
+        $this->assertFalse($asset->metadata_json['rig']['ready']);
+        $this->assertContains('No "left-eye" layer.', $asset->metadata_json['rig']['problems']);
+        $this->assertSame(hash('sha256', $stored), $asset->metadata_json['sha256']);
+    }
 }

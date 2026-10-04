@@ -14,6 +14,16 @@ The default remains neutral and motionless. Author cues only where the brief/ref
 
 An inline `<svg>` contains exactly one group each with `data-rig-part="head"`, `left-eye`, `right-eye`, `left-pupil`, `right-pupil`. Eyes and all mouth groups must be descendants of the head. Each pupil belongs inside its corresponding eye so it closes with that eyelid. Supply four groups tagged `data-rig-mouth="rest|smile|open|round"`. Those groups must contain the actual different mouth artwork; empty groups do not supply performance. Author layers in shared SVG coordinates, avoiding competing transforms on controlled groups. Use an outer wrapper for composition movement. Keep the underlying approved artwork unchanged on unrelated edits.
 
+## Placing an uploaded rig
+
+A user's character SVG that passed the rig check appears in assets with `rig.ready: true` (the app cleaned it and mapped layer names such as `left-eye` or `mouth-smile` onto `data-rig-part` / `data-rig-mouth`). Do not paste or retype it. Place it by name:
+
+```html
+<div id="maya" class="clip" data-start="0" data-duration="30" data-rig-src="asset-12-….svg"></div>
+```
+
+Whenever the page is checked, reviewed or rendered, that placeholder becomes the inline `<svg id="maya" …>` with all its layers, so `WyvMascot.attach(tl, document.querySelector('#maya'), …)` works on it. Size and position it with CSS on its id or on an outer wrapper. An asset with `rig.ready: false` lists the missing layers in `rig.problems`: say so in the summary and use it as a still picture only.
+
 ## Timeline API
 
 Load `gsap.min.js`, then `wyv-mascot.js`. Register the existing Hyperframes composition timeline inline as normal:

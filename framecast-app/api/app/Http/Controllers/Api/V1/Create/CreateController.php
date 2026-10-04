@@ -74,7 +74,7 @@ class CreateController extends Controller
                 $storage = app(StorageService::class);
                 return ['asset_id'=>$asset->id,'purpose'=>$attachment->purpose,'title'=>$asset->title,'asset_type'=>$asset->asset_type,
                     'attached_at'=>$attachment->created_at,'duration_seconds'=>$asset->duration_seconds,'dimensions'=>$asset->dimensions_json,
-                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
+                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),'rig'=>data_get($asset->metadata_json,'rig'),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
             })->filter()->values(),
             'revisions' => $revisions,
             // held_credits: what a run still holds of its approval (released as it settles), shown beside an active build.

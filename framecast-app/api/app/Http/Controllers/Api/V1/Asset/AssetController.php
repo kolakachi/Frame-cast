@@ -420,6 +420,8 @@ class AssetController extends Controller
         }
 
         return $this->streamMedia($request, $stream, $storageService->size($rawStorageUrl), [
+            // An SVG is a document: served as one that can never run script or load anything, even if opened directly.
+            ...(($asset->mime_type ?? '') === 'image/svg+xml' ? ['Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; img-src data:", 'X-Content-Type-Options' => 'nosniff'] : []),
             'Content-Type' => $asset->mime_type ?: 'application/octet-stream',
             'Cache-Control' => 'private, max-age=3600',
             'Accept-Ranges' => 'bytes',
