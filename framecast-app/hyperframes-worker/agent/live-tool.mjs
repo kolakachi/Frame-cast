@@ -79,6 +79,15 @@ if(operation==='delivery'){
  const pick=re=>findings.filter(f=>re.test(f.code||'')).slice(0,12);
  result={ok:true,band,safe_area:pick(/caption_zone/),edges:pick(/frame|offscreen|overflow|clip/),contrast:pick(/contrast/),pacing:await pacing()};
 }
+else if(operation==='detail'){
+ // Close inspection: crops of text and pictures at key moments, sequences across character actions.
+ const req=JSON.parse(await readFile(source+'/detail-request.json','utf8'));
+ const num=v=>Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=30;
+ const times=(Array.isArray(req.times)?req.times:[]).filter(num).map(Number).slice(0,6);
+ const sequences=(Array.isArray(req.sequences)?req.sequences:[]).filter(s=>Array.isArray(s)&&num(s[0])&&num(s[1])&&Number(s[1])>Number(s[0])).map(s=>[Number(s[0]),Math.min(Number(s[1]),Number(s[0])+2.5),String(s[2]||'action').slice(0,40)]).slice(0,3);
+ const {detailSheet}=await import('./detail-review.mjs');
+ result=await detailSheet({root,width:dims[0],height:dims[1],times,sequences,out});
+}
 else if(operation==='render')result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');

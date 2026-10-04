@@ -112,3 +112,12 @@ test('the reviewer is told which uploaded items belong on which beat; requests w
  assert.match(text,/The user uploaded these for specific beats; check each appears where planned: \[\{"what":"Your script editor screen","beat":"Step 2"\}\]/);
  assert.doesNotMatch(text,/Your logo/);
 });
+test('close inspection is a third image, with each cell named in order',async()=>{
+ const {criticMessages}=await import('../critic.mjs');
+ const png='data:image/png;base64,iVBORw0KGgo=';
+ const m=criticMessages({brief:'b',plan:{scenes:[]},sheet:{image:png},strip:png,stripEvidence:{times:[1]},detail:png,detailCells:[{t:3.2,what:'text "Step 1"'},{t:9,what:'img editor.png'}]})[0];
+ assert.equal(m.content.filter(c=>c.type==='image').length,3);
+ assert.match(m.content[0].text,/Image 3: close inspection at full resolution, six cells across, in this order: \["3.2s text \\"Step 1\\"","9s img editor.png"\]/);
+ const two=criticMessages({brief:'b',plan:{scenes:[]},sheet:{image:png},detail:png,detailCells:[]})[0];
+ assert.match(two.content[0].text,/Image 2: close inspection/,'without a strip it is the second image');
+});

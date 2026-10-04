@@ -23,7 +23,7 @@ Reply with one JSON object and nothing else: {"scores":{"hook":n,"hierarchy":n,"
 const clip=(s,n)=>{s=String(s??'');return s.length>n?s.slice(0,n)+'…':s;};
 const img=data=>{const m=/^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(String(data||''));return m?{type:'image',source:{type:'base64',media_type:m[1],data:m[2]}}:null;};
 // The one user turn the critic gets.
-export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stripEvidence,authorScores,findings,fingerprint,round=1}){
+export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stripEvidence,detail,detailCells,authorScores,findings,fingerprint,round=1}){
  const beats=(plan?.scenes||[]).map(s=>`${s.start}-${s.end}s ${s.label}: ${s.idea||''}${s.uses?.length?' [uses '+s.uses.join(', ')+']':''}`).join('\n');
  const text=[
   `Brief: ${clip(brief,900)}`,
@@ -43,11 +43,12 @@ export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stri
   route?`Kind of video: ${route}.`:'',
   lookOnly?'This is the LOOK stage: stills only, one per beat. Assess design/readability against intent; do not require motion, implied motion or audio. The strip is absent on purpose.':'',
   authorScores?.length?`The author's own scores: ${authorScores.map(x=>x.time+'s '+x.score).join(', ')}. Findings: ${clip(findings,400)}`:'',
-  `Review round ${round}. Image 1: our contact sheet${sheet&&sheet.reference?' (bottom row: the reference at the same moments)':''}.${strip?' Image 2: sampled strip; use the coverage above.':''}`,
+  `Review round ${round}. Image 1: our contact sheet${sheet&&sheet.reference?' (bottom row: the reference at the same moments)':''}.${strip?' Image 2: sampled strip; use the coverage above.':''}${detail?` Image ${strip?3:2}: close inspection at full resolution, six cells across, in this order: ${clip(JSON.stringify((detailCells||[]).map(c=>c.t+'s '+c.what)),900)}. Judge legibility, type quality, logo and picture sharpness and cropping from the crops, and whether each requested action reads across its frames.`:''}`,
  ].filter(Boolean).join('\n\n');
  const content=[{type:'text',text}];
  const a=img(sheet?.image);if(a)content.push(a);
  const b=img(strip);if(b)content.push(b);
+ const c=img(detail);if(c)content.push(c);
  return [{role:'user',content}];
 }
 // The verdict, validated; a malformed reply is a revise with its text as the only directive.

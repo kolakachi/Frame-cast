@@ -52,3 +52,17 @@ test('music playing under the narration without ducking is flagged; ducked music
  assert.deepEqual(duckingFindings({rows:[rows[0],{...rows[1],src:'derived-1-duck.wav'}],planMedia}),[]);
  assert.deepEqual(duckingFindings({rows,planMedia:[planMedia[1]]}),[],'no narration, nothing to duck under');
 });
+import {clipUsageFindings} from '../timing-check.mjs';
+test('everything bought with a picture is in the video; a talking take plays nearly in full; a reported bad file is excused',()=>{
+ const planMedia=[{kind:'talking_take',status:'succeeded',file:'take.mp4',description:'Presenter reads the script'},{kind:'ai_image',status:'succeeded',file:'bg.png',description:'Studio'},
+  {kind:'character_poses',status:'succeeded',file:'pose-1.png',more_files:['pose-2.png'],description:'Poses'},{kind:'stock_video',status:'succeeded',file:'city.mp4',description:'City'},
+  {kind:'music',status:'succeeded',file:'music.wav'},{kind:'ai_image',status:'failed',file:'nope.png'}];
+ const html='<video id="t" src="take.mp4"></video><img src="pose-2.png">';
+ const rows=[{id:'t',kind:'video',src:'take.mp4',start:0,end:12}];
+ const f=clipUsageFindings({planMedia,html,rows,durations:{'take.mp4':20}});
+ assert.deepEqual(f.map(x=>x.code),['talking_clip_cut_short','bought_media_unused','bought_media_unused']);
+ assert.match(f[0].message,/take.mp4 is 20.0 s of the presenter speaking but only 12.0 s/);
+ assert.match(f[1].message,/bg.png/);assert.match(f[2].message,/city.mp4/);
+ const css=clipUsageFindings({planMedia,html:html+'\n.bg{background:url(bg.png)}',rows:[{...rows[0],end:19}],durations:{'take.mp4':20},limitations:[{evidence:'city.mp4 shows the wrong city'}]});
+ assert.deepEqual(css,[],'a stylesheet use counts, 19 of 20 s is enough, and the reported stock clip is excused');
+});

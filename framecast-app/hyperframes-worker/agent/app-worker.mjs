@@ -170,13 +170,13 @@ async function execute(run){
     settle,receipt:output=>paid?({status:'succeeded',prediction_id:output.predictionId}):({status:'succeeded',cost_microusd:0}),
     invoke:async(operation,{times=[],signal,op,input,params,cmd,args}={})=>{
      const payload=operation==='media'?{op,input,params:params??{}}:
-      operation==='run'?{cmd,args}:operation==='inspect_reference'?{input,params}:null;
+      operation==='run'?{cmd,args}:operation==='inspect_reference'?{input,params}:operation==='detail'?{times:params?.times??[],sequences:params?.sequences??[]}:null;
      const requestFile=dir+'/'+operation+'-request.json';
      if(payload)await writeFile(requestFile,JSON.stringify(operation==='run'&&unlimited?{...payload,timeout_ms:600000}:payload),{mode:0o600});
      await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:unlimited?900000:180000,maxBuffer:8000000});
      const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));
      if(payload)await unlink(requestFile).catch(()=>{});
-     const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg'})[operation];
+     const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg',detail:'detail/detail.jpg'})[operation];
      if(paid&&imageFile&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/'+imageFile)).toString('base64');
      return result;
     }});

@@ -6,7 +6,7 @@ import {preflight} from './preflight.mjs';
 import {criticLine} from './critic.mjs';
 import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
-import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings} from './timing-check.mjs';
+import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
 import {beatFindings} from './narration-timing.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
@@ -77,6 +77,17 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // It uses the already-approved critic allowance, never an extra author call.
   // The latest frames of the current revision: unreviewed ones first, else the ones the author already reviewed.
   const finalImage=()=>state.reviewImage||(state.reviewedImageRevision===state.revision?state.reviewedImage:null)||null;
+  // Close inspection for the reviewer: text and pictures at each beat's key moment, and frames across each
+  // requested character action that has a time.
+  const closeLook=async()=>{
+    if(context.lookOnly||!tools.detail)return {};
+    const scenes=context.plan?.scenes||[];
+    const times=scenes.map(s=>+((Number(s.start)+Number(s.end))/2).toFixed(2)).filter(Number.isFinite).slice(0,6);
+    const sequences=(context.plan?.character_performance||[]).filter(p=>Number.isFinite(Number(p.start))&&Number.isFinite(Number(p.end))).map(p=>[Number(p.start),Number(p.end),String(p.action||p.id||'action')]).slice(0,3);
+    if(!times.length&&!sequences.length)return {};
+    const r=await bounded(()=>tools.detail({params:{times,sequences},signal:boundedSignal})).catch(()=>null);
+    return r?.ok&&r.providerImage?{detail:r.providerImage,detailCells:r.cells||[]}:{};
+  };
   const finalReview=async()=>{
     if(!requireVisualReview||!tools.critic||!cap.reviewReserveMs||state.pending||
        (state.criticCalls??0)>=cap.criticCalls||state.checkedRevision!==state.revision||
@@ -87,7 +98,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     state.criticCalls=(state.criticCalls??0)+1;
     state.pending={kind:'provider',purpose:'final_review',revision:state.revision};await save();
     progress('Taking a final look');
-    const verdict=await bounded(()=>tools.critic({sheet:{image:finalImage(),reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,
+    const close=await closeLook();
+    const verdict=await bounded(()=>tools.critic({sheet:{image:finalImage(),reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,...close,
       authorScores:state.scores??[],findings:'Final review before the authoring allowance ends.',round:state.criticCalls,signal:boundedSignal}));
     state.pending=null;state.critic=verdict;state.criticRevision=state.revision;
     state.reviewedRevision=verdict.verdict==='pass'?state.revision:-1;
@@ -139,7 +151,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const timing=async()=>{
     if(!tools.timeline)return {ok:true};
     const html=await workspace.read('index.html').catch(()=>'');
-    if(!/<(video|audio)\b|data-spoken/.test(html)){const n=numberFindings(html,allowedText());return n.length?{ok:false,diagnostics:{ok:false,errors:n}}:{ok:true};}
+    // Every source file counts as using a bought file (a script or stylesheet may set it).
+    let sources=html;for(const f of await workspace.sourceFiles().catch(()=>[]))if(f!=='index.html'&&!/^(gsap|wyv-|barty-)/.test(f))sources+='\n'+await workspace.read(f).catch(()=>'');
+    if(!/<(video|audio)\b|data-spoken/.test(html)){const n=[...numberFindings(html,allowedText()),...(context.lookOnly?[]:clipUsageFindings({planMedia:context.planMedia||[],html:sources,rows:[],limitations:state.limitations||[]}))];return n.length?{ok:false,diagnostics:{ok:false,errors:n}}:{ok:true};}
     const tl=await bounded(()=>tools.timeline({signal:boundedSignal}));
     if(!tl?.ok)return {ok:true};
     const rows=rowsOf(tl.diagnostics);
@@ -151,6 +165,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
     errors.push(...duckingFindings({rows,planMedia:context.planMedia||[]}));
     errors.push(...await audioEdgeCheck(rows,html));
+    // Everything bought with a picture is in the video; talking clips play (nearly) in full. Not on the storyboard.
+    if(!context.lookOnly){
+      for(const r of rows)if(r.kind==='video'&&r.src&&state.durations[r.src]===undefined&&tools.media&&workspace.assets.some(a=>a.path===r.src)){
+        const p=await bounded(()=>tools.media({op:'probe',input:r.src,params:{},signal:boundedSignal})).catch(()=>null);state.durations[r.src]=Number(p?.info?.duration)||null;
+      }
+      errors.push(...clipUsageFindings({planMedia:context.planMedia||[],html:sources,rows,durations:state.durations||{},limitations:state.limitations||[]}));
+    }
     // Beats start when their words are said (plan.scenes[].starts_on), measured on the narration as placed.
     if(!context.lookOnly&&context.plan?.scenes?.some(sc=>sc.starts_on)){
       const asset=p=>workspace.assets.find(a=>a.path===p);
@@ -315,7 +336,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         if(requireVisualReview&&tools.critic&&(state.criticCalls??0)<cap.criticCalls){
           state.criticCalls=(state.criticCalls??0)+1;progress('Taking a second look');
           let strip=null,stripEvidence=null;if(!context.lookOnly&&tools.strip){const captured=await bounded(()=>tools.strip({signal:boundedSignal})).catch(()=>null);strip=captured?.providerImage??null;stripEvidence=captured?.coverage??null;}
-          verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
+          const close=await closeLook();
+          verdict=await bounded(()=>tools.critic({sheet:{image:reviewImage,reference:!!state.lastSnapshot?.reference_row},strip,stripEvidence,...close,authorScores:state.scores,findings:action.findings,round:state.criticCalls,signal:boundedSignal}));
           state.critic=verdict;state.criticRevision=state.revision;
         }
         // Convergence: two critic rounds in a row without the mean improving by 0.3 (an unreadable reply counts as no

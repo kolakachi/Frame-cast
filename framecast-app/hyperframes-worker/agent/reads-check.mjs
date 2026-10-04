@@ -22,7 +22,7 @@ import path from 'node:path';
 export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
-function serve(root,runtime){
+export function serve(root,runtime){
  return new Promise(resolve=>{
   const server=http.createServer(async(req,res)=>{
    try{
