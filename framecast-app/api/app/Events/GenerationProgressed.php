@@ -28,6 +28,16 @@ class GenerationProgressed implements ShouldBroadcastNow
         $this->recordProgress();
     }
 
+    /**
+     * Progress is a courtesy, never part of the work: a broadcast that cannot
+     * reach the socket server (Reverb restarting mid-deploy) used to throw out
+     * of a paid generation and fail it. Every call site goes through here.
+     */
+    public static function dispatch(...$arguments)
+    {
+        return rescue(fn () => event(new static(...$arguments)), null, report: false);
+    }
+
     public function broadcastOn(): array
     {
         return [

@@ -262,6 +262,8 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
                     (int) ($cfg['animation_duration'] ?? 6),
                     null,
                     (string) $predictionId,
+                    isset($cfg['animation_quality']) ? (string) $cfg['animation_quality'] : null,
+                    array_map('intval', (array) ($cfg['animation_share_with'] ?? [])),
                 );
                 // Bump started_at so we don't re-dispatch a duplicate before
                 // this resume attempt has had a full window to run.

@@ -2105,6 +2105,8 @@ const activeSceneAnimationPending = computed(() => {
   const settings = activeScene.value?.image_generation_settings ?? {};
   return Boolean(settings.animation_in_progress);
 });
+// The provider is backed up: the clip is paid for and still being made; the server collects it.
+const activeSceneStillRendering = computed(() => Boolean(activeScene.value?.image_generation_settings?.animation_still_rendering));
 const activeSceneAnimationError = computed(() => {
   return activeScene.value?.image_generation_settings?.animation_last_error || "";
 });
@@ -8084,7 +8086,7 @@ onBeforeUnmount(() => {
                      isSceneLoading below evaluates false and no overlay fired
                      at all. -->
                 <div v-else-if="activeSceneAnimationPending" class="preview-loading">
-                  Animating this scene…
+                  {{ activeSceneStillRendering ? 'The video model is busy, so this clip is taking longer. It will appear here when it is done; you can leave this page.' : 'Animating this scene…' }}
                 </div>
                 <div v-else-if="visualSwapPending" class="preview-loading">
                   Swapping the visual…

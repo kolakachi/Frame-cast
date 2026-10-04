@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\CruiseControl\CruiseActionRunService;
 use App\Services\Generation\Video\I2VAdapter;
+use App\Services\Generation\Video\PredictionStillRunning;
 use App\Services\Media\StorageService;
 use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,6 +30,9 @@ class AnimateSceneJob implements ShouldQueue
     use TracksJobFailure;
 
     public int $tries = 2;
+
+    /** A clip still unfinished this long after its prediction started is cancelled and refunded. */
+    public const MAX_PREDICTION_HOURS = 3;
     public int $timeout = 600; // i2v polls can run up to 6 min on premium
 
     public function __construct(
@@ -85,7 +89,11 @@ class AnimateSceneJob implements ShouldQueue
         // what we'd refund if the user cancels.
         $quality = \App\Services\CreditService::videoQuality($this->tier, $this->quality);
         $cost = \App\Services\CreditService::animationCost($this->tier, $quality, $this->durationSeconds);
-        $this->stampAnimationState($scene, [
+        // A resume keeps what the first attempt charged and stamped: that is what a refund returns.
+        $this->stampAnimationState($scene, $this->resumePredictionId ? [
+            'animation_in_progress'   => true,
+            'animation_last_error'    => null,
+        ] : [
             'animation_in_progress'   => true,
             'animation_last_error'    => null,
             'animation_started_at'    => now()->toIso8601String(),
@@ -152,7 +160,12 @@ class AnimateSceneJob implements ShouldQueue
             }
 
             if ($this->resumePredictionId) {
-                // Resume: re-attach to the prediction the dead worker started.
+                // Resume: re-attach to the prediction the dead worker (or our own wait) left running.
+                $began = data_get($scene->image_generation_settings_json, 'animation_prediction_started_at');
+                if ($began && \Carbon\Carbon::parse($began)->diffInMinutes(now()) > self::MAX_PREDICTION_HOURS * 60) {
+                    if (method_exists($adapter, 'cancel')) $adapter->cancel($this->resumePredictionId);
+                    throw new RuntimeException('The video model did not finish this clip in '.self::MAX_PREDICTION_HOURS.' hours, so we stopped it. You were not charged; try again or pick another model.');
+                }
                 $videoUrl = $adapter->pollExisting($this->resumePredictionId);
                 if ($videoUrl === null) {
                     // Still cooking at Replicate — leave it in_progress; the
@@ -184,7 +197,13 @@ class AnimateSceneJob implements ShouldQueue
                         // Persist the prediction id the instant Replicate hands
                         // it over, so a mid-poll worker death is resumable.
                         'on_prediction_created' => function (string $pid) use ($scene): void {
-                            $this->stampAnimationState($scene, ['animation_prediction_id' => $pid]);
+                            $this->stampAnimationState($scene, [
+                                'animation_prediction_id'         => $pid,
+                                'animation_prediction_started_at' => now()->toIso8601String(),
+                                // A resume rebuilds the job from these, so siblings still get the clip.
+                                'animation_share_with'            => $this->shareWithSceneIds,
+                                'animation_refunded'              => false,
+                            ]);
                         },
                     ],
                 );
@@ -264,9 +283,22 @@ class AnimateSceneJob implements ShouldQueue
                 'animation_original_image_asset_id' => $originalToStore,
                 'animation_history'                 => $history,
                 'animation_prediction_id'           => null, // done — nothing to resume
+                'animation_still_rendering'         => false,
             ]);
 
             $this->shareClipWith($asset, $scene);
+
+            // A clip collected after the wait ran out lands while the user may be elsewhere: tell them.
+            if ($this->resumePredictionId && data_get($scene->image_generation_settings_json, 'animation_still_rendering')) {
+                rescue(fn () => app(\App\Services\Notification\NotificationService::class)->create(
+                    (int) $scene->project->workspace_id,
+                    'Your animated scene is ready',
+                    'Scene '.$scene->scene_order.' of project #'.$this->projectId.' finished animating.',
+                    'success',
+                    $scene->project->created_by_user_id ? (int) $scene->project->created_by_user_id : null,
+                    ['project_id' => $this->projectId, 'scene_id' => $this->sceneId],
+                ), report: false);
+            }
 
             // Multi-scene aware: count scenes with completed animation. Emit
             // 'processing' with done/total until all scenes finish; then
@@ -297,6 +329,18 @@ class AnimateSceneJob implements ShouldQueue
             // normally flips status), so if this was the last in-flight piece,
             // mark the project ready — otherwise it stays 'generating' forever.
             rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId));
+        } catch (PredictionStillRunning $e) {
+            // Slow, not failed: the provider is still making it. Keep the charge and the
+            // prediction; the reaper re-attaches until it lands (or the ceiling cancels it).
+            $this->stampAnimationState($scene->fresh() ?: $scene, [
+                'animation_in_progress'   => true,
+                'animation_prediction_id' => $e->predictionId,
+                'animation_still_rendering' => true,
+                'animation_last_error'    => null,
+            ]);
+            GenerationProgressed::dispatch($this->projectId, 'animation', 'processing', 'The video model is busy; this clip is still rendering and will appear here when it is done.', ['scene_id' => $this->sceneId, 'still_rendering' => true]);
+
+            return;
         } catch (\Throwable $e) {
             // The clip failed — refund what we charged up-front so a failed
             // animation costs nothing. (On a retry the next attempt re-charges;
@@ -307,6 +351,14 @@ class AnimateSceneJob implements ShouldQueue
                     $cost,
                     "animate:{$this->tier}",
                 );
+            } elseif ($this->resumePredictionId && ! data_get($scene->fresh()?->image_generation_settings_json, 'animation_refunded')) {
+                // A resumed clip was paid for by the attempt that started it, which kept the
+                // charge while the provider worked. It failed after all: refund it, once.
+                $paid = (int) data_get($scene->image_generation_settings_json, 'animation_cost', 0);
+                if ($paid > 0) {
+                    app(\App\Services\CreditService::class)->refund((int) $scene->project->workspace_id, $paid, "animate:{$this->tier}");
+                }
+                $this->stampAnimationState($scene->fresh() ?: $scene, ['animation_refunded' => true]);
             }
 
             // Animation safety rejections from Replicate (Kling/Hailuo/Wan
@@ -330,8 +382,10 @@ class AnimateSceneJob implements ShouldQueue
             }
 
             $this->stampAnimationState($scene->fresh() ?: $scene, [
-                'animation_in_progress' => false,
-                'animation_last_error'  => mb_substr($e->getMessage(), 0, 1000),
+                'animation_in_progress'     => false,
+                'animation_last_error'      => mb_substr($e->getMessage(), 0, 1000),
+                'animation_still_rendering' => false,
+                'animation_prediction_id'   => null,
             ]);
             // Siblings waiting on this clip were locked by the caller and will
             // never get one. Release them here or they spin forever.

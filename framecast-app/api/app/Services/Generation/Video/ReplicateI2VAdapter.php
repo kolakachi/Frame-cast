@@ -167,7 +167,8 @@ class ReplicateI2VAdapter implements I2VAdapter
         }
 
         if (! $videoUrl) {
-            throw new RuntimeException('Replicate i2v did not return a video within the polling window.');
+            // Still running at the provider: keep the prediction for the reaper to collect.
+            throw new PredictionStillRunning((string) $predictionId, (string) $modelSlug);
         }
 
         return [
@@ -225,6 +226,16 @@ class ReplicateI2VAdapter implements I2VAdapter
         }
 
         return null; // still processing — resume again on the next sweep
+    }
+
+    /** Stop a prediction we have given up on, so it is not billed further. Best effort. */
+    public function cancel(string $predictionId): void
+    {
+        $apiToken = config('services.replicate.api_token');
+        if (! $apiToken) {
+            return;
+        }
+        rescue(fn () => Http::withToken($apiToken)->acceptJson()->post("https://api.replicate.com/v1/predictions/{$predictionId}/cancel"), report: false);
     }
 
     /**
