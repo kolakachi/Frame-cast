@@ -1709,7 +1709,8 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(403,fn()=>app(\App\Services\Create\CompositionOutputService::class)->register($this->owner,$c->id,$revision,2));
         $asset = Asset::findOrFail($output['asset_id']);
         $url = app(\App\Services\Media\StorageService::class)->url($asset->storage_url);
-        $this->travel(6)->minutes();
+        // Links last 5 to 10 minutes (one shared link per five-minute window).
+        $this->travel(11)->minutes();
         try { $this->get($url)->assertForbidden(); } finally { $this->travelBack(); }
         $this->assertSame(1,\App\Models\ExportJob::count());
     }
@@ -2462,4 +2463,17 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(30,$m['requested_settings']['duration_seconds']);
     }
 
+    public function test_a_private_media_link_stays_the_same_for_a_while_so_pages_keep_their_cached_images(): void
+    {
+        Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'title' => 'Thumb', 'storage_url' => 'create-upload://thumb', 'status' => 'active']);
+        $storage = app(\App\Services\Media\StorageService::class);
+        $this->travelTo(now()->startOfHour()->addSeconds(10));
+        $first = $storage->url('create-upload://thumb');
+        $this->travel(2)->minutes();
+        $this->assertSame($first, $storage->url('create-upload://thumb'), 'same link within the window');
+        $this->travel(4)->minutes();
+        $this->assertNotSame($first, $storage->url('create-upload://thumb'), 'a fresh link after it');
+        parse_str((string) parse_url($first, PHP_URL_QUERY), $q);
+        $this->assertGreaterThanOrEqual(now()->subMinutes(6)->addMinutes(5)->timestamp, (int) $q['expires'], 'never valid for less than five minutes');
+    }
 }

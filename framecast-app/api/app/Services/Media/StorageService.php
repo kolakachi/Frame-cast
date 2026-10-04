@@ -79,7 +79,10 @@ class StorageService
     {
         if ($this->isCreatePrivate($storageUrl)) {
             $asset = \App\Models\Asset::where('storage_url',$storageUrl)->where('status','!=','archived')->firstOrFail();
-            return \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content',now()->addMinutes(5),['assetId'=>$asset->id]);
+            // The same link for five minutes at a time, so a page that refreshes every few seconds keeps its cached
+            // image instead of downloading it again under a new signature. Every link is valid for 5 to 10 minutes.
+            $expires = \Illuminate\Support\Carbon::createFromTimestamp((intdiv(now()->timestamp, 300) + 2) * 300);
+            return \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content',$expires,['assetId'=>$asset->id]);
         }
         $path = $this->extractPath($storageUrl);
 
