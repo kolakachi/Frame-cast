@@ -453,6 +453,9 @@ async function approveClaims(a) {
     let current = []; try { current = JSON.parse(conversation.value.settings_json || '{}').approved_facts || [] } catch {}
     const facts = [...new Set([...current, ...picked])].slice(0, 20)
     await api.patch(base(), { expected_version: conversation.value.version, settings: { approved_facts: facts } })
+    // An open Details panel holds its own copy of the facts; keep it in step so its Apply doesn't drop these.
+    const typed = factsText.value.split('\n').map(s => s.trim()).filter(Boolean)
+    factsText.value = [...new Set([...typed, ...facts])].slice(0, 20).join('\n'); settingsDraft.value.approved_facts = facts
     claimPicks.value = {}; quote.value = null; markClaimsDone(a); await refresh()
   })
 }
