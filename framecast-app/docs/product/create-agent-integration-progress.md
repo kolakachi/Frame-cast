@@ -122,6 +122,14 @@ Evidence: the storyboard for "copy it frame by frame" kept the plan's timing but
 - [ ] Acceptance: a fresh Maya build with the frame-by-frame brief; owner side-by-side verdict.
 - Noted: the study's own moment reading runs at low reasoning effort; worth re-testing at medium.
 
+### Tenth slice — the 3D rendered route (owner: "go, start with A1 and A2", 2026-10-04)
+
+Goal: a user brings any reference; the study says how each moment was made (generated video, footage, presenter, screen recording, stock, motion graphics, 3D render, still, audiogram) and the planner routes each to the right tool. Generated video already lives in the UGC and Editor lanes; the gap that matters most is 3D rendered. Learned from the reference's mascot (internal study, artifacts/reference-mascot-study): a parametric clay 3D character rendered grey with 1-bit ordered (Bayer 4x4) dither on a 2 px grid at 60 fps; image-to-3D gets the shape but bakes unreliable textures and has no face rig.
+
+- [x] **A1, parametric mascot spec and parts** (runtime/wyv-mascot3d.js): head (sphere, egg, round-square), hair (curls, waves, bob, spikes, bun; follows the head's shape; kept off the face), eyes (disc, oval, dot, highlight), brows, five mouth shapes, nose, cheeks, neck, collar, lathed bust with outfit colour and pocket; deterministic (Fibonacci placement, seeded).
+- [x] **A2, rig by construction**: head turn, tilt and nod on a neck pivot, body turn, bob, gaze, blink and wink, mouth per syllable on the narration's words (same cues as the 2D face kit), expressions (smile, surprised, laugh, wink). Finishes: clay, 1-bit ordered dither (matches the reference dot for dot), toon. Remotion 4.0.532 with three 0.186.1, @remotion/three and @react-three/fiber 9 in the sandbox. Proof: fixtures/mascot3d (perform at 60 fps, turnaround in two finishes, expressions, a second character from another spec).
+- [ ] A3 more finishes (halftone, plush, ceramic); A4 the agent designs the spec from a brief, brand or a reference's mascot and shows a turnaround for approval; A5 image-to-3D polish for detailed characters (head on still shoulders, palette remap, single dot layer, orientation check) and both routes wired into Create (Remotion adapter allowlist, character item, router rule).
+
 ### First implementation slice — prepared mascot rig (2026-10-03)
 
 Following the owner's request to begin the rig approach, V4/V5 now have a **locally verified optional adapter**, not a completed general character workflow. The canonical V1–V8 items remain open.
