@@ -13,12 +13,13 @@ class MascotSpec
         'hair.style' => ['curls', 'waves', 'bob', 'spikes', 'bun', 'none'],
         'eyes.style' => ['disc', 'oval', 'dot'],
         'brows.style' => ['bar', 'none'],
-        'nose.style' => ['button', 'none'],
+        'nose.style' => ['button', 'heart', 'none'],
+        'ears.style' => ['round', 'pointed', 'long', 'none'],
         'body.outfit' => ['sweater', 'tee', 'hoodie'],
         'body.collar' => ['turtleneck', 'crew'],
         'finish' => ['clay', 'dither', 'toon', 'halftone', 'plush', 'ceramic'],
     ];
-    private const COLOURS = ['head.skin', 'hair.color', 'eyes.color', 'brows.color', 'cheeks.color', 'body.color'];
+    private const COLOURS = ['head.skin', 'hair.color', 'eyes.color', 'brows.color', 'cheeks.color', 'body.color', 'nose.color', 'ears.color', 'ears.inner'];
 
     /** The parts and colours a planner may use, for the planning instruction. */
     public static function prompt(): string

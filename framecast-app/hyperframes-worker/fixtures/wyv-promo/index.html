@@ -1,0 +1,381 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>WyvStudio promo</title>
+<!-- A WyvStudio promo built as one composition, moment for moment on the Pocketsflow reference: same timing,
+     slots and moves, WyvStudio's content, orange for blue, our 3D mascot (from the owner's avatar) and our voice.
+     Every frame is a function of time; the 3D is drawn on canvases from the same timeline. -->
+<script src="gsap.min.js"></script><script src="wyv-motion.js"></script><script src="three-wyv.js"></script><script src="w3-stage.js"></script><script src="timing.js"></script>
+<style>
+@font-face{font-family:Inter;src:url(inter.ttf);font-weight:100 900}
+@font-face{font-family:Playfair;src:url(playfair.ttf);font-weight:400 900}
+*{box-sizing:border-box;margin:0}
+body{background:#fff}
+#main{width:1920px;height:1080px;position:relative;overflow:hidden;background:#fff;font-family:Inter,sans-serif;color:#111}
+.scene{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden}
+.mono{font:500 20px/1 'DejaVu Sans Mono',ui-monospace,monospace;color:#6b6b6b;letter-spacing:.5px}
+canvas{position:absolute;display:block}
+.w{display:inline-block;visibility:hidden}
+.script{display:inline-block;position:relative;font-family:Playfair;font-style:italic;font-weight:500;color:#FF6B35;visibility:hidden;letter-spacing:-1px}
+.script .u{position:absolute;left:6%;right:6%;bottom:-.02em;height:.06em;border-radius:99px;background:#FF6B35;visibility:hidden}
+#hud{position:absolute;left:0;top:0;width:1920px;height:80px;z-index:40;pointer-events:none}
+#tag{position:absolute;left:42px;top:34px}
+#tc{position:absolute;right:42px;top:34px}
+/* 1. Hook (white) */
+#bubble{position:absolute;left:925px;top:514px;height:72px;padding:0 30px;border:2.5px solid #111;border-radius:36px;background:#fff;font:500 30px/67px 'DejaVu Sans Mono',monospace;visibility:hidden;min-width:200px}
+#bubble:after{content:'';position:absolute;right:-13px;top:30px;width:22px;height:22px;background:#fff;border-right:2.5px solid #111;border-bottom:2.5px solid #111;transform:rotate(-45deg)}
+#eyebrow1{position:absolute;left:128px;top:250px;visibility:hidden}
+#h1{position:absolute;left:120px;top:300px;font-weight:700;font-size:160px;line-height:1.0;letter-spacing:-6px}
+#h1 .w{margin-right:.2em}
+#sell{font-size:200px;margin-left:.04em}
+/* 2. The orange field: the mascot and three tossed cards */
+#sceneA{visibility:hidden;z-index:2}
+#panel{position:absolute;left:0;top:0;width:1920px;height:1080px;background:#FF6B35;overflow:hidden}
+#panelContent{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.card{position:absolute;top:214px;width:365px;height:608px;border-radius:30px;background:#fff;padding:30px 30px;visibility:hidden;box-shadow:0 24px 50px rgba(0,0,0,.12)}
+.card .mono{display:flex;justify-content:space-between}
+.card canvas{left:22px;top:92px}
+.card .n{position:absolute;left:30px;bottom:86px;font:700 52px/1 Inter;letter-spacing:-2px}
+.card .s{position:absolute;left:31px;bottom:44px;font:500 22px/1 'DejaVu Sans Mono',monospace;color:#666}
+/* 3. The field becomes the phone; the line builds on the left */
+#chrome{position:absolute;left:1286px;top:86px;width:500px;height:907px;border-radius:66px;border:12px solid #111;visibility:hidden;z-index:4;pointer-events:none}
+#chrome:before{content:'';position:absolute;left:50%;top:14px;width:120px;height:32px;margin-left:-60px;border-radius:18px;background:#111}
+#phoneUI{position:absolute;left:0;top:0;width:500px;height:907px;visibility:hidden;background:#fff}
+#pband{position:absolute;left:0;top:0;width:500px;height:330px;background:#FF6B35;color:#fff}
+#pband .bar{position:absolute;left:40px;top:30px;font:700 20px/1 Inter}
+#pband .url{position:absolute;left:28px;right:28px;top:76px;height:40px;border-radius:20px;background:rgba(255,255,255,.22);font:500 16px/40px 'DejaVu Sans Mono',monospace;padding-left:22px}
+#avatar{position:absolute;left:190px;top:138px;width:120px;height:120px;border-radius:60px;background:#fff;overflow:hidden;border:4px solid #fff}
+#pband .who{position:absolute;left:0;right:0;top:274px;text-align:center;font:700 26px/1 Inter}
+#plist{position:absolute;left:28px;right:28px;top:358px}
+#plist .head{display:flex;justify-content:space-between;align-items:baseline;font:700 22px/1 Inter;margin-bottom:16px}
+.prow{position:relative;height:150px;border-bottom:2px solid #f1f1ef;visibility:hidden}
+.prow canvas{left:0;top:18px;border-radius:14px;background:#f6f6f4}
+.prow b{position:absolute;left:136px;top:30px;font:700 22px/1 Inter}
+.prow .mono{position:absolute;left:136px;top:62px;font-size:16px}
+.pbtn{position:absolute;left:136px;top:92px;height:38px;padding:0 22px;border-radius:19px;background:#111;color:#fff;font:700 17px/38px Inter}
+#h3{position:absolute;left:100px;top:226px;width:1000px}
+#h3a{font:600 44px/1.1 Playfair;letter-spacing:-.5px}
+#h3a .w{margin-right:.22em}
+#h3b{margin-top:22px;font:700 104px/1 Inter;letter-spacing:-4px}
+#h3b .w{margin-right:.2em}
+#h3c{margin-top:10px;font:700 104px/1 Inter;letter-spacing:-4px;white-space:nowrap}
+#vid3{font-size:138px}
+#cursor{position:absolute;left:0;top:0;width:44px;height:44px;visibility:hidden;z-index:30}
+/* 4. The plan fills in: a dashboard of tiles */
+#s4{background:#f1f1ef;visibility:hidden;z-index:3}
+.tile{position:absolute;border-radius:26px;background:#fff;padding:28px 30px;box-shadow:0 10px 30px rgba(0,0,0,.04);overflow:hidden}
+.slot{position:absolute;border-radius:26px;border:2.5px dashed #dcdcd8}
+#t1{left:96px;top:97px;width:557px;height:886px}
+#t1 .item{display:flex;align-items:center;gap:18px;margin-top:26px}
+#t1 .item canvas{position:relative;border-radius:14px;background:#f6f6f4}
+#t1 .item b{font:700 26px/1.1 Inter}
+#t1 .item .mono{margin-top:8px;font-size:16px}
+#approve{margin-top:34px;height:66px;border-radius:33px;background:#111;color:#fff;font:700 26px/66px Inter;text-align:center}
+#t1 .div{margin-top:24px;text-align:center;font-size:16px}
+#brief{margin-top:22px;height:64px;border:2px solid #ececea;border-radius:18px;padding:0 20px;font:500 22px/60px 'DejaVu Sans Mono',monospace;color:#333}
+.line{display:flex;justify-content:space-between;margin-top:20px;font:500 22px/1 Inter;color:#666;visibility:hidden}
+.line span:last-child{font:500 20px/1 'DejaVu Sans Mono',monospace;color:#111}
+.line.on span:last-child{color:#FF6B35}
+#status{display:flex;justify-content:space-between;align-items:baseline;margin-top:34px;font:600 26px/1 Inter;visibility:hidden}
+#status b{font:800 34px/1 Inter;letter-spacing:-1px}
+#create{position:absolute;left:30px;right:30px;bottom:30px;height:72px;border-radius:36px;background:#FF6B35;color:#fff;font:700 26px/72px Inter;text-align:center}
+#t2{left:672px;top:97px;width:557px;height:432px;padding:0}
+#t2 .mono{position:absolute;left:28px;top:28px;z-index:2}
+#t2 .mono i{display:inline-block;width:12px;height:12px;border-radius:6px;background:#FF6B35;margin-right:10px}
+#t3{left:1267px;top:97px;width:557px;height:432px;visibility:hidden}
+#t3 .big{margin-top:54px;font:800 120px/1 Inter;letter-spacing:-5px}
+#t3 .big span{font:500 32px/1 Inter;letter-spacing:0;color:#777;margin-left:14px}
+#dots{position:absolute;left:34px;right:34px;bottom:86px;height:18px}
+#dots:before{content:'';position:absolute;left:0;right:0;top:7px;height:4px;background:#ececea}
+#dotsFill{position:absolute;left:0;right:0;top:7px;height:4px;background:#FF6B35;transform-origin:0 50%}
+#dots b{position:absolute;top:0;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:#dededa}
+#ticks{position:absolute;left:34px;right:34px;bottom:44px;display:flex;justify-content:space-between;font-size:15px}
+#t4{left:672px;top:551px;width:557px;height:432px;visibility:hidden}
+.opt{position:relative;margin-top:22px;height:120px;border-radius:18px;border:2.5px solid #ececea;padding:20px 20px 0 150px}
+.opt.sel{border-color:#FF6B35;background:#fff7f3}
+.opt canvas{left:16px;top:10px;border-radius:12px;background:#fff}
+.opt b{display:block;font:700 26px/1 Inter;margin-top:6px}
+.opt .mono{margin-top:12px;font-size:16px}
+.opt .ck{position:absolute;right:20px;top:38px;width:40px;height:40px;border-radius:10px;border:3px solid #ddd;color:#fff;font:800 24px/34px Inter;text-align:center}
+.opt.sel .ck{background:#FF6B35;border-color:#FF6B35}
+#t5{left:1267px;top:551px;width:557px;height:194px;visibility:hidden}
+#t5 .v{margin-top:20px;font:600 24px/1 Inter}
+.chips{display:flex;gap:12px;margin-top:20px}
+.chips span{padding:10px 16px;border-radius:20px;border:2px solid #ececea;font:600 18px/1 'DejaVu Sans Mono',monospace;visibility:hidden}
+.chips span i{font-style:normal;color:#FF6B35;margin-left:6px}
+#t6{left:1267px;top:778px;width:557px;height:205px;visibility:hidden}
+#t6 .v{margin-top:22px;font:700 30px/1.15 Inter;letter-spacing:-.5px;width:300px}
+#bars{position:absolute;right:30px;bottom:30px;width:170px;height:110px;display:flex;align-items:flex-end;gap:9px}
+#bars i{flex:1;background:#FF6B35;border-radius:5px;transform-origin:50% 100%}
+#stampWrap{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none;z-index:8}
+#stamp{position:absolute;left:560px;top:470px;width:800px;text-align:center;font:italic 600 210px/1 Playfair;color:#FF6B35;visibility:hidden;text-shadow:0 0 0 #fff}
+#ring{position:absolute;left:700px;top:270px;width:520px;height:520px;border-radius:50%;border:10px solid #FF6B35;visibility:hidden;opacity:.85}
+/* 5. The promise (black) */
+#s5{background:#0b0b0b;color:#fff;visibility:hidden;z-index:5}
+#h5{position:absolute;left:110px;top:270px}
+#h5 .l1{font:700 140px/1 Inter;letter-spacing:-5px}
+#h5 .l2{margin-top:44px;font:700 112px/1 Inter;letter-spacing:-4px;color:#7d7d7d;white-space:nowrap}
+#h5 .w{margin-right:.2em}
+#dream{font-size:160px;color:#fff}
+#vid5{font-size:150px}
+/* 6. Lockup (white) */
+#s6{background:#fff;visibility:hidden;z-index:6}
+#vid6{position:absolute;font:italic 500 150px/1 Playfair;color:#FF6B35;visibility:hidden}
+#mark{position:absolute;left:0;right:0;top:432px;text-align:center;font:800 176px/1 Playfair;letter-spacing:-4px;z-index:2}
+#mark .ch{display:inline-block;visibility:hidden}
+#tagline{position:absolute;left:0;right:0;top:664px;text-align:center;font:500 38px/1 Inter;color:#444;visibility:hidden}
+#tagline em{font:italic 500 42px/1 Playfair;color:#111}
+#ctaRow{position:absolute;left:0;right:0;top:770px;display:flex;justify-content:center;align-items:center;gap:26px}
+#cta{height:76px;padding:0 40px;border-radius:38px;background:#FF6B35;color:#fff;font:700 28px/76px Inter;visibility:hidden}
+#url{font-size:24px;visibility:hidden}
+#stats{position:absolute;left:0;right:0;top:984px;text-align:center;font-size:20px;visibility:hidden}
+</style></head><body>
+<main id="main" data-composition-id="main" data-width="1920" data-height="1080" data-duration="15">
+
+<section class="scene" id="s1">
+ <canvas id="cv1" width="1060" height="1080" style="left:860px;top:0"></canvas>
+ <div id="bubble"><span id="bubbleText">psst…</span></div>
+ <div class="mono" id="eyebrow1">// for brands</div>
+ <div id="h1" data-layout-allow-overlap><span class="w">Want</span><span class="w">a</span><span class="w">video</span><br><span class="w">that</span><span class="script" id="sell" data-layout-allow-overlap>sells<span id="qmark">?</span><span class="u" id="u1"></span></span></div>
+</section>
+
+<section class="scene" id="sceneA">
+ <div class="scene" id="s3">
+  <div id="h3">
+   <div id="h3a"><span class="w">WyvStudio</span><span class="w">turns</span><span class="w">it</span><span class="w">into</span></div>
+   <div id="h3b"><span class="w">a</span><span class="w">ready-to-post</span></div>
+   <div id="h3c"><span class="script" id="vid3">video.<span class="u" id="u3"></span></span></div>
+  </div>
+ </div>
+ <div id="panel">
+  <div id="panelContent">
+   <div class="card" id="c1" style="left:710px"><div class="mono"><span>// camera</span><span>01</span></div><canvas id="cvC1" width="320" height="320"></canvas><div class="n">No camera</div><div class="s">skip the shoot</div></div>
+   <div class="card" id="c2" style="left:1094px"><div class="mono"><span>// editing</span><span>02</span></div><canvas id="cvC2" width="320" height="320"></canvas><div class="n">No editor</div><div class="s">skip the timeline</div></div>
+   <div class="card" id="c3" style="left:1478px"><div class="mono"><span>// time</span><span>03</span></div><canvas id="cvC3" width="320" height="320"></canvas><div class="n">No time</div><div class="s">just a prompt</div></div>
+  </div>
+  <div id="phoneUI">
+   <div id="pband"><div class="bar">9:41</div><div class="url">wyvstudio.com/create</div><div id="avatar"><canvas id="cvAv" width="112" height="112" style="left:0;top:0"></canvas></div><div class="who">Your videos</div></div>
+   <div id="plist"><div class="head"><span>Ideas</span><span class="mono">3 drafts</span></div>
+    <div class="prow" id="pr1"><canvas id="cvR1" width="116" height="116"></canvas><b>Candle launch ad</b><span class="mono">15 s · 16:9</span><span class="pbtn" id="go">Create</span></div>
+    <div class="prow" id="pr2"><canvas id="cvR2" width="116" height="116"></canvas><b>Podcast clip</b><span class="mono">30 s · 9:16</span><span class="pbtn">Create</span></div>
+    <div class="prow" id="pr3"><canvas id="cvR3" width="116" height="116"></canvas><b>Product demo</b><span class="mono">15 s · 1:1</span><span class="pbtn">Create</span></div>
+   </div>
+  </div>
+ </div>
+ <div id="chrome"></div>
+ <canvas id="cvA" width="1920" height="1080" style="left:0;top:0;z-index:3"></canvas>
+</section>
+
+<section class="scene" id="s4">
+ <div class="tile" id="t1">
+  <div class="mono">// plan</div>
+  <div class="item"><canvas id="cvP" width="96" height="96"></canvas><div><b>Candle launch ad</b><div class="mono">15 s · 16:9 · Achird</div></div></div>
+  <div id="approve">Approve plan</div>
+  <div class="div mono">— or edit the brief —</div>
+  <div id="brief"><span id="briefText"></span></div>
+  <div class="line" id="l1"><span>Script</span><span>5 lines</span></div>
+  <div class="line" id="l2"><span>Voice</span><span>warm narrator</span></div>
+  <div class="line on" id="l3"><span>Style</span><span>clay 3D</span></div>
+  <div class="line" id="l4"><span>Formats</span><span>4 sizes</span></div>
+  <div id="status"><span>Status</span><b id="statusText">Ready to post</b></div>
+  <div id="create">Create video</div>
+ </div>
+ <div class="tile" id="t2"><div class="mono"><i></i>// on air</div><canvas id="cv4" width="557" height="432" style="left:0;top:0"></canvas></div>
+ <div class="slot" id="e3" style="left:1267px;top:97px;width:557px;height:432px"></div>
+ <div class="slot" id="e4" style="left:672px;top:551px;width:557px;height:432px"></div>
+ <div class="slot" id="e5" style="left:1267px;top:551px;width:557px;height:194px"></div>
+ <div class="slot" id="e6" style="left:1267px;top:778px;width:557px;height:205px"></div>
+ <div class="tile" id="t3"><div class="mono">// voice</div><div class="big">Warm<span>/ narrator</span></div>
+  <div id="dots"><div id="dotsFill"></div><b style="left:0%"></b><b style="left:20%"></b><b style="left:40%"></b><b style="left:60%"></b><b style="left:80%"></b><b style="left:100%"></b></div>
+  <div id="ticks" class="mono"><span>0s</span><span>3s</span><span>6s</span><span>9s</span><span>12s</span><span>15s</span></div></div>
+ <div class="tile" id="t4"><div class="mono">// style</div>
+  <div class="opt sel" id="o1"><canvas id="cvS" width="96" height="96"></canvas><b>Clay 3D</b><div class="mono">21 style presets</div><div class="ck">✓</div></div>
+  <div class="opt" id="o2"><canvas id="cvS2" width="96" height="96"></canvas><b>Halftone</b><div class="mono">one click to switch</div><div class="ck"></div></div></div>
+ <div class="tile" id="t5"><div class="mono">// formats</div><div class="v">One video, every size.</div>
+  <div class="chips"><span>9:16<i>✓</i></span><span>1:1<i>✓</i></span><span>4:5<i>✓</i></span><span>16:9<i>✓</i></span></div></div>
+ <div class="tile" id="t6"><div class="mono">// schedule</div><div class="v">YouTube · TikTok · Instagram</div>
+  <div id="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+ <div id="stampWrap" data-layout-allow-overlap data-layout-allow-occlusion><div id="ring"></div><div id="stamp" data-layout-allow-overlap data-layout-allow-occlusion>Ready.</div></div>
+</section>
+
+<section class="scene" id="s5">
+ <div id="h5">
+  <div class="l1"><span class="w">You</span><span class="script" id="dream">dream it.</span></div>
+  <div class="l2"><span class="w">We</span><span class="w">make</span><span class="w">the</span><span class="script" id="vid5">video.</span></div>
+ </div>
+ <canvas id="cv5" width="640" height="1080" style="left:1280px;top:0"></canvas>
+</section>
+
+<section class="scene" id="s6">
+ <canvas id="cv6" width="560" height="440" style="left:810px;top:40px;z-index:1"></canvas>
+ <div id="vid6">video.</div>
+ <div id="mark"></div>
+ <div id="tagline">Voiced, captioned, <em>ready-to-post</em> videos.</div>
+ <div id="ctaRow"><span id="cta">Start creating</span><span class="mono" id="url">wyvstudio.com</span></div>
+ <div class="mono" id="stats">No camera or editing experience required</div>
+</section>
+
+<div id="hud"><div class="mono" id="tag">// 01 — hook</div><div class="mono" id="tc">WYVSTUDIO&nbsp;&nbsp;00:00:00:00</div></div>
+<svg id="cursor" viewBox="0 0 24 24"><path d="M4 2l15 9-7 1.6L8.6 20z" fill="#111" stroke="#fff" stroke-width="1.4"/></svg>
+</main>
+<script>
+const tl=gsap.timeline({paused:true}), O='#FF6B35', T=W3.THREE;
+const WORDS=TIMING.words, at=(key,i=0)=>WORDS.filter(w=>w.line===key)[i].start, wordsOf=key=>WORDS.filter(w=>w.line===key).map(w=>w.start);
+const CUES=W3.mouthCues(WORDS.map(w=>({text:w.text,start:w.start,end:w.end})),0), BLINKS=[0.25,3.05,5.5,8.4,12.2,14.0];
+const ease3=x=>1-Math.pow(1-Math.max(0,Math.min(1,x)),3), lerp=(a,b,k)=>a+(b-a)*k;
+// A damped spring from 0 to 1 starting at t0 (closed form, so it is a pure function of time).
+const spring=(t,t0,w=13,z=0.5)=>{if(t<=t0)return 0;const u=t-t0,wd=w*Math.sqrt(1-z*z);return 1-Math.exp(-z*w*u)*(Math.cos(wd*u)+z*w/wd*Math.sin(wd*u));};
+const idle=(t,k=1)=>({bob:Math.sin(t*Math.PI*1.3)*0.025*k,tilt:Math.sin(t*Math.PI*0.9)*0.04*k,yaw:Math.sin(t*Math.PI*0.55)*0.07*k});
+
+// The owner's avatar as a 3D mascot: a round orange fur-ball bear with round ears, big glossy eyes, a heart nose
+// and blush cheeks, in the reference's 1-bit ordered dither.
+const BEAR={seed:1595,head:{shape:'sphere',skin:'#f6e2cc'},hair:{style:'none'},ears:{style:'round',color:'#b88a63',inner:'#6e4a2c'},
+ eyes:{style:'disc',size:1.3,spacing:1.05,color:'#121212',highlight:true},brows:{style:'none'},nose:{style:'heart',color:'#3a2140'},
+ cheeks:{color:'#eea3b0'},mouth:{color:'#1b1b1b'},body:{outfit:'sweater',color:'#a9a9a9',collar:'turtleneck',pocket:false},finish:'dither'};
+
+const stages=[];
+// A mascot on a canvas: place(t) gives the head centre (cx, cy) and radius r in canvas pixels plus head/body angles.
+function mascot(id,active,place,expressions=[]){
+ const cv=document.getElementById(id),m=W3.buildMascot(BEAR,{cell:2});
+ stages.push(W3Stage(cv,{active,draw:(t,scene,cam)=>{
+  if(!m.root.parent)scene.add(m.root);
+  const p=place(t),dist=(cv.height/2)/p.r/Math.tan(15*Math.PI/180);cam.position.set(0,0,dist);cam.lookAt(0,0,0);
+  W3.applyRig(m,{x:(p.cx-cv.width/2)/p.r,y:-(p.cy-cv.height/2)/p.r-0.3,yaw:p.yaw||0,pitch:p.pitch||0,tilt:p.tilt||0,bodyYaw:p.bodyYaw||0},
+   W3.faceAt(t,{cues:CUES,blinks:BLINKS,expressions}));
+ }}));
+}
+// A 3D object on a canvas, modelled in code, with the reference's product spin (a whip as it lands, then a drift).
+function prop(id,build,active,{spin=null,pitch=.42,scale=1,dist=8.2,yaw=.5}={}){
+ const cv=document.getElementById(id);let holder=null,spinner=null;
+ stages.push(W3Stage(cv,{active,draw:(t,scene,cam)=>{
+  if(!holder){const mat=(c,f=0)=>W3.finishMaterial(c,'dither',{cell:2,flat:f});holder=new T.Group();spinner=new T.Group();holder.add(spinner);
+   spinner.add(build({THREE:T,shapes:W3.shapes,mat,mesh:(g,c,f=0)=>new T.Mesh(g,mat(c,f))}));scene.add(holder);}
+  cam.position.set(0,0,dist);cam.lookAt(0,0,0);holder.rotation.set(pitch,0,0);holder.scale.setScalar(scale);
+  spinner.rotation.y=spin?W3.spinAt(t,spin):yaw+Math.sin(t*0.6)*0.15;
+ }}));
+}
+// The three problem objects.
+const camera=({THREE,shapes,mesh})=>{const g=new THREE.Group();
+ g.add(mesh(shapes.roundedBox(2.7,1.65,1.1,.2),'#d4d4d4'));
+ const grip=mesh(shapes.roundedBox(.55,1.55,1.25,.16),'#a3a3a3');grip.position.set(-1.12,0,.05);g.add(grip);
+ const top=mesh(shapes.roundedBox(.95,.38,.75,.09),'#bdbdbd');top.position.set(.35,.98,0);g.add(top);
+ const btn=mesh(new THREE.CylinderGeometry(.15,.15,.14,24),'#888');btn.position.set(-.78,.88,0);g.add(btn);
+ const ring=mesh(new THREE.CylinderGeometry(.64,.68,.52,40),'#b0b0b0');ring.rotation.x=Math.PI/2;ring.position.set(.22,-.05,.78);g.add(ring);
+ const glass=mesh(new THREE.CylinderGeometry(.46,.46,.08,40),'#0d0d0d',.5);glass.rotation.x=Math.PI/2;glass.position.set(.22,-.05,1.06);g.add(glass);
+ const glint=mesh(new THREE.SphereGeometry(.1,12,8),'#fff',1);glint.position.set(.06,.1,1.12);g.add(glint);return g;};
+const scissors=({THREE,shapes,mesh})=>{const g=new THREE.Group();
+ for(const s of [-1,1]){const arm=new THREE.Group();arm.rotation.z=s*.34;g.add(arm);
+  arm.add(mesh(shapes.extrude([[-.1,0],[.12,0],[.05,2.1],[-.02,2.15]],.07,.02),'#e2e2e2'));
+  const ring=mesh(new THREE.TorusGeometry(.44,.14,16,40),'#8e8e8e');ring.position.y=-.66;arm.add(ring);
+  const neck=mesh(shapes.roundedBox(.24,.42,.18,.06),'#8e8e8e');neck.position.y=-.14;arm.add(neck);}
+ const pin=mesh(new THREE.CylinderGeometry(.11,.11,.32,20),'#666');pin.rotation.x=Math.PI/2;g.add(pin);
+ g.rotation.z=-.55;g.position.y=-.15;return g;};
+const clock=({THREE,shapes,mesh})=>{const g=new THREE.Group();
+ const body=mesh(new THREE.CylinderGeometry(1.25,1.25,.62,48),'#cfcfcf');body.rotation.x=Math.PI/2;g.add(body);
+ const face=mesh(new THREE.CylinderGeometry(1.03,1.03,.05,48),'#f5f5f5',.6);face.rotation.x=Math.PI/2;face.position.z=.32;g.add(face);
+ for(let i=0;i<12;i++){const a=i/12*Math.PI*2,tk=mesh(shapes.roundedBox(.07,i%3?.13:.24,.03,.01),'#222',1);tk.position.set(Math.sin(a)*.84,Math.cos(a)*.84,.36);tk.rotation.z=-a;g.add(tk);}
+ const hh=mesh(shapes.roundedBox(.1,.52,.04,.02),'#111',1);hh.geometry.translate(0,.23,0);hh.rotation.z=-.9;hh.position.z=.38;g.add(hh);
+ const mh=mesh(shapes.roundedBox(.08,.78,.04,.02),'#111',1);mh.geometry.translate(0,.36,0);mh.rotation.z=.45;mh.position.z=.4;g.add(mh);
+ for(const s of [-1,1]){const bell=mesh(new THREE.SphereGeometry(.46,32,16,0,Math.PI*2,0,Math.PI/2),'#ababab');bell.position.set(s*.78,1.08,0);bell.rotation.z=-s*.5;g.add(bell);
+  const leg=mesh(new THREE.CylinderGeometry(.07,.1,.42,12),'#8a8a8a');leg.position.set(s*.72,-1.28,0);leg.rotation.z=s*.4;g.add(leg);}
+ const knob=mesh(new THREE.CylinderGeometry(.11,.11,.26,16),'#8a8a8a');knob.position.set(0,1.34,0);g.add(knob);return g;};
+
+const sec=(text,t)=>tl.set('#tag',{textContent:text},t);
+const dark=(on,t)=>tl.set('#hud .mono',{color:on?'#9a9a9a':'#6b6b6b'},t);
+
+// 1. Hook (0–2.2): the bear slides in from the right and turns to us, whispers, then asks; the line builds on the voice.
+mascot('cv1',[0,2.36],t=>{const k=spring(t,0,11,.7),i=idle(t);return {cx:505+760*(1-k),cy:500,r:250,yaw:-.55*(1-spring(t,.12,9,.8))+i.yaw,bodyYaw:-.35*(1-k),tilt:i.tilt,pitch:i.bob};},
+ [{at:.55,duration:.5,gaze:[-.7,-.1]},{at:1.95,duration:.4,face:'smile'}]);
+WM.pop(tl,'#bubble',.52,{origin:'100% 50%',duration:.35});
+WM.type(tl,'#bubbleText','psst…',.6,18);
+tl.to('#bubble',{autoAlpha:0,scale:.7,duration:.16},1.02);
+tl.fromTo('#eyebrow1',{autoAlpha:0,y:10},{autoAlpha:1,y:0,duration:.3},1.0);
+WM.words(tl,'#h1 .w',wordsOf('hook').slice(0,4));
+WM.writeOn(tl,'#sell',at('hook',4)-.3,{duration:.36,underline:'#u1'});
+
+// 2. Iris from the question mark into the orange field; the bear pops up and winks; three cards are thrown in.
+sec('// 02 — no shoot',2.25);
+WM.iris(tl,'#sceneA',2.2,{from:'#qmark',ringColor:'rgba(255,255,255,.8)',ringWidth:3,duration:.18});
+tl.set('#s1',{autoAlpha:0},2.4);
+WM.toss(tl,'#c1',2.72,{rotation:-3,duration:.36});WM.toss(tl,'#c2',3.2,{rotation:2,duration:.36});WM.toss(tl,'#c3',3.62,{rotation:-1,duration:.36});
+prop('cvC1',camera,[2.75,4.75],{spin:{at:2.8,turns:1,settle:.9,drift:.12,rest:.55}});
+prop('cvC2',scissors,[3.25,4.75],{spin:{at:3.3,turns:1,settle:.9,drift:.12,rest:.4}});
+prop('cvC3',clock,[3.65,4.75],{spin:{at:3.72,turns:1,settle:.9,drift:.12,rest:.45}});
+
+// 3. The field becomes the phone (4.4–4.7); the bear moves to the middle; the line builds; a cursor taps Create.
+sec('// 03 — create',4.45);
+WM.device(tl,'#panel',4.4,{to:{left:1286,top:86,width:500,height:907,radius:54},content:'#panelContent',chrome:'#chrome',duration:.32});
+tl.to('#panelContent',{autoAlpha:0,duration:.2},4.66);
+tl.set('#phoneUI',{autoAlpha:1},4.7).set('#panel',{backgroundColor:'#ffffff'},4.7);
+tl.fromTo('.prow',{autoAlpha:0,y:24},{autoAlpha:1,y:0,duration:.35,stagger:.12,ease:WM.ease.snappy},4.8);
+mascot('cvA',[2.3,7.05],t=>{
+ // Pops up from below at the left (2.35), then rides the device move to the middle, smaller.
+ const up=spring(t,2.33,12,.45),move=ease3((t-4.38)/.4),i=idle(t);
+ return {cx:lerp(430,1010,move),cy:lerp(560+620*(1-up),790,move),r:lerp(215,150,move),yaw:lerp(.12,-.18,move)+i.yaw,bodyYaw:lerp(.2,-.1,move),tilt:i.tilt,pitch:i.bob};},
+ [{at:2.55,duration:.32,face:'wink'},{at:2.9,duration:1.25,gaze:[.75,-.05]},{at:4.15,duration:.3,face:'laugh'},{at:6.2,duration:.75,gaze:[.8,-.25]}]);
+mascot('cvAv',[4.6,7.05],t=>({cx:56,cy:58,r:38,yaw:Math.sin(t*1.7)*.12}),[{at:5.9,duration:.4,face:'smile'}]);
+prop('cvR1',camera,[4.6,7.05],{scale:.62,dist:8});prop('cvR2',scissors,[4.6,7.05],{scale:.6,dist:8});prop('cvR3',clock,[4.6,7.05],{scale:.6,dist:8});
+// Spoken "Wiv Studio turns it into a ready-to-post video": the wordmark is two spoken words.
+const tw=wordsOf('turns');
+WM.words(tl,'#h3a .w',[tw[0],tw[2],tw[3],tw[4]]);
+WM.words(tl,'#h3b .w',[tw[5],tw[6]]);
+WM.writeOn(tl,'#vid3',tw[7]-.3,{duration:.36,underline:'#u3'});
+WM.cursor(tl,'#cursor',[{x:1720,y:1100,at:6.15},{x:1500,y:668,at:6.72,click:true}]);
+WM.press(tl,'#go',6.72,{glow:'rgba(255,107,53,.8)'});
+
+// 4. Push into "Create" and out of the plan's "Approve plan" (6.9–7.45); the tiles fill in on the voice; Ready.
+sec('// 04 — ready',7.0);
+WM.through(tl,{a:'#sceneA',from:'#go',b:'#s4',to:'#approve',at:7.02,inDuration:.12,hold:.08,outDuration:.36});
+tl.set('#cursor',{autoAlpha:0},7.02);
+prop('cvP',camera,[6.95,11.2],{scale:.5,dist:8});
+WM.type(tl,'#briefText','Cosy, warm, for Instagram',7.5,30);
+mascot('cv4',[7.0,11.2],t=>{const i=idle(t,1.2);return {cx:278,cy:226,r:118,yaw:i.yaw,tilt:i.tilt,pitch:i.bob};},
+ [{at:9.2,duration:.35,face:'wink'},{at:10.62,duration:.5,face:'laugh'}]);
+const show=(sel,t)=>tl.fromTo(sel,{autoAlpha:0,y:12},{autoAlpha:1,y:0,duration:.25,ease:WM.ease.snappy},t);
+show('#l1',at('w1'));
+WM.pop(tl,'#t3',at('w2')-.05,{duration:.4});tl.set('#e3',{autoAlpha:0},at('w2'));show('#l2',at('w2'));
+tl.fromTo('#dotsFill',{scaleX:0},{scaleX:1,duration:.7,ease:'power2.inOut'},at('w2')+.15).to('#dots b',{backgroundColor:O,duration:.05,stagger:.12},at('w2')+.15);
+WM.pop(tl,'#t4',at('w3')-.05,{duration:.4});tl.set('#e4',{autoAlpha:0},at('w3'));show('#l3',at('w3'));
+prop('cvS',camera,[8.7,11.2],{scale:.5,dist:8});prop('cvS2',clock,[8.7,11.2],{scale:.48,dist:8});
+WM.pop(tl,'#t5',at('w4')-.35,{duration:.4});tl.set('#e5',{autoAlpha:0},at('w4')-.3);show('#l4',at('w4'));
+tl.to('.chips span',{autoAlpha:1,duration:.12,stagger:.09},at('w4')-.2);
+WM.pop(tl,'#t6',at('w4')+.05,{duration:.4});tl.set('#e6',{autoAlpha:0},at('w4')+.1);
+tl.fromTo('#bars i',{scaleY:.05},{scaleY:i=>[.3,.45,.4,.62,.55,.8,1][i],duration:.35,stagger:.05,ease:WM.ease.snappy},at('w4')+.2);
+WM.press(tl,'#create',10.5,{glow:'rgba(255,107,53,.8)'});
+tl.set('#status',{autoAlpha:1},10.55).set('#create',{textContent:'✓ Created',backgroundColor:'#111'},10.62);
+WM.stamp(tl,'#stamp',10.62,{rotation:-8});
+tl.fromTo('#ring',{autoAlpha:0,scale:1.6},{autoAlpha:.85,scale:1,duration:.22,ease:'power3.out'},10.64);
+
+// 5. Iris to black from the stamp (11.0–11.15); the bear rises at the right; the promise builds on the voice.
+sec('// 05 — you',11.05);dark(true,11.05);
+WM.iris(tl,'#s5',10.92,{from:'#stamp',ringColor:'rgba(255,107,53,.6)',ringWidth:3,duration:.2});
+tl.set('#s4',{autoAlpha:0},11.25);
+mascot('cv5',[10.95,13.5],t=>{const k=spring(t,11.0,11,.55),i=idle(t);return {cx:385,cy:620+520*(1-k),r:178,yaw:-.18+i.yaw,tilt:i.tilt,pitch:i.bob};},
+ [{at:11.12,duration:.38,face:'wink'},{at:12.15,duration:.4,face:'smile'}]);
+WM.words(tl,'#h5 .l1 .w',[at('you')]);
+WM.writeOn(tl,'#dream',at('you',1)-.08,{duration:.4});
+WM.words(tl,'#h5 .l2 .w',wordsOf('we').slice(0,3));
+tl.to('#h5 .l2 .w',{color:'#fff',duration:.2,stagger:.16},at('we')+.05);
+WM.writeOn(tl,'#vid5',at('we',3)-.1,{duration:.36});
+
+// 6. Iris to white from "video." (13.3); the word moves to the middle and becomes the wordmark; the bear peeks.
+dark(false,13.3);sec('',13.3);
+WM.iris(tl,'#s6',13.2,{from:'#vid5',ringColor:'rgba(17,17,17,.4)',ringWidth:3,duration:.18});
+tl.set('#s5',{autoAlpha:0},13.5);
+const mark=document.getElementById('mark');'WyvStudio'.split('').forEach(c=>{const s=document.createElement('span');s.className='ch';s.textContent=c;mark.appendChild(s);});
+// "video." on the white starts exactly where it sat on the black (measured once, at build time: nothing moves it).
+const v5=document.getElementById('vid5').getBoundingClientRect(),v6=document.getElementById('vid6');v6.style.left=v5.left+'px';v6.style.top=v5.top+'px';
+tl.set('#vid6',{autoAlpha:1},13.3);
+tl.to('#vid6',{x:830-v5.left,y:440-v5.top,scale:.9,duration:.18,ease:'power3.inOut'},13.4).to('#vid6',{autoAlpha:0,y:440-v5.top-30,filter:'blur(8px)',duration:.1},13.58);
+tl.fromTo('#mark .ch',{autoAlpha:0,y:70,filter:'blur(8px)'},{autoAlpha:1,y:0,filter:'blur(0px)',duration:.26,stagger:.025,ease:WM.ease.snappy},13.48);
+mascot('cv6',[13.85,15.1],t=>{const k=spring(t,13.95,10,.5),i=idle(t,.6);return {cx:290,cy:205+330*(1-k),r:132,yaw:.1+i.yaw,tilt:i.tilt};},
+ [{at:14.45,duration:.6,face:'wink'}]);
+tl.fromTo('#tagline',{autoAlpha:0,y:16},{autoAlpha:1,y:0,duration:.35,ease:'power2.out'},14.0);
+WM.pop(tl,'#cta',14.2,{from:.6,duration:.4});
+tl.fromTo('#url',{autoAlpha:0},{autoAlpha:1,duration:.3},14.35);
+tl.fromTo('#stats',{autoAlpha:0},{autoAlpha:1,duration:.3},14.45);
+
+// The clock: every 3D stage and the timecode, drawn from the timeline's time.
+const tc=document.getElementById('tc'),p2=n=>String(n).padStart(2,'0');
+W3Clock(tl,stages,15,[t=>{const s=Math.floor(t),f=Math.floor((t-s)*60);tc.innerHTML='WYVSTUDIO&nbsp;&nbsp;00:00:'+p2(s)+':'+p2(f);}]);
+tl.to({},{duration:.01},14.99);
+window.__timelines=window.__timelines||{};window.__timelines.main=tl;
+</script></body></html>

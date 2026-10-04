@@ -20,7 +20,8 @@ export const DEFAULT_SPEC = {
   eyes: {style: 'disc', size: 1, spacing: 1, color: '#141414', highlight: true},
   brows: {style: 'bar', color: '#141414'},
   mouth: {color: '#1b1b1b', teeth: '#ffffff', tongue: '#c97a7a'},
-  nose: {style: 'button'},
+  nose: {style: 'button', color: null},
+  ears: {style: 'none', color: null, inner: null},
   cheeks: {color: '#e9a5a0'},
   body: {outfit: 'sweater', color: '#9a9a9a', collar: 'turtleneck', pocket: true},
   finish: 'clay',
@@ -176,7 +177,32 @@ export function buildMascot(specIn, {cell = 2} = {}) {
     const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.17, 6, 12), mat(spec.brows.color, 0.6)); b.rotation.z = Math.PI / 2;
     const g = new THREE.Group(); facing(g, onFace(side * spread, eyeY + 0.27, 1.0)); g.add(b); H.add(g); return g;
   });
+  // Ears: on the top sides of the head, turning with it; round (bear), pointed (cat) or long (bunny), with an inner colour.
+  if (spec.ears && spec.ears.style && spec.ears.style !== 'none') {
+    const earColor = spec.ears.color || spec.head.skin, inner = spec.ears.inner || new THREE.Color(earColor).multiplyScalar(0.8);
+    for (const side of [-1, 1]) {
+      const g = new THREE.Group(), dir = new THREE.Vector3(side * 0.62, 0.74, -0.08).normalize(); g.position.copy(dir.clone().multiplyScalar(R * 0.9));
+      g.lookAt(g.position.clone().add(new THREE.Vector3(side * 0.25, 0.25, 1))); g.rotateZ(-side * 0.35);
+      if (spec.ears.style === 'round') {
+        const e = new THREE.Mesh(new THREE.SphereGeometry(0.34, 28, 20), mat(earColor)); e.scale.set(1, 1, 0.5); g.add(e);
+        const i = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16), mat(inner)); i.scale.set(1, 1, 0.3); i.position.z = 0.1; g.add(i);
+      } else {
+        const tall = spec.ears.style === 'long' ? 0.95 : 0.5, wide = spec.ears.style === 'long' ? 0.17 : 0.24;
+        const e = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), mat(earColor)); e.scale.set(wide, tall, 0.12); e.position.y = tall * 0.65; g.add(e);
+        const i = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), mat(inner)); i.scale.set(wide * 0.55, tall * 0.7, 0.06); i.position.set(0, tall * 0.62, 0.08); g.add(i);
+        if (spec.ears.style === 'pointed') { e.scale.x *= 1.1; e.rotation.z = side * 0.12; }
+      }
+      skull.parent.add(g);
+    }
+  }
   // Nose and cheeks.
+  if (spec.nose.style === 'heart') {
+    // A small rounded heart, point down, as on a plush toy.
+    const s = new THREE.Shape(); s.moveTo(0, -0.08); s.bezierCurveTo(-0.02, -0.06, -0.12, 0.0, -0.1, 0.05); s.bezierCurveTo(-0.08, 0.1, -0.02, 0.1, 0, 0.06);
+    s.bezierCurveTo(0.02, 0.1, 0.08, 0.1, 0.1, 0.05); s.bezierCurveTo(0.12, 0.0, 0.02, -0.06, 0, -0.08);
+    const n = new THREE.Mesh(new THREE.ExtrudeGeometry(s, {depth: 0.04, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.025, bevelSegments: 4, curveSegments: 16}), mat(spec.nose.color || '#2b1a2e'));
+    n.scale.setScalar(1.15); facing(n, onFace(0, -0.12, 1.0)); H.add(n);
+  }
   if (spec.nose.style === 'button') { const n = new THREE.Mesh(new THREE.SphereGeometry(0.09, 20, 14), mat(new THREE.Color(spec.head.skin).multiplyScalar(0.94))); n.position.copy(onFace(0, -0.15, 1.04)); H.add(n); }
   if (spec.cheeks.color) for (const side of [-1, 1]) { const c = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), mat(spec.cheeks.color, 0.3)); c.scale.set(0.11, 0.07, 0.02); facing(c, onFace(side * 0.5, -0.2, 0.995)); H.add(c); }
   // Mouths: every shape is built once; the rig shows one at a time.
