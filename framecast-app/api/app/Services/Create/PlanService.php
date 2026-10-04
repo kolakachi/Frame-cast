@@ -345,6 +345,7 @@ class PlanService
             'layout' => $str($s['layout'] ?? '', 140), 'field' => $str($s['field'] ?? '', 40),
             // Registry items this beat mounts; only names the sandbox ships.
             'uses' => collect((array) ($s['uses'] ?? []))->filter(fn ($n) => RegistryCatalogue::has(is_string($n) ? $n : null))->unique()->take(2)->values()->all(),
+            'starts_on' => $str($s['starts_on'] ?? '', 60),
         // A step-by-step reference easily needs a title card and a screen per step plus a hook and a close; cutting at 8 silently lost the ending.
         ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(16)->values()->all();
         $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
@@ -377,6 +378,13 @@ class PlanService
             $narration[] = $line;
         }
         if ($silent) $narration = [];
+        // A beat that starts on spoken words keeps them only when the script says them; the build times the beat by them.
+        $said = ' '.trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower(implode(' ', $narration)))).' ';
+        $scenes = array_map(function ($sc) use ($said) {
+            $want = trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower($sc['starts_on'])));
+            if ($want === '' || ! str_contains($said, ' '.$want.' ')) unset($sc['starts_on']);
+            return $sc;
+        }, $scenes);
         $voiceKeys = array_column($ctx['voices'] ?? [], 'key');
         $voice = in_array($raw['voice'] ?? null, $voiceKeys, true) ? $raw['voice'] : \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE;
         // A timing correction must not rewrite or silently truncate the approved script/voice.

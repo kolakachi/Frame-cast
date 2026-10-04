@@ -2561,4 +2561,14 @@ class CreateIntegrationTest extends TestCase
         $this->travel(46)->minutes();
         try { $this->get($url)->assertForbidden(); } finally { $this->travelBack(); }
     }
+
+    public function test_a_beat_keeps_the_words_it_starts_on_only_when_the_script_says_them(): void
+    {
+        $ctx = ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 30, 'audio' => 'original']];
+        $raw = ['summary' => 'x', 'left_out' => '', 'narration' => ['Want to create your first UGC ad? Start here.', 'First, give WyvStudio your product and a clear idea.'],
+            'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'x', 'starts_on' => 'Want to create'], ['label' => 'Step 1', 'start' => 4, 'end' => 9, 'idea' => 'x', 'starts_on' => 'First, give'],
+                ['label' => 'Step 1 UI', 'start' => 9, 'end' => 15, 'idea' => 'x', 'starts_on' => 'Paste your link'], ['label' => 'Close', 'start' => 15, 'end' => 30, 'idea' => 'x']]];
+        $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
+        $this->assertSame(['Want to create', 'First, give', null, null], array_map(fn ($s) => $s['starts_on'] ?? null, $p['scenes']), 'words the script never says are dropped');
+    }
 }

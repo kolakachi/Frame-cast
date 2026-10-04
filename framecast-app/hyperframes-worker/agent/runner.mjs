@@ -7,13 +7,14 @@ import {criticLine} from './critic.mjs';
 import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings} from './timing-check.mjs';
+import {beatFindings} from './narration-timing.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
 
 // One owner per local run. Production locking/leases belong to E2.
-export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
+export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,initialTranscripts={},requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
   const cap={calls:12,repairs:2,runs:24,inspections:8,resultBytes:16000,usesPerTurn:8,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
@@ -24,6 +25,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   if(state && state.status!=='running'){await workspace.verifyAssets();return state;}
   state ??= {identity,status:'running',calls:0,repairs:0,runs:0,reservedUsd:0,reservedOutputTokens:0,elapsedMs:0,messages:[],revision:0,checkedRevision:-1,snapshotRevision:-1,reviewedRevision:-1,pending:null};
   state.bundleHash ??= await workspace.fingerprint();
+  // Transcripts made before the run (the bought narration) are known from the first call.
+  state.transcripts={...initialTranscripts,...(state.transcripts||{})};
   const started=Date.now(),previousElapsed=state.elapsedMs;
   const save=async()=>{state.elapsedMs=previousElapsed+Date.now()-started;await writeFile(stateFile+'.tmp',JSON.stringify(state,null,2),{mode:0o600});await rename(stateFile+'.tmp',stateFile);
     // A derived owner diagnostic, separate from render assets and model context.
@@ -148,6 +151,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
     errors.push(...duckingFindings({rows,planMedia:context.planMedia||[]}));
     errors.push(...await audioEdgeCheck(rows,html));
+    // Beats start when their words are said (plan.scenes[].starts_on), measured on the narration as placed.
+    if(!context.lookOnly&&context.plan?.scenes?.some(sc=>sc.starts_on)){
+      const asset=p=>workspace.assets.find(a=>a.path===p);
+      const roots=new Set((context.planMedia||[]).filter(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.file).map(m=>m.file));
+      const isVoice=src=>{let a=src;for(let i=0;i<8&&a;i++){if(roots.has(a))return true;const x=asset(a);a=x?.derivedFrom??x?.origin??null;}return false;};
+      const voiceFiles=new Set(rows.filter(r=>r.kind==='audio'&&r.src&&isVoice(r.src)).map(r=>r.src));
+      errors.push(...beatFindings({rows,html,scenes:context.plan.scenes,voiceFiles,transcripts:state.transcripts||{},videoSeconds:Number(context.settings?.duration_seconds)||null}));
+    }
     errors.push(...numberFindings(html,allowedText()));
     return errors.length?{ok:false,diagnostics:{ok:false,errors}}:{ok:true};
   };
