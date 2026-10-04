@@ -78,7 +78,7 @@ class CreateCharacterPerformanceTest extends TestCase
             ['id' => 'perf-blink', 'status' => 'unverified', 'evidence' => str_repeat('x', 500), 'private' => 'discard'],
             ['id' => 'not-a-requirement', 'status' => 'pass', 'evidence' => 'discard'],
         ]]);
-        $this->assertSame('incomplete', $review['status']);
+        $this->assertSame('issues', $review['status'], 'unverified evidence is something to check, never a pass');
         $this->assertCount(1, $review['performance_checks']);
         $this->assertSame(['id', 'status', 'evidence', 'source'], array_keys($review['performance_checks'][0]));
         $this->assertSame(400, strlen($review['performance_checks'][0]['evidence']));

@@ -582,8 +582,10 @@ class CreateIntegrationTest extends TestCase
         $this->assertNull(\App\Services\Create\RunService::deliveryChecks('nope'));
         $heard = \App\Services\Create\RunService::deliveryChecks(['ok' => true, 'audio' => ['ok' => false, 'problems' => ['The music may be too loud under the voice.', 42], 'script_coverage' => 0.96123, 'mix' => ['secret' => 1]]]);
         $this->assertSame(['ok' => false, 'problems' => ['The music may be too loud under the voice.'], 'script_coverage' => 0.961], $heard['audio'], 'what was heard is kept in plain words only');
-        $this->assertSame(['status' => 'incomplete', 'findings' => ['Fix the headline']], $meta['creative_review']);
+        $this->assertSame(['status' => 'issues', 'findings' => ['Fix the headline']], $meta['creative_review']);
         $this->assertSame('incomplete', RunService::creativeReview(null)['status']);
+        $this->assertSame('ready', RunService::creativeReview(['status' => 'ready', 'findings' => []])['status'], 'checked and nothing open: ready for the user');
+        $this->assertSame('issues', RunService::creativeReview(['status' => 'ready', 'findings' => ['At 3.2 s: the card is missing from its slot']])['status']);
         $this->assertSame('passed', RunService::creativeReview(['status' => 'passed'])['status']);
     }
 
@@ -2733,7 +2735,7 @@ class CreateIntegrationTest extends TestCase
         $review = \App\Services\Create\RunService::creativeReview(['status' => 'passed', 'findings' => [], 'requirement_checks' => [
             ['id' => 'req-'.str_repeat('a', 20), 'version' => 1, 'status' => 'fulfilled', 'evidence' => 'ok', 'source' => 'audio_review'],
             ['id' => 'req-'.str_repeat('b', 20), 'version' => 1, 'status' => 'by_ear', 'evidence' => 'listen']]], $plan);
-        $this->assertSame('incomplete', $review['status'], 'something still to listen to is not a pass');
+        $this->assertSame('issues', $review['status'], 'something still to listen to is not a pass');
     }
 
     public function test_each_version_streams_from_a_signed_link_that_expires(): void

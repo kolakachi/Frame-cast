@@ -169,7 +169,7 @@ test('the protected review window uses the critic before another author call',as
     strip:async()=>({ok:true,providerImage:'data:image/jpeg;base64,Yg==',coverage:{duration_seconds:30,times:[.5,29.5]}}),
     critic:async args=>{assert.deepEqual(args.stripEvidence,{duration_seconds:30,times:[.5,29.5]});reviews++;return {verdict,scores:{hook:8,hierarchy:8,density:8,energy:8,performance:8},directives:verdict==='revise'?['Improve the opening']:[]};}}});
   assert.equal(reviews,1);assert.equal(seen.length,1);assert.equal(state.status,'preview_ready');assert.equal(state.pending,null);
-  assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,verdict==='pass'?'passed':'incomplete');
+  assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,verdict==='pass'?'passed':'issues');
  }
 });
 test('an uncertain final critic call remains fenced for reconciliation',async()=>{

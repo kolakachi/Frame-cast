@@ -9,7 +9,7 @@ const digits=s=>String(s).replace(/[^\d.]/g,'').replace(/\.$/,'');
 // not text: their hex codes once read as unapproved numbers).
 export function visibleText(html){
  const h=String(html);
- const vars=[...h.matchAll(/data-composition-variables='([^']*)'/g)].flatMap(m=>{try{return JSON.parse(m[1].replace(/&quot;/g,'"')).filter(v=>v?.type!=='color'&&!/^#?[0-9a-f]{3,8}$/i.test(String(v?.default??'').trim())).map(v=>String(v.default??''))}catch{return []}});
+ const vars=[...h.matchAll(/data-composition-variables='([^']*)'/g)].flatMap(m=>{try{return JSON.parse(m[1].replace(/&quot;/g,'"')).filter(v=>v?.type!=='color'&&!/^#[0-9a-f]{3,8}$/i.test(String(v?.default??'').trim())).map(v=>String(v.default??''))}catch{return []}});
  const body=h.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&[a-z#0-9]+;/gi,' ');
  return [body,...vars].join(' ');
 }

@@ -78,8 +78,8 @@ class CreateRequirementContractTest extends TestCase
         $contract = Contract::normalize(['requirements' => $this->rows()], $this->context());
         $checks = array_map(fn ($r, $i) => ['id' => $r['id'], 'status' => 'fulfilled', 'evidence' => 'Observed movement', 'start' => $i * 2, 'end' => $i * 2 + 1], $contract['requirements'], [0, 1, 2]);
         $this->assertSame('passed', RunService::creativeReview(['status' => 'passed', 'requirement_checks' => $checks], $contract)['status']);
-        $this->assertSame('incomplete', RunService::creativeReview(['status' => 'passed'], $contract)['status']);
-        $this->assertSame('incomplete', RunService::creativeReview(['status' => 'passed', 'requirement_checks' => [...$checks, $checks[0]]], $contract)['status']);
+        $this->assertSame('issues', RunService::creativeReview(['status' => 'passed'], $contract)['status']);
+        $this->assertSame('issues', RunService::creativeReview(['status' => 'passed', 'requirement_checks' => [...$checks, $checks[0]]], $contract)['status']);
         $checks[1]['start'] = 0;
         $r = RunService::creativeReview(['status' => 'passed', 'requirement_checks' => $checks], $contract);
         $this->assertSame('unmet', $r['requirement_checks'][1]['status']); $this->assertSame('unverified', $r['requirement_checks'][2]['status']);

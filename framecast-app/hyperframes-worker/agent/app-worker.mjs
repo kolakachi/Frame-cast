@@ -14,7 +14,7 @@ import {cutTimes,outputPace,paceNotes} from './pace-review.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
-import {findResume} from './resume.mjs';
+import {findResume,planHash} from './resume.mjs';
 import {accountedCall} from './accounted-call.mjs';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
@@ -52,7 +52,7 @@ async function execute(run){
  await mkdir(dir,{recursive:true});
  // A prior process may have spent/rendered. Never replay an interrupted run.
  try{await access(dir+'/started.json');throw Error('Run journal exists; reconcile instead of replaying');}catch(e){if(e.code!=='ENOENT')throw e;}
- await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString(),conversationId:run.input.conversation_id??null,planId:run.input.plan?.plan_id??null,stage:run.input.build_stage??null}),{flag:'wx',mode:0o600});
+ await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString(),conversationId:run.input.conversation_id??null,planId:run.input.plan?.plan_id??null,stage:run.input.build_stage??null,planHash:planHash(run.input)}),{flag:'wx',mode:0o600});
  // The app listens to a sound file the build made (its export, or narration it edited) and returns the words.
  const listen=async file=>{const form=new FormData();form.set('lease_token',run.lease_token);form.set('file',new Blob([await readFile(file)]),path.basename(file));return request('runs/'+run.id+'/listen',form,true,180000);};
  await mkdir(dir+'/project');
@@ -267,8 +267,9 @@ async function execute(run){
   if(audioReview){
    result.delivery_checks={...(result.delivery_checks||{}),audio:{ok:audioReview.summary.ok,problems:audioReview.summary.problems.slice(0,6),script_coverage:audioReview.summary.script_coverage??null}};
   }
-  result.creative_review=agentResult?.state?reviewStatus(agentResult.state):{status:'incomplete',findings:['This output has not received an independent creative review.']};
-  if(paceReview?.notes?.length)result.creative_review.findings=[...(result.creative_review.findings||[]),...paceReview.notes].slice(0,8);
+  result.creative_review=agentResult?.state?reviewStatus(agentResult.state):{status:'incomplete',findings:['The build ended before its checks finished.']};
+  // Pacing measured on the delivered video reaches the user too; a version ready for review with notes has issues.
+  if(paceReview?.notes?.length){result.creative_review.findings=[...(result.creative_review.findings||[]),...paceReview.notes].slice(0,8);if(result.creative_review.status==='ready')result.creative_review.status='issues';}
   if(audioReview){const heardIds=new Set(audioReview.checks.map(c=>c.id));result.creative_review.requirement_checks=[...(result.creative_review.requirement_checks||[]).filter(c=>!heardIds.has(c.id)),...audioReview.checks].slice(0,24);}
   // The agent's last review scores travel with the version, so the card can offer another round.
   if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);

@@ -389,7 +389,8 @@ function referenceTally(plan) {
   const d = plan.reference_decisions || [], n = k => d.filter(x => x.decision === k).length
   return `${d.length + (plan.reference_unaccounted || []).length} moments seen · ${n('keep')} kept · ${n('replace')} changed · ${n('drop')} left out`
 }
-const needsAnotherRound = computed(() => outputMeta.value.creative_review?.status === 'incomplete' || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
+// Offered, never automatic: when the checks did not pass, or when there are specific things to fix.
+const needsAnotherRound = computed(() => ['incomplete', 'issues'].includes(outputMeta.value.creative_review?.status) || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
 async function keepImproving() { const notes = reviewNotes.value; prompt.value = 'Keep this video and improve it' + (notes.length ? ': ' + notes.join('; ') : '.'); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
 async function chooseStyle(value) {
@@ -740,7 +741,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                           <small class="muted">To change this direction, describe the colours you want and plan again.</small>
                         </div>
                         <ul v-if="(styleNotes[planStyleKey(planByMessage[m.id])] || []).length" class="style-notes"><li v-for="(n, i) in styleNotes[planStyleKey(planByMessage[m.id])]" :key="i">{{ n }}</li></ul>
-                        <label v-if="planByMessage[m.id].plan.style && !planByMessage[m.id].plan.free_edit && conversation" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Storyboard only: silent still frames for approval before the full video <small class="muted">(audio and motion are priced separately when you build the full video)</small></span></label>
+                        <label v-if="(planByMessage[m.id].plan.style || planByMessage[m.id].plan.mascot3d) && !planByMessage[m.id].plan.free_edit && conversation" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Storyboard only: silent still frames for approval before the full video <small class="muted">(audio and motion are priced separately when you build the full video)</small></span></label>
                         <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
                           <b>{{ dec.question }}</b>
                           <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
@@ -751,9 +752,9 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                         </div>
                       </template>
                     </div>
+                    <div v-if="planByMessage[m.id].plan.mascot3d && !planByMessage[m.id].stale" class="checks character-approval-inline"><b>Your 3D mascot · check it before you approve</b><MascotPreview :spec="planByMessage[m.id].plan.mascot3d.spec" /><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. Check it from every angle here before you approve; this is the character in your video.</p><p v-if="planByMessage[m.id].plan.mascot3d.missing" class="muted">Not possible yet: {{ planByMessage[m.id].plan.mascot3d.missing }}</p></div>
                     <details v-if="!planByMessage[m.id].stale" class="more">
                       <summary>View details</summary>
-                      <div v-if="planByMessage[m.id].plan.mascot3d" class="checks"><b>Your 3D mascot</b><MascotPreview :spec="planByMessage[m.id].plan.mascot3d.spec" /><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. Check it from every angle here before you approve; this is the character in your video.</p><p v-if="planByMessage[m.id].plan.mascot3d.missing" class="muted">Not possible yet: {{ planByMessage[m.id].plan.mascot3d.missing }}</p></div>
                       <div v-if="planByMessage[m.id].plan.props3d?.length" class="checks"><b>3D objects</b><p v-for="o in planByMessage[m.id].plan.props3d" :key="o.name" class="muted">{{ o.name }}<template v-if="o.looks">: {{ o.looks }}</template><template v-if="o.spin"> · spins as it lands</template></p><p class="muted">Modelled for this video in the same finish, no image generation.</p></div>
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>
@@ -835,8 +836,9 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   </ul>
                 </div>
                 <!-- Suggestions only, in plain words: users never see review scores or that a reviewer exists. -->
-                <div v-if="outputMeta.creative_review && outputMeta.creative_review.status !== 'passed' && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
-                  <b>{{ outputMeta.look ? 'Notes for the next round' : 'Ideas for the next version' }}</b>
+                <p v-if="outputMeta.creative_review?.status === 'ready' && !outputMeta.look" class="muted" role="status">Checks passed. It's ready for your review: tell us anything you'd like changed.</p>
+                <div v-if="outputMeta.creative_review && !['passed', 'ready'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
+                  <b>{{ outputMeta.look ? 'Notes for the next round' : outputMeta.creative_review.status === 'issues' ? 'Things to check in this version' : 'Ideas for the next version' }}</b>
                   <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
                   <p v-else>Look over the stills and tell us what to change, or build the full video.</p>
                 </div>

@@ -51,7 +51,7 @@ onBeforeUnmount(() => { alive = false; cancelAnimationFrame(raf); renderer?.disp
 <template>
   <div class="mascot-preview">
     <canvas v-show="!failed" ref="canvas" width="260" height="280" aria-label="Your 3D mascot, turning" />
-    <p v-if="failed" class="muted">The 3D preview could not load here; the video will still use this design.</p>
+    <p v-if="failed" class="notice">The 3D preview could not load in this browser, so you have not seen the character yet. Tick "Storyboard only" in this plan to see it in still frames before the video is made.</p>
   </div>
 </template>
 

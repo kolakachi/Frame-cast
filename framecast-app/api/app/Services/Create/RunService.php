@@ -211,7 +211,16 @@ class RunService
         $requirements = RequirementContract::review($value['requirement_checks'] ?? [], $plan, $lookOnly);
         $unverifiedRequirements = collect($requirements)->contains(fn ($r) => ! in_array($r['status'], ['fulfilled', 'deferred'], true));
         $unverified = collect($checks)->contains(fn ($r) => in_array($r['status'], ['fail', 'unverified'], true) || trim($r['evidence']) === '');
-        return ['status' => ($value['status'] ?? null) === 'passed' && ! $findings && ! $unverified && ! $unverifiedRequirements ? 'passed' : 'incomplete', 'findings' => $findings,
+        // passed: a critic pass with nothing open; ready: technical checks passed, for the user's review; issues: specific
+        // findings the user should see; incomplete: the checks did not pass.
+        $claimed = $value['status'] ?? null;
+        $status = match (true) {
+            $claimed === 'passed' && ! $findings && ! $unverified && ! $unverifiedRequirements => 'passed',
+            $claimed === 'ready' && ! $findings => 'ready',
+            in_array($claimed, ['passed', 'ready', 'issues'], true) => 'issues',
+            default => 'incomplete',
+        };
+        return ['status' => $status, 'findings' => $findings,
             ...($requirements ? ['requirement_checks' => $requirements] : []), ...($checks ? ['performance_checks' => $checks] : [])];
     }
 

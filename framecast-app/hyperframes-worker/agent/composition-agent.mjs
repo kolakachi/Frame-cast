@@ -58,6 +58,8 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  // An edit starts from the version being edited; a resumed build from the draft of the build it continues.
  const seed=input.base_bundle??input.resume?.files??null;
  if(seed)for(const [name,text] of Object.entries(seed))if(/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(name))await writeFile(directory+'/project/'+name,text,{mode:0o600});
+ // A resumed draft brings the files its code uses (derived audio, rendered clips); they are protected like inputs.
+ for(const m of input.resume?.media??[])if(/^[A-Za-z0-9_.-]+$/.test(m.name)){await copyFile(m.path,directory+'/project/'+m.name);}
  // Fixed runtime assets are protected alongside uploaded source bytes.
  for(const name of (await readdir(directory+'/project')).filter(n=>/\.(svg|png|jpg|webp|mp4|mp3|wav|ttf)$/.test(n))){
   if(!assets.some(a=>a.path===name))assets.push({path:name,sha256:digest(await readFile(directory+'/project/'+name))});

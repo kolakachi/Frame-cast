@@ -164,7 +164,7 @@ test('a draft that passed checks and snapshots is delivered when the call limit 
  const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
  assert.equal(state.status,'preview_ready');assert.match(state.internalNote,/visual review/);
- assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,'incomplete');
+ assert.equal((await import('../review-status.mjs')).reviewStatus(state).status,'issues','a recovered draft is delivered with a note saying so');
  const dir2=await mkdtemp(tmpdir()+'/lim2-');await writeFile(dir2+'/index.html','<html></html>');let j=0;
  const failing=await runAgent({stateFile:dir2+'/s.json',workspace:new Workspace(dir2,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[j++])})},context:{brief:'x'},limits:{calls:2,repairs:3,budgetUsd:0},requireVisualReview:true,
   tools:{check:async()=>({ok:false,diagnostics:{ok:false,errors:[{code:'x'}]}}),snapshot:async()=>({ok:true})}});
