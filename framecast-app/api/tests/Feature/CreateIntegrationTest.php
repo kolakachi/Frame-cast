@@ -2189,6 +2189,17 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(3, (int) DB::table('api_operations')->value('reserved_credits'));
     }
 
+    public function test_a_call_under_way_when_stop_is_pressed_keeps_its_receipt(): void
+    {
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',str_repeat('a',64));
+        DB::table('composition_runs')->where('id',$run->id)->update(['status'=>'cancel_requested']);
+        $attempts->bindPrediction($run->id,$claim['lease_token'],$a['id'],'msg_under_way');
+        $this->assertSame('msg_under_way',DB::table('composition_attempts')->where('id',$a['id'])->value('prediction_id'));
+        // No new call starts while stopping.
+        $this->rejected(409,fn()=>$attempts->begin($run->id,$claim['lease_token'],'agent-2','agent',str_repeat('b',64)));
+    }
+
     public function test_verified_late_provider_receipt_reconciles_once_without_reexecution(): void
     {
         [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);

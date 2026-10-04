@@ -47,7 +47,8 @@ class AttemptService
     public function bindPrediction(string $runId, string $lease, string $id, string $prediction): void
     {
         DB::transaction(function () use ($runId,$lease,$id,$prediction) {
-            $this->leased($runId,$lease,false);
+            // A call already under way may still report its id while the build is stopping.
+            $this->leased($runId,$lease,false,true);
             $a=DB::table('composition_attempts')->where('run_id',$runId)->where('id',$id)->lockForUpdate()->firstOrFail();
             abort_unless($a->status==='started' && preg_match('/^[a-zA-Z0-9_-]{1,160}$/D',$prediction),409);
             abort_if($a->prediction_id && $a->prediction_id!==$prediction,409,'Prediction already bound.');
@@ -104,11 +105,12 @@ class AttemptService
         });
     }
 
-    private function leased(string $id, string $token, bool $settling): object
+    private function leased(string $id, string $token, bool $settling, bool $stopping = false): object
     {
         $run = DB::table('composition_runs')->where('id', $id)->lockForUpdate()->firstOrFail();
         abort_unless($run->lease_hash && hash_equals($run->lease_hash, hash('sha256', $token)), 403);
-        abort_unless(($settling || ($run->status === 'running' && now()->lessThan($run->lease_expires_at)))
+        $live = $run->status === 'running' || ($stopping && $run->status === 'cancel_requested');
+        abort_unless(($settling || ($live && now()->lessThan($run->lease_expires_at)))
             && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409, 'Attempt lease is no longer current.');
         return $run;
     }
