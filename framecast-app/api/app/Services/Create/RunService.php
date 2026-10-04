@@ -62,6 +62,16 @@ class RunService
         return $run;
     }
 
+    /** The run behind a current lease, for work done while it runs or finishes (the listening check on its export). */
+    public function currentRun(string $id, string $token): object
+    {
+        return DB::transaction(function () use ($id, $token) {
+            $run = $this->leased($id, $token);
+            abort_unless(in_array($run->status, ['running', 'cancel_requested'], true) && now()->lessThan($run->lease_expires_at), 409, 'Worker lease expired.');
+            return $run;
+        });
+    }
+
     public function validateResultLease(string $id, string $token): void
     {
         DB::transaction(function () use ($id, $token) {

@@ -36,6 +36,29 @@ class TranscriptService
         return $this->present($record, false);
     }
 
+    /**
+     * Listening to sound the worker made: the export's soundtrack, or narration it edited itself. Returns the words
+     * with times, and the approved script both as written and as the voice was asked to say it (pronunciations).
+     */
+    public function listen(string $runId, string $lease, \Illuminate\Http\UploadedFile $file): array
+    {
+        $run = app(RunService::class)->currentRun($runId, $lease);
+        $path = $file->getRealPath();
+        $seconds = (float) trim(\Illuminate\Support\Facades\Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
+        abort_unless($seconds > 0, 422, 'That file has no sound to listen to.');
+        abort_if($seconds > config('create.transcript_max_seconds'), 422, 'Listening covers up to 10 minutes.');
+        $key = 'create-transcript:'.$run->workspace_id.':'.now()->toDateString();
+        abort_if(RateLimiter::tooManyAttempts($key, (int) config('create.transcript_daily_limit')), 429, 'Daily transcript limit reached. Try again tomorrow.');
+        RateLimiter::hit($key, 86400);
+        $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, (string) ($file->getMimeType() ?: 'audio/wav'));
+        abort_if(($result['provider_key'] ?? '') === 'local_fallback', 503, 'Listening is unavailable right now.');
+        $record = ['provider' => $result['provider_key'], 'model' => $result['model'] ?? null, 'text' => mb_substr((string) ($result['transcript'] ?? ''), 0, 20000),
+            'words' => array_slice($result['words'] ?? [], 0, 3000), 'segments' => array_slice($result['segments'] ?? [], 0, 600)];
+        $lines = array_values(array_filter(array_map('strval', (array) data_get(json_decode($run->input_json, true), 'plan.narration', []))));
+        return $this->present($record, false) + ['seconds' => round($seconds, 2), 'script' => ['written' => $lines,
+            'spoken' => array_map(fn ($l) => PlanMediaExecutor::pronounce($l, (int) $run->workspace_id), $lines)]];
+    }
+
     private function present(array $r, bool $cached): array
     {
         $round = fn ($items) => array_map(fn ($w) => ['text' => $w['text'], 'start' => round((float) $w['start'], 2), 'end' => round((float) $w['end'], 2)], $items);

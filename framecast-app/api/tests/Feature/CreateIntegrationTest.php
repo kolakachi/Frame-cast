@@ -2476,4 +2476,62 @@ class CreateIntegrationTest extends TestCase
         parse_str((string) parse_url($first, PHP_URL_QUERY), $q);
         $this->assertGreaterThanOrEqual(now()->subMinutes(6)->addMinutes(5)->timestamp, (int) $q['expires'], 'never valid for less than five minutes');
     }
+
+    public function test_the_worker_can_have_the_export_listened_to_with_the_script_as_written_and_as_spoken(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $input = json_decode(DB::table('composition_runs')->where('id', $run->id)->value('input_json'), true);
+        $input['plan']['narration'] = ['Start creating with WyvStudio.'];
+        DB::table('composition_runs')->where('id', $run->id)->update(['input_json' => json_encode($input)]);
+        DB::table('create_pronunciations')->insert(['workspace_id' => $this->workspace->id, 'written' => 'WyvStudio', 'spoken' => 'Wiv Studio', 'created_at' => now(), 'updated_at' => now()]);
+        config(['create.worker_token' => str_repeat('a', 64)]);
+        $stt = \Mockery::mock(\App\Services\Media\MediaTranscriptionService::class);
+        $stt->shouldReceive('transcribeLocalMediaWithTimestamps')->once()->andReturn(['provider_key' => 'openai', 'model' => 'whisper', 'transcript' => 'Start creating with Wiv Studio.',
+            'words' => [['text' => 'Start', 'start' => 0.3, 'end' => 0.6], ['text' => 'creating', 'start' => 0.6, 'end' => 1.0]], 'segments' => []]);
+        $this->app->instance(\App\Services\Media\MediaTranscriptionService::class, $stt);
+        $dir = sys_get_temp_dir().'/listen-'.uniqid(); mkdir($dir);
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=2:sample_rate=16000', $dir.'/a.wav']);
+        $file = new \Illuminate\Http\UploadedFile($dir.'/a.wav', 'a.wav', 'audio/wav', null, true);
+        $url = '/api/internal/create/runs/'.$run->id.'/listen';
+        $this->withToken(str_repeat('a', 64))->post($url, ['lease_token' => str_repeat('0', 64), 'file' => $file], ['Accept' => 'application/json'])->assertForbidden();
+        $r = $this->withToken(str_repeat('a', 64))->post($url, ['lease_token' => $claim['lease_token'], 'file' => $file], ['Accept' => 'application/json'])->assertOk()->json('data');
+        $this->assertEquals([['text' => 'Start', 'start' => 0.3, 'end' => 0.6], ['text' => 'creating', 'start' => 0.6, 'end' => 1.0]], $r['words']);
+        $this->assertSame(['Start creating with WyvStudio.'], $r['script']['written']);
+        $this->assertSame(['Start creating with Wiv Studio.'], $r['script']['spoken']);
+        $this->assertEqualsWithDelta(2.0, $r['seconds'], 0.1);
+        @unlink($dir.'/a.wav'); @rmdir($dir);
+    }
+
+    public function test_the_listening_check_may_pass_or_fail_what_is_heard_and_by_ear_is_not_a_pass(): void
+    {
+        $plan = ['requirements' => [['id' => 'req-'.str_repeat('a', 20), 'text' => 'Clear voice and quiet music', 'category' => 'audio', 'version' => 1],
+            ['id' => 'req-'.str_repeat('b', 20), 'text' => 'Use the narration verbatim', 'category' => 'text', 'version' => 1]]];
+        $heard = \App\Services\Create\RequirementContract::review([
+            ['id' => 'req-'.str_repeat('a', 20), 'version' => 1, 'status' => 'fulfilled', 'evidence' => 'Voice 12 dB over music', 'source' => 'audio_review'],
+            ['id' => 'req-'.str_repeat('b', 20), 'version' => 1, 'status' => 'by_ear', 'evidence' => 'Checked by listening']], $plan, false);
+        $this->assertSame(['fulfilled', 'by_ear'], array_column($heard, 'status'));
+        $this->assertSame(['audio_review', 'critic_interpretation'], array_column($heard, 'source'));
+        $critic = \App\Services\Create\RequirementContract::review([['id' => 'req-'.str_repeat('a', 20), 'version' => 1, 'status' => 'fulfilled', 'evidence' => 'Sounds fine']], $plan, false);
+        $this->assertSame('unverified', $critic[0]['status'], 'pictures alone still cannot pass sound');
+        $review = \App\Services\Create\RunService::creativeReview(['status' => 'passed', 'findings' => [], 'requirement_checks' => [
+            ['id' => 'req-'.str_repeat('a', 20), 'version' => 1, 'status' => 'fulfilled', 'evidence' => 'ok', 'source' => 'audio_review'],
+            ['id' => 'req-'.str_repeat('b', 20), 'version' => 1, 'status' => 'by_ear', 'evidence' => 'listen']]], $plan);
+        $this->assertSame('incomplete', $review['status'], 'something still to listen to is not a pass');
+    }
+
+    public function test_each_version_streams_from_a_signed_link_that_expires(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $path = 'create/previews/'.$run->id.'/v.mp4';
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path, 'video bytes');
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<h1>x</h1>']], $path, hash('sha256', 'video bytes'));
+        $show = app(\App\Http\Controllers\Api\V1\Create\CreateController::class)->show(tap(\Illuminate\Http\Request::create('/x'), fn ($r) => $r->setUserResolver(fn () => $this->owner)), $c->id)->getData(true);
+        $url = $show['data']['revisions'][0]['preview_url'];
+        $this->assertStringContainsString('/media/create-versions/', $url);
+        $this->get($url)->assertOk()->assertHeader('Content-Type', 'video/mp4');
+        $this->get(preg_replace('/signature=[^&]+/', 'signature=bad', $url))->assertForbidden();
+        $this->travel(46)->minutes();
+        try { $this->get($url)->assertForbidden(); } finally { $this->travelBack(); }
+    }
 }

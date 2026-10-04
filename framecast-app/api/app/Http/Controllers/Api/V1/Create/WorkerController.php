@@ -136,6 +136,13 @@ class WorkerController extends Controller
         return response()->json(['data' => app(\App\Services\Create\TranscriptService::class)->forRun($id, $input['lease_token'], (int) $input['asset_id'])]);
     }
 
+    public function listen(Request $r, string $id)
+    {
+        $this->authorizeWorker($r);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'file' => 'required|file|max:51200']);
+        return response()->json(['data' => app(\App\Services\Create\TranscriptService::class)->listen($id, $input['lease_token'], $r->file('file'))]);
+    }
+
     public function prepareReplicate(Request $r, string $id)
     {
         $this->authorizeWorker($r);

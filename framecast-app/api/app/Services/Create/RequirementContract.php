@@ -149,14 +149,16 @@ class RequirementContract
             $matches = array_values(array_filter(is_array($raw) ? $raw : [], fn ($c) => is_array($c) && ($c['id'] ?? '') === $r['id']));
             $c = count($matches) === 1 ? $matches[0] : [];
             $evidence = self::text($c['evidence'] ?? '');
-            $status = $evidence !== '' && in_array($c['status'] ?? '', ['fulfilled', 'unmet', 'unverified', 'deferred'], true) ? $c['status'] : 'unverified';
+            // by_ear: waiting for the listening check. audio_review: that check, which may pass or fail what is heard.
+            $source = ($c['source'] ?? '') === 'audio_review' ? 'audio_review' : 'critic_interpretation';
+            $status = $evidence !== '' && in_array($c['status'] ?? '', ['fulfilled', 'unmet', 'unverified', 'deferred', 'by_ear'], true) ? $c['status'] : 'unverified';
             $timed = is_numeric($c['start'] ?? null) && is_numeric($c['end'] ?? null) && is_finite((float) $c['start']) && is_finite((float) $c['end']) && $c['start'] >= 0 && $c['end'] >= $c['start'] && $c['end'] <= 86400;
             if ($status === 'deferred' && ! ($lookOnly && ($r['review_stage'] ?? '') === 'production')) $status = 'unverified';
             if (! empty($r['order_unresolved']) || ($r['evidence_status'] ?? '') === 'unverified') $status = 'unverified';
-            if ($status === 'fulfilled' && (($r['category'] ?? '') === 'audio' || ((($r['category'] ?? '') === 'action' || ! empty($r['after_ids'])) && ! $timed))) $status = 'unverified';
+            if ($status === 'fulfilled' && ((($r['category'] ?? '') === 'audio' && $source !== 'audio_review') || ((($r['category'] ?? '') === 'action' || ! empty($r['after_ids'])) && ! $timed))) $status = 'unverified';
             if (($c['version'] ?? 1) !== ($r['version'] ?? 1)) { $status = 'unverified'; $evidence = 'The review belongs to an older requirement version.'; }
             $checks[$r['id']] = ['id' => $r['id'], 'text' => $r['text'], 'version' => $r['version'] ?? 1, 'status' => $status,
-                'evidence' => $evidence ?: 'No unique evidence returned for this requirement.', 'source' => 'critic_interpretation',
+                'evidence' => $evidence ?: 'No unique evidence returned for this requirement.', 'source' => $source,
                 ...($timed ? ['start' => (float) $c['start'], 'end' => (float) $c['end']] : [])];
         }
         // Repeat so invalid predecessors propagate regardless of the array's display order.
