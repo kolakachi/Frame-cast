@@ -111,4 +111,20 @@ class CreateReferenceStudyTest extends TestCase
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
     }
 
+    public function test_the_reference_pulse_is_read_as_a_tempo_and_cuts_on_the_beat_are_counted(): void
+    {
+        $dir = sys_get_temp_dir().'/beat-'.uniqid(); mkdir($dir);
+        // A kick every 0.5 s (120 beats a minute) for 8 s.
+        $r = Process::run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', "aevalsrc='if(lt(mod(t,0.5),0.04),0.8*sin(2*PI*60*t),0)':s=16000:d=8", $dir.'/kick.wav']);
+        $this->assertTrue($r->successful(), $r->errorOutput());
+        $m = new \ReflectionMethod(ReferenceStudy::class, 'lowBand'); $m->setAccessible(true);
+        $db = $m->invoke(app(ReferenceStudy::class), $dir.'/kick.wav');
+        $this->assertGreaterThan(700, count($db), '10 ms windows');
+        $map = ReferenceStudy::beatMap($db, [1.0, 2.5, 3.27]);
+        $this->assertTrue($map['present']);
+        $this->assertEqualsWithDelta(120, $map['tempo_bpm'], 3);
+        $this->assertEqualsWithDelta(0.67, $map['cuts_on_beat'], 0.01, 'two of three cuts land on a beat');
+        $this->assertFalse(ReferenceStudy::beatMap(array_fill(0, 800, -90.0), [])['present'], 'silence has no pulse');
+        foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
+    }
 }

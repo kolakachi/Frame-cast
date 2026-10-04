@@ -98,7 +98,7 @@ class ReferenceStudy
             'width' => $video['width'] ?? null, 'height' => $video['height'] ?? null, 'has_audio' => $hasAudio,
             'coverage_mode' => $mode, 'frames' => $looks['frames'] ?? null, 'looks' => $looks ? count($looks['looks']) : null,
             'shots' => $shots, 'cuts' => $cuts, 'change_windows' => $windows, 'samples' => $samples, 'sheets' => $sheets, 'speech' => $speech,
-            'pacing' => self::pacing($shots, $duration, $speech), 'moments' => [], 'systems' => [], 'patterns' => null, 'summary' => null,
+            'pacing' => self::pacing($shots, $duration, $speech), 'music' => $hasAudio ? self::beatMap($this->lowBand($file), $cuts) : null, 'moments' => [], 'systems' => [], 'patterns' => null, 'summary' => null,
             'coverage' => ($looks !== null ? count($samples).' frames, one for every distinct look in '.$looks['frames'].' frames' : count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change').'; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
         $study['moments_status'] = 'skipped';
         if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) {
@@ -270,6 +270,51 @@ class ReferenceStudy
         $speech = round(min($duration, end($words)[2] - $words[0][1] - array_sum(array_column($pauses, 'seconds'))), 2);
         return ['text' => mb_substr(trim((string) ($t['transcript'] ?? implode(' ', array_column($words, 0)))), 0, 2000), 'words' => array_slice($words, 0, 600),
             'pauses' => array_slice($pauses, 0, 24), 'speech_seconds' => $speech, 'first_word_at' => $words[0][1], 'last_word_at' => end($words)[2]];
+    }
+
+    /** Loudness of the low band (kick, bass) every 10 ms, in dB: the pulse a beat grid is read from. */
+    private function lowBand(string $file): array
+    {
+        $r = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-nostats', '-i', $file, '-vn', '-af', 'aresample=16000,lowpass=f=150,asetnsamples=n=160:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level', '-f', 'null', '-']);
+        $out = [];
+        foreach (preg_split('/\R/', $r->errorOutput()) as $line) if (preg_match('/RMS_level=(-?[\d.]+|-inf)/', $line, $m)) $out[] = $m[1] === '-inf' ? -90.0 : max(-90.0, (float) $m[1]);
+        return $out;
+    }
+
+    /**
+     * The reference's music pulse from 10 ms low-band levels: tempo, beat times and how often its cuts land on a beat.
+     * Read from the rises in loudness (onsets) by autocorrelation between 60 and 180 beats a minute.
+     */
+    public static function beatMap(array $db, array $cuts): array
+    {
+        $n = count($db);
+        if ($n < 400) return ['present' => false];
+        $onset = [0.0];
+        for ($i = 1; $i < $n; $i++) $onset[] = max(0.0, $db[$i] - $db[$i - 1]);
+        $mean = array_sum($onset) / $n;
+        $c = array_map(fn ($v) => $v - $mean, $onset);
+        $r0 = array_sum(array_map(fn ($v) => $v * $v, $c)) ?: 1.0;
+        $rs = [];
+        for ($lag = 33; $lag <= 100; $lag++) {
+            $r = 0.0;
+            for ($i = 0; $i + $lag < $n; $i++) $r += $c[$i] * $c[$i + $lag];
+            $rs[$lag] = $r / (($n - $lag) / $n);
+        }
+        arsort($rs); $best = (int) array_key_first($rs); $bestR = $rs[$best];
+        // How clearly one tempo stands out: against the strongest rival that is not the same pulse (or its half or double).
+        $rival = collect($rs)->filter(fn ($r, $lag) => abs($lag - $best) > 3 && abs($lag - 2 * $best) > 3 && abs(2 * $lag - $best) > 3)->max() ?? 0.0;
+        $confidence = round(max(0.0, $bestR / $r0), 3);
+        $prominence = $rival > 0 ? round($bestR / $rival, 2) : 9.99;
+        // Sparse beats leave quiet gaps, so presence is judged on the loud end (90th percentile), not the median.
+        $sorted = $db; sort($sorted); $level = $sorted[(int) floor($n * 0.9)];
+        if ($level < -50 || ! ($confidence >= 0.2 || ($confidence >= 0.08 && $prominence >= 1.5))) return ['present' => false, 'confidence' => $confidence, 'prominence' => $prominence];
+        $phase = 0; $phaseScore = -INF;
+        for ($p = 0; $p < $best; $p++) { $sum = 0.0; for ($i = $p; $i < $n; $i += $best) $sum += $onset[$i]; if ($sum > $phaseScore) { $phaseScore = $sum; $phase = $p; } }
+        $beats = [];
+        for ($i = $phase; $i < $n; $i += $best) $beats[] = round($i / 100, 2);
+        $onBeat = $cuts ? count(array_filter($cuts, fn ($t) => min(array_map(fn ($b) => abs($b - $t), $beats)) <= 0.08)) / count($cuts) : null;
+        return ['present' => true, 'tempo_bpm' => round(6000 / $best, 1), 'beat_seconds' => round($best / 100, 2), 'confidence' => $confidence, 'prominence' => $prominence,
+            'beats' => array_slice($beats, 0, 120), 'cuts_on_beat' => $onBeat === null ? null : round($onBeat, 2)];
     }
 
     public static function pacing(array $shots, float $duration, ?array $speech): array

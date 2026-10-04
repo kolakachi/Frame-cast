@@ -10,6 +10,7 @@ import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
 import {listenToExport} from './audio-review.mjs';
+import {cutTimes,outputPace,paceNotes} from './pace-review.mjs';
 import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
@@ -218,7 +219,7 @@ async function execute(run){
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
-  let deliveryChecks=null,audioReview=null;
+  let deliveryChecks=null,audioReview=null,paceReview=null;
   if(!(stopping||lost)){
    stage='Checking the final video';
    try{
@@ -238,6 +239,14 @@ async function execute(run){
      await trace({phase:'review',status:audioReview.summary.ok?'succeeded':'failed',summary:'Listened to the final video',detail:JSON.stringify(audioReview.summary).slice(0,1900)});
     }catch(e){audioReview=null;await trace({phase:'review',status:'failed',summary:'Listening check unavailable',detail:String(e.message).slice(0,300)});}
    }
+   // The finished video's rhythm against the reference's: suggestions only.
+   if(paid&&run.input.look_first!==true&&plan.reference_pacing)try{
+    const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
+    const file=path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact);
+    const pace=outputPace({cuts:await cutTimes(file),duration:audioReview?.duration||Number(run.input.settings?.duration_seconds)||0,words:audioReview?.words||[],sync:audioReview?.summary?.sync||[]});
+    paceReview={pace,notes:paceNotes(plan.reference_pacing,pace)};
+    await trace({phase:'review',status:'succeeded',summary:'Compared the rhythm with the reference',detail:JSON.stringify({reference:plan.reference_pacing,...paceReview}).slice(0,1900)});
+   }catch{paceReview=null;}
   }
   clearInterval(timer);
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));
@@ -255,6 +264,7 @@ async function execute(run){
    result.delivery_checks={...(result.delivery_checks||{}),audio:{ok:audioReview.summary.ok,problems:audioReview.summary.problems.slice(0,6),script_coverage:audioReview.summary.script_coverage??null}};
   }
   result.creative_review=agentResult?.state?reviewStatus(agentResult.state):{status:'incomplete',findings:['This output has not received an independent creative review.']};
+  if(paceReview?.notes?.length)result.creative_review.findings=[...(result.creative_review.findings||[]),...paceReview.notes].slice(0,8);
   if(audioReview){const heardIds=new Set(audioReview.checks.map(c=>c.id));result.creative_review.requirement_checks=[...(result.creative_review.requirement_checks||[]).filter(c=>!heardIds.has(c.id)),...audioReview.checks].slice(0,24);}
   // The agent's last review scores travel with the version, so the card can offer another round.
   if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);

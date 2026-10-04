@@ -2356,7 +2356,8 @@ class CreateIntegrationTest extends TestCase
 
     public function test_recurring_systems_get_one_spec_and_a_dropped_moment_says_what_carries_its_job(): void
     {
-        $study = ['summary' => 's', 'duration_seconds' => 26,
+        $study = ['summary' => 's', 'duration_seconds' => 26, 'pacing' => ['shots' => 9, 'average_shot_seconds' => 2.92, 'cuts_per_10_seconds' => 3.0, 'words_per_second' => 3.63, 'text_to_speech_delay_seconds' => -0.05],
+            'music' => ['present' => true, 'tempo_bpm' => 133.3, 'beat_seconds' => 0.45, 'cuts_on_beat' => 0.5, 'confidence' => 0.108, 'beats' => [0.1, 0.55]],
             'systems' => [['id' => 's1', 'name' => 'Step card', 'look' => 'Black frame, white bold Step N, boxed serif label', 'entry' => 'bounces in', 'active' => 'holds', 'hold' => '1.2 s', 'exit' => 'hard cut']],
             'moments' => [['id' => 'm1', 'start' => 4.6, 'end' => 5.6, 'kind' => 'text', 'purpose' => 'names the first step', 'system' => 's1'],
                 ['id' => 'm2', 'start' => 2.8, 'end' => 3.5, 'kind' => 'sticker', 'purpose' => 'adds a beat of fun', 'system' => '']]];
@@ -2371,6 +2372,8 @@ class CreateIntegrationTest extends TestCase
             'reference_systems' => [['system' => '1523:s1', 'decision' => 'keep', 'spec' => 'Black card, white Step N, serif label box, bounce in', 'beats' => ['Step 1', 'Step 2']], ['system' => '1523:s9', 'decision' => 'keep', 'spec' => 'invented']]];
         $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
         $this->assertSame('Hook: "first" pops in orange with a wink', $p['reference_decisions'][1]['carried_by']);
+        $this->assertSame(['average_shot_seconds' => 2.92, 'cuts_per_10_seconds' => 3.0, 'words_per_second' => 3.63, 'text_to_speech_delay_seconds' => -0.05, 'tempo_bpm' => 133.3, 'cuts_on_beat' => 0.5], $p['reference_pacing'], 'the reference rhythm travels to the build');
+        $this->assertSame(['tempo_bpm' => 133.3, 'beat_seconds' => 0.45, 'cuts_on_beat' => 0.5, 'confidence' => 0.108], $brief['music'], 'the planner reads the pulse, not every beat');
         $this->assertArrayNotHasKey('carried_by', $p['reference_decisions'][0], 'only a dropped moment carries its job elsewhere');
         $this->assertCount(1, $p['reference_systems'], 'unknown systems are dropped');
         $this->assertSame(['system' => '1523:s1', 'name' => 'Step card', 'decision' => 'keep', 'spec' => 'Black card, white Step N, serif label box, bounce in', 'beats' => ['Step 1', 'Step 2'],

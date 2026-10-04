@@ -121,7 +121,7 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
   const mix=mixFindings(await levelWindows(wav,ffmpeg),words,duration);
   const a={narration,narration_ok,sync:cueSync(html,words),mix,duration};
   const found=problems(a);
-  return {summary:{ok:!found.length,heard_words:words.length,...(narration?{script_coverage:narration.coverage,missing:narration.missing,line_starts:narration.lineStarts}:{}),
+  return {words,duration,summary:{ok:!found.length,heard_words:words.length,...(narration?{script_coverage:narration.coverage,missing:narration.missing,line_starts:narration.lineStarts}:{}),
    sync:(a.sync||[]).slice(0,12),mix,problems:found},checks:heardChecks(requirements,a)};
  }finally{await rm(dir,{recursive:true,force:true});}
 }

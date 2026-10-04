@@ -214,6 +214,7 @@ class PlanService
             'how_to_use' => 'Account for every moment id in reference_decisions. Times are seconds in the reference.',
             'summary' => $s['summary'] ?? null, 'duration_seconds' => $s['duration_seconds'] ?? null, 'coverage' => $s['coverage'] ?? null,
             'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
+            'music' => ! empty($s['music']['present']) ? array_intersect_key($s['music'], array_flip(['tempo_bpm', 'beat_seconds', 'cuts_on_beat', 'confidence'])) : null,
             'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + (($m['system'] ?? '') !== '' ? ['system' => $assetId.':'.$m['system']] : []) + array_diff_key($m, ['id' => 1, 'system' => 1]), (array) ($s['moments'] ?? [])),
             'systems' => array_map(fn ($x) => ['id' => $assetId.':'.$x['id']] + array_diff_key($x, ['id' => 1]), (array) ($s['systems'] ?? [])),
             'speech' => $speech ? array_filter(['text' => mb_substr((string) ($speech['text'] ?? ''), 0, 1200), 'first_word_at' => $speech['first_word_at'] ?? null, 'last_word_at' => $speech['last_word_at'] ?? null,
@@ -427,6 +428,10 @@ class PlanService
                 'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
+        // The reference's rhythm travels to the build (and to the comparison after the render).
+        $studied = collect($ctx['files'] ?? [])->first(fn ($f) => is_array(data_get($f, 'reference.study.pacing')));
+        if ($studied) $plan['reference_pacing'] = array_filter(array_intersect_key((array) data_get($studied, 'reference.study.pacing'), array_flip(['average_shot_seconds', 'cuts_per_10_seconds', 'words_per_second', 'text_to_speech_delay_seconds']))
+            + (is_array(data_get($studied, 'reference.study.music')) ? ['tempo_bpm' => data_get($studied, 'reference.study.music.tempo_bpm'), 'cuts_on_beat' => data_get($studied, 'reference.study.music.cuts_on_beat')] : []), fn ($v) => $v !== null);
         // Length from narration: a script that fills clearly less of the video than its length leads to a stated choice, not silent holds.
         $words = str_word_count(implode(' ', $narration));
         $videoSeconds = (float) ($ctx['settings']['duration_seconds'] ?? 0);
