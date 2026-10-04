@@ -475,7 +475,18 @@ class PlanService
                 'beats' => collect((array) ($x['beats'] ?? []))->map(fn ($b) => $str($b, 40))->filter()->take(12)->values()->all(),
                 'reference' => array_intersect_key($systems[$x['system']], array_flip(['look', 'entry', 'active', 'hold', 'exit']))])->take(12)->values()->all();
         // A parametric 3D mascot the planner designed for this brand (parts only, no media to buy).
-        if ($mascot = MascotSpec::normalize(data_get($raw, 'mascot3d.spec'))) $plan['mascot3d'] = ['spec' => $mascot, 'why' => $str(data_get($raw, 'mascot3d.why', ''), 160)];
+        if ($mascot = MascotSpec::normalize(data_get($raw, 'mascot3d.spec'))) {
+            $plan['mascot3d'] = ['spec' => $mascot, 'why' => $str(data_get($raw, 'mascot3d.why', ''), 160)]
+                + (($missing = $str(data_get($raw, 'mascot3d.missing', ''), 200)) !== '' ? ['missing' => $missing] : []);
+            // The 3D mascot is the character: its turnaround in the look stage is the approval, so no image of it is bought.
+            $plan['media'] = array_values(array_filter($plan['media'], fn ($m) => ! in_array($m['kind'] ?? '', ['character_poses', 'character_variants'], true)));
+        }
+        // 3D objects the build models in code (a laptop, a book stack, a bottle), in the mascot's finish, at no media cost.
+        $props = collect((array) ($raw['props3d'] ?? []))->filter(fn ($x) => is_array($x) && trim((string) ($x['name'] ?? '')) !== '')
+            ->map(fn ($x) => ['name' => $str($x['name'], 40), 'looks' => $str($x['looks'] ?? '', 200),
+                'moments' => collect((array) ($x['moments'] ?? []))->map(fn ($m) => $str($m, 40))->filter()->take(12)->values()->all(),
+                'spin' => (bool) ($x['spin'] ?? false)])->unique('name')->take(8)->values()->all();
+        if ($props) $plan['props3d'] = $props;
         // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
         if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
         // Copying exactly: each kept or replaced moment becomes something the build is checked against, at its own

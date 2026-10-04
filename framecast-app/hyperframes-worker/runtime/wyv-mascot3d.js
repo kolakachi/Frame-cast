@@ -1,4 +1,5 @@
 /* WyvStudio parametric 3D mascot for Remotion clips (three.js via @remotion/three).
+ * Props (Prop3D, shapes, spinAt, finishMaterial at the end of this file) use the same finishes.
  * A character is a spec (head, hair, eyes, brows, mouth, nose, cheeks, body, outfit, palette, finish) built
  * from 3D primitives, so it is rigged by construction: the head turns, tilts and nods on the neck, the eyes
  * blink, wink and look around, and the mouth changes shape on the narration's words. Everything is a
@@ -212,4 +213,59 @@ export function Mascot3D({spec, at = 0, words = [], blinks, expressions = [], po
   const p = typeof pose === 'function' ? pose(t, frame) : (pose || {});
   applyRig(m, p, faceAt(t, {cues, blinks: bl, expressions: expressions.map(e => ({...e, at: e.at + at}))}));
   return h('primitive', {object: m.root});
+}
+
+// --- 3D props: objects the builder models in code (a laptop, a book stack, a bottle), shaded by the same
+// finishes so props and mascot match. Nothing is fixed: the builder writes a build function per object. ---
+
+/** A material in a finish (the mascot's shader). flat 0..1 removes the shading, for screens and labels. */
+export function finishMaterial(color, finish = 'clay', {cell = 2, flat = 0} = {}) { return material(color, finish, cell, flat); }
+
+const roundedRect = (w, h, r) => {
+  r = Math.max(0, Math.min(r, w / 2, h / 2)); const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
+  s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r); s.lineTo(x + w, y + h - r);
+  s.quadraticCurveTo(x + w, y + h, x + w - r, y + h); s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y); return s;
+};
+const extruded = (shape, depth, bevel) => {
+  const b = Math.max(0, Math.min(bevel, depth / 2 - 1e-3));
+  const g = new THREE.ExtrudeGeometry(shape, {depth: Math.max(1e-3, depth - 2 * b), bevelEnabled: b > 0, bevelSize: b, bevelThickness: b, bevelSegments: 3, curveSegments: 12});
+  g.translate(0, 0, -(depth - 2 * b) / 2); g.computeVertexNormals(); return g;
+};
+
+/** Geometry helpers for build functions; everything is centred on the origin. */
+export const shapes = {
+  /** A box with rounded edges and corners: w across (x), h up (y), d deep (z), r the edge radius. */
+  roundedBox(w, h, d, r = 0.06) { const b = Math.min(r, w / 2, h / 2, d / 2) * 0.9; const g = extruded(roundedRect(w - 2 * b, h - 2 * b, r), d, b); return g; },
+  /** A flat panel with rounded corners, d thick (a screen, a card, a phone face). */
+  panel(w, h, d = 0.04, r = 0.08) { return extruded(roundedRect(w, h, r), d, Math.min(0.012, d / 3)); },
+  /** A turned profile around the vertical axis: points [[radius, y], ...] from bottom to top (a bottle, a mug, a jar). */
+  lathe(points, segments = 48) { return new THREE.LatheGeometry(points.map(([x, y]) => new THREE.Vector2(Math.max(0, x), y)), segments); },
+  /** An outline [[x, y], ...] (in the xy plane) given depth along z, with soft edges (a logo mark, a play icon, a tag). */
+  extrude(points, depth = 0.1, bevel = 0.01) { const s = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y))); return extruded(s, depth, bevel); },
+};
+
+/** The product spin from the reference: still until `at`, a fast whip of `turns` that eases out over `settle`
+ *  seconds, then a slow idle drift (radians per second) that never stops. rest is the angle the whip lands on. */
+export function spinAt(t, {at = 0, turns = 1, settle = 0.9, drift = 0.12, rest = 0.5} = {}) {
+  const u = Math.max(0, t - at), x = Math.min(1, u / Math.max(0.05, settle));
+  return rest - turns * Math.PI * 2 * Math.pow(1 - x, 3) + drift * u;
+}
+
+/** A prop as a Remotion/three element. build({THREE, shapes, mat, mesh}) returns an Object3D, called once;
+ *  mat(color, flat) and mesh(geometry, color, flat) use this prop's finish. spin: spinAt options, or omit for
+ *  none. pose: {x, y, z, pitch, yaw, tilt, scale} (an object or (t, frame) => object); pitch tips it toward the camera. */
+export function Prop3D({build, name, finish = 'clay', cell = 2, spin, pose}) {
+  const frame = useCurrentFrame(), {fps} = useVideoConfig(), t = frame / fps;
+  const parts = useMemo(() => {
+    const mat = (c, flat = 0) => material(c, finish, cell, flat);
+    const kit = {THREE, shapes, mat, mesh: (g, c, flat = 0) => new THREE.Mesh(g, mat(c, flat))};
+    const holder = new THREE.Group(), spinner = new THREE.Group(); holder.add(spinner); spinner.add(build(kit)); return {holder, spinner};
+  }, [name ?? String(build), finish, cell]);
+  const p = (typeof pose === 'function' ? pose(t, frame) : pose) || {};
+  parts.holder.position.set(p.x || 0, p.y || 0, p.z || 0);
+  parts.holder.rotation.set(p.pitch ?? 0.35, 0, p.tilt || 0);
+  parts.holder.scale.setScalar(p.scale ?? 1);
+  parts.spinner.rotation.y = (spin ? spinAt(t, spin) : 0) + (p.yaw || 0);
+  return h('primitive', {object: parts.holder});
 }

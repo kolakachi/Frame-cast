@@ -55,3 +55,36 @@ export default function Clip(){
 - expressions: [{at, duration, face: 'smile'|'surprised'|'laugh'|'wink', gaze: [x, y]}], seconds from the clip's start.
 - Finishes come from the spec (clay, dither, toon): dither is 1-bit ordered dither on a 2 px grid, keep the background white and the character greyscale for that look.
 - Render the clip and place it in index.html like any Remotion clip; on a white page use the same white background so it sits seamlessly. For an exact copy put data-ref on the video element that fills the mascot's slot.
+- When a clip fills a small slot (a card, a tile), set cell to about 2 × (clip width ÷ the slot's shown width) so the dots land at the reference's size once the clip is scaled down.
+
+## 3D props (Prop3D in wyv-mascot3d.js)
+For a 3D object (plan.props3d, or a reference moment that renders one: a laptop, a book stack, app blocks, a bottle, a phone, a box) model it in code. There is no catalogue: write a build function from the object's looks line, out of a few shapes, in the same finish as the mascot.
+```js
+import React from 'react';
+import {AbsoluteFill, useVideoConfig} from 'remotion';
+import {ThreeCanvas} from '@remotion/three';
+import {Prop3D} from './wyv-mascot3d.js';
+// A laptop: base with a keyboard inset, lid hinged at the back, black screen with a play mark.
+const laptop = ({THREE, shapes, mesh}) => {
+  const g = new THREE.Group();
+  g.add(mesh(shapes.roundedBox(2.6, 0.12, 1.7, 0.05), '#d6d6d6'));
+  const keys = mesh(shapes.roundedBox(2.2, 0.02, 0.9, 0.01), '#9a9a9a'); keys.position.set(0, 0.07, -0.15); g.add(keys);
+  const hinge = new THREE.Group(); hinge.position.set(0, 0.06, -0.85); hinge.rotation.x = -0.32; g.add(hinge);
+  const lid = mesh(shapes.roundedBox(2.6, 1.7, 0.08, 0.05), '#cfcfcf'); lid.position.y = 0.85; hinge.add(lid);
+  const screen = mesh(shapes.panel(2.35, 1.48, 0.01, 0.03), '#0b0b0b', 1); screen.position.set(0, 0.85, 0.046); hinge.add(screen);
+  const play = mesh(shapes.extrude([[-0.13, -0.17], [0.2, 0], [-0.13, 0.17]], 0.02, 0.004), '#f2f2f2', 1); play.position.set(0, 0.85, 0.06); hinge.add(play);
+  g.position.y = -0.4; return g;
+};
+export default function Clip(){
+  const {width, height} = useVideoConfig();
+  return <AbsoluteFill style={{background:'#ffffff'}}><ThreeCanvas width={width} height={height} camera={{fov:30, position:[0,0,8]}} gl={{antialias:false, preserveDrawingBuffer:true}}>
+    <Prop3D name="laptop" build={laptop} finish="dither" cell={6} spin={{at:0.1, turns:1, settle:0.9, drift:0.12, rest:0.55}} pose={{pitch:0.4, scale:1.1}} />
+  </ThreeCanvas></AbsoluteFill>;
+}
+```
+- build({THREE, shapes, mat, mesh}) runs once and returns a THREE.Object3D; mesh(geometry, colour, flat) and mat(colour, flat) use the prop's finish; flat 1 is unshaded (screens, labels, icons). Keep objects about 3 units across, centred on the origin.
+- shapes: roundedBox(w, h, d, r) (x across, y up, z deep), panel(w, h, d, r) (a flat rounded slab: a screen, card or phone face), lathe([[radius, y], ...]) (bottles, mugs, jars: bottom to top), extrude([[x, y], ...], depth, bevel) (an outline given thickness: a logo mark, an icon, a tag). Use THREE geometry directly for anything else (SphereGeometry, CylinderGeometry, TorusGeometry, CapsuleGeometry).
+- spin (the reference's product spin): still until at, a fast whip of turns that eases out over settle seconds onto rest, then a slow drift (radians per second) that keeps going. Start it when the object's card lands; stagger several cards so one whips while the others drift.
+- pose: {x, y, z, pitch (tip toward the camera, about 0.4), yaw, tilt, scale}, or (t, frame) => that.
+- For the dither finish use light greys (#a0a0a0 to #e0e0e0) for surfaces: darker colours print as solid black. Black only for screens and marks.
+- Render one clip per object with its slot's background (white for a white card), place it as the slot's video element (object-fit cover), and for an exact copy give that video element the slot's data-ref. Several ThreeCanvas elements in one clip also work when the objects share a fixed layout.
