@@ -1,0 +1,186 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Reference moves</title>
+<script src="gsap.min.js"></script><script src="wyv-motion.js"></script>
+<style>
+@font-face{font-family:Inter;src:url(inter.ttf);font-weight:100 900}
+@font-face{font-family:Playfair;src:url(playfair.ttf);font-weight:400 900}
+*{box-sizing:border-box;margin:0}
+body{background:#fff}
+#main{width:1920px;height:1080px;position:relative;overflow:hidden;background:#fff;font-family:Inter,sans-serif;color:#111}
+.scene{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden}
+.label{position:absolute;left:64px;top:44px;font:500 22px/1 ui-monospace,Menlo,monospace;color:#8a8a8a;letter-spacing:1px}
+.h{position:absolute;font-weight:700;letter-spacing:-3px;line-height:1.12}
+.h .w{display:inline-block;visibility:hidden;margin-right:.22em}
+.script{display:inline-block;position:relative;font-family:Playfair;font-style:italic;font-weight:500;color:#FF6B35;letter-spacing:-2px;visibility:hidden}
+.script .u{position:absolute;left:4%;right:4%;bottom:-.06em;height:.07em;border-radius:99px;background:#FF6B35;visibility:hidden}
+.maya{position:absolute;width:1300px;height:1300px;background-size:contain;background-repeat:no-repeat;background-position:50% 0}
+/* Scene 1: hook */
+#bubble{position:absolute;left:1010px;top:300px;padding:18px 30px;border:3px solid #111;border-radius:40px;background:#fff;font:500 40px/1 ui-monospace,Menlo,monospace;visibility:hidden;min-width:170px}
+#bubble:after{content:'';position:absolute;right:-14px;bottom:18px;width:26px;height:26px;background:#fff;border-right:3px solid #111;border-bottom:3px solid #111;transform:rotate(-45deg)}
+/* Scene 2/3: orange field becomes the phone */
+#panel{position:absolute;left:0;top:0;width:1920px;height:1080px;background:#FF6B35;overflow:hidden;z-index:2}
+.card{position:absolute;top:290px;width:380px;height:500px;border-radius:36px;background:#fff;box-shadow:0 30px 60px rgba(0,0,0,.18);padding:36px;visibility:hidden}
+.card .k{font:500 22px/1 ui-monospace,Menlo,monospace;color:#8a8a8a}
+.card .n{margin-top:200px;font:800 64px/1 Inter;letter-spacing:-2px}
+.card .s{position:absolute;left:30px;right:30px;top:278px;height:8px;border-radius:9px;background:#FF6B35;transform-origin:0 50%}
+#chat{position:absolute;left:0;top:0;width:470px;height:900px;padding:90px 30px 30px;visibility:hidden;font-family:Inter}
+#chat .top{font:800 30px/1 Inter;letter-spacing:-1px}
+#chat .ask{margin-top:36px;background:#f2f2f0;border-radius:24px;padding:22px;font:500 26px/1.3 Inter;color:#333;width:330px}
+#chat .box{position:absolute;left:30px;right:30px;bottom:150px;min-height:120px;border:2px solid #e3e3e0;border-radius:24px;padding:22px;font:500 27px/1.3 Inter}
+#go{position:absolute;left:30px;right:30px;bottom:44px;height:84px;border-radius:42px;background:#111;color:#fff;font:700 30px/84px Inter;text-align:center}
+#chrome{position:absolute;left:1180px;top:90px;width:470px;height:900px;border-radius:64px;border:14px solid #111;visibility:hidden;z-index:3;pointer-events:none}
+#chrome:before{content:'';position:absolute;left:50%;top:14px;width:130px;height:34px;margin-left:-65px;border-radius:20px;background:#111}
+#cursor{position:absolute;left:0;top:0;width:44px;height:44px;visibility:hidden;z-index:20}
+/* Scene 4: the plan and its parts */
+#s4{background:#f3f3f1}
+#plan{position:absolute;left:110px;top:110px;width:780px;height:860px;border-radius:40px;background:#fff;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.08)}
+#planHead{height:150px;background:#111;color:#fff;font:700 44px/150px Inter;padding:0 48px;letter-spacing:-1px}
+#plan .row{display:flex;justify-content:space-between;padding:30px 48px;border-bottom:2px solid #f0f0ee;font:600 34px/1 Inter}
+#plan .row span:last-child{color:#8a8a8a;font-weight:500}
+#ready{position:absolute;left:48px;bottom:44px;font:800 52px/1 Inter;letter-spacing:-1px;color:#FF6B35}
+#onair{position:absolute;right:40px;bottom:30px;width:230px;height:230px;border-radius:30px;background:#eef0f3;overflow:hidden;visibility:hidden}
+#onair .k{position:absolute;left:18px;top:16px;font:500 18px/1 ui-monospace,Menlo,monospace;color:#8a8a8a;z-index:2}
+#onair .maya{width:420px;height:420px;left:-95px;top:20px}
+.tile{position:absolute;width:430px;height:400px;border-radius:36px;background:#fff;padding:34px;visibility:hidden;box-shadow:0 20px 50px rgba(0,0,0,.06)}
+.tile .k{font:500 22px/1 ui-monospace,Menlo,monospace;color:#8a8a8a}
+.tile .v{margin-top:28px;font:600 32px/1.3 Inter}
+.bars{position:absolute;left:34px;right:34px;bottom:44px;height:150px;display:flex;align-items:flex-end;gap:10px}
+.bars i{flex:1;background:#FF6B35;border-radius:6px;transform-origin:50% 100%}
+.chips{position:absolute;left:34px;right:34px;bottom:40px;display:flex;flex-wrap:wrap;gap:14px}
+.chips b{font:700 30px/1 Inter;padding:18px 24px;border-radius:20px;background:#111;color:#fff;visibility:hidden}
+#chip{position:absolute;left:1500px;top:600px;font:700 28px/1 Inter;padding:16px 22px;border-radius:40px;background:#FF6B35;color:#fff;visibility:hidden;z-index:5}
+#stamp{position:absolute;left:760px;top:420px;padding:20px 60px;border:8px solid #FF6B35;border-radius:30px;font:italic 600 150px/1 Playfair;color:#FF6B35;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.18);visibility:hidden;z-index:6}
+/* Scene 5 and 6 */
+#s5{background:#0b0b0b;color:#fff}
+#s6{background:#fff}
+#mark{position:absolute;left:0;right:0;top:330px;text-align:center;font:900 170px/1 Inter;letter-spacing:-7px;min-height:170px}
+#tag{position:absolute;left:0;right:0;top:540px;text-align:center;font:500 40px/1 Inter;color:#666;visibility:hidden}
+#cta{position:absolute;left:760px;top:650px;width:400px;height:104px;border-radius:52px;background:#FF6B35;color:#fff;font:700 38px/104px Inter;text-align:center;visibility:hidden}
+#url{position:absolute;left:0;right:0;top:800px;text-align:center;font:500 30px/1 ui-monospace,Menlo,monospace;color:#8a8a8a;visibility:hidden}
+</style></head><body>
+<main id="main" data-composition-id="main" data-width="1920" data-height="1080" data-duration="15">
+
+<!-- 1. Hook: the guide peeks in and whispers; the question builds on the voice. -->
+<section class="scene" id="s1">
+ <div class="label">// for brands</div>
+ <div class="maya" id="m1" style="left:1180px;top:110px;background-image:url(maya-peek.png)"></div>
+ <div id="bubble"><span id="bubbleText">psst…</span></div>
+ <div class="h" id="h1" style="left:140px;top:330px;font-size:150px">
+  <span class="w">Got</span><span class="w">a</span><span class="w">product</span><br><span class="w">to</span><span class="script" id="sell">sell<span id="qmark">?</span><span class="u" id="u1"></span></span>
+ </div>
+</section>
+
+<!-- 2-3. The orange field: the problem cards, then it becomes the phone. -->
+<section class="scene" id="sceneA" style="visibility:hidden">
+ <div class="scene" id="s3">
+  <div class="label">// wyvstudio</div>
+  <div class="h" id="h3" style="left:120px;top:300px;width:960px;font-size:118px">
+   <span class="w">WyvStudio</span><span class="w">turns</span><span class="w">it</span><span class="w">into</span><span class="w">a</span><span class="w">video</span><span class="w">in</span><span class="w">minutes.</span>
+  </div>
+ </div>
+ <div id="panel">
+  <div class="maya" id="m2" style="left:-120px;top:420px;background-image:url(maya-wink.png);visibility:hidden"></div>
+  <div class="card" id="c1" style="left:560px"><div class="k">// 01 camera</div><div class="n">No camera</div><div class="s"></div></div>
+  <div class="card" id="c2" style="left:980px"><div class="k">// 02 editing</div><div class="n">No editor</div><div class="s"></div></div>
+  <div class="card" id="c3" style="left:1400px"><div class="k">// 03 time</div><div class="n">No time</div><div class="s"></div></div>
+  <div id="chat"><div class="top">WyvStudio</div><div class="ask">What should we make today?</div><div class="box"><span id="prompt">A launch ad for my candle shop</span></div><div id="go">Create video</div></div>
+ </div>
+ <div id="chrome"></div>
+</section>
+
+<!-- 4. The plan fills in: script, voice, music and formats arrive on their words. -->
+<section class="scene" id="s4" style="visibility:hidden">
+ <div id="plan">
+  <div id="planHead">Your plan · 15 s · 16:9</div>
+  <div class="row"><span>Script</span><span id="r1">writing…</span></div>
+  <div class="row"><span>Voice</span><span id="r2">waiting</span></div>
+  <div class="row"><span>Music</span><span id="r3">waiting</span></div>
+  <div class="row"><span>Formats</span><span id="r4">waiting</span></div>
+  <div id="ready">0 of 4 ready</div>
+  <div id="onair"><div class="k">// on air</div><div class="maya" style="background-image:url(maya-neutral.png)"></div></div>
+ </div>
+ <div class="tile" id="t1" style="left:960px;top:110px"><div class="k">// script</div><div class="v" id="scriptText">Got a product to sell? WyvStudio makes the video.</div></div>
+ <div class="tile" id="t2" style="left:1420px;top:110px"><div class="k">// voice</div><div class="v">Warm narrator</div><div class="bars" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+ <div class="tile" id="t3" style="left:960px;top:570px"><div class="k">// music</div><div class="v">Upbeat · 112 BPM</div><div class="bars" id="beat"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+ <div class="tile" id="t4" style="left:1420px;top:570px"><div class="k">// formats</div><div class="v">One video, four formats</div><div class="chips"><b>9:16</b><b>1:1</b><b>4:5</b><b>16:9</b></div></div>
+ <div id="chip">+ captions</div>
+ <div id="stamp" data-layout-allow-overlap data-layout-allow-occlusion>Done.</div>
+</section>
+
+<!-- 5. The promise. -->
+<section class="scene" id="s5" style="visibility:hidden">
+ <div class="label" style="color:#777">// you and us</div>
+ <div class="h" id="h5" style="left:140px;top:330px;font-size:132px;color:#fff">
+  <span class="w">You</span><span class="w">bring</span><span class="w">the</span><span class="w">idea.</span><br><span class="w">We</span><span class="w">make</span><span class="w">the</span><span class="script" id="vword">video.<span class="u" id="u5"></span></span>
+ </div>
+ <div class="maya" id="m5" style="left:1150px;top:180px;background-image:url(maya-point.png);visibility:hidden"></div>
+</section>
+
+<!-- 6. Lockup and call to action. -->
+<section class="scene" id="s6" style="visibility:hidden">
+ <div id="mark"><span id="markText">WyvStudio</span></div>
+ <div id="tag">Branded short-form video without a shoot.</div>
+ <div id="cta">Start creating</div>
+ <div id="url">wyvstudio.com</div>
+ <div class="maya" id="m6" style="left:1330px;top:560px;width:900px;height:900px;background-image:url(maya-wink.png);visibility:hidden"></div>
+</section>
+
+<svg id="cursor" viewBox="0 0 24 24"><path d="M4 2l15 9-7 1.6L8.6 20z" fill="#111" stroke="#fff" stroke-width="1.4"/></svg>
+</main>
+<script>
+const tl=gsap.timeline({paused:true});
+// Word times stand in for the narration's (the build takes them from the voice).
+// 1. Hook
+tl.fromTo('#m1',{x:700},{x:0,duration:.45,ease:WM.ease.default},0);
+WM.pop(tl,'#bubble',.5,{origin:'100% 100%'});
+WM.type(tl,'#bubbleText','psst…',.62,14);
+tl.to('#bubble',{autoAlpha:0,scale:.6,duration:.2},1.25);
+WM.words(tl,'#h1 .w',[1.1,1.3,1.45,1.7]);
+WM.writeOn(tl,'#sell',1.72,{duration:.42,underline:'#u1'});
+// 2. Iris from the question mark's dot into the orange field; Maya pops up and winks; the cards are thrown in.
+WM.iris(tl,'#sceneA',2.2,{from:'#qmark',ringColor:'rgba(255,255,255,.85)',ringWidth:5});
+tl.set('#s1',{autoAlpha:0},2.75);
+WM.pop(tl,'#m2',2.42,{origin:'50% 100%',from:.2});
+WM.toss(tl,'#c1',2.8,{rotation:-4});WM.toss(tl,'#c2',3.3,{rotation:3});WM.toss(tl,'#c3',3.7,{rotation:-2});
+tl.fromTo('#panel .card .s',{scaleX:0},{scaleX:1,duration:.3,stagger:.12,ease:'power3.out'},4.05);
+// 3. The field becomes the phone: its contents leave, it shrinks into the screen, the chat appears.
+tl.to(['#m2','#c1','#c2','#c3'],{autoAlpha:0,filter:'blur(12px)',scale:.9,duration:.22,stagger:.02},4.4);
+WM.device(tl,'#panel',4.45,{to:{left:1180,top:90,width:470,height:900,radius:64},chrome:'#chrome',duration:.75});
+tl.to('#panel',{backgroundColor:'#ffffff',duration:.3},4.85);
+tl.fromTo('#chat',{autoAlpha:0},{autoAlpha:1,duration:.25},5.05);
+WM.words(tl,'#h3 .w',[4.75,5.1,5.3,5.45,5.6,5.72,6.05,6.2]);
+WM.type(tl,'#prompt','A launch ad for my candle shop',5.25,20);
+WM.cursor(tl,'#cursor',[{x:1700,y:1060,at:5.8},{x:1415,y:905,at:6.55,click:true}]);
+WM.press(tl,'#go',6.55,{glow:'rgba(255,107,53,.8)'});
+tl.to('#cursor',{autoAlpha:0,duration:.1},6.62);
+// 4. Push into "Create video"; the black button becomes the plan's black header.
+WM.through(tl,{a:'#sceneA',from:'#go',b:'#s4',to:'#planHead',at:7.0});
+tl.set('#sceneA',{autoAlpha:0},7.0);
+WM.pop(tl,'#onair',7.6,{origin:'100% 100%'});
+WM.pop(tl,'#t1',8.1);WM.type(tl,'#scriptText','Got a product to sell? WyvStudio makes the video.',8.25,40);
+tl.set('#r1',{textContent:'ready ✓',color:'#111'},8.15).set('#ready',{textContent:'1 of 4 ready'},8.15);
+WM.pop(tl,'#t2',8.52);tl.fromTo('#wave i',{scaleY:.1},{scaleY:i=>[.4,.8,.55,1,.7,.35,.9,.6,.75,.45,.85,.5][i],duration:.35,stagger:.03,ease:WM.ease.snappy},8.6);
+tl.set('#r2',{textContent:'ready ✓',color:'#111'},8.6).set('#ready',{textContent:'2 of 4 ready'},8.6);
+WM.pop(tl,'#t3',9.1);tl.fromTo('#beat i',{scaleY:.1},{scaleY:i=>[.5,.9,.4,1,.6,.85,.45,.7][i],duration:.3,stagger:.04,ease:WM.ease.snappy},9.18);
+tl.set('#r3',{textContent:'ready ✓',color:'#111'},9.15).set('#ready',{textContent:'3 of 4 ready'},9.15);
+WM.pop(tl,'#t4',9.5);tl.fromTo('#t4 .chips b',{autoAlpha:0,y:20},{autoAlpha:1,y:0,duration:.3,stagger:.08,ease:WM.ease.snappy},9.62);
+WM.pop(tl,'#chip',9.85,{duration:.3});
+WM.fly(tl,'#chip','#ready',10.05,{duration:.55,lift:140});
+tl.set('#r4',{textContent:'ready ✓',color:'#111'},10.6).set('#ready',{textContent:'4 of 4 ready'},10.6);
+WM.stamp(tl,'#stamp',10.62,{rotation:-6});
+// 5. Iris to black from the stamp; the promise builds; Maya points.
+WM.iris(tl,'#s5',11.0,{from:'#stamp',ringColor:'rgba(255,107,53,.9)',ringWidth:6,duration:.42});
+tl.set('#s4',{autoAlpha:0},11.5);
+tl.set('#m5',{autoAlpha:1},11.2).fromTo('#m5',{x:600},{x:0,duration:.5,ease:WM.ease.default},11.2);
+WM.words(tl,'#h5 .w',[11.25,11.45,11.62,11.8,12.25,12.45,12.6]);
+WM.writeOn(tl,'#vword',12.72,{duration:.45,underline:'#u5'});
+// 6. Iris to white from "video."; the wordmark types on; the call to action lands; Maya winks.
+WM.iris(tl,'#s6',13.3,{from:'#vword',ringColor:'rgba(17,17,17,.6)',ringWidth:4,duration:.4});
+tl.set('#s5',{autoAlpha:0},13.75);
+WM.type(tl,'#markText','WyvStudio',13.5,22);
+tl.fromTo('#tag',{autoAlpha:0,y:16},{autoAlpha:1,y:0,duration:.35,ease:'power2.out'},13.95);
+WM.pop(tl,'#cta',14.1,{from:.6});
+tl.fromTo('#url',{autoAlpha:0},{autoAlpha:1,duration:.3},14.3);
+tl.set('#m6',{autoAlpha:1},13.6).fromTo('#m6',{y:500},{y:0,duration:.55,ease:WM.ease.playful},13.6);
+window.__timelines=window.__timelines||{};window.__timelines.main=tl;
+</script></body></html>

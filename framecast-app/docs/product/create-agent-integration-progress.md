@@ -93,6 +93,22 @@ Evidence: conversation `dd410f7a`, full build `7e766c06` ($6.99, 49 calls). The 
 
 Order: 1 and 2 (built 2026-10-03, commits 2249c9a4, 96e8b9bb; 804 API / 209 worker tests), then the audio part of 3, then the rest. First real study of the Instagram reference (asset 1523): 9 shots, 40 frames, the sticker window at 2.7–3.1 s found, speech 94% of the video at 3.6 words a second; the moment list waits on the Anthropic account's credit. Live acceptance pending.
 
+### Eighth slice — reproduce the reference (owner: "keep halftone, use your screen suggestions, go", 2026-10-04)
+
+Goal: a full build of the Maya prompt that matches reference 1471 (Pocketsflow, 15 s) move for move, with WyvStudio screens and Maya. Everything else is parked until this passes the owner's side-by-side review. Decisions: Maya keeps her halftone look; phone = the Create chat with a prompt being typed; push-through into "Create video" matching to the plan card; dashboard tiles = script, voice, music and formats filling in on the narration.
+
+1. **The moves** (wyv-motion.js): word-by-word headline, script write-on with underline, iris from an element with echo rings, toss-in spinning card, panel→device morph, push-through match cut, chip fly into a live total, pop (bubbles, tiles); existing stamp, type, count, cursor and press reused. Each checked in the browser by seeking, and rendered beside the reference at the same moments.
+   - [ ] moves built and verified
+2. **The build uses them**: the study tags each system with its move; the plan keeps it; the builder must use that recipe on that beat; a check fails a tagged beat built without it.
+   - [ ] move tags through study, plan, builder and check
+3. **Maya performing**: one pose sheet and one expression sheet (one image each, split into poses); face patches cut from the expressions, so she blinks, winks and talks on the narration in every scene.
+   - [ ] sheet test (~$0.25), then sheets, split and patches
+   - [ ] the rig plays image patches on the narration
+4. **WyvStudio screens**: the Create chat, plan card and four-format export as clean high-resolution images from the create-ui mockups, attached as sources so the builder rebuilds them as live HTML.
+   - [ ] screens prepared
+5. **Acceptance**: one full build, side by side with the reference at the same moments; owner verdict.
+   - [ ] acceptance build reviewed
+
 ### First implementation slice — prepared mascot rig (2026-10-03)
 
 Following the owner's request to begin the rig approach, V4/V5 now have a **locally verified optional adapter**, not a completed general character workflow. The canonical V1–V8 items remain open.

@@ -51,14 +51,13 @@
       return tl;
     },
 
-    /* Typing: reveals text at cps characters a second with a caret.
-       The element's final text is set by the timeline, so seeking anywhere is exact. */
+    /* Typing: reveals text at cps characters a second. Each character is a timed
+       set rather than an update callback, so any seek (including one that suppresses
+       events, as renderers do) shows exactly the right text. */
     type: function (tl, el, text, at, cps) {
       el = $(el); cps = cps || 18;
-      var state = { n: 0 };
       el.textContent = ''; // empty until the typing starts, wherever the playhead is seeked
-      tl.to(state, { n: text.length, duration: text.length / cps, ease: 'none',
-        onUpdate: function () { el.textContent = text.slice(0, Math.round(state.n)); } }, at);
+      for (var i = 0; i < text.length; i++) tl.set(el, { textContent: text.slice(0, i + 1) }, at + i / cps);
       return tl;
     },
 
@@ -70,11 +69,17 @@
       return tl;
     },
 
-    /* Counter: counts to a value (use only approved numbers). */
+    /* Counter: counts to a value (use only approved numbers). One timed set per
+       frame (30 a second) on an ease-out curve, so seeks show the exact value. */
     count: function (tl, el, from, to, at, duration, format) {
-      el = $(el); var state = { v: from }; format = format || function (v) { return Math.round(v).toLocaleString('en-US'); };
-      el.textContent = format(from);
-      tl.to(state, { v: to, duration: duration || 1.2, ease: 'power3.out', onUpdate: function () { el.textContent = format(state.v); } }, at);
+      el = $(el); format = format || function (v) { return Math.round(v).toLocaleString('en-US'); };
+      duration = duration || 1.2; el.textContent = format(from);
+      var steps = Math.max(1, Math.round(duration * 30)), last = null;
+      for (var i = 1; i <= steps; i++) {
+        var p = i / steps, v = from + (to - from) * (1 - Math.pow(1 - p, 3)), text = format(i === steps ? to : v);
+        if (text !== last) tl.set(el, { textContent: text }, at + duration * p);
+        last = text;
+      }
       return tl;
     },
 
@@ -93,14 +98,15 @@
     /* Transitions between two full-frame scenes (outgoing a, incoming b). */
     wipe: function (tl, b, at, dir) {
       var from = { left: 'inset(0 100% 0 0)', right: 'inset(0 0 0 100%)', up: 'inset(100% 0 0 0)', down: 'inset(0 0 100% 0)' }[dir || 'left'];
-      tl.fromTo($(b), { clipPath: from, autoAlpha: 1 }, { clipPath: 'inset(0 0 0 0)', duration: 0.55, ease: 'expo.inOut' }, at);
+      tl.set($(b), { autoAlpha: 1 }, at).fromTo($(b), { clipPath: from }, { clipPath: 'inset(0 0 0 0)', duration: 0.55, ease: 'expo.inOut' }, at);
       return tl;
     },
     push: function (tl, a, b, at, dir) {
       var axis = dir === 'up' || dir === 'down' ? 'yPercent' : 'xPercent', s = dir === 'right' || dir === 'down' ? 1 : -1;
       var o = {}, i = {}; o[axis] = 100 * s; i[axis] = -100 * s;
       tl.to($(a), Object.assign(o, { duration: 0.6, ease: 'expo.inOut' }), at)
-        .fromTo($(b), Object.assign(i, { autoAlpha: 1 }), (function () { var e = { duration: 0.6, ease: 'expo.inOut' }; e[axis] = 0; return e; })(), at);
+        .set($(b), { autoAlpha: 1 }, at)
+        .fromTo($(b), i, (function () { var e = { duration: 0.6, ease: 'expo.inOut' }; e[axis] = 0; return e; })(), at);
       return tl;
     },
     whip: function (tl, a, b, at) {
@@ -143,6 +149,166 @@
         .to(el, { keyframes: [{ autoAlpha: 1, xPercent: -10, duration: 0.35, ease: 'power2.out' }, { autoAlpha: 0, xPercent: 60, duration: 0.5, ease: 'power2.in' }] }, at - 0.35);
       return tl;
     },
+
+    /* ---- Reference moves. Each one is named after the move a reference study tags. ---- */
+
+    /* words: a headline builds word by word on the voice. els: the word spans
+       (a selector or a list), times: when each word is said (narrationTiming). */
+    words: function (tl, els, times, opts) {
+      opts = opts || {};
+      all(els).forEach(function (w, i) {
+        if (times[i] == null) return;
+        tl.fromTo(w, { autoAlpha: 0, y: opts.rise == null ? '0.32em' : opts.rise, filter: 'blur(6px)' },
+          { autoAlpha: 1, y: 0, filter: 'blur(0px)', duration: 0.32, ease: ease.snappy }, times[i] - (opts.lead == null ? 0.05 : opts.lead));
+      });
+      return tl;
+    },
+
+    /* writeOn: an emphasis word (script or italic) is written on left to right, then
+       underlined. Its last letter lands on `at` + duration; start it early enough that
+       the word is complete as it is said. opts.underline: the underline element. */
+    writeOn: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var d = opts.duration || 0.55;
+      // Visibility is its own set: a value only in fromTo's start state is not restored after a backward seek.
+      tl.fromTo(el, { clipPath: 'inset(-30% 100% -30% -8%)' }, { clipPath: 'inset(-30% -8% -30% -8%)', duration: d, ease: 'power1.inOut' }, at)
+        .set(el, { autoAlpha: 1 }, at);
+      if (opts.underline) tl.fromTo($(opts.underline), { scaleX: 0, transformOrigin: '0% 50%' }, { scaleX: 1, duration: 0.35, ease: 'power3.out' }, at + d * 0.75)
+        .set($(opts.underline), { autoAlpha: 1 }, at + d * 0.75);
+      return tl;
+    },
+
+    /* iris: the next scene opens as a circle growing from an element (the dot of a
+       question mark, a button), with echo rings running ahead of its edge. b is the
+       incoming full-frame scene; opts.from the element it grows from. Positions are
+       measured when the move starts, so elements moved earlier in the timeline are found. */
+    iris: function (tl, b, at, opts) {
+      b = $(b); opts = opts || {};
+      var stage = stageOf(opts), d = opts.duration || 0.5, g = null;
+      var geo = function () {
+        if (g) return g;
+        var W = stage.offsetWidth, H = stage.offsetHeight, c = opts.from ? centre(opts.from, stage) : { x: W / 2, y: H / 2 };
+        g = { c: c, R: Math.ceil(Math.max(Math.hypot(c.x, c.y), Math.hypot(W - c.x, c.y), Math.hypot(c.x, H - c.y), Math.hypot(W - c.x, H - c.y))) + 4 };
+        return g;
+      };
+      var circle = function (r) { return function () { var q = geo(); return 'circle(' + (r === 'R' ? q.R : 0) + 'px at ' + q.c.x + 'px ' + q.c.y + 'px)'; }; };
+      tl.set(b, { autoAlpha: 1 }, at)
+        .fromTo(b, { clipPath: circle(0) }, { clipPath: circle('R'), duration: d, ease: 'power2.in', immediateRender: false }, at)
+        .set(b, { clipPath: 'none' }, at + d);
+      var rings = opts.rings == null ? 3 : opts.rings;
+      for (var i = 0; i < rings; i++) {
+        var ring = document.createElement('div');
+        ring.setAttribute('data-wm', 'iris-ring');
+        ring.style.cssText = 'position:absolute;left:0;top:0;width:100px;height:100px;border-radius:50%;pointer-events:none;z-index:' + (opts.z || 50) +
+          ';border:' + (opts.ringWidth || 3) + 'px solid ' + (opts.ringColor || 'rgba(255,255,255,.7)') + ';visibility:hidden';
+        stage.appendChild(ring);
+        var t = at + i * 0.06;
+        tl.set(ring, { left: function () { return geo().c.x - 50; }, top: function () { return geo().c.y - 50; } }, t)
+          .fromTo(ring, { autoAlpha: 0.9 - i * 0.2, scale: 0.05 }, { scale: (function (k) { return function () { return geo().R / 50 * (1.04 + k * 0.05); }; })(i), autoAlpha: 0, duration: d + 0.1, ease: 'power2.in', immediateRender: false }, t)
+          .set(ring, { autoAlpha: 0 }, t + d + 0.1);
+      }
+      return tl;
+    },
+
+    /* toss: a card is thrown in spinning and settles upright with a little overshoot.
+       opts.from: 'right' (default), 'left', 'top' or 'bottom'; opts.rotation: the angle it lands at. */
+    toss: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var dx = { right: 1, left: -1, top: 0, bottom: 0 }[opts.from || 'right'], dy = { right: -0.25, left: -0.25, top: -1, bottom: 1 }[opts.from || 'right'];
+      var dist = opts.distance || 900, land = opts.rotation || 0;
+      tl.fromTo(el, { autoAlpha: 0, x: dx * dist, y: dy * dist, rotation: land + 200 * (dx || 1), rotationY: 70, scale: 0.7, transformPerspective: 1200, filter: 'blur(10px)' },
+        { autoAlpha: 1, x: 0, y: 0, rotation: land, rotationY: 0, scale: 1, filter: 'blur(0px)', duration: opts.duration || 0.7, ease: ease['default'] }, at);
+      return tl;
+    },
+
+    /* pop: something appears from a point with a bounce (speech bubbles, tiles,
+       chips). opts.origin: the transform origin, e.g. '0% 100%' for a bubble tail. */
+    pop: function (tl, el, at, opts) {
+      opts = opts || {};
+      tl.fromTo($(el), { autoAlpha: 0, scale: opts.from == null ? 0.4 : opts.from, transformOrigin: opts.origin || '50% 50%' },
+        { autoAlpha: 1, scale: 1, duration: opts.duration || 0.5, ease: ease.playful }, at);
+      return tl;
+    },
+
+    /* device: a full-bleed panel shrinks into a device screen. The panel is
+       position:absolute; opts.to is the screen box in stage pixels {left, top, width,
+       height, radius}; opts.chrome (bezel, notch, status bar) fades in as it lands. */
+    device: function (tl, panel, at, opts) {
+      panel = $(panel); opts = opts || {};
+      var to = opts.to, d = opts.duration || 0.8;
+      tl.to(panel, { left: to.left, top: to.top, width: to.width, height: to.height, borderRadius: to.radius == null ? 48 : to.radius, duration: d, ease: 'expo.inOut' }, at);
+      if (opts.chrome) tl.fromTo($(opts.chrome), { autoAlpha: 0, scale: 1.04 }, { autoAlpha: 1, scale: 1, duration: 0.3, ease: 'power2.out' }, at + d * 0.7);
+      return tl;
+    },
+
+    /* through: push into an element until it fills the frame, then come out of
+       another element in the next scene: a match cut on shape (a black button
+       becoming another black button). a/from: outgoing scene and the element pushed
+       into; b/to: incoming scene and the element it opens from. Both scenes are
+       full-frame at the stage's top left. Fastest at `at`. */
+    through: function (tl, opts) {
+      var a = $(opts.a), b = $(opts.b), stage = stageOf(opts);
+      var into = function (el) {
+        var memo = null;
+        return function (k) {
+          if (!memo) {
+            var W = stage.offsetWidth, H = stage.offsetHeight, r = rect(el, stage), s = Math.max(W / r.width, H / r.height) * 1.12;
+            memo = { x: W / 2 - s * (r.left + r.width / 2), y: H / 2 - s * (r.top + r.height / 2), scale: s };
+          }
+          return memo[k];
+        };
+      };
+      var at = opts.at, inD = opts.inDuration || 0.32, outD = opts.outDuration || 0.5, blur = blurFilter(stage, opts.blur == null ? 28 : opts.blur);
+      var full = into($(opts.from)), back = into($(opts.to));
+      tl.set(a, { transformOrigin: '0px 0px', filter: 'url(#' + blur.id + ')' }, at - inD)
+        .to(a, { x: function () { return full('x'); }, y: function () { return full('y'); }, scale: function () { return full('scale'); }, duration: inD, ease: 'expo.in' }, at - inD)
+        .fromTo(blur.node, { attr: { stdDeviation: '0 0' } }, { attr: { stdDeviation: blur.max + ' 0' }, duration: inD, ease: 'expo.in', immediateRender: false }, at - inD)
+        .set(a, { autoAlpha: 0 }, at)
+        .set(b, { autoAlpha: 1 }, at)
+        .fromTo(b, { x: function () { return back('x'); }, y: function () { return back('y'); }, scale: function () { return back('scale'); }, transformOrigin: '0px 0px', filter: 'url(#' + blur.id + ')' },
+          { x: 0, y: 0, scale: 1, duration: outD, ease: 'expo.out', immediateRender: false }, at)
+        .fromTo(blur.node, { attr: { stdDeviation: blur.max + ' 0' } }, { attr: { stdDeviation: '0 0' }, duration: outD, ease: 'expo.out', immediateRender: false }, at)
+        .set([a, b], { filter: 'none' }, at + outD);
+      return tl;
+    },
+
+    /* fly: a chip leaves its place and arcs into a target (a "+$19" chip into the
+       checkout total), shrinking as it lands. Pair it with WM.count on the target's
+       number at at + duration. opts.lift: how high the arc rises in pixels. */
+    fly: function (tl, chip, target, at, opts) {
+      chip = $(chip); target = $(target); opts = opts || {};
+      var stage = stageOf(opts), d = opts.duration || 0.6, lift = opts.lift == null ? 110 : opts.lift, memo = null;
+      var v = function (k) {
+        if (!memo) { var a = centre(chip, stage), z = centre(target, stage); memo = { dx: z.x - a.x, dy: z.y - a.y }; }
+        return { mx: memo.dx * 0.5, my: Math.min(0, memo.dy) * 0.5 - lift, dx: memo.dx, dy: memo.dy }[k];
+      };
+      tl.to(chip, { x: function () { return v('mx'); }, y: function () { return v('my'); }, scale: 1.08, duration: d * 0.5, ease: 'sine.out' }, at)
+        .to(chip, { x: function () { return v('dx'); }, y: function () { return v('dy'); }, scale: 0.5, duration: d * 0.5, ease: 'sine.in' }, at + d * 0.5)
+        .to(chip, { autoAlpha: 0, duration: 0.12 }, at + d - 0.08);
+      if (opts.bump !== false) tl.fromTo(target, { scale: 1 }, { scale: 1.06, duration: 0.12, ease: 'power2.out', yoyo: true, repeat: 1, immediateRender: false }, at + d - 0.04);
+      return tl;
+    },
   };
+
+  // Elements and geometry. Positions come from layout (offsets), not from the
+  // rendered box, so they are the same wherever the playhead is when the timeline is built.
+  function all(els) { return typeof els === 'string' ? Array.prototype.slice.call(document.querySelectorAll(els)) : Array.prototype.slice.call(els); }
+  function stageOf(opts) { return $(opts && opts.stage) || document.querySelector('[data-composition-id]') || document.body; }
+  function rect(el, stage) {
+    el = $(el); var left = 0, top = 0, n = el;
+    while (n && n !== stage) { left += n.offsetLeft; top += n.offsetTop; n = n.offsetParent; if (n && n !== stage && !stage.contains(n)) break; }
+    return { left: left, top: top, width: el.offsetWidth, height: el.offsetHeight };
+  }
+  function centre(el, stage) { var r = rect(el, stage); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+  // A horizontal motion blur: an SVG filter blurring along x only, tweened by attribute.
+  var blurs = 0;
+  function blurFilter(stage, max) {
+    var id = 'wm-hblur-' + (++blurs), ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg'); svg.setAttribute('width', '0'); svg.setAttribute('height', '0'); svg.style.position = 'absolute';
+    var f = document.createElementNS(ns, 'filter'); f.setAttribute('id', id); f.setAttribute('x', '-20%'); f.setAttribute('width', '140%');
+    var g = document.createElementNS(ns, 'feGaussianBlur'); g.setAttribute('stdDeviation', '0 0');
+    f.appendChild(g); svg.appendChild(f); stage.appendChild(svg);
+    return { id: id, node: g, max: max };
+  }
   window.WM = WM;
 })();
