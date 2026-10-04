@@ -230,7 +230,7 @@ class PlanService
         foreach (DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'reference')->pluck('asset_id') as $id) {
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($id);
             if (! $asset || $asset->asset_type !== 'video') continue;
-            try { app(\App\Services\Create\References\ReferenceStudy::class)->forAsset($asset); }
+            try { app(\App\Services\Create\References\ReferenceStudy::class)->forAsset($asset, \App\Services\Create\References\ReferenceStudy::coverageMode(json_decode($c->settings_json, true)['reference_effort'] ?? null)); }
             catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('Create reference study failed', ['asset' => $id, 'error' => mb_substr($e->getMessage(), 0, 300)]); }
         }
     }
@@ -240,14 +240,15 @@ class PlanService
     {
         $out = []; $transitions = [];
         foreach ($files as $f) {
-            if (count($out) >= 6 || ($f['purpose'] ?? '') !== 'reference') continue;
+            if (count($out) >= 9 || ($f['purpose'] ?? '') !== 'reference') continue;
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($f['asset_id']);
             if (! $asset) continue;
             try {
                 $study = data_get($asset->metadata_json, 'reference_study');
                 if ($asset->asset_type === 'video' && ! empty($study['sheets'])) {
                     // The whole-reference study: frames inside every shot and close-ups where the picture changes.
-                    foreach (array_slice($study['sheets'], 0, 3) as $k => $sheet) {
+                    // Maximum effort shows the planner more of the reference (up to six sheets).
+                    foreach (array_slice($study['sheets'], 0, in_array($study['coverage_mode'] ?? '', ['maximum', 'every_look'], true) ? 6 : 3) as $k => $sheet) {
                         $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($sheet['path']);
                         if (is_string($bytes) && $bytes !== '') $out[] = ['label' => 'Reference video "'.$asset->title.'" study sheet '.($k + 1).' of '.count($study['sheets']).': cells left to right, then down, at seconds '.json_encode($sheet['times']), 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)];
                     }
@@ -261,7 +262,7 @@ class PlanService
                 }
             } catch (\Throwable) { /* the notes still describe it */ }
         }
-        return array_slice([...$out, ...$transitions], 0, 7);
+        return array_slice([...$out, ...$transitions], 0, 10);
     }
 
     /** @return array<int, array{role: string, content: string}> */

@@ -112,7 +112,7 @@ class ConversationService
             ]);
             DB::table('create_conversations')->where('id', $id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
             // A reference video is studied in the background straight away, so planning reads a finished study.
-            if ($purpose === 'reference' && $asset->asset_type === 'video' && config('create.mode') !== 'fixture') \App\Jobs\StudyCreateReference::dispatch($asset->id)->afterCommit();
+            if ($purpose === 'reference' && $asset->asset_type === 'video' && config('create.mode') !== 'fixture') \App\Jobs\StudyCreateReference::dispatch($asset->id, \App\Services\Create\References\ReferenceStudy::coverageMode(json_decode($c->settings_json, true)['reference_effort'] ?? null))->afterCommit();
         });
     }
 

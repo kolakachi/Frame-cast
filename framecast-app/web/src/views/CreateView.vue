@@ -25,7 +25,7 @@ const fileInput = ref(null), composer = ref(null), end = ref(null)
 const player = ref(null)
 const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), artifactGone = ref(''), historyLoading = ref(false), dragging = ref(false)
 const clock = ref(Date.now()), providerApproved = ref(false), variantCount = ref(1)
-const settingsDraft = ref({aspect_ratio:'9:16',duration_seconds:15,language:'en',audio:'original',captions:'off',caption_text:'',approved_facts:[]})
+const settingsDraft = ref({aspect_ratio:'9:16',duration_seconds:15,language:'en',audio:'original',captions:'off',caption_text:'',approved_facts:[],reference_effort:''})
 const factsText = ref('')
 const delivery = ref(null), shareUrl = ref(''), scheduleTarget = ref(null), safeZones = ref(false)
 const downloadName = computed(()=>`wyvstudio-v${currentRevision.value?.number}.${imageOutput.value ? (outputMeta.value.media?.mime_type === 'image/jpeg' ? 'jpg' : outputMeta.value.media?.mime_type === 'image/webp' ? 'webp' : 'png') : 'mp4'}`)
@@ -73,8 +73,8 @@ async function approveLook() {
 function changeLook() { prompt.value = 'Keep the look, but change '; nextTick(() => composer.value?.focus()) }
 async function editResult() {if(imageOutput.value && !currentRevision.value.output_asset_id){await saveOutput();if(!currentRevision.value.output_asset_id)return}prompt.value = imageOutput.value ? 'Keep this image, but change ' : 'Keep this video, but change '; nextTick(()=>composer.value?.focus())}
 async function animateResult(){await guarded(async()=>{const rev=currentRevision.value;if(!rev.output_asset_id)throw Error('Save the image to Assets first.');const c=(await api.post('/create/conversations',{output_kind:'video',video_mode:'animate_image',duration_seconds:5,aspect_ratio:outputMeta.value.settings.aspect_ratio,audio:'silent',origin_conversation_id:id.value,origin_revision_id:rev.id})).data.data;await api.post(`/create/conversations/${c.id}/attachments`,{asset_id:rev.output_asset_id,purpose:'source',reuse_confirmed:true,expected_version:0});await router.push({name:'create',params:{conversationId:c.id}});await refresh();prompt.value='Animate this image with gentle motion. Keep the objects and composition consistent.';nextTick(()=>composer.value?.focus())})}
-async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
-function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON.parse(conversation.value?.settings_json||'{}')};factsText.value=(settingsDraft.value.approved_facts||[]).join('\n')}catch{}details.value=true}
+async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,reference_effort:settingsDraft.value.reference_effort||null,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
+function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON.parse(conversation.value?.settings_json||'{}')};settingsDraft.value.reference_effort||='';factsText.value=(settingsDraft.value.approved_facts||[]).join('\n')}catch{}details.value=true}
 
 const workspaceStore = useWorkspaceStore()
 const credits = computed(() => workspaceStore.usage?.credits_balance)
@@ -973,6 +973,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               <details v-if="paid" class="panel-edit"><summary>Change output</summary>
                 <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" />
                 <label v-if="kind === 'video'" class="field-label">Length in seconds<input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="input" /></label>
+                <UiSelect v-if="kind === 'video'" v-model="settingsDraft.reference_effort" label="How closely to study reference videos" :options="[{value:'',label:'Automatic'},{value:'standard',label:'Standard · quick'},{value:'high',label:'High · every clear change'},{value:'maximum',label:'Maximum · every frame that differs (slower)'}]" />
                 <label v-if="kind === 'video'" class="field-label field-label--check"><input v-model="settingsDraft.motion_blur" type="checkbox" /> Motion blur on the final video <small class="muted">(smoother fast motion; the final render takes about twice as long)</small></label>
                 <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" />
                 <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><UiSelect v-model="settingsDraft.captions" label="Captions" :options="[{value:'off',label:'Off'},{value:'provided',label:'Use my exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input" placeholder="Paste the exact words." /></template>

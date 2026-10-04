@@ -2574,4 +2574,17 @@ class CreateIntegrationTest extends TestCase
         $p = app(\App\Services\Create\PlanService::class)->normalize($raw, $ctx, (int) $this->workspace->id);
         $this->assertSame(['Want to create', 'First, give', null, null], array_map(fn ($s) => $s['starts_on'] ?? null, $p['scenes']), 'words the script never says are dropped');
     }
+
+    public function test_a_conversation_chooses_how_closely_reference_videos_are_studied(): void
+    {
+        $this->assertSame('high', \App\Services\Create\OutputSettings::normalize(['reference_effort' => 'high'])['reference_effort']);
+        $this->assertArrayNotHasKey('reference_effort', \App\Services\Create\OutputSettings::normalize([]), 'automatic unless chosen');
+        try { \App\Services\Create\OutputSettings::normalize(['reference_effort' => 'ultra']); $this->fail('An unknown effort is refused'); } catch (\Illuminate\Validation\ValidationException) { $this->addToAssertionCount(1); }
+        \Illuminate\Support\Facades\Bus::fake();
+        config(['create.mode' => 'agent', 'create.reference_coverage' => '']);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'reference_effort' => 'high']);
+        $asset = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'Ref', 'storage_url' => 'create-upload://ref', 'status' => 'active']);
+        $this->conversations->attach($this->owner, $c->id, $asset->id, 'reference', 0);
+        \Illuminate\Support\Facades\Bus::assertDispatched(\App\Jobs\StudyCreateReference::class, fn ($job) => $job->assetId === $asset->id && $job->mode === 'high');
+    }
 }

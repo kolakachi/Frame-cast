@@ -92,7 +92,7 @@ TXT;
     public static function userContent(array $context): array
     {
         $blocks = [];
-        foreach (array_slice((array) ($context['_images'] ?? []), 0, 7) as $img) {
+        foreach (array_slice((array) ($context['_images'] ?? []), 0, 10) as $img) {
             $blocks[] = ['type' => 'text', 'text' => (string) $img['label'].':'];
             $blocks[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $img['media_type'], 'data' => $img['data']]];
         }

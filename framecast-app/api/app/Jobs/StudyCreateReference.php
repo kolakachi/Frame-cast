@@ -19,11 +19,11 @@ class StudyCreateReference implements ShouldQueue
     public int $timeout = 600;
     public int $tries = 1;
 
-    public function __construct(public int $assetId) {}
+    public function __construct(public int $assetId, public ?string $mode = null) {}
 
     public function handle(ReferenceStudy $study): void
     {
         $asset = Asset::find($this->assetId);
-        if ($asset && $asset->asset_type === 'video') $study->forAsset($asset);
+        if ($asset && $asset->asset_type === 'video') $study->forAsset($asset, $this->mode);
     }
 }

@@ -27,37 +27,45 @@ class ReferenceStudy
     /** A frame counts as a new look when it differs from the last kept frame by this share of its pixels' brightness. */
     public const LOOK_THRESHOLD = 0.02;
 
+    /** The look threshold per effort: High keeps clearly different looks; Maximum keeps every distinct look. */
+    public const THRESHOLDS = ['high' => 0.04, 'maximum' => 0.02];
+
     /**
-     * How much of the reference is looked at. standard: frames inside every shot plus close-ups where the picture
-     * changes (at most 80). every_look: one frame for every distinct look in the video, with no cap, for calibrating
-     * coverage of busy references. While restrictions are off (CREATE_UNLIMITED) every_look is the default.
+     * How much of the reference is looked at, from the conversation's reference effort. standard: frames inside every
+     * shot plus close-ups where the picture changes (at most 80). high: every clearly different look (4%). maximum:
+     * every distinct look (2%), no cap, and a second close look at what the first pass could not explain.
+     * CREATE_REFERENCE_COVERAGE overrides for calibration; while restrictions are off the default is maximum.
      */
-    public static function coverageMode(): string
+    public static function coverageMode(?string $effort = null): string
     {
-        $mode = (string) config('create.reference_coverage', '');
-        if (in_array($mode, ['standard', 'every_look'], true)) return $mode;
-        return \App\Services\Create\PilotPolicy::unlimited() ? 'every_look' : 'standard';
+        $forced = ['every_look' => 'maximum', 'standard' => 'standard', 'high' => 'high', 'maximum' => 'maximum'][(string) config('create.reference_coverage', '')] ?? null;
+        if ($forced) return $forced;
+        if (in_array($effort, ['standard', 'high', 'maximum'], true)) return $effort;
+        return \App\Services\Create\PilotPolicy::unlimited() ? 'maximum' : 'standard';
     }
 
+    private static function sameMode(?string $a, string $b): bool { return (($a === 'every_look' ? 'maximum' : $a) ?? 'standard') === $b; }
+
     /** The study for this asset's current bytes, making it on first use; null for non-video or unreadable sources. */
-    public function forAsset(Asset $asset): ?array
+    public function forAsset(Asset $asset, ?string $mode = null): ?array
     {
+        $mode ??= self::coverageMode();
         if ($asset->asset_type !== 'video' || ! $asset->storage_url) return null;
         $bytes = app(StorageService::class)->get((string) $asset->storage_url);
         if (! is_string($bytes) || $bytes === '') return null;
         $sha = hash('sha256', $bytes);
         $have = data_get($asset->metadata_json, 'reference_study');
-        if (self::reusable($have, $sha)) return $have;
+        if (self::reusable($have, $sha, $mode)) return $have;
         // One study per source at a time; a second caller waits for the first instead of paying twice.
-        return Cache::lock('create-reference-study:'.$sha, 600)->block(300, function () use ($asset, $bytes, $sha) {
+        return Cache::lock('create-reference-study:'.$sha, 600)->block(300, function () use ($asset, $bytes, $sha, $mode) {
             $asset->refresh();
             $have = data_get($asset->metadata_json, 'reference_study');
-            if (self::reusable($have, $sha)) return $have;
+            if (self::reusable($have, $sha, $mode)) return $have;
             $dir = sys_get_temp_dir().'/create-study-'.Str::uuid();
             @mkdir($dir, 0700, true);
             try {
                 file_put_contents($dir.'/in.mp4', $bytes);
-                $study = $this->study($dir.'/in.mp4', $sha, $dir);
+                $study = $this->study($dir.'/in.mp4', $sha, $dir, $mode);
                 $meta = (array) $asset->metadata_json; $meta['reference_study'] = $study;
                 $asset->forceFill(['metadata_json' => $meta])->save();
                 return $study;
@@ -69,14 +77,14 @@ class ReferenceStudy
     }
 
     /** A cached study is reused unless its moment list failed (a provider outage or billing stop): then it is made again. */
-    public static function reusable(mixed $have, string $sha): bool
+    public static function reusable(mixed $have, string $sha, ?string $mode = null): bool
     {
         return is_array($have) && ($have['source_sha256'] ?? null) === $sha && ($have['version'] ?? 0) === self::VERSION && ($have['moments_status'] ?? 'ok') !== 'failed'
-            && ($have['coverage_mode'] ?? 'standard') === self::coverageMode();
+            && self::sameMode($have['coverage_mode'] ?? null, $mode ?? self::coverageMode());
     }
 
     /** The full study of a local file. Sheets are stored under create/reference-studies/<sha>/. */
-    public function study(string $file, string $sha, string $work): array
+    public function study(string $file, string $sha, string $work, ?string $mode = null): array
     {
         $probe = json_decode(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration:stream=codec_type,width,height,avg_frame_rate', '-of', 'json', $file])->output(), true) ?: [];
         $streams = collect($probe['streams'] ?? []);
@@ -89,8 +97,8 @@ class ReferenceStudy
         $shots = self::shots($cuts, $duration);
         $windows = self::changeWindows($scores, $shots);
         $fps = $den > 0 ? $num / $den : 0.0;
-        $mode = self::coverageMode();
-        $looks = $mode === 'every_look' ? $this->looks($file, $fps) : null;
+        $mode ??= self::coverageMode();
+        $looks = isset(self::THRESHOLDS[$mode]) ? $this->looks($file, $fps, self::THRESHOLDS[$mode]) : null;
         $samples = $looks !== null ? self::lookSamples($looks, $duration, $fps) : self::samples($shots, $windows, $duration);
         $speech = $hasAudio ? $this->speech($file, $duration) : null;
         $sheets = $this->sheets($file, $samples, $sha, $work, $speech);
@@ -126,7 +134,7 @@ class ReferenceStudy
      * Every distinct look: decode every frame small and grey, and start a new look whenever a frame differs from the
      * last kept one by more than LOOK_THRESHOLD. Returns the total frame count and [[start seconds, seconds held], ...].
      */
-    private function looks(string $file, float $fps): ?array
+    private function looks(string $file, float $fps, float $threshold = self::LOOK_THRESHOLD): ?array
     {
         $w = 160; $h = 90;
         $r = Process::timeout(600)->run(['ffmpeg', '-v', 'error', '-i', $file, '-an', '-vf', "scale={$w}:{$h},format=gray", '-f', 'rawvideo', '-']);
@@ -138,7 +146,7 @@ class ReferenceStudy
         for ($i = 1; $i < $n; $i++) {
             $cur = $grid($frame($i)); $sum = 0;
             foreach ($cur as $k => $v) $sum += abs($v - $kept[$k]);
-            if ($sum / (count($cur) * 255) > self::LOOK_THRESHOLD) { $starts[] = $i; $kept = $cur; }
+            if ($sum / (count($cur) * 255) > $threshold) { $starts[] = $i; $kept = $cur; }
         }
         $looks = [];
         foreach ($starts as $k => $i) $looks[] = [round($i / $fps, 3), round((($starts[$k + 1] ?? $n) - $i) / $fps, 3)];
@@ -355,7 +363,7 @@ class ReferenceStudy
     private function moments(array $study): array
     {
         $content = [];
-        $every = ($study['coverage_mode'] ?? 'standard') === 'every_look';
+        $every = in_array($study['coverage_mode'] ?? 'standard', ['high', 'maximum', 'every_look'], true);
         // The API reads at most 100 images in one request; every_look sends them all up to that limit.
         foreach (array_slice($study['sheets'], 0, $every ? 90 : 4) as $i => $sheet) {
             $bytes = Storage::disk('local')->get($sheet['path']);
