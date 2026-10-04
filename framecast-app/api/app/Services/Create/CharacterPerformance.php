@@ -37,7 +37,7 @@ class CharacterPerformance
             if ($index < count($previous) && array_filter($links, fn ($link) => isset($previousRequirements[$link]) && ($requirements[$link]['version'] ?? 1) !== ($previousRequirements[$link]['version'] ?? 1))) continue;
             $result[$id] = ['requirement_ids' => $links, 'id' => $id, 'kind' => $kind, 'action' => mb_substr($action, 0, 240), 'source_quote' => $quote,
                 'start' => $valid ? $start : null, 'end' => $valid ? $end : null,
-                'route' => in_array($r['route'] ?? '', ['generated_video', 'prepared_rig', 'face_kit'], true) ? $r['route'] : 'unresolved',
+                'route' => in_array($r['route'] ?? '', ['generated_video', 'prepared_rig', 'face_kit', 'poses'], true) ? $r['route'] : 'unresolved',
                 'tool' => in_array($r['tool'] ?? '', ['animate_image', 'talking_shot', 'talking_take'], true) ? $r['tool'] : null];
         }
         abort_if(count($result) > 24, 422, 'This plan has too many character actions. Split it into shorter videos.');
@@ -50,6 +50,9 @@ class CharacterPerformance
         $issues = []; $spans = [];
         $faceKit = collect($files)->contains(fn ($f) => ! empty($f['face_kit']));
         $rigReady = collect($files)->contains(fn ($f) => (bool) data_get($f, 'rig.ready'));
+        // Gestures by cutting between attached body-pose images (any attached still other than a face kit's own layers).
+        $patchIds = collect($files)->flatMap(fn ($f) => array_column((array) data_get($f, 'face_kit.patches', []), 'asset_id'))->all();
+        $poseImages = collect($files)->contains(fn ($f) => ($f['asset_type'] ?? '') === 'image' && empty($f['face_kit']) && ! in_array($f['asset_id'] ?? null, $patchIds, true));
         foreach ($plan['character_performance'] ?? [] as $r) {
             $why = null;
             $tool = $r['tool'] ?? null;
@@ -60,6 +63,12 @@ class CharacterPerformance
                 if (! $faceKit) $why = 'Attach the character\'s talking face, or choose a generated performance.';
                 elseif ($r['kind'] === 'body') $why = 'A talking face covers speech and expressions, not body actions; use the attached poses or an animation.';
                 elseif ($r['kind'] === 'speech' && (empty($plan['narration']) || ($settings['audio'] ?? 'original') === 'silent')) $why = 'Speaking on camera needs an approved script and audio enabled.';
+                if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
+                continue;
+            }
+            elseif (($r['route'] ?? '') === 'poses') {
+                if ($r['kind'] !== 'body') $why = 'Cutting between poses covers gestures; speech and expressions need the talking face or a generated performance.';
+                elseif (! $poseImages) $why = 'Attach the character\'s body poses, or choose a generated performance.';
                 if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
                 continue;
             }
@@ -87,7 +96,7 @@ class CharacterPerformance
     public static function performers(string $conversationId): array
     {
         return \App\Models\Asset::whereIn('id', \Illuminate\Support\Facades\DB::table('create_attachments')->where('conversation_id', $conversationId)->pluck('asset_id'))->get()
-            ->map(fn ($a) => ['face_kit' => data_get($a->metadata_json, 'face_kit'), 'rig' => data_get($a->metadata_json, 'rig')])->all();
+            ->map(fn ($a) => ['asset_id' => (int) $a->id, 'asset_type' => $a->asset_type, 'face_kit' => data_get($a->metadata_json, 'face_kit'), 'rig' => data_get($a->metadata_json, 'rig')])->all();
     }
 
     public static function assertReady(array $plan, array $settings, array $media, array $files = []): void

@@ -2411,6 +2411,12 @@ class CreateIntegrationTest extends TestCase
                 ['kind' => 'facial', 'action' => 'winks', 'source_quote' => 'winks on the punchline', 'start' => 1, 'end' => 2, 'route' => 'generated_video', 'tool' => 'talking_take']]]];
         $now = \App\Services\Create\CharacterPerformance::normalize([['kind' => 'speech', 'action' => 'speaks via her face kit', 'source_quote' => 'she talks with the narration, blinks', 'start' => 0, 'end' => 12, 'route' => 'face_kit', 'tool' => null]], $ctx);
         $this->assertSame([['facial', 'generated_video'], ['speech', 'face_kit']], array_map(fn ($r) => [$r['kind'], $r['route']], $now));
+        // Gestures by cutting between attached poses: body actions only, and only with a pose image that is not one of the kit's own patches.
+        $gesture = ['narration' => ['x'], 'character_performance' => [$perf('body', 'poses')]];
+        $kitOnly = [['asset_id' => 7, 'asset_type' => 'image', 'face_kit' => ['patches' => [['name' => 'mouth-open', 'asset_id' => 8]]]], ['asset_id' => 8, 'asset_type' => 'image']];
+        $this->assertStringContainsString('body poses', \App\Services\Create\CharacterPerformance::issues($gesture, $settings, [], $kitOnly)[0]['message'], 'a face patch is not a pose');
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($gesture, $settings, [], [...$kitOnly, ['asset_id' => 9, 'asset_type' => 'image']]));
+        $this->assertStringContainsString('Cutting between poses', \App\Services\Create\CharacterPerformance::issues(['narration' => ['x'], 'character_performance' => [$perf('speech', 'poses')]], $settings, [], [['asset_id' => 9, 'asset_type' => 'image']])[0]['message']);
         // A ready layered rig performs facial actions too; a flat image still cannot.
         $rig = ['narration' => ['x'], 'character_performance' => [$perf('facial', 'prepared_rig')]];
         $this->assertSame([], \App\Services\Create\CharacterPerformance::issues($rig, $settings, [], [['rig' => ['ready' => true]]]));
