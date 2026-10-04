@@ -101,6 +101,9 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['sfx'], array_column($q['media'], 'kind'));
         $this->assertSame([['name' => 'laptop', 'looks' => 'open laptop, black screen with a play mark', 'moments' => ['1590:m6'], 'spin' => true]], $q['props3d']);
         $this->assertStringContainsString('design the mascot from that image', \App\Services\Create\Planning\PlanPrompt::system());
+        // The approved plan the build receives carries the mascot and its objects (it once dropped them, so builds never saw them).
+        $approved = \App\Services\Create\PlanService::quotePlan($q + ['reference_match' => 'exact', 'reference_layout' => [['moment' => '1590:m6']], 'reference_decisions' => [['moment' => '1590:m6', 'decision' => 'keep']]], 'plan-1');
+        foreach (['mascot3d', 'props3d', 'reference_match', 'reference_layout', 'reference_decisions'] as $key) $this->assertArrayHasKey($key, $approved, $key);
         // Its speech and expressions need nothing bought; it has no arms for gestures.
         $perf = fn ($kind) => ['id' => 'perf-'.$kind, 'kind' => $kind, 'action' => $kind, 'start' => 0, 'end' => 3, 'route' => 'mascot3d', 'tool' => null];
         $plan = ['narration' => ['Want a video ad that sells?'], 'mascot3d' => $p['mascot3d'], 'character_performance' => [$perf('speech'), $perf('facial')]];
