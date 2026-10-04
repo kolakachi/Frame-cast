@@ -115,6 +115,9 @@ class AnthropicPlanner implements Planner
                         continue;
                     }
                     if ($effort === 'medium') break;
+                    // A plan cut off at the length limit comes back the same length unless asked to be shorter.
+                    if ($response->json('stop_reason') === 'max_tokens')
+                        $messages[] = ['role' => 'user', 'content' => 'That reply was cut off at the length limit before the plan was complete. Reply with the complete plan as one JSON object, written compactly: short strings, one line of how per reference decision, nothing restated from the study.'];
                     // Retry the same evidence, not a fresh context that discards inspected details.
                     $effort = 'medium';
                 }

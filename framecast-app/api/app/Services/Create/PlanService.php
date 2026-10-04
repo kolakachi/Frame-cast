@@ -67,8 +67,8 @@ class PlanService
         // Every attached reference video is studied before planning (normally already done in the background at attach time).
         $this->studyReferences($user, $c);
         // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
-        $deadline = microtime(true) + (PilotPolicy::unlimited() ? 480 : 100);
-        if (PilotPolicy::unlimited()) set_time_limit(520);
+        $deadline = microtime(true) + (PilotPolicy::unlimited() ? 600 : 100);
+        if (PilotPolicy::unlimited()) set_time_limit(640);
         $context = $this->context($user, $c);
         $context['_planner_deadline'] = $deadline;
         try {
