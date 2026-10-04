@@ -24,6 +24,8 @@ try{
    await copyFile(file,path.join(src,name));hashes[name]=createHash('sha256').update(await readFile(file)).digest('hex');
   }else if(/^[a-zA-Z0-9_.-]+\.(png|jpg|webp|svg|mp4|mp3|wav|ttf)$/.test(name))await copyFile(file,path.join(publicDir,name));
  }
+ // The trusted 3D character module is always available to clips as a sibling (import {Mascot3D} from './wyv-mascot3d.js').
+ await copyFile('/opt/worker/runtime/wyv-mascot3d.js',path.join(src,'wyv-mascot3d.js'));
  // Validate only the native component dependency graph; unrelated Hyperframes
  // scripts in the same revision are not Remotion modules.
  const visited=new Set(),pendingSources=[request.source];
@@ -39,7 +41,8 @@ try{
     if(data?.contextInfo?.issuer?.startsWith(src+path.sep)&&!allowedRemotionImport(data.request))throw Error('Unsupported Remotion import: '+data.request);
    }));}
   }]})});
- const common={serveUrl,browserExecutable:'/usr/bin/chromium',logLevel:'error',timeoutInMilliseconds:20000,chromiumOptions:{disableWebSecurity:false}};
+ // Software WebGL so three.js clips render in the network-less container; 3D frames get longer to draw.
+ const common={serveUrl,browserExecutable:'/usr/bin/chromium',logLevel:'error',timeoutInMilliseconds:60000,chromiumOptions:{disableWebSecurity:false,gl:'swangle'}};
  const composition=await selectComposition({...common,id:'WyvClip'});
  for(const k of ['width','height','fps','durationInFrames'])if(composition[k]!==spec[k])throw Error('Unexpected composition '+k);
  const ext=request.operation==='still'?'png':'mp4',pending=path.join(root,'pending.'+ext);

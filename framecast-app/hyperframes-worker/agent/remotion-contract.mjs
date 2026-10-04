@@ -12,5 +12,6 @@ export function remotionSettings(settings,duration){
  return {width:dims[0],height:dims[1],fps:24,durationInFrames:Math.round(duration*24)};
 }
 export function allowedRemotionImport(request){
- return ['react','react/jsx-runtime','react/jsx-dev-runtime','remotion'].includes(request)||/^\.\/[a-zA-Z0-9_-]+\.js$/.test(request);
+ // three and @remotion/three render 3D characters (wyv-mascot3d.js); build tooling stays out of reach.
+ return ['react','react/jsx-runtime','react/jsx-dev-runtime','remotion','three','@remotion/three'].includes(request)||/^\.\/[a-zA-Z0-9_-]+\.js$/.test(request);
 }

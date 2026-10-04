@@ -14,7 +14,7 @@ test('Remotion accepts bounded render/still actions, rejects CLI flags and escap
  assert.throws(()=>remotionSettings({aspect_ratio:'evil',duration_seconds:6},6));
 });
 test('Remotion browser source imports cannot select Node modules, loaders or external paths',()=>{
- for(const value of ['react','react/jsx-runtime','remotion','./other.js'])assert.equal(allowedRemotionImport(value),true);
+ for(const value of ['react','react/jsx-runtime','remotion','./other.js','three','@remotion/three'])assert.equal(allowedRemotionImport(value),true);
  for(const value of ['./theme.css','node:fs','fs','child_process','@remotion/bundler','../x.js','/etc/passwd','raw-loader!./x.js','https://example.com/x.js','./nested/x.js'])assert.equal(allowedRemotionImport(value),false);
 });
 test('last-good recovery includes native React source after a failed edit',async()=>{
