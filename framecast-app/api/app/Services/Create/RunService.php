@@ -133,7 +133,7 @@ class RunService
             $input = json_decode($run->input_json, true);
             $derived = $input['derived_files'] ?? [];
             if ($same = collect($derived)->firstWhere('sha256', $hash)) return $same;
-            abort_if(count($derived) >= 20, 422, 'Too many derived files in one run.');
+            abort_if(count($derived) >= 40, 422, 'Too many derived files in one run.');
             $sources = collect(array_merge($input['input_files'] ?? [], $derived))->where('purpose', 'source');
             $parent = $fromAssetId === null ? null : $sources->first(fn ($f) => (int) $f['asset_id'] === $fromAssetId);
             abort_unless($fromAssetId === null || $parent, 422, 'Derived media must come from a source file of this run.');

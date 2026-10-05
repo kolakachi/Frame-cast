@@ -206,8 +206,11 @@ async function execute(run){
   if(agentResult?.derived?.some(d=>!uploaded.has(d.path))){
    stage='Saving your edited footage';await beat();
    const ids=new Map(manifest.map(f=>[f.name,f.asset_id]));
+   // Only what the finished composition uses: a builder that tried several frame grabs leaves the discarded ones behind.
+   const used=Object.values(agentResult.bundle??{}).join('\n');
    for(const d of agentResult.derived){
     if(uploaded.has(d.path))continue;uploaded.add(d.path);
+    if(agentResult.bundle&&!used.includes(d.path))continue;
     // A run-made file may have no source (generated from scratch); a media edit always has one.
     const from=ids.get(d.derivedFrom??d.origin);if(!from&&d.operation!=='run')throw Error('Derived media has no known source');
     const form=new FormData();form.append('lease_token',run.lease_token);if(from)form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));
