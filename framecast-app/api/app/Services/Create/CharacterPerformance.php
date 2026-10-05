@@ -78,6 +78,14 @@ class CharacterPerformance
                 if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
                 continue;
             }
+            // A generated shot or UGC take performs its own directed action (the plan's shot direction carries it).
+            elseif (($r['route'] ?? '') === 'generated_video' && (! $tool || in_array($tool, ['generated_shot', 'ugc_take'], true))
+                && ($shot = collect($media)->first(fn ($m) => in_array($m['kind'] ?? '', ['generated_shot', 'ugc_take'], true) && (! $tool || $m['kind'] === $tool)))) {
+                $speaks = collect($media)->contains(fn ($m) => ($m['kind'] ?? '') === 'ugc_take' || (($m['kind'] ?? '') === 'generated_shot' && trim((string) ($m['line'] ?? '')) !== ''));
+                if ($r['kind'] === 'speech' && ! $speaks) $why = 'Speaking on camera needs a UGC take, or a generated shot with its spoken line.';
+                if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
+                continue;
+            }
             elseif (($r['route'] ?? '') === 'poses') {
                 if ($r['kind'] !== 'body') $why = 'Cutting between poses covers gestures; speech and expressions need the talking face or a generated performance.';
                 elseif (! $poseImages) $why = 'Attach the character\'s body poses, or choose a generated performance.';

@@ -83,4 +83,17 @@ class CreateCharacterPerformanceTest extends TestCase
         $this->assertSame(['id', 'status', 'evidence', 'source'], array_keys($review['performance_checks'][0]));
         $this->assertSame(400, strlen($review['performance_checks'][0]['evidence']));
     }
+
+    public function test_a_generated_shot_or_ugc_take_performs_its_directed_action(): void
+    {
+        $row = ['id' => 'perf-1', 'kind' => 'body', 'tool' => null, 'route' => 'generated_video', 'start' => 0, 'end' => 3, 'action' => 'Covers her mouth in shock, then waves and laughs'];
+        $shot = ['kind' => 'generated_shot', 'beat' => 'Hook', 'seconds' => 4, 'action' => 'She gasps, covers her mouth, waves, laughing'];
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues(['character_performance' => [$row]], ['duration_seconds' => 15], [$shot]));
+        // Speaking needs a take or a shot with its line.
+        $speech = [...$row, 'kind' => 'speech', 'action' => 'Says the hook'];
+        $this->assertCount(1, \App\Services\Create\CharacterPerformance::issues(['character_performance' => [$speech], 'narration' => ['Hi']], ['duration_seconds' => 15], [$shot]));
+        $this->assertSame([], \App\Services\Create\CharacterPerformance::issues(['character_performance' => [$speech], 'narration' => ['Hi']], ['duration_seconds' => 15], [['kind' => 'ugc_take', 'seconds' => 10]]));
+        // With nothing that moves, the plan still has to add a performance.
+        $this->assertCount(1, \App\Services\Create\CharacterPerformance::issues(['character_performance' => [$row]], ['duration_seconds' => 15], [['kind' => 'music']]));
+    }
 }
