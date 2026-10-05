@@ -90,3 +90,6 @@ Schedule::call(function (): void {
 // Local Create pilot only: retain every saved revision and admitted run input.
 Schedule::command('create:cleanup')->hourly()->withoutOverlapping()
     ->when(fn () => app()->environment('local') && config('create.enabled'));
+
+// Create's provider contracts (docs/product/create-verify-and-teach-scope.md, 1c): free, reads model schemas only.
+Schedule::command('create:provider-contracts')->dailyAt('06:10')->name('create-provider-contracts')->withoutOverlapping();

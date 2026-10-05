@@ -17,6 +17,7 @@ import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
 import {findResume,planHash} from './resume.mjs';
+import {renderFailure} from './render-failure.mjs';
 import {accountedCall} from './accounted-call.mjs';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
@@ -231,7 +232,7 @@ async function execute(run){
   await accountedCall({key:'render-'+(round+1),kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
-   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000*renderLoad(run.input.settings),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
+   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000*renderLoad(run.input.settings),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error(await renderFailure(report,root)),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
