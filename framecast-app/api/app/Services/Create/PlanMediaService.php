@@ -49,7 +49,7 @@ class PlanMediaService
         if (in_array($item['kind'], ['generated_shot', 'ugc_take'], true)) {
             if (ShotRoute::usesSheet($item)) {
                 $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
-                abort_unless(hash_equals(hash('sha256', implode('|', array_column($approved['files'], 'sha256'))), (string) ($item['sheet_sha256'] ?? '')), 409, 'The approved sheet changed. Review a fresh quote.');
+                abort_unless(hash_equals(ShotRoute::inputsSha($item, $approved['files'], $approved['names']), (string) ($item['sheet_sha256'] ?? '')), 409, 'The approved images this clip uses changed. Review a fresh quote.');
                 $context['sheet_files'] = array_map(fn ($f, $k) => $f + ['name' => $approved['names'][$k] ?? null], $approved['files'], array_keys($approved['files']));
             }
         }

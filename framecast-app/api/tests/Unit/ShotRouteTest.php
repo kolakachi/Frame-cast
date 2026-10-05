@@ -250,4 +250,17 @@ class ShotRouteTest extends TestCase
         $this->assertNotSame($h, \App\Services\Create\Storyboard::panelHash($panel + ['note' => 'smile'], $cast, 'anime', '9:16'));
         $this->assertNotSame($h, \App\Services\Create\Storyboard::panelHash($panel, \App\Services\Create\Storyboard::castSha([['sha256' => 'c'], ['sha256' => 'b']]), 'anime', '9:16'), 'a new cast redraws every panel');
     }
+
+    public function test_a_clip_depends_only_on_the_approved_images_it_uses(): void
+    {
+        $files = [['sha256' => 'maya'], ['sha256' => 'shop'], ['sha256' => 'p1'], ['sha256' => 'p2']];
+        $names = ['Maya', 'Shop', 'Panel 1', 'Panel 2'];
+        $shot1 = ['refs' => ['Maya'], 'first_frame' => 'Panel 1'];
+        $before = ShotRoute::inputsSha($shot1, $files, $names);
+        $files[3]['sha256'] = 'p2-redrawn';
+        $this->assertSame($before, ShotRoute::inputsSha($shot1, $files, $names), 'redrawing panel 2 does not touch shot 1');
+        $files[0]['sha256'] = 'maya-new';
+        $this->assertNotSame($before, ShotRoute::inputsSha($shot1, $files, $names), 'a new Maya does');
+        $this->assertNotSame(ShotRoute::inputsSha(['refs' => ['sheet']], $files, $names), ShotRoute::inputsSha(['refs' => ['Shop']], $files, $names));
+    }
 }

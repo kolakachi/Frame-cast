@@ -97,6 +97,24 @@ class ShotRoute
         ], fn ($v) => $v !== null);
     }
 
+    /**
+     * The identity of the approved images one clip is made from: its start panel and the cast it names (all of it
+     * for "sheet"; a take's presenter). A change to another panel or subject leaves this clip's identity alone.
+     */
+    public static function inputsSha(array $item, array $files, array $names): string
+    {
+        $named = [];
+        foreach ($files as $k => $f) $named[mb_strtolower((string) ($names[$k] ?? ''))] = (string) ($f['sha256'] ?? '');
+        $cast = array_filter($named, fn ($_, $n) => ! str_starts_with($n, 'panel '), ARRAY_FILTER_USE_BOTH);
+        $use = [];
+        foreach ([...(array) ($item['refs'] ?? []), (string) ($item['first_frame'] ?? ''), ($item['presenter'] ?? '') === 'sheet' ? 'sheet' : ''] as $r) {
+            $r = mb_strtolower(preg_replace('/^sheet:/', '', (string) $r));
+            if ($r === 'sheet') $use += $cast; elseif (isset($named[$r])) $use[$r] = $named[$r];
+        }
+        ksort($use);
+        return hash('sha256', json_encode($use));
+    }
+
     /** Whether an item is made from the cast/world sheet, so needs it approved first. */
     public static function usesSheet(array $m): bool
     {

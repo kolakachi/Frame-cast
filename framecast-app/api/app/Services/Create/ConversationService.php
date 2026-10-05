@@ -226,7 +226,7 @@ class ConversationService
                     foreach ($planMedia as &$motionItem) {
                         if ($motionItem['kind'] === 'animate_image' && ($motionItem['subject'] ?? '') === 'approved_character') $motionItem['master_sha256'] = $approved['files'][0]['sha256'];
                         // Clips are made from exactly the sheet the user approved.
-                        if (ShotRoute::usesSheet($motionItem)) $motionItem['sheet_sha256'] = hash('sha256', implode('|', array_column($approved['files'], 'sha256')));
+                        if (ShotRoute::usesSheet($motionItem)) $motionItem['sheet_sha256'] = ShotRoute::inputsSha($motionItem, $approved['files'], $approved['names']);
                     }
                     unset($motionItem);
                     $master = collect($planMedia)->firstWhere('kind', 'character_poses');
