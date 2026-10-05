@@ -126,3 +126,16 @@ three checks on the result. The motion-graphics regression (H1) is re-run to sho
 | 5 | 1d canary | the approved budget |
 
 Each step is done when its tests pass and it has been run, not described.
+
+## Status (2026-10-05, evening)
+
+- **Step 1 done:** network drops waited out for about a minute on every provider call (`b3730e91`); the adapter-inputs
+  test; local fixed DNS (gitignored override). Odd-sized link conversion fixed on the way (`01253c16`).
+- **Step 2 done:** the gauntlet passes 18 of 18 in 9 minutes (`fc363aa2`). It found three real faults first: the
+  renderer's frames filled the in-memory /tmp (now on disk), Chromium's socket path too long, memory headroom (4 GB).
+- **Step 3 done:** `create:provider-contracts` daily at 06:10, all 12 models hold; `create:failures` (`d4b8d094`).
+  First ledger: 9 of 20 runs failed or held in a day, 1,888 credits, all later recovered.
+- **Step 4 done in code** (`b6982633`); proof by dry re-plan only (owner chose not to build): the 30 s tutorial
+  planned as hook, mechanism and recap with a transition on every beat, no problems. The second brief was refused by
+  the older 24-requirement limit (planner variance on a brief that planned before): to look at.
+- **Step 5 (paid canary):** approved; runs after the next deploy.
