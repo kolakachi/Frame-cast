@@ -444,8 +444,14 @@ class PlanService
             // Registry items this beat mounts; only names the sandbox ships.
             'uses' => collect((array) ($s['uses'] ?? []))->filter(fn ($n) => RegistryCatalogue::has(is_string($n) ? $n : null))->unique()->take(2)->values()->all(),
             'starts_on' => $str($s['starts_on'] ?? '', 60),
+            // Teaching videos: the beat's step in the arc (hook, familiar, disruption, mechanism, discovery, consequence, recap).
+            'arc' => in_array($s['arc'] ?? null, self::ARC, true) ? $s['arc'] : null,
+            // What on screen becomes the next scene, and the move that does it (a cut where a cut is right).
+            'transition_out' => is_array($s['transition_out'] ?? null) ? array_filter(['from' => $str($s['transition_out']['from'] ?? '', 60), 'becomes' => $str($s['transition_out']['becomes'] ?? '', 60),
+                'move' => ($s['transition_out']['move'] ?? '') === 'cut' ? 'cut' : (MotionMoves::valid($s['transition_out']['move'] ?? null) ?? null)]) : null,
         // A step-by-step reference easily needs a title card and a screen per step plus a hook and a close; cutting at 8 silently lost the ending.
-        ])->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(16)->values()->all();
+        ])->map(fn ($s) => array_filter($s, fn ($v, $k) => ! in_array($k, ['arc', 'transition_out'], true) || ! empty($v), ARRAY_FILTER_USE_BOTH))
+            ->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(16)->values()->all();
         $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
         $known = collect(CapabilityCatalogue::forWorkspace($workspaceId))->keyBy('kind');
         $decisions = collect((array) ($raw['decisions'] ?? []))->filter(fn ($d) => is_array($d))->map(function ($d) use ($str, $slug, $known) {
@@ -618,6 +624,9 @@ class PlanService
      * The video type (todo M), from what the plan makes rather than the planner's word for it: a presenter speaking,
      * footage (generated, stock or the user's), and designed graphics (callouts, UI, kinetic type) in any mix.
      */
+    /** The teaching arc's steps (educational format), in order. */
+    public const ARC = ['hook', 'familiar', 'disruption', 'mechanism', 'discovery', 'consequence', 'recap'];
+
     public static function videoType(array $plan, array $ctx): string
     {
         $kinds = array_column($plan['media'] ?? [], 'kind');

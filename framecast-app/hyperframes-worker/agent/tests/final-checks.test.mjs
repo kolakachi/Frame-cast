@@ -58,3 +58,10 @@ test('each generated shot gets three frames inside its own window, numbered as t
  assert.deepEqual(w,[{shot:2,start:4,end:9}]);
  assert.deepEqual(shotFrames(w,15),[{time:5,label:'shot 2'},{time:6.5,label:'shot 2'},{time:8.25,label:'shot 2'}]);
 });
+
+test('a teaching video whose ending does not answer its question gets an advisory finding',()=>{
+ const v=finalVerdict({look:{status:'checked',answer:{status:'not_answered',note:'ends on a logo'}}});
+ const c=v.checks.find(x=>x.id==='answer');
+ assert.equal(c.status,'fail');assert.equal(c.blocking,false);assert.equal(v.status,'issues');
+ assert.equal(finalVerdict({look:{status:'checked',answer:{status:'none'}}}).checks.some(x=>x.id==='answer'),false);
+});

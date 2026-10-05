@@ -34,15 +34,20 @@ class FinalLook
                 if (is_string($bytes) && $bytes !== '' && strlen($bytes) < 4_000_000) $cast[] = ['name' => 'the user (their own photo)', 'data' => base64_encode($bytes), 'mime' => (string) ($f['mime_type'] ?? 'image/jpeg')];
             }
         }
+        // A teaching video's opening question, which its final image should answer.
+        $hook = collect($plan['scenes'] ?? [])->first(fn ($s) => ($s['arc'] ?? null) === 'hook');
+        $question = ($plan['creative_intent']['format'] ?? '') === 'educational' && $hook ? trim((string) (collect($hook['reads'] ?? [])->first(fn ($r) => str_contains((string) $r, '?')) ?? ($hook['reads'][0] ?? ''))) : '';
         $key = (string) config('services.anthropic.key');
         if ($key === '' || ! $frames) return ['status' => 'unverified'];
         $content = [['type' => 'text', 'text' => 'You check a finished short video before it is delivered. Below are frames from it, each with its time, then the approved cast images (identity references), if any. Answer only from what is visible; when you cannot tell, say "unclear". Reply with JSON only:
 {"required": [{"item": "<as given>", "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words>"}],
  "identity": {"status": "consistent"|"drift"|"unclear"|"none", "times": [<seconds where a person looks like someone else>], "note": "<under 20 words>"},
  "lettering": {"status": "clean"|"garbled", "times": [<seconds>], "note": "<garbled letters or fake logos baked into the picture; clean overlay captions and real product labels are fine>"},
- "actions": [{"shot": <n>, "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words; say if the person looks into the camera when they should not>"}]}
+ "actions": [{"shot": <n>, "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words; say if the person looks into the camera when they should not>"}],
+ "answer": {"status": "answered"|"not_answered"|"unclear"|"none", "note": "<under 20 words>"}}
 Required items (each must be visible; spoken-only items are "unclear" here, they are checked by listening): '.json_encode($required, JSON_UNESCAPED_UNICODE).'
-Directed shots (each action should be visible, with its gaze; judge each shot on the frames marked inside it, which follow its action from early to late): '.json_encode($shots, JSON_UNESCAPED_UNICODE)]];
+Directed shots (each action should be visible, with its gaze; judge each shot on the frames marked inside it, which follow its action from early to late): '.json_encode($shots, JSON_UNESCAPED_UNICODE)
+            .($question !== '' ? "\nThe opening question, which the last frames should visibly answer: ".json_encode($question, JSON_UNESCAPED_UNICODE) : "\nThere is no opening question to check: answer.status is \"none\".")]];
         foreach ($frames as $f) {
             $content[] = ['type' => 'text', 'text' => 'Frame at '.round((float) $f['time'], 1).' s'.(($f['label'] ?? '') !== '' ? ' (inside '.$f['label'].')' : '')];
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($f['jpeg'])]];
@@ -65,6 +70,7 @@ Directed shots (each action should be visible, with its gaze; judge each shot on
             'required' => collect((array) ($json['required'] ?? []))->filter(fn ($x) => is_array($x))->map(fn ($x) => ['item' => $s($x['item'] ?? '', 120), 'status' => in_array($x['status'] ?? '', ['present', 'missing', 'unclear'], true) ? $x['status'] : 'unclear', 'time' => $t($x['time'] ?? null), 'note' => $s($x['note'] ?? '', 120)])->take(8)->values()->all(),
             'identity' => ['status' => in_array($json['identity']['status'] ?? '', ['consistent', 'drift', 'unclear', 'none'], true) ? $json['identity']['status'] : 'unclear', 'times' => array_values(array_filter(array_map($t, (array) ($json['identity']['times'] ?? [])), fn ($v) => $v !== null)), 'note' => $s($json['identity']['note'] ?? '', 160)],
             'lettering' => ['status' => ($json['lettering']['status'] ?? '') === 'garbled' ? 'garbled' : 'clean', 'times' => array_values(array_filter(array_map($t, (array) ($json['lettering']['times'] ?? [])), fn ($v) => $v !== null)), 'note' => $s($json['lettering']['note'] ?? '', 160)],
+            'answer' => ['status' => in_array($json['answer']['status'] ?? '', ['answered', 'not_answered', 'unclear', 'none'], true) ? $json['answer']['status'] : 'unclear', 'note' => $s($json['answer']['note'] ?? '', 160)],
             'actions' => collect((array) ($json['actions'] ?? []))->filter(fn ($x) => is_array($x))->map(fn ($x) => ['shot' => (int) ($x['shot'] ?? 0), 'status' => in_array($x['status'] ?? '', ['present', 'missing', 'unclear'], true) ? $x['status'] : 'unclear', 'time' => $t($x['time'] ?? null), 'note' => $s($x['note'] ?? '', 120)])->take(12)->values()->all()];
     }
 }

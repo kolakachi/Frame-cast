@@ -9,6 +9,7 @@ import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from
 import {rowsOf,timingFindings,duckingFindings,ambienceFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
 import {beatFindings} from './narration-timing.mjs';
 import {moveFindings} from './move-check.mjs';
+import {repeatFindings} from './teach-check.mjs';
 import {layoutFindings} from './layout-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
@@ -76,7 +77,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   };
   // The exact-layout measurement opens its own browser, so it runs once on the finished version (a note for the
   // user), not on every preview; it still runs on each check when findings are set to block finishing.
-  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()})),...(context.findingsBlockFinish===true?await exactLayout():[])];
+  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()})),
+   ...(context.lookOnly||!context.plan?[]:repeatFindings({plan:context.plan,html:await compositionSources(),settings:context.settings||{}})),...(context.findingsBlockFinish===true?await exactLayout():[])];
   const stopNow=async()=>{
     if(!stopRequested())return false;
     if(state.lastGood){

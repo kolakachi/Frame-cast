@@ -11,6 +11,8 @@ export function requiredMoves(plan){
  const out=new Map(),add=(m,label)=>{if(!RECIPES[m])return;if(!out.has(m))out.set(m,[]);if(label&&!out.get(m).includes(label))out.get(m).push(label);};
  for(const s of plan?.reference_systems||[])if(s&&s.decision!=='drop')add(s.move,s.name||s.system);
  for(const d of plan?.reference_decisions||[])if(d&&d.decision!=='drop')add(d.move,d.beat?'the '+d.beat+' beat':d.moment);
+ // Each beat's planned transition (what becomes the next scene) is built with its move.
+ for(const s of plan?.scenes||[])if(s?.transition_out?.move)add(s.transition_out.move,'the transition out of '+(s.label||'a beat'));
  return out;
 }
 

@@ -85,6 +85,8 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],ex
  if(look?.status==='checked'&&look.lettering?.status==='garbled')add('lettering','No garbled lettering in the picture','fail',false,'Garbled letters or a fake logo'+(look.lettering.note?': '+look.lettering.note:'')+'.',look.lettering.times||[]);
  // Directed actions of generated shots: advisory unless the agreement requires them (handled above).
  for(const a of look?.status==='checked'?look.actions||[]:[])if(a.status==='missing')add('action-'+a.shot,'Shot '+a.shot+' shows its action','fail',false,'Its directed action is not visible'+(a.note?': '+a.note:'')+'.',a.time!=null?[a.time]:[]);
+ // A teaching video's last image answers its opening question: advisory.
+ if(look?.status==='checked'&&look.answer?.status==='not_answered')add('answer','The ending answers the opening question','fail',false,'The last frames do not answer it'+(look.answer.note?': '+look.answer.note:'')+'.');
  // Unintended blank frames: a technical fault.
  if(blanks.length)add('blank','No blank frames','fail',true,'The picture goes blank'+(blanks.length>1?' '+blanks.length+' times':'')+'.',blanks.map(b=>b.start));
  // Planned moves the plan named (a reference move, the signature move): blocking.

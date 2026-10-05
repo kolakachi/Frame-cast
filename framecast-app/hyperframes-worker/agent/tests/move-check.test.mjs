@@ -27,3 +27,10 @@ test('every recipe the check names exists in the kit',async()=>{
  const window={gsap:{}};vm.runInNewContext(await readFile(new URL('../../runtime/wyv-motion.js',import.meta.url),'utf8'),{window,document:{},Math,Object});
  for(const [move,fn] of Object.entries(RECIPES))assert.equal(typeof window.WM[fn],'function',move+' -> WM.'+fn);
 });
+
+test('a beat\'s planned transition move is required; a cut is not',async()=>{
+ const {requiredMoves}=await import('../move-check.mjs');
+ const m=requiredMoves({scenes:[{label:'Upload',transition_out:{from:'button',becomes:'ring',move:'morph'}},{label:'Result',transition_out:{move:'cut'}}]});
+ assert.deepEqual([...m.keys()],['morph']);
+ assert.deepEqual(m.get('morph'),['the transition out of Upload']);
+});

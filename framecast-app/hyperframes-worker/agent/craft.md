@@ -38,6 +38,10 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - Change composition when it aids comprehension or follows the reference; stable framing is appropriate for interviews, demonstrations or still slides. A colour-field change is one option when it suits the approved direction; never force it into every video.
 - A signature move is optional. Use it only when the approved direction calls for one; do not invent it for a footage edit or restrained explainer.
 
+## Transitions and teaching
+- Each beat's transition_out says what already on screen becomes the next scene and with which move: build exactly that (the named move is checked); a cut only where the plan says cut.
+- A teaching video (scenes carry arc): open on the hook's question, show before naming, one new idea per beat, and end on an image that answers the opening question. On-screen text adds to the narration; it never repeats a spoken line word for word.
+
 ## Sound (when there is audio)
 - Motion-kit moves bring their own effects (kit/motion-kit.md, Sound); keep them unless the brief or reference is silent (then `data-sounds="off"`). Neither every cut nor every text reveal needs a sound: words, writeOn and rise are silent, and moves closer than 0.25 s share one.
 - The voice sits clearly above any music. A short near-silence can emphasize a reveal when that suits the requested style; it is not mandatory for educational or source-footage edits.
