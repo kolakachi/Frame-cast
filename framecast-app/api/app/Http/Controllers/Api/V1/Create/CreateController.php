@@ -180,9 +180,11 @@ class CreateController extends Controller
     public function reference(Request $r, string $id)
     {
         $input = $r->validate(['url' => 'required|string|max:500', 'idempotency_key' => 'required|string|max:128', 'expected_version' => 'required|integer|min:0']);
-        // Video posts are studied as style references; any other public page is read and captured.
+        // Video posts are studied as style references; a direct link to a video file is the user's own footage;
+        // any other public page is read and captured.
         $host = strtolower((string) parse_url(trim($input['url']), PHP_URL_HOST));
-        $service = in_array($host, config('create.reference_hosts'), true) ? \App\Services\Create\References\ReferenceLinkService::class : \App\Services\Create\References\PageReferenceService::class;
+        $service = in_array($host, config('create.reference_hosts'), true) ? \App\Services\Create\References\ReferenceLinkService::class
+            : (\App\Services\Create\References\VideoLinkService::isVideoFile($input['url']) ? \App\Services\Create\References\VideoLinkService::class : \App\Services\Create\References\PageReferenceService::class);
         app($service)->add($r->user(), $id, $input['url'], $input['expected_version'], $input['idempotency_key']);
         return $this->show($r, $id);
     }

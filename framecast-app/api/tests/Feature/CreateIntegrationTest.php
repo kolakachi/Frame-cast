@@ -3010,4 +3010,29 @@ class CreateIntegrationTest extends TestCase
         $long = [...$lines, 'And another line that is far too much for a fifteen second video to carry well.'];
         $this->assertCount(5, app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'narration' => $long], $ctx, (int) $this->workspace->id)['narration'], 'a script past the cap is still trimmed');
     }
+
+    public function test_a_direct_video_link_is_downloaded_as_the_users_footage(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $tmp = sys_get_temp_dir().'/link-'.uniqid(); @mkdir($tmp);
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:d=1', '-pix_fmt', 'yuv420p', $tmp.'/demo.mp4']);
+        \App\Services\Create\References\PageReferenceService::$resolve = fn () => ['93.184.216.34'];
+        Http::fake(['https://cdn.example.com/demo/app-demo.mp4' => Http::response(file_get_contents($tmp.'/demo.mp4'), 200, ['Content-Type' => 'video/mp4']),
+            'https://cdn.example.com/missing.mp4' => Http::response('', 404)]);
+        try {
+            $this->assertTrue(\App\Services\Create\References\VideoLinkService::isVideoFile('https://cdn.example.com/demo/app-demo.mp4'));
+            $this->assertFalse(\App\Services\Create\References\VideoLinkService::isVideoFile('https://wyvstudio.com/pricing'));
+            $asset = app(\App\Services\Create\References\VideoLinkService::class)->add($this->owner, $c->id, 'https://cdn.example.com/demo/app-demo.mp4', (int) $c->version, 'link-1');
+            $this->assertSame('video', $asset->asset_type);
+            $this->assertSame('source', DB::table('create_attachments')->where('conversation_id', $c->id)->where('asset_id', $asset->id)->value('purpose'));
+            $this->assertSame('link', data_get($asset->metadata_json, 'reference_source.platform'));
+            try {
+                app(\App\Services\Create\References\VideoLinkService::class)->add($this->owner, $c->id, 'https://cdn.example.com/missing.mp4', (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'link-2');
+                $this->fail('A missing video should be refused.');
+            } catch (HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
+        } finally {
+            \App\Services\Create\References\PageReferenceService::$resolve = null;
+            @unlink($tmp.'/demo.mp4'); @rmdir($tmp);
+        }
+    }
 }

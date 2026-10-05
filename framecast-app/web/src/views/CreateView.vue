@@ -532,20 +532,30 @@ async function send() {
     const links = [...new Set((text.match(/https:\/\/[^\s<>"')]+/g) || []).map(u => u.replace(/[.,;:!?]+$/, '')))].filter(u => !known.has(u)).slice(0, 3)
     // Show the message right away while its links are studied.
     if (links.length) { pendingText.value = text; prompt.value = '' }
+    // A link that cannot be used never loses the brief: it is sent, and the link's problem is shown after.
+    const linkProblems = []
     for (const url of links) {
       linkStudying.value = url
       // One key per link per conversation: a retry replays safely, and the same link in a new conversation is a new request.
       const linkId = `${target}|${url}`
       linkKeys[linkId] ||= crypto.randomUUID()
-      const r = await api.post(`${base(target)}/references`, { url, idempotency_key: linkKeys[linkId], expected_version: conversation.value.version }, { timeout: 150000 })
-      delete linkKeys[linkId]
-      if (id.value === target) data.value = r.data.data
+      try {
+        const r = await api.post(`${base(target)}/references`, { url, idempotency_key: linkKeys[linkId], expected_version: conversation.value.version }, { timeout: 150000 })
+        delete linkKeys[linkId]
+        if (id.value === target) data.value = r.data.data
+      } catch (e) {
+        if (e.response?.status === 409) throw e
+        delete linkKeys[linkId]
+        linkProblems.push(`${url}: ${message(e)}`)
+        await refresh().catch(() => {})
+      }
     }
     linkStudying.value = ''
     sendingKey ||= crypto.randomUUID()
     await api.post(`${base(target)}/messages`,{content:text,expected_version:conversation.value.version,idempotency_key:sendingKey})
     persistDraft(target,''); sendingKey = null; prompt.value = ''; pendingText.value = ''; quote.value = null; selectedRevision.value = null
     await refresh(); await loadHistory(); await nextTick(); end.value?.scrollIntoView({behavior:'smooth',block:'end'})
+    if (linkProblems.length) error.value = 'Your message was sent, but a link could not be used. ' + linkProblems.join(' ')
   })
   linkStudying.value = ''
   // A failed study leaves the message unsent: give the text back to the box.
