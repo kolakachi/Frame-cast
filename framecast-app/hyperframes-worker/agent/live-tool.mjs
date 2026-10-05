@@ -119,7 +119,9 @@ else if(operation==='render'){
  // The sound pass places the motion kit's effects first; what it did is kept beside the render, never in its way.
  const {soundPass}=await import('./sound-pass.mjs');
  await writeFile(out+'/sounds.json',JSON.stringify(settings.audio==='silent'?{placed:[],skipped:'silent'}:await soundPass({root,width:dims[0],height:dims[1],duration:settings.duration_seconds})));
- result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
+ // 24 fps unless the user chose 30 or 60; the deadline grows with the frames rendered.
+ const fps=[24,30,60].includes(settings.frame_rate)?settings.frame_rate:24,frames=fps*(settings.motion_blur===true?(fps>=60?2:4):1)*settings.duration_seconds;
+ result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,fps,timeoutMs:Math.max(120000,Math.min(1500000,frames*350)),expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
 }
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');

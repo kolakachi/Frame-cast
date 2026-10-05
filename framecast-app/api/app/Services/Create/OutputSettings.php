@@ -9,7 +9,7 @@ class OutputSettings
         'caption_text'=>'nullable|string|max:4000','approved_facts'=>'sometimes|array|max:20',
         'approved_facts.*'=>'string|max:500', 'output_kind'=>'sometimes|in:video,image','video_mode'=>'sometimes|in:composition,animate_image',
         'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid','style_id'=>'sometimes|nullable|uuid','style_pack'=>'sometimes|nullable|string|max:40',
-        'motion_blur'=>'sometimes|boolean','reference_effort'=>'sometimes|nullable|in:standard,high,maximum','reference_match'=>'sometimes|nullable|in:inspired,similar,exact','media_ceiling_credits'=>'sometimes|nullable|integer|min:0|max:20000',
+        'motion_blur'=>'sometimes|boolean','frame_rate'=>'sometimes|integer|in:24,30,60','reference_effort'=>'sometimes|nullable|in:standard,high,maximum','reference_match'=>'sometimes|nullable|in:inspired,similar,exact','media_ceiling_credits'=>'sometimes|nullable|integer|min:0|max:20000',
         // Set when the user picks the length (Details or the brief), so an exact copy does not override it with the reference's.
         'duration_chosen'=>'sometimes|boolean',
     ]; }
@@ -17,6 +17,7 @@ class OutputSettings
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');
         $s=validator($input,self::rules())->validate();
         $s+=['output_kind'=>'video','aspect_ratio'=>'9:16','duration_seconds'=>15,'language'=>'en','audio'=>'original','captions'=>'off','approved_facts'=>[],'motion_blur'=>false];
+        if(isset($s['frame_rate']))$s['frame_rate']=(int)$s['frame_rate'];
         abort_if(!empty($s['style_pack']) && !StylePacks::exists($s['style_pack']),422,'That style is not available.');
         abort_if(!empty($s['style_pack']) && !empty($s['style_id']),422,'Choose one style: a WyvStudio style or one of yours.');
         abort_if($s['captions']==='provided' && !trim($s['caption_text']??''),422,'Provide the exact caption text first.');

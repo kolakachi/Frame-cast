@@ -227,7 +227,7 @@ async function execute(run){
   await accountedCall({key:'render-'+(round+1),kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
-   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
+   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000*renderLoad(run.input.settings),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
@@ -335,6 +335,8 @@ async function execute(run){
   console.error(JSON.stringify({run:run.id,status:lost?'needs_attention':result.status}));
  }finally{clearInterval(timer);await trace({phase:'run',status:'finished',summary:'Worker execution ended; see authoritative run status and receipts'});await flushTrace();}
 }
+// How much longer than a plain 24 fps render the final render takes (60 fps, motion blur).
+function renderLoad(settings){const fps=[30,60].includes(settings?.frame_rate)?settings.frame_rate:24;return Math.max(1,fps*(settings?.motion_blur===true?(fps>=60?2:4):1)/24);}
 while(!stopping){
  try{const run=await request('claim',{});if(run)await execute(run);else if(process.argv.includes('--once'))break;}
  catch(e){console.error(e.message);if(process.argv.includes('--once'))process.exitCode=1;}
