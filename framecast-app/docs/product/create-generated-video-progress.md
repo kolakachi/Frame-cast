@@ -19,11 +19,11 @@ Last updated: 2026-10-05.
 | 0. Handoff integrity | 5 | 0 | 0 |
 | A. Direction (cast and storyboard) | 7 | 1 | 0 |
 | B. Generation routes | 0 | 1 | 4 |
-| C. Reliability | 4 | 1 | 0 |
+| C. Reliability | 5 | 0 | 0 |
 | D. Delivery checks | 4 | 3 | 1 |
 | E. Composition with generated worlds | 1 | 2 | 0 |
 | F. Speed | 0 | 1 | 2 |
-| G. Cost | 1 | 1 | 3 |
+| G. Cost | 1 | 2 | 2 |
 | H. Protect what works | 0 | 1 | 1 |
 | Rollout gate | 0 | 0 | 2 |
 
@@ -116,9 +116,9 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
   - A stopped run hands its still-rendering clips to the next run, with nothing charged.
   - It closes by itself when nothing else is in doubt.
   - The user is told the clips are still being made and that Try again collects them.
-- [~] **C3. Refusal fallback** (`562590cb`).
+- [x] **C3. Refusal fallback** (`562590cb`).
   - Done: a declined shot is never retried silently; the version reports it with the next-best engine that takes the same inputs and its price; a per-shot engine override is kept on the plan.
-  - Missing: the button on the result (it waits until no run is live, since the page reloads on edits).
+  - The result offers "Make it on <engine> · N cr" for each declined shot (`26c556bf`).
 - [x] **C4. Main-app provider fixes** (`72bd776d`).
   - An input image the provider cannot fetch from B2 is handed over through Replicate's own file store and started once more (the production error was `NewConnectionError` to `s3.us-east-005.backblazeb2.com`).
   - The editor's model picker flags a model that has been slow for the last 6 hours, with its recent minutes.
@@ -126,6 +126,8 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 - [x] **Opus planner fix** (`2a8347b0`): Opus 5.5 refuses a forced tool choice. Creative plans with a reference failed with "An unexpected error occurred" after A6; models that always think now get "auto", and planner refusals are logged.
 
 ## D. Delivery checks (on the final encoded video)
+
+First real run (2026-10-05): the checks crashed (`planMedia is not defined`), were reported as unavailable, and were fixed in `26c556bf`. Shots also failed to find their panels by label, fixed in `f3253ae6`.
 
 Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 
@@ -167,15 +169,17 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 
 - [ ] **F1. Targets checked on the bench:** plan ≤ 3 min, look stage ≤ 6, full video ≤ 15.
 - [~] **F2. Parallel work.**
-  - Done: all clips start together.
-  - Missing: cast images in parallel; panels after their identity; the builder starting while clips render.
+  - Done: all clips start together; cast images are drawn in parallel, then the panels in parallel (`7c638502`).
+  - Missing: the builder starting on code beats while clips render.
 - [ ] **F3. Stage times per run** in the trajectory. `create:bench-report` gives run and plan times today.
 
 ## G. Cost
 
 - [x] **G1. Bench and baseline:** briefs, coverage, acceptance rules, release gate, budget, and `create:bench-report` (`abb9cb55`). First "before" record: DistroKid, 943 credits over 4 runs, 2 held.
 - [ ] **G1. Baseline round run** (needs the owner's inputs and cap).
-- [ ] **G2. Reference analysis split:** measurement with confidence; cheap vision on held frames; Opus keeps the key frames; A/B on DistroKid and UI-motion.
+- [~] **G2. Reference analysis split** (`26c556bf`).
+  - Done: behind `CREATE_STUDY_MODE=split`. Haiku reads every sheet in parallel into per-frame facts (text, type, elements, changes); Opus reads the facts plus the strongest motion windows frame by frame and the first sheet. `create:study-ab {asset}` compares both readings.
+  - Missing: motion measurement with confidence; the A/B results and the switch decision (running on DistroKid 2026-10-05; UI-motion next).
 - [ ] **G3. Build model by job.**
 - [~] **G4. Cost per accepted result.**
   - Done: real provider cost per generated item (0.5).
