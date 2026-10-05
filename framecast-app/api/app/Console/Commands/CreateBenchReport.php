@@ -44,7 +44,10 @@ class CreateBenchReport extends Command
                 'credits_by_kind' => $attempts->groupBy('kind')->map(fn ($g) => (int) $g->sum('charged_credits'))->all(),
                 'provider_usd' => round($attempts->sum('cost_microusd') / 1e6, 2), 'provider_cost_basis' => $tariff ? 'tariff estimate' : 'receipts',
                 'failed_attempts' => $attempts->whereIn('status', ['failed', 'unknown'])->count(), 'model_calls' => $attempts->where('kind', 'agent')->count(),
-                'reconciled' => DB::table('composition_reconciliations')->whereIn('attempt_id', $attempts->pluck('id'))->count()];
+                'reconciled' => DB::table('composition_reconciliations')->whereIn('attempt_id', $attempts->pluck('id'))->count(),
+                // Stage times (F3): from the first to the last attempt of each kind, so slow stages show.
+                'stages' => $attempts->groupBy(fn ($a) => $a->kind === 'plan_media' ? 'media' : ($a->kind === 'render' ? 'render' : ($a->kind === 'agent' && str_starts_with((string) $a->attempt_key, 'repair') ? 'repair' : $a->kind)))
+                    ->map(fn ($g) => $secs($g->min('created_at'), $g->max('updated_at')))->all()];
         })->all();
 
         $media = DB::table('create_plan_media')->where('conversation_id', $id)->orderBy('item_index')->get()
@@ -60,7 +63,8 @@ class CreateBenchReport extends Command
         if ($this->option('json')) { $this->line(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)); return self::SUCCESS; }
         $this->info('Creation '.$id.' · '.json_encode($report['settings']));
         foreach ($plans as $p) $this->line(sprintf('Plan  %s  %-26s %4ss  media %s cr  tier %s  routes %s', substr($p['id'], 0, 8), $p['provider'], $p['seconds'] ?? '?', $p['media_credits'] ?? '?', $p['video_tier'] ?? '-', json_encode($p['routes'])));
-        foreach ($runs as $r) $this->line(sprintf('Run   %s  %-11s %-14s %5ss  %5d cr  $%s (%s)  failed %d  calls %d%s', substr($r['id'], 0, 8), $r['stage'] ?? '?', $r['status'], $r['seconds'] ?? '?', $r['credits'], $r['provider_usd'], $r['provider_cost_basis'], $r['failed_attempts'], $r['model_calls'], $r['held'] ? '  HELD' : ''));
+        foreach ($runs as $r) $this->line(sprintf('Run   %s  %-11s %-14s %5ss  %5d cr  $%s (%s)  failed %d  calls %d%s  stages %s', substr($r['id'], 0, 8), $r['stage'] ?? '?', $r['status'], $r['seconds'] ?? '?', $r['credits'], $r['provider_usd'], $r['provider_cost_basis'], $r['failed_attempts'], $r['model_calls'], $r['held'] ? '  HELD' : '',
+            collect($r['stages'])->map(fn ($v, $k) => $k.' '.$v.'s')->implode(', ')));
         foreach ($media as $m) $this->line(sprintf('Media %-16s %-10s %4d cr  %-11s %s%s', $m['kind'], $m['status'], $m['credits'], $m['engine'] ?? '', $m['provider_usd'] === null ? 'provider $?' : 'provider $'.$m['provider_usd'], $m['error'] ? '  '.mb_substr($m['error'], 0, 80) : ''));
         $this->info(sprintf('Total %d credits over %d runs; %d held; %d media failed.', $report['totals']['credits'], $report['totals']['runs'], $report['totals']['holds'], $report['totals']['failed_media']));
         return self::SUCCESS;

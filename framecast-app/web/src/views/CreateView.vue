@@ -156,6 +156,9 @@ watch(() => data.value?.plans, list => {
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
 // The intent agreement (what stays, what changes, what must appear), edited as one line per item.
+// What is being made and what sets its timing, as the plan card says it.
+const VIDEO_TYPE_LABEL = { motion_graphics: 'Motion graphics', ugc: 'UGC / presenter', footage: 'Footage', ugc_motion: 'UGC with motion graphics', footage_motion: 'Footage with motion graphics' }
+const TIMING_LABEL = { narration: 'the speech', source: 'your footage\'s speech', music: 'the music', visual: 'the action' }
 const AGREEMENT = [['preserve', 'Keep from the reference'], ['replace', 'Swap in'], ['flexible', 'Free to change'], ['required', 'Must appear']]
 const agreementEditing = ref({})
 function agreementText(a) { return Object.fromEntries(AGREEMENT.map(([k]) => [k, ((a || {})[k] || []).join('\n')])) }
@@ -821,6 +824,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                       <div v-if="planByMessage[m.id].plan.props3d?.length" class="checks"><b>3D objects</b><p v-for="o in planByMessage[m.id].plan.props3d" :key="o.name" class="muted">{{ o.name }}<template v-if="o.looks">: {{ o.looks }}</template><template v-if="o.spin"> · spins as it lands</template></p><p class="muted">Modelled for this video in the same finish, no image generation.</p></div>
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>
+                        <p v-if="planByMessage[m.id].plan.video_type" class="muted plan-kind">{{ VIDEO_TYPE_LABEL[planByMessage[m.id].plan.video_type] || '' }} · {{ planByMessage[m.id].plan.reference_match ? (planByMessage[m.id].plan.reference_match === 'exact' ? 'copying a reference exactly' : planByMessage[m.id].plan.reference_match === 'similar' ? 'similar to a reference' : 'inspired by a reference') : 'from scratch' }}<template v-if="planByMessage[m.id].plan.creative_intent?.timing_driver"> · timed by {{ TIMING_LABEL[planByMessage[m.id].plan.creative_intent.timing_driver] }}</template></p>
                         <p v-if="planByMessage[m.id].plan.reference_match" class="muted">{{ planByMessage[m.id].plan.reference_match === 'exact' ? 'Matched exactly: every moment keeps its timing, layout, transition and mascot placement; your brand, voice and content go in each slot. Change this in Details.' : planByMessage[m.id].plan.reference_match === 'similar' ? 'Similar: its format, look and pacing, your own story and shots. Change this in Details.' : 'Inspired by it: the idea, your own execution. Change this in Details.' }}</p>
                         <p class="muted">{{ referenceTally(planByMessage[m.id].plan) }}</p>
                         <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}<template v-if="d.carried_by"> · its job: {{ d.carried_by }}</template></li></ul>

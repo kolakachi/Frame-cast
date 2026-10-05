@@ -282,4 +282,14 @@ class ShotRouteTest extends TestCase
         $this->expectExceptionMessage('not in the approved sheet');
         $find->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'asset-1661-def.png', $ctx);
     }
+
+    public function test_the_video_type_comes_from_what_the_plan_makes(): void
+    {
+        $t = fn (array $kinds, array $callouts = ['x'], array $files = []) => PlanService::videoType(['media' => array_map(fn ($k) => ['kind' => $k], $kinds), 'callouts' => $callouts], ['files' => $files]);
+        $this->assertSame('motion_graphics', $t(['voiceover', 'music']));
+        $this->assertSame('ugc_motion', $t(['ugc_take']));
+        $this->assertSame('ugc', $t(['ugc_take'], []));
+        $this->assertSame('footage_motion', $t(['reference_sheet', 'generated_shot']));
+        $this->assertSame('footage', $t([], [], [['purpose' => 'source', 'asset_type' => 'video']]));
+    }
 }

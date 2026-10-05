@@ -600,6 +600,10 @@ class PlanService
         }
         $plan['free_edit'] = $free ?: null;
         $plan['new_wording'] = self::newWording([...$callouts, ...$narration], $ctx);
+        // What is being made (M) and what sets the timing (B4), from what the plan actually makes.
+        $plan['video_type'] = self::videoType($plan, $ctx);
+        if (collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ['ugc_take', 'talking_take'], true)) && is_array($plan['creative_intent'] ?? null))
+            $plan['creative_intent']['timing_driver'] = 'narration'; // approved speech is never re-timed to fit generated cuts
         // What stays and what changes (M1): shown on the plan for correction, and followed by the build and its checks.
         $plan['agreement'] = self::agreement(is_array($ctx['previous_plan']['approved_agreement'] ?? null) && ! empty(array_filter($ctx['previous_plan']['approved_agreement'])) && empty($raw['agreement'])
             ? $ctx['previous_plan']['approved_agreement'] : ($raw['agreement'] ?? []));
@@ -608,6 +612,20 @@ class PlanService
         $plan['selections']['agreement'] = $plan['agreement'];
         $plan['credits'] = $this->credits($plan);
         return $plan;
+    }
+
+    /**
+     * The video type (todo M), from what the plan makes rather than the planner's word for it: a presenter speaking,
+     * footage (generated, stock or the user's), and designed graphics (callouts, UI, kinetic type) in any mix.
+     */
+    public static function videoType(array $plan, array $ctx): string
+    {
+        $kinds = array_column($plan['media'] ?? [], 'kind');
+        $presenter = (bool) array_intersect($kinds, ['ugc_take', 'talking_take', 'talking_shot']) || collect($ctx['files'] ?? [])->contains(fn ($f) => ! empty($f['face_kit']));
+        $footage = (bool) array_intersect($kinds, ['generated_shot', 'stock_video', 'animate_image'])
+            || collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'video');
+        $graphics = ! empty($plan['callouts']) || ! empty($plan['mascot3d']) || ! empty($plan['props3d']) || (! $presenter && ! $footage);
+        return match (true) { $presenter && $graphics => 'ugc_motion', $presenter => 'ugc', $footage && $graphics => 'footage_motion', $footage => 'footage', default => 'motion_graphics' };
     }
 
     /** The four short lists of the intent agreement, cleaned: at most 6 items each, each under 120 characters. */
