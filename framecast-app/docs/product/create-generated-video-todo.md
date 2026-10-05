@@ -35,9 +35,48 @@ Claims about models are hypotheses until the bake-off (B2) measures them on comp
 - The shots had camera notes but no actions.
 - Half the video was flat UI cards that broke the drawn world.
 
+- **External review 2026-10-05** found that approved intent does not yet survive every handoff (section 0). Those fixes come before new features or paid comparisons.
+
 ---
 
-## A. Direction: the cast and storyboard (do first)
+## 0. Handoff integrity (fix first; confirmed bugs in the code built 2026-10-05)
+
+**0.1 Every approved word survives.** `ShotRoute::take` loses words in two ways:
+- it keeps at most 6 segments and drops the rest;
+- it clamps a long line to the engine's maximum (a 50-word line gets 10 s for about 21 s of speech).
+
+The fix:
+- split long lines at clause, then word, boundaries into segments that fit;
+- never drop a segment;
+- if the script cannot fit within the allowed segments, the plan says so and asks; it never truncates;
+- the speaking rate is per language, not a fixed 2.4 words a second for every script;
+- the delivered take is transcribed and compared to the approved words (part of D5).
+
+**0.2 Explicit input contracts for generated shots.** Today a first frame forces a first-frame engine and drops the references: Omni with a board and an avatar becomes Kling with no references. An unknown first-frame name falls back to the first sheet image, which can be the wrong subject. The fix:
+- items name inputs by asset id: `start_frame` (a board panel), `references` (cast and place ids), `end_frame`;
+- a table per engine of supported combinations: Omni and Veo take a start frame plus references; Seedance takes one or the other; Kling takes a start frame only;
+- an unsupported combination re-routes with a stated reason, or is refused;
+- an unresolved reference is an error, never a fallback.
+
+**0.3 Cloned voice in UGC takes.**
+- No clone selected: native speech, as now.
+- Clone selected: the approved cloned narration plus the existing lip-sync route.
+- Never a native take and an unused cloned purchase side by side.
+- A plan check enforces this.
+
+**0.4 Per-segment records.**
+- Each provider job of a take (and of any multi-job item: sheet images, panels) is recorded the moment it is submitted.
+- Each job is collected, retried or cancelled on its own.
+- A failure after some jobs started leaves the started ones recorded and collectable, never "unknown".
+- Done before any paid comparison.
+
+**0.5 Real provider cost.**
+- Generated-media receipts record the provider's actual cost: prediction metrics and billed seconds by model price, kept separate from the credit tariff.
+- Cost per accepted result is measured from those, not derived from credits.
+
+---
+
+## A. Direction: the cast and storyboard
 
 **A1. Separate identity from direction.**
 
@@ -54,20 +93,26 @@ Claims about models are hypotheses until the bake-off (B2) measures them on comp
 
 **A2. Every shot is directed.** Each shot states:
 - an action with a purpose;
-- where the person looks;
+- the gaze **when a person is in it**;
 - the camera move;
 - the end state.
 
 Example: "She watches the upload finish, stops typing and leans forward with relief; her gaze stays on the laptop; the camera moves closer as the confirmation appears."
 
-- A plan check rejects shots with no action or no gaze, and sends them back to the planner.
+- A plan check sends back shots with no action, and people-shots with no gaze. Products, landscapes and deliberate stillness need neither.
 - People never look into the camera unless the shot says so; every prompt states this.
+- The shot prompt no longer forces "subject centred": the approved panel's composition rules, so an off-centre framing is kept.
 
 **A3. Storyboard panels drawn from the cast.**
 - One panel per generated shot, drawn with the cast as references.
 - Composed stills for the code-drawn beats.
 - Cast and panels appear on **one** review screen, never two approvals.
 - Each panel can be redone with a note ("looking at her screen, not at us").
+
+**A3a. Generation order with one screen.**
+- Independent cast and place images generate together.
+- Panels generate after the identity they depend on, and appear on the same screen as they land.
+- If the user rejects an identity, the panels that depend on it are not bought.
 
 **A4. Approval versions.**
 - A change to the cast, script or one shot's direction marks only the affected panels and clips as needing review.
@@ -77,10 +122,11 @@ Example: "She watches the upload finish, stops typing and leans forward with rel
 - A vision pass describes the approved panels and writes the video prompt.
 - Anything in a panel that contradicts the brief or plan (wrong product, wrong action, wrong text) is flagged to the user, never silently adopted as the new instruction.
 
-**A6. Planner model by job.**
-- Opus: creative plans (generated video, new stories, exact copies).
-- Sonnet: edits and timing fixes.
-- Recorded per plan.
+**A6. Planner model by job,** routed in code, not by one global env value:
+- configurable model ids;
+- the stronger model for new creative direction (generated video, new stories, exact copies);
+- Sonnet for edits and timing fixes;
+- the model used is recorded per plan.
 
 **A7. Pacing is a creative choice.**
 - The planner sets shot count and length from the format: a montage can cut every 1.5 s; a presenter or emotional beat needs longer.
@@ -95,7 +141,22 @@ Example: "She watches the upload finish, stops typing and leans forward with rel
 - **Code composition:** typography, UI, diagrams, controlled motion graphics.
 - A generated presenter clip does not move the whole project off HyperFrames or Remotion.
 
-**B2. Bake-off before routing rules harden.**
+**B2. Bounded bake-off before routing rules harden.**
+An exploratory comparison, not a definitive ranking. It needs everything below before it runs:
+- **Test groups** each engine can actually serve: no 16:9-only Veo reference task in a portrait group.
+- **Written acceptance thresholds and human review.**
+- **A spending cap.**
+- **Disqualifying failures:**
+  - lost approved words;
+  - wrong identity;
+  - a refusal with no fallback.
+- **Scenarios beyond a clean run:**
+  - partial provider failure;
+  - cancellation;
+  - stale approvals;
+  - a targeted edit.
+
+The original sketch below (4 tasks × 4 engines × 3 attempts) is up to 48 generations before boards or repairs, so the cap decides how much of it runs.
 - Same tasks for each engine (Seedance 2.5, Omni, Veo 3.1 HQ, Kling), equal durations, 3 attempts each.
 - Tasks:
   1. drawn-world action;
@@ -144,15 +205,24 @@ A UGC take or approved dialogue is never re-timed to fit generated cuts.
 
 ## D. Visual integrity checks before delivery
 
-All automatic. Results go into "Things to check" and block delivery only for named, approved items.
+All automatic, and all run on the **final encoded video**, not the source clips: an action trimmed out in the edit is a miss. Each finding carries timestamps and frames as evidence. Builds on V6 in `create-agent-integration-progress.md`.
+
+**Failure and repair policy:**
+- **Blocking:** missing required content (approved words, a required action, the approved identity) and technical failures (black or broken frames, missing audio).
+- **Advisory:** optional polish.
+- **Repairs:**
+  - at most 2 automatic repairs per run, within the approved spending ceiling;
+  - a repair is not charged when it fixes our own mistake;
+  - beyond that, the user is asked, with the evidence and the cost.
+- **An unavailable or inconclusive check is shown as "unverified"; it never counts as a pass.**
 
 **D1. Continuity:** the same character across shots (compare frames to the cast with a cheap vision model; flag drift with frames as evidence).
 
-**D2. Required actions:** each directed shot's action and gaze are visible in its frames; misses are flagged with the frame.
+**D2. Required actions:** each directed shot's action (and gaze, where required) is visible across a frame sequence of the final cut. Misses are flagged with timestamps.
 
 **D3. Sequence coverage:** detected cuts are matched to board panels; a skipped or reordered panel is flagged, never silently accepted.
 
-**D4. No generated text:** no letters, logos or UI garbage baked into generated frames.
+**D4. No unintended lettering:** no generated letters, fake logos or garbled UI baked into frames. Real product packaging and approved logos are expected, not flagged.
 
 **D5. Audio:**
 - speech is intelligible and is the approved words;
@@ -162,7 +232,7 @@ All automatic. Results go into "Things to check" and block delivery only for nam
 
 **D6. Named moves blocking (motion graphics):** a move the plan explicitly named (a reference decision's move, the signature move) that is missing blocks delivery. Everything else stays advisory.
 
-**D7. Build hygiene:** no black frame at the end; clips trimmed to their beats; the shot's best seconds are used, not just the first ones.
+**D7. Build hygiene:** no *unintended* blank frames (an approved fade is fine); clips trimmed to their beats; the shot's best seconds are used, not just the first ones.
 
 ## E. Composition with generated worlds
 
@@ -186,8 +256,8 @@ All automatic. Results go into "Things to check" and block delivery only for nam
 - look stage ≤ 6 min;
 - full video ≤ 15 min.
 
-**F2. Parallelise:**
-- sheet images and panels are generated together;
+**F2. Parallelise without breaking dependencies:**
+- independent cast and place images run together, then independent panels (see A3a);
 - all clips start together (done);
 - the builder starts on code beats while clips render.
 
@@ -228,20 +298,32 @@ All automatic. Results go into "Things to check" and block delivery only for nam
 - the 60 fps option;
 - camera zoom and flood transition techniques.
 
-## Order
+## Order (revised after the 2026-10-05 review)
 
-1. **G1:** the bench and baseline. Without it nothing below can be judged.
-2. **A1–A7:** cast and storyboard separation, directed shots, one review screen, versions, Opus planner.
-3. **D1–D5, D7:** delivery checks, so failures are visible before the user sees them.
-4. **B2:** the bake-off. Then B1 sequence route if it earns it, B3, B4.
-5. **C2–C5:** recovery and provider fixes.
-6. **E1–E3:** in-world UI, mixed-layout test, ambience.
-7. **G2–G4:** cost work against the working baseline.
-8. **F:** speed targets checked at every step; parallelisation as found.
+1. **G1 and acceptance rules:** the bench briefs, the scoring and thresholds, and the release gate.
+2. **Section 0:** word survival, input contracts, cloned voice, per-segment records, real provider cost.
+3. **A:** cast and storyboard direction, generated in dependency order on one screen.
+4. **D:** final-output checks with the repair policy and the "unverified" state.
+5. **B2:** the bounded bake-off. Then B1 sequence route if it earns it, B3, B4.
+6. **C2–C5:** remaining recovery and provider fixes.
+7. **E:** composition improvements.
+8. **G2–G4:** cost optimisation against the working baseline.
+9. **F:** speed checked at every step.
 
-## Open decisions (owner)
+## Rollout gate
 
-- Image model for cast and panels: Nano Banana Pro (35 credits each) or a cheaper one for panels.
-- Whether the look stage is mandatory for every generated-video plan, or skippable for small edits.
-- Spend confirmation threshold (300 credits today).
-- The planner on Opus: set `CREATE_PLANNER_MODEL` in `api/.env`, or route by plan type in code (A6).
+- Local acceptance on the G1 bench first.
+- Then a limited enabled audience, with a switch to turn generated video off.
+- Passing unit tests alone does not unlock general use.
+
+## Decisions (recommended by review, pending owner confirmation)
+
+| Decision | Choice |
+|---|---|
+| Image model | Nano Banana Pro is the baseline. Cheaper panel models are compared later on identity and direction adherence, not price. |
+| Look approval | Required for a new identity, a new visual treatment or a materially changed generated shot. Unchanged assets and small edits reuse the approval. |
+| Cast and boards | Generated in dependency order and shown progressively on one review screen. |
+| Planner model | Routed by task in code (A6). |
+| Spend confirmation | 300 credits stays as an extra warning. The authorisation is the server-side quote and its maximum spend. Changed scope and repairs stay within that ceiling. |
+| Sequence mode | Experimental and selectable per segment. Individual shots and code stay available in the same video. |
+| Delivery checks | Missing required content and technical failures block. Polish is advisory. Unverified is never a pass. |
