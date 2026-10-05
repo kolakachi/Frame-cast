@@ -73,7 +73,8 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  // The bought narration, transcribed up front: beats are timed by its words, and a voice that ends early gets its
  // own pauses lengthened instead of a long silent hold at the end.
  let narrationTiming=null;const initialTranscripts={};
- const voice=planMedia.find(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.status==='succeeded'&&m.file);
+ // A UGC take is the voice track; a cloned narration bought for a lip-synced take is already inside it.
+ const voice=planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'&&m.file)?null:planMedia.find(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.status==='succeeded'&&m.file);
  if(voice&&transcribe&&input.look_first!==true&&input.plan?.scenes?.length)try{
   const t=await transcribe({input:voice.file,signal});
   const words=(t?.words||[]).map(w=>[w.text,Number(w.start),Number(w.end)]);
@@ -84,7 +85,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   }
  }catch{/* the build works without it */}
  // A UGC take is the voice: its own words time the beats (placed at 0 s; the builder keeps it whole).
- const take=!voice&&planMedia.find(m=>m.kind==='ugc_take'&&m.status==='succeeded'&&m.file);
+ const take=planMedia.find(m=>m.kind==='ugc_take'&&m.status==='succeeded'&&m.file);
  if(take&&transcribe&&input.look_first!==true&&input.plan?.scenes?.length)try{
   const t=await transcribe({input:take.file,signal});
   const words=(t?.words||[]).map(w=>[w.text,Number(w.start),Number(w.end)]);

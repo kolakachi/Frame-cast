@@ -598,7 +598,7 @@ class PlanService
         $shotCtx = ['video_tier' => $plan['selections']['video_tier'] ?? 'standard', 'has_avatar' => (bool) data_get($plan, 'shot_context.has_avatar', false),
             'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'), 'language' => data_get($plan, 'shot_context.language', 'en'),
             'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? [],
-            'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name')];
+            'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name'), 'voice' => $voice];
         foreach ($items as &$shotItem) {
             if (! in_array($shotItem['kind'], ShotRoute::KINDS, true)) continue;
             $shotItem = array_merge($shotItem, match ($shotItem['kind']) {
@@ -608,8 +608,11 @@ class PlanService
             });
         }
         unset($shotItem);
-        // A UGC take speaks the script itself: no separate narration is bought.
+        // A UGC take speaks the script itself: no separate narration is bought, unless a cloned voice is selected, when
+        // the cloned narration is what the take lip-syncs to.
         if (collect($items)->contains('kind', 'ugc_take') && $voice !== 'clone') $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
+        if (collect($items)->contains('kind', 'ugc_take') && $voice === 'clone' && ! collect($items)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)))
+            $items[] = ['kind' => 'cloned_voiceover', 'description' => 'Narration in your cloned voice for the lip-synced take', 'credits' => \App\Services\CreditService::TTS_CLONE];
         $hasTake = collect($items)->contains('kind', 'talking_take');
         if (($hasTake || (collect($items)->contains('kind', 'talking_shot') && count($plan['selections']['narration'] ?? $plan['narration'] ?? []) <= 1)) && $voice !== 'clone') {
             $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));

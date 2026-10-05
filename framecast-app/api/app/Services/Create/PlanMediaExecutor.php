@@ -388,6 +388,18 @@ class PlanMediaExecutor
         $shot = $ctx['shot'] ?? [];
         $engine = (string) ($shot['engine'] ?? '');
         $veo = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
+        if ($kind === 'ugc_take' && ($shot['speech_mode'] ?? '') === 'cloned_lipsync') {
+            // The approved cloned narration drives the presenter's mouth (audio-driven lip-sync from one image).
+            $voice = \Illuminate\Support\Facades\DB::table('create_plan_media')->where('plan_id', $ctx['plan_id'] ?? '')->whereIn('kind', ['cloned_voiceover', 'voiceover'])->where('status', 'succeeded')->first();
+            $file = json_decode((string) $voice?->record_json, true)['file'] ?? null;
+            $audio = $file ? Asset::find((int) ($file['asset_id'] ?? 0)) : null;
+            $bytes = $audio?->storage_url ? app(StorageService::class)->get((string) $audio->storage_url) : null;
+            if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The cloned narration is not ready, so the take cannot be lip-synced.');
+            $presenter = ($shot['presenter'] ?? '') === 'avatar' ? $this->firstFrame(['first_frame' => 'avatar'], $ctx)
+                : (($f = $ctx['sheet_files'][0] ?? null) ? $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']) : throw new RuntimeException('The take has no presenter image.'));
+            $id = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($presenter, $this->replicateUpload($bytes, (string) ($audio->mime_type ?: 'audio/wav')), null);
+            return ['predictions' => [$id], 'engine' => 'lipsync'];
+        }
         if ($kind === 'ugc_take') {
             $refs = match ($shot['presenter'] ?? 'none') {
                 'avatar' => $this->shotReferences(['refs' => ['avatar']], $ctx),

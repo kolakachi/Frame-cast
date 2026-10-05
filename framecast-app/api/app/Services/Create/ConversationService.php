@@ -205,6 +205,8 @@ class ConversationService
                 if (collect($planMedia)->contains('kind', 'ugc_take')) {
                     abort_unless(collect($planMedia)->where('kind', 'ugc_take')->every(fn ($m) => collect($m['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->isNotEmpty()),
                         422, 'The UGC take needs a script to speak. Add narration and plan again.');
+                    abort_if(collect($planMedia)->contains(fn ($m) => ($m['speech_mode'] ?? '') === 'cloned_lipsync') && ! collect($planMedia)->contains('kind', 'cloned_voiceover'),
+                        422, 'The take lip-syncs to your cloned voice, so the plan needs the cloned narration. Plan again.');
                 }
                 if (collect($planMedia)->contains(fn ($m) => ($m['speech_mode'] ?? '') === 'native')) {
                     abort_unless(in_array($settings['aspect_ratio'], ['9:16', '16:9'], true), 422, 'Native talking video currently supports 9:16 or 16:9.');

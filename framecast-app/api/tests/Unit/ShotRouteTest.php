@@ -156,4 +156,17 @@ class ShotRouteTest extends TestCase
         $this->assertStringContainsString('avatar', ShotRoute::shot(['refs' => ['avatar']], ['has_avatar' => false] + $this->ctx)['problem'], 'no photo attached');
         $this->assertTrue(ShotRoute::usesSheet(['kind' => 'generated_shot', 'refs' => ['Shop owner']]));
     }
+
+    public function test_a_cloned_voice_lip_syncs_the_take_to_the_cloned_narration(): void
+    {
+        $take = ShotRoute::take(['presenter' => 'avatar'], ['narration' => ['Start with the Test Pass.'], 'voice' => 'clone'] + $this->ctx);
+        $this->assertSame(['lipsync', 'cloned_lipsync'], [$take['engine'], $take['speech_mode']]);
+        $plan = ['media' => [['kind' => 'ugc_take', 'description' => 'founder', 'presenter' => 'avatar', 'credits' => 1]],
+            'selections' => ['narration' => ['Start with the Test Pass.'], 'voice' => 'clone', 'choices' => []], 'decisions' => [], 'shot_context' => ['has_avatar' => true]];
+        $kinds = array_column(PlanService::selectedMedia($plan), 'kind');
+        $this->assertContains('cloned_voiceover', $kinds, 'the cloned narration is bought for the take to follow');
+        $plan['selections']['voice'] = 'Puck';
+        $this->assertNotContains('voiceover', array_column(PlanService::selectedMedia($plan), 'kind'), 'native speech needs no narration');
+        $this->assertArrayHasKey('problem', ShotRoute::take([], ['narration' => ['Hi.'], 'voice' => 'clone', 'has_avatar' => false, 'has_sheet' => false]), 'lip-sync needs a presenter image');
+    }
 }

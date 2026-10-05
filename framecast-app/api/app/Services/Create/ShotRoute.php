@@ -38,7 +38,7 @@ class ShotRoute
     public const KINDS = ['reference_sheet', 'generated_shot', 'ugc_take'];
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode'];
 
     /** What the planner may say about a generated item; everything else is derived. */
     public static function plannerFields(array $m): array
@@ -210,6 +210,15 @@ class ShotRoute
         if (! $lines) $lines = array_values(array_filter(array_map('strval', (array) ($ctx['narration'] ?? []))));
         $presenter = ($item['presenter'] ?? '') === 'avatar' && ! empty($ctx['has_avatar']) ? 'avatar'
             : (! empty($ctx['has_sheet']) ? 'sheet' : (! empty($ctx['has_avatar']) ? 'avatar' : 'none'));
+        // A selected cloned voice: the approved cloned narration drives a lip-synced presenter (the existing route),
+        // never a native take beside an unused cloned purchase.
+        if (($ctx['voice'] ?? null) === 'clone') {
+            $secs = (int) ceil(self::speechSeconds(implode(' ', $lines), (string) ($ctx['language'] ?? 'en')) + 1);
+            return array_filter(['engine' => 'lipsync', 'engine_label' => 'Lip-sync to your cloned voice', 'presenter' => $presenter, 'speech_mode' => 'cloned_lipsync',
+                'segments' => [['lines' => $lines, 'seconds' => $secs]], 'seconds' => $secs, 'aspect' => $ctx['aspect_ratio'] ?? '9:16',
+                'credits' => CreditService::spokespersonCost((float) $secs),
+                'problem' => $presenter === 'none' ? 'A lip-synced take needs a presenter image: attach your photo or add the presenter to the sheet.' : null], fn ($v) => $v !== null);
+        }
         $engine = in_array($item['engine'] ?? null, self::TAKE_ENGINES, true) ? $item['engine'] : 'omni';
         if ($premium) $engine = 'veo_hq';
         // Veo 3.1 keeps a presenter from references only in 8 s landscape clips; a portrait take stays on Omni.
