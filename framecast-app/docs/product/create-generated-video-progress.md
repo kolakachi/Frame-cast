@@ -17,7 +17,7 @@ Last updated: 2026-10-05.
 |---|---|---|---|
 | M. Coverage and intent | 2 | 2 | 1 |
 | 0. Handoff integrity | 5 | 0 | 0 |
-| A. Direction (cast and storyboard) | 0 | 1 | 7 |
+| A. Direction (cast and storyboard) | 7 | 1 | 0 |
 | B. Generation routes | 0 | 1 | 4 |
 | C. Reliability | 1 | 1 | 3 |
 | D. Delivery checks | 0 | 2 | 6 |
@@ -27,7 +27,7 @@ Last updated: 2026-10-05.
 | H. Protect what works | 0 | 1 | 1 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Next:** A (A6 planner by task, A2 directed shots, A7 pacing first; then A1, A3, A3a, A4, A5).
+**Next:** D (delivery checks on the final video, with the repair policy), then the B2 bake-off.
 **Waiting on the owner:** bench inputs and the budget cap (see the end of this file).
 
 ---
@@ -71,20 +71,33 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 
 ## A. Direction: the cast and storyboard
 
-- [~] **A1. Identity separate from direction.**
-  - Done: the sheet prompt asks for each subject whole (a character full figure, a place as an establishing view, a product centred).
-  - Missing: neutral poses, places without people, presenter portraits, product angles; and the check that no reference carries a shot's pose or gaze.
-- [ ] **A2. Every shot directed:**
-  - action, gaze for people, camera, end state;
-  - the plan check;
-  - "never look into the camera";
-  - drop the forced "subject centred".
-- [ ] **A3. Storyboard panels drawn from the cast;** composed stills for code beats; one review screen; redo a panel with a note.
-- [ ] **A3a. Dependency order:** cast first, then panels shown as they land; panels from a rejected identity are not bought.
-- [ ] **A4. Approval versions:** a change marks only the affected panels and clips.
-- [ ] **A5. Board read by vision and checked against the brief.**
-- [ ] **A6. Planner model routed by task in code.** Today: one env value, Sonnet 5.
-- [ ] **A7. Pacing as a creative choice** in the planner.
+- [x] **A1. Identity separate from direction.** Sheet subjects have a kind:
+  - a character is drawn neutral (full figure or portrait, three-quarter view, plain backdrop, posed for no scene);
+  - a place is drawn empty;
+  - a product is drawn alone;
+  - looks describe appearance only (`ce165eb0`).
+- [x] **A2. Every shot directed.**
+  - Action, gaze for people, camera and end state, in the plan and in every prompt (`ce165eb0`).
+  - The plan is sent back for a shot with no action, or a person with no gaze.
+  - "People never look into the camera" unless the gaze is to camera.
+  - The forced "subject centred" is gone.
+- [x] **A3. Storyboard panels drawn from the cast** (`437b2302`):
+  - one panel per generated shot (its opening moment), in the look stage;
+  - composed stills for code beats (builder);
+  - cast and panels on one review screen;
+  - a note on a panel redraws only that panel.
+- [~] **A3a. Dependency order.**
+  - Done: panels are drawn after the cast in the same look run, and shown together.
+  - Missing: panels are drawn without waiting for the user, so a rejected identity's panels are still bought; cast images are not yet drawn in parallel.
+- [x] **A4. Approval versions.**
+  - Unchanged media carries across plans of a creation by content (`437b2302`).
+  - A cast change redraws its panels.
+  - A clip depends only on the images it uses, so redrawing one panel re-buys only that shot (`f628614a`).
+- [x] **A5. Board checked against its direction and the agreement** by a cheap vision pass (Haiku 4.5).
+  - Contradictions are shown under each panel.
+  - A check that could not run says so (`437b2302`).
+- [x] **A6. Planner model by task in code:** Opus for new creative direction, the configured model for short follow-up edits (`ce165eb0`).
+- [x] **A7. Pacing as a creative choice** in the planner prompt (`ce165eb0`).
 
 ## B. Generation routes
 
