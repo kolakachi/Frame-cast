@@ -6,7 +6,7 @@ import {preflight} from './preflight.mjs';
 import {criticLine} from './critic.mjs';
 import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse} from './protocol.mjs';
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
-import {rowsOf,timingFindings,duckingFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
+import {rowsOf,timingFindings,duckingFindings,ambienceFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
 import {beatFindings} from './narration-timing.mjs';
 import {moveFindings} from './move-check.mjs';
 import {layoutFindings} from './layout-check.mjs';
@@ -189,6 +189,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     }
     const errors=timingFindings({rows,html,durations:state.durations,transcripts:state.transcripts||{}});
     errors.push(...duckingFindings({rows,planMedia:context.planMedia||[]}));
+    errors.push(...ambienceFindings({rows,html,planMedia:context.planMedia||[]}));
     errors.push(...await audioEdgeCheck(rows,html));
     // Everything bought with a picture is in the video; talking clips play (nearly) in full. Not on the storyboard.
     if(!context.lookOnly){

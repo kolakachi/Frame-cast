@@ -74,3 +74,13 @@ test('a UGC take and generated shots must be in the video, the take nearly whole
  assert.deepEqual(cut.map(f=>f.code).sort(),['bought_media_unused','talking_clip_cut_short'],'the shot is missing and the take is cut; the sheet is only a reference');
  assert.equal(clipUsageFindings({planMedia,html:'',rows:[{src:'take.mp4',start:0,end:13.5},{src:'shot.mp4',start:2,end:6}],durations:{'take.mp4':14}}).length,0);
 });
+
+test('a generated shot\'s ambience must sit low under the voice unless it speaks its own line',async()=>{
+ const {ambienceFindings}=await import('../timing-check.mjs');
+ const planMedia=[{kind:'voiceover',status:'succeeded',file:'vo.wav'},{kind:'generated_shot',status:'succeeded',file:'shot1.mp4'},{kind:'generated_shot',status:'succeeded',file:'shot2.mp4',line:'Hello there'}];
+ const rows=[{kind:'audio',src:'vo.wav',id:'vo',start:0.3,end:12},{kind:'video',src:'shot1.mp4',id:'s1',start:0,end:4},{kind:'video',src:'shot2.mp4',id:'s2',start:4,end:8}];
+ const html=v=>`<audio id="vo" src="vo.wav"></audio><video id="s1" src="shot1.mp4" ${v}></video><video id="s2" src="shot2.mp4"></video>`;
+ assert.deepEqual(ambienceFindings({rows,html:html(''),planMedia}).map(f=>f.selector),['#s1']);
+ assert.equal(ambienceFindings({rows,html:html('data-volume="0.25"'),planMedia}).length,0);
+ assert.equal(ambienceFindings({rows,html:html('muted'),planMedia}).length,0);
+});

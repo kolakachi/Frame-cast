@@ -81,6 +81,28 @@ export function duckingFindings({rows,planMedia=[]}){
  return errors;
 }
 
+// A generated shot's own sound is ambience: under the voice it plays low (about 0.25) or muted, unless the shot
+// speaks its own line (then it plays full).
+export const AMBIENCE_MAX=0.4;
+export function ambienceFindings({rows,html,planMedia=[]}){
+ const ok=m=>m.status==='succeeded'&&m.file;
+ const shots=new Set(planMedia.filter(m=>ok(m)&&m.kind==='generated_shot'&&!String(m.line||'').trim()).map(m=>m.file));
+ const voice=new Set(planMedia.filter(m=>ok(m)&&['voiceover','cloned_voiceover','ugc_take','talking_take','talking_shot'].includes(m.kind)).map(m=>m.file));
+ if(!shots.size||!voice.size)return [];
+ const attrs=attributesById(html),media=rows.filter(r=>['video','audio'].includes(r.kind)&&r.src),out=[];
+ for(const s of media.filter(r=>shots.has(r.src))){
+  const a=attrs.get(s.id||s.elementId)||{};
+  const tag=(String(html).match(new RegExp('<[^>]*\\bid=["\']'+(s.id||s.elementId)+'["\'][^>]*>'))?.[0]||'').replace(/=\s*("[^"]*"|'[^']*')/g,'');
+  if(/\smuted(\s|\/?>|$)/.test(tag)||a['data-has-audio']==='false')continue;
+  const volume=a['data-volume']==null||a['data-volume']===''?1:Number(a['data-volume']);
+  if(!(volume>AMBIENCE_MAX))continue;
+  const v=media.find(r=>voice.has(r.src)&&Math.min(r.end,s.end)-Math.max(r.start,s.start)>0.5);
+  if(v)out.push({code:'ambience_too_loud',selector:'#'+(s.id||s.elementId),message:`${s.src} is a generated shot whose own sound plays at volume ${volume} under the voice from ${Math.max(v.start,s.start).toFixed(2)} s.`,
+   fixHint:'Set data-volume about 0.25 on it, or mute it when the beat has its own sound design.'});
+ }
+ return out;
+}
+
 // Audio edges. A clip that starts or stops while its file is still sounding is
 // heard as a cut-off word or a note chopped mid-bar. Every audio clip's start
 // and end, in its file's own time, must fall where the file is quiet; music and
