@@ -40,12 +40,12 @@ class FinalLook
         $key = (string) config('services.anthropic.key');
         if ($key === '' || ! $frames) return ['status' => 'unverified'];
         $content = [['type' => 'text', 'text' => 'You check a finished short video before it is delivered. Below are frames from it, each with its time, then the approved cast images (identity references), if any. Answer only from what is visible; when you cannot tell, say "unclear". Reply with JSON only:
-{"required": [{"item": "<as given>", "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words>"}],
+{"required": [{"id": "<the item's id, as given>", "item": "<as given>", "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words>"}],
  "identity": {"status": "consistent"|"drift"|"unclear"|"none", "times": [<seconds where a person looks like someone else>], "note": "<under 20 words>"},
  "lettering": {"status": "clean"|"garbled", "times": [<seconds>], "note": "<garbled letters or fake logos baked into the picture; clean overlay captions and real product labels are fine>"},
  "actions": [{"shot": <n>, "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words; say if the person looks into the camera when they should not>"}],
  "answer": {"status": "answered"|"not_answered"|"unclear"|"none", "note": "<under 20 words>"}}
-Required items (each must be visible; spoken-only items are "unclear" here, they are checked by listening): '.json_encode($required, JSON_UNESCAPED_UNICODE).'
+Required items, each with its id (each must be visible; spoken-only items are "unclear" here, they are checked by listening; answer every id): '.json_encode(array_map(fn ($t, $k) => ['id' => 'r'.($k + 1), 'item' => $t], $required, array_keys($required)), JSON_UNESCAPED_UNICODE).'
 Directed shots (each action should be visible, with its gaze; judge each shot on the frames marked inside it, which follow its action from early to late): '.json_encode($shots, JSON_UNESCAPED_UNICODE)
             .($question !== '' ? "\nThe opening question, which the last frames should visibly answer: ".json_encode($question, JSON_UNESCAPED_UNICODE) : "\nThere is no opening question to check: answer.status is \"none\".")]];
         foreach ($frames as $f) {
@@ -67,7 +67,7 @@ Directed shots (each action should be visible, with its gaze; judge each shot on
         $t = fn ($v) => is_numeric($v) ? round((float) $v, 1) : null;
         $s = fn ($v, $n) => mb_substr(trim((string) $v), 0, $n);
         return ['status' => 'checked', 'has_cast' => (bool) $cast,
-            'required' => collect((array) ($json['required'] ?? []))->filter(fn ($x) => is_array($x))->map(fn ($x) => ['item' => $s($x['item'] ?? '', 120), 'status' => in_array($x['status'] ?? '', ['present', 'missing', 'unclear'], true) ? $x['status'] : 'unclear', 'time' => $t($x['time'] ?? null), 'note' => $s($x['note'] ?? '', 120)])->take(8)->values()->all(),
+            'required' => collect((array) ($json['required'] ?? []))->filter(fn ($x) => is_array($x))->map(fn ($x) => ['id' => preg_match('/^r\d{1,2}$/', (string) ($x['id'] ?? '')) ? $x['id'] : null, 'item' => $s($x['item'] ?? '', 120), 'status' => in_array($x['status'] ?? '', ['present', 'missing', 'unclear'], true) ? $x['status'] : 'unclear', 'time' => $t($x['time'] ?? null), 'note' => $s($x['note'] ?? '', 120)])->take(8)->values()->all(),
             'identity' => ['status' => in_array($json['identity']['status'] ?? '', ['consistent', 'drift', 'unclear', 'none'], true) ? $json['identity']['status'] : 'unclear', 'times' => array_values(array_filter(array_map($t, (array) ($json['identity']['times'] ?? [])), fn ($v) => $v !== null)), 'note' => $s($json['identity']['note'] ?? '', 160)],
             'lettering' => ['status' => ($json['lettering']['status'] ?? '') === 'garbled' ? 'garbled' : 'clean', 'times' => array_values(array_filter(array_map($t, (array) ($json['lettering']['times'] ?? [])), fn ($v) => $v !== null)), 'note' => $s($json['lettering']['note'] ?? '', 160)],
             'answer' => ['status' => in_array($json['answer']['status'] ?? '', ['answered', 'not_answered', 'unclear', 'none'], true) ? $json['answer']['status'] : 'unclear', 'note' => $s($json['answer']['note'] ?? '', 160)],

@@ -65,3 +65,28 @@ test('a teaching video whose ending does not answer its question gets an advisor
  assert.equal(c.status,'fail');assert.equal(c.blocking,false);assert.equal(v.status,'issues');
  assert.equal(finalVerdict({look:{status:'checked',answer:{status:'none'}}}).checks.some(x=>x.id==='answer'),false);
 });
+
+test('review P1: an unanswered requirement is never passed by an answer about another one',()=>{
+ const plan={agreement:{required:['show the candle','show the price']}};
+ const v=finalVerdict({plan,look:{status:'checked',required:[{id:'r2',item:'show the price',status:'present',time:4}]},blanks:[]});
+ const by=Object.fromEntries(v.checks.filter(c=>c.id==='required').map(c=>[c.label,c.status]));
+ assert.deepEqual(by,{'Must appear: show the candle':'unverified','Must appear: show the price':'pass'});
+ assert.equal(v.status,'unverified');
+ // An answer without ids, in another order, is matched by its words, not its position.
+ const w=finalVerdict({plan,look:{status:'checked',required:[{item:'show the price',status:'present'}]},blanks:[]});
+ assert.equal(w.checks.find(c=>c.label==='Must appear: show the candle').status,'unverified');
+});
+
+test('review P1: a blank-frame detector that could not run is unverified, not a pass',()=>{
+ const v=finalVerdict({look:{status:'checked'},blanks:null});
+ assert.equal(v.checks.find(c=>c.id==='blank').status,'unverified');assert.equal(v.status,'unverified');
+});
+
+test('review P1: a generated shot made from the user photo, with no cast sheet, is identity-checked',async()=>{
+ const {peopleToKeep}=await import('../final-checks.mjs');
+ const plan={media:[{kind:'generated_shot',refs:['avatar']}]},media=[{kind:'generated_shot',status:'succeeded'}];
+ assert.equal(peopleToKeep(plan,media),true);
+ assert.equal(peopleToKeep({media:[{kind:'generated_shot',refs:['Shop']}]},media),false);
+ const v=finalVerdict({look:{status:'checked',has_cast:true,identity:{status:'drift',times:[3]}},blanks:[],generatedPeople:peopleToKeep(plan,media)});
+ assert.equal(v.status,'blocked');
+});

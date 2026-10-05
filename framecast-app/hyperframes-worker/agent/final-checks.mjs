@@ -68,9 +68,10 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],ex
  if(required.length){
   if(look?.status!=='checked')add('required','Everything that must appear is in the video','unverified',true,'The final video could not be looked at.');
   else for(const [k,item] of required.entries()){
-   // The plan's own items decide; an item the look did not answer is unverified, an extra one it invented is ignored.
+   // The plan's own items decide, matched by their id (r1, r2…) or exact wording, never by position: an item the
+   // look did not answer stays unverified, and an answer about another item never passes it.
    const key=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-   const r=(look.required||[]).find(x=>key(x.item)===key(item))??(look.required||[])[k]??{status:'unclear'};
+   const r=(look.required||[]).find(x=>x.id==='r'+(k+1))??(look.required||[]).find(x=>!x.id&&key(x.item)===key(item))??{status:'unclear'};
    if(r.status==='missing')add('required','Must appear: '+item,'fail',true,'Not seen in the final video'+(r.note?' ('+r.note+')':'')+'.');
    else add('required','Must appear: '+item,r.status==='present'?'pass':'unverified',true,r.status==='present'?'':'Could not be confirmed by sight'+(r.note?': '+r.note:'')+'.',r.time!=null?[r.time]:[]);
   }
@@ -87,8 +88,9 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],ex
  for(const a of look?.status==='checked'?look.actions||[]:[])if(a.status==='missing')add('action-'+a.shot,'Shot '+a.shot+' shows its action','fail',false,'Its directed action is not visible'+(a.note?': '+a.note:'')+'.',a.time!=null?[a.time]:[]);
  // A teaching video's last image answers its opening question: advisory.
  if(look?.status==='checked'&&look.answer?.status==='not_answered')add('answer','The ending answers the opening question','fail',false,'The last frames do not answer it'+(look.answer.note?': '+look.answer.note:'')+'.');
- // Unintended blank frames: a technical fault.
- if(blanks.length)add('blank','No blank frames','fail',true,'The picture goes blank'+(blanks.length>1?' '+blanks.length+' times':'')+'.',blanks.map(b=>b.start));
+ // Unintended blank frames: a technical fault; a detector that could not run is unverified, never a pass.
+ if(blanks===null)add('blank','No blank frames','unverified',true,'Blank frames could not be measured.');
+ else if(blanks.length)add('blank','No blank frames','fail',true,'The picture goes blank'+(blanks.length>1?' '+blanks.length+' times':'')+'.',blanks.map(b=>b.start));
  // Planned moves the plan named (a reference move, the signature move): blocking.
  for(const m of moves)add('move','Planned move: '+(m.move||m.code||'move'),'fail',true,String(m.message||'A planned move is missing.'),m.time!=null?[m.time]:[]);
  const blocked=checks.some(c=>c.blocking&&c.status==='fail'),unverified=checks.some(c=>c.blocking&&c.status==='unverified');
@@ -96,11 +98,17 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],ex
   findings:checks.filter(c=>c.status==='fail').map(c=>at(c.times?.[0])+c.label+(c.message?': '+c.message:'')).slice(0,8)};
 }
 
+/** People whose identity must hold: a take, a cast sheet, or a generated shot made from the user's own photo. */
+export function peopleToKeep(plan={},planMedia=[]){
+ const fromPhoto=(plan.media||[]).some(m=>m?.kind==='generated_shot'&&((m.refs||[]).includes('avatar')||m.first_frame==='avatar'||m.presenter==='avatar'));
+ return planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')||planMedia.some(m=>m.kind==='reference_sheet')||fromPhoto;
+}
+
 /** Runs the measurements on the final file and returns the verdict. look(frames) sends frames to the app's vision check. */
 export async function finalChecks({file,duration,plan={},planMedia=[],audioSummary=null,moves=[],look,html='',ffmpeg='ffmpeg'}){
- let blanks=[];try{blanks=unintendedBlanks(await blankSpans(file,ffmpeg),duration);}catch{/* measured as unverified below via no evidence */}
+ let blanks=null;try{blanks=unintendedBlanks(await blankSpans(file,ffmpeg),duration);}catch{/* reported as unverified */}
  const generated=planMedia.some(m=>['generated_shot','ugc_take'].includes(m.kind)&&m.status==='succeeded');
- const generatedPeople=generated&&(planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')||planMedia.some(m=>m.kind==='reference_sheet'));
+ const generatedPeople=generated&&peopleToKeep(plan,planMedia);
  const needsLook=generated||(plan.agreement?.required||[]).length>0;
  let verdict=null;
  if(needsLook&&look){

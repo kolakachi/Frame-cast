@@ -274,7 +274,10 @@ async function execute(run){
     finalReview=await finalChecks({file,duration:audioReview?.duration||Number(run.input.settings?.duration_seconds)||15,plan:{...plan,settings_audio:run.input.settings?.audio},planMedia,
      audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,moves:moveFindings({plan,sources}),look,html:agentResult?.bundle?.['index.html']||''});
     await trace({phase:'review',status:finalReview.status==='blocked'?'failed':'succeeded',summary:'Checked the final video against the plan',detail:JSON.stringify(finalReview).slice(0,1900)});
-   }catch(e){finalReview=null;await trace({phase:'review',status:'failed',summary:'Final checks unavailable',detail:String(e.message).slice(0,300)});}
+   }catch(e){
+    // Checks that could not run are unverified, never absent: the version is marked as not checked.
+    finalReview={status:'unverified',checks:[{id:'final',label:'The final video was checked',status:'unverified',blocking:true,message:'The final checks could not run: '+String(e.message).slice(0,160),times:[]}],findings:[]};
+    await trace({phase:'review',status:'failed',summary:'Final checks unavailable',detail:String(e.message).slice(0,300)});}
   }
   const fixable=repairable(finalReview,{takeUsed:planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')});
   if(!paid||!agentArgs||finalReview?.status!=='blocked'||!fixable.length||round>=2||stopping||lost)break;

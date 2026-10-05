@@ -445,7 +445,10 @@ class PlanMediaExecutor
         } catch (\Throwable) { $json = null; }
         if (! is_array($json['panels'] ?? null)) return ['status' => 'unverified', 'panels' => []];
         $out = collect($json['panels'])->filter(fn ($x) => is_array($x) && isset($x['panel']))->map(fn ($x) => ['panel' => mb_substr((string) $x['panel'], 0, 20), 'ok' => (bool) ($x['ok'] ?? true), 'issue' => mb_substr(trim((string) ($x['issue'] ?? '')), 0, 160)])->values()->all();
-        return ['status' => collect($out)->contains('ok', false) ? 'issues' : 'ok', 'panels' => $out];
+        // "ok" only when every panel was answered; a panel the check skipped is not a pass.
+        $answered = collect($out)->pluck('panel')->map(fn ($p) => mb_strtolower(trim($p)))->all();
+        $missing = collect($files)->keys()->filter(fn ($k) => ! in_array(mb_strtolower(trim((string) ($panels[$k]['label'] ?? 'Panel '.($k + 1)))), $answered, true))->count();
+        return ['status' => collect($out)->contains('ok', false) ? 'issues' : ($missing || ! $out ? 'unverified' : 'ok'), 'panels' => $out];
     }
 
     /**
