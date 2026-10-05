@@ -658,6 +658,8 @@ class CreateIntegrationTest extends TestCase
 
         $service->select($this->owner, $c->id, $plan['id'], $version(), ['character_approval' => $shown['token']]);
         $full = $this->conversations->quote($this->owner, $c->id, $version(), 'full_video');
+        $ids = array_column($full->payload_json['input_files'], 'asset_id');
+        $this->assertSame(array_values(array_unique($ids)), $ids, 'each input once: the worker refuses a manifest with a repeated asset');
         $items = collect($full->payload_json['plan_media'])->keyBy(fn ($m) => $m['kind'].($m['first_frame'] ?? ''));
         $this->assertSame(0, $items['storyboard']['credits'], 'the approved panels are not bought again');
         $this->assertTrue($items->has('generated_shotPanel 1') && $items->has('generated_shotPanel 2'), 'each shot starts from its approved panel: '.json_encode($items->keys()));

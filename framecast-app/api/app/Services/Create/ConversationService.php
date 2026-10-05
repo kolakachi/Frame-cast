@@ -151,7 +151,8 @@ class ConversationService
             abort_if($previous && $previous['purpose'] !== $attachment->purpose, 409, 'Start a new conversation to change an existing source to reference-only or vice versa.');
         }
         $newFiles = $snapshots->capture((int) $user->workspace_id, array_values(array_filter($attachments, fn ($a) => ! in_array($a->asset_id, $inheritedIds, true))));
-        $files = array_merge($inherited, $newFiles);
+        // Each asset once: the worker refuses a manifest that lists one twice.
+        $files = collect(array_merge($inherited, $newFiles))->unique('asset_id')->values()->all();
         if (count($files) > 20 || array_sum(array_column($files, 'bytes')) > config('create.input_total_bytes')) {
             $snapshots->discard($newFiles);
             abort(422, 'Inherited and new attachments exceed the local preview size limit.');
