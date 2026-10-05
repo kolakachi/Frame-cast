@@ -8,17 +8,23 @@ use Illuminate\Support\Facades\{Http, Process, RateLimiter};
 use Illuminate\Support\Str;
 
 /**
- * A direct link to a video file (https://…/demo.mp4) pasted in a brief: the user's own footage, such as a product
- * demo. It is downloaded once, stored privately like an upload and attached as a source the video can use. Video
- * posts on X, YouTube and TikTok stay style references (ReferenceLinkService).
+ * A direct link to a video or image file (https://…/demo.mp4, …/product.png) pasted in a brief: the user's own media,
+ * such as a product demo or photo. It is downloaded once, stored privately like an upload and attached as a source the
+ * video can use. Video posts on X, YouTube and TikTok stay style references (ReferenceLinkService).
  */
-class VideoLinkService
+class MediaLinkService
 {
-    public const EXTENSIONS = ['mp4', 'm4v', 'mov', 'webm'];
+    public const VIDEO = ['mp4', 'm4v', 'mov', 'webm'];
+    public const IMAGE = ['png', 'jpg', 'jpeg', 'webp'];
 
-    public static function isVideoFile(string $url): bool
+    private static function extension(string $url): string
     {
-        return in_array(strtolower(pathinfo((string) parse_url(trim($url), PHP_URL_PATH), PATHINFO_EXTENSION)), self::EXTENSIONS, true);
+        return strtolower(pathinfo((string) parse_url(trim($url), PHP_URL_PATH), PATHINFO_EXTENSION));
+    }
+
+    public static function isMediaFile(string $url): bool
+    {
+        return in_array(self::extension($url), [...self::VIDEO, ...self::IMAGE], true);
     }
 
     public function add(User $user, string $conversationId, string $url, int $version, string $key): Asset
@@ -42,19 +48,29 @@ class VideoLinkService
             // No redirects: the checked public address is the one fetched. Streamed to disk with a size cap.
             try {
                 $r = Http::withOptions(['stream' => true, 'allow_redirects' => false])->timeout(120)->get($clean);
-                abort_unless($r->status() === 200, 422, 'That video could not be downloaded. Check the link is public, or upload the file instead.');
+                abort_unless($r->status() === 200, 422, 'That file could not be downloaded. Check the link is public, or upload the file instead.');
                 $body = $r->toPsrResponse()->getBody(); $out = fopen($raw, 'wb'); $size = 0;
                 try {
                     while (! $body->eof()) {
                         $chunk = $body->read(1 << 20); $size += strlen($chunk);
-                        abort_if($size > $max, 422, 'That video is over 100 MB. Upload a shorter file instead.');
+                        abort_if($size > $max, 422, 'That file is over 100 MB. Upload a smaller file instead.');
                         fwrite($out, $chunk);
                     }
                 } finally { fclose($out); }
             } catch (\Illuminate\Http\Client\ConnectionException) {
-                abort(422, 'That video could not be downloaded. Check the link is public, or upload the file instead.');
+                abort(422, 'That file could not be downloaded. Check the link is public, or upload the file instead.');
             }
-            abort_unless(is_file($raw) && filesize($raw) > 0, 422, 'That video could not be downloaded. Check the link is public, or upload the file instead.');
+            abort_unless(is_file($raw) && filesize($raw) > 0, 422, 'That file could not be downloaded. Check the link is public, or upload the file instead.');
+            $host = (string) parse_url($clean, PHP_URL_HOST);
+            $name = Str::limit(basename((string) parse_url($clean, PHP_URL_PATH)), 120, '');
+            $source = ['platform' => 'link', 'requested_url' => $url, 'url' => $clean, 'title' => $name, 'uploader' => $host, 'fetched_at' => now()->toIso8601String()];
+            if (in_array(self::extension($url), self::IMAGE, true)) {
+                $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($raw);
+                abort_unless(in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true), 422, 'That link is not a PNG, JPEG or WebP image.');
+                $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, new UploadedFile($raw, $name, $mime, null, true), 'source', $key, $version);
+                $asset->forceFill(['title' => Str::limit($name, 250, '…'), 'metadata_json' => array_merge($asset->metadata_json ?? [], ['reference_source' => $source])])->save();
+                return $asset->fresh();
+            }
             $probe = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', $raw]);
             $info = json_decode($probe->output(), true) ?: [];
             $seconds = (float) data_get($info, 'format.duration', 0);
@@ -65,10 +81,7 @@ class VideoLinkService
             $mp4 = (new \finfo(FILEINFO_MIME_TYPE))->file($raw) === 'video/mp4';
             if ($mp4) rename($raw, $file);
             else abort_unless(Process::timeout(300)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $raw, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', $file])->successful(), 422, 'That video could not be converted. Upload it as an MP4 instead.');
-            $name = Str::limit(basename((string) parse_url($clean, PHP_URL_PATH)), 120, '');
-            $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, new UploadedFile($file, $name, 'video/mp4', null, true), 'source', $key, $version);
-            $host = (string) parse_url($clean, PHP_URL_HOST);
-            $source = ['platform' => 'link', 'requested_url' => $url, 'url' => $clean, 'title' => $name, 'uploader' => $host, 'fetched_at' => now()->toIso8601String()];
+            $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, new UploadedFile($file, preg_replace('/\.\w+$/', '.mp4', $name), 'video/mp4', null, true), 'source', $key, $version);
             $asset->forceFill(['title' => Str::limit($name, 250, '…'), 'duration_seconds' => (int) round($seconds),
                 'metadata_json' => array_merge($asset->metadata_json ?? [], ['reference_source' => $source])])->save();
             return $asset->fresh();
