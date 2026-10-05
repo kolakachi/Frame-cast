@@ -112,7 +112,7 @@ class PlanMediaService
                 // Keep the reservation and stop; a new run must not repurchase this item blindly.
                 // A sheet is a few cheap images: one that fails partway is a plain failure (the user pays only for a
                 // delivered sheet; images already made are our cost), not a hold that blocks the build.
-                if ($providerStarted && ! in_array($item['kind'], ['stock_video', 'stock_image', 'brand_kit', 'reference_sheet'], true)) {
+                if ($providerStarted && ! in_array($item['kind'], ['stock_video', 'stock_image', 'brand_kit', 'reference_sheet', 'storyboard'], true)) {
                     $attempts->settle($runId, $lease, $attempt['id'], ['status' => 'unknown']);
                     $this->record($run, $planId, $cacheIndex, $item, $hash, 'unknown', null, 0, 'Provider outcome requires reconciliation.');
                     abort(409, 'Media outcome needs reconciliation; no automatic retry or replacement purchase.');

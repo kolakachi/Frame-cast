@@ -302,7 +302,7 @@ class PlanMediaExecutor
         if (! $subjects) throw new RuntimeException('The sheet lists no subjects. Plan again.');
         $style = array_map(fn ($image) => $this->replicateUpload((string) file_get_contents($image), (new \finfo(FILEINFO_MIME_TYPE))->file($image)), array_slice($ctx['character_style_images'] ?? [], 0, 3));
         $avatar = collect($ctx['source_images'] ?? [])->first();
-        $files = [];
+        $files = []; $jobs = [];
         foreach ($subjects as $k => $subject) {
             $refs = $style; $roles = 'Any supplied images are STYLE REFERENCES ONLY: match their rendering, palette, line and lighting, not their characters, text or branding. ';
             if (! empty($subject['avatar']) && $avatar) {
@@ -317,7 +317,11 @@ class PlanMediaExecutor
             };
             $prompt = $roles.'Look of the whole video: '.trim($description).($ctx['character_style'] ? ' Treatment: '.$ctx['character_style'].'.' : '')
                 .' Reference image of '.$subject['name'].': '.$subject['looks'].'. '.$how.' Evenly lit, one subject only, no text, no captions, no logos, no contact sheet.';
-            $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, $ctx['character_style'] ?: 'cinematic', $ctx['aspect_ratio'] ?? '9:16', ['reference_image_urls' => $refs]);
+            $jobs[$k] = [$prompt, $ctx['character_style'] ?: 'cinematic', $ctx['aspect_ratio'] ?? '9:16', $refs];
+        }
+        // Every subject is independent: drawn at the same time (F2).
+        foreach (self::drawAll($jobs) as $k => $r) {
+            $subject = $subjects[$k];
             $path = $dir.'/sheet-'.$k.'.png';
             if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
             elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
@@ -343,7 +347,7 @@ class PlanMediaExecutor
         $prior = $ctx['prior_panels'] ?? [];
         $byName = collect($cast)->keyBy(fn ($f) => mb_strtolower((string) ($f['subject'] ?? '')));
         $upload = fn (array $f) => $this->replicateUpload((string) $this->assetBytes((int) $f['asset_id']), 'image/png');
-        $files = []; $hashes = []; $drawn = 0;
+        $files = []; $hashes = []; $drawn = 0; $jobs = [];
         foreach ($panels as $k => $panel) {
             $h = Storyboard::panelHash($panel, $sha, $style, $panel['aspect'] ?? $aspect);
             $path = $dir.'/panel-'.$k.'.png';
@@ -370,20 +374,40 @@ class PlanMediaExecutor
                     .(! empty($panel['note']) ? ' Correction from the user, which overrides the rest: '.$panel['note'].'.' : '')
                     .($refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Keep every referenced character, place and product exactly as shown, but in this scene\'s pose and place: the references show identity, not a pose.' : '')
                     .($toCamera ? '' : ' People never look into the camera.').($style !== '' ? ' Look: '.$style.'.' : '').' One frame, no panel borders, no text, no captions, no numbers, no logos.';
-                $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, $style ?: 'cinematic', (string) ($panel['aspect'] ?? $aspect), ['reference_image_urls' => array_column($refs, 'url')]);
-                if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
-                elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
-                else throw new RuntimeException('The image model returned nothing for '.$panel['label'].'.');
-                $drawn++;
+                $jobs[$k] = [$prompt, $style ?: 'cinematic', (string) ($panel['aspect'] ?? $aspect), array_column($refs, 'url')];
             }
             $files[] = ['path' => $path, 'title' => $panel['label'].(! empty($panel['beat']) ? ' · '.$panel['beat'] : ''), 'pose' => $panel['label']];
             $hashes[] = $h;
+        }
+        // Panels to draw are independent of each other: drawn at the same time (F2).
+        foreach (self::drawAll($jobs) as $k => $r) {
+            $path = $dir.'/panel-'.$k.'.png';
+            if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
+            elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
+            else throw new RuntimeException('The image model returned nothing for '.$panels[$k]['label'].'.');
+            $drawn++;
         }
         $checks = $this->panelChecks($files, $panels, (array) ($ctx['agreement']['required'] ?? []));
         $first = array_shift($files);
         return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'board-'.Str::uuid(), 'extra' => $files,
             'poses' => array_column($panels, 'label'), 'panel_hashes' => $hashes, 'panel_checks' => $checks, 'credits' => $drawn * ShotRoute::PANEL_CREDITS,
             'character_contract' => CharacterApproval::CONTRACT];
+    }
+
+    /**
+     * Independent images drawn at the same time (each job: prompt, style, aspect, reference urls), in child processes.
+     * A failure fails the item (a sheet or storyboard failure is a plain failure: paid only when delivered); it is
+     * never redrawn one at a time, which could make the images twice. Results keep their keys.
+     */
+    public static function drawAll(array $jobs): array
+    {
+        if (! $jobs) return [];
+        $tasks = [];
+        foreach ($jobs as $k => $j) $tasks[$k] = static function () use ($j) {
+            return app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($j[0], $j[1], $j[2], ['reference_image_urls' => $j[3]]);
+        };
+        if (count($tasks) === 1 || app()->runningUnitTests()) return array_map(fn ($t) => $t(), $tasks);
+        return \Illuminate\Support\Facades\Concurrency::run($tasks);
     }
 
     private function assetBytes(int $assetId): ?string
