@@ -239,7 +239,8 @@ async function reviewPlanCost(p, buildStage = null, displayedCharacterToken = nu
   const latest = plans.value.find(row => row.id === p.id) || p
   const selection = latest.plan.selections
   const selectedKinds = [...(latest.plan.media || []).map(m => m.kind), ...(latest.plan.decisions || []).map(d => d.options.find(o => o.id === selection.choices[d.id])?.tool)]
-  const stage = buildStage || (selection.look_first ? 'storyboard' : 'full_video')
+  // An approved look (the cast and storyboard, or a character) is done: the next build is the full video.
+  const stage = buildStage || (selection.look_first && !latest.character_preview?.approved ? 'storyboard' : 'full_video')
   if (paid.value && stage === 'full_video' && selectedKinds.some(k => ['character_poses', 'talking_take', 'talking_shot', 'reference_sheet'].includes(k)) && !latest.character_preview?.approved) {
     // The storyboard shows this exact master beside its approval button. A changed
     // plan/preview still needs a fresh review, never silent approval of new bytes.
