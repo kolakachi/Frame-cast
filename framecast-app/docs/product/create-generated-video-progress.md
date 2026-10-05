@@ -19,15 +19,15 @@ Last updated: 2026-10-05.
 | 0. Handoff integrity | 5 | 0 | 0 |
 | A. Direction (cast and storyboard) | 7 | 1 | 0 |
 | B. Generation routes | 0 | 1 | 4 |
-| C. Reliability | 1 | 1 | 3 |
+| C. Reliability | 4 | 1 | 0 |
 | D. Delivery checks | 4 | 3 | 1 |
-| E. Composition with generated worlds | 0 | 2 | 1 |
+| E. Composition with generated worlds | 1 | 2 | 0 |
 | F. Speed | 0 | 1 | 2 |
 | G. Cost | 1 | 1 | 3 |
 | H. Protect what works | 0 | 1 | 1 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Next:** the B2 bake-off (needs the owner's budget cap), C2 to C5 reliability, and E composition. A real DistroKid test of A and D is the best next signal.
+**Next:** C3's button on the result, A3a (wait for the cast before drawing panels), F2 (parallel cast and panels), G2 (the reference-analysis split). The B2 bake-off needs the owner's budget cap. A DistroKid test of A and D is running (2026-10-05).
 **Waiting on the owner:** bench inputs and the budget cap (see the end of this file).
 
 ---
@@ -112,12 +112,18 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 ## C. Reliability
 
 - [x] **C1. Base reliability:** start-and-collect, adoption of a stopped run's clips, retry of unsent requests, slow polling in the main app, broadcasts never fail work.
-- [ ] **C2. Automatic recovery for pending clips** when a run stops (today an operator settles the attempt).
-- [ ] **C3. Refusal fallback:** offer the next-best engine with its price; never retry silently.
-- [ ] **C4. Main-app provider fixes:** retry the B2 input download with a fresh link; slow-model warning.
-- [~] **C5. Long waits.**
-  - Done: a 45-minute cap, after which clips stay pending and a retry collects them.
-  - Missing: "still rendering, we'll finish it" with a notification, instead of a failure.
+- [x] **C2. Automatic recovery for pending clips** (`062fbbef`).
+  - A stopped run hands its still-rendering clips to the next run, with nothing charged.
+  - It closes by itself when nothing else is in doubt.
+  - The user is told the clips are still being made and that Try again collects them.
+- [~] **C3. Refusal fallback** (`562590cb`).
+  - Done: a declined shot is never retried silently; the version reports it with the next-best engine that takes the same inputs and its price; a per-shot engine override is kept on the plan.
+  - Missing: the button on the result (it waits until no run is live, since the page reloads on edits).
+- [x] **C4. Main-app provider fixes** (`72bd776d`).
+  - An input image the provider cannot fetch from B2 is handed over through Replicate's own file store and started once more (the production error was `NewConnectionError` to `s3.us-east-005.backblazeb2.com`).
+  - The editor's model picker flags a model that has been slow for the last 6 hours, with its recent minutes.
+- [x] **C5. Long waits:** a run that waits past 45 minutes closes with "your clips are still being made", and they are collected by Try again (with C2).
+- [x] **Opus planner fix** (`2a8347b0`): Opus 5.5 refuses a forced tool choice. Creative plans with a reference failed with "An unexpected error occurred" after A6; models that always think now get "auto", and planner refusals are logged.
 
 ## D. Delivery checks (on the final encoded video)
 
@@ -143,7 +149,13 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 
 ## E. Composition with generated worlds
 
-- [ ] **E1. App UI on stable in-world screens** (corner pin); floating UI kept as an option.
+- [x] **E1. App UI on stable in-world screens** (`e2d79222`).
+  - A shot planned with `screen: true` asks for a locked-off camera on a blank, glowing device screen.
+  - The media op `screen` finds its corners (stable within 1.5%, with a confidence).
+  - `WM.pinToClip` maps the real UI onto it in perspective.
+  - An untracked screen falls back to a framed panel and is reported.
+  - Floating UI stays an option.
+  - Not yet proven on a real clip.
 - [~] **E2. Mixed layouts.**
   - Done: `WM.layout` and the builder guidance.
   - Missing: a real split-screen UGC test (bench B7).
