@@ -25,7 +25,9 @@ export async function findResume(run,live){
  }
  const last=found.sort((a,b)=>b.at.localeCompare(a.at))[0];if(!last)return null;
  const dir=live+'/'+last.name,st=await readFile(dir+'/agent-state.json','utf8').then(JSON.parse).catch(()=>null);
- if(!st||!['failed','cancelled'].includes(st.status))return null;
+ // A builder that finished counts too when the run failed after it (saving its files, say): its draft is done.
+ const runFailed=await access(dir+'/failure.json').then(()=>true,()=>false);
+ if(!st||!(['failed','cancelled'].includes(st.status)||(runFailed&&st.status==='preview_ready')))return null;
  const ok=n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n);
  let files=st.lastGood?.files&&Object.keys(st.lastGood.files).some(ok)?Object.fromEntries(Object.entries(st.lastGood.files).filter(([n])=>ok(n))):null;const checked=!!files;
  if(!files){files={};for(const n of (await readdir(dir+'/project').catch(()=>[])).filter(ok))files[n]=await readFile(dir+'/project/'+n,'utf8');}

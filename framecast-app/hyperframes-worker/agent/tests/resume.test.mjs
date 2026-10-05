@@ -31,3 +31,10 @@ test('a draft missing its media, a changed selection, a finished run or another 
  await run(live,3,{at:'2026-10-04T12:00:00Z',status:'preview_ready'});
  assert.equal(await findResume(next,live),null,'the newest run finished: nothing to continue');
 });
+test('a finished build whose run failed afterwards (saving its files) is continued from its draft',async t=>{
+ const live=await mkdtemp(path.join(os.tmpdir(),'resume-'));t.after(()=>rm(live,{recursive:true,force:true}));
+ const dir=await run(live,1,{at:'2026-10-04T10:00:00Z',status:'preview_ready',lastGood:{'index.html':'<img src="x1.png">'},media:{'x1.png':'p'}});
+ await writeFile(dir+'/failure.json','{"message":"Derived media upload failed (422)"}');
+ const r=await findResume(next,live);
+ assert.equal(r.from,id(1));assert.deepEqual(r.media.map(m=>m.name),['x1.png']);
+});

@@ -18,6 +18,12 @@ class TranscriptService
         $file = app(RunService::class)->inputFile($runId, $lease, $assetId);
         abort_unless(str_starts_with($file['mime_type'], 'video/') || str_starts_with($file['mime_type'], 'audio/'), 422, 'Only audio or video has speech to transcribe.');
         abort_if(($file['duration_seconds'] ?? 0) > config('create.transcript_max_seconds'), 422, 'Transcripts cover clips up to 10 minutes.');
+        // A silent video (a screen recording with no sound track) has nothing to transcribe: say so, not a server error.
+        $path = Storage::disk('local')->path($file['storage_path']);
+        if (str_starts_with($file['mime_type'], 'video/')) {
+            $streams = \Illuminate\Support\Facades\Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', $path]);
+            abort_if($streams->successful() && trim($streams->output()) === '', 422, 'This video has no sound track, so there is no speech to transcribe.');
+        }
         $asset = Asset::findOrFail($assetId);
         $cached = ($asset->metadata_json ?? [])['create_transcript'] ?? null;
         if (is_array($cached) && ($cached['sha256'] ?? null) === $file['sha256']) return $this->present($cached, true);
@@ -25,7 +31,7 @@ class TranscriptService
         $key = 'create-transcript:'.$asset->workspace_id.':'.now()->toDateString();
         abort_if(RateLimiter::tooManyAttempts($key, (int) config('create.transcript_daily_limit')), 429, 'Daily transcript limit reached. Try again tomorrow.');
         RateLimiter::hit($key, 86400);
-        $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps(Storage::disk('local')->path($file['storage_path']), $file['mime_type']);
+        $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, $file['mime_type']);
         // The media service returns a placeholder on failure; that is not speech.
         abort_if(($result['provider_key'] ?? '') === 'local_fallback' || ! $result['words'], 503, 'Transcription is unavailable right now. The video can still be built without word timing.');
 
