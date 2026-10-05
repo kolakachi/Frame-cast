@@ -9,25 +9,30 @@ Tracks `create-generated-video-todo.md`, item by item. Bench: `create-bench.md`.
 
 "Local" means committed, unpushed and running in the local stack: not deployed, and not yet proven on a paid bench run.
 
-Last updated: 2026-10-05.
+Last updated: 2026-10-05 (evening).
 
 ## Summary
 
 | Section | Done | Partly | Open |
 |---|---|---|---|
-| M. Coverage and intent | 2 | 2 | 1 |
+| M. Coverage and intent | 5 | 0 | 0 |
 | 0. Handoff integrity | 5 | 0 | 0 |
-| A. Direction (cast and storyboard) | 7 | 1 | 0 |
-| B. Generation routes | 0 | 1 | 4 |
-| C. Reliability | 5 | 0 | 0 |
-| D. Delivery checks | 5 | 2 | 1 |
-| E. Composition with generated worlds | 1 | 2 | 0 |
-| F. Speed | 0 | 1 | 2 |
-| G. Cost | 1 | 2 | 2 |
-| H. Protect what works | 0 | 1 | 1 |
+| A. Direction (cast and storyboard) | 8 | 0 | 0 |
+| B. Generation routes | 1 | 1 | 3 |
+| C. Reliability | 6 | 0 | 0 |
+| D. Delivery checks | 7 | 0 | 1 |
+| E. Composition with generated worlds | 2 | 1 | 0 |
+| F. Speed | 1 | 1 | 1 |
+| G. Cost | 2 | 2 | 1 |
+| H. Protect what works | 1 | 1 | 0 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Next:** C3's button on the result, A3a (wait for the cast before drawing panels), F2 (parallel cast and panels), G2 (the reference-analysis split). The B2 bake-off needs the owner's budget cap. A DistroKid test of A and D is running (2026-10-05).
+**Code work is closed.** What is open needs paid runs or the owner:
+- Your tests now: UGC from a reference, and from scratch with a split-screen UGC ad (proves E2, and E1 if a screen is planned).
+- With the cap and inputs: the bench baseline (G1, F1, G4, H1's B1 to B3), then the B2 bake-off and B3 drafts; B1's sequence route only if B2 earns it; D3 follows B1.
+- Deferred with reasons: F2's builder overlap (after the bench), G3's Sonnet builds (measured on the bench).
+- Then the rollout gate.
+
 **Waiting on the owner:** bench inputs and the budget cap (see the end of this file).
 
 ---
@@ -43,9 +48,9 @@ Last updated: 2026-10-05.
 
 ## M. What the system must cover
 
-- [~] **M. Video types × creation modes as separate choices.**
-  - Done: `similar` is its own mode beside `exact` and `inspired`: settings, inference ("something similar", "keep the drawing style", typos), the question, Details, the planner prompt (`82a78006`).
-  - Missing: video type as an explicit plan field. Today it is `creative_intent.format`.
+- [x] **M. Video types × creation modes as separate choices.**
+  - `similar` is its own mode beside `exact` and `inspired`: settings, inference ("something similar", "keep the drawing style", typos), the question, Details, the planner prompt (`82a78006`).
+  - The plan states its video type (motion graphics, UGC, footage, or UGC or footage with motion graphics), derived from what it makes, and the card shows it with the mode (`28ba7815`).
 - [x] **M1. Intent agreement** (preserve, replace, flexible, required):
   - inferred by the planner;
   - shown and editable on the plan card;
@@ -53,11 +58,12 @@ Last updated: 2026-10-05.
   - required items never empty (falling back to the user's requirements);
   - passed to the build, which must deliver or report each required item (`82a78006`).
   - The checks against it come with D.
-- [~] **M2. Layer-level routing.**
-  - Done: clips and code layers compose together; `WM.layout` makes mixed layouts.
-  - Missing: the planner choosing per layer inside a moment.
+- [x] **M2. Layer-level routing.**
+  - Clips and code layers compose together; `WM.layout` makes mixed layouts.
+  - The planner routes per layer inside a beat: a video model never draws text or interface, which is composed over or beside the clip; a beat's layout may split a take or clip with motion graphics.
+  - Proof on a real split-screen run is E2 (bench B7).
 - [x] **M3. Coverage matrix,** with an expected route per cell: `create-bench.md` (`abb9cb55`).
-- [ ] **M3. Acceptance criteria per cell**, beyond the bench briefs' Required items.
+- [x] **M3. Acceptance criteria per cell:** by video type and by mode, each marked as checked automatically or by the owner's scores (`create-bench.md`, Acceptance per cell).
 
 ## 0. Handoff integrity
 
@@ -86,9 +92,9 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
   - composed stills for code beats (builder);
   - cast and panels on one review screen;
   - a note on a panel redraws only that panel.
-- [~] **A3a. Dependency order.**
-  - Done: panels are drawn after the cast in the same look run, and shown together.
-  - Missing: panels are drawn without waiting for the user, so a rejected identity's panels are still bought; cast images are not yet drawn in parallel.
+- [x] **A3a. Dependency order.**
+  - Panels are drawn after the cast in the same look run, and shown together; cast images and then panels are drawn in parallel (`7c638502`).
+  - Decided: panels do not wait for a separate cast approval. One approval screen (owner decision for plan media) is worth more than the panels a rejected identity wastes (35 credits each); a redrawn cast redraws only its own panels, and unchanged ones carry over (A4).
 - [x] **A4. Approval versions.**
   - Unchanged media carries across plans of a creation by content (`437b2302`).
   - A cast change redraws its panels.
@@ -104,9 +110,9 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 - [~] **B1. Three mixable routes.**
   - Done: individual shots (start frame plus references per engine); code composition.
   - Missing: the generated-sequence route (experimental).
-- [ ] **B2. Bounded bake-off:** test groups, thresholds, cap, failure scenarios.
-- [ ] **B3. Drafts:** does a re-render reproduce the performance, per engine.
-- [ ] **B4. Timing driver** (speech, music or action) set in the plan and shown on the card.
+- [ ] **B2. Bounded bake-off:** test groups, thresholds, cap, failure scenarios. Blocked on the owner: the budget cap and the bench inputs.
+- [ ] **B3. Drafts:** does a re-render reproduce the performance, per engine (the same input and seed twice, about 8 short clips). Blocked on the owner's cap.
+- [x] **B4. Timing driver** (speech, music or action) set in the plan and shown on the card; a UGC or talking take always times by its speech (`28ba7815`).
 - [ ] **B1 sequence route,** gated on B2.
 
 ## C. Reliability
@@ -139,9 +145,9 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - Listening retries a provider hiccup once (`c8cbe2a6`).
 
 - [x] **D1. The same people throughout:** the final frames are compared with the approved cast images. Drift blocks.
-- [~] **D2. Required actions.**
-  - Done: "must appear" items and each directed action are judged on frames sampled from the final cut. A missing required item blocks; a directed action is advisory.
-  - Missing: per-shot frame sequences inside each shot's window.
+- [x] **D2. Required actions.**
+  - "Must appear" items and each directed action are judged on frames sampled from the final cut. A missing required item blocks; a directed action is advisory.
+  - Each generated shot also gets three frames across its own place in the cut (early, middle, late), labelled with the shot, so its action is judged on its own frames (`7edb8379`).
 - [ ] **D3. Sequence coverage** (waits for the sequence route, B1).
 - [x] **D4. No unintended lettering:** garbled letters or fake logos in the picture are flagged (advisory); real packaging and overlays are fine.
 - [x] **D5. Audio:**
@@ -149,9 +155,9 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - mix, dead air and abrupt endings are flagged by the existing listening review;
   - loudness is levelled.
 - [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery.
-- [~] **D7. Build hygiene.**
-  - Done: unintended blank frames block (a fade of up to 0.6 s at the start or end is allowed); bought clips must appear; a take must play at least 90%.
-  - Missing: using a shot's best seconds.
+- [x] **D7. Build hygiene.**
+  - Unintended blank frames block (a fade of up to 0.6 s at the start or end is allowed); bought clips must appear; a take must play at least 90%.
+  - Best seconds: closed without a picker. Each shot is generated to its slot's length (`seconds` from its beat), so the whole clip is the shot and nothing is trimmed. Revisit if the bench shows trimmed shots.
 
 ## E. Composition with generated worlds
 
@@ -165,23 +171,23 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 - [~] **E2. Mixed layouts.**
   - Done: `WM.layout` and the builder guidance.
   - Missing: a real split-screen UGC test (bench B7).
-- [~] **E3. Generated ambience.**
-  - Done: guidance in `craft.md` (ambience low, a spoken line full).
-  - Missing: levels checked.
+- [x] **E3. Generated ambience.**
+  - Guidance in `craft.md` (ambience low, a spoken line full).
+  - Checked: a generated shot with no spoken line playing above 0.4 volume under the narration or a take goes back to the builder with the fix (`9e1aea1c`).
 
 ## F. Speed
 
 - [ ] **F1. Targets checked on the bench:** plan ≤ 3 min, look stage ≤ 6, full video ≤ 15.
 - [~] **F2. Parallel work.**
   - Done: all clips start together; cast images are drawn in parallel, then the panels in parallel (`7c638502`).
-  - Missing: the builder starting on code beats while clips render.
-- [ ] **F3. Stage times per run** in the trajectory. `create:bench-report` gives run and plan times today.
+  - Deferred until after the bench: the builder starting on code beats while clips render (about 4 minutes on DistroKid). It means building against stand-in clips and swapping the real ones in before the final preview, which changes what the builder's own checks see. Not worth the risk before the generated paths are proven.
+- [x] **F3. Stage times per run:** `create:bench-report` shows media, builder, render and repair times per run (`28ba7815`). First reading (DistroKid): media 295 s, builder 231 s, render 87 s.
 
 ## G. Cost
 
 - [x] **G1. Bench and baseline:** briefs, coverage, acceptance rules, release gate, budget, and `create:bench-report` (`abb9cb55`). First "before" record: DistroKid, 943 credits over 4 runs, 2 held.
 - [ ] **G1. Baseline round run** (needs the owner's inputs and cap).
-- [~] **G2. Reference analysis split** (`26c556bf`).
+- [x] **G2. Reference analysis split** (`26c556bf`). Closed: tested and not adopted.
   - Done: behind `CREATE_STUDY_MODE=split`. Haiku reads every sheet in parallel into per-frame facts (text, type, elements, changes); Opus reads the facts plus the strongest motion windows frame by frame and the first sheet. `create:study-ab {asset}` compares both readings.
   - **A/B on DistroKid, 2026-10-05:** not adopted; the default stays `opus`.
 
@@ -193,8 +199,8 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
     - The facts text cost Opus about as many tokens as the images it replaced (about 40k either way), so nothing was saved.
     - The split merged the closing logo, globe and tagline into one moment.
     - It misread three subjects (a man whose glasses reflect waveforms became "a robot head"; a woman at the keys became "a character in a server room").
-  - Missing: a real saving needs motion *measurement* (positions and timing from the video, with confidence), not cheaper summaries. Open.
-- [ ] **G3. Build model by job.**
+  - A real saving needs motion *measurement* (positions and timing from the video, with confidence), not cheaper summaries. Moved to the backlog after launch.
+- [~] **G3. Build model by job.** Decided: builds stay on Opus 5.5 until the bench measures Sonnet 5 on edits. Switching needs per-model rates in the gateway (it has one rate table today) and Sonnet on the worker's allowed list; both are small once the bench says it holds quality. Planning is already split by task (A6).
 - [~] **G4. Cost per accepted result.**
   - Done: real provider cost per generated item (0.5).
   - Missing: per route and engine across the bench.
@@ -202,9 +208,21 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 ## H. Protect what works
 
 - [~] **H1. Motion-graphics path unchanged.**
-  - Done: the full API (854) and worker suites green after every change.
-  - Missing: the free re-plan regression of earlier briefs; bench B1 to B3 run.
-- [ ] **H2. Carried over:** sound pass, edge springs, 60 fps, camera zoom and flood transitions.
+  - Done: the full API (870) and worker suites green after every change.
+  - Re-plan regression (2026-10-05, not saved, no credits; Opus about $1.25 a plan): earlier motion-graphics briefs must still plan as code.
+
+    | Brief | Plan time | Plans as | Media |
+    |---|---|---|---|
+    | `04c08fb6` exact copy, 3D mascot | 245 s | motion graphics, 3D mascot | voiceover |
+    | `5917444d` 30 s 16:9 tutorial | 216 s | motion graphics | voiceover, music, transcript, stock image |
+    | `e4266546` move-for-move promo | running | | |
+
+    Nothing generated in either so far; the sfx sheet is no longer bought (the sound pass covers it). Both plans are over the 3-minute target (F1).
+  - Missing: bench B1 to B3 rendered and scored.
+- [x] **H2. Carried over.**
+  - Camera zoom, flood, text rising from a mask, and edge springs (`WM.edges`, the leading edge on a quicker spring), with the taste rule (`4daebb4b`).
+  - Sound pass: a built-in library of 12 effects synthesized in code; every motion-kit move records its hit, and before the render the host lays the matching sound with its peak on the hit, quieter under the voice; the bought sfx sheet is for unusual sounds only (`b347e18b`). Proof render and listening page: claude.ai/artifact/UskLNGBj9N5T2Wicx9Tr9S.
+  - 24, 30 or 60 fps in Details; motion blur works at each rate (`47943fef`).
 
 ## Rollout gate
 

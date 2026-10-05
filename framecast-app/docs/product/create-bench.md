@@ -17,6 +17,30 @@ with the same routes.
 | UGC + motion graphics | **B7**: take + code panels (mixed layouts) | take + code, reference layout | as B7 | as B7 |
 | Footage + motion graphics | **B8**: generated shots + code overlays and end card | shots + code, reference layout | as B8 | as B8 |
 
+## Acceptance per cell (M3)
+
+A cell passes when its type's checks and its mode's checks pass, on top of the blocking items under Acceptance.
+**Auto** means the build or the final checks test it on every run; **Owner** means it is judged in the 1-to-5 scores.
+
+By video type:
+
+| Type | Must hold | How it is checked |
+|---|---|---|
+| Motion graphics | Every approved line on screen long enough to read; real UI from the page capture, never placeholders; the named moves built; effects on the moves | Auto: reading time, named moves, layout; Owner: motion, sound |
+| UGC / presenter | The person is the user (or the approved creator) throughout; every approved word spoken; captions match the speech; lips plausibly in sync | Auto: listening, identity; Owner: direction |
+| Footage-based | The same people and places across shots; each shot's directed action visible; no generated lettering; no blank frames; ambience under the voice | Auto: identity, per-shot action frames, lettering, blanks, ambience level; Owner: look, direction |
+| UGC + motion graphics | One continuous take across the layout changes; each panel lands on the words that mention it; graphics never cover the face | Auto: take plays at least 90%, spoken cues; Owner: direction |
+| Footage + motion graphics | The product recognisable in every product shot; overlays legible and drawn in code, not baked into the clip; end card held at least 2 s | Auto: required items, lettering; Owner: brand fit |
+
+By creation mode:
+
+| Mode | Must hold | How it is checked |
+|---|---|---|
+| From scratch | The brief's required items, in the order asked | Auto: required items |
+| Exact | Every reference moment kept or replaced (none silently dropped); each at its reference time, with its elements in their reference slots; the reference's length | Auto: moment coverage, layout check, compare sheet |
+| Similar | The reference's pacing within 20%; its transitions and type animation style; its camera journey where it has one | Auto: pace comparison; Owner: look, motion |
+| Inspired | The reference's format kept (a story stays a story, a talking head stays one); everything else the brand's own | Owner: direction |
+
 ## The briefs
 
 All 9:16 unless stated. Approved facts for WyvStudio:
