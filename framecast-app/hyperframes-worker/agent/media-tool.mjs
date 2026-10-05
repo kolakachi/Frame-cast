@@ -119,7 +119,8 @@ export async function mediaOp({projectDir,request,nextName}){
  if(op==='probe')return {ok:true,info};
  const isStill=/\.(png|jpg|webp)$/.test(input);
  if(isStill&&op!=='grade'&&op!=='crop')throw Error('That operation needs a video or audio file');
- if(!isStill&&info.duration>180)throw Error('Clips longer than 3 minutes are not supported yet');
+ // The same limit as footage the user can attach (5 minutes); trims and crops seek, so a long source stays quick.
+ if(!isStill&&info.duration>300.5)throw Error('Clips longer than 5 minutes are not supported yet');
  if(op==='beats'){if(!info.has_audio)throw Error('No audio to find beats in');return {ok:true,info,beats:await musicBeats(file,info.duration)};}
  if(op==='screen'){if(!info.has_video||!info.width)throw Error('Needs a video');return {ok:true,info,screen:await screenQuad(file,info,params.at)};}
  if(op==='silences'){const s=await silences(file,num(params.noise_db,-60,-20,-35),num(params.min_silence,.05,3,.4));return {ok:true,info,silences:s};}
