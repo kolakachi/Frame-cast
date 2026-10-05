@@ -604,10 +604,15 @@ class ReferenceStudy
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]];
         }
         $content[] = ['type' => 'text', 'text' => $this->readingPrompt($study, $every)];
+        // A/B only: a model that watches the video itself gets the video instead of the sheets, with the same instructions.
+        if ($this->readingModel && str_ends_with($this->readingModel, '+video') && $file !== null) {
+            $content = [['type' => 'video', 'path' => $file], ['type' => 'text', 'text' => 'The reference video itself is attached; watch it closely, frame by frame where things move fast. '
+                .str_replace(' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move:', ' Describe each move from its stages:', $this->readingPrompt($study, $every))]];
+        }
         // Maximum looks twice: the first reading lists what it could not tell; those stretches are then read frame by frame.
         $maximum = $file !== null && in_array($study['coverage_mode'] ?? '', ['maximum', 'every_look'], true);
         if ($maximum) $content[count($content) - 1]['text'] .= ' Also list open_questions: up to 4 short stretches (each under 2.5 s) where a move is too fast to read from these frames, as [{"start": seconds, "end": seconds, "question": "what you could not tell"}]; [] if none.';
-        $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
+        $model = $this->readingModel ?? (str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5');
         $first = $this->ask($model, $content, $every);
         if (! $first) return [];
         [$json, $u] = $first;
@@ -646,9 +651,16 @@ class ReferenceStudy
             'model' => $model, 'cost_microusd' => $cost];
     }
 
+    /** Another provider's model for an A/B of the reading ('openai:gpt-4o', 'replicate:google/gemini-2.5-flash'); null reads with Claude. */
+    public ?string $readingModel = null;
+
+    /** List prices per token in micro-dollars, for A/B readings on other providers. */
+    public const OTHER_RATES = ['openai:gpt-4o' => [2.5, 10], 'replicate:google/gemini-2.5-flash' => [0.3, 2.5], 'replicate:google/gemini-2.5-flash+video' => [0.3, 2.5]];
+
     /** One reading by the model: the parsed JSON and its usage, or null (logged) when the call or the reply fails. */
     private function ask(string $model, array $content, bool $long, string $effort = 'low'): ?array
     {
+        if (str_starts_with($model, 'openai:') || str_starts_with($model, 'replicate:')) return OtherReader::ask($model, $content, self::OTHER_RATES[$model] ?? [0, 0]);
         try {
             $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => $effort], 'messages' => [['role' => 'user', 'content' => $content]]]);
@@ -660,7 +672,7 @@ class ReferenceStudy
         return is_array($json) ? [$json, $r->json('usage', [])] : null;
     }
 
-    private static function cost(array $u): int { return (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 5 + ((int) ($u['output_tokens'] ?? 0)) * 25); }
+    private static function cost(array $u): int { return isset($u['cost_microusd']) ? (int) $u['cost_microusd'] : (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 5 + ((int) ($u['output_tokens'] ?? 0)) * 25); }
 
     /** Recurring systems: ids s1.., at most 12, each described once. */
     public static function normalizeSystems(array $raw): array

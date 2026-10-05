@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
  */
 class CreateStudyAb extends Command
 {
-    protected $signature = 'create:study-ab {asset : A reference video asset id} {--out= : Directory for the two readings (JSON)}';
+    protected $signature = 'create:study-ab {asset : A reference video asset id} {--out= : Directory for the readings (JSON)} {--modes=opus,split : Readings to compare: opus, split, or another model (openai:gpt-4o, replicate:google/gemini-2.5-flash)}';
     protected $description = 'Compare the full and the split reading of a reference video: moments, text, moves, systems, cost and time';
 
     public function handle(): int
@@ -25,21 +25,23 @@ class CreateStudyAb extends Command
         $bytes = app(StorageService::class)->get((string) $asset->storage_url);
         $sha = hash('sha256', (string) $bytes);
         $out = [];
-        foreach (['opus', 'split'] as $mode) {
+        $modes = array_values(array_filter(array_map('trim', explode(',', (string) $this->option('modes')))));
+        foreach ($modes as $mode) {
             $dir = sys_get_temp_dir().'/create-ab-'.Str::uuid(); @mkdir($dir, 0700, true);
             file_put_contents($dir.'/in.mp4', $bytes);
-            $study = app(ReferenceStudy::class); $study->readingMode = $mode;
+            $study = app(ReferenceStudy::class); $study->readingMode = $mode === 'split' ? 'split' : 'opus';
+            if (! in_array($mode, ['opus', 'split'], true)) $study->readingModel = $mode;
             $t = microtime(true);
-            $r = $study->study($dir.'/in.mp4', $sha.'-ab-'.$mode, $dir, 'maximum');
+            $r = $study->study($dir.'/in.mp4', $sha.'-ab-'.preg_replace('/[^a-z0-9]+/', '-', $mode), $dir, 'maximum');
             $out[$mode] = ['seconds' => round(microtime(true) - $t), 'study' => $r];
             foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
         }
-        if ($d = $this->option('out')) { @mkdir($d, 0755, true); foreach ($out as $m => $o) file_put_contents($d.'/'.$m.'.json', json_encode($o, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); }
+        if ($d = $this->option('out')) { @mkdir($d, 0755, true); foreach ($out as $m => $o) file_put_contents($d.'/'.preg_replace('/[^a-z0-9.]+/', '-', $m).'.json', json_encode($o, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); }
         $row = fn ($m) => [$m, $out[$m]['seconds'].' s', '$'.round(($out[$m]['study']['cost_microusd'] ?? 0) / 1e6, 3), count($out[$m]['study']['moments'] ?? []),
             collect($out[$m]['study']['moments'] ?? [])->filter(fn ($x) => ($x['on_screen_text'] ?? '') !== '')->count(),
             collect($out[$m]['study']['moments'] ?? [])->pluck('move')->filter()->countBy()->map(fn ($n, $k) => $k.'×'.$n)->implode(' '),
             count($out[$m]['study']['systems'] ?? []), $out[$m]['study']['moments_status'] ?? '?'];
-        $this->table(['reading', 'time', 'model cost', 'moments', 'with text', 'moves', 'systems', 'status'], [$row('opus'), $row('split')]);
+        $this->table(['reading', 'time', 'model cost', 'moments', 'with text', 'moves', 'systems', 'status'], array_map($row, $modes));
         return self::SUCCESS;
     }
 }
