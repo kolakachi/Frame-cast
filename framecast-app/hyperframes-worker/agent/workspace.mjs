@@ -10,6 +10,9 @@ export class Workspace {
     const scratch = this.scratch && relative.match(/^work\/([a-zA-Z0-9_-]+\.(mjs|js|cjs|json|txt|csv|svg))$/);
     if (!scratch && !/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(relative)) {
       // A path that reaches outside the workspace stops the run; a plain unusable file name is the builder's to correct.
+      // A file in the scratch folder with the wrong type is a naming mistake, not an escape.
+      if (this.scratch && /^work\/[a-zA-Z0-9_.-]+$/.test(relative) && !relative.includes('..'))
+        throw Object.assign(Error('Source path is not allowed: the work/ scratch folder holds scripts and data only (.mjs, .js, .cjs, .json, .txt, .csv, .svg); composition files sit at the top level, named like index.html.'), {code: 'AUTHORING_REJECTED'});
       if (/[\/\\]|\.\./.test(relative)) throw Error('Source path is not allowed');
       throw Object.assign(Error('Source path is not allowed: composition files are named with letters, numbers, - and _ and end in .html, .css or .js (notes belong in comments).'), {code: 'AUTHORING_REJECTED'});
     }
