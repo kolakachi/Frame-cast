@@ -621,10 +621,11 @@ class PlanService
     public static function videoType(array $plan, array $ctx): string
     {
         $kinds = array_column($plan['media'] ?? [], 'kind');
-        $presenter = (bool) array_intersect($kinds, ['ugc_take', 'talking_take', 'talking_shot']) || collect($ctx['files'] ?? [])->contains(fn ($f) => ! empty($f['face_kit']));
+        // A person or character on camera from a video model. A face kit is a talking face drawn in code: animation.
+        $presenter = (bool) array_intersect($kinds, ['ugc_take', 'talking_take', 'talking_shot']);
         $footage = (bool) array_intersect($kinds, ['generated_shot', 'stock_video', 'animate_image'])
             || collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'video');
-        $graphics = ! empty($plan['callouts']) || ! empty($plan['mascot3d']) || ! empty($plan['props3d']) || (! $presenter && ! $footage);
+        $graphics = ! empty($plan['callouts']) || ! empty($plan['mascot3d']) || ! empty($plan['props3d']) || collect($ctx['files'] ?? [])->contains(fn ($f) => ! empty($f['face_kit'])) || (! $presenter && ! $footage);
         return match (true) { $presenter && $graphics => 'ugc_motion', $presenter => 'ugc', $footage && $graphics => 'footage_motion', $footage => 'footage', default => 'motion_graphics' };
     }
 

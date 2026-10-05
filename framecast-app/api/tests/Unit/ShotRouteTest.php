@@ -291,5 +291,7 @@ class ShotRouteTest extends TestCase
         $this->assertSame('ugc', $t(['ugc_take'], []));
         $this->assertSame('footage_motion', $t(['reference_sheet', 'generated_shot']));
         $this->assertSame('footage', $t([], [], [['purpose' => 'source', 'asset_type' => 'video']]));
+        // A face kit is a talking face drawn in code, not a presenter on camera.
+        $this->assertSame('motion_graphics', $t(['voiceover'], [], [['face_kit' => ['mouths' => []]]]));
     }
 }
