@@ -366,6 +366,7 @@ class PlanMediaExecutor
                     .(! empty($panel['action']) ? ' Action (show its first moment): '.$panel['action'].'.' : '')
                     .(! empty($panel['gaze']) ? ' Gaze: '.$panel['gaze'].'.' : '')
                     .(! empty($panel['camera']) ? ' Camera and framing: '.$panel['camera'].'.' : '')
+                    .(! empty($panel['screen']) ? ' The device screen is blank, evenly lit and bright, fully visible and facing the camera.' : '')
                     .(! empty($panel['note']) ? ' Correction from the user, which overrides the rest: '.$panel['note'].'.' : '')
                     .($refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Keep every referenced character, place and product exactly as shown, but in this scene\'s pose and place: the references show identity, not a pose.' : '')
                     .($toCamera ? '' : ' People never look into the camera.').($style !== '' ? ' Look: '.$style.'.' : '').' One frame, no panel borders, no text, no captions, no numbers, no logos.';
@@ -485,7 +486,9 @@ class PlanMediaExecutor
             ! empty($shot['end_state']) ? 'It ends on: '.$shot['end_state'].'.' : null,
         ]));
         $toCamera = (bool) preg_match('/\b(to|into|at) (the )?(camera|lens|viewer)\b/i', (string) ($shot['gaze'] ?? ''));
-        return trim($description).($direction !== '' ? ' '.$direction : '').$named.$sound.($toCamera ? '' : ' People never look into the camera.')
+        // The real app is pinned onto this screen afterwards: it must be blank, evenly lit and held still.
+        $screen = ! empty($shot['screen']) ? ' The device screen is blank, evenly lit and bright, fully visible, facing the camera, nothing covering it; the camera is locked off and does not move.' : '';
+        return trim($description).($direction !== '' ? ' '.$direction : '').$screen.$named.$sound.($toCamera ? '' : ' People never look into the camera.')
             .' No on-screen text, captions, subtitles, logos, watermarks or user interface. Frame the shot as directed.';
     }
 

@@ -313,6 +313,32 @@
       return tl;
     },
 
+    /* pinToClip: place an element (the real app screen, built in HTML) onto a device screen inside a generated clip,
+       in perspective, so the UI sits in the drawn or filmed world. quad: the screen's corners in the clip's own pixels
+       [top-left, top-right, bottom-right, bottom-left] from the media op "screen"; natural: {width, height} of the clip.
+       The clip is assumed to fill its element with object-fit: cover and not to move (the op says "stable"). The pinned
+       element keeps its own size; it is mapped once, at build time. */
+    pinToClip: function (el, clip, quad, natural, opts) {
+      el = $(el); clip = $(clip); opts = opts || {};
+      var stage = stageOf(opts), box = rect(clip, stage), w = el.offsetWidth, h = el.offsetHeight;
+      var s = Math.max(box.width / natural.width, box.height / natural.height);
+      var ox = box.left + (box.width - natural.width * s) / 2, oy = box.top + (box.height - natural.height * s) / 2;
+      var q = quad.map(function (p) { return [p[0] * s + ox, p[1] * s + oy]; });
+      el.style.position = 'absolute'; el.style.left = '0px'; el.style.top = '0px'; el.style.transformOrigin = '0 0';
+      el.style.transform = WM.quadMatrix(w, h, q);
+      return el;
+    },
+
+    /* quadMatrix: the CSS matrix3d that maps a w x h box onto the four corners q (tl, tr, br, bl). */
+    quadMatrix: function (w, h, q) {
+      var x0 = q[0][0], y0 = q[0][1], x1 = q[1][0], y1 = q[1][1], x2 = q[2][0], y2 = q[2][1], x3 = q[3][0], y3 = q[3][1];
+      var dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+      var det = dx1 * dy2 - dx2 * dy1, a13 = (dx3 * dy2 - dx2 * dy3) / det, a23 = (dx1 * dy3 - dx3 * dy1) / det;
+      var a11 = x1 - x0 + a13 * x1, a21 = x3 - x0 + a23 * x3, a12 = y1 - y0 + a13 * y1, a22 = y3 - y0 + a23 * y3;
+      var m = [a11 / w, a12 / w, 0, a13 / w, a21 / h, a22 / h, 0, a23 / h, 0, 0, 1, 0, x0, y0, 0, 1];
+      return 'matrix3d(' + m.map(function (v) { return +v.toFixed(8); }).join(',') + ')';
+    },
+
     /* fly: a chip leaves its place and arcs into a target (a "+$19" chip into the
        checkout total), shrinking as it lands. Pair it with WM.count on the target's
        number at at + duration. opts.lift: how high the arc rises in pixels. */

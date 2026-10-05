@@ -5,7 +5,7 @@ import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readdir,lstat,readFile,unlink} from 'node:fs/promises';import {createHash} from 'node:crypto';
 const run=promisify(execFile);
 const FF={timeout:150000,maxBuffer:32*1024*1024};
-export const OPS=['probe','silences','levels','beats','duck','fade','space','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
+export const OPS=['probe','silences','levels','beats','screen','duck','fade','space','trim','cut','remove_silence','clean_audio','loudness','stabilize','speed','crop','frame','grade'];
 const LOOKS={
  warm:'colorbalance=rs=.06:gs=.01:bs=-.06,eq=saturation=1.08',
  cool:'colorbalance=rs=-.05:gs=.0:bs=.07,eq=saturation=1.02',
@@ -75,6 +75,39 @@ async function musicBeats(file,duration){
  }finally{await rm(tmp,{recursive:true,force:true});}
 }
 
+/**
+ * A device screen in a generated shot (todo E1): the largest bright, evenly lit region in a frame, as four corners
+ * [top-left, top-right, bottom-right, bottom-left] in the clip's own pixels. Measured at three times; "stable" when the
+ * corners stay within 1.5% of the frame, so a still overlay can be pinned to it. Confidence is how well the region
+ * fills its quadrilateral (a screen is a solid four-sided shape).
+ */
+export async function screenQuad(file,info,at){
+ const W=320,H=Math.max(2,Math.round(W*info.height/info.width/2)*2);
+ const quadAt=async t=>{
+  const {stdout}=await promisify(execFile)('ffmpeg',['-hide_banner','-loglevel','error','-ss',fx(t),'-i',file,'-frames:v','1','-vf',`scale=${W}:${H},format=gray`,'-f','rawvideo','-'],{encoding:'buffer',maxBuffer:W*H*2,timeout:30000});
+  const px=stdout;let max=0;for(const v of px)if(v>max)max=v;
+  const cut=Math.max(150,max-40),seen=new Uint8Array(W*H);let best=null;
+  for(let i=0;i<W*H;i++){if(seen[i]||px[i]<cut)continue;
+   const stack=[i],pts=[];seen[i]=1;
+   while(stack.length){const j=stack.pop();pts.push(j);const x=j%W,y=(j-x)/W;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;const k=ny*W+nx;if(!seen[k]&&px[k]>=cut){seen[k]=1;stack.push(k);}}}
+   if(!best||pts.length>best.length)best=pts;}
+  if(!best||best.length<W*H*0.01)return null;
+  // Corners: the points furthest along each diagonal.
+  let tl,tr,br,bl;for(const j of best){const x=j%W,y=(j-x)/W;
+   if(!tl||x+y<tl[0]+tl[1])tl=[x,y];if(!br||x+y>br[0]+br[1])br=[x,y];if(!tr||x-y>tr[0]-tr[1])tr=[x,y];if(!bl||y-x>bl[1]-bl[0])bl=[x,y];}
+  const quad=[tl,tr,br,bl],area=Math.abs(quad.reduce((a,[x,y],k)=>{const [x2,y2]=quad[(k+1)%4];return a+x*y2-x2*y;},0))/2;
+  const sx=info.width/W,sy=info.height/H;
+  return {quad:quad.map(([x,y])=>[Math.round(x*sx),Math.round(y*sy)]),confidence:area?+Math.min(1,best.length/area).toFixed(2):0};
+ };
+ const times=(Array.isArray(at)&&at.length?at:[0.2,info.duration/2,Math.max(0.2,info.duration-0.3)]).slice(0,5).map(t=>Math.max(0,Math.min(info.duration-0.05,Number(t)||0)));
+ const found=[];for(const t of times)found.push(await quadAt(t));
+ if(found.some(f=>!f))return {found:false,times};
+ const tol=0.015*Math.max(info.width,info.height);
+ const moves=Math.max(...found.slice(1).flatMap(f=>f.quad.map((p,k)=>Math.hypot(p[0]-found[0].quad[k][0],p[1]-found[0].quad[k][1]))));
+ return {found:true,times,quad:found[0].quad,quads:found.map(f=>f.quad),confidence:Math.min(...found.map(f=>f.confidence)),stable:moves<=tol,moves_px:Math.round(moves),width:info.width,height:info.height};
+}
+
 export async function mediaOp({projectDir,request,nextName}){
  const {op,input,params={}}=request;
  if(!OPS.includes(op))throw Error('Unknown media operation');
@@ -88,6 +121,7 @@ export async function mediaOp({projectDir,request,nextName}){
  if(isStill&&op!=='grade'&&op!=='crop')throw Error('That operation needs a video or audio file');
  if(!isStill&&info.duration>180)throw Error('Clips longer than 3 minutes are not supported yet');
  if(op==='beats'){if(!info.has_audio)throw Error('No audio to find beats in');return {ok:true,info,beats:await musicBeats(file,info.duration)};}
+ if(op==='screen'){if(!info.has_video||!info.width)throw Error('Needs a video');return {ok:true,info,screen:await screenQuad(file,info,params.at)};}
  if(op==='silences'){const s=await silences(file,num(params.noise_db,-60,-20,-35),num(params.min_silence,.05,3,.4));return {ok:true,info,silences:s};}
  if(op==='levels'){if(!info.has_audio)throw Error('No audio to measure');const at=params.at;if(!Array.isArray(at)||!at.length||at.length>60)throw Error('at must list 1 to 60 times');
   return {ok:true,info,levels:await levels(file,at.map(t=>num(t,0,info.duration+.5)),info.duration)};}

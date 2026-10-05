@@ -41,7 +41,7 @@ class ShotRoute
     public const PANEL_CREDITS = 35;
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256', 'screen'];
 
     /**
      * The storyboard: one panel per generated shot, drawn from the cast, showing the shot's opening moment (its
@@ -53,7 +53,7 @@ class ShotRoute
         foreach (array_values($shots) as $k => $s) {
             $n = $k + 1;
             $panels[] = array_filter(['label' => 'Panel '.$n, 'shot' => $n, 'beat' => $s['beat'] ?? null, 'description' => $s['description'] ?? '',
-                'action' => $s['action'] ?? null, 'gaze' => $s['gaze'] ?? null, 'camera' => $s['camera'] ?? null, 'aspect' => $s['aspect'] ?? null,
+                'action' => $s['action'] ?? null, 'gaze' => $s['gaze'] ?? null, 'camera' => $s['camera'] ?? null, 'aspect' => $s['aspect'] ?? null, 'screen' => ! empty($s['screen']) ? true : null,
                 'refs' => array_values(array_filter((array) ($s['panel_refs'] ?? $s['refs'] ?? ['sheet']), fn ($r) => ! str_starts_with(mb_strtolower((string) $r), 'panel '))) ?: ['sheet'],
                 'note' => isset($notes[$n]) ? mb_substr(trim((string) $notes[$n]), 0, 240) : null], fn ($v) => $v !== null && $v !== '');
         }
@@ -118,6 +118,8 @@ class ShotRoute
             'gaze' => $s($m['gaze'] ?? '', 120) ?: null,
             'camera' => $s($m['camera'] ?? '', 120) ?: null,
             'end_state' => $s($m['end_state'] ?? '', 160) ?: null,
+            // A shot made to carry the real app on an in-world screen (a still, blank, glowing device screen).
+            'screen' => ! empty($m['screen']) ? true : null,
         ], fn ($v) => $v !== null);
     }
 
