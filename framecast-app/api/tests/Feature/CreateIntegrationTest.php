@@ -669,6 +669,47 @@ class CreateIntegrationTest extends TestCase
 
     private function collectDrawn(array $drawn): array { return $drawn; }
 
+    public function test_a_run_that_stops_while_a_clip_renders_hands_it_to_the_next_run_without_a_hold(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000]);
+        $c = $this->brief();
+        $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-hand');
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $json['media'] = [['kind' => 'generated_shot', 'description' => 'A candle flame catches', 'engine' => 'seedance25', 'action' => 'the flame catches', 'seconds' => 5, 'credits' => 1]];
+        $json['shot_context'] = ['has_avatar' => false, 'aspect_ratio' => '9:16', 'language' => 'en'];
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $starts = 0;
+        app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class($starts) extends \App\Services\Create\PlanMediaExecutor {
+            public function __construct(private int &$starts) {}
+            public function startJob(string $kind, string $description, array $ctx, int $k): string { $this->starts++; return 'pred-slow'; }
+            public function pollJob(string $id): array { return ['status' => 'running']; }
+        });
+        $q = $this->conversations->quote($this->owner, $c->id, $version());
+        $index = array_search('generated_shot', array_column($q->payload_json['plan_media'], 'kind'), true);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-hand', true);
+        $claim = $this->runs->claim();
+        $media = app(\App\Services\Create\PlanMediaService::class);
+        $this->assertSame('pending', $media->produce($run->id, $claim['lease_token'], $index)['status']);
+        $this->assertSame('pending', $media->produce($run->id, $claim['lease_token'], $index)['status']);
+
+        // The worker gives up waiting and stops: no hold, no charge, and the user is told the clip is still being made.
+        $stopped = $this->runs->workerStopped($run->id, $claim['lease_token']);
+        $this->assertSame(['failed', 1], [$stopped['status'], $stopped['handed_over']]);
+        $row = DB::table('composition_runs')->where('id', $run->id)->first();
+        $this->assertSame('failed', $row->status);
+        $this->assertStringContainsString('still being made', $row->error);
+        $this->assertSame(0, (int) DB::table('composition_attempts')->where('run_id', $run->id)->sum('charged_credits'));
+
+        // The next run collects the same prediction instead of starting another.
+        $q2 = $this->conversations->quote($this->owner, $c->id, $version());
+        $run2 = $this->conversations->approve($this->owner, $c->id, $q2->id, 'approve-hand-2', true);
+        $claim2 = $this->runs->claim();
+        $this->assertSame('pending', $media->produce($run2->id, $claim2['lease_token'], $index)['status']);
+        $this->assertSame(1, $starts, 'adopted, not bought again');
+        $this->assertSame($run2->id, json_decode((string) DB::table('create_plan_media')->where('plan_id', $plan['id'])->where('kind', 'generated_shot')->value('record_json'), true)['run_id']);
+    }
+
     public function test_saved_styles_come_from_a_version_or_a_reference_and_steer_later_quotes(): void
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();

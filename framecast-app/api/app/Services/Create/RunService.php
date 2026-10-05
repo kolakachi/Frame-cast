@@ -42,9 +42,12 @@ class RunService
     /** Called by the authenticated host only after its sandbox has stopped. Billing remains held. */
     public function workerStopped(string $id, string $token): array
     {
-        return DB::transaction(function () use ($id, $token) {
+        $handed = 0;
+        $result = DB::transaction(function () use ($id, $token, &$handed) {
             $run = $this->leased($id, $token);
             abort_unless(in_array($run->status, ['needs_attention', 'running', 'cancel_requested'], true), 409);
+            // Clips still rendering are handed to the next run while the lease is still valid (C2).
+            if ($run->status !== 'needs_attention') $handed = (int) rescue(fn () => app(PlanMediaService::class)->handOverPending($run, $token), 0);
             DB::table('composition_runs')->where('id', $id)->update([
                 'status' => 'needs_attention', 'worker_stopped_at' => now(), 'lease_hash' => null, 'lease_expires_at' => null,
                 'stage' => 'Worker stopped; external work needs reconciliation', 'updated_at' => now(),
@@ -53,6 +56,13 @@ class RunService
             DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'capacity_slots' => 0, 'updated_at' => now()]);
             return ['status' => 'needs_attention', 'hold_retained' => true];
         });
+        // Nothing left in doubt (every paid call settled, clips handed over): close the run now instead of holding it.
+        if (! AttemptService::unresolved($id)) {
+            $closed = rescue(fn () => app(ReconciliationService::class)->closeSettled($id, true), null, false);
+            if ($closed && $handed > 0) DB::table('composition_runs')->where('id', $id)->update(['stage' => 'Your video clips are still being made by the video model', 'error' => 'Your video clips are still being made by the video model. They are kept and only charged when done: press Try again to collect them and finish the video. Nothing is bought twice.', 'updated_at' => now()]);
+            if ($closed) return ['status' => 'failed', 'hold_retained' => false, 'handed_over' => $handed];
+        }
+        return $result;
     }
 
     private function leased(string $id, string $token): object

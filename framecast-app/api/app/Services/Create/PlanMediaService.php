@@ -246,6 +246,29 @@ class PlanMediaService
         return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];
     }
 
+    /**
+     * A run stopping while its clips render (C2): each generated item whose jobs are all on record is settled as
+     * handed over (nothing charged here) and stays pending, so the next run collects it instead of buying it again.
+     * An item with a job that may have started unrecorded keeps its hold. Returns how many were handed over.
+     */
+    public function handOverPending(object $run, string $lease): int
+    {
+        $attempts = app(AttemptService::class); $n = 0;
+        $pending = DB::table('create_plan_media')->where('conversation_id', $run->conversation_id)->where('status', 'pending')->get()
+            ->keyBy(fn ($r) => (string) (json_decode((string) $r->record_json, true)['attempt_id'] ?? ''));
+        foreach (DB::table('composition_attempts')->where('run_id', $run->id)->where('kind', 'plan_media')->where('status', 'started')->get() as $a) {
+            $row = $pending[$a->id] ?? null;
+            $p = $row ? json_decode((string) $row->record_json, true) : null;
+            if (! $p || ! empty($p['uncertain'])) continue;
+            $id = 'pm-handover-'.substr($a->id, 0, 8);
+            $attempts->bindPrediction($run->id, $lease, $a->id, $id);
+            $receipt = new VerifiedAttemptReceipt($a->id, 'failed', $id, 0, 'pilot-tariff:catalogue; handed over: jobs '.implode(',', array_filter((array) ($p['jobs'] ?? []))).' are recorded on the pending plan item; the next run collects them');
+            $attempts->settle($run->id, $lease, $a->id, $receipt->result(), $receipt);
+            $n++;
+        }
+        return $n;
+    }
+
     private function failGenerated(object $run, string $runId, string $lease, string $attemptId, string $planId, int $cacheIndex, array $item, string $hash, string $message, array $base): array
     {
         $attempts = app(AttemptService::class);
