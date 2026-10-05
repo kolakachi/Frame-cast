@@ -20,7 +20,7 @@ Last updated: 2026-10-05.
 | A. Direction (cast and storyboard) | 7 | 1 | 0 |
 | B. Generation routes | 0 | 1 | 4 |
 | C. Reliability | 5 | 0 | 0 |
-| D. Delivery checks | 4 | 3 | 1 |
+| D. Delivery checks | 5 | 2 | 1 |
 | E. Composition with generated worlds | 1 | 2 | 0 |
 | F. Speed | 0 | 1 | 2 |
 | G. Cost | 1 | 2 | 2 |
@@ -131,9 +131,13 @@ First real run (2026-10-05): the checks crashed (`planMedia is not defined`), we
 
 Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 
-- [~] **Failure and repair policy.**
-  - Done: blocking vs advisory; a blocked version is marked "not ready" with timestamps; checks that could not run are "unverified" and never a pass; "Keep improving" fixes it in a new version.
-  - Missing: automatic repairs (at most 2, within the approved ceiling) and free repair of our own mistakes.
+- [x] **Failure and repair policy** (`db20ed21`).
+  - Blocking vs advisory; a blocked version is marked "not ready" with timestamps.
+  - Unverified checks are never a pass.
+  - Up to 2 automatic repair rounds for what the build can fix (a required item, blank frames, a planned move, our narration cut short), within the approved agent calls, never charged.
+  - A changed person or a take's words go to the user.
+  - Listening retries a provider hiccup once (`c8cbe2a6`).
+
 - [x] **D1. The same people throughout:** the final frames are compared with the approved cast images. Drift blocks.
 - [~] **D2. Required actions.**
   - Done: "must appear" items and each directed action are judged on frames sampled from the final cut. A missing required item blocks; a directed action is advisory.
