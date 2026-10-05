@@ -38,7 +38,18 @@ class ShotRoute
     public const KINDS = ['reference_sheet', 'generated_shot', 'ugc_take'];
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state'];
+
+    /** Whether a shot shows a person: the avatar, or a character subject named (or the whole sheet when it has one). */
+    public static function hasPerson(array $m, array $subjects): bool
+    {
+        $characters = array_map('mb_strtolower', array_column(array_filter($subjects, fn ($s) => ($s['kind'] ?? 'character') === 'character'), 'name'));
+        foreach ([...(array) ($m['refs'] ?? []), (string) ($m['first_frame'] ?? '')] as $r) {
+            $r = mb_strtolower(preg_replace('/^sheet:/', '', (string) $r));
+            if ($r === 'avatar' || ($r === 'sheet' && $characters) || in_array($r, $characters, true)) return true;
+        }
+        return false;
+    }
 
     /** What the planner may say about a generated item; everything else is derived. */
     public static function plannerFields(array $m): array
@@ -57,6 +68,11 @@ class ShotRoute
             'presenter' => in_array($m['presenter'] ?? null, ['avatar', 'sheet'], true) ? $m['presenter'] : null,
             'lines' => array_values(array_filter(array_map(fn ($l) => $s($l, 160), (array) ($m['lines'] ?? [])))) ?: null,
             'subjects' => is_array($m['subjects'] ?? null) ? self::sheet($m)['subjects'] : null,
+            // Direction for a generated shot: what happens, where people look, how the camera moves, how it ends.
+            'action' => $s($m['action'] ?? '', 200) ?: null,
+            'gaze' => $s($m['gaze'] ?? '', 120) ?: null,
+            'camera' => $s($m['camera'] ?? '', 120) ?: null,
+            'end_state' => $s($m['end_state'] ?? '', 160) ?: null,
         ], fn ($v) => $v !== null);
     }
 
@@ -307,6 +323,9 @@ class ShotRoute
     {
         $subjects = collect((array) ($item['subjects'] ?? []))->filter(fn ($s) => is_array($s) && trim((string) ($s['name'] ?? '')) !== '')
             ->map(fn ($s) => ['name' => mb_substr(trim((string) $s['name']), 0, 40), 'looks' => mb_substr(trim((string) ($s['looks'] ?? '')), 0, 240),
+                // What it is decides how it is drawn: a character neutral, a place empty, a product in clear view.
+                'kind' => in_array($s['kind'] ?? null, ['character', 'place', 'product'], true) ? $s['kind'] : 'character',
+                'framing' => in_array($s['framing'] ?? null, ['full', 'portrait'], true) ? $s['framing'] : 'full',
                 'avatar' => (bool) ($s['avatar'] ?? false)])->unique('name')->take(4)->values()->all();
         return ['subjects' => $subjects, 'credits' => count($subjects) * CapabilityCatalogue::CHARACTER_MASTER_CREDITS];
     }

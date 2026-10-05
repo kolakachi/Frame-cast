@@ -308,8 +308,14 @@ class PlanMediaExecutor
                 array_unshift($refs, $this->replicateUpload((string) file_get_contents($avatar), (new \finfo(FILEINFO_MIME_TYPE))->file($avatar)));
                 $roles = 'Image 1 supplies identity only: keep this person\'s recognisable face, hair and build. Any later images are STYLE REFERENCES ONLY. ';
             }
+            // A reference fixes identity, never a shot's pose or gaze: those come from each shot's direction.
+            $how = match ($subject['kind'] ?? 'character') {
+                'place' => 'An empty establishing view of this place: no people, no characters, nothing happening; its architecture, light and recurring objects clearly visible.',
+                'product' => 'The product alone in a three-quarter view on a plain surface, its shape, materials, colours and any real label clearly visible.',
+                default => (($subject['framing'] ?? 'full') === 'portrait' ? 'A head-and-shoulders portrait' : 'A full-figure character reference').', standing in a relaxed neutral pose in a three-quarter view, neutral expression, arms at the sides, on a plain neutral backdrop in the video\'s look; not doing anything, not posed for any scene.',
+            };
             $prompt = $roles.'Look of the whole video: '.trim($description).($ctx['character_style'] ? ' Treatment: '.$ctx['character_style'].'.' : '')
-                .' Reference still of '.$subject['name'].': '.$subject['looks'].'. Show it clearly and whole (a character full figure, a place as an establishing view, a product centred), evenly lit, one subject only, no text, no captions, no logos, no contact sheet.';
+                .' Reference image of '.$subject['name'].': '.$subject['looks'].'. '.$how.' Evenly lit, one subject only, no text, no captions, no logos, no contact sheet.';
             $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, $ctx['character_style'] ?: 'cinematic', $ctx['aspect_ratio'] ?? '9:16', ['reference_image_urls' => $refs]);
             $path = $dir.'/sheet-'.$k.'.png';
             if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
@@ -375,7 +381,17 @@ class PlanMediaExecutor
             'none' => ' Sound: quiet room tone only, no music, no dialogue.',
             default => ' Sound: natural ambience for the scene only, no music, no dialogue.',
         };
-        return trim($description).$named.$sound.' No on-screen text, captions, subtitles, logos, watermarks or user interface; keep the main subject centred and clear of the frame edges.';
+        // The shot's direction: what happens, where people look, the camera, how it ends. People never look into the
+        // camera unless the direction says so.
+        $direction = implode(' ', array_filter([
+            ! empty($shot['action']) ? 'Action: '.$shot['action'].'.' : null,
+            ! empty($shot['gaze']) ? 'Gaze: '.$shot['gaze'].'.' : null,
+            ! empty($shot['camera']) ? 'Camera: '.$shot['camera'].'.' : null,
+            ! empty($shot['end_state']) ? 'It ends on: '.$shot['end_state'].'.' : null,
+        ]));
+        $toCamera = (bool) preg_match('/\b(to|into|at) (the )?(camera|lens|viewer)\b/i', (string) ($shot['gaze'] ?? ''));
+        return trim($description).($direction !== '' ? ' '.$direction : '').$named.$sound.($toCamera ? '' : ' People never look into the camera.')
+            .' No on-screen text, captions, subtitles, logos, watermarks or user interface. Frame the shot as directed.';
     }
 
     /** How many provider jobs an item makes: one per segment of a native UGC take, one otherwise. */

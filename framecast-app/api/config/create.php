@@ -27,6 +27,9 @@ return [
     // Thinking effort for the planner (the beat sheet and script); the build agent has its own setting.
     'planner_effort' => env('CREATE_PLANNER_EFFORT', 'high'),
     'planner_model' => env('CREATE_PLANNER_MODEL', 'anthropic/claude-sonnet-5'),
+    // The planner model by task (owner decision 2026-10-05, routed in code): new creative direction (a first plan, or a
+    // follow-up that rewrites the brief) on the stronger model; short follow-up edits on planner_model.
+    'planner_model_creative' => env('CREATE_PLANNER_MODEL_CREATIVE', 'claude-opus-5-5'),
     'plan_daily_limit' => (int) env('CREATE_PLAN_DAILY_LIMIT', 40),
     // Owner decision 2026-09-29: jobs up to this many credits run without a
     // separate approval, after provider consent in the conversation.

@@ -195,4 +195,30 @@ class ShotRouteTest extends TestCase
         $this->assertSame(['x'], $a['required'], 'duplicates fold');
         $this->assertSame(['preserve', 'replace', 'flexible', 'required'], array_keys($a));
     }
+
+    public function test_a_shot_prompt_carries_its_direction_and_keeps_eyes_off_the_camera(): void
+    {
+        $prompt = new \ReflectionMethod(\App\Services\Create\PlanMediaExecutor::class, 'shotPrompt');
+        $shot = ['action' => 'she watches the upload finish and leans forward with relief', 'gaze' => 'on her laptop', 'camera' => 'slow push in', 'end_state' => 'her smile in the screen glow', 'audio' => 'ambient'];
+        $text = $prompt->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'Night kitchen, anime look', $shot, []);
+        foreach (['Action: she watches', 'Gaze: on her laptop', 'Camera: slow push in', 'It ends on: her smile', 'People never look into the camera'] as $part) $this->assertStringContainsString($part, $text);
+        $this->assertStringNotContainsString('centred', $text, 'the approved composition decides the framing');
+        $toCamera = $prompt->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'UGC', ['gaze' => 'straight into the camera', 'audio' => 'speech', 'line' => 'Hi'], []);
+        $this->assertStringNotContainsString('never look into the camera', $toCamera, 'a to-camera shot is allowed to look at us');
+    }
+
+    public function test_the_plan_sends_back_shots_without_an_action_or_a_persons_gaze(): void
+    {
+        $plan = ['scenes' => [['label' => 'A', 'start' => 0, 'end' => 15]], 'narration' => ['Hi.'], 'media' => [
+            ['kind' => 'reference_sheet', 'subjects' => [['name' => 'Maya', 'kind' => 'character', 'looks' => 'red coat'], ['name' => 'Candle', 'kind' => 'product', 'looks' => 'amber jar']]],
+            ['kind' => 'generated_shot', 'description' => 'close on Maya', 'refs' => ['Maya'], 'camera' => 'push in'],
+            ['kind' => 'generated_shot', 'description' => 'Maya at the shop', 'refs' => ['Maya'], 'action' => 'she lights the candle'],
+            ['kind' => 'generated_shot', 'description' => 'the candle', 'refs' => ['Candle'], 'action' => 'the flame catches and steadies'],
+        ]];
+        $problems = implode(' | ', \App\Services\Create\Planning\PlanPrompt::problems($plan, ['settings' => ['duration_seconds' => 15]]));
+        $this->assertStringContainsString('Generated shot 1 has no action', $problems);
+        $this->assertStringContainsString('Generated shot 2 shows a person but not where they look', $problems);
+        $this->assertStringNotContainsString('Generated shot 3', $problems, 'a product needs no gaze');
+        $this->assertSame('character', ShotRoute::sheet(['subjects' => [['name' => 'X']]])['subjects'][0]['kind']);
+    }
 }

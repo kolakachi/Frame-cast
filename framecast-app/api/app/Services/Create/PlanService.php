@@ -16,14 +16,26 @@ class PlanService
 {
     public function __construct(private ConversationService $conversations) {}
 
-    public function planner(): Planner
+    public function planner(string $task = 'edit'): Planner
     {
         $choice = config('create.mode') === 'fixture' ? 'offline' : (string) config('create.planner', 'offline');
+        $model = $task === 'creative' ? (string) config('create.planner_model_creative', 'claude-opus-5-5') : (string) config('create.planner_model', 'claude-opus-5-5');
         return match ($choice) {
             'replicate' => new ReplicatePlanner((string) config('create.planner_model', 'anthropic/claude-sonnet-5'), (string) config('services.replicate.api_token')),
-            'anthropic' => new AnthropicPlanner((string) config('create.planner_model', 'claude-opus-5-5'), (string) config('services.anthropic.key')),
+            'anthropic' => new AnthropicPlanner($model, (string) config('services.anthropic.key')),
             default => new OfflinePlanner,
         };
+    }
+
+    /**
+     * Which planning job this is. Creative: the first plan of a creation, or a follow-up long enough to rewrite the
+     * brief (40 words or more). Edit: a short follow-up to an existing plan (a correction, a tweak, a timing fix).
+     */
+    public static function plannerTask(object $c): string
+    {
+        if (! DB::table('create_plans')->where('conversation_id', $c->id)->exists()) return 'creative';
+        $last = (string) DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'user')->orderByDesc('sequence')->value('content');
+        return count(preg_split('/\s+/u', trim($last), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
     }
 
     public function propose(User $user, string $id, int $version, string $key): array
@@ -85,8 +97,9 @@ class PlanService
         if (PilotPolicy::unlimited()) set_time_limit(640);
         $context = $this->context($user, $c);
         $context['_planner_deadline'] = $deadline;
+        $task = self::plannerTask($c);
         try {
-            $result = $this->planner()->plan($context);
+            $result = $this->planner($task)->plan($context);
         } catch (\Throwable $e) {
             report($e);
             abort(502, 'The planner could not make a plan just now. Nothing was charged; try again.');
@@ -94,6 +107,7 @@ class PlanService
         // Only host tool receipts can establish inspection evidence; model-written receipts are discarded.
         $context['_reference_evidence'] = $result['reference_evidence'] ?? [];
         $plan = $this->normalize($result['plan'], $context, (int) $user->workspace_id);
+        $plan['planner_task'] = $task;
         if ($lengthNote) $plan['direction_notes'][] = ['text' => $lengthNote, 'provenance' => 'inferred'];
 
         return DB::transaction(function () use ($user, $id, $version, $key, $hash, $plan, $result, $briefs) {
