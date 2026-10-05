@@ -22,8 +22,18 @@ class AnthropicPlanner implements Planner
         }
         $response = Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($timeout)
             ->post('https://api.anthropic.com/v1/messages', $body);
-        if (! $response->successful()) throw new RuntimeException('Planner request failed.');
+        if (! $response->successful()) {
+            // The provider's own reason, so a refused request is diagnosable (no key or prompt text is in it).
+            rescue(fn () => \Illuminate\Support\Facades\Log::warning('Planner request refused', ['model' => $this->model, 'status' => $response->status(), 'body' => mb_substr($response->body(), 0, 400)]), report: false);
+            throw new RuntimeException('Planner request failed.');
+        }
         return $response;
+    }
+
+    /** Models whose thinking cannot be turned off; they do not accept tool_choice "any" or "tool". */
+    public static function alwaysThinks(string $model): bool
+    {
+        return (bool) preg_match('/opus-5/', $model);
     }
 
     private static function inspectionTool(): array
@@ -65,7 +75,9 @@ class AnthropicPlanner implements Planner
                 if ($remainingSeconds < 1) throw new RuntimeException('Planner time budget exhausted.');
                 $tools = $eligible && $turn < $inspectionTurns && $requests < $maxInspections;
                 $unreceipted = true;
-                $response = $this->request($messages, $effort, min($perCall, $remainingOutput), $tools ? ($turn === 0 ? 'any' : 'auto') : ($eligible ? 'none' : null), $remainingSeconds);
+                // Models that always think (Opus 5.5) refuse a forced tool choice; they are asked to inspect first instead.
+                $force = $turn === 0 && ! self::alwaysThinks($this->model);
+                $response = $this->request($messages, $effort, min($perCall, $remainingOutput), $tools ? ($force ? 'any' : 'auto') : ($eligible ? 'none' : null), $remainingSeconds);
                 $u = $response->json('usage', []);
                 $calls[] = ['message_id' => $response->json('id'), 'input_tokens' => $u['input_tokens'] ?? null,
                     'output_tokens' => $u['output_tokens'] ?? null, 'cache_read_tokens' => $u['cache_read_input_tokens'] ?? null,
