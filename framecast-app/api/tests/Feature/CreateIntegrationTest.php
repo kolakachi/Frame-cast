@@ -595,6 +595,20 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(2, collect($log)->filter(fn ($l) => $l === 'start 2')->count(), 'the failed part was restarted once');
     }
 
+    public function test_the_user_corrects_the_agreement_and_the_build_receives_it(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline']);
+        $c = $this->brief();
+        $service = app(\App\Services\Create\PlanService::class);
+        $plan = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-agree');
+        $this->assertSame(['preserve', 'replace', 'flexible', 'required'], array_keys($plan['plan']['agreement']));
+        $edited = ['preserve' => ['The drawn night world'], 'replace' => ['DistroKid with WyvStudio'], 'flexible' => ['Shot count'], 'required' => ['The creator stays on the laptop until the reaction', 'Start with the $9 Test Pass']];
+        $saved = $service->select($this->owner, $c->id, $plan['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['agreement' => $edited]);
+        $this->assertSame($edited, $saved['plan']['selections']['agreement']);
+        $this->rejected(422, fn () => $service->select($this->owner, $c->id, $plan['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['agreement' => ['required' => []]]));
+        $this->assertSame($edited, \App\Services\Create\PlanService::forQuote($this->conversations->conversation($this->owner, $c->id))['agreement'], 'the build follows what the user approved');
+    }
+
     public function test_saved_styles_come_from_a_version_or_a_reference_and_steer_later_quotes(): void
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();

@@ -151,14 +151,20 @@ watch(() => data.value?.plans, list => {
   for (const p of list || []) {
     if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
     const sel = p.plan.selections
-    planDrafts.value[p.id] = { omitted_performance: [...(sel.omitted_performance || [])], callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept] }
+    planDrafts.value[p.id] = { omitted_performance: [...(sel.omitted_performance || [])], callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept], agreement: agreementText(sel.agreement) }
   }
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
+// The intent agreement (what stays, what changes, what must appear), edited as one line per item.
+const AGREEMENT = [['preserve', 'Keep from the reference'], ['replace', 'Swap in'], ['flexible', 'Free to change'], ['required', 'Must appear']]
+const agreementEditing = ref({})
+function agreementText(a) { return Object.fromEntries(AGREEMENT.map(([k]) => [k, ((a || {})[k] || []).join('\n')])) }
+function agreementLists(t) { return Object.fromEntries(AGREEMENT.map(([k]) => [k, String((t || {})[k] || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 6)])) }
+function agreementShown(p) { return planDrafts.value[p.id]?.agreement ? agreementLists(planDrafts.value[p.id].agreement) : (p.plan.selections.agreement || p.plan.agreement || {}) }
 function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
-  return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort()]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort()])
+  return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort(), d.agreement ? agreementLists(d.agreement) : null]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort(), d.agreement ? agreementLists(agreementText(sel.agreement)) : null])
 }
 // Generated video is priced by its route (engine and length), which the server resolves for the saved selections.
 const GENERATED = ['reference_sheet', 'generated_shot', 'ugc_take']
@@ -225,7 +231,7 @@ async function makePlan() {
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
-  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, omitted_performance: d.omitted_performance || [], callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept })
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, omitted_performance: d.omitted_performance || [], callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept, ...(d.agreement && agreementLists(d.agreement).required.length ? { agreement: agreementLists(d.agreement) } : {}) })
   const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
 }
 async function reviewPlanCost(p, buildStage = null, displayedCharacterToken = null) {
@@ -777,7 +783,17 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                       <div v-if="planByMessage[m.id].plan.props3d?.length" class="checks"><b>3D objects</b><p v-for="o in planByMessage[m.id].plan.props3d" :key="o.name" class="muted">{{ o.name }}<template v-if="o.looks">: {{ o.looks }}</template><template v-if="o.spin"> · spins as it lands</template></p><p class="muted">Modelled for this video in the same finish, no image generation.</p></div>
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>
-                        <p v-if="planByMessage[m.id].plan.reference_match" class="muted">{{ planByMessage[m.id].plan.reference_match === 'exact' ? 'Matched exactly: every moment keeps its timing, layout, transition and mascot placement; your brand, voice and content go in each slot. Change this in Details.' : 'Inspired by it: its ideas and pacing, your own layout. Change this in Details.' }}</p>
+                        <div v-if="Object.values(agreementShown(planByMessage[m.id])).some(l => l?.length)" class="agreement" aria-label="What stays and what changes">
+                          <div class="agreement__head"><b>What stays and what changes</b><button v-if="canWrite && !planByMessage[m.id].stale" type="button" class="quiet quiet--sm" @click="agreementEditing[planByMessage[m.id].id] = !agreementEditing[planByMessage[m.id].id]">{{ agreementEditing[planByMessage[m.id].id] ? 'Done' : 'Edit' }}</button></div>
+                          <div class="agreement__cols">
+                            <div v-for="[key, label] in AGREEMENT" v-show="agreementEditing[planByMessage[m.id].id] || (agreementShown(planByMessage[m.id])[key] || []).length" :key="key" class="agreement__col">
+                              <span class="legend">{{ label }}</span>
+                              <textarea v-if="agreementEditing[planByMessage[m.id].id] && planDrafts[planByMessage[m.id].id]" v-model="planDrafts[planByMessage[m.id].id].agreement[key]" class="input" rows="3" :aria-label="label + ', one per line'" />
+                              <ul v-else><li v-for="item in agreementShown(planByMessage[m.id])[key]" :key="item">{{ item }}</li></ul>
+                            </div>
+                          </div>
+                        </div>
+                        <p v-if="planByMessage[m.id].plan.reference_match" class="muted">{{ planByMessage[m.id].plan.reference_match === 'exact' ? 'Matched exactly: every moment keeps its timing, layout, transition and mascot placement; your brand, voice and content go in each slot. Change this in Details.' : planByMessage[m.id].plan.reference_match === 'similar' ? 'Similar: its format, look and pacing, your own story and shots. Change this in Details.' : 'Inspired by it: the idea, your own execution. Change this in Details.' }}</p>
                         <p class="muted">{{ referenceTally(planByMessage[m.id].plan) }}</p>
                         <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}<template v-if="d.carried_by"> · its job: {{ d.carried_by }}</template></li></ul>
                         <template v-if="planByMessage[m.id].plan.reference_systems?.length"><p class="muted">Repeated elements, built the same way each time:</p>
@@ -1042,7 +1058,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" />
                 <label v-if="kind === 'video'" class="field-label">Length in seconds<input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="input" /></label>
                 <UiSelect v-if="kind === 'video'" v-model="settingsDraft.reference_effort" label="How closely to study reference videos" :options="[{value:'',label:'Automatic'},{value:'standard',label:'Standard · quick'},{value:'high',label:'High · every clear change'},{value:'maximum',label:'Maximum · every frame that differs (slower)'}]" />
-                <UiSelect v-if="kind === 'video'" v-model="settingsDraft.reference_match" label="Match the reference video" :options="[{value:'',label:'From my brief (I\'ll ask if unclear)'},{value:'exact',label:'Exactly · same timing, layout and moves, my brand and content'},{value:'inspired',label:'Inspired · its ideas and pacing, my own layout'}]" />
+                <UiSelect v-if="kind === 'video'" v-model="settingsDraft.reference_match" label="Match the reference video" :options="[{value:'',label:'From my brief (I\'ll ask if unclear)'},{value:'exact',label:'Exactly · same timing, layout and moves, my brand and content'},{value:'similar',label:'Similar · its format, look and pacing, my own story and shots'},{value:'inspired',label:'Inspired · just the idea, my own execution'}]" />
                 <label v-if="kind === 'video'" class="field-label field-label--check"><input v-model="settingsDraft.motion_blur" type="checkbox" /> Motion blur on the final video <small class="muted">(smoother fast motion; the final render takes about twice as long)</small></label>
                 <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" />
                 <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><UiSelect v-model="settingsDraft.captions" label="Captions" :options="[{value:'off',label:'Off'},{value:'provided',label:'Use my exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input" placeholder="Paste the exact words." /></template>
@@ -1290,6 +1306,11 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .quote__line{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--text-3)}
 .quote__line b{font:500 12px var(--mono);color:var(--text)}
 .quote__line > span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.agreement{border:1px solid var(--line, rgba(127,127,127,.25));border-radius:10px;padding:10px 12px;margin:8px 0;font-size:13px}
+.agreement__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.agreement__cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.agreement__col ul{margin:4px 0 0;padding-left:16px}
+.agreement__col textarea{width:100%;margin-top:4px;font-size:12px}
 .quote__meta{font-size:11px;color:var(--text-3);opacity:.85}
 .tier-pick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}
 .tier-pick .is-on{color:var(--text);font-weight:600;text-decoration:underline}

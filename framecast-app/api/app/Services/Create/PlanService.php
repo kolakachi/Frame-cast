@@ -139,6 +139,10 @@ class PlanService
                 $sel['style'] = $picked;
             }
             if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'] || collect($plan['media'] ?? [])->contains('kind', 'reference_sheet');
+            if (array_key_exists('agreement', $input)) {
+                $sel['agreement'] = self::agreement($input['agreement']);
+                abort_if(empty($sel['agreement']['required']), 422, 'Keep at least one required element: it is what the video is checked against.');
+            }
             if (array_key_exists('video_tier', $input)) {
                 abort_unless(in_array($input['video_tier'], ['standard', 'premium'], true), 422, 'Choose Standard or Premium.');
                 $sel['video_tier'] = $input['video_tier'];
@@ -204,7 +208,8 @@ class PlanService
             'asks' => array_map(fn ($a) => $a + (is_int($s['asks'][$a['id']] ?? null) ? ['asset_id' => $s['asks'][$a['id']]] : (($s['asks'][$a['id']] ?? null) === 'skip' ? ['skipped' => true] : [])), $p['asks'] ?? []),
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
-            'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard']
+            'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard',
+            'agreement' => $s['agreement'] ?? $p['agreement'] ?? null]
             // What the build and its checks follow from a reference and the 3D route; without these the builder never sees them.
             + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d']));
     }
@@ -375,6 +380,7 @@ class PlanService
                 ? ['brief_sequence' => (int) $prev->brief_sequence, 'reference_evidence' => json_decode($prev->plan_json, true)['reference_evidence'] ?? [], 'requirement_history' => json_decode($prev->plan_json, true)['requirement_history'] ?? [], 'creative_intent' => json_decode($prev->plan_json, true)['creative_intent'] ?? null, 'approved_narration' => json_decode($prev->plan_json, true)['selections']['narration'] ?? [], 'approved_voice' => json_decode($prev->plan_json, true)['selections']['voice'] ?? null, 'character_performance' => json_decode($prev->plan_json, true)['character_performance'] ?? [], 'omitted_performance' => json_decode($prev->plan_json, true)['selections']['omitted_performance'] ?? [], 'requirements' => json_decode($prev->plan_json, true)['requirements'] ?? [], 'character_style' => json_decode($prev->plan_json, true)['character_style'] ?? '', 'summary' => json_decode($prev->plan_json, true)['summary'] ?? '', 'approved_copy' => json_decode($prev->plan_json, true)['selections']['callouts'] ?? [],
                     'colour_treatment' => json_decode($prev->plan_json, true)['colour_treatment'] ?? null,
                     'video_tier' => json_decode($prev->plan_json, true)['selections']['video_tier'] ?? null,
+                    'approved_agreement' => json_decode($prev->plan_json, true)['selections']['agreement'] ?? null,
                     'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? []] : null,
         ];
     }
@@ -569,8 +575,24 @@ class PlanService
         }
         $plan['free_edit'] = $free ?: null;
         $plan['new_wording'] = self::newWording([...$callouts, ...$narration], $ctx);
+        // What stays and what changes (M1): shown on the plan for correction, and followed by the build and its checks.
+        $plan['agreement'] = self::agreement(is_array($ctx['previous_plan']['approved_agreement'] ?? null) && ! empty(array_filter($ctx['previous_plan']['approved_agreement'])) && empty($raw['agreement'])
+            ? $ctx['previous_plan']['approved_agreement'] : ($raw['agreement'] ?? []));
+        // Never empty: the user's own requirements are what must appear when the planner listed nothing.
+        if (! $plan['agreement']['required']) $plan['agreement']['required'] = collect($requirements)->where('provenance', 'user')->pluck('text')->map(fn ($t) => mb_substr((string) $t, 0, 120))->take(5)->values()->all();
+        $plan['selections']['agreement'] = $plan['agreement'];
         $plan['credits'] = $this->credits($plan);
         return $plan;
+    }
+
+    /** The four short lists of the intent agreement, cleaned: at most 6 items each, each under 120 characters. */
+    public static function agreement(mixed $raw): array
+    {
+        $raw = is_array($raw) ? $raw : [];
+        $out = [];
+        foreach (['preserve', 'replace', 'flexible', 'required'] as $k) $out[$k] = collect((array) ($raw[$k] ?? []))
+            ->map(fn ($t) => mb_substr(trim(is_string($t) ? $t : ''), 0, 120))->filter()->unique()->take(6)->values()->all();
+        return $out;
     }
 
     /** Resolve selected purchases once, for both pricing and execution. Dependencies come first. */

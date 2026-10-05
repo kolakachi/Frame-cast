@@ -177,4 +177,22 @@ class ShotRouteTest extends TestCase
         $this->assertSame(1.2, ShotRoute::providerUsd('omni', [], 8.0), 'the requested length when the provider reports none');
         $this->assertNull(ShotRoute::providerUsd('mystery', [], 4), 'an unknown model is unknown, not a guess');
     }
+
+    public function test_similar_is_its_own_mode_between_exact_and_inspired(): void
+    {
+        $this->assertSame('similar', ReferenceMatch::answer('I love this video, I want to do something similar for wyvstudio'));
+        $this->assertSame('similar', ReferenceMatch::answer('keep the drawing style'));
+        $this->assertSame('similar', ReferenceMatch::answer('simlar'));
+        $this->assertSame('exact', ReferenceMatch::answer('copy it exactly, same style'), 'exact wording outranks a style word');
+        $this->assertSame('inspired', ReferenceMatch::answer('just inspired by it, my own take'));
+        $this->assertNull(ReferenceMatch::answer('similar but loosely inspired'), 'two different answers: ask');
+    }
+
+    public function test_the_agreement_is_cleaned_and_never_without_required_items(): void
+    {
+        $a = PlanService::agreement(['preserve' => ['the drawn world', '', 'the drawn world'], 'required' => array_fill(0, 9, 'x'), 'junk' => ['y']]);
+        $this->assertSame(['the drawn world'], $a['preserve']);
+        $this->assertSame(['x'], $a['required'], 'duplicates fold');
+        $this->assertSame(['preserve', 'replace', 'flexible', 'required'], array_keys($a));
+    }
 }

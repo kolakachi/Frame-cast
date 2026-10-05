@@ -109,7 +109,7 @@ class BriefSettings
                 'language' => 'language '.(array_search($value, self::LANGUAGES, true) ? ucfirst(array_search($value, self::LANGUAGES, true)) : $value),
                 'audio' => $value === 'silent' ? 'audio off' : 'original audio kept',
                 'captions' => 'captions off',
-                'reference_match' => $value === 'exact' ? 'the reference matched exactly (same timing, layout, transitions and mascot placement, with your brand and content)' : 'the reference used as inspiration',
+                'reference_match' => match ($value) { 'exact' => 'the reference matched exactly (same timing, layout, transitions and mascot placement, with your brand and content)', 'similar' => 'the reference followed closely (its format, look and pacing, with your own story and shots)', default => 'the reference used as inspiration' },
                 default => "$key $value",
             };
         }

@@ -54,6 +54,9 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - Mixed layouts: keep the take playing and reshape it with WM.layout(tl, '#take', at, 'top' | 'bottom' | 'left' | 'right' | 'pip' | 'full') while the other region carries motion graphics or a generated shot; change layouts on the take's line breaks, and use duration 0 for a hard switch on a cut. The region beside it is a full composed panel (its own field colour), not leftover space.
 - The reference sheet's stills are references for the shots; in a storyboard they show the cast and world, in the final video use them only where the plan says.
 
+## The agreement (plan.agreement)
+- It is what the user approved: keep everything in preserve, swap what replace names, reinterpret only what flexible allows. Every required item must be visible or audible in the final video at a clear moment; a required item you cannot deliver is reported with report_limitation, never left out silently.
+
 ## Before finishing
 - Every requested idea is present; every read has time; intentional holds remain intact. Inspect the full timeline for unintended blank intervals and missing content.
 
