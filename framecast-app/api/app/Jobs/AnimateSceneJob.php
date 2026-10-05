@@ -186,27 +186,29 @@ class AnimateSceneJob implements ShouldQueue
                 // Send the chosen quality under the model's input name
                 // ('resolution' for i2v, 'kling_mode' for premium/Kling).
                 $qualityParam = \App\Services\CreditService::videoQualityParam($this->tier);
-                $result = $adapter->animate(
-                    $imageUrl,
-                    (string) $this->motionPrompt,
-                    $this->tier,
-                    $this->durationSeconds,
-                    [
-                        'aspect_ratio' => $scene->project->aspect_ratio ?? '9:16',
-                        $qualityParam  => $quality,
-                        // Persist the prediction id the instant Replicate hands
-                        // it over, so a mid-poll worker death is resumable.
-                        'on_prediction_created' => function (string $pid) use ($scene): void {
-                            $this->stampAnimationState($scene, [
-                                'animation_prediction_id'         => $pid,
-                                'animation_prediction_started_at' => now()->toIso8601String(),
-                                // A resume rebuilds the job from these, so siblings still get the clip.
-                                'animation_share_with'            => $this->shareWithSceneIds,
-                                'animation_refunded'              => false,
-                            ]);
-                        },
-                    ],
-                );
+                $options = [
+                    'aspect_ratio' => $scene->project->aspect_ratio ?? '9:16',
+                    $qualityParam  => $quality,
+                    // Persist the prediction id the instant Replicate hands
+                    // it over, so a mid-poll worker death is resumable.
+                    'on_prediction_created' => function (string $pid) use ($scene): void {
+                        $this->stampAnimationState($scene, [
+                            'animation_prediction_id'         => $pid,
+                            'animation_prediction_started_at' => now()->toIso8601String(),
+                            // A resume rebuilds the job from these, so siblings still get the clip.
+                            'animation_share_with'            => $this->shareWithSceneIds,
+                            'animation_refunded'              => false,
+                        ]);
+                    },
+                ];
+                try {
+                    $result = $adapter->animate($imageUrl, (string) $this->motionPrompt, $this->tier, $this->durationSeconds, $options);
+                } catch (RuntimeException $e) {
+                    // The provider could not fetch our image from storage (seen in production: a connection error to
+                    // B2). Nothing was made or billed: hand it the image through its own file store and start once more.
+                    if (! self::inputFetchFailed($e->getMessage())) throw $e;
+                    $result = $adapter->animate($this->providerCopy($sourceAsset), (string) $this->motionPrompt, $this->tier, $this->durationSeconds, $options);
+                }
             }
 
             // The user may have cancelled while Replicate was running. Bail before
@@ -531,6 +533,26 @@ class AnimateSceneJob implements ShouldQueue
     {
         return $asset->asset_type === 'video'
             || str_starts_with((string) $asset->mime_type, 'video/');
+    }
+
+    /** A failure fetching the input image (a connection or download error naming our storage), not a model refusal. */
+    public static function inputFetchFailed(string $message): bool
+    {
+        return (bool) preg_match('/(HTTPSConnectionPool|NewConnectionError|Max retries exceeded|failed to download|could not download|Failed to fetch|Read timed out).*?(backblazeb2|b2|\/media\/|storage|amazonaws|\.png|\.jpg|\.webp)|(backblazeb2|\/media\/assets).*?(timed out|connection|refused|404|403)/is', $message);
+    }
+
+    /** The source image uploaded to Replicate's own file store, for a model that could not fetch it from ours. */
+    private function providerCopy(Asset $asset): string
+    {
+        $bytes = app(StorageService::class)->get((string) $asset->storage_url);
+        if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The scene image could not be read to retry the animation.');
+        $mime = (string) ($asset->mime_type ?: 'image/png');
+        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)
+            ->attach('content', $bytes, 'image.'.(str_contains($mime, 'jpeg') ? 'jpg' : (str_contains($mime, 'webp') ? 'webp' : 'png')), ['Content-Type' => $mime])
+            ->post('https://api.replicate.com/v1/files');
+        $url = $r->json('urls.get');
+        if (! $r->successful() || ! is_string($url)) throw new RuntimeException('The scene image could not be handed to the video model.');
+        return $url;
     }
 
     private function stampAnimationState(Scene $scene, array $delta): void

@@ -187,4 +187,34 @@ class SlowAnimationTest extends TestCase
 
         $this->assertTrue(true, 'the broadcast failure did not escape');
     }
+
+    public function test_a_provider_that_cannot_fetch_our_image_gets_it_through_its_own_file_store(): void
+    {
+        $prod = "Replicate i2v failed: HTTPSConnectionPool(host='s3.us-east-005.backblazeb2.com', port=443): Max retries exceeded with url: /frame-cast/workspaces/75/assets/ai-images/aa.png (Caused by NewConnectionError(...))";
+        $this->assertTrue(AnimateSceneJob::inputFetchFailed($prod));
+        $this->assertFalse(AnimateSceneJob::inputFetchFailed('Replicate i2v failed: Prediction failed: ModelError: The input or output was flagged as sensitive. (E005)'), 'a refusal is not a fetch failure');
+        Event::fake([\App\Events\GenerationProgressed::class]);
+        [$scene, $ws] = $this->scene();
+        $urls = [];
+        $this->adapter(function (array $o) use (&$urls) { throw new PredictionStillRunning('p', 'm'); });
+        $fake = new class($urls) implements I2VAdapter {
+            public function __construct(private array &$urls) {}
+            public function animate(string $imageUrl, string $prompt, string $tier = 'quick', int $durationSeconds = 6, array $options = []): array {
+                $this->urls[] = $imageUrl;
+                if (count($this->urls) === 1) throw new RuntimeException("Replicate i2v failed: HTTPSConnectionPool(host='s3.us-east-005.backblazeb2.com', port=443): Max retries exceeded (Caused by NewConnectionError)");
+                ($options['on_prediction_created'])('p2'); throw new PredictionStillRunning('p2', 'm');
+            }
+            public function providerKey(): string { return 'fake'; }
+            public function pollExisting(string $predictionId): ?string { return null; }
+        };
+        $this->app->instance(I2VAdapter::class, $fake);
+        $storage = \Mockery::mock(\App\Services\Media\StorageService::class);
+        $storage->shouldReceive('extractPath')->andReturn(null);
+        $storage->shouldReceive('get')->andReturn('png-bytes');
+        $this->app->instance(\App\Services\Media\StorageService::class, $storage);
+        Http::fake(['api.replicate.com/v1/files' => Http::response(['urls' => ['get' => 'https://api.replicate.com/v1/files/abc']])]);
+        app()->call([new AnimateSceneJob($scene->id, $scene->project_id, 'seedance_lite', 5, 'push'), 'handle']);
+        $this->assertSame(['https://cdn.test/still.png', 'https://api.replicate.com/v1/files/abc'], $urls, 'the second start uses the provider\'s own copy');
+        $this->assertSame(1000 - 30, $this->credits($ws), 'still charged once');
+    }
 }

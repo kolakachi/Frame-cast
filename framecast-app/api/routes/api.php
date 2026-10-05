@@ -335,12 +335,16 @@ Route::prefix('v1')->group(function (): void {
             // ten seconds, so the label gets the tier's own default quality and
             // says what that default is.
             $videoTiers = [];
+            // How long each model has been taking lately, so a backed-up one is flagged before it is picked.
+            $speed = rescue(fn () => \App\Services\Generation\AnimationSpeed::recent(), [], false);
             foreach (\App\Services\CreditService::VIDEO_PRICING as $tier => $cfg) {
                 $quality = \App\Services\CreditService::videoQuality($tier, null);
                 $videoTiers[$tier] = [
                     'quality' => $quality,
                     'credits' => \App\Services\CreditService::animationCost($tier, $quality, 5),
                     'credits_10s_plus' => \App\Services\CreditService::animationCost($tier, $quality, 10),
+                    'recent_minutes' => $speed[$tier]['median_minutes'] ?? null,
+                    'slow' => (bool) ($speed[$tier]['slow'] ?? false),
                 ];
             }
 

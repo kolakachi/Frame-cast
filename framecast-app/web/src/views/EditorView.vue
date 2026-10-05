@@ -1997,6 +1997,8 @@ const CRUISE_IMAGE_MODEL_OPTIONS = computed(() => [
     label: `${m.value}${crSuffix(creditCosts.value.image_models?.[m.value]?.credits)} · ${m.note}`,
   })),
 ]);
+// A model that has been backed up lately (its recent clips took far longer than usual), from the costs endpoint.
+function tierSlow(key) { return !!creditCosts.value?.video_tiers?.[key]?.slow }
 const CRUISE_ANIMATION_TIER_OPTIONS = computed(() => [
   { value: "", label: "Let me pick per turn" },
   ...CRUISE_ANIMATION_TIERS.map((t) => {
@@ -10429,7 +10431,7 @@ onBeforeUnmount(() => {
                       {{ ANIMATE_TIER_META[key].name }}
                       <span v-if="key === 'balanced'" class="anim-tier-pill">RECOMMENDED</span>
                     </span>
-                    <span class="anim-model-opt-sub">{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].quality }} · {{ ANIMATE_TIER_META[key].render }}<template v-if="key !== 'spokesperson'"> · {{ ANIMATE_TIER_DURATIONS[key].join('/') }} s</template></span>
+                    <span class="anim-model-opt-sub">{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].quality }} · {{ ANIMATE_TIER_META[key].render }}<template v-if="key !== 'spokesperson'"> · {{ ANIMATE_TIER_DURATIONS[key].join('/') }} s</template><template v-if="tierSlow(key)"> · <span class="anim-slow-tag">slow now, ~{{ Math.round(creditCosts.video_tiers[key].recent_minutes) }} min</span></template></span>
                   </span>
                   <span class="anim-model-opt-right">
                     <span class="anim-model-opt-cost">{{ ANIMATE_TIER_COSTS_5S[key] }} cr</span>
@@ -10438,6 +10440,7 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
+            <p v-if="tierSlow(animateTier)" class="anim-slow" role="status">{{ ANIMATE_TIER_META[animateTier].name }} is slow right now: recent clips took about {{ Math.round(creditCosts.video_tiers[animateTier].recent_minutes) }} min. It will finish and appear here on its own, or pick a faster model.</p>
           </div>
 
           <!-- Spokesperson has no quality picker; it has an engine choice,
@@ -15627,4 +15630,6 @@ select.preset-select {
 .leave-save-card p { margin: 16px 0; }
 .leave-save-card .btn { margin-right: 8px; }
 
+.anim-slow{margin:6px 0 0;font-size:12px;color:var(--color-warning, #b45309)}
+.anim-slow-tag{color:var(--color-warning, #b45309)}
 </style>
