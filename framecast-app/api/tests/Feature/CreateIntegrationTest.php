@@ -3020,9 +3020,11 @@ class CreateIntegrationTest extends TestCase
         $tmp = sys_get_temp_dir().'/link-'.uniqid(); @mkdir($tmp);
         \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:d=1', '-pix_fmt', 'yuv420p', $tmp.'/demo.mp4']);
         \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', $tmp.'/product.png']);
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=641x481:r=25:d=1', '-c:v', 'mpeg4', $tmp.'/odd.mov']);
         \App\Services\Create\References\PageReferenceService::$resolve = fn () => ['93.184.216.34'];
         Http::fake(['https://cdn.example.com/demo/app-demo.mp4' => Http::response(file_get_contents($tmp.'/demo.mp4'), 200, ['Content-Type' => 'video/mp4']),
             'https://cdn.example.com/shots/product.png' => Http::response(file_get_contents($tmp.'/product.png'), 200, ['Content-Type' => 'image/png']),
+            'https://cdn.example.com/screen/odd.mov' => Http::response(file_get_contents($tmp.'/odd.mov'), 200, ['Content-Type' => 'video/quicktime']),
             'https://cdn.example.com/missing.mp4' => Http::response('', 404)]);
         try {
             $this->assertTrue(\App\Services\Create\References\MediaLinkService::isMediaFile('https://cdn.example.com/demo/app-demo.mp4'));
@@ -3031,6 +3033,9 @@ class CreateIntegrationTest extends TestCase
             $this->assertSame('video', $asset->asset_type);
             $this->assertSame('source', DB::table('create_attachments')->where('conversation_id', $c->id)->where('asset_id', $asset->id)->value('purpose'));
             $this->assertSame('link', data_get($asset->metadata_json, 'reference_source.platform'));
+            // A .mov of odd size is converted to an MP4 with even sides.
+            $mov = app(\App\Services\Create\References\MediaLinkService::class)->add($this->owner, $c->id, 'https://cdn.example.com/screen/odd.mov', (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'link-4');
+            $this->assertSame(['video', 'video/mp4'], [$mov->asset_type, $mov->mime_type]);
             // An image link is the user's own picture too.
             $this->assertTrue(\App\Services\Create\References\MediaLinkService::isMediaFile('https://cdn.example.com/shots/product.PNG'));
             $image = app(\App\Services\Create\References\MediaLinkService::class)->add($this->owner, $c->id, 'https://cdn.example.com/shots/product.png', (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'link-3');
@@ -3042,7 +3047,7 @@ class CreateIntegrationTest extends TestCase
             } catch (HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
         } finally {
             \App\Services\Create\References\PageReferenceService::$resolve = null;
-            @unlink($tmp.'/demo.mp4'); @unlink($tmp.'/product.png'); @rmdir($tmp);
+            @unlink($tmp.'/demo.mp4'); @unlink($tmp.'/product.png'); @unlink($tmp.'/odd.mov'); @rmdir($tmp);
         }
     }
 

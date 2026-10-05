@@ -80,7 +80,7 @@ class MediaLinkService
             $file = $dir.'/video.mp4';
             $mp4 = (new \finfo(FILEINFO_MIME_TYPE))->file($raw) === 'video/mp4';
             if ($mp4) rename($raw, $file);
-            else abort_unless(Process::timeout(300)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $raw, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', $file])->successful(), 422, 'That video could not be converted. Upload it as an MP4 instead.');
+            else abort_unless(Process::timeout(300)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $raw, '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', $file])->successful(), 422, 'That video could not be converted. Upload it as an MP4 instead.');
             $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, new UploadedFile($file, preg_replace('/\.\w+$/', '.mp4', $name), 'video/mp4', null, true), 'source', $key, $version);
             $asset->forceFill(['title' => Str::limit($name, 250, '…'), 'duration_seconds' => (int) round($seconds),
                 'metadata_json' => array_merge($asset->metadata_json ?? [], ['reference_source' => $source])])->save();
