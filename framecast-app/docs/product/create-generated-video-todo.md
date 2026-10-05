@@ -109,7 +109,7 @@ The fix:
 
 **0.2 Explicit input contracts for generated shots.** Today a first frame forces a first-frame engine and drops the references: Omni with a board and an avatar becomes Kling with no references. An unknown first-frame name falls back to the first sheet image, which can be the wrong subject. The fix:
 - items name inputs by asset id: `start_frame` (a board panel), `references` (cast and place ids), `end_frame`;
-- a table per engine of supported combinations: Omni and Veo take a start frame plus references; Seedance takes one or the other; Kling takes a start frame only;
+- a table per engine of supported combinations: Veo 3.1 takes a start frame plus references; Omni and Seedance take one or the other (Omni refused both on 2026-10-05); Kling takes a start frame only;
 - an unsupported combination re-routes with a stated reason, or is refused;
 - an unresolved reference is an error, never a fallback.
 

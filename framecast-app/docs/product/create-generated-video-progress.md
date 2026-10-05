@@ -16,18 +16,21 @@ Last updated: 2026-10-05 (evening).
 | Section | Done | Partly | Open |
 |---|---|---|---|
 | M. Coverage and intent | 5 | 0 | 0 |
-| 0. Handoff integrity | 5 | 0 | 0 |
+| 0. Handoff integrity | 4 | 1 | 0 |
 | A. Direction (cast and storyboard) | 8 | 0 | 0 |
 | B. Generation routes | 1 | 1 | 3 |
 | C. Reliability | 6 | 0 | 0 |
-| D. Delivery checks | 7 | 0 | 1 |
-| E. Composition with generated worlds | 2 | 1 | 0 |
+| D. Delivery checks | 6 | 1 | 1 |
+| E. Composition with generated worlds | 1 | 2 | 0 |
 | F. Speed | 1 | 1 | 1 |
 | G. Cost | 2 | 2 | 1 |
 | H. Protect what works | 1 | 1 | 0 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Code work is closed.** What is open needs paid runs or the owner:
+**Review, 2026-10-05 evening:** an independent audit reproduced seven gaps the suites missed (the take speaking an
+older script, false passes in the final and storyboard checks, the avatar identity gate, panel reuse, image recovery,
+code-only move checks) and overstated claims below. All seven are fixed and tested (`f3484f9b` to `a71abcb2`); the
+claims are corrected in place. What is open needs paid runs or the owner:
 - Your tests now: UGC from a reference, and from scratch with a split-screen UGC ad (proves E2, and E1 if a screen is planned).
 - With the cap and inputs: the bench baseline (G1, F1, G4, H1's B1 to B3), then the B2 bake-off and B3 drafts; B1's sequence route only if B2 earns it; D3 follows B1.
 - Deferred with reasons: F2's builder overlap (after the bench), G3's Sonnet builds (measured on the bench).
@@ -70,10 +73,12 @@ Last updated: 2026-10-05 (evening).
 All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 
 - [x] **0.1 Every approved word survives:** split long lines, no dropped or clamped segments, rates per language, the delivered take transcribed and compared (`2de661aa`).
-- [x] **0.2 Explicit inputs per engine** (`ShotRoute::INPUTS`); an unresolved reference is a plan problem, never a fallback (`8e9dd394`).
+  - Reopened by the review and fixed (`f3484f9b`): a take spoke its stored lines over the approved narration, so an edited line ("ninety" to "nine dollars") was spoken as first planned, and take lines were cut at 160 characters. The take now always speaks the approved narration as last edited (its lines only select which approved lines); planner lines over 160 characters are split at sentences.
+- [x] **0.2 Explicit inputs per engine** (`ShotRoute::INPUTS`); an unresolved reference is a plan problem, never a fallback (`8e9dd394`). Omni corrected to "start frame or references, not both" after a live refusal (`d150cebe`); the adapter is tested against the table per engine (`b3730e91`).
 - [x] **0.3 A cloned voice lip-syncs the take** to the approved cloned narration; the quote refuses a cloned take without it (`b76e7e3f`).
-- [x] **0.4 Every provider job recorded on submission;** restart once; cancel when abandoned; a sheet partial failure is a plain failure (`a2693652`). Per-panel records come with A3.
-- [x] **0.5 Real provider cost** recorded beside the charge (`provider_cost_usd`); the bench report shows it (`83857541`).
+- [~] **0.4 Provider jobs recorded.** Generated video: every job recorded on submission; restart once; cancel when abandoned; adopted by the next run (`a2693652`).
+  - Cast and panel images: not recorded on submission (a synchronous path with no prediction id). Since `a900301a` each finished image is kept under its request's fingerprint, a failure no longer discards the others, and the next attempt draws only what failed. Still missing: an image in flight when the worker dies is lost and drawn again.
+- [x] **0.5 Provider cost recorded** beside the charge (`provider_cost_usd`, `83857541`). It is an **estimate**: list price × output seconds as Replicate reports them, or × requested seconds when it does not; each item records which, or unknown, and the bench report says so (`a71abcb2`). Billed cost would need Replicate's invoices.
 
 ## A. Direction: the cast and storyboard
 
@@ -99,9 +104,11 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
   - Unchanged media carries across plans of a creation by content (`437b2302`).
   - A cast change redraws its panels.
   - A clip depends only on the images it uses, so redrawing one panel re-buys only that shot (`f628614a`).
+  - Reopened by the review and fixed (`4920317a`): each panel's fingerprint covered the whole cast, so changing one person redrew a candle-only panel, and a change to `screen` kept the old panel. Panels now depend on their own cast members and their screen.
 - [x] **A5. Board checked against its direction and the agreement** by a cheap vision pass (Haiku 4.5).
   - Contradictions are shown under each panel.
   - A check that could not run says so (`437b2302`).
+  - Reopened by the review and fixed (`91a07053`): an empty or partial answer counted as "ok"; now "ok" needs an answer for every panel, else unverified.
 - [x] **A6. Planner model by task in code:** Opus for new creative direction, the configured model for short follow-up edits (`ce165eb0`).
 - [x] **A7. Pacing as a creative choice** in the planner prompt (`ce165eb0`).
 
@@ -144,7 +151,8 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - A changed person or a take's words go to the user.
   - Listening retries a provider hiccup once (`c8cbe2a6`).
 
-- [x] **D1. The same people throughout:** the final frames are compared with the approved cast images. Drift blocks.
+- [x] **D1. The same people throughout:** the final frames are compared with the approved cast images. Drift blocks. Review fix (`91a07053`): a generated shot made from the user's photo with no cast sheet was not checked; it is now.
+- **Review fixes to the verdict** (`91a07053`): required items are matched by id or exact wording, never by position (an answer about the price no longer passes the candle; unanswered stays unverified); a blank-frame detector that fails, and final checks that throw, now show as unverified instead of vanishing.
 - [x] **D2. Required actions.**
   - "Must appear" items and each directed action are judged on frames sampled from the final cut. A missing required item blocks; a directed action is advisory.
   - Each generated shot also gets three frames across its own place in the cut (early, middle, late), labelled with the shot, so its action is judged on its own frames (`7edb8379`).
@@ -154,14 +162,14 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - lost approved words block (listening to the export, script coverage at least 90% with no missing passage);
   - mix, dead air and abrupt endings are flagged by the existing listening review;
   - loudness is levelled.
-- [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery.
-- [x] **D7. Build hygiene.**
+- [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery. Review fix (`fafb1258`): the code alone no longer counts; the move must actually run when the timeline is built (recorded by the kit, saved by the render). Equivalent motion from other code is not recognised; whether a transition reads on screen is not yet judged from the frames.
+- [~] **D7. Build hygiene.**
   - Unintended blank frames block (a fade of up to 0.6 s at the start or end is allowed); bought clips must appear; a take must play at least 90%.
-  - Best seconds: closed without a picker. Each shot is generated to its slot's length (`seconds` from its beat), so the whole clip is the shot and nothing is trimmed. Revisit if the bench shows trimmed shots.
+  - Best seconds: open (reopened by the review). Routing rounds lengths to what each engine makes (Veo 4, 6 or 8 s; Seedance at least 4 s; Omni at most 10 s), so a clip can be longer than its slot and the builder plays it from the start.
 
 ## E. Composition with generated worlds
 
-- [x] **E1. App UI on stable in-world screens** (`e2d79222`).
+- [~] **E1. App UI on stable in-world screens** (`e2d79222`): implemented, not yet proven on a real generated clip.
   - A shot planned with `screen: true` asks for a locked-off camera on a blank, glowing device screen.
   - The media op `screen` finds its corners (stable within 1.5%, with a confidence).
   - `WM.pinToClip` maps the real UI onto it in perspective.
