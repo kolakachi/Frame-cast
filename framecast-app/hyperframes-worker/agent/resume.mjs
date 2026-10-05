@@ -36,13 +36,16 @@ export async function findResume(run,live,current=[]){
  const runFailed=await access(dir+'/failure.json').then(()=>true,()=>false);
  if(!st||!(['failed','cancelled'].includes(st.status)||(runFailed&&st.status==='preview_ready')))return null;
  const ok=n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n);
- let files=st.lastGood?.files&&Object.keys(st.lastGood.files).some(ok)?Object.fromEntries(Object.entries(st.lastGood.files).filter(([n])=>ok(n))):null;const checked=!!files;
+ // A builder that finished left its final files in the project (with what it saved renamed there); otherwise its last checked draft.
+ const finished=runFailed&&st.status==='preview_ready';
+ let files=!finished&&st.lastGood?.files&&Object.keys(st.lastGood.files).some(ok)?Object.fromEntries(Object.entries(st.lastGood.files).filter(([n])=>ok(n))):null;const checked=finished||!!files;
  if(!files){files={};for(const n of (await readdir(dir+'/project').catch(()=>[])).filter(ok))files[n]=await readFile(dir+'/project/'+n,'utf8');}
  if(!files['index.html'])return null;
  files=renameInputs(files,current);
  const media=[];
  for(const name of new Set(Object.values(files).flatMap(t=>[...String(t).matchAll(MEDIA)].map(m=>m[1])))){
-  if(/^asset-\d+-/.test(name))continue;
+  // This run's own inputs are staged again; a file the earlier build saved (asset-… of its own) comes along.
+  if(/^asset-\d+-/.test(name)&&(current.includes(name)||current.some(n=>n.split('-')[1]===name.split('-')[1])))continue;
   const path=dir+'/project/'+name;
   if(!await access(path).then(()=>true,()=>false))return null;
   media.push({name,path});
