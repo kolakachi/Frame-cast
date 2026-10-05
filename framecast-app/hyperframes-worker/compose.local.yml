@@ -9,8 +9,9 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     cpus: 2
-    # Six clips extracted beside Chromium peaked at 1.93 GB of 2 (2026-10-05).
-    mem_limit: 3g
+    # Six clips decoded at once beside Chromium hold about 2.4 GB that cannot be freed (gauntlet, 2026-10-05);
+    # 4 GB keeps that under 60%. Docker on this machine has 11.9 GB and runs one render at a time.
+    mem_limit: 4g
     # Six parallel ffmpeg extractions on a machine reporting 10 cores need hundreds of threads beside Chromium;
     # at 256 new threads failed and the render hung or errored (2026-10-05).
     pids_limit: 2048

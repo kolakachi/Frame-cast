@@ -15,6 +15,8 @@ export async function renderRun({motionBlur=false,fps=24,project, outputRoot, si
   const partial = path.join(directory, 'pending.mp4');
   const artifact = path.join(directory, 'video.mp4');
   const state = {id, status:'running', artifact:null};
+  // Disk-backed and short: Chromium puts a socket in it, and socket paths over ~108 characters fail to start.
+  const scratch = path.join(path.dirname(outputRoot.replace(/\/+$/,'')).startsWith('/output') ? '/output' : outputRoot, 'rt', id.slice(0, 8)); await mkdir(scratch, {recursive:true});
   const save = async () => {
     await writeFile(path.join(directory, 'state.tmp'), JSON.stringify(state, null, 2));
     await rename(path.join(directory, 'state.tmp'), path.join(directory, 'state.json'));
@@ -30,7 +32,9 @@ export async function renderRun({motionBlur=false,fps=24,project, outputRoot, si
     const chunks = []; let length = 0;
     const result = await new Promise((resolve, reject) => {
       // Heavy pages (a 3D bundle, many canvases) can take longer than HyperFrames' 10 s diagnostic page load.
-      child = spawn(executable, args, {detached:true, stdio:['ignore','pipe','pipe'], env:{...process.env, PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS:'45000'}});
+      // Extracted frames go to a disk-backed folder beside the render, not the sandbox's in-memory /tmp: six clips'
+      // frames there pushed memory to 2.96 of 3 GB (gauntlet, 2026-10-05).
+      child = spawn(executable, args, {detached:true, stdio:['ignore','pipe','pipe'], env:{...process.env, PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS:'45000', TMPDIR:scratch, TMP:scratch, TEMP:scratch}});
       onStage(label);
       for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { length += chunk.length; if(length <= 2*1024*1024) chunks.push(chunk); });
       child.once('error', reject);
@@ -76,6 +80,7 @@ export async function renderRun({motionBlur=false,fps=24,project, outputRoot, si
     state.status = signal?.aborted ? 'cancelled' : 'failed'; state.artifact = null; state.error = error.message;
     await save();
   } finally {
+    await rm(scratch, {recursive:true, force:true});
     clearTimeout(timer); signal?.removeEventListener('abort', stop);
   }
   return {...state, directory};
