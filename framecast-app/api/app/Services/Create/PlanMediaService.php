@@ -50,7 +50,8 @@ class PlanMediaService
             if (ShotRoute::usesSheet($item)) {
                 $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
                 abort_unless(hash_equals(ShotRoute::inputsSha($item, $approved['files'], $approved['names']), (string) ($item['sheet_sha256'] ?? '')), 409, 'The approved images this clip uses changed. Review a fresh quote.');
-                $context['sheet_files'] = array_map(fn ($f, $k) => $f + ['name' => $approved['names'][$k] ?? null], $approved['files'], array_keys($approved['files']));
+                // Each approved image with its label (a cast subject, or "Panel n"); a file's own "name" is its stored file name.
+                $context['sheet_files'] = array_map(fn ($f, $k) => ['label' => $approved['names'][$k] ?? null] + $f, $approved['files'], array_keys($approved['files']));
             }
         }
         if ($item['kind'] === 'storyboard') {

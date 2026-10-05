@@ -462,11 +462,12 @@ class PlanMediaExecutor
                 foreach ($photos as $photo) $out[] = ['url' => $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo)), 'name' => 'the user (keep this exact person)'];
                 continue;
             }
-            $files = $ref === 'sheet' ? ($ctx['sheet_files'] ?? []) : [$this->sheetFile(preg_replace('/^sheet:/', '', $ref), $ctx)];
+            // "sheet" is the whole cast, never the storyboard panels approved beside it.
+            $files = $ref === 'sheet' ? array_values(array_filter($ctx['sheet_files'] ?? [], fn ($f) => ! str_starts_with((string) ($f['label'] ?? ''), 'Panel '))) : [$this->sheetFile(preg_replace('/^sheet:/', '', $ref), $ctx)];
             if (! $files) throw new RuntimeException('This shot uses the approved sheet, but no sheet is approved.');
             foreach ($files as $f) {
                 app(InputSnapshotService::class)->verify([$f]);
-                $out[] = ['url' => $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']), 'name' => $f['name'] ?? 'the sheet'];
+                $out[] = ['url' => $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']), 'name' => $f['label'] ?? 'the cast'];
             }
         }
         return $out;
@@ -475,7 +476,7 @@ class PlanMediaExecutor
     /** The approved sheet image of one subject, by its exact name; never another subject in its place. */
     private function sheetFile(string $name, array $ctx): array
     {
-        $f = collect($ctx['sheet_files'] ?? [])->first(fn ($f) => mb_strtolower((string) ($f['name'] ?? '')) === mb_strtolower(trim($name)));
+        $f = collect($ctx['sheet_files'] ?? [])->first(fn ($f) => mb_strtolower((string) ($f['label'] ?? '')) === mb_strtolower(trim($name)));
         if (! $f) throw new RuntimeException('This shot names "'.$name.'", which is not in the approved sheet. Plan again.');
         return $f;
     }

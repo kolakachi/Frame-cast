@@ -273,4 +273,13 @@ class ShotRouteTest extends TestCase
             'selections' => ['narration' => [], 'choices' => [], 'engine_overrides' => ['1' => 'omni']], 'decisions' => [], 'shot_context' => ['aspect_ratio' => '9:16']];
         $this->assertSame('omni', PlanService::selectedMedia($plan)[0]['engine'], 'the user\'s choice replaces the refused engine');
     }
+
+    public function test_an_approved_image_is_found_by_its_label_not_its_file_name(): void
+    {
+        $find = new \ReflectionMethod(\App\Services\Create\PlanMediaExecutor::class, 'sheetFile');
+        $ctx = ['sheet_files' => [['label' => 'creator', 'name' => 'asset-1657-abc.png'], ['label' => 'Panel 2', 'name' => 'asset-1661-def.png']]];
+        $this->assertSame('asset-1661-def.png', $find->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'Panel 2', $ctx)['name']);
+        $this->expectExceptionMessage('not in the approved sheet');
+        $find->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'asset-1661-def.png', $ctx);
+    }
 }
