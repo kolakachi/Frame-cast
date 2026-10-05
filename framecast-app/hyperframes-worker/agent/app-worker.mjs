@@ -163,7 +163,8 @@ async function execute(run){
     return {ok:true,task_id:r.task_id??null,requirement_ids:r.requirement_ids??[],kind,description,charged_credits:r.charged_credits,reused:!!r.reused,files,...(Array.isArray(r.cues)?{cues:r.cues.slice(0,6)}:{}),...(Array.isArray(r.poses)?{poses:r.poses}:{}),...(typeof r.line==='string'?{line:r.line}:{})};
    };
    phase='agent';
-   const resume=run.input.mode==='agent'&&!run.input.base_bundle&&!run.input.from_look?await findResume(run,root+'/artifacts/live'):null;
+   // A full build from an approved look continues too; a small edit of a finished version starts from that version.
+   const resume=run.input.mode==='agent'&&(!run.input.base_bundle||run.input.from_look)?await findResume(run,root+'/artifacts/live',manifest.map(f=>f.name)):null;
    if(resume)await trace({phase:'run',status:'started',summary:'Continuing from the build that stopped',detail:resume.from});
    agentArgs={directory:dir,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
     transcribe:async({input})=>{const assetId=assetIds.get(input);

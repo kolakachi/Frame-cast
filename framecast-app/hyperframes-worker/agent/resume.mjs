@@ -14,7 +14,14 @@ const MEDIA=/["'(=\s]([A-Za-z0-9_.-]+\.(?:wav|mp3|mp4|webm|mov|png|jpe?g|webp|sv
 // "Try again" after a build stopped continues from where it got to: the newest earlier run of the same approved plan,
 // settings and stage, if it ended without a version (failed or cancelled), hands over its last checked draft (else its
 // latest files) with every file the draft uses. A draft whose media is missing is not continued.
-export async function findResume(run,live){
+// current: this run's input file names (asset-<id>-<sha>.<ext>). An input re-prepared since the draft was written (a
+// video made renderable) has a new name; the draft's references to the old one are pointed at it.
+export function renameInputs(files,current=[]){
+ const byId=new Map(current.map(n=>[n.match(/^asset-(\d+)-/)?.[1],n]).filter(([id])=>id));
+ return Object.fromEntries(Object.entries(files).map(([k,t])=>[k,String(t).replace(/asset-(\d+)-[a-f0-9]{64}\.[a-z0-9]+/g,m=>{const id=m.match(/^asset-(\d+)-/)[1];return byId.get(id)??m;})]));
+}
+
+export async function findResume(run,live,current=[]){
  const conv=run.input.conversation_id,want=planHash(run.input);
  if(!run.input.plan?.plan_id||!conv)return null;
  const found=[];
@@ -32,6 +39,7 @@ export async function findResume(run,live){
  let files=st.lastGood?.files&&Object.keys(st.lastGood.files).some(ok)?Object.fromEntries(Object.entries(st.lastGood.files).filter(([n])=>ok(n))):null;const checked=!!files;
  if(!files){files={};for(const n of (await readdir(dir+'/project').catch(()=>[])).filter(ok))files[n]=await readFile(dir+'/project/'+n,'utf8');}
  if(!files['index.html'])return null;
+ files=renameInputs(files,current);
  const media=[];
  for(const name of new Set(Object.values(files).flatMap(t=>[...String(t).matchAll(MEDIA)].map(m=>m[1])))){
   if(/^asset-\d+-/.test(name))continue;

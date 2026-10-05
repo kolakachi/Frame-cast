@@ -38,3 +38,8 @@ test('a finished build whose run failed afterwards (saving its files) is continu
  const r=await findResume(next,live);
  assert.equal(r.from,id(1));assert.deepEqual(r.media.map(m=>m.name),['x1.png']);
 });
+test('a draft\'s references to an input that was re-prepared since are pointed at its new name',async()=>{
+ const {renameInputs}=await import('../resume.mjs');
+ const old='asset-1676-'+'a'.repeat(64)+'.mp4',now='asset-1676-'+'b'.repeat(64)+'.mp4',other='asset-12-'+'c'.repeat(64)+'.png';
+ assert.deepEqual(renameInputs({'index.html':`<video src="${old}"></video><img src="${other}">`},[now,other]),{'index.html':`<video src="${now}"></video><img src="${other}">`});
+});

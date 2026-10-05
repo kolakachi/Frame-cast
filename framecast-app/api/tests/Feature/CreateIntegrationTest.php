@@ -3060,4 +3060,21 @@ class CreateIntegrationTest extends TestCase
         $this->expectException(\App\Services\Create\OutputUnavailable::class);
         $fetch->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'https://replicate.delivery/x/b.mp3', $tmp);
     }
+
+    public function test_footage_with_sparse_keyframes_or_60_fps_is_made_renderable_once_and_stays_silent(): void
+    {
+        $dir = sys_get_temp_dir().'/intake-'.uniqid(); @mkdir($dir);
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=320x242:r=60:d=6', '-c:v', 'libx264', '-g', '300', '-pix_fmt', 'yuv420p', $dir.'/screen.mp4']);
+        $before = \App\Services\Create\VideoIntake::inspect($dir.'/screen.mp4');
+        $this->assertTrue($before['fix']);
+        $out = \App\Services\Create\VideoIntake::prepare($dir.'/screen.mp4');
+        $after = \App\Services\Create\VideoIntake::inspect($out);
+        $this->assertFalse($after['fix']);
+        $this->assertLessThanOrEqual(1.1, $after['gap']);
+        $this->assertEqualsWithDelta(30, $after['fps'], 0.5);
+        $audio = \Illuminate\Support\Facades\Process::run(['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', $out]);
+        $this->assertSame('', trim($audio->output()), 'a silent video stays silent');
+        $this->assertSame($out, \App\Services\Create\VideoIntake::prepare($out), 'a renderable file is left as it is');
+        foreach (glob($dir.'/*') as $f) @unlink($f); @rmdir($dir);
+    }
 }
