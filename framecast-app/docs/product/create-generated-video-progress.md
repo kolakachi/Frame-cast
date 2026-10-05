@@ -215,9 +215,9 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
     |---|---|---|---|
     | `04c08fb6` exact copy, 3D mascot | 245 s | motion graphics, 3D mascot | voiceover |
     | `5917444d` 30 s 16:9 tutorial | 216 s | motion graphics | voiceover, music, transcript, stock image |
-    | `e4266546` move-for-move promo | running | | |
+    | `e4266546` move-for-move promo, talking face kit | 391 s | motion graphics (labelled UGC + motion until fixed) | 4 voiceovers |
 
-    Nothing generated in either so far; the sfx sheet is no longer bought (the sound pass covers it). Both plans are over the 3-minute target (F1).
+    Passed: none of the three plans anything generated, and none buys the sfx sheet (the sound pass covers it). One fix: a face kit (a talking face drawn in code) made the plan's type read "UGC + motion graphics"; it now counts as animation (`ea82d549`). All three plans are over the 3-minute target (F1), the longest 6.5 minutes.
   - Missing: bench B1 to B3 rendered and scored.
 - [x] **H2. Carried over.**
   - Camera zoom, flood, text rising from a mask, and edge springs (`WM.edges`, the leading edge on a quicker spring), with the taste rule (`4daebb4b`).
