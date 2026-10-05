@@ -117,6 +117,13 @@ TXT);
         if (! $scenes) return [];
         usort($scenes, fn ($a, $b) => (float) ($a['start'] ?? 0) <=> (float) ($b['start'] ?? 0));
         $problems = [];
+        // Generated shots name inputs the plan really has: the user's avatar only when attached, sheet subjects by name.
+        $subjects = array_column(\App\Services\Create\ShotRoute::sheet(collect($plan['media'] ?? [])->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name');
+        $avatar = collect($context['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image');
+        foreach (collect($plan['media'] ?? [])->where('kind', 'generated_shot')->values() as $k => $m) {
+            [, , $bad] = \App\Services\Create\ShotRoute::inputs(\App\Services\Create\ShotRoute::plannerFields($m), ['subjects' => $subjects, 'has_avatar' => $avatar, 'has_sheet' => (bool) $subjects]);
+            if ($bad) $problems[] = 'Generated shot '.($k + 1).' names '.implode(', ', $bad).' as an input, which this plan does not have. Use "avatar" only when the user attached a photo, and sheet subjects by their exact names ('.($subjects ? implode(', ', $subjects) : 'there is no reference_sheet').').';
+        }
         $last = max(array_map(fn ($s) => (float) ($s['end'] ?? 0), $scenes));
         if ($duration > 0 && $last < $duration - 1) $problems[] = "The beats end at {$last} s but the video is {$duration} s long; plan what happens until the end.";
         for ($i = 1; $i < count($scenes); $i++) {

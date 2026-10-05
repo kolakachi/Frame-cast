@@ -14,7 +14,7 @@ use Tests\TestCase;
  */
 class ShotRouteTest extends TestCase
 {
-    private array $ctx = ['has_avatar' => true, 'has_sheet' => true, 'aspect_ratio' => '9:16', 'video_tier' => 'standard'];
+    private array $ctx = ['has_avatar' => true, 'has_sheet' => true, 'aspect_ratio' => '9:16', 'video_tier' => 'standard', 'subjects' => ['Shop owner', 'Shop']];
 
     public function test_a_shot_with_the_users_avatar_never_goes_to_seedance(): void
     {
@@ -24,7 +24,8 @@ class ShotRouteTest extends TestCase
             $this->assertSame(6 * ShotRoute::perSecond('omni'), $r['credits']);
         }
         $first = ShotRoute::shot(['engine' => 'seedance_lite', 'first_frame' => 'avatar', 'seconds' => 5], $this->ctx);
-        $this->assertSame('kling', $first['engine'], 'a first frame of the user goes to Kling, not Seedance');
+        $this->assertSame('omni', $first['engine'], 'a start frame of the user goes to Omni, not Seedance');
+        $this->assertSame('avatar', $first['first_frame']);
     }
 
     public function test_world_shots_use_references_on_the_planners_engine(): void
@@ -128,5 +129,31 @@ class ShotRouteTest extends TestCase
         $missing = \App\Services\Create\PlanMediaExecutor::missingWords(['start', 'with', 'the', 'nine', 'dollar', 'test', 'pass'], ['start', 'with', 'the', 'test', 'pass', 'today']);
         $this->assertSame(['nine', 'dollar'], $missing);
         $this->assertSame([], \App\Services\Create\PlanMediaExecutor::missingWords(['a', 'b'], ['um', 'a', 'b']));
+    }
+
+    public function test_each_engine_gets_only_the_inputs_it_takes_and_says_so(): void
+    {
+        $omni = ShotRoute::shot(['engine' => 'omni', 'first_frame' => 'Shop owner', 'refs' => ['avatar']], $this->ctx);
+        $this->assertSame(['omni', 'Shop owner', ['avatar']], [$omni['engine'], $omni['first_frame'], $omni['refs']], 'Omni keeps the start frame and the references together');
+
+        $seed = ShotRoute::shot(['engine' => 'seedance25', 'first_frame' => 'Shop owner', 'refs' => ['sheet']], ['has_avatar' => false] + $this->ctx);
+        $this->assertSame(['seedance25', 'Shop owner', []], [$seed['engine'], $seed['first_frame'], $seed['refs']]);
+        $this->assertStringContainsString('not both', implode(' ', $seed['route_notes']), 'dropping the references is stated');
+
+        $kling = ShotRoute::shot(['engine' => 'kling', 'refs' => ['Shop']], ['has_avatar' => false] + $this->ctx);
+        $this->assertSame('seedance25', $kling['engine'], 'a first-frame model with no start frame moves to one that takes references');
+        $this->assertNotEmpty($kling['route_notes']);
+    }
+
+    public function test_an_input_the_plan_does_not_have_is_a_problem_not_a_fallback(): void
+    {
+        $r = ShotRoute::shot(['engine' => 'omni', 'first_frame' => 'Courier', 'refs' => ['sheet:Shop', 'Dragon']], $this->ctx);
+        $this->assertNull($r['first_frame'] ?? null, 'no other image takes the unknown one\'s place');
+        $this->assertSame(['sheet:Shop'], $r['refs']);
+        $this->assertStringContainsString('Courier', $r['problem']);
+        $this->assertStringContainsString('Dragon', $r['problem']);
+        $this->assertArrayNotHasKey('problem', ShotRoute::shot(['engine' => 'omni', 'refs' => ['avatar', 'Shop owner']], $this->ctx));
+        $this->assertStringContainsString('avatar', ShotRoute::shot(['refs' => ['avatar']], ['has_avatar' => false] + $this->ctx)['problem'], 'no photo attached');
+        $this->assertTrue(ShotRoute::usesSheet(['kind' => 'generated_shot', 'refs' => ['Shop owner']]));
     }
 }

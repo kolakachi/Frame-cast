@@ -597,7 +597,8 @@ class PlanService
         // Generated shots and takes: engine, length, slot and price from what the models can do and the user's tier.
         $shotCtx = ['video_tier' => $plan['selections']['video_tier'] ?? 'standard', 'has_avatar' => (bool) data_get($plan, 'shot_context.has_avatar', false),
             'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'), 'language' => data_get($plan, 'shot_context.language', 'en'),
-            'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? []];
+            'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? [],
+            'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name')];
         foreach ($items as &$shotItem) {
             if (! in_array($shotItem['kind'], ShotRoute::KINDS, true)) continue;
             $shotItem = array_merge($shotItem, match ($shotItem['kind']) {

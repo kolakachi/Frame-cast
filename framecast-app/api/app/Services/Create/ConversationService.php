@@ -200,6 +200,8 @@ class ConversationService
                     if (($plan['voice'] ?? null) === 'clone') abort_unless(collect($planMedia)->contains('kind', 'cloned_voiceover'),
                         422, 'The cloned presenter needs a cloned voiceover in the plan.');
                 }
+                // A generated shot naming an input the plan does not have is corrected in the plan, never bought on a guess.
+                if ($problem = collect($planMedia)->pluck('problem')->filter()->first()) abort(422, $problem.' Plan again.');
                 if (collect($planMedia)->contains('kind', 'ugc_take')) {
                     abort_unless(collect($planMedia)->where('kind', 'ugc_take')->every(fn ($m) => collect($m['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->isNotEmpty()),
                         422, 'The UGC take needs a script to speak. Add narration and plan again.');

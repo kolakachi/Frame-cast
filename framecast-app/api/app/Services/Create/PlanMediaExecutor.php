@@ -322,20 +322,39 @@ class PlanMediaExecutor
             'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT];
     }
 
-    /** Reference images for a shot, as Replicate file URLs with the name the prompt calls each by. */
+    /**
+     * Reference images for a shot, as Replicate file URLs with the name the prompt calls each by: "avatar" (the user's
+     * photo), "sheet" (every approved subject) or one subject by name. A name with no approved image is an error.
+     */
     private function shotReferences(array $shot, array $ctx): array
     {
         $out = [];
-        if (in_array('avatar', (array) ($shot['refs'] ?? []), true)) foreach (array_slice($ctx['source_images'] ?? [], 0, 2) as $photo)
-            $out[] = ['url' => $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo)), 'name' => 'the user (keep this exact person)'];
-        if (in_array('sheet', (array) ($shot['refs'] ?? []), true)) foreach ($ctx['sheet_files'] ?? [] as $f) {
-            app(InputSnapshotService::class)->verify([$f]);
-            $out[] = ['url' => $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']), 'name' => $f['name'] ?? 'the sheet'];
+        foreach ((array) ($shot['refs'] ?? []) as $ref) {
+            if ($ref === 'avatar') {
+                $photos = array_slice($ctx['source_images'] ?? [], 0, 2);
+                if (! $photos) throw new RuntimeException('This shot uses your photo, but none is attached.');
+                foreach ($photos as $photo) $out[] = ['url' => $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo)), 'name' => 'the user (keep this exact person)'];
+                continue;
+            }
+            $files = $ref === 'sheet' ? ($ctx['sheet_files'] ?? []) : [$this->sheetFile(preg_replace('/^sheet:/', '', $ref), $ctx)];
+            if (! $files) throw new RuntimeException('This shot uses the approved sheet, but no sheet is approved.');
+            foreach ($files as $f) {
+                app(InputSnapshotService::class)->verify([$f]);
+                $out[] = ['url' => $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']), 'name' => $f['name'] ?? 'the sheet'];
+            }
         }
         return $out;
     }
 
-    /** The still a first-frame shot starts from: the user's photo or a named sheet subject. */
+    /** The approved sheet image of one subject, by its exact name; never another subject in its place. */
+    private function sheetFile(string $name, array $ctx): array
+    {
+        $f = collect($ctx['sheet_files'] ?? [])->first(fn ($f) => mb_strtolower((string) ($f['name'] ?? '')) === mb_strtolower(trim($name)));
+        if (! $f) throw new RuntimeException('This shot names "'.$name.'", which is not in the approved sheet. Plan again.');
+        return $f;
+    }
+
+    /** The still a shot starts from: the user's photo or one approved sheet subject, by name. */
     private function firstFrame(array $shot, array $ctx): string
     {
         if (($shot['first_frame'] ?? '') === 'avatar') {
@@ -343,8 +362,7 @@ class PlanMediaExecutor
             if (! $photo) throw new RuntimeException('This shot starts from your photo, but none is attached.');
             return $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
         }
-        $f = collect($ctx['sheet_files'] ?? [])->first(fn ($f) => mb_strtolower((string) ($f['name'] ?? '')) === mb_strtolower((string) $shot['first_frame'])) ?? ($ctx['sheet_files'][0] ?? null);
-        if (! $f) throw new RuntimeException('This shot starts from a sheet still that is not approved.');
+        $f = $this->sheetFile((string) ($shot['first_frame'] ?? ''), $ctx);
         app(InputSnapshotService::class)->verify([$f]);
         return $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']);
     }
@@ -400,8 +418,11 @@ class PlanMediaExecutor
             return ['predictions' => [$id], 'engine' => $engine];
         }
         if (! isset(ShotRoute::REF[$engine])) throw new RuntimeException('This shot has no video model. Plan again.');
+        if (! empty($shot['problem'])) throw new RuntimeException($shot['problem'].' Plan again.');
+        // Omni and Veo take a start frame and references together; Seedance one or the other (ShotRoute::INPUTS).
         $refs = $this->shotReferences($shot, $ctx);
-        return ['predictions' => [$veo->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], null, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'))], 'engine' => $engine];
+        $start = ! empty($shot['first_frame']) ? $this->firstFrame($shot, $ctx) : null;
+        return ['predictions' => [$veo->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], $start, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'))], 'engine' => $engine];
     }
 
     /**

@@ -38,7 +38,7 @@ class ShotRoute
     public const KINDS = ['reference_sheet', 'generated_shot', 'ugc_take'];
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem'];
 
     /** What the planner may say about a generated item; everything else is derived. */
     public static function plannerFields(array $m): array
@@ -47,8 +47,8 @@ class ShotRoute
         return array_filter([
             'engine' => in_array($m['engine'] ?? null, self::ENGINES, true) ? $m['engine'] : null,
             'seconds' => is_numeric($m['seconds'] ?? null) ? (float) $m['seconds'] : null,
-            'refs' => array_values(array_intersect((array) ($m['refs'] ?? []), ['sheet', 'avatar'])) ?: null,
-            'first_frame' => $s($m['first_frame'] ?? '', 40) ?: null,
+            'refs' => array_values(array_filter(array_map(fn ($r) => $s($r, 46), (array) ($m['refs'] ?? [])))) ?: null,
+            'first_frame' => $s($m['first_frame'] ?? $m['start_frame'] ?? '', 40) ?: null,
             'audio' => in_array($m['audio'] ?? null, ['ambient', 'speech', 'none'], true) ? $m['audio'] : null,
             'line' => $s($m['line'] ?? '', 200) ?: null,
             'aspect' => preg_match('/^\d{1,2}:\d{1,2}$/', (string) ($m['aspect'] ?? '')) ? $m['aspect'] : null,
@@ -64,7 +64,7 @@ class ShotRoute
     public static function usesSheet(array $m): bool
     {
         return match ($m['kind'] ?? '') {
-            'generated_shot' => in_array('sheet', (array) ($m['refs'] ?? []), true) || (($m['first_frame'] ?? null) && $m['first_frame'] !== 'avatar'),
+            'generated_shot' => collect((array) ($m['refs'] ?? []))->contains(fn ($r) => $r !== 'avatar') || (($m['first_frame'] ?? null) && $m['first_frame'] !== 'avatar'),
             'ugc_take' => ($m['presenter'] ?? '') === 'sheet',
             default => false,
         };
@@ -113,38 +113,66 @@ class ShotRoute
      * Route one generated shot. $item: description, engine, seconds, refs (['sheet', 'avatar']), first_frame
      * ('avatar' or a sheet subject's name), audio (ambient|speech|none), line, aspect, why.
      */
+    /** What each engine takes: a start frame, reference images, or both at once. First-frame engines need a start frame. */
+    public const INPUTS = [
+        'seedance25' => ['start' => true, 'refs' => true, 'both' => false],
+        'omni' => ['start' => true, 'refs' => true, 'both' => true],
+        'veo_hq' => ['start' => true, 'refs' => true, 'both' => true],
+    ];
+
+    /**
+     * Resolve what a shot names (refs: "avatar", "sheet" for every subject, or one subject's name; first_frame:
+     * "avatar" or a subject's name) against what the plan actually has. Anything unresolved is a problem to fix in
+     * the plan, never a silent fallback to another image.
+     */
+    public static function inputs(array $item, array $ctx): array
+    {
+        $subjects = array_map('mb_strtolower', (array) ($ctx['subjects'] ?? []));
+        $known = fn (string $n) => $n === 'avatar' ? ! empty($ctx['has_avatar'])
+            : ($n === 'sheet' ? ! empty($ctx['has_sheet']) : in_array(mb_strtolower(preg_replace('/^sheet:/', '', $n)), $subjects, true));
+        $refs = []; $unresolved = [];
+        foreach (array_unique(array_map(fn ($r) => trim((string) $r), (array) ($item['refs'] ?? []))) as $r) {
+            if ($r === '') continue;
+            if ($known($r)) $refs[] = $r; else $unresolved[] = $r;
+        }
+        $first = trim((string) ($item['first_frame'] ?? ''));
+        if ($first !== '' && ! $known($first)) { $unresolved[] = $first; $first = ''; }
+        return [$refs, $first ?: null, $unresolved];
+    }
+
+    /**
+     * Route one generated shot. $item: description, engine, seconds, refs, first_frame, audio (ambient|speech|none),
+     * line, aspect, why. Inputs follow each engine's contract (INPUTS); a change is stated in route_notes.
+     */
     public static function shot(array $item, array $ctx): array
     {
         $premium = ($ctx['video_tier'] ?? 'standard') === 'premium';
-        $hasAvatar = (bool) ($ctx['has_avatar'] ?? false);
-        $hasSheet = (bool) ($ctx['has_sheet'] ?? false);
-        $refs = array_values(array_intersect(array_unique((array) ($item['refs'] ?? [])), [...($hasSheet ? ['sheet'] : []), ...($hasAvatar ? ['avatar'] : [])]));
-        $first = is_string($item['first_frame'] ?? null) && trim($item['first_frame']) !== '' ? trim($item['first_frame']) : null;
-        if ($first === 'avatar' && ! $hasAvatar) $first = null;
-        if ($first && $first !== 'avatar' && ! $hasSheet) $first = null;
+        [$refs, $first, $unresolved] = self::inputs($item, $ctx);
         $engine = in_array($item['engine'] ?? null, self::ENGINES, true) ? $item['engine'] : null;
         $avatar = in_array('avatar', $refs, true) || $first === 'avatar';
         $seconds = max(2.0, min(30.0, (float) ($item['seconds'] ?? 5)));
         $notes = [];
+        $isSeedance = fn ($e) => $e === 'seedance25' || ! empty(self::FIRST_FRAME[$e]['seedance']);
 
-        if ($first) {
-            // Exact framing from a still: a first-frame engine. Never Seedance with the user's face.
-            if (! isset(self::FIRST_FRAME[$engine])) $engine = $avatar ? 'kling' : 'seedance_lite';
-            if ($avatar && ! empty(self::FIRST_FRAME[$engine]['seedance'])) { $engine = 'kling'; $notes[] = 'Your avatar is in this shot, so it uses Kling instead of Seedance.'; }
-            if ($premium) $engine = match ($engine) { 'seedance_lite', 'wan', 'hailuo' => $avatar ? 'kling' : 'seedance_pro', default => $engine };
+        if ($engine === null) $engine = $avatar ? 'omni' : 'seedance25';
+        // Never Seedance with the user's face: Omni takes the same inputs and keeps the person.
+        if ($avatar && $isSeedance($engine)) { $engine = 'omni'; $notes[] = 'Your avatar is in this shot, so it uses Omni instead of Seedance.'; }
+        if (isset(self::FIRST_FRAME[$engine])) {
+            // First-frame engines take a start frame and nothing else.
+            if (! $first) { $engine = $avatar ? 'omni' : 'seedance25'; $notes[] = self::label($engine).' is used: the chosen model needs a start frame and this shot has none.'; }
+            elseif ($refs) { $notes[] = self::label($engine).' takes only the start frame; the references are not sent.'; $refs = []; }
+        }
+        if (isset(self::INPUTS[$engine]) && $first && $refs && ! self::INPUTS[$engine]['both']) {
+            // Seedance takes a start frame or references, not both: the approved frame already holds the cast.
+            $notes[] = self::label($engine).' takes a start frame or references, not both: the start frame carries the cast.';
             $refs = [];
-        } else {
-            // Reference images (or none, text alone): an engine that takes references.
-            if (! isset(self::REF[$engine])) $engine = $avatar ? 'omni' : 'seedance25';
-            if ($avatar && $engine === 'seedance25') { $engine = 'omni'; $notes[] = 'Your avatar is in this shot, so it uses Omni instead of Seedance.'; }
+        }
+        if (isset(self::REF[$engine])) {
             // Veo 3.1 takes references only for an 8 s landscape clip; a portrait slot would lose most of it to the crop.
             $veoFits = fn () => $seconds <= 8.01 && ($refs === [] || self::landscape($item['aspect'] ?? $ctx['aspect_ratio'] ?? '9:16'));
             if ($premium && $engine !== 'veo_hq' && $veoFits()) $engine = 'veo_hq';
-            if ($engine === 'veo_hq' && ! $veoFits()) { $engine = $avatar ? 'omni' : 'seedance25'; }
-            if ($engine === 'omni' && $seconds > 10.01) $engine = $avatar ? 'omni' : 'seedance25';
-        }
-
-        if (isset(self::REF[$engine])) {
+            if ($engine === 'veo_hq' && ! $veoFits()) $engine = $avatar ? 'omni' : 'seedance25';
+            if ($engine === 'omni' && $seconds > 10.01 && ! $avatar) $engine = 'seedance25';
             $spec = self::REF[$engine];
             $seconds = isset($spec['steps']) ? self::step($seconds, $spec['steps']) : (int) round(max($spec['min'], min($spec['max'], $seconds)));
             $aspect = self::aspect($item['aspect'] ?? null, $spec['aspects'], $ctx['aspect_ratio'] ?? '9:16');
@@ -152,6 +180,7 @@ class ShotRoute
             $refs = array_slice($refs, 0, $spec['refs']);
             $credits = $seconds * self::perSecond($engine);
         } else {
+            if ($premium) $engine = match ($engine) { 'seedance_lite', 'wan', 'hailuo' => $avatar ? 'kling' : 'seedance_pro', default => $engine };
             $spec = self::FIRST_FRAME[$engine];
             $seconds = self::step($seconds, $spec['steps']);
             $aspect = self::aspect($item['aspect'] ?? null, ['16:9', '9:16', '1:1'], $ctx['aspect_ratio'] ?? '9:16');
@@ -162,9 +191,11 @@ class ShotRoute
         if ($audio === 'speech' && $line === '') $audio = 'ambient';
 
         return array_filter([
-            'engine' => $engine, 'engine_label' => self::label($engine), 'seconds' => $seconds, 'refs' => $refs, 'first_frame' => $first,
+            'engine' => $engine, 'engine_label' => self::label($engine), 'seconds' => $seconds, 'first_frame' => $first,
             'audio' => $audio, 'line' => $line ?: null, 'aspect' => $aspect, 'credits' => (int) $credits,
             'route_notes' => $notes ?: null,
+            // An input the plan names but does not have: the plan is corrected before anything is bought.
+            'problem' => $unresolved ? 'This shot names '.implode(', ', $unresolved).', which the plan does not have (use "avatar", "sheet" or a sheet subject\'s name).' : null,
         ], fn ($v) => $v !== null) + ['refs' => $refs];
     }
 
