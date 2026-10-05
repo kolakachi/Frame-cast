@@ -343,13 +343,13 @@ class PlanMediaExecutor
         $panels = $ctx['shot']['panels'] ?? []; $cast = $ctx['cast'] ?? [];
         if (! $panels) throw new RuntimeException('The storyboard has no panels. Plan again.');
         if (! $cast) throw new RuntimeException('The cast is not ready, so the storyboard cannot be drawn.');
-        $sha = Storyboard::castSha($cast); $style = (string) ($ctx['character_style'] ?? ''); $aspect = (string) ($ctx['aspect_ratio'] ?? '9:16');
+        $style = (string) ($ctx['character_style'] ?? ''); $aspect = (string) ($ctx['aspect_ratio'] ?? '9:16');
         $prior = $ctx['prior_panels'] ?? [];
         $byName = collect($cast)->keyBy(fn ($f) => mb_strtolower((string) ($f['subject'] ?? '')));
         $upload = fn (array $f) => $this->replicateUpload((string) $this->assetBytes((int) $f['asset_id']), 'image/png');
         $files = []; $hashes = []; $drawn = 0; $jobs = [];
         foreach ($panels as $k => $panel) {
-            $h = Storyboard::panelHash($panel, $sha, $style, $panel['aspect'] ?? $aspect);
+            $h = Storyboard::panelHash($panel, $cast, $style, $panel['aspect'] ?? $aspect);
             $path = $dir.'/panel-'.$k.'.png';
             if (isset($prior[$h]) && ($bytes = $this->assetBytes((int) ($prior[$h]['asset_id'] ?? 0)))) file_put_contents($path, $bytes);
             else {

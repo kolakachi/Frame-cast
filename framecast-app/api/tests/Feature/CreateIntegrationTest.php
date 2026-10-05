@@ -633,9 +633,9 @@ class CreateIntegrationTest extends TestCase
             public function produce(string $kind, string $description, array $ctx, string $dir): array {
                 $png = fn ($tag) => (function () use ($dir, $tag) { $p = $dir.'/'.$tag.'.png'; \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x'.substr(md5($tag), 0, 6).':s=8x8', '-frames:v', '1', $p]); return $p; })();
                 if ($kind === 'reference_sheet') return ['path' => $png('maya'), 'mime' => 'image/png', 'title' => 'Sheet', 'provider_id' => 'sheet-1', 'extra' => [['path' => $png('shop'), 'title' => 'Shop', 'pose' => 'Shop']], 'poses' => ['Maya', 'Shop'], 'character_contract' => \App\Services\Create\CharacterApproval::CONTRACT];
-                $sha = \App\Services\Create\Storyboard::castSha($ctx['cast']); $prior = $ctx['prior_panels'] ?? []; $files = []; $hashes = []; $new = 0;
+                $prior = $ctx['prior_panels'] ?? []; $files = []; $hashes = []; $new = 0;
                 foreach ($ctx['shot']['panels'] as $k => $panel) {
-                    $h = \App\Services\Create\Storyboard::panelHash($panel, $sha, (string) $ctx['character_style'], $panel['aspect'] ?? '9:16');
+                    $h = \App\Services\Create\Storyboard::panelHash($panel, $ctx['cast'], (string) $ctx['character_style'], $panel['aspect'] ?? '9:16');
                     if (! isset($prior[$h])) { $new++; $this->drawn[] = $panel['label']; }
                     $files[] = ['path' => $png('panel-'.$k.'-'.substr($h, 0, 8)), 'title' => $panel['label'], 'pose' => $panel['label']]; $hashes[] = $h;
                 }

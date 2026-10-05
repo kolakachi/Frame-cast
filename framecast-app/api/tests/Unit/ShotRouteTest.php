@@ -244,14 +244,20 @@ class ShotRouteTest extends TestCase
         $this->assertArrayNotHasKey('problem', $media[2]);
     }
 
-    public function test_a_panel_is_redrawn_only_when_its_direction_its_note_or_the_cast_changes(): void
+    public function test_a_panel_is_redrawn_only_when_its_direction_its_note_its_screen_or_its_own_cast_changes(): void
     {
         $panel = ['description' => 'Maya lights a candle', 'action' => 'she lights the wick', 'refs' => ['Maya']];
-        $cast = \App\Services\Create\Storyboard::castSha([['sha256' => 'a'], ['sha256' => 'b']]);
-        $h = \App\Services\Create\Storyboard::panelHash($panel, $cast, 'anime', '9:16');
-        $this->assertSame($h, \App\Services\Create\Storyboard::panelHash($panel + ['label' => 'Panel 1', 'beat' => 'hook'], $cast, 'anime', '9:16'), 'labels do not change what is drawn');
-        $this->assertNotSame($h, \App\Services\Create\Storyboard::panelHash($panel + ['note' => 'smile'], $cast, 'anime', '9:16'));
-        $this->assertNotSame($h, \App\Services\Create\Storyboard::panelHash($panel, \App\Services\Create\Storyboard::castSha([['sha256' => 'c'], ['sha256' => 'b']]), 'anime', '9:16'), 'a new cast redraws every panel');
+        $cast = [['sha256' => 'a', 'subject' => 'Maya'], ['sha256' => 'b', 'subject' => 'Shop owner']];
+        $hash = fn ($p, $c) => \App\Services\Create\Storyboard::panelHash($p, $c, 'anime', '9:16');
+        $h = $hash($panel, $cast);
+        $this->assertSame($h, $hash($panel + ['label' => 'Panel 1', 'beat' => 'hook'], $cast), 'labels do not change what is drawn');
+        $this->assertNotSame($h, $hash($panel + ['note' => 'smile'], $cast));
+        $this->assertNotSame($h, $hash($panel + ['screen' => true], $cast), 'review P2: a panel that now needs a blank screen is redrawn');
+        $this->assertNotSame($h, $hash($panel, [['sha256' => 'c', 'subject' => 'Maya'], ['sha256' => 'b', 'subject' => 'Shop owner']]), 'its own cast member changed');
+        $this->assertSame($h, $hash($panel, [['sha256' => 'a', 'subject' => 'Maya'], ['sha256' => 'z', 'subject' => 'Shop owner']]), 'review P2: someone it does not show changed: kept');
+        $candle = ['description' => 'A candle on a shelf', 'refs' => ['Candle']];
+        $this->assertSame($hash($candle, [['sha256' => 'k', 'subject' => 'Candle'], ['sha256' => 'a', 'subject' => 'Maya']]), $hash($candle, [['sha256' => 'k', 'subject' => 'Candle'], ['sha256' => 'q', 'subject' => 'Maya']]));
+        $this->assertNotSame($hash(['refs' => ['sheet']] + $panel, $cast), $hash(['refs' => ['sheet']] + $panel, [['sha256' => 'a', 'subject' => 'Maya'], ['sha256' => 'z', 'subject' => 'Shop owner']]), 'a whole-sheet panel follows the whole cast');
     }
 
     public function test_a_clip_depends_only_on_the_approved_images_it_uses(): void
