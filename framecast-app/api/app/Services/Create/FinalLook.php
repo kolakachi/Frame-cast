@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\{DB, Http, Log};
  */
 class FinalLook
 {
-    /** @param array<int, array{time: float, jpeg: string}> $frames */
+    /** @param array<int, array{time: float, jpeg: string, label?: string}> $frames */
     public function check(string $runId, string $lease, array $frames): array
     {
         $run = app(RunService::class)->currentRun($runId, $lease);
@@ -42,9 +42,9 @@ class FinalLook
  "lettering": {"status": "clean"|"garbled", "times": [<seconds>], "note": "<garbled letters or fake logos baked into the picture; clean overlay captions and real product labels are fine>"},
  "actions": [{"shot": <n>, "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words; say if the person looks into the camera when they should not>"}]}
 Required items (each must be visible; spoken-only items are "unclear" here, they are checked by listening): '.json_encode($required, JSON_UNESCAPED_UNICODE).'
-Directed shots (each action should be visible, with its gaze): '.json_encode($shots, JSON_UNESCAPED_UNICODE)]];
+Directed shots (each action should be visible, with its gaze; judge each shot on the frames marked inside it, which follow its action from early to late): '.json_encode($shots, JSON_UNESCAPED_UNICODE)]];
         foreach ($frames as $f) {
-            $content[] = ['type' => 'text', 'text' => 'Frame at '.round((float) $f['time'], 1).' s'];
+            $content[] = ['type' => 'text', 'text' => 'Frame at '.round((float) $f['time'], 1).' s'.(($f['label'] ?? '') !== '' ? ' (inside '.$f['label'].')' : '')];
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($f['jpeg'])]];
         }
         foreach ($cast as $c) {

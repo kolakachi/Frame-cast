@@ -147,10 +147,11 @@ class WorkerController extends Controller
     public function look(Request $r, string $id)
     {
         $this->authorizeWorker($r);
-        $input = $r->validate(['lease_token' => 'required|string|size:64', 'times' => 'required|array|max:24', 'times.*' => 'numeric|min:0|max:600',
-            'frames' => 'required|array|max:24', 'frames.*' => 'file|mimetypes:image/jpeg|max:600']);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'times' => 'required|array|max:40', 'times.*' => 'numeric|min:0|max:600',
+            'labels' => 'sometimes|array|max:40', 'labels.*' => 'nullable|string|max:40',
+            'frames' => 'required|array|max:40', 'frames.*' => 'file|mimetypes:image/jpeg|max:600']);
         abort_unless(count($input['times']) === count($input['frames']), 422, 'Each frame needs its time.');
-        $frames = array_map(fn ($f, $k) => ['time' => (float) $input['times'][$k], 'jpeg' => (string) file_get_contents($f->getRealPath())], $r->file('frames'), array_keys($r->file('frames')));
+        $frames = array_map(fn ($f, $k) => ['time' => (float) $input['times'][$k], 'label' => (string) ($input['labels'][$k] ?? ''), 'jpeg' => (string) file_get_contents($f->getRealPath())], $r->file('frames'), array_keys($r->file('frames')));
         return response()->json(['data' => app(\App\Services\Create\FinalLook::class)->check($id, $input['lease_token'], $frames)]);
     }
 

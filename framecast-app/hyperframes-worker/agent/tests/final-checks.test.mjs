@@ -49,3 +49,12 @@ test('only what the build can fix goes to a repair round; a changed person or a 
  assert.deepEqual(repairable(v,{takeUsed:true}).map(c=>c.id).sort(),['blank','required'],'a take speaks its own words: not a build fix');
  assert.match(repairBrief(repairable(v)),/at 6 s, No blank frames/);
 });
+
+test('each generated shot gets three frames inside its own window, numbered as the look check numbers shots',async()=>{
+ const {shotWindows,shotFrames}=await import('../final-checks.mjs');
+ const planMedia=[{kind:'voiceover',status:'succeeded',file:'vo.wav'},{kind:'generated_shot',status:'failed'},{kind:'generated_shot',status:'succeeded',file:'shot-b.mp4'}];
+ const html='<video id="x" class="clip" src="shot-b.mp4" data-start="4" data-duration="5" muted></video>';
+ const w=shotWindows(html,planMedia);
+ assert.deepEqual(w,[{shot:2,start:4,end:9}]);
+ assert.deepEqual(shotFrames(w,15),[{time:5,label:'shot 2'},{time:6.5,label:'shot 2'},{time:8.25,label:'shot 2'}]);
+});
