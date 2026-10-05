@@ -7,7 +7,7 @@ use App\Services\Generation\TTS\TTSAdapter;
 use App\Services\Generation\Video\I2VAdapter;
 use App\Services\Generation\Visual\VisualProviderAdapter;
 use App\Services\Media\StorageService;
-use Illuminate\Support\Facades\{Http, Process};
+use Illuminate\Support\Facades\{Http, Process, Storage};
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -302,7 +302,7 @@ class PlanMediaExecutor
         if (! $subjects) throw new RuntimeException('The sheet lists no subjects. Plan again.');
         $style = array_map(fn ($image) => $this->replicateUpload((string) file_get_contents($image), (new \finfo(FILEINFO_MIME_TYPE))->file($image)), array_slice($ctx['character_style_images'] ?? [], 0, 3));
         $avatar = collect($ctx['source_images'] ?? [])->first();
-        $files = []; $jobs = [];
+        $files = []; $jobs = []; $keys = [];
         foreach ($subjects as $k => $subject) {
             $refs = $style; $roles = 'Any supplied images are STYLE REFERENCES ONLY: match their rendering, palette, line and lighting, not their characters, text or branding. ';
             if (! empty($subject['avatar']) && $avatar) {
@@ -318,16 +318,15 @@ class PlanMediaExecutor
             $prompt = $roles.'Look of the whole video: '.trim($description).($ctx['character_style'] ? ' Treatment: '.$ctx['character_style'].'.' : '')
                 .' Reference image of '.$subject['name'].': '.$subject['looks'].'. '.$how.' Evenly lit, one subject only, no text, no captions, no logos, no contact sheet.';
             $jobs[$k] = [$prompt, $ctx['character_style'] ?: 'cinematic', $ctx['aspect_ratio'] ?? '9:16', $refs];
+            // The request's identity for the kept-image store: its words and the exact images it is drawn from.
+            $inputs = array_map(fn ($f) => hash_file('sha256', $f), array_values(array_filter([! empty($subject['avatar']) ? $avatar : null, ...array_slice($ctx['character_style_images'] ?? [], 0, 3)], fn ($f) => $f && is_file($f))));
+            $keys[$k] = hash('sha256', json_encode([$prompt, $jobs[$k][1], $jobs[$k][2], $inputs]));
         }
-        // Every subject is independent: drawn at the same time (F2).
-        foreach (self::drawAll($jobs) as $k => $r) {
-            $subject = $subjects[$k];
-            $path = $dir.'/sheet-'.$k.'.png';
-            if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
-            elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
-            else throw new RuntimeException('The image model returned nothing for '.$subject['name'].'.');
-            $files[] = ['path' => $path, 'title' => 'Sheet · '.$subject['name'], 'pose' => $subject['name']];
-        }
+        // Every subject is independent: drawn at the same time (F2); each finished image is kept, so a failed batch
+        // never pays twice for the ones that finished.
+        $paths = array_map(fn ($k) => $dir.'/sheet-'.$k.'.png', array_combine(array_keys($subjects), array_keys($subjects)));
+        $this->drawKept($jobs, $keys, $paths, (int) ($ctx['workspace_id'] ?? 0), array_column($subjects, 'name'));
+        foreach ($subjects as $k => $subject) $files[] = ['path' => $paths[$k], 'title' => 'Sheet · '.$subject['name'], 'pose' => $subject['name']];
         $first = array_shift($files);
         return ['path' => $first['path'], 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($first['path']), 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(),
             'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT];
@@ -347,7 +346,7 @@ class PlanMediaExecutor
         $prior = $ctx['prior_panels'] ?? [];
         $byName = collect($cast)->keyBy(fn ($f) => mb_strtolower((string) ($f['subject'] ?? '')));
         $upload = fn (array $f) => $this->replicateUpload((string) $this->assetBytes((int) $f['asset_id']), 'image/png');
-        $files = []; $hashes = []; $drawn = 0; $jobs = [];
+        $files = []; $hashes = []; $drawn = 0; $jobs = []; $keys = [];
         foreach ($panels as $k => $panel) {
             $h = Storyboard::panelHash($panel, $cast, $style, $panel['aspect'] ?? $aspect);
             $path = $dir.'/panel-'.$k.'.png';
@@ -375,18 +374,13 @@ class PlanMediaExecutor
                     .($refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Keep every referenced character, place and product exactly as shown, but in this scene\'s pose and place: the references show identity, not a pose.' : '')
                     .($toCamera ? '' : ' People never look into the camera.').($style !== '' ? ' Look: '.$style.'.' : '').' One frame, no panel borders, no text, no captions, no numbers, no logos.';
                 $jobs[$k] = [$prompt, $style ?: 'cinematic', (string) ($panel['aspect'] ?? $aspect), array_column($refs, 'url')];
+                $keys[$k] = $h;
             }
             $files[] = ['path' => $path, 'title' => $panel['label'].(! empty($panel['beat']) ? ' · '.$panel['beat'] : ''), 'pose' => $panel['label']];
             $hashes[] = $h;
         }
-        // Panels to draw are independent of each other: drawn at the same time (F2).
-        foreach (self::drawAll($jobs) as $k => $r) {
-            $path = $dir.'/panel-'.$k.'.png';
-            if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
-            elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
-            else throw new RuntimeException('The image model returned nothing for '.$panels[$k]['label'].'.');
-            $drawn++;
-        }
+        // Panels to draw are independent of each other: drawn at the same time (F2), each kept as it finishes.
+        $drawn = count($this->drawKept($jobs, $keys, array_map(fn ($k) => $dir.'/panel-'.$k.'.png', array_combine(array_keys($jobs), array_keys($jobs))), (int) ($ctx['workspace_id'] ?? 0), array_column($panels, 'label')));
         $checks = $this->panelChecks($files, $panels, (array) ($ctx['agreement']['required'] ?? []));
         $first = array_shift($files);
         return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'board-'.Str::uuid(), 'extra' => $files,
@@ -403,11 +397,39 @@ class PlanMediaExecutor
     {
         if (! $jobs) return [];
         $tasks = [];
+        // Each job reports its own failure, so the ones that finished are not lost with it.
         foreach ($jobs as $k => $j) $tasks[$k] = static function () use ($j) {
-            return app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($j[0], $j[1], $j[2], ['reference_image_urls' => $j[3]]);
+            try { return app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($j[0], $j[1], $j[2], ['reference_image_urls' => $j[3]]); }
+            catch (\Throwable $e) { return ['error' => mb_substr($e->getMessage(), 0, 300)]; }
         };
         if (count($tasks) === 1 || app()->runningUnitTests()) return array_map(fn ($t) => $t(), $tasks);
         return \Illuminate\Support\Facades\Concurrency::run($tasks);
+    }
+
+    /**
+     * Draws the jobs not already finished in an earlier attempt. Every image is kept the moment it is saved (keyed by
+     * its request), so when one fails the others are not drawn and paid for again on the next attempt; the store is
+     * emptied once the whole batch is delivered. Returns [k => path]; throws, after keeping the rest, when any failed.
+     */
+    private function drawKept(array $jobs, array $keys, array $paths, int $workspaceId, array $names): array
+    {
+        $disk = Storage::disk('local'); $kept = fn ($k) => 'create/image-jobs/'.$workspaceId.'/'.$keys[$k].'.png';
+        $out = [];
+        foreach ($jobs as $k => $j) if ($disk->exists($kept($k))) { file_put_contents($paths[$k], $disk->get($kept($k))); $out[$k] = $paths[$k]; unset($jobs[$k]); }
+        $failed = [];
+        foreach (self::drawAll($jobs) as $k => $r) {
+            try {
+                if (! empty($r['error'])) throw new RuntimeException((string) $r['error']);
+                if (! empty($r['image_b64'])) file_put_contents($paths[$k], base64_decode($r['image_b64']));
+                elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $paths[$k]);
+                else throw new RuntimeException('The image model returned nothing.');
+                $disk->put($kept($k), (string) file_get_contents($paths[$k]));
+                $out[$k] = $paths[$k];
+            } catch (\Throwable $e) { $failed[$k] = ($names[$k] ?? 'An image').': '.$e->getMessage(); }
+        }
+        if ($failed) throw new RuntimeException(count($failed).' of '.count($keys).' images could not be made ('.mb_substr(reset($failed), 0, 160).'); the others are kept for the next try.');
+        foreach (array_keys($keys) as $k) $disk->delete($kept($k));
+        return $out;
     }
 
     private function assetBytes(int $assetId): ?string

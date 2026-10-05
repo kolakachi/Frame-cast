@@ -3107,4 +3107,33 @@ class CreateIntegrationTest extends TestCase
             return 'read';
         }, true));
     }
+
+    public function test_a_failed_image_batch_keeps_the_images_that_finished_and_never_draws_them_twice(): void
+    {
+        $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+        $calls = [];
+        $fail = ['Shop'];
+        app()->instance(\App\Services\Generation\Image\NanoBananaProImageAdapter::class, new class($calls, $fail, $png) {
+            public function __construct(private array &$calls, private array &$fail, private string $png) {}
+            public function generate($prompt, $style, $aspect, $opts = []) {
+                $who = str_contains($prompt, 'of Shop') ? 'Shop' : 'Maya';
+                $this->calls[] = $who;
+                if (in_array($who, $this->fail, true)) throw new \RuntimeException('provider hiccup');
+                return ['image_b64' => $this->png];
+            }
+        });
+        $ctx = ['workspace_id' => 99001, 'aspect_ratio' => '9:16', 'character_style' => '', 'shot' => ['subjects' => [
+            ['name' => 'Maya', 'kind' => 'character', 'looks' => 'red coat'], ['name' => 'Shop', 'kind' => 'place', 'looks' => 'candle shop']]]];
+        $dir = sys_get_temp_dir().'/keep-'.uniqid(); @mkdir($dir);
+        try {
+            try { app(\App\Services\Create\PlanMediaExecutor::class)->produce('reference_sheet', 'anime night', $ctx, $dir); $this->fail('A failed image fails the sheet.'); }
+            catch (\RuntimeException $e) { $this->assertStringContainsString('the others are kept', $e->getMessage()); }
+            $this->assertSame(['Maya', 'Shop'], $calls);
+            $calls = []; $fail = [];
+            $made = app(\App\Services\Create\PlanMediaExecutor::class)->produce('reference_sheet', 'anime night', $ctx, $dir);
+            $this->assertSame(['Shop'], $calls, 'only the image that failed is drawn again');
+            $this->assertCount(1, $made['extra']);
+            $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->files('create/image-jobs/99001'), 'emptied once delivered');
+        } finally { \Illuminate\Support\Facades\Storage::disk('local')->deleteDirectory('create/image-jobs/99001'); }
+    }
 }
