@@ -30,6 +30,8 @@ return [
     // The planner model by task (owner decision 2026-10-05, routed in code): new creative direction (a first plan, or a
     // follow-up that rewrites the brief) on the stronger model; short follow-up edits on planner_model.
     'planner_model_creative' => env('CREATE_PLANNER_MODEL_CREATIVE', 'claude-opus-5-5'),
+    // Cheap vision checks (storyboard panels against their direction): a small model, never the creative one.
+    'check_model' => env('CREATE_CHECK_MODEL', 'claude-haiku-4-5-20251001'),
     'plan_daily_limit' => (int) env('CREATE_PLAN_DAILY_LIMIT', 40),
     // Owner decision 2026-09-29: jobs up to this many credits run without a
     // separate approval, after provider consent in the conversation.

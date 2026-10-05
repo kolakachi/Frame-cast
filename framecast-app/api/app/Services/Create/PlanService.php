@@ -153,6 +153,12 @@ class PlanService
                 $sel['style'] = $picked;
             }
             if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'] || collect($plan['media'] ?? [])->contains('kind', 'reference_sheet');
+            if (array_key_exists('panel_notes', $input)) {
+                // A note on a storyboard panel redraws that panel (its identity changes); the others are reused.
+                $count = count(collect(self::selectedMedia($plan))->firstWhere('kind', 'storyboard')['panels'] ?? []);
+                $sel['panel_notes'] = collect((array) $input['panel_notes'])->filter(fn ($note, $n) => (int) $n >= 1 && (int) $n <= $count)
+                    ->map(fn ($note) => mb_substr(trim((string) $note), 0, 240))->filter()->all();
+            }
             if (array_key_exists('agreement', $input)) {
                 $sel['agreement'] = self::agreement($input['agreement']);
                 abort_if(empty($sel['agreement']['required']), 422, 'Keep at least one required element: it is what the video is checked against.');
@@ -240,7 +246,9 @@ class PlanService
         $candidate = CharacterApproval::candidate(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), (int) $c->workspace_id);
         // A talking face or a ready rig attached to the conversation performs without new media.
         $performers = CharacterPerformance::performers($c->id);
-        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => $candidate['images'], 'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? ''))] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
+        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => array_map(fn ($img, $k) => $img + ['label' => $candidate['names'][$k] ?? null], $candidate['images'], array_keys($candidate['images'])),
+            'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? '')), 'kind' => $candidate['kind'] ?? null, 'panel_checks' => $candidate['panel_checks'] ?? null,
+            'panel_notes' => $p['selections']['panel_notes'] ?? []] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
             'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at,
             // What would be bought as the selections stand: generated shots with their engine, length and price.
             'media_routed' => rescue(fn () => self::selectedMedia($p), [], false)];
@@ -635,8 +643,18 @@ class PlanService
             'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'), 'language' => data_get($plan, 'shot_context.language', 'en'),
             'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? [],
             'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name'), 'voice' => $voice];
+        // With a cast sheet, every generated shot starts from its approved storyboard panel (unless the planner chose
+        // another start frame), and the panels are drawn in the look stage from the cast.
+        $boarded = $shotCtx['has_sheet'] && collect($items)->contains('kind', 'generated_shot');
+        if ($boarded) {
+            $n = 0;
+            // The panel is drawn from the cast the planner named (or the whole sheet); the shot itself may then start from the panel alone.
+            foreach ($items as &$shotItem) if ($shotItem['kind'] === 'generated_shot') { $n++; $shotItem['panel_refs'] = $shotItem['refs'] ?? ['sheet']; if (empty($shotItem['first_frame'])) $shotItem['first_frame'] = 'Panel '.$n; }
+            unset($shotItem);
+            $shotCtx['panels'] = array_map(fn ($i) => 'Panel '.$i, range(1, $n));
+        }
         foreach ($items as &$shotItem) {
-            if (! in_array($shotItem['kind'], ShotRoute::KINDS, true)) continue;
+            if (! in_array($shotItem['kind'], ShotRoute::KINDS, true) || $shotItem['kind'] === 'storyboard') continue;
             $shotItem = array_merge($shotItem, match ($shotItem['kind']) {
                 'reference_sheet' => ShotRoute::sheet($shotItem),
                 'generated_shot' => ShotRoute::shot($shotItem, $shotCtx),
@@ -644,6 +662,12 @@ class PlanService
             });
         }
         unset($shotItem);
+        if ($boarded) {
+            // The storyboard is drawn right after the cast it depends on.
+            $board = ShotRoute::storyboard(array_values(array_filter($items, fn ($m) => $m['kind'] === 'generated_shot')), (array) ($plan['selections']['panel_notes'] ?? []));
+            $at = array_search('reference_sheet', array_column($items, 'kind'), true);
+            array_splice($items, $at + 1, 0, [$board]);
+        }
         // A UGC take speaks the script itself: no separate narration is bought, unless a cloned voice is selected, when
         // the cloned narration is what the take lip-syncs to.
         if (collect($items)->contains('kind', 'ugc_take') && $voice !== 'clone') $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));

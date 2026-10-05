@@ -609,6 +609,66 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($edited, \App\Services\Create\PlanService::forQuote($this->conversations->conversation($this->owner, $c->id))['agreement'], 'the build follows what the user approved');
     }
 
+    public function test_the_cast_and_storyboard_are_approved_together_and_a_note_redraws_one_panel(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000, 'services.anthropic.key' => '']);
+        $c = $this->brief();
+        $service = app(\App\Services\Create\PlanService::class);
+        $plan = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-board');
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $json['media'] = [
+            ['kind' => 'reference_sheet', 'description' => 'anime night', 'subjects' => [['name' => 'Maya', 'kind' => 'character', 'looks' => 'red coat'], ['name' => 'Shop', 'kind' => 'place', 'looks' => 'candle shop']], 'credits' => 70],
+            ['kind' => 'generated_shot', 'description' => 'Maya lights a candle', 'engine' => 'seedance25', 'refs' => ['Maya', 'Shop'], 'action' => 'she lights the wick', 'gaze' => 'on the flame', 'seconds' => 5, 'credits' => 1],
+            ['kind' => 'generated_shot', 'description' => 'Maya reads her phone', 'engine' => 'omni', 'refs' => ['Maya'], 'action' => 'she reads the post', 'gaze' => 'on her phone', 'seconds' => 5, 'credits' => 1]];
+        $json['shot_context'] = ['has_avatar' => false, 'aspect_ratio' => '9:16', 'language' => 'en'];
+        $json['look_first'] = $json['selections']['look_first'] = true;
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+
+        $look = $this->conversations->quote($this->owner, $c->id, $version());
+        $this->assertSame(['reference_sheet', 'storyboard'], array_column($look->payload_json['plan_media'], 'kind'), 'the look stage draws the cast, then the panels; no clip yet: '.json_encode([$look->payload_json['build_stage'] ?? null, array_column($look->payload_json['plan_media'], 'kind')]));
+        $drawn = [];
+        app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class($drawn) extends \App\Services\Create\PlanMediaExecutor {
+            public function __construct(private array &$drawn) {}
+            public function produce(string $kind, string $description, array $ctx, string $dir): array {
+                $png = fn ($tag) => (function () use ($dir, $tag) { $p = $dir.'/'.$tag.'.png'; \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x'.substr(md5($tag), 0, 6).':s=8x8', '-frames:v', '1', $p]); return $p; })();
+                if ($kind === 'reference_sheet') return ['path' => $png('maya'), 'mime' => 'image/png', 'title' => 'Sheet', 'provider_id' => 'sheet-1', 'extra' => [['path' => $png('shop'), 'title' => 'Shop', 'pose' => 'Shop']], 'poses' => ['Maya', 'Shop'], 'character_contract' => \App\Services\Create\CharacterApproval::CONTRACT];
+                $sha = \App\Services\Create\Storyboard::castSha($ctx['cast']); $prior = $ctx['prior_panels'] ?? []; $files = []; $hashes = []; $new = 0;
+                foreach ($ctx['shot']['panels'] as $k => $panel) {
+                    $h = \App\Services\Create\Storyboard::panelHash($panel, $sha, (string) $ctx['character_style'], $panel['aspect'] ?? '9:16');
+                    if (! isset($prior[$h])) { $new++; $this->drawn[] = $panel['label']; }
+                    $files[] = ['path' => $png('panel-'.$k.'-'.substr($h, 0, 8)), 'title' => $panel['label'], 'pose' => $panel['label']]; $hashes[] = $h;
+                }
+                $first = array_shift($files);
+                return ['path' => $first['path'], 'mime' => 'image/png', 'title' => 'Panel 1', 'provider_id' => 'board-'.count($this->drawn), 'extra' => $files, 'poses' => array_column($ctx['shot']['panels'], 'label'),
+                    'panel_hashes' => $hashes, 'panel_checks' => ['status' => 'unverified', 'panels' => []], 'credits' => $new * \App\Services\Create\ShotRoute::PANEL_CREDITS, 'character_contract' => \App\Services\Create\CharacterApproval::CONTRACT];
+            }
+        });
+        $run = $this->conversations->approve($this->owner, $c->id, $look->id, 'approve-look', true);
+        $claim = $this->runs->claim();
+        $media = app(\App\Services\Create\PlanMediaService::class);
+        $media->produce($run->id, $claim['lease_token'], 0);
+        $board = $media->produce($run->id, $claim['lease_token'], 1);
+        $this->assertSame([2 * \App\Services\Create\ShotRoute::PANEL_CREDITS, ['Panel 1', 'Panel 2']], [$board['charged_credits'], $this->collectDrawn($drawn)]);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'look done'], null, null);
+
+        $shown = $service->present(DB::table('create_plans')->where('id', $plan['id'])->first(), DB::table('create_conversations')->where('id', $c->id)->first())['character_preview'];
+        $this->assertSame(['Maya', 'Shop', 'Panel 1', 'Panel 2'], array_column($shown['images'], 'label'), 'one review: the cast and its panels');
+        $this->assertSame('reference_sheet', $shown['kind']);
+
+        $service->select($this->owner, $c->id, $plan['id'], $version(), ['character_approval' => $shown['token']]);
+        $full = $this->conversations->quote($this->owner, $c->id, $version(), 'full_video');
+        $items = collect($full->payload_json['plan_media'])->keyBy(fn ($m) => $m['kind'].($m['first_frame'] ?? ''));
+        $this->assertSame(0, $items['storyboard']['credits'], 'the approved panels are not bought again');
+        $this->assertTrue($items->has('generated_shotPanel 1') && $items->has('generated_shotPanel 2'), 'each shot starts from its approved panel: '.json_encode($items->keys()));
+
+        $service->select($this->owner, $c->id, $plan['id'], $version(), ['panel_notes' => ['2' => 'phone in her left hand']]);
+        $redo = $this->conversations->quote($this->owner, $c->id, $version(), 'storyboard');
+        $this->assertSame(\App\Services\Create\ShotRoute::PANEL_CREDITS, collect($redo->payload_json['plan_media'])->firstWhere('kind', 'storyboard')['credits'], 'a note on one panel redraws only that panel');
+    }
+
+    private function collectDrawn(array $drawn): array { return $drawn; }
+
     public function test_saved_styles_come_from_a_version_or_a_reference_and_steer_later_quotes(): void
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();

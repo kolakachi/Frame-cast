@@ -254,9 +254,16 @@ class ConversationService
                     if (in_array($mediaItem['kind'], ['talking_shot', 'talking_take'], true)) continue;
                     $context = ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null, 'aspect_ratio' => $settings['aspect_ratio'], 'character_style' => $plan['character_style'] ?? ''];
                     if ($mediaItem['kind'] === 'voiceover' && collect($planMedia)->contains(fn ($m) => $m['kind'] === 'talking_shot' && ($m['speech_mode'] ?? '') === 'native')) $context['narration'] = array_slice($context['narration'], 1);
+                    // Panels drawn from a cast that already exists: only the changed ones are drawn, so only those are quoted.
+                    if ($mediaItem['kind'] === 'storyboard' && ($cast = Storyboard::cast($plan['plan_id']))) {
+                        $mediaItem['cast_sha256'] = Storyboard::castSha($cast);
+                        $mediaItem['credits'] = Storyboard::toDraw($mediaItem, $cast, $id, (string) ($plan['character_style'] ?? ''), (string) $settings['aspect_ratio']) * ShotRoute::PANEL_CREDITS;
+                    }
                     $hash = CharacterApproval::mediaHash($mediaItem, $context);
                     $cached = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('item_index', $mediaItem['plan_item_index'])->where('status', 'succeeded')->where('description_hash', $hash)->first();
                     if ($cached) { $mediaItem['reuse_media_id'] = $cached->id; $mediaItem['credits'] = 0; }
+                    // The same media from an earlier plan of this creation is reused, so it is not quoted again.
+                    elseif (! in_array($mediaItem['kind'], PlanMediaService::NEVER_CARRIED, true) && DB::table('create_plan_media')->where('conversation_id', $id)->where('kind', $mediaItem['kind'])->where('description_hash', $hash)->where('status', 'succeeded')->exists()) $mediaItem['credits'] = 0;
                 }
                 unset($mediaItem);
                 if ($lookFirst && ! PilotPolicy::unlimited()) { $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8); if (isset($policy['critic'])) $policy['critic']['max_calls'] = 1; }

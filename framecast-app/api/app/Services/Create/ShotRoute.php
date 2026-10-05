@@ -35,10 +35,31 @@ class ShotRoute
     ];
 
     /** Plan media kinds this class routes and prices. */
-    public const KINDS = ['reference_sheet', 'generated_shot', 'ugc_take'];
+    public const KINDS = ['reference_sheet', 'storyboard', 'generated_shot', 'ugc_take'];
+
+    /** Credits for one storyboard panel (Nano Banana Pro, as a cast image). */
+    public const PANEL_CREDITS = 35;
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256'];
+
+    /**
+     * The storyboard: one panel per generated shot, drawn from the cast, showing the shot's opening moment (its
+     * composition, pose, gaze and light). The approved panel is the shot's start frame. A note on a panel redraws it.
+     */
+    public static function storyboard(array $shots, array $notes = []): array
+    {
+        $panels = [];
+        foreach (array_values($shots) as $k => $s) {
+            $n = $k + 1;
+            $panels[] = array_filter(['label' => 'Panel '.$n, 'shot' => $n, 'beat' => $s['beat'] ?? null, 'description' => $s['description'] ?? '',
+                'action' => $s['action'] ?? null, 'gaze' => $s['gaze'] ?? null, 'camera' => $s['camera'] ?? null, 'aspect' => $s['aspect'] ?? null,
+                'refs' => array_values(array_filter((array) ($s['panel_refs'] ?? $s['refs'] ?? ['sheet']), fn ($r) => ! str_starts_with(mb_strtolower((string) $r), 'panel '))) ?: ['sheet'],
+                'note' => isset($notes[$n]) ? mb_substr(trim((string) $notes[$n]), 0, 240) : null], fn ($v) => $v !== null && $v !== '');
+        }
+        return ['kind' => 'storyboard', 'description' => 'One panel per generated shot, drawn from the cast: the opening moment of each shot', 'panels' => $panels,
+            'credits' => count($panels) * self::PANEL_CREDITS];
+    }
 
     /** Whether a shot shows a person: the avatar, or a character subject named (or the whole sheet when it has one). */
     public static function hasPerson(array $m, array $subjects): bool
@@ -143,7 +164,7 @@ class ShotRoute
      */
     public static function inputs(array $item, array $ctx): array
     {
-        $subjects = array_map('mb_strtolower', (array) ($ctx['subjects'] ?? []));
+        $subjects = array_map('mb_strtolower', [...(array) ($ctx['subjects'] ?? []), ...(array) ($ctx['panels'] ?? [])]);
         $known = fn (string $n) => $n === 'avatar' ? ! empty($ctx['has_avatar'])
             : ($n === 'sheet' ? ! empty($ctx['has_sheet']) : in_array(mb_strtolower(preg_replace('/^sheet:/', '', $n)), $subjects, true));
         $refs = []; $unresolved = [];

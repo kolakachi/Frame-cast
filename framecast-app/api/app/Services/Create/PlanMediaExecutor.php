@@ -18,7 +18,7 @@ use RuntimeException;
 class PlanMediaExecutor
 {
     /** Kinds this executor can make; the catalogue must not offer anything outside it. */
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'reference_sheet', 'generated_shot', 'ugc_take'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'reference_sheet', 'storyboard', 'generated_shot', 'ugc_take'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -39,6 +39,7 @@ class PlanMediaExecutor
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
             'reference_sheet' => $this->referenceSheet($description, $ctx, $dir),
+            'storyboard' => $this->storyboard($description, $ctx, $dir),
             // Generated shots and takes run as provider jobs started and collected separately (startJob, pollJob, finishGenerated).
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
@@ -326,6 +327,100 @@ class PlanMediaExecutor
         $first = array_shift($files);
         return ['path' => $first['path'], 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($first['path']), 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(),
             'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT];
+    }
+
+    /**
+     * The storyboard: one panel per generated shot, drawn from the cast (identity) and the shot's direction (the
+     * opening moment: composition, pose, gaze, light). An unchanged panel is reused, not redrawn; only drawn panels
+     * are charged. A cheap vision check then flags panels that contradict their direction.
+     */
+    private function storyboard(string $description, array $ctx, string $dir): array
+    {
+        $panels = $ctx['shot']['panels'] ?? []; $cast = $ctx['cast'] ?? [];
+        if (! $panels) throw new RuntimeException('The storyboard has no panels. Plan again.');
+        if (! $cast) throw new RuntimeException('The cast is not ready, so the storyboard cannot be drawn.');
+        $sha = Storyboard::castSha($cast); $style = (string) ($ctx['character_style'] ?? ''); $aspect = (string) ($ctx['aspect_ratio'] ?? '9:16');
+        $prior = $ctx['prior_panels'] ?? [];
+        $byName = collect($cast)->keyBy(fn ($f) => mb_strtolower((string) ($f['subject'] ?? '')));
+        $upload = fn (array $f) => $this->replicateUpload((string) $this->assetBytes((int) $f['asset_id']), 'image/png');
+        $files = []; $hashes = []; $drawn = 0;
+        foreach ($panels as $k => $panel) {
+            $h = Storyboard::panelHash($panel, $sha, $style, $panel['aspect'] ?? $aspect);
+            $path = $dir.'/panel-'.$k.'.png';
+            if (isset($prior[$h]) && ($bytes = $this->assetBytes((int) ($prior[$h]['asset_id'] ?? 0)))) file_put_contents($path, $bytes);
+            else {
+                $refs = [];
+                foreach ((array) ($panel['refs'] ?? ['sheet']) as $ref) {
+                    $name = mb_strtolower(preg_replace('/^sheet:/', '', (string) $ref));
+                    if ($name === 'avatar') {
+                        $photo = collect($ctx['source_images'] ?? [])->first();
+                        if (! $photo) throw new RuntimeException('A panel uses your photo, but none is attached.');
+                        $refs[] = ['url' => $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo)), 'name' => 'the user (keep this exact person)'];
+                        continue;
+                    }
+                    $use = $name === 'sheet' ? $cast : [$byName[$name] ?? throw new RuntimeException('A panel names "'.$ref.'", which is not in the cast. Plan again.')];
+                    foreach ($use as $f) $refs[] = ['url' => $upload($f), 'name' => (string) ($f['subject'] ?? 'the cast')];
+                }
+                $toCamera = (bool) preg_match('/\b(to|into|at) (the )?(camera|lens|viewer)\b/i', (string) ($panel['gaze'] ?? ''));
+                $prompt = 'Storyboard panel: the opening moment of this shot, drawn as one finished frame in the video\'s look. Shot: '.trim((string) $panel['description']).'.'
+                    .(! empty($panel['action']) ? ' Action (show its first moment): '.$panel['action'].'.' : '')
+                    .(! empty($panel['gaze']) ? ' Gaze: '.$panel['gaze'].'.' : '')
+                    .(! empty($panel['camera']) ? ' Camera and framing: '.$panel['camera'].'.' : '')
+                    .(! empty($panel['note']) ? ' Correction from the user, which overrides the rest: '.$panel['note'].'.' : '')
+                    .($refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Keep every referenced character, place and product exactly as shown, but in this scene\'s pose and place: the references show identity, not a pose.' : '')
+                    .($toCamera ? '' : ' People never look into the camera.').($style !== '' ? ' Look: '.$style.'.' : '').' One frame, no panel borders, no text, no captions, no numbers, no logos.';
+                $r = app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($prompt, $style ?: 'cinematic', (string) ($panel['aspect'] ?? $aspect), ['reference_image_urls' => array_column($refs, 'url')]);
+                if (! empty($r['image_b64'])) file_put_contents($path, base64_decode($r['image_b64']));
+                elseif (! empty($r['image_url'])) $this->fetch((string) $r['image_url'], $path);
+                else throw new RuntimeException('The image model returned nothing for '.$panel['label'].'.');
+                $drawn++;
+            }
+            $files[] = ['path' => $path, 'title' => $panel['label'].(! empty($panel['beat']) ? ' · '.$panel['beat'] : ''), 'pose' => $panel['label']];
+            $hashes[] = $h;
+        }
+        $checks = $this->panelChecks($files, $panels, (array) ($ctx['agreement']['required'] ?? []));
+        $first = array_shift($files);
+        return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'board-'.Str::uuid(), 'extra' => $files,
+            'poses' => array_column($panels, 'label'), 'panel_hashes' => $hashes, 'panel_checks' => $checks, 'credits' => $drawn * ShotRoute::PANEL_CREDITS,
+            'character_contract' => CharacterApproval::CONTRACT];
+    }
+
+    private function assetBytes(int $assetId): ?string
+    {
+        $a = $assetId ? Asset::find($assetId) : null;
+        $bytes = $a?->storage_url ? app(StorageService::class)->get((string) $a->storage_url) : null;
+        return is_string($bytes) && $bytes !== '' ? $bytes : null;
+    }
+
+    /**
+     * A cheap vision pass over the panels (A5): does each one match its direction? Only clear contradictions are
+     * reported (a person looking into the camera when told otherwise, a missing or different subject, the wrong
+     * action, lettering). A check that could not run is "unverified", never a pass.
+     */
+    public function panelChecks(array $files, array $panels, array $required): array
+    {
+        $key = (string) config('services.anthropic.key');
+        if ($key === '' || ! $files) return ['status' => 'unverified', 'panels' => []];
+        $content = [['type' => 'text', 'text' => 'These are storyboard panels for a video, each the opening moment of one shot. For each panel, compare the picture with its direction and report only clear contradictions: a person looking into the camera when the gaze says otherwise, a missing or wrong subject, the wrong action, visible text or lettering, a different-looking person than in other panels. Reply with JSON only: {"panels": [{"panel": "Panel 1", "ok": true|false, "issue": "under 20 words, empty when ok"}]}.'.($required ? ' The video must also show: '.implode('; ', $required).'.' : '')]];
+        foreach ($files as $k => $f) {
+            $small = $f['path'].'.check.jpg';
+            Process::timeout(30)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $f['path'], '-vf', 'scale=640:-2', '-q:v', '5', $small]);
+            if (! is_file($small)) return ['status' => 'unverified', 'panels' => []];
+            $p = $panels[$k] ?? [];
+            $content[] = ['type' => 'text', 'text' => ($p['label'] ?? 'Panel '.($k + 1)).': '.implode(' ', array_filter([(string) ($p['description'] ?? ''), ! empty($p['action']) ? 'Action: '.$p['action'].'.' : null, ! empty($p['gaze']) ? 'Gaze: '.$p['gaze'].'.' : null, ! empty($p['note']) ? 'User correction: '.$p['note'].'.' : null]))];
+            $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) file_get_contents($small))]];
+            @unlink($small);
+        }
+        try {
+            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(120)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 2000, 'messages' => [['role' => 'user', 'content' => $content]]]);
+            $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+            $a = strpos($text, '{'); $b = strrpos($text, '}');
+            $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
+        } catch (\Throwable) { $json = null; }
+        if (! is_array($json['panels'] ?? null)) return ['status' => 'unverified', 'panels' => []];
+        $out = collect($json['panels'])->filter(fn ($x) => is_array($x) && isset($x['panel']))->map(fn ($x) => ['panel' => mb_substr((string) $x['panel'], 0, 20), 'ok' => (bool) ($x['ok'] ?? true), 'issue' => mb_substr(trim((string) ($x['issue'] ?? '')), 0, 160)])->values()->all();
+        return ['status' => collect($out)->contains('ok', false) ? 'issues' : 'ok', 'panels' => $out];
     }
 
     /**

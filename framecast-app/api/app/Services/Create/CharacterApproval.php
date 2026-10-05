@@ -21,9 +21,11 @@ class CharacterApproval
             'generated_shot', 'ugc_take' => 'shot|'.($item['sheet_sha256'] ?? ''),
             default => '',
         };
-        if (in_array($item['kind'], ShotRoute::KINDS, true)) $contract .= '|'.json_encode(array_intersect_key($item, array_flip(ShotRoute::ROUTE_KEYS)));
+        if (in_array($item['kind'], [...ShotRoute::KINDS, 'storyboard'], true)) $contract .= '|'.json_encode(array_intersect_key($item, array_flip([...ShotRoute::ROUTE_KEYS, 'panels', 'cast_sha256'])));
+        // Pictures do not depend on the script: a sheet, panels or a silent shot survive a narration or voice change.
+        $script = in_array($item['kind'], ['reference_sheet', 'storyboard', 'generated_shot'], true) ? [null, null] : [$context['narration'], $context['voice']];
         return hash('sha256', $contract.$item['kind'].'|'.$item['description'].(! empty($item['requirements']) ? '|requirements:'.json_encode($item['requirements']) : '').'|'.json_encode([
-            $context['talking_route'] ?? null, $context['narration'], $context['voice'], $context['aspect_ratio'], $context['character_style'],
+            $context['talking_route'] ?? null, ...$script, $context['aspect_ratio'], $context['character_style'],
         ]));
     }
 
@@ -41,6 +43,22 @@ class CharacterApproval
         if (($record['character_contract'] ?? null) !== self::CONTRACT) return null;
         $files = array_values(array_filter([$record['file'] ?? null, ...($record['more_files'] ?? [])]));
         if (! $files) return null;
+        $names = $record['poses'] ?? [];
+        $checks = null;
+        // With generated shots, the storyboard drawn from this cast is approved with it: one review, one token.
+        if ($pose['kind'] === 'reference_sheet' && ($board = collect($plan['media'] ?? [])->firstWhere('kind', 'storyboard'))) {
+            $boardHash = self::mediaHash($board + ['cast_sha256' => Storyboard::castSha($files)], ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null,
+                'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '']);
+            $boardRow = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', 'storyboard')->where('description_hash', $boardHash)->where('status', 'succeeded')->first();
+            if (! $boardRow) return null;
+            $b = json_decode($boardRow->record_json, true);
+            $panels = array_values(array_filter([$b['file'] ?? null, ...($b['more_files'] ?? [])]));
+            if (! $panels) return null;
+            $files = [...$files, ...$panels];
+            $names = [...array_pad($names, count($files) - count($panels), null), ...($b['poses'] ?? [])];
+            $hash .= '|'.$boardHash;
+            $checks = $b['panel_checks'] ?? null;
+        }
         $images = [];
         foreach ($files as $f) {
             $a = Asset::where('workspace_id', $workspace)->where('status', '!=', 'archived')->find($f['asset_id']);
@@ -48,7 +66,7 @@ class CharacterApproval
             $images[] = ['asset_id' => (int) $a->id, 'name' => $a->title, 'preview_url' => app(StorageService::class)->url($a->storage_url)];
         }
         $token = hash('sha256', json_encode([$plan['plan_id'], $hash, array_map(fn ($f) => [$f['asset_id'], $f['sha256']], $files)]));
-        return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $files, 'kind' => $pose['kind'], 'names' => $record['poses'] ?? []];
+        return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $files, 'kind' => $pose['kind'], 'names' => $names, 'panel_checks' => $checks];
     }
 
     public static function requireApproved(array $plan, array $settings, int $workspace): array

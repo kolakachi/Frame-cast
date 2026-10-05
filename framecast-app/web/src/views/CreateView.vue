@@ -252,6 +252,21 @@ async function reviewPlanCost(p, buildStage = null, displayedCharacterToken = nu
   }
   await plan(null, buildStage)
 }
+// Storyboard panels: a check's finding under each, and a note that redraws only that panel.
+const panelNoteDraft = ref({})
+watch(() => currentPlan.value?.character_preview?.panel_notes, n => { panelNoteDraft.value = Object.fromEntries(Object.entries(n || {}).map(([k, v]) => ['Panel ' + k, v])) }, { immediate: true })
+function isPanel(label) { return /^Panel \d+$/.test(label || '') }
+function panelIssue(label) { const c = (currentPlan.value?.character_preview?.panel_checks?.panels || []).find(x => x.panel === label); return c && !c.ok ? c.issue : '' }
+const panelNotesSaved = computed(() => Object.fromEntries(Object.entries(currentPlan.value?.character_preview?.panel_notes || {}).map(([k, v]) => ['Panel ' + k, v])))
+const panelNotesChanged = computed(() => JSON.stringify(Object.fromEntries(Object.entries(panelNoteDraft.value).filter(([, v]) => (v || '').trim()))) !== JSON.stringify(panelNotesSaved.value))
+const panelNotesCount = computed(() => Object.entries(panelNoteDraft.value).filter(([k, v]) => (v || '').trim() && v !== panelNotesSaved.value[k]).length || 1)
+async function redrawPanels() {
+  const p = currentPlan.value; if (!p) return
+  const notes = Object.fromEntries(Object.entries(panelNoteDraft.value).filter(([, v]) => (v || '').trim()).map(([k, v]) => [k.replace('Panel ', ''), v.trim()]))
+  let ok = false
+  await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, panel_notes: notes }); await refresh(); ok = true })
+  if (ok) await plan(null, 'storyboard')
+}
 async function approveCharacter() {
   await approveCharacterPreview(characterReview.value)
 }
@@ -778,21 +793,21 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                       </template>
                     </div>
                     <div v-if="planByMessage[m.id].plan.mascot3d && !planByMessage[m.id].stale" class="checks character-approval-inline"><b>Your 3D mascot · check it before you approve</b><MascotPreview :spec="planByMessage[m.id].plan.mascot3d.spec" /><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. Check it from every angle here before you approve; this is the character in your video.</p><p v-if="planByMessage[m.id].plan.mascot3d.missing" class="muted">Not possible yet: {{ planByMessage[m.id].plan.mascot3d.missing }}</p></div>
+                    <div v-if="Object.values(agreementShown(planByMessage[m.id])).some(l => l?.length)" class="agreement" aria-label="What stays and what changes">
+                      <div class="agreement__head"><b>What stays and what changes</b><button v-if="canWrite && !planByMessage[m.id].stale" type="button" class="quiet quiet--sm" @click="agreementEditing[planByMessage[m.id].id] = !agreementEditing[planByMessage[m.id].id]">{{ agreementEditing[planByMessage[m.id].id] ? 'Done' : 'Edit' }}</button></div>
+                      <div class="agreement__cols">
+                        <div v-for="[key, label] in AGREEMENT" v-show="agreementEditing[planByMessage[m.id].id] || (agreementShown(planByMessage[m.id])[key] || []).length" :key="key" class="agreement__col">
+                          <span class="legend">{{ label }}</span>
+                          <textarea v-if="agreementEditing[planByMessage[m.id].id] && planDrafts[planByMessage[m.id].id]" v-model="planDrafts[planByMessage[m.id].id].agreement[key]" class="input" rows="3" :aria-label="label + ', one per line'" />
+                          <ul v-else><li v-for="item in agreementShown(planByMessage[m.id])[key]" :key="item">{{ item }}</li></ul>
+                        </div>
+                      </div>
+                    </div>
                     <details v-if="!planByMessage[m.id].stale" class="more">
                       <summary>View details</summary>
                       <div v-if="planByMessage[m.id].plan.props3d?.length" class="checks"><b>3D objects</b><p v-for="o in planByMessage[m.id].plan.props3d" :key="o.name" class="muted">{{ o.name }}<template v-if="o.looks">: {{ o.looks }}</template><template v-if="o.spin"> · spins as it lands</template></p><p class="muted">Modelled for this video in the same finish, no image generation.</p></div>
                       <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
                         <b>Moments from your reference</b>
-                        <div v-if="Object.values(agreementShown(planByMessage[m.id])).some(l => l?.length)" class="agreement" aria-label="What stays and what changes">
-                          <div class="agreement__head"><b>What stays and what changes</b><button v-if="canWrite && !planByMessage[m.id].stale" type="button" class="quiet quiet--sm" @click="agreementEditing[planByMessage[m.id].id] = !agreementEditing[planByMessage[m.id].id]">{{ agreementEditing[planByMessage[m.id].id] ? 'Done' : 'Edit' }}</button></div>
-                          <div class="agreement__cols">
-                            <div v-for="[key, label] in AGREEMENT" v-show="agreementEditing[planByMessage[m.id].id] || (agreementShown(planByMessage[m.id])[key] || []).length" :key="key" class="agreement__col">
-                              <span class="legend">{{ label }}</span>
-                              <textarea v-if="agreementEditing[planByMessage[m.id].id] && planDrafts[planByMessage[m.id].id]" v-model="planDrafts[planByMessage[m.id].id].agreement[key]" class="input" rows="3" :aria-label="label + ', one per line'" />
-                              <ul v-else><li v-for="item in agreementShown(planByMessage[m.id])[key]" :key="item">{{ item }}</li></ul>
-                            </div>
-                          </div>
-                        </div>
                         <p v-if="planByMessage[m.id].plan.reference_match" class="muted">{{ planByMessage[m.id].plan.reference_match === 'exact' ? 'Matched exactly: every moment keeps its timing, layout, transition and mascot placement; your brand, voice and content go in each slot. Change this in Details.' : planByMessage[m.id].plan.reference_match === 'similar' ? 'Similar: its format, look and pacing, your own story and shots. Change this in Details.' : 'Inspired by it: the idea, your own execution. Change this in Details.' }}</p>
                         <p class="muted">{{ referenceTally(planByMessage[m.id].plan) }}</p>
                         <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}<template v-if="d.carried_by"> · its job: {{ d.carried_by }}</template></li></ul>
@@ -884,12 +899,16 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </div>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
                 <section v-if="outputMeta.look && !isOldRevision && currentPlan?.character_preview" class="checks character-approval-inline" :aria-label="currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and world for the generated shots' : 'Character look for this video'">
-                  <b>{{ currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and world for the generated shots' : 'Character look for this video' }}</b>
+                  <b>{{ currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and storyboard for the generated shots' : 'Character look for this video' }}</b>
                   <div class="character-review-grid">
                     <figure v-for="image in currentPlan.character_preview.images" :key="image.asset_id">
-                      <img :src="image.preview_url" :alt="image.name || 'Character preview'" />
+                      <img :src="image.preview_url" :alt="image.label || image.name || 'Character preview'" />
+                      <figcaption v-if="image.label">{{ image.label }}<span v-if="panelIssue(image.label)" class="panel-issue"> · {{ panelIssue(image.label) }}</span></figcaption>
+                      <input v-if="canWrite && isPanel(image.label) && !currentPlan.character_preview.approved" v-model="panelNoteDraft[image.label]" class="input input--sm" maxlength="240" :placeholder="'Change ' + image.label + '…'" :aria-label="'Note to redraw ' + image.label" />
                     </figure>
                   </div>
+                  <p v-if="currentPlan.character_preview.panel_checks?.status === 'unverified'" class="muted">The panels could not be checked automatically; look them over yourself.</p>
+                  <button v-if="canWrite && panelNotesChanged" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="redrawPanels">Redraw {{ panelNotesCount }} {{ panelNotesCount === 1 ? 'panel' : 'panels' }} · review cost</button>
                   <p v-if="currentPlan.character_preview.kind === 'reference_sheet'">{{ currentPlan.character_preview.approved ? 'Every generated shot is made from these images.' : 'Approving the storyboard approves these images: every generated shot is made from them, so the people, places and products stay the same. You’ll review the cost before any clip is made.' }}</p>
                   <p v-else>{{ currentPlan.character_preview.approved ? 'This approved look will guide the poses and talking clips.' : 'Approving the design also approves this character look for the poses and talking clips. You’ll review the cost before generation starts.' }}</p>
                 </section>
@@ -1194,6 +1213,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 <style scoped>
 .character-review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}.character-review-grid figure{margin:0}.character-review-grid img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:12px;background:#111}.character-review-grid figcaption{font-size:12px;color:var(--color-text-secondary);margin-top:6px}
 .character-approval-inline .character-review-grid{grid-template-columns:repeat(auto-fit,minmax(110px,160px));margin:10px 0}
+.character-review-grid figure .input{width:100%;margin-top:4px;font-size:12px}
+.panel-issue{color:var(--color-warning, #b45309)}
 
 /* Tokens from the approved create-ui mockup, on the app's own accent. */
 .link-form{display:flex;flex-direction:column;gap:10px}.link-form__label{font-size:13px;color:var(--text-2)}.link-form__note{font-size:12px;line-height:1.45;margin:0}.link-form__actions{display:flex;justify-content:flex-end;gap:8px}

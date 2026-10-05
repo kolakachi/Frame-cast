@@ -13,6 +13,9 @@ use Illuminate\Support\Str;
  */
 class PlanMediaService
 {
+    /** Media bound to one plan's approval (a character master and what is made from it) is never carried to another plan. */
+    public const NEVER_CARRIED = ['character_poses', 'character_variants', 'talking_shot', 'talking_take'];
+
     public const PRODUCTION_ONLY = ['voiceover', 'cloned_voiceover', 'music', 'sfx', 'talking_shot', 'talking_take', 'animate_image', 'character_variants', 'generated_shot', 'ugc_take'];
 
     public function produce(string $runId, string $lease, int $index): array
@@ -50,10 +53,26 @@ class PlanMediaService
                 $context['sheet_files'] = array_map(fn ($f, $k) => $f + ['name' => $approved['names'][$k] ?? null], $approved['files'], array_keys($approved['files']));
             }
         }
+        if ($item['kind'] === 'storyboard') {
+            // Panels are drawn from the cast this plan just drew (approved together on one screen); their identity includes it.
+            $cast = Storyboard::cast($planId);
+            abort_unless($cast, 409, 'The cast is not ready, so the storyboard cannot be drawn yet.');
+            $item['cast_sha256'] = Storyboard::castSha($cast);
+            $context['cast'] = $cast;
+            $context['prior_panels'] = Storyboard::prior((string) $run->conversation_id);
+            $context['agreement'] = $input['plan']['agreement'] ?? [];
+        }
         if (in_array($item['kind'], ShotRoute::KINDS, true)) $context['shot'] = array_intersect_key($item, array_flip(ShotRoute::ROUTE_KEYS));
         $hash = CharacterApproval::mediaHash($item, $context);
 
         $done = DB::table('create_plan_media')->where('plan_id', $planId)->where('item_index', $cacheIndex)->first();
+        // Unchanged work carries across plans of the same creation: identical inputs (the hash) mean the same media, so a
+        // new plan reuses it instead of buying it again. A cast change changes the panels' hash, so they are redrawn.
+        if ((! $done || $done->status !== 'succeeded' || $done->description_hash !== $hash) && ! in_array($item['kind'], self::NEVER_CARRIED, true)
+            && ($prior = DB::table('create_plan_media')->where('conversation_id', $run->conversation_id)->where('kind', $item['kind'])->where('description_hash', $hash)->where('status', 'succeeded')->where('plan_id', '!=', $planId)->orderByDesc('updated_at')->first())) {
+            $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', json_decode((string) $prior->record_json, true), 0, null);
+            $done = DB::table('create_plan_media')->where('plan_id', $planId)->where('item_index', $cacheIndex)->first();
+        }
         if ($done && $done->status === 'succeeded' && $done->description_hash === $hash) {
             $record = json_decode($done->record_json, true);
             $record['task_id'] = $item['id'] ?? null;
@@ -117,13 +136,15 @@ class PlanMediaService
                 ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => $item['kind'], 'pose' => $x['pose'] ?? null], 'provider_id' => $made['provider_id']]);
             $id = preg_replace('/[^a-zA-Z0-9_-]/', '-', $made['provider_id']);
             $attempts->bindPrediction($runId, $lease, $attempt['id'], substr($id.'-'.substr($attempt['id'], 0, 8), 0, 160));
-            $credits = (int) $item['credits'];
+            // An item that reports what it actually made (a storyboard reusing unchanged panels) is charged for that, never above the quote.
+            $credits = isset($made['credits']) ? min((int) $item['credits'], (int) $made['credits']) : (int) $item['credits'];
             $receipt = new VerifiedAttemptReceipt($attempt['id'], 'succeeded', substr($id.'-'.substr($attempt['id'], 0, 8), 0, 160), $credits * 4000,
                 'pilot-tariff:catalogue; '.$item['kind'].' at its listed price of '.$credits.' credits');
             $settled = $attempts->settle($runId, $lease, $attempt['id'], $receipt->result(), $receipt);
             $record = ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null,
                 'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
-                'character_contract' => $made['character_contract'] ?? null, 'master_sha256' => $made['master_sha256'] ?? null];
+                'character_contract' => $made['character_contract'] ?? null, 'master_sha256' => $made['master_sha256'] ?? null,
+                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks']))];
             $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
             $recorded = true;
             return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];

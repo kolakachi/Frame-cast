@@ -221,4 +221,33 @@ class ShotRouteTest extends TestCase
         $this->assertStringNotContainsString('Generated shot 3', $problems, 'a product needs no gaze');
         $this->assertSame('character', ShotRoute::sheet(['subjects' => [['name' => 'X']]])['subjects'][0]['kind']);
     }
+
+    public function test_a_cast_sheet_brings_a_storyboard_and_every_shot_starts_from_its_panel(): void
+    {
+        $plan = ['media' => [
+            ['kind' => 'reference_sheet', 'description' => 'anime night', 'subjects' => [['name' => 'Maya', 'kind' => 'character', 'looks' => 'red coat'], ['name' => 'Shop', 'kind' => 'place', 'looks' => 'candle shop']]],
+            ['kind' => 'generated_shot', 'description' => 'Maya lights a candle', 'engine' => 'seedance25', 'refs' => ['Maya', 'Shop'], 'action' => 'she lights the wick', 'gaze' => 'on the flame', 'seconds' => 5],
+            ['kind' => 'generated_shot', 'description' => 'Maya smiles at her phone', 'engine' => 'omni', 'refs' => ['Maya'], 'action' => 'she reads the post', 'gaze' => 'on her phone', 'seconds' => 5],
+        ], 'selections' => ['narration' => ['Hi.'], 'choices' => [], 'panel_notes' => [2 => 'phone in her left hand']], 'decisions' => [], 'shot_context' => ['has_avatar' => false, 'aspect_ratio' => '9:16']];
+        $media = PlanService::selectedMedia($plan);
+        $this->assertSame(['reference_sheet', 'storyboard', 'generated_shot', 'generated_shot'], array_column($media, 'kind'), 'panels come right after the cast they are drawn from');
+        $board = $media[1];
+        $this->assertSame([['Maya', 'Shop'], ['Maya']], array_column($board['panels'], 'refs'), 'each panel is drawn from the cast its shot names');
+        $this->assertSame('phone in her left hand', $board['panels'][1]['note']);
+        $this->assertSame(2 * ShotRoute::PANEL_CREDITS, $board['credits']);
+        $this->assertSame(['Panel 1', 'Panel 2'], array_column(array_slice($media, 2), 'first_frame'));
+        $this->assertSame([], $media[2]['refs'], 'Seedance starts from the panel alone, which carries the cast');
+        $this->assertSame(['Maya'], $media[3]['refs'], 'Omni keeps the panel and the cast together');
+        $this->assertArrayNotHasKey('problem', $media[2]);
+    }
+
+    public function test_a_panel_is_redrawn_only_when_its_direction_its_note_or_the_cast_changes(): void
+    {
+        $panel = ['description' => 'Maya lights a candle', 'action' => 'she lights the wick', 'refs' => ['Maya']];
+        $cast = \App\Services\Create\Storyboard::castSha([['sha256' => 'a'], ['sha256' => 'b']]);
+        $h = \App\Services\Create\Storyboard::panelHash($panel, $cast, 'anime', '9:16');
+        $this->assertSame($h, \App\Services\Create\Storyboard::panelHash($panel + ['label' => 'Panel 1', 'beat' => 'hook'], $cast, 'anime', '9:16'), 'labels do not change what is drawn');
+        $this->assertNotSame($h, \App\Services\Create\Storyboard::panelHash($panel + ['note' => 'smile'], $cast, 'anime', '9:16'));
+        $this->assertNotSame($h, \App\Services\Create\Storyboard::panelHash($panel, \App\Services\Create\Storyboard::castSha([['sha256' => 'c'], ['sha256' => 'b']]), 'anime', '9:16'), 'a new cast redraws every panel');
+    }
 }
