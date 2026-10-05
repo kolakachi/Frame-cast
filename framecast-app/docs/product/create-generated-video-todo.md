@@ -1,6 +1,7 @@
 # Create: generated video, direction and production quality — to do
 
 Started 2026-10-05. Replaces the generated-video items scattered through `create-agent-integration-progress.md`.
+Progress is ticked in `create-generated-video-progress.md`; the bench is `create-bench.md`.
 
 ## Goal
 
