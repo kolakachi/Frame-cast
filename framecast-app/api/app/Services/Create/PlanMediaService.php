@@ -76,9 +76,18 @@ class PlanMediaService
             try {
                 if (in_array($item['kind'], ['character_poses', 'reference_sheet'], true)) $context['character_style_images'] = app(References\ReferenceSheets::class)->characterStyleImages($input['input_files'] ?? [], $dir);
                 $providerStarted = true;
-                $made = app(PlanMediaExecutor::class)->produce($item['kind'], $item['description'], $context, $dir);
+                // A request that never connected (the host did not resolve, the connection was refused) reached no
+                // provider: try once more, and if it still cannot connect it is a plain failure, not an unknown outcome.
+                for ($try = 1; ; $try++) {
+                    try { $made = app(PlanMediaExecutor::class)->produce($item['kind'], $item['description'], $context, $dir); break; }
+                    catch (\Illuminate\Http\Client\ConnectionException $e) {
+                        if (! self::neverConnected($e, $item['kind']) || $try >= 2) throw $e;
+                        sleep(3);
+                    }
+                }
             } catch (\Throwable $e) {
                 report($e);
+                if (self::neverConnected($e, $item['kind'])) $providerStarted = false;
                 // Lack of usable output is not evidence that a generation was unbilled.
                 // Keep the reservation and stop; a new run must not repurchase this item blindly.
                 if ($providerStarted && ! in_array($item['kind'], ['stock_video', 'stock_image', 'brand_kit'], true)) {
@@ -150,6 +159,19 @@ class PlanMediaService
         $input['plan_media'] = $items;
         DB::table('composition_runs')->where('id', $runId)->update(['input_json' => json_encode($input), 'updated_at' => now()]);
         return $this->produce($runId, $lease, count($items) - 1);
+    }
+
+    /** Items that make one prediction: if creating it never connected, nothing billable exists. */
+    private const SINGLE_PREDICTION = ['music', 'generated_shot', 'animate_image', 'ai_image', 'talking_shot', 'talking_take'];
+
+    /**
+     * cURL could not resolve or connect while CREATING a prediction (or uploading its input), so no prediction exists.
+     * A failure while polling (/predictions/{id}) means one does; items making several predictions may have made some.
+     */
+    public static function neverConnected(\Throwable $e, string $kind): bool
+    {
+        return $e instanceof \Illuminate\Http\Client\ConnectionException && in_array($kind, self::SINGLE_PREDICTION, true)
+            && (bool) preg_match('/cURL error (6|7):.* for https:\/\/api\.replicate\.com\/v1\/(models\/[^\s\/]+\/[^\s\/]+\/predictions|predictions|files)\s*$/s', $e->getMessage());
     }
 
     private function context(object $run, array $input): array

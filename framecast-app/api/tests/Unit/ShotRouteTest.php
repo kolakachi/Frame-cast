@@ -90,4 +90,12 @@ class ShotRouteTest extends TestCase
         $this->assertSame('inspired', ReferenceMatch::answer('inpsired'));
         $this->assertNull(ReferenceMatch::answer('make it nicer'));
     }
+
+    public function test_only_an_unsent_prediction_counts_as_never_started(): void
+    {
+        $e = fn (string $url) => new \Illuminate\Http\Client\ConnectionException('cURL error 6: Could not resolve host: api.replicate.com (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for '.$url);
+        $this->assertTrue(\App\Services\Create\PlanMediaService::neverConnected($e('https://api.replicate.com/v1/models/elevenlabs/music/predictions'), 'music'), 'creating it never connected: nothing exists');
+        $this->assertFalse(\App\Services\Create\PlanMediaService::neverConnected($e('https://api.replicate.com/v1/predictions/abc123'), 'music'), 'polling failed: a prediction exists and may bill');
+        $this->assertFalse(\App\Services\Create\PlanMediaService::neverConnected($e('https://api.replicate.com/v1/models/x/y/predictions'), 'ugc_take'), 'an earlier segment may have been made');
+    }
 }
