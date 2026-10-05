@@ -339,6 +339,68 @@
       return 'matrix3d(' + m.map(function (v) { return +v.toFixed(8); }).join(',') + ')';
     },
 
+    /* camera: a Screen-Studio-style zoom to an element and back. content is the layer that moves (a full-frame
+       wrapper of the scene); target the element to frame. opts: scale (default: fit the target to ~60% of the
+       frame, at most 2.4), duration (default .6 in and out), hold (seconds zoomed, default 1.2), focus {x, y} (0..1
+       inside the target, default the centre). Transforms only, measured once when the timeline is built. */
+    camera: function (tl, content, target, at, opts) {
+      content = $(content); target = $(target); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight, r = rect(target, stage);
+      var s = opts.scale || Math.min(2.4, Math.max(1.15, Math.min(0.6 * W / r.width, 0.6 * H / r.height)));
+      var f = opts.focus || { x: 0.5, y: 0.5 }, cx = r.left + r.width * f.x, cy = r.top + r.height * f.y;
+      var x = Math.min(0, Math.max(W - W * s, W / 2 - s * cx)), y = Math.min(0, Math.max(H - H * s, H / 2 - s * cy));
+      var d = opts.duration == null ? 0.6 : opts.duration, hold = opts.hold == null ? 1.2 : opts.hold;
+      tl.set(content, { transformOrigin: '0 0' }, 0)
+        .to(content, { x: x, y: y, scale: s, duration: d, ease: ease.heavy }, at)
+        .to(content, { x: 0, y: 0, scale: 1, duration: d, ease: ease.heavy }, at + d + hold);
+      return tl;
+    },
+
+    /* flood: a shape grows from a point to fill the frame in one colour (about .3 s, past the corners), holds a beat,
+       then shrinks away into the next scene. el is a full-frame div above the scenes; from is {x, y} in stage px or an
+       element whose centre it starts from; to (optional) where it shrinks into. Switch the scene underneath during the
+       hold. opts: color, grow (.3), hold (.25), shrink (.35). */
+    flood: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight;
+      var pt = function (p, dflt) { if (!p) return dflt; if (p.x != null) return p; return centre($(p), stage); };
+      var a = pt(opts.from, { x: W / 2, y: H / 2 }), b = pt(opts.to, a), R = Math.hypot(W, H);
+      var g = opts.grow || 0.3, h = opts.hold == null ? 0.25 : opts.hold, k = opts.shrink || 0.35;
+      tl.set(el, { backgroundColor: opts.color || '#111', clipPath: 'circle(0px at ' + a.x + 'px ' + a.y + 'px)', autoAlpha: 1 }, at)
+        .to(el, { clipPath: 'circle(' + R + 'px at ' + a.x + 'px ' + a.y + 'px)', duration: g, ease: 'power3.in' }, at)
+        .set(el, { clipPath: 'circle(' + R + 'px at ' + b.x + 'px ' + b.y + 'px)' }, at + g + h)
+        .to(el, { clipPath: 'circle(0px at ' + b.x + 'px ' + b.y + 'px)', duration: k, ease: 'power3.out' }, at + g + h)
+        .set(el, { autoAlpha: 0 }, at + g + h + k);
+      return tl;
+    },
+
+    /* rise: text rises out of a mask line (its parent clips it). opts: duration (.55), stagger (.06) for several
+       lines, from (yPercent, default 110). */
+    rise: function (tl, els, at, opts) {
+      opts = opts || {};
+      all(els).forEach(function (el, i) {
+        if (el.parentNode && el.parentNode.style) el.parentNode.style.overflow = 'hidden';
+        tl.fromTo(el, { yPercent: opts.from == null ? 110 : opts.from }, { yPercent: 0, duration: opts.duration || 0.55, ease: ease.snappy, immediateRender: true }, at + i * (opts.stagger == null ? 0.06 : opts.stagger));
+      });
+      return tl;
+    },
+
+    /* edges: a pill, tab highlight or bar moves from one span to another with its two edges on separate springs:
+       the leading edge snaps ahead, the trailing edge follows and catches up, so it stretches and settles like a
+       liquid tab. el is positioned at x = 0 with its own width; from and to are {x, w} in px of its parent.
+       opts: lead (.32 s), trail (.48 s). Transforms only (x and scaleX from the left). */
+    edges: function (tl, el, at, from, to, opts) {
+      el = $(el); opts = opts || {};
+      var base = el.offsetWidth || from.w, right = to.x + to.w > from.x + from.w;
+      var p = { l: from.x, r: from.x + from.w };
+      var apply = function () { gsap.set(el, { x: p.l, scaleX: Math.max(0.01, (p.r - p.l) / base), transformOrigin: '0 50%' }); };
+      tl.set(el, { x: from.x, scaleX: from.w / base, transformOrigin: '0 50%' }, at);
+      var lead = { duration: opts.lead || 0.32, ease: ease.snappy, onUpdate: apply }, trail = { duration: opts.trail || 0.48, ease: ease['default'], onUpdate: apply };
+      if (right) { tl.to(p, Object.assign({ r: to.x + to.w }, lead), at).to(p, Object.assign({ l: to.x }, trail), at); }
+      else { tl.to(p, Object.assign({ l: to.x }, lead), at).to(p, Object.assign({ r: to.x + to.w }, trail), at); }
+      return tl;
+    },
+
     /* fly: a chip leaves its place and arcs into a target (a "+$19" chip into the
        checkout total), shrinking as it lands. Pair it with WM.count on the target's
        number at at + duration. opts.lift: how high the arc rises in pixels. */

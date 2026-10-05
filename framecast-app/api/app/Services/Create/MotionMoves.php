@@ -28,6 +28,10 @@ class MotionMoves
         'push' => 'the next scene pushes the last one out',
         'giant_wipe' => 'one huge word sweeps across as the cut',
         'field' => 'the background cuts to a new colour on a hit',
+        'camera' => 'the view zooms into one element (a button, a field, a number) and back out, like a screen recording',
+        'flood' => 'a colour grows from a point to fill the frame, holds a beat, then shrinks into the next scene',
+        'rise' => 'text rises out of a mask line',
+        'edges' => 'a pill or tab highlight slides with its leading edge ahead and its trailing edge catching up',
         'custom' => 'none of these: built by hand from the description',
     ];
 

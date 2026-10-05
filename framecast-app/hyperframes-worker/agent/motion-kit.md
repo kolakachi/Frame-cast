@@ -13,6 +13,12 @@ Use these instead of default curves: `ease: WM.ease.snappy` (buttons, toggles, s
 - `WM.count(tl, '#num', 0, 1200, at, 1.4, v => Math.round(v) + ' teams')`: counts up and settles. Only for numbers the user approved.
 - `WM.morph(tl, '#shape', [{at, width, height, borderRadius, backgroundColor}, ...])`: one shape moves through states (pill, bar, card, panel) with a spring, instead of new cards fading in. Put content inside it and fade the content per state.
 
+## Camera, flood, rise and edges
+- `WM.camera(tl, '#content', '#target', at, {scale, hold, focus})`: zoom the content layer (a full-frame wrapper) into one element and back, like a screen recording; good for product, SaaS and app promos. Put the cursor inside the content layer so it scales with it.
+- `WM.flood(tl, '#flood', at, {from: '#button', to: {x, y}, color})`: a colour grows from a point past the corners (about 0.3 s), holds, then shrinks into the next scene. Switch the scene underneath during the hold. `#flood` is a full-frame div above the scenes.
+- `WM.rise(tl, '.line', at, {stagger})`: text rises out of a mask line; its parent clips it.
+- `WM.edges(tl, '#pill', at, {x, w}, {x, w})`: a pill or tab highlight moves with its leading edge ahead and its trailing edge catching up (stretch, then settle).
+
 ## Transitions between scenes
 Scenes are full-frame layers; the incoming one starts hidden (visibility:hidden).
 - `WM.whip(tl, '#a', '#b', at)`: the outgoing scene whips off with motion blur, the next whips in; fastest exactly at `at`.
