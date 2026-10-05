@@ -434,6 +434,14 @@ function referenceTally(plan) {
 const finalFails = computed(() => (outputMeta.value.final_checks?.checks || []).filter(c => c.status === 'fail').sort((a, b) => Number(b.blocking) - Number(a.blocking)))
 const finalUnverified = computed(() => (outputMeta.value.final_checks?.checks || []).filter(c => c.status === 'unverified'))
 function checkTime(c) { return (c.times || []).length ? (c.times.length > 1 ? 'At ' + c.times.slice(0, 3).map(t => t.toFixed(1) + ' s').join(', ') : 'At ' + c.times[0].toFixed(1) + ' s') + ': ' : '' }
+// A shot a model declined: the user picks the suggested engine for it, and a new version is quoted (C3).
+async function useEngineFor(sg) {
+  const p = currentPlan.value; if (!p) return
+  const overrides = { ...(p.plan.selections.engine_overrides || {}), [sg.shot]: sg.engine }
+  let ok = false
+  await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, engine_overrides: overrides }); await refresh(); ok = true })
+  if (ok) await plan(null, 'full_video')
+}
 const needsAnotherRound = computed(() => ['incomplete', 'issues', 'blocked'].includes(outputMeta.value.creative_review?.status) || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
 async function keepImproving() { const notes = reviewNotes.value; prompt.value = 'Keep this video and improve it' + (notes.length ? ': ' + notes.join('; ') : '.'); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
@@ -904,6 +912,13 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   </ul>
                   <p v-if="outputMeta.final_checks.status === 'blocked'" class="muted">Use “Keep improving” to fix these in a new version; this one stays saved.</p>
                 </div>
+                <div v-if="(outputMeta.media_suggestions || []).length && !outputMeta.look && !isOldRevision && canWrite && paid" class="checks" role="status">
+                  <b>A video model declined some shots</b>
+                  <p v-for="sg in outputMeta.media_suggestions" :key="sg.shot" class="suggestion-line">
+                    Shot {{ sg.shot }} was declined by {{ sg.declined_by || 'the video model' }}.
+                    <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active" @click="useEngineFor(sg)">Make it on {{ sg.label }} · {{ sg.credits }} cr</button>
+                  </p>
+                </div>
                 <div v-if="outputMeta.creative_review && !['passed', 'ready', 'blocked'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
                   <b>{{ outputMeta.look ? 'Notes for the next round' : outputMeta.creative_review.status === 'issues' ? 'Things to check in this version' : 'Ideas for the next version' }}</b>
                   <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
@@ -1227,6 +1242,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .character-approval-inline .character-review-grid{grid-template-columns:repeat(auto-fit,minmax(110px,160px));margin:10px 0}
 .character-review-grid figure .input{width:100%;margin-top:4px;font-size:12px}
 .panel-issue{color:var(--color-warning, #b45309)}
+.suggestion-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}
 .checks--blocked{border-color:var(--color-warning, #b45309)}
 
 /* Tokens from the approved create-ui mockup, on the app's own accent. */

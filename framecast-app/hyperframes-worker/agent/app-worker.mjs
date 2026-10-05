@@ -135,10 +135,10 @@ async function execute(run){
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
   if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd,{unlimited});};
   if(paid)provider.release=async()=>{await pilotBudget.release(reservation);reservation=null;};
-  let agentResult;
+  // The bought plan items, kept at run scope: the final checks and the refusal report read them after the build.
+  let agentResult,planMedia=[];
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.
-   let planMedia=[];
    if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
     const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])});
     planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},

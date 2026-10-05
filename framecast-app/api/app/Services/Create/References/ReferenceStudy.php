@@ -480,19 +480,93 @@ class ReferenceStudy
     }
 
     /** One model call: the sheets and the speech become a timed list of moments and the reference's patterns. */
-    private function moments(array $study, ?string $file = null, ?string $sha = null, ?string $work = null): array
+    /**
+     * The split reading (todo G2). A cheap vision model reads every sheet, all at once, and writes plain facts per
+     * frame: exact on-screen text, the type, the elements and where they sit, what changed. The creative model then
+     * reads those facts as text and sees only the moving parts as consecutive frames (the strongest change windows),
+     * so it keeps the frames that need judgement without reading every held frame itself.
+     */
+    private function splitMoments(array $study, string $file, string $sha, string $work): array
     {
-        $content = [];
-        $every = in_array($study['coverage_mode'] ?? 'standard', ['high', 'maximum', 'every_look'], true);
-        // The API reads at most 100 images in one request; every_look sends them all up to that limit.
-        foreach (array_slice($study['sheets'], 0, $every ? 90 : 4) as $i => $sheet) {
-            $bytes = Storage::disk('local')->get($sheet['path']);
+        $every = true;
+        $cheap = (string) config('create.check_model', 'claude-haiku-4-5-20251001');
+        $factsPrompt = 'Cells of a contact sheet from a video, left to right then down; each cell is labelled with its time (and the words being spoken). For every cell write plain facts, no interpretation. Reply with JSON only: {"cells": [{"t": seconds, "text": "exact on-screen words or empty", "type": "font class (serif, sans, geometric, script, mono, handwritten), weight, case, colour and effects of the main text, or empty", "elements": ["what is visible and where (left, centre or right; top, middle or bottom) and how big"], "changed": "what changed from the previous cell, under 15 words"}]}';
+        $tasks = [];
+        foreach ($study['sheets'] as $k => $sheet) {
+            $path = $sheet['path']; $times = $sheet['times'];
+            $tasks[$k] = static function () use ($cheap, $factsPrompt, $path, $times) {
+                $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($path);
+                if (! is_string($bytes) || $bytes === '') return null;
+                return ReferenceStudy::askModel($cheap, [['type' => 'text', 'text' => $factsPrompt.' The cells are at seconds '.json_encode($times).'.'], ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]]], false);
+            };
+        }
+        try { $read = count($tasks) > 1 && ! app()->runningUnitTests() ? \Illuminate\Support\Facades\Concurrency::run($tasks) : array_map(fn ($t) => $t(), $tasks); }
+        catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('Create reference study: fact reading failed', ['error' => mb_substr($e->getMessage(), 0, 200)]); return []; }
+        $facts = []; $cost = 0;
+        foreach ($read as $r) {
+            if (! $r) continue;
+            [$json, $u] = $r; $cost += (int) ceil(((int) ($u['input_tokens'] ?? 0)) * 1 + ((int) ($u['output_tokens'] ?? 0)) * 5);
+            foreach ((array) ($json['cells'] ?? []) as $c) if (is_array($c)) $facts[] = array_filter(['t' => is_numeric($c['t'] ?? null) ? round((float) $c['t'], 2) : null,
+                'text' => mb_substr((string) ($c['text'] ?? ''), 0, 160), 'type' => mb_substr((string) ($c['type'] ?? ''), 0, 120),
+                'elements' => array_slice(array_map(fn ($e) => mb_substr((string) $e, 0, 100), array_filter((array) ($c['elements'] ?? []), 'is_string')), 0, 6),
+                'changed' => mb_substr((string) ($c['changed'] ?? ''), 0, 100)], fn ($v) => $v !== null && $v !== '' && $v !== []);
+        }
+        if (! $facts) return [];
+        // The moving parts, frame by frame: the strongest change windows, at most six, up to 20 frames each.
+        $fps = (float) (($study['fps'] ?? 0) ?: 30);
+        $windows = collect($study['change_windows'] ?? [])->sortByDesc('weight')->take(6)->sortBy('start')->values();
+        $content = [['type' => 'text', 'text' => 'FRAME FACTS (time-ordered): '.mb_substr(json_encode($facts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0, 60000)]];
+        $motion = [];
+        foreach ($windows as $k => $w) {
+            $frames = []; for ($t = (float) $w['start']; $t <= (float) $w['end'] + 1e-6; $t += 1 / $fps) $frames[] = round($t, 3);
+            $step = max(1, (int) ceil(count($frames) / 20));
+            $pick = array_values(array_filter($frames, fn ($i) => $i % $step === 0, ARRAY_FILTER_USE_KEY));
+            $sheet = $this->sheets($file, $pick, $sha, $work, $study['speech'] ?? null, 'motion-'.($k + 1))[0] ?? null;
+            $bytes = $sheet ? Storage::disk('local')->get($sheet['path']) : null;
             if (! is_string($bytes) || $bytes === '') continue;
-            $content[] = ['type' => 'text', 'text' => 'Sheet '.($i + 1).': cells left to right, then down, at seconds '.json_encode($sheet['times']).(! empty($sheet['labelled']) ? '. Under each frame: its time and the words being spoken then.' : '')];
+            $motion[] = $sheet['path'];
+            $content[] = ['type' => 'text', 'text' => 'Motion '.$w['start'].' to '.$w['end'].' s, consecutive frames left to right then down, each labelled with its time.'];
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]];
         }
+        // The opening frames too, so the look and layout are seen first-hand, not only through the facts.
+        if ($first = $study['sheets'][0]['path'] ?? null) {
+            $bytes = Storage::disk('local')->get($first);
+            if (is_string($bytes) && $bytes !== '') { $content[] = ['type' => 'text', 'text' => 'The first sheet of the video, for its look and layout.']; $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]]; }
+        }
+        $content[] = ['type' => 'text', 'text' => $this->readingPrompt($study, $every, true)];
+        $model = str_starts_with((string) config('create.agent_model'), 'claude-') ? (string) config('create.agent_model') : 'claude-opus-5-5';
+        $answer = $this->ask($model, $content, true);
+        if (! $answer) return [];
+        [$json, $u] = $answer;
+        $systems = self::normalizeSystems((array) ($json['systems'] ?? []));
+        $videoType = in_array($json['video_type'] ?? null, self::VIDEO_TYPES, true) ? $json['video_type'] : null;
+        return ['moments' => self::normalizeMoments((array) ($json['moments'] ?? []), (float) $study['duration_seconds'], null, array_column($systems, 'id')),
+            'systems' => $systems, 'video_type' => $videoType, 'passes' => 1, 'open_questions' => [], 'closeup_sheets' => $motion,
+            'usage' => ['input_tokens' => $u['input_tokens'] ?? null, 'output_tokens' => $u['output_tokens'] ?? null, 'images' => count($motion) + 1, 'fact_sheets' => count($study['sheets']), 'facts' => count($facts)],
+            'patterns' => collect(['text_reveal', 'emphasis', 'pacing', 'signature'])->mapWithKeys(fn ($k) => [$k => mb_substr(trim((string) data_get($json, 'patterns.'.$k, '')), 0, 200)])->filter()->all() ?: null,
+            'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 300) ?: null,
+            'model' => 'split: '.$cheap.' facts + '.$model, 'reading' => 'split', 'cost_microusd' => $cost + self::cost($u)];
+    }
+
+    /** One reading by a model, usable from a child process: the parsed JSON and its usage, or null. */
+    public static function askModel(string $model, array $content, bool $long): ?array
+    {
+        try {
+            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'messages' => [['role' => 'user', 'content' => $content]]]);
+        } catch (\Throwable) { return null; }
+        if (! $r->successful()) return null;
+        $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+        $start = strpos($text, '{'); $end = strrpos($text, '}');
+        $json = $start !== false && $end !== false ? json_decode(substr($text, $start, $end - $start + 1), true) : null;
+        return is_array($json) ? [$json, $r->json('usage', [])] : null;
+    }
+
+    /** What the reading model is asked for: every moment, its system, move and method, the patterns. */
+    private function readingPrompt(array $study, bool $every, bool $fromFacts = false): string
+    {
         $words = collect($study['speech']['words'] ?? [])->map(fn ($w) => $w[1].' '.$w[0])->implode(' | ');
-        $content[] = ['type' => 'text', 'text' => "This is a reference video a user attached so their own video can borrow its approach (never its content). It runs {$study['duration_seconds']} s. "
+        $text = "This is a reference video a user attached so their own video can borrow its approach (never its content). It runs {$study['duration_seconds']} s. "
             .'Shots (start-end seconds): '.json_encode($study['shots']).'. Moments where the picture changes inside a shot: '.json_encode(array_map(fn ($w) => [$w['start'], $w['end']], $study['change_windows'])).'. '
             .($words !== '' ? 'Speech, each word with its start second: '.mb_substr($words, 0, 6000).'. ' : 'No speech. ')
             .'List every distinct moment a viewer would notice, in order: each headline or text card, each UI screen or zoom, stickers, memes, emoji, counters, logos, characters, transitions and the close. '
@@ -507,7 +581,29 @@ class ReferenceStudy
             .' A system is an element that recurs with the same look and behaviour (every Step card, every UI panel, the caption style): describe it once in systems and point each of its moments at it.'
             .' Method: motion_graphics is designed type, shapes and UI animated in software; render_3d is a 3D-rendered object or character (clay, toy-like, CG product), whatever its shading (dithered, toon); generated_video is footage from an AI video model (organic motion, morphing details, unstable text); footage is real camera video; presenter is a person talking to camera (real or AI); screen_recording is a real app or site captured; stock is licensed footage or photos; still is a single image held or moved; audiogram is audio shown as a waveform.'
             .' Name each system\'s and each moment\'s move from this list, choosing what the frames show, not the nearest word: '.\App\Services\Create\MotionMoves::prompt().'.'
-            .($every ? ' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes). List as many moments as the video has.' : ' At most 30 moments.')];
+            .($every ? ' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes). List as many moments as the video has.' : ' At most 30 moments.');
+        // From facts: a cheaper reader already listed every distinct look; the frames shown are the moving parts.
+        if ($fromFacts) $text = str_replace(' The sheets show one frame for every distinct look, so consecutive cells are the stages of each move: describe each move from its stages (what enters, from where, how it eases, what it becomes).',
+            ' FRAME FACTS below list every distinct look in order (text, type, elements, what changed), read by a cheaper model: trust them for what is on screen, and correct them only where the frames you see disagree. The images are the moments of motion, frame by frame: describe each move from its stages (what enters, from where, how it eases, what it becomes).', $text);
+        return $text;
+    }
+
+    /** How the reference is read: 'opus' (every sheet to the creative model) or 'split' (G2). Set for an A/B run. */
+    public ?string $readingMode = null;
+
+    private function moments(array $study, ?string $file = null, ?string $sha = null, ?string $work = null): array
+    {
+        if (($this->readingMode ?? (string) config('create.study_mode', 'opus')) === 'split' && $file !== null) return $this->splitMoments($study, $file, (string) $sha, (string) $work);
+        $content = [];
+        $every = in_array($study['coverage_mode'] ?? 'standard', ['high', 'maximum', 'every_look'], true);
+        // The API reads at most 100 images in one request; every_look sends them all up to that limit.
+        foreach (array_slice($study['sheets'], 0, $every ? 90 : 4) as $i => $sheet) {
+            $bytes = Storage::disk('local')->get($sheet['path']);
+            if (! is_string($bytes) || $bytes === '') continue;
+            $content[] = ['type' => 'text', 'text' => 'Sheet '.($i + 1).': cells left to right, then down, at seconds '.json_encode($sheet['times']).(! empty($sheet['labelled']) ? '. Under each frame: its time and the words being spoken then.' : '')];
+            $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]];
+        }
+        $content[] = ['type' => 'text', 'text' => $this->readingPrompt($study, $every)];
         // Maximum looks twice: the first reading lists what it could not tell; those stretches are then read frame by frame.
         $maximum = $file !== null && in_array($study['coverage_mode'] ?? '', ['maximum', 'every_look'], true);
         if ($maximum) $content[count($content) - 1]['text'] .= ' Also list open_questions: up to 4 short stretches (each under 2.5 s) where a move is too fast to read from these frames, as [{"start": seconds, "end": seconds, "question": "what you could not tell"}]; [] if none.';
