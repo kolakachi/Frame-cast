@@ -87,3 +87,25 @@ From the owner, scored 1–5:
 | Generated briefs | about 500–900 |
 
 - The round stops and reports if the cap would be crossed.
+
+## Results
+
+### 2026-10-05: DistroKid, similar (B5-like; creation `cfb5e61f`)
+
+Settings: 9:16, 15 s. Plan on Opus 5.5: a cast of 3 (creator, house, room), a storyboard of 3 panels, 3 Seedance 2.5 shots.
+
+**The owner's verdict:** "this is a good result".
+
+| Stage | Time | Credits |
+|---|---|---|
+| Plan | about 3 min | free |
+| Look stage | about 9 min | 347 |
+| Full video | 12 min | 641 (3 shots 462; real provider cost $3.24) |
+| **Happy path** | **about 21 min** | **about 988** |
+| Lost to 6 bugs found and fixed that day | | 454 |
+
+**Final checks:**
+- Passed: the wordmark, the real input screen, the orange glow, the same person throughout.
+- Unverified: the spoken words (listening hit a provider hiccup; it now retries).
+
+**Not yet scored:** the five 1-to-5 scores.
