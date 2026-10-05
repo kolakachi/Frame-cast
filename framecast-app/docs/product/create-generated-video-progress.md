@@ -20,14 +20,14 @@ Last updated: 2026-10-05.
 | A. Direction (cast and storyboard) | 7 | 1 | 0 |
 | B. Generation routes | 0 | 1 | 4 |
 | C. Reliability | 1 | 1 | 3 |
-| D. Delivery checks | 0 | 2 | 6 |
+| D. Delivery checks | 4 | 3 | 1 |
 | E. Composition with generated worlds | 0 | 2 | 1 |
 | F. Speed | 0 | 1 | 2 |
 | G. Cost | 1 | 1 | 3 |
 | H. Protect what works | 0 | 1 | 1 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Next:** D (delivery checks on the final video, with the repair policy), then the B2 bake-off.
+**Next:** the B2 bake-off (needs the owner's budget cap), C2 to C5 reliability, and E composition. A real DistroKid test of A and D is the best next signal.
 **Waiting on the owner:** bench inputs and the budget cap (see the end of this file).
 
 ---
@@ -121,18 +121,25 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 
 ## D. Delivery checks (on the final encoded video)
 
-- [ ] **Failure and repair policy:** blocking vs advisory, at most 2 repairs, the "unverified" state.
-- [ ] **D1. Character continuity across shots.**
-- [ ] **D2. Required actions visible** across a frame sequence of the final cut.
-- [ ] **D3. Sequence coverage** (panels vs detected cuts).
-- [ ] **D4. No unintended lettering.**
-- [~] **D5. Audio.**
-  - Done: the take's speech checked against the approved words (from 0.1), recorded on the item.
-  - Missing: surfacing and blocking, intelligibility, ambience levels, music clash, loudness.
-- [ ] **D6. Named moves blocking** (motion graphics).
+Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
+
+- [~] **Failure and repair policy.**
+  - Done: blocking vs advisory; a blocked version is marked "not ready" with timestamps; checks that could not run are "unverified" and never a pass; "Keep improving" fixes it in a new version.
+  - Missing: automatic repairs (at most 2, within the approved ceiling) and free repair of our own mistakes.
+- [x] **D1. The same people throughout:** the final frames are compared with the approved cast images. Drift blocks.
+- [~] **D2. Required actions.**
+  - Done: "must appear" items and each directed action are judged on frames sampled from the final cut. A missing required item blocks; a directed action is advisory.
+  - Missing: per-shot frame sequences inside each shot's window.
+- [ ] **D3. Sequence coverage** (waits for the sequence route, B1).
+- [x] **D4. No unintended lettering:** garbled letters or fake logos in the picture are flagged (advisory); real packaging and overlays are fine.
+- [x] **D5. Audio:**
+  - lost approved words block (listening to the export, script coverage at least 90% with no missing passage);
+  - mix, dead air and abrupt endings are flagged by the existing listening review;
+  - loudness is levelled.
+- [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery.
 - [~] **D7. Build hygiene.**
-  - Done: bought clips must appear; a take must play at least 90%.
-  - Missing: unintended blank frames (the DistroKid cut ended on black); using a shot's best seconds.
+  - Done: unintended blank frames block (a fade of up to 0.6 s at the start or end is allowed); bought clips must appear; a take must play at least 90%.
+  - Missing: using a shot's best seconds.
 
 ## E. Composition with generated worlds
 
