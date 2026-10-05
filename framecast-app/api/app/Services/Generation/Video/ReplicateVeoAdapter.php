@@ -63,10 +63,12 @@ class ReplicateVeoAdapter
             if ($imageDataUri !== null) {
                 $input['image'] = $imageDataUri;
             }
-            if ($referenceImages !== []) {
+            if ($referenceImages !== [] && $imageDataUri === null) {
                 // With no seed to lean on, the reference set is the only thing
                 // holding the presenter's identity steady across chunks, so it
-                // rides on every one rather than just the first.
+                // rides on every one rather than just the first. Omni refuses
+                // references alongside a start frame (2026-10-05), so a start
+                // frame, which already shows the person, wins.
                 $input['reference_images'] = array_slice(array_values($referenceImages), 0, 3);
             }
         } else {

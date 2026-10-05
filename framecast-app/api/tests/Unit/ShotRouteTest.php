@@ -134,7 +134,10 @@ class ShotRouteTest extends TestCase
     public function test_each_engine_gets_only_the_inputs_it_takes_and_says_so(): void
     {
         $omni = ShotRoute::shot(['engine' => 'omni', 'first_frame' => 'Shop owner', 'refs' => ['avatar']], $this->ctx);
-        $this->assertSame(['omni', 'Shop owner', ['avatar']], [$omni['engine'], $omni['first_frame'], $omni['refs']], 'Omni keeps the start frame and the references together');
+        $this->assertSame(['omni', 'Shop owner', []], [$omni['engine'], $omni['first_frame'], $omni['refs']], 'Omni refuses a start frame with references: the start frame wins');
+        $this->assertStringContainsString('not both', implode(' ', $omni['route_notes'] ?? []));
+        $veo = ShotRoute::shot(['engine' => 'veo_hq', 'first_frame' => 'Shop owner', 'refs' => ['avatar'], 'seconds' => 8, 'aspect' => '16:9'], ['aspect_ratio' => '16:9', 'video_tier' => 'premium'] + $this->ctx);
+        $this->assertSame(['veo_hq', ['avatar']], [$veo['engine'], $veo['refs']], 'Veo HQ keeps both');
 
         $seed = ShotRoute::shot(['engine' => 'seedance25', 'first_frame' => 'Shop owner', 'refs' => ['sheet']], ['has_avatar' => false] + $this->ctx);
         $this->assertSame(['seedance25', 'Shop owner', []], [$seed['engine'], $seed['first_frame'], $seed['refs']]);
@@ -237,7 +240,7 @@ class ShotRouteTest extends TestCase
         $this->assertSame(2 * ShotRoute::PANEL_CREDITS, $board['credits']);
         $this->assertSame(['Panel 1', 'Panel 2'], array_column(array_slice($media, 2), 'first_frame'));
         $this->assertSame([], $media[2]['refs'], 'Seedance starts from the panel alone, which carries the cast');
-        $this->assertSame(['Maya'], $media[3]['refs'], 'Omni keeps the panel and the cast together');
+        $this->assertSame([], $media[3]['refs'], 'Omni also starts from the panel alone (it refuses a start frame with references)');
         $this->assertArrayNotHasKey('problem', $media[2]);
     }
 

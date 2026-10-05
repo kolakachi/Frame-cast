@@ -197,7 +197,8 @@ class ShotRoute
     /** What each engine takes: a start frame, reference images, or both at once. First-frame engines need a start frame. */
     public const INPUTS = [
         'seedance25' => ['start' => true, 'refs' => true, 'both' => false],
-        'omni' => ['start' => true, 'refs' => true, 'both' => true],
+        // Omni on Replicate refuses a start frame with reference images (2026-10-05): one or the other.
+        'omni' => ['start' => true, 'refs' => true, 'both' => false],
         'veo_hq' => ['start' => true, 'refs' => true, 'both' => true],
     ];
 
@@ -244,7 +245,7 @@ class ShotRoute
             elseif ($refs) { $notes[] = self::label($engine).' takes only the start frame; the references are not sent.'; $refs = []; }
         }
         if (isset(self::INPUTS[$engine]) && $first && $refs && ! self::INPUTS[$engine]['both']) {
-            // Seedance takes a start frame or references, not both: the approved frame already holds the cast.
+            // Seedance and Omni take a start frame or references, not both: the approved frame already holds the cast.
             $notes[] = self::label($engine).' takes a start frame or references, not both: the start frame carries the cast.';
             $refs = [];
         }
@@ -254,6 +255,8 @@ class ShotRoute
             if ($premium && $engine !== 'veo_hq' && $veoFits()) $engine = 'veo_hq';
             if ($engine === 'veo_hq' && ! $veoFits()) $engine = $avatar ? 'omni' : 'seedance25';
             if ($engine === 'omni' && $seconds > 10.01 && ! $avatar) $engine = 'seedance25';
+            // The engine may have changed above: apply its start-frame-or-references rule again.
+            if ($first && $refs && isset(self::INPUTS[$engine]) && ! self::INPUTS[$engine]['both']) { $notes[] = self::label($engine).' takes a start frame or references, not both: the start frame carries the cast.'; $refs = []; }
             $spec = self::REF[$engine];
             $seconds = isset($spec['steps']) ? self::step($seconds, $spec['steps']) : (int) round(max($spec['min'], min($spec['max'], $seconds)));
             $aspect = self::aspect($item['aspect'] ?? null, $spec['aspects'], $ctx['aspect_ratio'] ?? '9:16');
