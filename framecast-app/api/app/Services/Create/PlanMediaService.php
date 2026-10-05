@@ -65,6 +65,7 @@ class PlanMediaService
 
         abort_if(isset($item['reuse_media_id']), 409, 'Previously purchased media changed. Review a fresh quote instead of purchasing it again.');
         abort_if($done && $done->status === 'unknown', 409, 'This plan item has an unresolved provider outcome. Reconcile it before purchasing again.');
+        if (in_array($item['kind'], ['generated_shot', 'ugc_take'], true)) return $this->produceGenerated($run, $runId, $lease, $index, $item, $planId, $cacheIndex, $context, $hash, $done);
         $attempts = app(AttemptService::class);
         $attempt = $attempts->begin($runId, $lease, 'plan-media-'.$index, 'plan_media', $hash);
         abort_unless($attempt['may_execute'], 409, 'This item was already attempted in this run.');
@@ -128,6 +129,74 @@ class PlanMediaService
             // Uncertain attempts retain their local files for offline recovery; no automatic re-purchase.
             if ($recorded) { foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir); }
         }
+    }
+
+    /**
+     * Generated shots and takes run for minutes at the provider, longer than any one request may wait. The first
+     * call starts them and records them as pending; each later call checks once and, when they are done, stores the
+     * clip and charges it like any other item. A pending item from a stopped run is collected, not bought again.
+     */
+    private function produceGenerated(object $run, string $runId, string $lease, int $index, array $item, string $planId, int $cacheIndex, array $context, string $hash, ?object $done): array
+    {
+        $attempts = app(AttemptService::class);
+        $executor = app(PlanMediaExecutor::class);
+        $base = ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'engine' => $item['engine'] ?? null];
+        $pending = $done && $done->status === 'pending' && $done->description_hash === $hash ? json_decode((string) $done->record_json, true) : null;
+        if (! $pending || ($pending['run_id'] ?? null) !== $runId) {
+            $attempt = $attempts->begin($runId, $lease, 'plan-media-'.$index, 'plan_media', $hash);
+            abort_unless($attempt['may_execute'], 409, 'This item was already attempted in this run.');
+            if ($pending) {
+                // Adopt the clip a stopped run started: collect it here instead of paying for it again.
+                $pending = [...$pending, 'attempt_id' => $attempt['id'], 'run_id' => $runId];
+            } else {
+                try { $started = $executor->startGenerated($item['kind'], $item['description'], $context); }
+                catch (\Throwable $e) {
+                    report($e);
+                    // A start that was refused, or never connected, made nothing; anything else may have.
+                    $unsent = $e instanceof \RuntimeException && ! $e instanceof \Illuminate\Http\Client\ConnectionException || self::neverConnected($e, 'generated_shot');
+                    if (! $unsent || $item['kind'] === 'ugc_take') {
+                        $attempts->settle($runId, $lease, $attempt['id'], ['status' => 'unknown']);
+                        $this->record($run, $planId, $cacheIndex, $item, $hash, 'unknown', null, 0, 'Provider outcome requires reconciliation.');
+                        abort(409, 'Media outcome needs reconciliation; no automatic retry or replacement purchase.');
+                    }
+                    return $this->failGenerated($run, $runId, $lease, $attempt['id'], $planId, $cacheIndex, $item, $hash, $e->getMessage(), $base);
+                }
+                $pending = ['predictions' => $started['predictions'], 'engine' => $started['engine'], 'attempt_id' => $attempt['id'], 'run_id' => $runId, 'started_at' => now()->toIso8601String()];
+            }
+            $this->record($run, $planId, $cacheIndex, $item, $hash, 'pending', $pending, 0, null);
+            return [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null];
+        }
+        $dir = Storage::disk('local')->path('create/media-attempts/'.$pending['attempt_id']);
+        if (! is_dir($dir)) mkdir($dir, 0700, true);
+        try { $made = $executor->collectGenerated($item['kind'], $item['description'], $context, $dir, $pending); }
+        catch (\Illuminate\Http\Client\ConnectionException) { return [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null]; }
+        catch (\Throwable $e) {
+            report($e);
+            return $this->failGenerated($run, $runId, $lease, $pending['attempt_id'], $planId, $cacheIndex, $item, $hash, $e->getMessage(), $base);
+        }
+        if (! $made) return [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null];
+        $file = app(RunService::class)->generated($runId, $lease, $made['path'], $made['title'],
+            ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => $item['kind'], 'description' => $item['description']], 'provider_id' => $made['provider_id']]);
+        $id = substr(preg_replace('/[^a-zA-Z0-9_-]/', '-', $made['provider_id']).'-'.substr($pending['attempt_id'], 0, 8), 0, 160);
+        $attempts->bindPrediction($runId, $lease, $pending['attempt_id'], $id);
+        $credits = (int) $item['credits'];
+        $receipt = new VerifiedAttemptReceipt($pending['attempt_id'], 'succeeded', $id, $credits * 4000, 'pilot-tariff:catalogue; '.$item['kind'].' on '.($made['engine'] ?? '?').' at its listed price of '.$credits.' credits');
+        $settled = $attempts->settle($runId, $lease, $pending['attempt_id'], $receipt->result(), $receipt);
+        $record = [...$base, 'status' => 'succeeded', 'file' => $file, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null];
+        $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
+        foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
+        return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];
+    }
+
+    private function failGenerated(object $run, string $runId, string $lease, string $attemptId, string $planId, int $cacheIndex, array $item, string $hash, string $message, array $base): array
+    {
+        $attempts = app(AttemptService::class);
+        $id = 'pm-failed-'.Str::uuid();
+        $attempts->bindPrediction($runId, $lease, $attemptId, $id);
+        $receipt = new VerifiedAttemptReceipt($attemptId, 'failed', $id, 0, 'pilot-tariff:catalogue; not produced');
+        $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
+        $this->record($run, $planId, $cacheIndex, $item, $hash, 'failed', null, 0, mb_substr($message, 0, 280));
+        return [...$base, 'status' => 'failed', 'error' => $message, 'charged_credits' => 0];
     }
 
     /**

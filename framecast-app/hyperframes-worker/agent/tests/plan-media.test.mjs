@@ -45,3 +45,13 @@ test('frozen task and requirement identities survive successful and failed media
  assert.deepEqual(result[1].requirement_ids,approved[1].requirement_ids);
  assert.deepEqual(manifest[0].plan_media.requirement_ids,approved[0].requirement_ids);
 });
+
+test('generated clips are all started first, then collected together', async () => {
+ const items=[{kind:'generated_shot',description:'a'},{kind:'generated_shot',description:'b'},{kind:'music',description:'m'}];
+ const calls=[];const left={0:2,1:1};
+ const r=await buyPlanMedia({items,directory:'/tmp/unused',manifest:[],download:async()=>{throw Error('no files here');},pollMs:1,sleep:async()=>{},
+  produce:async i=>{calls.push(i);if(i===2)return {status:'failed',error:'none'};return left[i]-->0?{status:'pending'}:{status:'failed',error:'declined'};}});
+ assert.deepEqual(calls.slice(0,3),[0,1,2],'every item is started before any wait');
+ assert.deepEqual(r.map(x=>x.status),['failed','failed','failed'],'results keep the plan order');
+ await assert.rejects(buyPlanMedia({items:[items[0]],directory:'/tmp/unused',manifest:[],download:async()=>({}),pollMs:1,maxWaitMs:0,sleep:async()=>{},produce:async()=>({status:'pending'})}),/still rendering/);
+});

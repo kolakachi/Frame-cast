@@ -39,8 +39,7 @@ class PlanMediaExecutor
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
             'reference_sheet' => $this->referenceSheet($description, $ctx, $dir),
-            'generated_shot' => $this->generatedShot($description, $ctx, $dir),
-            'ugc_take' => $this->ugcTake($description, $ctx, $dir),
+            // Generated shots and takes start and are collected separately (startGenerated, collectGenerated).
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
     }
@@ -361,73 +360,92 @@ class PlanMediaExecutor
         return trim($description).$named.$sound.' No on-screen text, captions, subtitles, logos, watermarks or user interface; keep the main subject centred and clear of the frame edges.';
     }
 
-    /** One generated shot: references (the approved sheet, the user's avatar) or a first frame, on the routed engine. */
-    private function generatedShot(string $description, array $ctx, string $dir): array
+    /**
+     * Start a generated shot or UGC take and return at once: its predictions run at the provider (Seedance 2.5 can
+     * take 5-15 minutes) while the worker checks back through collectGenerated, so no request waits for minutes.
+     * Returns the prediction ids; throws only when nothing could be started.
+     */
+    public function startGenerated(string $kind, string $description, array $ctx): array
     {
         $shot = $ctx['shot'] ?? [];
         $engine = (string) ($shot['engine'] ?? '');
+        $veo = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
+        if ($kind === 'ugc_take') {
+            $refs = match ($shot['presenter'] ?? 'none') {
+                'avatar' => $this->shotReferences(['refs' => ['avatar']], $ctx),
+                'sheet' => $this->shotReferences(['refs' => ['sheet']], $ctx),
+                default => [],
+            };
+            $ids = [];
+            foreach ($shot['segments'] ?? [] as $k => $seg) {
+                $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
+                $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person.' : '')
+                    .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
+                    .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
+                    .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
+                $ids[] = $veo->start($prompt, (int) $seg['seconds'], null, $engine ?: 'omni', array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
+            }
+            if (! $ids) throw new RuntimeException('The UGC take has nothing to say. Plan again with a script.');
+            return ['predictions' => $ids, 'engine' => $engine];
+        }
         if (isset(ShotRoute::FIRST_FRAME[$engine])) {
             $tier = ShotRoute::FIRST_FRAME[$engine]['tier'];
-            $r = app(I2VAdapter::class)->animate($this->firstFrame($shot, $ctx), $this->shotPrompt($description, $shot, []), $tier, (int) $shot['seconds'],
+            [$model, $version, $input] = app(\App\Services\Generation\Video\ReplicateI2VAdapter::class)->buildRequestForTier($tier, $this->firstFrame($shot, $ctx), $this->shotPrompt($description, $shot, []), (int) $shot['seconds'],
                 ['aspect_ratio' => $shot['aspect'] ?? ($ctx['aspect_ratio'] ?? '9:16'), \App\Services\CreditService::videoQualityParam($tier) => \App\Services\CreditService::videoQuality($tier, null)]);
-            $url = $r['video_url'] ?? null;
-            $id = 'shot-'.Str::uuid();
-        } elseif (isset(ShotRoute::REF[$engine])) {
-            $refs = $this->shotReferences($shot, $ctx);
-            $adapter = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
-            $id = $adapter->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], null, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
-            // A shot is one prediction; the worker waits up to 15 minutes for the whole item.
-            $url = $adapter->pollUntilDone($id, 780);
-        } else throw new RuntimeException('This shot has no video model. Plan again.');
-        if (! $url) throw new RuntimeException('The video model is still making this shot.');
-        $path = $this->fetch((string) $url, $dir.'/shot.mp4');
-        return ['path' => $path, 'mime' => 'video/mp4', 'title' => ShotRoute::label($engine).' · '.Str::limit($description, 50, '…'), 'provider_id' => preg_replace('/[^a-zA-Z0-9_-]/', '', (string) $id) ?: 'shot-'.Str::uuid(),
-            'engine' => $engine, 'seconds' => (float) ($shot['seconds'] ?? 0)];
+            $http = Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(60);
+            $res = $version ? $http->post('https://api.replicate.com/v1/predictions', ['version' => $version, 'input' => $input])
+                : $http->post('https://api.replicate.com/v1/models/'.$model.'/predictions', ['input' => $input]);
+            $id = (string) $res->json('id');
+            if (! $res->successful() || $id === '') throw new RuntimeException('The video model did not accept this shot: '.mb_substr($res->body(), 0, 200));
+            return ['predictions' => [$id], 'engine' => $engine];
+        }
+        if (! isset(ShotRoute::REF[$engine])) throw new RuntimeException('This shot has no video model. Plan again.');
+        $refs = $this->shotReferences($shot, $ctx);
+        return ['predictions' => [$veo->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], null, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'))], 'engine' => $engine];
     }
 
     /**
-     * A UGC take: the presenter speaking the script to camera with native speech. Each segment is one prediction
-     * from the same references (so the person stays the same), all started at once, then joined into one take;
-     * the cut between segments is a natural jump cut, and the build can hide it behind a layout change.
+     * Check the started predictions once. Null while any is still running; throws when one failed; otherwise the
+     * finished clip (a take's segments joined into one), in the shape produce() returns.
      */
-    private function ugcTake(string $description, array $ctx, string $dir): array
+    public function collectGenerated(string $kind, string $description, array $ctx, string $dir, array $pending): ?array
     {
+        $urls = [];
+        foreach ($pending['predictions'] ?? [] as $id) {
+            $p = Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(30)->get('https://api.replicate.com/v1/predictions/'.$id)->json();
+            $status = (string) ($p['status'] ?? '');
+            if (in_array($status, ['failed', 'canceled'], true)) {
+                $error = (string) ($p['error'] ?? 'no detail');
+                \Illuminate\Support\Facades\Log::info('generated video failed', ['prediction_id' => $id, 'error' => mb_substr($error, 0, 500)]);
+                if (str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false)
+                    throw new RuntimeException('The video model declined this shot: its moderation flags some content even in tasteful ads. Nothing was charged.');
+                throw new RuntimeException('The video model could not make this shot: '.mb_substr($error, 0, 200));
+            }
+            if ($status !== 'succeeded') return null;
+            $out = $p['output'] ?? null;
+            $urls[] = is_array($out) ? (string) ($out[0] ?? '') : (string) $out;
+        }
+        if (! $urls || in_array('', $urls, true)) throw new RuntimeException('The video model finished without a clip.');
         $shot = $ctx['shot'] ?? [];
-        $engine = (string) ($shot['engine'] ?? 'omni');
-        $refs = match ($shot['presenter'] ?? 'none') {
-            'avatar' => $this->shotReferences(['refs' => ['avatar']], $ctx),
-            'sheet' => $this->shotReferences(['refs' => ['sheet']], $ctx),
-            default => [],
-        };
-        $adapter = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
-        $ids = [];
-        foreach ($shot['segments'] ?? [] as $k => $seg) {
-            $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
-            $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' — keep this exact person.' : '')
-                .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
-                .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
-                .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
-            $ids[] = $adapter->start($prompt, (int) $seg['seconds'], null, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
+        $engine = (string) ($pending['engine'] ?? $shot['engine'] ?? '');
+        $ids = preg_replace('/[^a-zA-Z0-9_-]/', '', implode('-', $pending['predictions']));
+        if ($kind !== 'ugc_take') {
+            $path = $this->fetch($urls[0], $dir.'/shot.mp4');
+            return ['path' => $path, 'mime' => 'video/mp4', 'title' => ShotRoute::label($engine).' · '.Str::limit($description, 50, '…'), 'provider_id' => 'shot-'.$ids, 'engine' => $engine, 'seconds' => (float) ($shot['seconds'] ?? 0)];
         }
-        if (! $ids) throw new RuntimeException('The UGC take has nothing to say. Plan again with a script.');
-        $parts = [];
-        foreach ($ids as $k => $id) {
-            $url = $adapter->pollUntilDone($id, 780);
-            if (! $url) throw new RuntimeException('The video model is still making part '.($k + 1).' of the take.');
-            $parts[] = $this->fetch($url, $dir.'/part-'.$k.'.mp4');
-        }
+        $parts = array_map(fn ($u, $k) => $this->fetch($u, $dir.'/part-'.$k.'.mp4'), $urls, array_keys($urls));
         $path = $dir.'/take.mp4';
-        if (count($parts) === 1) rename($parts[0], $path);
+        if (count($parts) === 1) copy($parts[0], $path);
         else {
             // Re-encode on join: segments can differ slightly in size and timing.
             $inputs = []; $filter = '';
-            foreach ($parts as $k => $part) { array_push($inputs, '-i', $part); $filter .= '['.$k.':v]scale=720:-2,setsar=1,fps=30['.'v'.$k.'];'; }
+            foreach ($parts as $k => $part) { array_push($inputs, '-i', $part); $filter .= '['.$k.':v]scale=720:-2,setsar=1,fps=30[v'.$k.'];'; }
             $filter .= implode('', array_map(fn ($k) => '[v'.$k.']['.$k.':a]', array_keys($parts))).'concat=n='.count($parts).':v=1:a=1[v][a]';
             $p = Process::timeout(180)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', ...$inputs, '-filter_complex', $filter, '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', $path]);
             if (! $p->successful() || ! is_file($path)) throw new RuntimeException('The take could not be joined.');
         }
         $lines = collect($shot['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->all();
-        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'UGC take · '.Str::limit(implode(' ', $lines), 40, '…'), 'provider_id' => 'take-'.preg_replace('/[^a-zA-Z0-9_-]/', '', implode('-', $ids)),
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'UGC take · '.Str::limit(implode(' ', $lines), 40, '…'), 'provider_id' => 'take-'.$ids,
             'line' => implode(' ', $lines), 'speech_mode' => 'native', 'engine' => $engine];
     }
 
