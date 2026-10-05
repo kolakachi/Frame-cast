@@ -106,12 +106,13 @@ class ShotRoute
             'refs' => array_values(array_filter(array_map(fn ($r) => $s($r, 46), (array) ($m['refs'] ?? [])))) ?: null,
             'first_frame' => $s($m['first_frame'] ?? $m['start_frame'] ?? '', 40) ?: null,
             'audio' => in_array($m['audio'] ?? null, ['ambient', 'speech', 'none'], true) ? $m['audio'] : null,
-            'line' => $s($m['line'] ?? '', 200) ?: null,
+            'line' => $s($m['line'] ?? '', 600) ?: null,
             'aspect' => preg_match('/^\d{1,2}:\d{1,2}$/', (string) ($m['aspect'] ?? '')) ? $m['aspect'] : null,
             'beat' => $s($m['beat'] ?? '', 40) ?: null,
             'why' => $s($m['why'] ?? '', 160) ?: null,
             'presenter' => in_array($m['presenter'] ?? null, ['avatar', 'sheet'], true) ? $m['presenter'] : null,
-            'lines' => array_values(array_filter(array_map(fn ($l) => $s($l, 160), (array) ($m['lines'] ?? [])))) ?: null,
+            // Which approved lines a take speaks; never cut, the words come from the approved narration (see take()).
+            'lines' => array_values(array_filter(array_map(fn ($l) => $s($l, 600), (array) ($m['lines'] ?? [])))) ?: null,
             'subjects' => is_array($m['subjects'] ?? null) ? self::sheet($m)['subjects'] : null,
             // Direction for a generated shot: what happens, where people look, how the camera moves, how it ends.
             'action' => $s($m['action'] ?? '', 200) ?: null,
@@ -287,11 +288,27 @@ class ShotRoute
      * Route a UGC take: a presenter speaking the script to camera with native speech, in segments the engine can
      * make (Omni about 10 s, Veo 3.1 8 s), joined into one take. The presenter is the user's avatar or a sheet subject.
      */
+    /** The approved lines a take's own lines point at, in script order; all of them when none match. */
+    public static function approvedLines(array $asked, array $approved): array
+    {
+        if (! $asked) return $approved;
+        $words = fn (string $t) => array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($t))));
+        $pool = array_count_values($words(implode(' ', $asked)));
+        $picked = array_values(array_filter($approved, function ($line) use ($words, $pool) {
+            $w = $words($line);
+            return $w && count(array_filter($w, fn ($x) => isset($pool[$x]))) / count($w) >= 0.6;
+        }));
+        return $picked ?: $approved;
+    }
+
     public static function take(array $item, array $ctx): array
     {
         $premium = ($ctx['video_tier'] ?? 'standard') === 'premium';
-        $lines = array_values(array_filter(array_map(fn ($l) => trim((string) $l), (array) ($item['lines'] ?? [])), fn ($l) => $l !== ''));
-        if (! $lines) $lines = array_values(array_filter(array_map('strval', (array) ($ctx['narration'] ?? []))));
+        $asked = array_values(array_filter(array_map(fn ($l) => trim((string) $l), (array) ($item['lines'] ?? [])), fn ($l) => $l !== ''));
+        $approved = array_values(array_filter(array_map(fn ($l) => trim((string) $l), (array) ($ctx['narration'] ?? [])), fn ($l) => $l !== ''));
+        // The take speaks the approved script, as the user last edited it: its own lines only say which approved
+        // lines it speaks (matched by wording, so an edited line is spoken as edited).
+        $lines = $approved ? self::approvedLines($asked, $approved) : $asked;
         $presenter = ($item['presenter'] ?? '') === 'avatar' && ! empty($ctx['has_avatar']) ? 'avatar'
             : (! empty($ctx['has_sheet']) ? 'sheet' : (! empty($ctx['has_avatar']) ? 'avatar' : 'none'));
         // A selected cloned voice: the approved cloned narration drives a lip-synced presenter (the existing route),

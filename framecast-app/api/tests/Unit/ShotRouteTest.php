@@ -297,4 +297,28 @@ class ShotRouteTest extends TestCase
         // A face kit is a talking face drawn in code, not a presenter on camera.
         $this->assertSame('motion_graphics', $t(['voiceover'], [], [['face_kit' => ['mouths' => []]]]));
     }
+
+    public function test_a_take_speaks_the_approved_script_as_last_edited_never_cut(): void
+    {
+        $ctx = ['has_avatar' => true, 'aspect_ratio' => '9:16', 'language' => 'en'];
+        // The user changed "ninety" to "nine" after the plan was made: the take says "nine".
+        $take = ShotRoute::take(['kind' => 'ugc_take', 'presenter' => 'avatar', 'lines' => ['Start with the ninety dollar pass today.']], $ctx + ['narration' => ['Meet WyvStudio.', 'Start with the nine dollar pass today.']]);
+        $said = implode(' ', array_merge(...array_column($take['segments'], 'lines')));
+        $this->assertStringContainsString('nine dollar', $said);
+        $this->assertStringNotContainsString('ninety', $said);
+        $this->assertStringNotContainsString('Meet WyvStudio', $said, 'only the lines this take was given');
+        // A take line merging two approved lines is never cut short: every approved word is spoken.
+        $long = ['Paste a link to any product page and WyvStudio reads it, writes the script, picks a voice and builds the scenes for you.', 'Then it renders a captioned, ready-to-post video you can schedule straight to TikTok, YouTube or Instagram.'];
+        $take = ShotRoute::take(['kind' => 'ugc_take', 'presenter' => 'avatar', 'lines' => [implode(' ', $long)]], $ctx + ['narration' => $long]);
+        $this->assertSame(implode(' ', $long), implode(' ', array_merge(...array_column($take['segments'], 'lines'))), 'split into segments, every word kept');
+        $this->assertStringContainsString('YouTube or Instagram.', implode(' ', array_merge(...array_column($take['segments'], 'lines'))));
+    }
+
+    public function test_a_long_planner_line_is_split_at_sentences_not_cut(): void
+    {
+        $line = str_repeat('This sentence is part of a long script. ', 8).'The final words must survive.';
+        $parts = \App\Services\Create\PlanService::splitLine($line, 160);
+        $this->assertTrue(max(array_map('mb_strlen', $parts)) <= 160);
+        $this->assertSame(preg_replace('/\s+/', ' ', $line), implode(' ', $parts));
+    }
 }

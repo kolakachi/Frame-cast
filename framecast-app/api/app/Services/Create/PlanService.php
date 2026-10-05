@@ -481,8 +481,10 @@ class PlanService
         // At 2 words a second the script was cut after a few lines, leaving the narration well short of the video.
         $maxWords = (int) round(max(4, (int) ($ctx['settings']['duration_seconds'] ?? 15) - 1) * 2.8);
         $narration = [];
-        foreach ((array) ($raw['narration'] ?? []) as $line) {
-            $line = $str($line, 160);
+        // A line over 160 characters is split at its sentences (then clauses), never cut mid-sentence.
+        $pieces = [];
+        foreach ((array) ($raw['narration'] ?? []) as $line) foreach (self::splitLine(trim(is_string($line) ? $line : ''), 160) as $p) $pieces[] = $p;
+        foreach ($pieces as $line) {
             if ($line === '' || count($narration) >= 8) continue;
             $words = str_word_count(implode(' ', [...$narration, $line]));
             if ($words > $maxWords) break;
@@ -624,6 +626,23 @@ class PlanService
      * The video type (todo M), from what the plan makes rather than the planner's word for it: a presenter speaking,
      * footage (generated, stock or the user's), and designed graphics (callouts, UI, kinetic type) in any mix.
      */
+    /** A line split into pieces of at most $max characters: at sentence ends, then commas, then words. */
+    public static function splitLine(string $line, int $max): array
+    {
+        if (mb_strlen($line) <= $max) return [$line];
+        foreach (['/(?<=[.!?])\s+/u', '/(?<=[,;:])\s+/u', '/\s+/u'] as $at) {
+            $parts = preg_split($at, $line); if (count($parts) < 2) continue;
+            $out = []; $cur = '';
+            foreach ($parts as $p) {
+                if ($cur !== '' && mb_strlen($cur.' '.$p) > $max) { $out[] = $cur; $cur = $p; } else $cur = $cur === '' ? $p : $cur.' '.$p;
+            }
+            if ($cur !== '') $out[] = $cur;
+            if (max(array_map('mb_strlen', $out)) <= $max) return $out;
+            return array_merge(...array_map(fn ($o) => self::splitLine($o, $max), $out));
+        }
+        return [mb_substr($line, 0, $max)];
+    }
+
     /** The teaching arc's steps (educational format), in order. */
     public const ARC = ['hook', 'familiar', 'disruption', 'mechanism', 'discovery', 'consequence', 'recap'];
 
