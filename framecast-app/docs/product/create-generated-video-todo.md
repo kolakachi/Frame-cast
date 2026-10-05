@@ -39,6 +39,60 @@ Claims about models are hypotheses until the bake-off (B2) measures them on comp
 
 ---
 
+## M. What the system must cover (the frame for everything below)
+
+Two independent choices, never one pipeline per type. A video is a description of what to make, and each moment (and each **layer** inside a moment) gets the production method that fits.
+
+**Video types** (descriptions for the planner, not rigid pipelines):
+
+| Type | Includes |
+|---|---|
+| Motion graphics / animation | Animated text, UI, diagrams, illustrations or characters (built in code, or generated when the world calls for it) |
+| UGC / presenter | A person speaking, demonstrating or reacting |
+| Footage-based | Filmed or generated scenes, product shots, stories, the user's footage, stock |
+| UGC + motion graphics | Presenter footage with animated text, UI or illustrations |
+| Footage + motion graphics | Scenes with graphics, transitions and overlays |
+
+**Creation modes:**
+
+| Mode | The agent |
+|---|---|
+| From scratch | Develops direction from the brief, brand and supplied assets |
+| Exact | Matches the reference's important composition, timing, actions and transitions; makes only the requested substitutions. Never promised pixel-identical: wording, typography and timing are controllable, a generated person's movement is not |
+| Similar | Keeps selected traits (pacing, visual treatment, structure) with room to change execution |
+| Inspired by | Takes the general creative idea and develops a distinct execution |
+
+Today the code has only `exact` and `inspired`, and the user's "similar" is mapped to `inspired`. Add `similar` as its own mode (planner rules, the match question, Details).
+
+**M1. The intent agreement.** For any reference (and for a from-scratch brief with required elements), the plan states, in a short summary the user can correct:
+- **Preserve:** identity, style, timing, composition, actions, sound;
+- **Replace:** people, products, branding, text, setting;
+- **Flexible:** details the agent may reinterpret;
+- **Required:** elements whose absence makes the result incomplete.
+
+It is inferred from the brief, never a questionnaire.
+
+Example: "Keep the reference's illustrated world, camera journey and pacing. Replace the character with Maya and the product with WyvStudio. Use our colours. Keep Maya looking at the laptop until the final reaction."
+
+- "Required" items feed D (blocking checks).
+- "Preserve" items feed the reference comparison.
+- Builds on today's `reference_decisions` (keep, replace or drop per moment) and `reference_observations` (preserve, replace, uncertain).
+
+**M2. Layer-level routing.**
+- One moment can hold generated presenter footage, a real product image and code-rendered captions at once.
+- Routing works per shot **and per layer**, never one engine per project.
+- A generated presenter clip never moves the rest of the video off HyperFrames or Remotion.
+- Partly there today: the composition layers clips and code, and `WM.layout` makes mixed layouts.
+
+**M3. Coverage matrix.** The 5 types × 4 modes, each cell with:
+- its expected route (which layers are code, generated, the user's footage or stock);
+- its acceptance criteria;
+- a representative test in the bench (G1).
+
+Not every cell needs its own paid test: cover pure graphics, pure footage and both hybrids across scratch, exact and similar or inspired.
+
+---
+
 ## 0. Handoff integrity (fix first; confirmed bugs in the code built 2026-10-05)
 
 **0.1 Every approved word survives.** `ShotRoute::take` loses words in two ways:
@@ -265,14 +319,19 @@ All automatic, and all run on the **final encoded video**, not the source clips:
 
 ## G. Cost
 
-**G1. Bench and baseline first.**
-- Fixed briefs:
-  - DistroKid inspired;
-  - DistroKid exact;
-  - the 14 s UI-motion video;
-  - the WyvStudio motion-graphics promo (regression);
-  - an avatar UGC ad;
-  - a product ad.
+**G1. Bench and baseline first,** chosen to cover the M3 matrix:
+
+| Brief | Type | Mode |
+|---|---|---|
+| WyvStudio motion-graphics promo | Motion graphics | Exact (regression) |
+| 14 s UI-motion video | Motion graphics | Exact or similar |
+| Motion-graphics product explainer | Motion graphics | From scratch |
+| DistroKid | Footage-based (drawn world) | Inspired |
+| DistroKid | Footage-based | Similar |
+| Avatar UGC ad | UGC / presenter | From scratch |
+| Split-screen UGC with animated product demo | UGC + motion graphics | From scratch |
+| Product ad in a real place with overlays and end card | Footage + motion graphics | From scratch or inspired |
+| A UGC reference copied for the user's avatar | UGC | Exact |
 - Each run records time, credits, provider cost, rejected generations and the acceptance checklist.
 - Every change below is judged against it.
 
@@ -300,8 +359,9 @@ All automatic, and all run on the **final encoded video**, not the source clips:
 
 ## Order (revised after the 2026-10-05 review)
 
-1. **G1 and acceptance rules:** the bench briefs, the scoring and thresholds, and the release gate.
+1. **G1, M3 and acceptance rules:** the bench briefs mapped to the coverage matrix, the scoring and thresholds, and the release gate.
 2. **Section 0:** word survival, input contracts, cloned voice, per-segment records, real provider cost.
+   Then **M1** (the intent agreement on the plan card) and the `similar` mode, so every later step has explicit preserve, replace and required items to honour.
 3. **A:** cast and storyboard direction, generated in dependency order on one screen.
 4. **D:** final-output checks with the repair policy and the "unverified" state.
 5. **B2:** the bounded bake-off. Then B1 sequence route if it earns it, B3, B4.
