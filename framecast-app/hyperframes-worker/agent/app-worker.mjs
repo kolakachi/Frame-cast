@@ -1,6 +1,6 @@
 import {createTrajectory} from './trajectory.mjs';
 import {reviewStatus} from './review-status.mjs';
-import {finalChecks} from './final-checks.mjs';
+import {finalChecks,repairable,repairBrief} from './final-checks.mjs';
 import {moveFindings} from './move-check.mjs';
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
 // Credentials stay on the host; no shell text or Docker socket enters the sandbox.
@@ -136,7 +136,7 @@ async function execute(run){
   if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd,{unlimited});};
   if(paid)provider.release=async()=>{await pilotBudget.release(reservation);reservation=null;};
   // The bought plan items, kept at run scope: the final checks and the refusal report read them after the build.
-  let agentResult,planMedia=[];
+  let agentResult,planMedia=[],agentArgs=null;
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.
    if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
@@ -165,7 +165,7 @@ async function execute(run){
    phase='agent';
    const resume=run.input.mode==='agent'&&!run.input.base_bundle&&!run.input.from_look?await findResume(run,root+'/artifacts/live'):null;
    if(resume)await trace({phase:'run',status:'started',summary:'Continuing from the build that stopped',detail:resume.from});
-   agentResult=await executeCompositionAgent({directory:dir,input:resume?{...run.input,resume}:run.input,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
+   agentArgs={directory:dir,manifest,planMedia,stopRequested:()=>cancelled&&!stopping&&!lost,onProgress,onTrace:trace,buy,
     transcribe:async({input})=>{const assetId=assetIds.get(input);
      // A file the build made itself (edited narration) is listened to directly.
      if(!assetId){if(!/^[a-zA-Z0-9_.-]+\.(wav|mp3|mp4)$/.test(input))throw Error('Only audio or video can be transcribed');const r=await listen(dir+'/project/'+input);return {text:r.text,words:r.words,segments:r.segments||[],provider:r.provider};}return request('runs/'+run.id+'/transcripts',{lease_token:run.lease_token,asset_id:assetId},false,150000);},
@@ -185,7 +185,8 @@ async function execute(run){
      const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg',detail:'detail/detail.jpg',compare:'compare/compare.jpg'})[operation];
      if(paid&&imageFile&&result.ok)result.providerImage='data:image/jpeg;base64,'+(await readFile(dir+'/'+imageFile)).toString('base64');
      return result;
-    }});
+    }};
+   agentResult=await executeCompositionAgent({...agentArgs,input:resume?{...run.input,resume}:run.input});
    if(['needs_input','awaiting_media_approval'].includes(agentResult.state.status)){
     await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
    }
@@ -195,13 +196,18 @@ async function execute(run){
    // The review detail users no longer see stays in the trajectory.
    if(agentResult.state.internalNote)await trace({phase:'run',status:'delivered',summary:'Version delivered',detail:String(agentResult.state.internalNote).slice(0,1900)});
   }
+  // Render and check, and when the final check blocks on something the build can fix, fix it and do it again: at most
+  // two repair rounds (todo D), within the calls already approved, never charged (a repair corrects our own work).
+  let deliveryChecks=null,audioReview=null,paceReview=null,finalReview=null;const uploaded=new Set();
+  for(let round=0;;round++){
   // Derived media becomes a permanent source before rendering: upload it, give
   // it its stored name, and point the composition at that name, so later
   // versions and free edits inherit exactly these bytes.
-  if(agentResult?.derived?.length){
+  if(agentResult?.derived?.some(d=>!uploaded.has(d.path))){
    stage='Saving your edited footage';await beat();
    const ids=new Map(manifest.map(f=>[f.name,f.asset_id]));
    for(const d of agentResult.derived){
+    if(uploaded.has(d.path))continue;uploaded.add(d.path);
     // A run-made file may have no source (generated from scratch); a media edit always has one.
     const from=ids.get(d.derivedFrom??d.origin);if(!from&&d.operation!=='run')throw Error('Derived media has no known source');
     const form=new FormData();form.append('lease_token',run.lease_token);if(from)form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));
@@ -210,7 +216,7 @@ async function execute(run){
     if(!response.ok)throw Error('Derived media upload failed ('+response.status+')');
     const record=(await response.json()).data;
     if(record.sha256!==d.sha256)throw Error('Derived media hash mismatch');
-    await rename(dir+'/project/'+d.path,dir+'/project/'+record.name);ids.set(d.path,record.asset_id);ids.set(record.name,record.asset_id);
+    await rename(dir+'/project/'+d.path,dir+'/project/'+record.name);uploaded.add(record.name);ids.set(d.path,record.asset_id);ids.set(record.name,record.asset_id);
     for(const name of (await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n))){
      const text=await readFile(dir+'/project/'+name,'utf8');if(text.includes(d.path))await writeFile(dir+'/project/'+name,text.split(d.path).join(record.name),{mode:0o600});
     }
@@ -218,14 +224,14 @@ async function execute(run){
    }
   }
   phase='render';if(!stopSeenAt)stage=paid?'Rendering your video':'Rendering the local sample';
-  await accountedCall({key:'render-1',kind:'render',input:{runId:run.id,mode:run.input.mode},
-   begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
+  await accountedCall({key:'render-'+(round+1),kind:'render',input:{runId:run.id,mode:run.input.mode},
+   begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
    execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000,maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error('The layout did not pass render checks. Correct the saved draft before rendering again.'),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
-  let deliveryChecks=null,audioReview=null,paceReview=null,finalReview=null;
+  deliveryChecks=null;audioReview=null;paceReview=null;finalReview=null;
   if(!(stopping||lost)){
    stage='Checking the final video';
    try{
@@ -264,6 +270,15 @@ async function execute(run){
      audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,moves:moveFindings({plan,sources}),look});
     await trace({phase:'review',status:finalReview.status==='blocked'?'failed':'succeeded',summary:'Checked the final video against the plan',detail:JSON.stringify(finalReview).slice(0,1900)});
    }catch(e){finalReview=null;await trace({phase:'review',status:'failed',summary:'Final checks unavailable',detail:String(e.message).slice(0,300)});}
+  }
+  const fixable=repairable(finalReview,{takeUsed:planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')});
+  if(!paid||!agentArgs||finalReview?.status!=='blocked'||!fixable.length||round>=2||stopping||lost)break;
+  stage='Fixing what the final check found';await beat();
+  const brief=repairBrief(fixable);
+  await trace({phase:'review',status:'started',summary:'Repair round '+(round+1),detail:brief.slice(0,1900)});
+  const repaired=await executeCompositionAgent({...agentArgs,callPrefix:'repair'+(round+1)+'-agent',input:{...run.input,resume:{files:agentResult.bundle},messages:[...(run.input.messages||[]),{role:'user',content:brief}]}}).catch(e=>({state:{status:'failed',reason:e.message}}));
+  if(repaired?.state?.status!=='preview_ready'){await trace({phase:'review',status:'failed',summary:'Repair round '+(round+1)+' did not finish; the checked version stands',detail:String(repaired?.state?.reason||'').slice(0,300)});break;}
+  agentResult=repaired;
   }
   clearInterval(timer);
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));

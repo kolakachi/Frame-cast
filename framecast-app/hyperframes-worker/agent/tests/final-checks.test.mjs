@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {mkdtemp} from 'node:fs/promises';import {tmpdir} from 'node:os';
-import {finalVerdict,unintendedBlanks,blankSpans} from '../final-checks.mjs';
+import {finalVerdict,unintendedBlanks,blankSpans,repairable,repairBrief} from '../final-checks.mjs';
 const run=promisify(execFile);
 const plan={agreement:{required:['Maya lights the candle','Start with the $9 Test Pass']}};
 const look={status:'checked',has_cast:true,required:[{item:'Maya lights the candle',status:'present',time:3.2},{item:'Start with the $9 Test Pass',status:'unclear',time:null,note:'spoken only'}],
@@ -41,4 +41,11 @@ test('only blank stretches nobody asked for count: not a short fade in or out', 
  await run('ffmpeg',['-loglevel','error','-y','-f','lavfi','-i','color=c=white:s=64x64:d=2','-f','lavfi','-i','color=c=black:s=64x64:d=1','-f','lavfi','-i','color=c=white:s=64x64:d=2','-filter_complex','[0][1][2]concat=n=3:v=1','-pix_fmt','yuv420p',file]);
  const spans=await blankSpans(file);
  assert.equal(spans.length,1);assert.ok(Math.abs(spans[0].start-2)<0.2&&Math.abs(spans[0].end-3)<0.2,JSON.stringify(spans));
+});
+
+test('only what the build can fix goes to a repair round; a changed person or a take\'s words go to the user', () => {
+ const v=finalVerdict({plan:{agreement:{required:['The candle']}},look:{...look,required:[{item:'The candle',status:'missing'}],identity:{status:'drift',times:[9]}},blanks:[{start:6,end:7}],audio:{script_coverage:0.6,missing:['test pass']},expectsSpeech:true,generatedPeople:true});
+ assert.deepEqual(repairable(v).map(c=>c.id).sort(),['blank','required','words']);
+ assert.deepEqual(repairable(v,{takeUsed:true}).map(c=>c.id).sort(),['blank','required'],'a take speaks its own words: not a build fix');
+ assert.match(repairBrief(repairable(v)),/at 6 s, No blank frames/);
 });

@@ -47,7 +47,7 @@ export async function pinnedKits(guidanceDirectory,plan){
  for(const [name,file] of kits)try{out+='\n\n# '+name+' (pinned; do not read it again)\n'+await readFile(guidanceDirectory+'/../'+file,'utf8');}catch{/* readable on demand */}
  return out?out+'\n\nThe worked examples (kit/three-example.html, kit/reference-moves.html) are long: read one only when something you built does not work.':'';
 }
-export async function executeCompositionAgent({directory,input,manifest,planMedia=[],provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,stopRequested=()=>false,onProgress,onTrace}) {
+export async function executeCompositionAgent({directory,input,manifest,planMedia=[],callPrefix='agent',provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,stopRequested=()=>false,onProgress,onTrace}) {
  const assets=[];
  for(const file of manifest){
   // Reference-only media is described in context, never made renderable.
@@ -168,7 +168,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
   return accountedCall({
   // The hash covers exactly what the gateway will hash: tool-mode history and tools as strings.
-  key:'agent-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null,...(args.messages?{messagesJson:JSON.stringify(args.messages),toolsJson:JSON.stringify(args.tools??[])}:{})},begin,settle,
+  key:callPrefix+'-'+(++call),kind:'agent',input:{prompt:args.prompt,system:args.system,maxTokens:args.maxTokens,image:args.image??null,...(args.messages?{messagesJson:JSON.stringify(args.messages),toolsJson:JSON.stringify(args.tools??[])}:{})},begin,settle,
   execute:attemptId=>provider.complete({...args,attemptId,recordPrediction:args.onPrediction,onPrediction:async id=>{
    // Record the provider identity in both app accounting and the local journal.
    if(!bindPrediction)throw Error('Prediction recorder is required');

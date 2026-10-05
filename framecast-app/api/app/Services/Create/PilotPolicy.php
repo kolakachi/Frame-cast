@@ -44,7 +44,8 @@ class PilotPolicy
                     'cost_limit_microusd'=>5000000,'max_calls'=>200,'max_output_tokens'=>32000,'context_bytes'=>600000,
                     'tool_mode'=>(bool) config('create.tool_mode', false),'unlimited'=>true],
                     'critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>250,'effort'=>'low','cost_limit_microusd'=>1000000,'max_calls'=>10,'max_output_tokens'=>8192],
-                    'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+                    // A render per repair round (todo D): the first render and up to two re-renders.
+                    'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
             }
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
@@ -55,7 +56,7 @@ class PilotPolicy
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
                 // The critic: a separate reviewer, two short low-effort calls with the frames and the strip.
                 'critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>25,'effort'=>'low','cost_limit_microusd'=>100000,'max_calls'=>2,'max_output_tokens'=>4096],
-                'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+                'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,
             'cost_limit_microusd'=>300000,'max_calls'=>8,'max_output_tokens'=>4096,'context_bytes'=>64000],

@@ -83,6 +83,8 @@ class AttemptService
             }
             abort_unless($attempt->provider === 'offline' || $status === 'unknown' || (is_string($prediction) && strlen($prediction) > 0), 422, 'Provider receipt ID is required.');
             $credits = $verified && str_starts_with($verified->evidence,'pilot-tariff:') && in_array($attempt->kind,['agent','critic','plan_media'],true) ? min((int)$attempt->credit_limit,(int)ceil($cost/4000)) : ($status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0));
+            // A repair round corrects our own work after the final check blocked it: recorded at its cost, never charged (todo D).
+            if (str_starts_with((string) $attempt->attempt_key, 'repair')) $credits = 0;
             $previous = Context::getHidden(OperationAccounting::CONTEXT);
             try {
                 Context::addHidden(OperationAccounting::CONTEXT, $run->operation_id);

@@ -86,3 +86,18 @@ export async function finalChecks({file,duration,plan={},planMedia=[],audioSumma
  const expectsSpeech=plan.settings_audio!=='silent'&&((plan.narration||[]).length>0||planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'));
  return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,blanks,expectsSpeech,generatedPeople});
 }
+
+/**
+ * What the build can fix itself after a blocked final check: a required item not in view, blank frames, a planned
+ * move left out, narration cut short when it is our own narration file. A person who changed, or a take's own words,
+ * need a new clip: those go to the user.
+ */
+export function repairable(verdict,{takeUsed=false}={}){
+ return (verdict?.checks||[]).filter(c=>c.blocking&&c.status==='fail'&&(['required','blank','move'].includes(c.id)||(c.id==='words'&&!takeUsed)));
+}
+
+/** The repair round's brief to the builder: only these, with their times; everything else stays. */
+export function repairBrief(fixable){
+ return 'The finished video was checked against the approved plan and must be fixed before delivery. Fix only these, keep everything else as it is, check, then finish: '
+  +fixable.map(c=>(c.times?.length?'at '+c.times[0]+' s, ':'')+c.label+(c.message?' ('+c.message+')':'')).join('; ')+'.';
+}
