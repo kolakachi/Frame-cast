@@ -9,8 +9,11 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     cpus: 2
-    mem_limit: 2g
-    pids_limit: 256
+    # Six clips extracted beside Chromium peaked at 1.93 GB of 2 (2026-10-05).
+    mem_limit: 3g
+    # Six parallel ffmpeg extractions on a machine reporting 10 cores need hundreds of threads beside Chromium;
+    # at 256 new threads failed and the render hung or errored (2026-10-05).
+    pids_limit: 2048
     shm_size: 256m
     tmpfs:
       - /tmp:size=4294967296,mode=1777
