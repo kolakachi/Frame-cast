@@ -4,6 +4,9 @@ namespace App\Services\Create;
 /** Host-owned identities and provenance. Model interpretations remain reviewable, not facts. */
 class RequirementContract
 {
+    /** Most requirements one plan carries (a detailed 30 s brief can hold 25 or more distinct asks). */
+    public const MAX = 32;
+
     public const VERSION = 1;
     private const CATEGORIES = ['identity', 'appearance', 'framing', 'action', 'text', 'colour', 'timing', 'transition', 'audio', 'other'];
 
@@ -24,7 +27,7 @@ class RequirementContract
         $initial = $active;
         // A change is distinct from merely omitting an old item from the next model response.
         $changed = []; $removedOrder = [];
-        foreach (array_slice((array) ($raw['requirement_changes'] ?? []), 0, 24) as $change) {
+        foreach (array_slice((array) ($raw['requirement_changes'] ?? []), 0, self::MAX) as $change) {
             if (! is_array($change)) continue;
             $id = is_string($change['id'] ?? null) ? $change['id'] : ''; $quote = self::text($change['source_quote'] ?? '');
             $old = $active[$id] ?? null;
@@ -60,7 +63,8 @@ class RequirementContract
             $active[$id] = $entry + ['id' => $id, 'version' => $old['version'] ?? 1];
             if ($requested !== '' && mb_strlen($requested) <= 80 && ($keys[$requested] ?? 0) === 1 && ! isset($initial[$requested])) $aliases[$requested] = $id;
         }
-        abort_if(count($active) > 24, 422, 'This brief has more than 24 requirements. Split it into shorter videos rather than dropping details.');
+        // The planner is asked to merge related asks first (PlanPrompt::problems); past this, the brief is split, never trimmed.
+        abort_if(count($active) > self::MAX, 422, 'This brief has more than '.self::MAX.' requirements. Split it into shorter videos rather than dropping details.');
         foreach ($active as $id => &$r) {
             $requestedOrder = $r['after_ids'] ?? [];
             for ($step = 0; $step < count($removedOrder); $step++) {

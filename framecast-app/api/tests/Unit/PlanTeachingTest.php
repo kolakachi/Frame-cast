@@ -31,4 +31,13 @@ class PlanTeachingTest extends TestCase
         $ad = $bad; $ad['creative_intent']['format'] = 'motion_graphics';
         $this->assertSame([], array_values(array_filter(PlanPrompt::problems($ad, $ctx), fn ($x) => str_contains($x, 'teaching'))), 'ads keep their own structure');
     }
+
+    public function test_too_many_requirements_go_back_to_the_planner_to_merge_not_to_the_user(): void
+    {
+        $req = fn ($n) => array_map(fn ($k) => ['id' => 'r'.$k, 'text' => 'Ask '.$k, 'source_quote' => 'ask '.$k], range(1, $n));
+        $base = ['scenes' => [['label' => 'A', 'start' => 0, 'end' => 15, 'reads' => ['x']]]];
+        $ctx = ['settings' => ['duration_seconds' => 15]];
+        $this->assertSame([], array_values(array_filter(PlanPrompt::problems($base + ['requirements' => $req(30)], $ctx), fn ($p) => str_contains($p, 'requirements'))));
+        $this->assertCount(1, array_filter(PlanPrompt::problems($base + ['requirements' => $req(40)], $ctx), fn ($p) => str_contains($p, 'Merge related')));
+    }
 }
