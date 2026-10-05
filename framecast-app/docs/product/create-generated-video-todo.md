@@ -93,7 +93,7 @@ Not every cell needs its own paid test: cover pure graphics, pure footage and bo
 
 ---
 
-## 0. Handoff integrity (fix first; confirmed bugs in the code built 2026-10-05)
+## 0. Handoff integrity (done 2026-10-05: 0.1 to 0.5 built and tested locally; not yet exercised on a paid run)
 
 **0.1 Every approved word survives.** `ShotRoute::take` loses words in two ways:
 - it keeps at most 6 segments and drops the rest;
@@ -118,13 +118,13 @@ The fix:
 - Never a native take and an unused cloned purchase side by side.
 - A plan check enforces this.
 
-**0.4 Per-segment records.**
+**0.4 Per-segment records.** (Sheets: a partial failure is now a plain failure, since the user pays only for a delivered sheet; per-panel records come with A3.)
 - Each provider job of a take (and of any multi-job item: sheet images, panels) is recorded the moment it is submitted.
 - Each job is collected, retried or cancelled on its own.
 - A failure after some jobs started leaves the started ones recorded and collectable, never "unknown".
 - Done before any paid comparison.
 
-**0.5 Real provider cost.**
+**0.5 Real provider cost.** (Built as `provider_cost_usd` beside the charge: the receipt's cost field drives charging, so it keeps the tariff.)
 - Generated-media receipts record the provider's actual cost: prediction metrics and billed seconds by model price, kept separate from the credit tariff.
 - Cost per accepted result is measured from those, not derived from credits.
 
