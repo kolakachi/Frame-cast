@@ -98,4 +98,35 @@ class ShotRouteTest extends TestCase
         $this->assertFalse(\App\Services\Create\PlanMediaService::neverConnected($e('https://api.replicate.com/v1/predictions/abc123'), 'music'), 'polling failed: a prediction exists and may bill');
         $this->assertFalse(\App\Services\Create\PlanMediaService::neverConnected($e('https://api.replicate.com/v1/models/x/y/predictions'), 'ugc_take'), 'an earlier segment may have been made');
     }
+
+    public function test_every_approved_word_survives_a_long_script(): void
+    {
+        $words = fn (array $ls) => preg_split('/\s+/u', trim(implode(' ', $ls)), -1, PREG_SPLIT_NO_EMPTY);
+        $eight = array_map(fn ($i) => "Line $i says that WyvStudio turns one idea into a voiced captioned video you can post today without a camera", range(1, 8));
+        $r = ShotRoute::take(['presenter' => 'avatar'], ['narration' => $eight] + $this->ctx);
+        $this->assertSame($words($eight), $words(array_merge(...array_column($r['segments'], 'lines'))), 'all eight lines, every word, in order');
+        foreach ($r['segments'] as $seg) $this->assertLessThanOrEqual(10, $seg['seconds']);
+        $this->assertGreaterThan(6, count($r['segments']), 'more than six parts are kept, not dropped');
+
+        $fifty = [trim(implode(' ', array_map(fn ($i) => 'word'.$i.($i % 12 === 0 ? ',' : ''), range(1, 50))))];
+        $long = ShotRoute::take(['presenter' => 'avatar'], ['narration' => $fifty] + $this->ctx);
+        $this->assertSame($words($fifty), $words(array_merge(...array_column($long['segments'], 'lines'))));
+        $this->assertGreaterThanOrEqual(3, count($long['segments']), 'a 21 s line is split, not squeezed into 10 s');
+        foreach ($long['segments'] as $seg) $this->assertLessThanOrEqual(10, ShotRoute::speechSeconds(implode(' ', $seg['lines'])) + 0.8);
+    }
+
+    public function test_scripts_without_spaces_are_timed_and_split_by_characters(): void
+    {
+        $ja = 'ワイブスタジオは、ひとつのアイデアを、声と字幕のついた動画に変えます。カメラも編集も必要ありません。今日から投稿できます。';
+        $r = ShotRoute::take(['presenter' => 'avatar'], ['narration' => [$ja, $ja], 'language' => 'ja'] + $this->ctx);
+        $this->assertSame($ja.$ja, implode('', array_merge(...array_column($r['segments'], 'lines'))), 'every character kept');
+        $this->assertGreaterThan(5, ShotRoute::speechSeconds($ja, 'ja'), 'not counted as one word');
+    }
+
+    public function test_words_the_take_never_said_are_listed_in_order(): void
+    {
+        $missing = \App\Services\Create\PlanMediaExecutor::missingWords(['start', 'with', 'the', 'nine', 'dollar', 'test', 'pass'], ['start', 'with', 'the', 'test', 'pass', 'today']);
+        $this->assertSame(['nine', 'dollar'], $missing);
+        $this->assertSame([], \App\Services\Create\PlanMediaExecutor::missingWords(['a', 'b'], ['um', 'a', 'b']));
+    }
 }

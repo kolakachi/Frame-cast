@@ -446,7 +446,39 @@ class PlanMediaExecutor
         }
         $lines = collect($shot['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->all();
         return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'UGC take · '.Str::limit(implode(' ', $lines), 40, '…'), 'provider_id' => 'take-'.$ids,
-            'line' => implode(' ', $lines), 'speech_mode' => 'native', 'engine' => $engine];
+            'line' => implode(' ', $lines), 'speech_mode' => 'native', 'engine' => $engine, 'speech_check' => $this->speechCheck($path, implode(' ', $lines))];
+    }
+
+    /**
+     * Did the take say every approved word? The delivered audio is transcribed and aligned in order with the script;
+     * approved words it never says are listed. A transcript that could not be made is "unverified", never a pass.
+     */
+    public function speechCheck(string $path, string $approved): array
+    {
+        $norm = fn ($t) => preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower((string) $t));
+        $want = array_values(array_filter(array_map($norm, preg_split('/\s+/u', $approved, -1, PREG_SPLIT_NO_EMPTY))));
+        try {
+            $r = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
+            if (($r['provider_key'] ?? '') === 'local_fallback' || empty($r['words'])) return ['status' => 'unverified', 'missing' => []];
+            $heard = array_values(array_filter(array_map(fn ($w) => $norm($w['text'] ?? ''), (array) $r['words'])));
+        } catch (\Throwable) { return ['status' => 'unverified', 'missing' => []]; }
+        return ['status' => ($missing = self::missingWords($want, $heard)) ? 'missing_words' : 'ok', 'missing' => $missing];
+    }
+
+    /** Approved words not matched, in order, by what was heard (the longest common subsequence). */
+    public static function missingWords(array $want, array $heard): array
+    {
+        $n = count($want); $m = count($heard);
+        $dp = array_fill(0, $n + 1, array_fill(0, $m + 1, 0));
+        for ($i = $n - 1; $i >= 0; $i--) for ($j = $m - 1; $j >= 0; $j--)
+            $dp[$i][$j] = $want[$i] === $heard[$j] ? $dp[$i + 1][$j + 1] + 1 : max($dp[$i + 1][$j], $dp[$i][$j + 1]);
+        $missing = []; $i = 0; $j = 0;
+        while ($i < $n) {
+            if ($j < $m && $want[$i] === $heard[$j]) { $i++; $j++; }
+            elseif ($j < $m && $dp[$i][$j + 1] >= $dp[$i + 1][$j]) $j++;
+            else { $missing[] = $want[$i]; $i++; }
+        }
+        return $missing;
     }
 
     /** Upload bytes to Replicate's file store so a model can read a private image. */

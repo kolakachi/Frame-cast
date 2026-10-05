@@ -182,7 +182,8 @@ class PlanMediaService
         $credits = (int) $item['credits'];
         $receipt = new VerifiedAttemptReceipt($pending['attempt_id'], 'succeeded', $id, $credits * 4000, 'pilot-tariff:catalogue; '.$item['kind'].' on '.($made['engine'] ?? '?').' at its listed price of '.$credits.' credits');
         $settled = $attempts->settle($runId, $lease, $pending['attempt_id'], $receipt->result(), $receipt);
-        $record = [...$base, 'status' => 'succeeded', 'file' => $file, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null];
+        $record = [...$base, 'status' => 'succeeded', 'file' => $file, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
+            ...(isset($made['speech_check']) ? ['speech_check' => $made['speech_check']] : [])];
         $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
         return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];

@@ -184,24 +184,64 @@ class ShotRoute
         // Veo 3.1 keeps a presenter from references only in 8 s landscape clips; a portrait take stays on Omni.
         if ($engine === 'veo_hq' && $presenter !== 'none' && ! self::landscape($item['aspect'] ?? $ctx['aspect_ratio'] ?? '9:16')) $engine = 'omni';
         $max = $engine === 'veo_hq' ? 8 : 10;
-        // Segments break between lines, each within the engine's length at about 2.4 words a second.
+        $lang = (string) ($ctx['language'] ?? 'en');
+        // Every approved word is spoken: a line too long for one segment is split at clauses, then words; segments are
+        // packed up to the engine's length and none is ever dropped or clamped short of its speech.
+        $room = $max - 0.8;
+        $pieces = [];
+        foreach ($lines as $l) array_push($pieces, ...self::splitSpeech($l, $room, $lang));
         $segments = []; $cur = [];
-        $secs = fn (array $ls) => str_word_count(implode(' ', $ls)) / 2.4 + 0.8;
-        foreach ($lines as $l) {
-            if ($cur && $secs([...$cur, $l]) > $max) { $segments[] = $cur; $cur = []; }
-            $cur[] = $l;
+        foreach ($pieces as $piece) {
+            if ($cur && self::speechSeconds(implode(' ', [...$cur, $piece]), $lang) > $room) { $segments[] = $cur; $cur = []; }
+            $cur[] = $piece;
         }
         if ($cur) $segments[] = $cur;
-        $segments = array_map(function ($ls) use ($engine, $max) {
-            $s = min($max, max(3, $ls ? str_word_count(implode(' ', $ls)) / 2.4 + 0.8 : 4));
-            $s = $engine === 'veo_hq' ? self::step($s, [4, 6, 8]) : (int) ceil($s);
-            return ['lines' => $ls, 'seconds' => $s];
-        }, array_slice($segments, 0, 6));
+        $segments = array_map(function ($ls) use ($engine, $max, $lang) {
+            $s = min($max, max(3, self::speechSeconds(implode(' ', $ls), $lang) + 0.8));
+            return ['lines' => $ls, 'seconds' => $engine === 'veo_hq' ? self::step($s, [4, 6, 8]) : (int) ceil($s)];
+        }, $segments);
         $aspect = self::aspect($item['aspect'] ?? null, self::REF[$engine]['aspects'], $ctx['aspect_ratio'] ?? '9:16');
         if ($engine === 'veo_hq' && $presenter !== 'none') { $aspect = '16:9'; $segments = array_map(fn ($x) => array_merge($x, ['seconds' => 8]), $segments); }
         $credits = array_sum(array_map(fn ($s) => $s['seconds'] * self::perSecond($engine), $segments));
         return ['engine' => $engine, 'engine_label' => self::label($engine), 'presenter' => $presenter, 'segments' => $segments,
             'seconds' => array_sum(array_column($segments, 'seconds')), 'aspect' => $aspect, 'credits' => (int) $credits];
+    }
+
+    /** Speaking rates: words a second, or characters a second for scripts written without spaces. */
+    private const WORDS_PER_SECOND = ['en' => 2.4, 'es' => 2.7, 'fr' => 2.6, 'it' => 2.7, 'pt' => 2.6, 'de' => 2.2, 'nl' => 2.4, 'ar' => 2.2, 'hi' => 2.4];
+    private const CHARS_PER_SECOND = ['ja' => 7.0, 'zh' => 4.5, 'ko' => 4.5];
+
+    /** About how long a line takes to say, in the script's language. */
+    public static function speechSeconds(string $text, string $lang = 'en'): float
+    {
+        if (isset(self::CHARS_PER_SECOND[$lang])) return preg_match_all('/\p{L}/u', $text) / self::CHARS_PER_SECOND[$lang];
+        return count(preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY)) / (self::WORDS_PER_SECOND[$lang] ?? 2.4);
+    }
+
+    /** A line split into pieces that each fit $room seconds of speech: at clauses first, then words (or characters). */
+    public static function splitSpeech(string $line, float $room, string $lang = 'en'): array
+    {
+        $line = trim($line);
+        if ($line === '' || self::speechSeconds($line, $lang) <= $room) return $line === '' ? [] : [$line];
+        $cjk = isset(self::CHARS_PER_SECOND[$lang]);
+        $parts = preg_split($cjk ? '/(?<=[、，。；：,;:])/u' : '/(?<=[,;:\x{2014}\x{2013}])\s+/u', $line, -1, PREG_SPLIT_NO_EMPTY);
+        $out = []; $cur = '';
+        $join = fn ($a, $b) => $a === '' ? $b : ($cjk ? $a.$b : $a.' '.$b);
+        foreach ($parts as $part) {
+            if (self::speechSeconds($part, $lang) > $room) {
+                // A clause still too long: pack its words (or characters) one by one.
+                if ($cur !== '') { $out[] = $cur; $cur = ''; }
+                foreach ($cjk ? mb_str_split($part) : preg_split('/\s+/u', $part, -1, PREG_SPLIT_NO_EMPTY) as $w) {
+                    if ($cur !== '' && self::speechSeconds($join($cur, $w), $lang) > $room) { $out[] = $cur; $cur = ''; }
+                    $cur = $join($cur, $w);
+                }
+                continue;
+            }
+            if ($cur !== '' && self::speechSeconds($join($cur, $part), $lang) > $room) { $out[] = $cur; $cur = ''; }
+            $cur = $join($cur, $part);
+        }
+        if ($cur !== '') $out[] = $cur;
+        return $out;
     }
 
     /** The cast and world sheet: one still per subject (up to four), in the video's look. */

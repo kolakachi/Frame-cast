@@ -526,7 +526,7 @@ class PlanService
         // Generated video: what its routing depends on, and the cast/world sheet is approved before any clip is bought.
         if (collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ShotRoute::KINDS, true))) {
             $plan['shot_context'] = ['has_avatar' => collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image'),
-                'aspect_ratio' => $ctx['settings']['aspect_ratio'] ?? '9:16'];
+                'aspect_ratio' => $ctx['settings']['aspect_ratio'] ?? '9:16', 'language' => $ctx['settings']['language'] ?? 'en'];
             $plan['selections']['video_tier'] = in_array($ctx['previous_plan']['video_tier'] ?? null, ['standard', 'premium'], true) ? $ctx['previous_plan']['video_tier'] : 'standard';
             if (collect($plan['media'])->contains('kind', 'reference_sheet')) $plan['look_first'] = $plan['selections']['look_first'] = true;
         }
@@ -596,7 +596,7 @@ class PlanService
         $voice = $plan['selections']['voice'] ?? $plan['voice'] ?? null;
         // Generated shots and takes: engine, length, slot and price from what the models can do and the user's tier.
         $shotCtx = ['video_tier' => $plan['selections']['video_tier'] ?? 'standard', 'has_avatar' => (bool) data_get($plan, 'shot_context.has_avatar', false),
-            'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'),
+            'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'), 'language' => data_get($plan, 'shot_context.language', 'en'),
             'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? []];
         foreach ($items as &$shotItem) {
             if (! in_array($shotItem['kind'], ShotRoute::KINDS, true)) continue;
