@@ -20,8 +20,8 @@ class AnthropicPlanner implements Planner
             $body['tools'] = [self::inspectionTool()];
             $body['tool_choice'] = ['type' => $toolChoice];
         }
-        $response = Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($timeout)
-            ->post('https://api.anthropic.com/v1/messages', $body);
+        $response = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => $this->key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($timeout)
+            ->post('https://api.anthropic.com/v1/messages', $body));
         if (! $response->successful()) {
             // The provider's own reason, so a refused request is diagnosable (no key or prompt text is in it).
             rescue(fn () => \Illuminate\Support\Facades\Log::warning('Planner request refused', ['model' => $this->model, 'status' => $response->status(), 'body' => mb_substr($response->body(), 0, 400)]), report: false);

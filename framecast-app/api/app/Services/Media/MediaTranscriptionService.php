@@ -107,10 +107,11 @@ class MediaTranscriptionService
                 $payload['timestamp_granularities[]'] = 'word';
             }
 
-            $response = Http::timeout(120)
+            // A network drop before the request reaches the provider is waited out (up to about a minute).
+            $response = \App\Services\Create\NetRetry::run(fn () => Http::timeout(120)
                 ->withToken($apiKey)
                 ->attach('file', file_get_contents($path), basename($path))
-                ->post('https://api.openai.com/v1/audio/transcriptions', $payload);
+                ->post('https://api.openai.com/v1/audio/transcriptions', $payload));
 
             if (! $response->ok()) {
                 throw new RuntimeException('Transcription provider request failed.');

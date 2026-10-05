@@ -2578,6 +2578,7 @@ class CreateIntegrationTest extends TestCase
         $call=['prompt'=>'p','system'=>'s','max_tokens'=>1024,'image'=>null];
         $hash=hash('sha256',json_encode(['prompt'=>'p','system'=>'s','maxTokens'=>1024,'image'=>null],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
         $gateway=app(\App\Services\Create\AnthropicGateway::class);
+        \Illuminate\Support\Sleep::fake();
         $tries=0;
         Http::fake(function () use (&$tries) {
             if (++$tries === 1) throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Failed to connect to api.anthropic.com port 443 after 10000 ms');
@@ -2589,6 +2590,8 @@ class CreateIntegrationTest extends TestCase
         Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 7: Failed to connect to api.anthropic.com'));
         $b=$attempts->begin($run->id,$claim['lease_token'],'agent-2','agent',$hash);
         $this->rejected(503,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
+        // A drop is waited out for about a minute before giving up as not sent.
+        \Illuminate\Support\Sleep::assertSequence(array_map(fn ($w) => \Illuminate\Support\Sleep::for($w)->seconds(), [2, ...\App\Services\Create\NetRetry::WAITS]));
         $row=DB::table('composition_attempts')->where('id',$b['id'])->first();
         $this->assertSame(['failed',0],[$row->status,(int)$row->charged_credits],'never sent, never charged, nothing held');
         $this->assertFalse(\App\Services\Create\AttemptService::unresolved($run->id));
@@ -3076,5 +3079,27 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('', trim($audio->output()), 'a silent video stays silent');
         $this->assertSame($out, \App\Services\Create\VideoIntake::prepare($out), 'a renderable file is left as it is');
         foreach (glob($dir.'/*') as $f) @unlink($f); @rmdir($dir);
+    }
+
+    public function test_a_network_drop_before_a_request_is_waited_out_but_a_sent_request_is_never_repeated(): void
+    {
+        \Illuminate\Support\Sleep::fake();
+        $n = 0;
+        $r = \App\Services\Create\NetRetry::run(function () use (&$n) {
+            if (++$n < 4) throw new \Illuminate\Http\Client\ConnectionException('cURL error 6: Could not resolve host: api.openai.com');
+            return 'ok';
+        });
+        $this->assertSame(['ok', 4], [$r, $n]);
+        $n = 0;
+        try {
+            \App\Services\Create\NetRetry::run(function () use (&$n) { $n++; throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Operation timed out after 120000 ms with 0 bytes received'); });
+            $this->fail('A request that may have been sent must not be repeated.');
+        } catch (\Illuminate\Http\Client\ConnectionException) { $this->assertSame(1, $n); }
+        // Reads (checking a job, downloading output) are always safe to repeat.
+        $n = 0;
+        $this->assertSame('read', \App\Services\Create\NetRetry::run(function () use (&$n) {
+            if (++$n < 2) throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Operation timed out');
+            return 'read';
+        }, true));
     }
 }

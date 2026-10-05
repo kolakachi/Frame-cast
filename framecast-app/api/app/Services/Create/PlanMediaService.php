@@ -102,8 +102,8 @@ class PlanMediaService
                 for ($try = 1; ; $try++) {
                     try { $made = app(PlanMediaExecutor::class)->produce($item['kind'], $item['description'], $context, $dir); break; }
                     catch (\Illuminate\Http\Client\ConnectionException $e) {
-                        if (! self::neverConnected($e, $item['kind']) || $try >= 2) throw $e;
-                        sleep(3);
+                        if (! self::neverConnected($e, $item['kind']) || $try > count(NetRetry::WAITS)) throw $e;
+                        \Illuminate\Support\Sleep::for(NetRetry::WAITS[$try - 1])->seconds();
                     }
                 }
             } catch (\Throwable $e) {

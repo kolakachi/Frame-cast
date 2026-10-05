@@ -552,8 +552,8 @@ class ReferenceStudy
     public static function askModel(string $model, array $content, bool $long): ?array
     {
         try {
-            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'messages' => [['role' => 'user', 'content' => $content]]]);
+            $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'messages' => [['role' => 'user', 'content' => $content]]]));
         } catch (\Throwable) { return null; }
         if (! $r->successful()) return null;
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
@@ -663,8 +663,8 @@ class ReferenceStudy
     {
         if (str_starts_with($model, 'openai:') || str_starts_with($model, 'replicate:')) return OtherReader::ask($model, $content, self::OTHER_RATES[$model] ?? [0, 0]);
         try {
-            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => $effort], 'messages' => [['role' => 'user', 'content' => $content]]]);
+            $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => $effort], 'messages' => [['role' => 'user', 'content' => $content]]]));
         } catch (\Throwable) { return null; }
         if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return null; }
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');

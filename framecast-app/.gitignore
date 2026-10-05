@@ -1,3 +1,4 @@
 
 # Caption comparator output (regenerate with tools/caption-compare.mjs)
 tools/caption-compare-out/
+docker-compose.override.yml

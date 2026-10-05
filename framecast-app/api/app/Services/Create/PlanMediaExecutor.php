@@ -437,8 +437,8 @@ class PlanMediaExecutor
             @unlink($small);
         }
         try {
-            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(120)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 2000, 'messages' => [['role' => 'user', 'content' => $content]]]);
+            $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(120)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 2000, 'messages' => [['role' => 'user', 'content' => $content]]]));
             $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
             $a = strpos($text, '{'); $b = strrpos($text, '}');
             $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
@@ -766,7 +766,8 @@ class PlanMediaExecutor
         $deadline = time() + 240;
         while (in_array($p['status'] ?? '', ['starting', 'processing'], true) && time() < $deadline) {
             sleep(2);
-            $p = $http()->get('https://api.replicate.com/v1/predictions/'.($p['id'] ?? ''))->json();
+            // Checking on a job only reads it: a network drop is waited out, never a reason to hold the run.
+            $p = NetRetry::run(fn () => $http()->get('https://api.replicate.com/v1/predictions/'.($p['id'] ?? '')), true)->json();
         }
         if (($p['status'] ?? '') !== 'succeeded') throw new RuntimeException('The '.explode('/', $model)[1].' model did not finish: '.(($p['error'] ?? null) ? mb_substr((string) $p['error'], 0, 120) : ($p['status'] ?? 'no response')).'.');
         $out = is_array($p['output'] ?? null) ? ($p['output'][0] ?? null) : ($p['output'] ?? null);
@@ -822,7 +823,7 @@ class PlanMediaExecutor
         }
         abort_unless(str_starts_with($url, 'https://') || app()->environment(['local', 'testing']), 422, 'Media must come from a secure address.');
         // A network blip (a host that briefly does not resolve) is retried; still failing, the finished output is lost to us.
-        try { $r = Http::retry([2000, 5000, 10000], 0, fn ($e) => $e instanceof \Illuminate\Http\Client\ConnectionException, false)->timeout(120)->get($url); }
+        try { $r = NetRetry::run(fn () => Http::timeout(120)->get($url), true); }
         catch (\Illuminate\Http\Client\ConnectionException) { throw new OutputUnavailable('The finished file could not be downloaded from the provider. Nothing was charged; try again.'); }
         if (! $r->successful() || strlen($r->body()) === 0) throw new RuntimeException('The media file could not be downloaded.');
         file_put_contents($path, $r->body());

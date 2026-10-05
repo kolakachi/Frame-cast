@@ -92,20 +92,21 @@ class AnthropicGateway
         $saved = $journal->claim($attemptId);
         $response = $saved ? new \Illuminate\Http\Client\Response(new \GuzzleHttp\Psr7\Response($saved['status'], $saved['headers'], $saved['body'])) : null;
         $notSent = false;
-        for ($try = 1; $try <= 3 && ! $response; $try++) {
+        for ($try = 1; ! $response; $try++) {
             try {
                 $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
                     ->acceptJson()->connectTimeout(10)->timeout(PilotPolicy::unlimited() ? 900 : 280)->post('https://api.anthropic.com/v1/messages', $body);
                 // Overloaded or rate-limited: refused and not billed, so a short wait and another try is safe.
-                if (in_array($response->status(), [429, 529], true) && $try < 3) {
+                if (in_array($response->status(), [429, 529], true) && $try < 3 && ! $notSent) {
                     \Illuminate\Support\Facades\Log::warning('Create gateway call refused, retrying', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'status' => $response->status()]);
-                    $response = null; $notSent = true; sleep(4 * $try);
+                    $response = null; \Illuminate\Support\Sleep::for(4 * $try)->seconds();
                 }
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Create gateway call did not complete', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'error' => mb_substr(get_class($e).': '.$e->getMessage(), 0, 300)]);
-                $notSent = (bool) preg_match('/Failed to connect|Could not resolve|Connection refused|Couldn.t connect|Resolving timed out/i', $e->getMessage());
-                if (! $notSent) break;
-                if ($try < 3) usleep(1_500_000 * $try);
+                $notSent = NetRetry::notSent($e);
+                // Never sent: wait out a network drop (up to about a minute), then give up as not sent.
+                if (! $notSent || $try > count(NetRetry::WAITS)) break;
+                \Illuminate\Support\Sleep::for(NetRetry::WAITS[$try - 1])->seconds();
             }
         }
         if (! $response && $notSent) {

@@ -52,8 +52,8 @@ Directed shots (each action should be visible, with its gaze; judge each shot on
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $c['mime'], 'data' => $c['data']]];
         }
         try {
-            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(150)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 3000, 'messages' => [['role' => 'user', 'content' => $content]]]);
+            $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(150)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 3000, 'messages' => [['role' => 'user', 'content' => $content]]]));
             $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
             $a = strpos($text, '{'); $b = strrpos($text, '}');
             $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
