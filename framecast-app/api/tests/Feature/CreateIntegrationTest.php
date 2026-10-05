@@ -3042,4 +3042,22 @@ class CreateIntegrationTest extends TestCase
             @unlink($tmp.'/demo.mp4'); @unlink($tmp.'/product.png'); @rmdir($tmp);
         }
     }
+
+    public function test_a_network_blip_while_downloading_output_is_retried_then_reported_as_lost_not_held(): void
+    {
+        \Illuminate\Support\Sleep::fake();
+        $fetch = (new \ReflectionClass(\App\Services\Create\PlanMediaExecutor::class))->getMethod('fetch');
+        $tmp = sys_get_temp_dir().'/fetch-'.uniqid().'.mp3';
+        $calls = 0;
+        Http::fake(['https://replicate.delivery/*' => function () use (&$calls) {
+            if (++$calls < 3) throw new \Illuminate\Http\Client\ConnectionException('cURL error 6: Could not resolve host: replicate.delivery');
+            return Http::response('ID3audio', 200);
+        }]);
+        $this->assertSame($tmp, $fetch->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'https://replicate.delivery/x/a.mp3', $tmp));
+        $this->assertSame(3, $calls);
+        @unlink($tmp);
+        Http::fake(['https://replicate.delivery/*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 6: Could not resolve host')]);
+        $this->expectException(\App\Services\Create\OutputUnavailable::class);
+        $fetch->invoke(app(\App\Services\Create\PlanMediaExecutor::class), 'https://replicate.delivery/x/b.mp3', $tmp);
+    }
 }

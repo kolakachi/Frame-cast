@@ -821,7 +821,9 @@ class PlanMediaExecutor
             return $path;
         }
         abort_unless(str_starts_with($url, 'https://') || app()->environment(['local', 'testing']), 422, 'Media must come from a secure address.');
-        $r = Http::timeout(120)->get($url);
+        // A network blip (a host that briefly does not resolve) is retried; still failing, the finished output is lost to us.
+        try { $r = Http::retry([2000, 5000, 10000], 0, fn ($e) => $e instanceof \Illuminate\Http\Client\ConnectionException, false)->timeout(120)->get($url); }
+        catch (\Illuminate\Http\Client\ConnectionException) { throw new OutputUnavailable('The finished file could not be downloaded from the provider. Nothing was charged; try again.'); }
         if (! $r->successful() || strlen($r->body()) === 0) throw new RuntimeException('The media file could not be downloaded.');
         file_put_contents($path, $r->body());
         if (filesize($path) > (int) config('create.input_file_bytes')) throw new RuntimeException('The media file is larger than 100 MB.');
