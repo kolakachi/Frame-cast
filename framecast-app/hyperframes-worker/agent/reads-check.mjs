@@ -22,7 +22,8 @@ import path from 'node:path';
 export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
-export function serve(root,runtime){
+// transform: an optional edit of index.html as served (the sound pass serves it without its audio).
+export function serve(root,runtime,transform=html=>html){
  return new Promise(resolve=>{
   const server=http.createServer(async(req,res)=>{
    try{
@@ -31,7 +32,7 @@ export function serve(root,runtime){
     if(!/^[a-zA-Z0-9_.-]+$/.test(name)){res.writeHead(404);res.end();return;}
     let body=await readFile(path.join(root,name));
     // Same runtime the renderer uses, loaded first, so clips appear and seek exactly as rendered.
-    if(name==='index.html')body=Buffer.from(String(body).replace(/<head[^>]*>/i,m=>m+'<script src="/__hf_runtime.js"></script>'));
+    if(name==='index.html')body=Buffer.from(transform(String(body)).replace(/<head[^>]*>/i,m=>m+'<script src="/__hf_runtime.js"></script>'));
     res.writeHead(200,{'content-type':TYPES[path.extname(name)]||'application/octet-stream'});res.end(body);
    }catch{res.writeHead(404);res.end();}
   });

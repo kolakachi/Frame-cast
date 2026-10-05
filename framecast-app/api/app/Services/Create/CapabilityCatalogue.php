@@ -36,7 +36,7 @@ class CapabilityCatalogue
             ['kind' => 'character_poses', 'what' => 'One character preview in the requested style for approval; additional poses are quoted only after approval', 'credits' => self::CHARACTER_MASTER_CREDITS],
             ['kind' => 'talking_shot', 'what' => 'The character performing the first approved script line with native speech (4 s); explicitly selected cloned voice uses audio-driven lip-sync', 'credits' => TalkingPresenter::route('talking_shot', null)['credits']],
             ['kind' => 'talking_take', 'what' => 'The character performing the full approved script with native speech (up to 15 s), without a separate voiceover. Explicit cloned voice uses audio-driven lip-sync', 'credits' => TalkingPresenter::route('talking_take', null)['credits']],
-            ['kind' => 'sfx', 'what' => 'A set of up to 6 short sound effects (clicks, whooshes, pops) for on-screen beats', 'credits' => self::SFX_CREDITS],
+            ['kind' => 'sfx', 'what' => 'A set of up to 6 unusual sound effects (a cash register, a door, an animal). Not for whooshes, pops, clicks, thuds, chimes or typing: the motion kit lays those under its moves for free', 'credits' => self::SFX_CREDITS],
             // library_music is withheld: the workspace library holds placeholder
             // tracks, not licensed music (2026-10-01). Restore once real tracks exist.
             ['kind' => 'brand_kit', 'what' => "The workspace's brand colours, fonts and logo", 'credits' => 0],

@@ -439,5 +439,54 @@
     f.appendChild(g); svg.appendChild(f); stage.appendChild(svg);
     return { id: id, node: g, max: max };
   }
+  // Sound cues for the host's sound pass: each move records where it hits (in its timeline's time), and before the
+  // render the host lays the matching effect from the built-in library under it, lined up on the sound's peak.
+  // opts.sound: false for silence, or another library sound's name. WM.sound(tl, name, at) adds a cue by hand.
+  var o = function (a, i) { return (a[i] && typeof a[i] === 'object') ? a[i] : {}; };
+  var CUES = {
+    pop: function (a) { return [['pop', a[2] + 0.04]]; },
+    stamp: function (a) { return [['thud', a[2] + 0.1]]; },
+    press: function (a) { return [['click', a[2] + 0.09]]; },
+    toss: function (a) { return [['swish', a[2] + 0.1]]; },
+    device: function (a) { return [['slide', a[2] + (o(a, 3).duration || 0.5) / 2]]; },
+    flood: function (a) { return [['whoosh-big', a[2] + (o(a, 3).grow || 0.3)]]; },
+    iris: function (a) { return [['swish', a[2] + (o(a, 3).duration || 0.5) * 0.7]]; },
+    wipe: function (a) { return [['whoosh', a[2] + 0.27]]; },
+    push: function (a) { return [['whoosh', a[3] + 0.3]]; },
+    whip: function (a) { return [['whoosh-fast', a[3]]]; },
+    giantWipe: function (a) { return [['whoosh-big', a[3] + 0.28]]; },
+    camera: function (a) { var d = o(a, 4).duration; return [['slide', a[3] + (d == null ? 0.6 : d) * 0.35]]; },
+    fly: function (a) { return [['swish', a[3] + (o(a, 4).duration || 0.6) * 0.5]]; },
+    layout: function (a) { var d = o(a, 4).duration; return d === 0 ? [] : [['slide', a[2] + (d == null ? 0.55 : d) / 2]]; },
+    edges: function (a) { return [['tick', a[2] + 0.05]]; },
+    through: function (a) { return [['whoosh-big', o(a, 1).at]]; },
+    type: function (a) { return [['keys', a[3], String(a[2] || '').length / (a[4] || 18)]]; },
+    count: function (a) { return [['blip', a[4] + (a[5] || 0)]]; },
+    cursor: function (a) { return (a[2] || []).filter(function (p) { return p.click; }).map(function (p) { return ['click', p.at]; }); },
+    morph: function (a) { return (a[2] || []).slice(1).map(function (s) { return ['slide', s.at + 0.2]; }); },
+  };
+  var OPTS = { device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1 };
+  var cues = [];
+  Object.keys(CUES).forEach(function (name) {
+    var fn = WM[name];
+    WM[name] = function () {
+      var out = fn.apply(WM, arguments), a = arguments, pick = OPTS[name] == null ? undefined : o(a, OPTS[name]).sound;
+      if (pick !== false) CUES[name](a).forEach(function (h) {
+        if (isFinite(h[1])) cues.push({ tl: a[0], at: h[1], sound: typeof pick === 'string' ? pick : h[0], len: h[2] });
+      });
+      return out;
+    };
+  });
+  WM.sound = function (tl, name, at) { cues.push({ tl: tl, at: at, sound: name }); return tl; };
+  /* Every cue in composition time: [{sound, t, len?}]. Read after the timelines are built and nested. */
+  WM.cueTimes = function () {
+    return cues.map(function (c) {
+      var t = c.at, n = c.tl;
+      while (n && n.parent && n.parent !== gsap.globalTimeline) { t = n.startTime() + t / (n.timeScale() || 1); n = n.parent; }
+      var cue = { sound: c.sound, t: Math.round(t * 1000) / 1000 };
+      if (c.len) cue.len = Math.round(c.len * 1000) / 1000;
+      return cue;
+    });
+  };
   window.WM = WM;
 })();

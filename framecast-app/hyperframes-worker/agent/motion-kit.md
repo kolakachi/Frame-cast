@@ -46,6 +46,13 @@ When the plan names a move (plan.reference_systems[].move, reference_decisions[]
 - A stamp or bubble that is meant to sit over other text: add `data-layout-allow-overlap data-layout-allow-occlusion` to it.
 - Move ids that are not here (`custom`) are built by hand from the plan's spec.
 
+## Sound
+Moves bring their own sound: before the render each move's effect from the built-in library is laid under it, its peak on the hit, quieter under the voice, no closer than 0.25 s to another (the stronger hit wins). pop → pop, stamp → thud, press and cursor clicks → click, whip → whoosh-fast, wipe and push → whoosh, giantWipe, flood and through → whoosh-big, toss, iris and fly → swish, device, camera, layout and morph → slide, edges → tick, type → keys, count → blip; words, writeOn, rise and field are silent.
+- `{sound: false}` in a move's options silences it; `{sound: 'thud'}` swaps its sound (library: whoosh, whoosh-fast, whoosh-big, swish, slide, pop, click, tick, thud, blip, chime, keys).
+- `WM.sound(tl, 'chime', at)` adds a sound where there is no move (the logo lands, the offer appears).
+- `data-sounds="off"` on the root composition turns all of it off: when the user asks for no effects, or the reference has none.
+- Do not buy sound effects or place your own for these; they would double up.
+
 ## Good habits
 - One idea per interaction: move, then press, then show the result; leave about 0.3 s between them.
 - Use `WM.ease.heavy` for headlines and `WM.ease.snappy` for UI, so type feels weighty and UI feels quick.

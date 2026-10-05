@@ -115,7 +115,12 @@ else if(operation==='layout'){
  const {measureLayout}=await import('./layout-check.mjs');
  result={ok:true,measured:await measureLayout({root,width:dims[0],height:dims[1],times})};
 }
-else if(operation==='render')result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
+else if(operation==='render'){
+ // The sound pass places the motion kit's effects first; what it did is kept beside the render, never in its way.
+ const {soundPass}=await import('./sound-pass.mjs');
+ await writeFile(out+'/sounds.json',JSON.stringify(settings.audio==='silent'?{placed:[],skipped:'silent'}:await soundPass({root,width:dims[0],height:dims[1],duration:settings.duration_seconds})));
+ result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
+}
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');
  // Keep the 30-frame budget but cover the end of longer videos as well.

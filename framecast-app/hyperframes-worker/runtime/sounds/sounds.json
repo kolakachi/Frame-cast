@@ -1,0 +1,75 @@
+{
+ "whoosh": {
+  "file": "sfx-whoosh.wav",
+  "seconds": 0.65,
+  "peak": 0.316,
+  "level": 0.55
+ },
+ "whoosh-fast": {
+  "file": "sfx-whoosh-fast.wav",
+  "seconds": 0.38,
+  "peak": 0.175,
+  "level": 0.5
+ },
+ "whoosh-big": {
+  "file": "sfx-whoosh-big.wav",
+  "seconds": 0.95,
+  "peak": 0.496,
+  "level": 0.6
+ },
+ "swish": {
+  "file": "sfx-swish.wav",
+  "seconds": 0.42,
+  "peak": 0.15,
+  "level": 0.4
+ },
+ "slide": {
+  "file": "sfx-slide.wav",
+  "seconds": 0.55,
+  "peak": 0.256,
+  "level": 0.35
+ },
+ "pop": {
+  "file": "sfx-pop.wav",
+  "seconds": 0.16,
+  "peak": 0.005,
+  "level": 0.6
+ },
+ "click": {
+  "file": "sfx-click.wav",
+  "seconds": 0.08,
+  "peak": 0.005,
+  "level": 0.5
+ },
+ "tick": {
+  "file": "sfx-tick.wav",
+  "seconds": 0.06,
+  "peak": 0.005,
+  "level": 0.35
+ },
+ "thud": {
+  "file": "sfx-thud.wav",
+  "seconds": 0.5,
+  "peak": 0.01,
+  "level": 0.7
+ },
+ "blip": {
+  "file": "sfx-blip.wav",
+  "seconds": 0.18,
+  "peak": 0.055,
+  "level": 0.45
+ },
+ "chime": {
+  "file": "sfx-chime.wav",
+  "seconds": 1.5,
+  "peak": 0.1,
+  "level": 0.45
+ },
+ "keys": {
+  "file": "sfx-keys.wav",
+  "seconds": 1.211,
+  "peak": 1.153,
+  "level": 0.35,
+  "align": "start"
+ }
+}

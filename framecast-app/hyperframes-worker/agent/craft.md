@@ -39,7 +39,7 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - A signature move is optional. Use it only when the approved direction calls for one; do not invent it for a footage edit or restrained explainer.
 
 ## Sound (when there is audio)
-- Add sound effects selectively when requested or justified. Neither every cut nor every text reveal needs a sound.
+- Motion-kit moves bring their own effects (kit/motion-kit.md, Sound); keep them unless the brief or reference is silent (then `data-sounds="off"`). Neither every cut nor every text reveal needs a sound: words, writeOn and rise are silent, and moves closer than 0.25 s share one.
 - The voice sits clearly above any music. A short near-silence can emphasize a reveal when that suits the requested style; it is not mandatory for educational or source-footage edits.
 - Put cuts and pops on the music's strong beats when the music has a clear pulse.
 
