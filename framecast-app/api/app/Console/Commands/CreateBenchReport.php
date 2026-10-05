@@ -52,8 +52,10 @@ class CreateBenchReport extends Command
 
         $media = DB::table('create_plan_media')->where('conversation_id', $id)->orderBy('item_index')->get()
             ->map(fn ($m) => ['kind' => $m->kind, 'status' => $m->status, 'credits' => (int) $m->charged_credits, 'engine' => json_decode((string) $m->record_json, true)['engine'] ?? null,
-                // Real provider cost where the item recorded it (generated video); otherwise unknown, never the tariff.
-                'provider_usd' => json_decode((string) $m->record_json, true)['provider_cost_usd'] ?? null, 'error' => $m->error])->all();
+                // Provider cost where the item recorded it (generated video), with its basis: an estimate at list price
+                // (measured or requested seconds), never a billed figure; otherwise unknown, never the tariff.
+                'provider_usd' => json_decode((string) $m->record_json, true)['provider_cost_usd'] ?? null,
+                'provider_cost_basis' => json_decode((string) $m->record_json, true)['cost_basis'] ?? 'unknown', 'error' => $m->error])->all();
 
         $report = ['conversation' => $id, 'settings' => array_intersect_key($settings, array_flip(['aspect_ratio', 'duration_seconds', 'reference_match'])),
             'plans' => $plans, 'runs' => $runs, 'media' => $media,
@@ -65,7 +67,7 @@ class CreateBenchReport extends Command
         foreach ($plans as $p) $this->line(sprintf('Plan  %s  %-26s %4ss  media %s cr  tier %s  routes %s', substr($p['id'], 0, 8), $p['provider'], $p['seconds'] ?? '?', $p['media_credits'] ?? '?', $p['video_tier'] ?? '-', json_encode($p['routes'])));
         foreach ($runs as $r) $this->line(sprintf('Run   %s  %-11s %-14s %5ss  %5d cr  $%s (%s)  failed %d  calls %d%s  stages %s', substr($r['id'], 0, 8), $r['stage'] ?? '?', $r['status'], $r['seconds'] ?? '?', $r['credits'], $r['provider_usd'], $r['provider_cost_basis'], $r['failed_attempts'], $r['model_calls'], $r['held'] ? '  HELD' : '',
             collect($r['stages'])->map(fn ($v, $k) => $k.' '.$v.'s')->implode(', ')));
-        foreach ($media as $m) $this->line(sprintf('Media %-16s %-10s %4d cr  %-11s %s%s', $m['kind'], $m['status'], $m['credits'], $m['engine'] ?? '', $m['provider_usd'] === null ? 'provider $?' : 'provider $'.$m['provider_usd'], $m['error'] ? '  '.mb_substr($m['error'], 0, 80) : ''));
+        foreach ($media as $m) $this->line(sprintf('Media %-16s %-10s %4d cr  %-11s %s%s', $m['kind'], $m['status'], $m['credits'], $m['engine'] ?? '', $m['provider_usd'] === null ? 'provider $?' : 'provider ~$'.$m['provider_usd'].' ('.$m['provider_cost_basis'].')', $m['error'] ? '  '.mb_substr($m['error'], 0, 80) : ''));
         $this->info(sprintf('Total %d credits over %d runs; %d held; %d media failed.', $report['totals']['credits'], $report['totals']['runs'], $report['totals']['holds'], $report['totals']['failed_media']));
         return self::SUCCESS;
     }
