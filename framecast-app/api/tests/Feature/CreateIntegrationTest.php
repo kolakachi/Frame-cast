@@ -536,6 +536,65 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('cold brew pour ice', \App\Services\Create\PlanMediaExecutor::searchTerms('Vertical slow-motion cold brew pour over ice, dark background'));
     }
 
+    public function test_each_job_of_a_take_is_recorded_restarted_once_and_collected_without_an_unknown_outcome(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000]);
+        $c = $this->brief();
+        $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-take');
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $lines = ['Every brand starts somewhere, usually at a kitchen table late at night with an idea and no camera.', 'Paste one line into WyvStudio and it turns it into a voiced, captioned video.', 'Schedule it to YouTube, TikTok or Instagram, and start with the nine dollar Test Pass today.'];
+        $json['media'] = [['kind' => 'ugc_take', 'description' => 'A founder talks to camera in a bright kitchen', 'presenter' => 'none', 'engine' => 'omni', 'credits' => 1]];
+        $json['narration'] = $json['selections']['narration'] = $lines;
+        $json['shot_context'] = ['has_avatar' => false, 'aspect_ratio' => '9:16', 'language' => 'en'];
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+        $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $take = collect($q->payload_json['plan_media'])->firstWhere('kind', 'ugc_take');
+        $this->assertGreaterThanOrEqual(3, count($take['segments']), 'three long lines are three parts');
+        $index = array_search($take, $q->payload_json['plan_media'], true);
+
+        $log = [];
+        app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class($log) extends \App\Services\Create\PlanMediaExecutor {
+            private array $polls = [];
+            public function __construct(private array &$log) {}
+            public function startJob(string $kind, string $description, array $ctx, int $k): string {
+                $this->log[] = 'start '.$k;
+                // The second part is refused once at submission: nothing was made, so it is simply started again.
+                if ($k === 1 && ! in_array('refused 1', $this->log, true)) { $this->log[] = 'refused 1'; throw new \RuntimeException('Veo submit failed: busy'); }
+                return 'p'.$k.'-'.count($this->log);
+            }
+            public function pollJob(string $id): array {
+                $this->log[] = 'poll '.$id;
+                $n = $this->polls[$id] = ($this->polls[$id] ?? 0) + 1;
+                // The third part fails once at the provider and is restarted; everything else lands on its second check.
+                if (str_starts_with($id, 'p2-') && ! in_array('failed '.$id, $this->log, true) && ! collect($this->log)->contains(fn ($l) => str_starts_with($l, 'failed p2'))) { $this->log[] = 'failed '.$id; return ['status' => 'failed', 'declined' => false, 'error' => 'interrupted']; }
+                return $n >= 2 ? ['status' => 'succeeded', 'url' => 'https://example.test/'.$id.'.mp4'] : ['status' => 'running'];
+            }
+            public function cancelJob(string $id): void { $this->log[] = 'cancel '.$id; }
+            public function finishGenerated(string $kind, string $description, array $ctx, string $dir, array $urls, array $ids, string $engine): array {
+                $this->log[] = 'finish '.implode(',', $ids);
+                \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=16x16:d=0.2', $dir.'/take.mp4']);
+                return ['path' => $dir.'/take.mp4', 'mime' => 'video/mp4', 'title' => 'UGC take', 'provider_id' => 'take-1', 'engine' => $engine, 'line' => 'x', 'speech_mode' => 'native', 'speech_check' => ['status' => 'ok', 'missing' => []]];
+            }
+        });
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-take', true);
+        $claim = $this->runs->claim();
+        $service = app(\App\Services\Create\PlanMediaService::class);
+        $row = fn () => json_decode((string) DB::table('create_plan_media')->where('plan_id', $plan['id'])->where('kind', 'ugc_take')->value('record_json'), true);
+
+        $first = $service->produce($run->id, $claim['lease_token'], $index);
+        $this->assertSame('pending', $first['status']);
+        $jobs = $row()['jobs'];
+        $this->assertNotNull($jobs[0]); $this->assertNull($jobs[1], 'the refused part is recorded as not started'); $this->assertNotNull($jobs[2]);
+
+        for ($i = 0; $i < 6 && ($r = $service->produce($run->id, $claim['lease_token'], $index))['status'] === 'pending'; $i++);
+        $this->assertSame('succeeded', $r['status']);
+        $this->assertSame((int) $take['credits'], $r['charged_credits'], 'charged once, at the quoted price, only when delivered');
+        $this->assertCount(1, $r['failed_jobs'], 'the failed part is kept on record');
+        $this->assertNotContains('unknown', DB::table('create_plan_media')->where('plan_id', $plan['id'])->pluck('status')->all());
+        $this->assertSame(2, collect($log)->filter(fn ($l) => $l === 'start 1')->count(), 'the refused part was started again once');
+        $this->assertSame(2, collect($log)->filter(fn ($l) => $l === 'start 2')->count(), 'the failed part was restarted once');
+    }
+
     public function test_saved_styles_come_from_a_version_or_a_reference_and_steer_later_quotes(): void
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();

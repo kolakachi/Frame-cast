@@ -39,7 +39,7 @@ class PlanMediaExecutor
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
             'reference_sheet' => $this->referenceSheet($description, $ctx, $dir),
-            // Generated shots and takes start and are collected separately (startGenerated, collectGenerated).
+            // Generated shots and takes run as provider jobs started and collected separately (startJob, pollJob, finishGenerated).
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
     }
@@ -378,15 +378,23 @@ class PlanMediaExecutor
         return trim($description).$named.$sound.' No on-screen text, captions, subtitles, logos, watermarks or user interface; keep the main subject centred and clear of the frame edges.';
     }
 
+    /** How many provider jobs an item makes: one per segment of a native UGC take, one otherwise. */
+    public function jobCount(string $kind, array $ctx): int
+    {
+        $shot = $ctx['shot'] ?? [];
+        return $kind === 'ugc_take' && ($shot['speech_mode'] ?? '') !== 'cloned_lipsync' ? max(1, count($shot['segments'] ?? [])) : 1;
+    }
+
     /**
-     * Start a generated shot or UGC take and return at once: its predictions run at the provider (Seedance 2.5 can
-     * take 5-15 minutes) while the worker checks back through collectGenerated, so no request waits for minutes.
-     * Returns the prediction ids; throws only when nothing could be started.
+     * Start one provider job of a generated shot or take and return its prediction id at once: the job runs at the
+     * provider (Seedance 2.5 can take 5-15 minutes) while the worker checks back. Each job is started and recorded on
+     * its own, so a failure partway through a take never strands the parts already paid for.
      */
-    public function startGenerated(string $kind, string $description, array $ctx): array
+    public function startJob(string $kind, string $description, array $ctx, int $k): string
     {
         $shot = $ctx['shot'] ?? [];
         $engine = (string) ($shot['engine'] ?? '');
+        if (! empty($shot['problem'])) throw new RuntimeException($shot['problem'].' Plan again.');
         $veo = app(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
         if ($kind === 'ugc_take' && ($shot['speech_mode'] ?? '') === 'cloned_lipsync') {
             // The approved cloned narration drives the presenter's mouth (audio-driven lip-sync from one image).
@@ -397,26 +405,21 @@ class PlanMediaExecutor
             if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The cloned narration is not ready, so the take cannot be lip-synced.');
             $presenter = ($shot['presenter'] ?? '') === 'avatar' ? $this->firstFrame(['first_frame' => 'avatar'], $ctx)
                 : (($f = $ctx['sheet_files'][0] ?? null) ? $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']) : throw new RuntimeException('The take has no presenter image.'));
-            $id = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($presenter, $this->replicateUpload($bytes, (string) ($audio->mime_type ?: 'audio/wav')), null);
-            return ['predictions' => [$id], 'engine' => 'lipsync'];
+            return app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($presenter, $this->replicateUpload($bytes, (string) ($audio->mime_type ?: 'audio/wav')), null);
         }
         if ($kind === 'ugc_take') {
+            $seg = ($shot['segments'] ?? [])[$k] ?? throw new RuntimeException('The take has no part '.($k + 1).'.');
             $refs = match ($shot['presenter'] ?? 'none') {
                 'avatar' => $this->shotReferences(['refs' => ['avatar']], $ctx),
                 'sheet' => $this->shotReferences(['refs' => ['sheet']], $ctx),
                 default => [],
             };
-            $ids = [];
-            foreach ($shot['segments'] ?? [] as $k => $seg) {
-                $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
-                $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person.' : '')
-                    .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
-                    .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
-                    .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
-                $ids[] = $veo->start($prompt, (int) $seg['seconds'], null, $engine ?: 'omni', array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
-            }
-            if (! $ids) throw new RuntimeException('The UGC take has nothing to say. Plan again with a script.');
-            return ['predictions' => $ids, 'engine' => $engine];
+            $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
+            $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person.' : '')
+                .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
+                .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
+                .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
+            return $veo->start($prompt, (int) $seg['seconds'], null, $engine ?: 'omni', array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
         }
         if (isset(ShotRoute::FIRST_FRAME[$engine])) {
             $tier = ShotRoute::FIRST_FRAME[$engine]['tier'];
@@ -427,46 +430,48 @@ class PlanMediaExecutor
                 : $http->post('https://api.replicate.com/v1/models/'.$model.'/predictions', ['input' => $input]);
             $id = (string) $res->json('id');
             if (! $res->successful() || $id === '') throw new RuntimeException('The video model did not accept this shot: '.mb_substr($res->body(), 0, 200));
-            return ['predictions' => [$id], 'engine' => $engine];
+            return $id;
         }
         if (! isset(ShotRoute::REF[$engine])) throw new RuntimeException('This shot has no video model. Plan again.');
-        if (! empty($shot['problem'])) throw new RuntimeException($shot['problem'].' Plan again.');
         // Omni and Veo take a start frame and references together; Seedance one or the other (ShotRoute::INPUTS).
         $refs = $this->shotReferences($shot, $ctx);
         $start = ! empty($shot['first_frame']) ? $this->firstFrame($shot, $ctx) : null;
-        return ['predictions' => [$veo->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], $start, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'))], 'engine' => $engine];
+        return $veo->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], $start, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
     }
 
-    /**
-     * Check the started predictions once. Null while any is still running; throws when one failed; otherwise the
-     * finished clip (a take's segments joined into one), in the shape produce() returns.
-     */
-    public function collectGenerated(string $kind, string $description, array $ctx, string $dir, array $pending): ?array
+    /** One provider job's state: running, succeeded with its clip, or failed (declined says whether moderation refused it). */
+    public function pollJob(string $id): array
     {
-        $urls = [];
-        foreach ($pending['predictions'] ?? [] as $id) {
-            $p = Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(30)->get('https://api.replicate.com/v1/predictions/'.$id)->json();
-            $status = (string) ($p['status'] ?? '');
-            if (in_array($status, ['failed', 'canceled'], true)) {
-                $error = (string) ($p['error'] ?? 'no detail');
-                \Illuminate\Support\Facades\Log::info('generated video failed', ['prediction_id' => $id, 'error' => mb_substr($error, 0, 500)]);
-                if (str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false)
-                    throw new RuntimeException('The video model declined this shot: its moderation flags some content even in tasteful ads. Nothing was charged.');
-                throw new RuntimeException('The video model could not make this shot: '.mb_substr($error, 0, 200));
-            }
-            if ($status !== 'succeeded') return null;
-            $out = $p['output'] ?? null;
-            $urls[] = is_array($out) ? (string) ($out[0] ?? '') : (string) $out;
+        $p = Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(30)->get('https://api.replicate.com/v1/predictions/'.$id)->json();
+        $status = (string) ($p['status'] ?? '');
+        if (in_array($status, ['failed', 'canceled'], true)) {
+            $error = (string) ($p['error'] ?? 'no detail');
+            \Illuminate\Support\Facades\Log::info('generated video failed', ['prediction_id' => $id, 'error' => mb_substr($error, 0, 500)]);
+            $declined = str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false;
+            return ['status' => 'failed', 'declined' => $declined, 'error' => $declined ? 'The video model declined this shot: its moderation flags some content even in tasteful ads. Nothing was charged.' : 'The video model could not make this shot: '.mb_substr($error, 0, 200)];
         }
-        if (! $urls || in_array('', $urls, true)) throw new RuntimeException('The video model finished without a clip.');
+        if ($status !== 'succeeded') return ['status' => 'running'];
+        $out = $p['output'] ?? null;
+        $url = is_array($out) ? (string) ($out[0] ?? '') : (string) $out;
+        return $url === '' ? ['status' => 'failed', 'declined' => false, 'error' => 'The video model finished without a clip.'] : ['status' => 'succeeded', 'url' => $url];
+    }
+
+    /** Stop a job we no longer need, so it is not billed further. Best effort. */
+    public function cancelJob(string $id): void
+    {
+        rescue(fn () => Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(20)->post('https://api.replicate.com/v1/predictions/'.$id.'/cancel'), report: false);
+    }
+
+    /** The finished clip from its jobs' outputs (a take's segments joined into one), in the shape produce() returns. */
+    public function finishGenerated(string $kind, string $description, array $ctx, string $dir, array $urls, array $ids, string $engine): array
+    {
         $shot = $ctx['shot'] ?? [];
-        $engine = (string) ($pending['engine'] ?? $shot['engine'] ?? '');
-        $ids = preg_replace('/[^a-zA-Z0-9_-]/', '', implode('-', $pending['predictions']));
+        $tag = preg_replace('/[^a-zA-Z0-9_-]/', '', implode('-', $ids));
         if ($kind !== 'ugc_take') {
             $path = $this->fetch($urls[0], $dir.'/shot.mp4');
-            return ['path' => $path, 'mime' => 'video/mp4', 'title' => ShotRoute::label($engine).' · '.Str::limit($description, 50, '…'), 'provider_id' => 'shot-'.$ids, 'engine' => $engine, 'seconds' => (float) ($shot['seconds'] ?? 0)];
+            return ['path' => $path, 'mime' => 'video/mp4', 'title' => ShotRoute::label($engine).' · '.Str::limit($description, 50, '…'), 'provider_id' => 'shot-'.$tag, 'engine' => $engine, 'seconds' => (float) ($shot['seconds'] ?? 0)];
         }
-        $parts = array_map(fn ($u, $k) => $this->fetch($u, $dir.'/part-'.$k.'.mp4'), $urls, array_keys($urls));
+        $parts = array_map(fn ($u, $k) => $this->fetch($u, $dir.'/part-'.$k.'.mp4'), array_values($urls), array_keys(array_values($urls)));
         $path = $dir.'/take.mp4';
         if (count($parts) === 1) copy($parts[0], $path);
         else {
@@ -478,8 +483,9 @@ class PlanMediaExecutor
             if (! $p->successful() || ! is_file($path)) throw new RuntimeException('The take could not be joined.');
         }
         $lines = collect($shot['segments'] ?? [])->flatMap(fn ($x) => $x['lines'] ?? [])->all();
-        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'UGC take · '.Str::limit(implode(' ', $lines), 40, '…'), 'provider_id' => 'take-'.$ids,
-            'line' => implode(' ', $lines), 'speech_mode' => 'native', 'engine' => $engine, 'speech_check' => $this->speechCheck($path, implode(' ', $lines))];
+        return ['path' => $path, 'mime' => 'video/mp4', 'title' => 'UGC take · '.Str::limit(implode(' ', $lines), 40, '…'), 'provider_id' => 'take-'.$tag,
+            'line' => implode(' ', $lines), 'speech_mode' => ($shot['speech_mode'] ?? '') === 'cloned_lipsync' ? 'cloned_lipsync' : 'native', 'engine' => $engine,
+            'speech_check' => $this->speechCheck($path, implode(' ', $lines))];
     }
 
     /**

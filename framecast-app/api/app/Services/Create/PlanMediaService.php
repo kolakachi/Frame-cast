@@ -91,7 +91,9 @@ class PlanMediaService
                 if (self::neverConnected($e, $item['kind'])) $providerStarted = false;
                 // Lack of usable output is not evidence that a generation was unbilled.
                 // Keep the reservation and stop; a new run must not repurchase this item blindly.
-                if ($providerStarted && ! in_array($item['kind'], ['stock_video', 'stock_image', 'brand_kit'], true)) {
+                // A sheet is a few cheap images: one that fails partway is a plain failure (the user pays only for a
+                // delivered sheet; images already made are our cost), not a hold that blocks the build.
+                if ($providerStarted && ! in_array($item['kind'], ['stock_video', 'stock_image', 'brand_kit', 'reference_sheet'], true)) {
                     $attempts->settle($runId, $lease, $attempt['id'], ['status' => 'unknown']);
                     $this->record($run, $planId, $cacheIndex, $item, $hash, 'unknown', null, 0, 'Provider outcome requires reconciliation.');
                     abort(409, 'Media outcome needs reconciliation; no automatic retry or replacement purchase.');
@@ -132,9 +134,10 @@ class PlanMediaService
     }
 
     /**
-     * Generated shots and takes run for minutes at the provider, longer than any one request may wait. The first
-     * call starts them and records them as pending; each later call checks once and, when they are done, stores the
-     * clip and charges it like any other item. A pending item from a stopped run is collected, not bought again.
+     * Generated shots and takes run for minutes at the provider, longer than any one request may wait. Every
+     * provider job (a shot, or each segment of a take) is recorded the moment it is submitted; each later call
+     * starts any job not yet running, checks the rest once, restarts a failed job once, and when all are done stores
+     * the clip and charges it like any other item. A pending item from a stopped run is collected, not bought again.
      */
     private function produceGenerated(object $run, string $runId, string $lease, int $index, array $item, string $planId, int $cacheIndex, array $context, string $hash, ?object $done): array
     {
@@ -142,39 +145,68 @@ class PlanMediaService
         $executor = app(PlanMediaExecutor::class);
         $base = ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'engine' => $item['engine'] ?? null];
         $pending = $done && $done->status === 'pending' && $done->description_hash === $hash ? json_decode((string) $done->record_json, true) : null;
+        // Records from before per-job tracking listed every started prediction under "predictions".
+        if ($pending && ! isset($pending['jobs'])) $pending['jobs'] = array_values($pending['predictions'] ?? []);
+        $fresh = false;
         if (! $pending || ($pending['run_id'] ?? null) !== $runId) {
             $attempt = $attempts->begin($runId, $lease, 'plan-media-'.$index, 'plan_media', $hash);
             abort_unless($attempt['may_execute'], 409, 'This item was already attempted in this run.');
-            if ($pending) {
-                // Adopt the clip a stopped run started: collect it here instead of paying for it again.
-                $pending = [...$pending, 'attempt_id' => $attempt['id'], 'run_id' => $runId];
-            } else {
-                try { $started = $executor->startGenerated($item['kind'], $item['description'], $context); }
-                catch (\Throwable $e) {
-                    report($e);
-                    // A start that was refused, or never connected, made nothing; anything else may have.
-                    $unsent = $e instanceof \RuntimeException && ! $e instanceof \Illuminate\Http\Client\ConnectionException || self::neverConnected($e, 'generated_shot');
-                    if (! $unsent || $item['kind'] === 'ugc_take') {
-                        $attempts->settle($runId, $lease, $attempt['id'], ['status' => 'unknown']);
-                        $this->record($run, $planId, $cacheIndex, $item, $hash, 'unknown', null, 0, 'Provider outcome requires reconciliation.');
-                        abort(409, 'Media outcome needs reconciliation; no automatic retry or replacement purchase.');
-                    }
-                    return $this->failGenerated($run, $runId, $lease, $attempt['id'], $planId, $cacheIndex, $item, $hash, $e->getMessage(), $base);
-                }
-                $pending = ['predictions' => $started['predictions'], 'engine' => $started['engine'], 'attempt_id' => $attempt['id'], 'run_id' => $runId, 'started_at' => now()->toIso8601String()];
-            }
+            // Adopt the jobs a stopped run started (collected here, not bought again), or start this item's own.
+            $pending = $pending ? [...$pending, 'attempt_id' => $attempt['id'], 'run_id' => $runId]
+                : ['jobs' => array_fill(0, $executor->jobCount($item['kind'], $context), null), 'restarts' => [], 'start_failures' => [], 'engine' => $item['engine'] ?? null,
+                    'attempt_id' => $attempt['id'], 'run_id' => $runId, 'started_at' => now()->toIso8601String()];
             $this->record($run, $planId, $cacheIndex, $item, $hash, 'pending', $pending, 0, null);
-            return [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null];
+            $fresh = true;
         }
+        // By reference: each save writes the job list as it stands now, not as it was when the closure was made.
+        $save = function () use (&$pending, $run, $planId, $cacheIndex, $item, $hash) { $this->record($run, $planId, $cacheIndex, $item, $hash, 'pending', $pending, 0, null); };
+        $waiting = [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null];
+        $fail = function (string $message) use (&$pending, $executor, $run, $runId, $lease, $planId, $cacheIndex, $item, $hash, $base) {
+            // Jobs still running are stopped: nothing more is billed for an item that will not be delivered.
+            foreach ($pending['jobs'] as $id) if ($id) $executor->cancelJob($id);
+            return $this->failGenerated($run, $runId, $lease, $pending['attempt_id'], $planId, $cacheIndex, $item, $hash, $message, $base);
+        };
+
+        // Start every job not yet running, recording each id the moment the provider returns it.
+        foreach ($pending['jobs'] as $k => $id) {
+            if ($id) continue;
+            try { $pending['jobs'][$k] = $executor->startJob($item['kind'], $item['description'], $context, $k); $save(); }
+            catch (\Throwable $e) {
+                report($e);
+                // A refused start made nothing; a start that may have reached the provider cannot be repeated blindly.
+                $unsent = ($e instanceof \RuntimeException && ! $e instanceof \Illuminate\Http\Client\ConnectionException) || self::neverConnected($e, 'generated_shot');
+                if (! $unsent) { $pending['uncertain'][] = $k; $save(); abort(409, 'A provider job may have started without its id being recorded. Reconcile it before continuing.'); }
+                $pending['start_failures'][$k] = ($pending['start_failures'][$k] ?? 0) + 1;
+                $save();
+                if ($pending['start_failures'][$k] >= 2) return $fail($e->getMessage());
+            }
+        }
+        if ($fresh) return $waiting;
+
+        // Check each job once; a job that failed (not a moderation refusal) is restarted once.
+        $urls = []; $running = false;
+        foreach ($pending['jobs'] as $k => $id) {
+            if (! $id) { $running = true; continue; }
+            try { $state = $executor->pollJob($id); }
+            catch (\Illuminate\Http\Client\ConnectionException) { $running = true; continue; }
+            if ($state['status'] === 'running') { $running = true; continue; }
+            if ($state['status'] === 'failed') {
+                if ($state['declined'] || ($pending['restarts'][$k] ?? 0) >= 1) return $fail($state['error']);
+                $pending['restarts'][$k] = ($pending['restarts'][$k] ?? 0) + 1;
+                $pending['failed_jobs'][] = $id;
+                $pending['jobs'][$k] = null;
+                $save();
+                $running = true;
+                continue;
+            }
+            $urls[$k] = $state['url'];
+        }
+        if ($running) return $waiting;
+
         $dir = Storage::disk('local')->path('create/media-attempts/'.$pending['attempt_id']);
         if (! is_dir($dir)) mkdir($dir, 0700, true);
-        try { $made = $executor->collectGenerated($item['kind'], $item['description'], $context, $dir, $pending); }
-        catch (\Illuminate\Http\Client\ConnectionException) { return [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null]; }
-        catch (\Throwable $e) {
-            report($e);
-            return $this->failGenerated($run, $runId, $lease, $pending['attempt_id'], $planId, $cacheIndex, $item, $hash, $e->getMessage(), $base);
-        }
-        if (! $made) return [...$base, 'status' => 'pending', 'charged_credits' => 0, 'started_at' => $pending['started_at'] ?? null];
+        try { ksort($urls); $made = $executor->finishGenerated($item['kind'], $item['description'], $context, $dir, $urls, $pending['jobs'], (string) ($pending['engine'] ?? $item['engine'] ?? '')); }
+        catch (\Throwable $e) { report($e); return $fail($e->getMessage()); }
         $file = app(RunService::class)->generated($runId, $lease, $made['path'], $made['title'],
             ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => $item['kind'], 'description' => $item['description']], 'provider_id' => $made['provider_id']]);
         $id = substr(preg_replace('/[^a-zA-Z0-9_-]/', '-', $made['provider_id']).'-'.substr($pending['attempt_id'], 0, 8), 0, 160);
@@ -183,7 +215,7 @@ class PlanMediaService
         $receipt = new VerifiedAttemptReceipt($pending['attempt_id'], 'succeeded', $id, $credits * 4000, 'pilot-tariff:catalogue; '.$item['kind'].' on '.($made['engine'] ?? '?').' at its listed price of '.$credits.' credits');
         $settled = $attempts->settle($runId, $lease, $pending['attempt_id'], $receipt->result(), $receipt);
         $record = [...$base, 'status' => 'succeeded', 'file' => $file, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
-            ...(isset($made['speech_check']) ? ['speech_check' => $made['speech_check']] : [])];
+            'jobs' => $pending['jobs'], 'failed_jobs' => $pending['failed_jobs'] ?? [], ...(isset($made['speech_check']) ? ['speech_check' => $made['speech_check']] : [])];
         $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
         return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];
