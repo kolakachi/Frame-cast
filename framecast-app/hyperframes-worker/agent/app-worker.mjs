@@ -1,5 +1,7 @@
 import {createTrajectory} from './trajectory.mjs';
 import {reviewStatus} from './review-status.mjs';
+import {finalChecks} from './final-checks.mjs';
+import {moveFindings} from './move-check.mjs';
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
 // Credentials stay on the host; no shell text or Docker socket enters the sandbox.
 import {readFile,writeFile,mkdir,copyFile,access,readdir,rename,unlink} from 'node:fs/promises';
@@ -223,7 +225,7 @@ async function execute(run){
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
-  let deliveryChecks=null,audioReview=null,paceReview=null;
+  let deliveryChecks=null,audioReview=null,paceReview=null,finalReview=null;
   if(!(stopping||lost)){
    stage='Checking the final video';
    try{
@@ -251,6 +253,17 @@ async function execute(run){
     paceReview={pace,notes:paceNotes(plan.reference_pacing,pace)};
     await trace({phase:'review',status:'succeeded',summary:'Compared the rhythm with the reference',detail:JSON.stringify({reference:plan.reference_pacing,...paceReview}).slice(0,1900)});
    }catch{paceReview=null;}
+   // The finished video against what was approved (todo D): words, required items, identity, blank frames, planned moves.
+   if(paid&&run.input.look_first!==true)try{
+    stage='Checking the final video against your plan';
+    const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
+    const file=path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact);
+    const look=async frames=>{const form=new FormData();form.set('lease_token',run.lease_token);for(const [k,f] of frames.entries()){form.append('times[]',String(f.time));form.append('frames[]',new Blob([f.jpeg],{type:'image/jpeg'}),'f'+k+'.jpg');}return request('runs/'+run.id+'/look',form,true,180000);};
+    const sources=Object.entries(agentResult?.bundle??{}).filter(([n])=>!/^(gsap|wyv-|barty-)/.test(n)).map(([,t])=>t).join('\n');
+    finalReview=await finalChecks({file,duration:audioReview?.duration||Number(run.input.settings?.duration_seconds)||15,plan:{...plan,settings_audio:run.input.settings?.audio},planMedia,
+     audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,moves:moveFindings({plan,sources}),look});
+    await trace({phase:'review',status:finalReview.status==='blocked'?'failed':'succeeded',summary:'Checked the final video against the plan',detail:JSON.stringify(finalReview).slice(0,1900)});
+   }catch(e){finalReview=null;await trace({phase:'review',status:'failed',summary:'Final checks unavailable',detail:String(e.message).slice(0,300)});}
   }
   clearInterval(timer);
   while(heartbeatBusy)await new Promise(resolve=>setTimeout(resolve,25));
@@ -271,6 +284,14 @@ async function execute(run){
   // Pacing measured on the delivered video reaches the user too; a version ready for review with notes has issues.
   if(paceReview?.notes?.length){result.creative_review.findings=[...(result.creative_review.findings||[]),...paceReview.notes].slice(0,8);if(result.creative_review.status==='ready')result.creative_review.status='issues';}
   if(audioReview){const heardIds=new Set(audioReview.checks.map(c=>c.id));result.creative_review.requirement_checks=[...(result.creative_review.requirement_checks||[]).filter(c=>!heardIds.has(c.id)),...audioReview.checks].slice(0,24);}
+  // The final checks decide what the user is told: a blocking failure makes the version "not ready" with its evidence;
+  // checks that could not run are shown as unverified, never as passed.
+  if(finalReview){
+   result.final_checks=finalReview;
+   if(finalReview.status==='blocked'){result.creative_review.status='blocked';result.creative_review.findings=[...finalReview.findings,...(result.creative_review.findings||[])].slice(0,8);}
+   else if(finalReview.status==='issues'){result.creative_review.findings=[...(result.creative_review.findings||[]),...finalReview.findings].slice(0,8);if(result.creative_review.status==='ready'||result.creative_review.status==='passed')result.creative_review.status='issues';}
+   else if(finalReview.status==='unverified'&&result.creative_review.status==='passed')result.creative_review.status='ready';
+  }
   // The agent's last review scores travel with the version, so the card can offer another round.
   if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);
   // Persist completion before sending: a callback failure must not trigger rendering again.

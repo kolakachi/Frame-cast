@@ -430,7 +430,11 @@ function referenceTally(plan) {
   return `${d.length + (plan.reference_unaccounted || []).length} moments seen · ${n('keep')} kept · ${n('replace')} changed · ${n('drop')} left out`
 }
 // Offered, never automatic: when the checks did not pass, or when there are specific things to fix.
-const needsAnotherRound = computed(() => ['incomplete', 'issues'].includes(outputMeta.value.creative_review?.status) || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
+// The final checks on the delivered video: what failed (with times) and what could not be checked.
+const finalFails = computed(() => (outputMeta.value.final_checks?.checks || []).filter(c => c.status === 'fail').sort((a, b) => Number(b.blocking) - Number(a.blocking)))
+const finalUnverified = computed(() => (outputMeta.value.final_checks?.checks || []).filter(c => c.status === 'unverified'))
+function checkTime(c) { return (c.times || []).length ? (c.times.length > 1 ? 'At ' + c.times.slice(0, 3).map(t => t.toFixed(1) + ' s').join(', ') : 'At ' + c.times[0].toFixed(1) + ' s') + ': ' : '' }
+const needsAnotherRound = computed(() => ['incomplete', 'issues', 'blocked'].includes(outputMeta.value.creative_review?.status) || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
 async function keepImproving() { const notes = reviewNotes.value; prompt.value = 'Keep this video and improve it' + (notes.length ? ': ' + notes.join('; ') : '.'); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
 async function chooseStyle(value) {
@@ -892,7 +896,15 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                 </div>
                 <!-- Suggestions only, in plain words: users never see review scores or that a reviewer exists. -->
                 <p v-if="outputMeta.creative_review?.status === 'ready' && !outputMeta.look" class="muted" role="status">Checks passed. It's ready for your review: tell us anything you'd like changed.</p>
-                <div v-if="outputMeta.creative_review && !['passed', 'ready'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
+                <div v-if="outputMeta.final_checks && !outputMeta.look && (finalFails.length || finalUnverified.length)" :class="['checks', outputMeta.final_checks.status === 'blocked' ? 'checks--blocked' : '']" role="status">
+                  <b>{{ outputMeta.final_checks.status === 'blocked' ? 'Not ready yet: this version misses something you approved' : 'Checked against your plan' }}</b>
+                  <ul>
+                    <li v-for="c in finalFails" :key="c.id + c.label" :class="c.blocking ? 'checks__warn' : ''">{{ checkTime(c) }}{{ c.label }}<template v-if="c.message">: {{ c.message }}</template></li>
+                    <li v-for="c in finalUnverified" :key="'u' + c.id + c.label" class="muted">Not checked automatically: {{ c.label }}<template v-if="c.message"> ({{ c.message }})</template></li>
+                  </ul>
+                  <p v-if="outputMeta.final_checks.status === 'blocked'" class="muted">Use “Keep improving” to fix these in a new version; this one stays saved.</p>
+                </div>
+                <div v-if="outputMeta.creative_review && !['passed', 'ready', 'blocked'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
                   <b>{{ outputMeta.look ? 'Notes for the next round' : outputMeta.creative_review.status === 'issues' ? 'Things to check in this version' : 'Ideas for the next version' }}</b>
                   <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
                   <p v-else>Look over the stills and tell us what to change, or build the full video.</p>
@@ -1215,6 +1227,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .character-approval-inline .character-review-grid{grid-template-columns:repeat(auto-fit,minmax(110px,160px));margin:10px 0}
 .character-review-grid figure .input{width:100%;margin-top:4px;font-size:12px}
 .panel-issue{color:var(--color-warning, #b45309)}
+.checks--blocked{border-color:var(--color-warning, #b45309)}
 
 /* Tokens from the approved create-ui mockup, on the app's own accent. */
 .link-form{display:flex;flex-direction:column;gap:10px}.link-form__label{font-size:13px;color:var(--text-2)}.link-form__note{font-size:12px;line-height:1.45;margin:0}.link-form__actions{display:flex;justify-content:flex-end;gap:8px}

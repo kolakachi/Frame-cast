@@ -45,6 +45,7 @@ Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (
     Route::post('/runs/{id}/plan-media/{index}', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'planMedia'])->whereNumber('index');
     Route::post('/runs/{id}/transcripts', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'transcript']);
     Route::post('/runs/{id}/listen', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'listen']);
+    Route::post('/runs/{id}/look', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'look']);
     Route::post('/runs/{id}/replicate/prepare', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'prepareReplicate']);
     Route::post('/runs/{id}/attempts/{attemptId}/replicate', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'replicate']);
     Route::post('/runs/{id}/attempts/{attemptId}/anthropic', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'anthropic']);

@@ -215,6 +215,8 @@ class RunService
         // findings the user should see; incomplete: the checks did not pass.
         $claimed = $value['status'] ?? null;
         $status = match (true) {
+            // blocked: a final check found approved content missing or a technical fault; the version needs fixing.
+            $claimed === 'blocked' => 'blocked',
             $claimed === 'passed' && ! $findings && ! $unverified && ! $unverifiedRequirements => 'passed',
             $claimed === 'ready' && ! $findings => 'ready',
             in_array($claimed, ['passed', 'ready', 'issues'], true) => 'issues',
@@ -230,6 +232,17 @@ class RunService
         if (! is_array($r)) return [];
         return array_values(array_slice(array_map(fn ($x) => ['time' => round((float) ($x['time'] ?? 0), 1), 'score' => max(1, min(10, (int) ($x['score'] ?? 0))),
             'problems' => array_values(array_slice(array_map(fn ($p) => mb_substr((string) $p, 0, 120), array_filter((array) ($x['problems'] ?? []), 'is_string')), 0, 3))], array_filter($r, 'is_array')), 0, 5));
+    }
+
+    /** The final checks on the delivered video (todo D), reduced to known fields and bounded text. */
+    public static function finalChecks(mixed $c): ?array
+    {
+        if (! is_array($c) || ! in_array($c['status'] ?? null, ['passed', 'issues', 'blocked', 'unverified'], true)) return null;
+        $s = fn ($v, $n) => mb_substr(is_string($v) ? $v : '', 0, $n);
+        return ['status' => $c['status'], 'checks' => collect(is_array($c['checks'] ?? null) ? $c['checks'] : [])->filter(fn ($x) => is_array($x))->take(24)->map(fn ($x) => [
+            'id' => $s($x['id'] ?? '', 40), 'label' => $s($x['label'] ?? '', 160), 'status' => in_array($x['status'] ?? '', ['pass', 'fail', 'unverified'], true) ? $x['status'] : 'unverified',
+            'blocking' => (bool) ($x['blocking'] ?? false), 'message' => $s($x['message'] ?? '', 300),
+            'times' => array_values(array_slice(array_map(fn ($t) => round((float) $t, 1), array_filter((array) ($x['times'] ?? []), 'is_numeric')), 0, 6))])->values()->all()];
     }
 
     /** Worker-reported delivery checks, reduced to known fields and bounded text. */
@@ -310,7 +323,7 @@ class RunService
                 DB::table('composition_revisions')->insert([
                     'id' => $revision, 'conversation_id' => $c->id, 'run_id' => $id,
                     'number' => 1 + (int) DB::table('composition_revisions')->where('conversation_id', $c->id)->max('number'), 'parent_revision_id' => $input['base_revision_id'],
-                    'metadata_json'=>json_encode(['requirements_schema'=>$input['plan']['requirements_schema'] ?? null,'requirements'=>$input['plan']['requirements'] ?? [],'look'=>(bool)($input['look_first'] ?? false),'creative_review'=>self::creativeReview($result['creative_review'] ?? null, $input['plan'] ?? [], (bool) ($input['look_first'] ?? false)),'review'=>self::reviewScores($result['review'] ?? null),'delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
+                    'metadata_json'=>json_encode(['requirements_schema'=>$input['plan']['requirements_schema'] ?? null,'requirements'=>$input['plan']['requirements'] ?? [],'look'=>(bool)($input['look_first'] ?? false),'creative_review'=>self::creativeReview($result['creative_review'] ?? null, $input['plan'] ?? [], (bool) ($input['look_first'] ?? false)),'review'=>self::reviewScores($result['review'] ?? null),'delivery_checks'=>self::deliveryChecks($result['delivery_checks'] ?? null),'final_checks'=>self::finalChecks($result['final_checks'] ?? null),'settings'=>$input['mode']==='fixture' ? array_merge($input['settings'],['output_kind'=>'video','duration_seconds'=>15,'aspect_ratio'=>'9:16']) : $input['settings'],'requested_settings'=>$input['settings'],'source_version'=>$input['version'],'attachments'=>collect($input['attachments']??[])->map(fn($a)=>(array)$a)->sortBy('asset_id')->values()->all(),'variant_group'=>$input['variant_group']??null,'variant_index'=>$input['variant_index']??null,'fixture'=>$input['mode']==='fixture','media'=>$result['media']??null]),
                     'bundle_json' => json_encode($bundle), 'bundle_hash' => hash('sha256', json_encode($bundle)),
                     'artifact_path' => $artifactPath, 'artifact_hash' => $artifactHash, 'summary' => $result['summary'],
                     'conflict' => $conflict, 'created_at' => now(),
