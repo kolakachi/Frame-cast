@@ -655,7 +655,8 @@ class ReferenceStudy
     public ?string $readingModel = null;
 
     /** List prices per token in micro-dollars, for A/B readings on other providers. */
-    public const OTHER_RATES = ['openai:gpt-4o' => [2.5, 10], 'replicate:google/gemini-2.5-flash' => [0.3, 2.5], 'replicate:google/gemini-2.5-flash+video' => [0.3, 2.5]];
+    public const OTHER_RATES = ['openai:gpt-4o' => [2.5, 10], 'replicate:google/gemini-2.5-flash' => [0.3, 2.5], 'replicate:google/gemini-2.5-flash+video' => [0.3, 2.5],
+        'openai:gpt-5' => [1.25, 10], 'replicate:google/gemini-3.5-flash' => [1.5, 9]];
 
     /** One reading by the model: the parsed JSON and its usage, or null (logged) when the call or the reply fails. */
     private function ask(string $model, array $content, bool $long, string $effort = 'low'): ?array

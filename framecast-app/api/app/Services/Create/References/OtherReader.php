@@ -34,8 +34,9 @@ class OtherReader
             ? ['type' => 'image_url', 'image_url' => ['url' => 'data:image/jpeg;base64,'.$c['source']['data'], 'detail' => 'high']]
             : ['type' => 'text', 'text' => $c['text']], $content);
         $r = Http::withToken((string) config('services.openai.api_key'))->acceptJson()->timeout(600)
-            ->post('https://api.openai.com/v1/chat/completions', ['model' => $name, 'max_tokens' => 16384, 'response_format' => ['type' => 'json_object'],
-                'messages' => [['role' => 'user', 'content' => $parts]]]);
+            ->post('https://api.openai.com/v1/chat/completions', ['model' => $name, 'response_format' => ['type' => 'json_object'], 'messages' => [['role' => 'user', 'content' => $parts]]]
+                // GPT-5 models think before answering: their output cap includes the thinking; low effort, as the Claude reading.
+                + (str_starts_with($name, 'gpt-5') ? ['max_completion_tokens' => 32000, 'reasoning_effort' => 'low'] : ['max_tokens' => 16384]));
         if (! $r->successful()) throw new \RuntimeException($r->status().' '.mb_substr($r->body(), 0, 300));
         return [(string) $r->json('choices.0.message.content'), (int) $r->json('usage.prompt_tokens'), (int) $r->json('usage.completion_tokens')];
     }
@@ -75,7 +76,7 @@ class OtherReader
         // Say where each original picture went once they are stacked.
         if ($per > 1) $text = preg_replace_callback('/\[picture (\d+)\]/', fn ($m) => '[picture '.$m[1].': image '.(intdiv((int) $m[1] - 1, $per) + 1).', part '.(((int) $m[1] - 1) % $per + 1).' from the top]', $text);
         $r = Http::withToken($token)->withHeaders(['Prefer' => 'wait=60'])->timeout(120)
-            ->post('https://api.replicate.com/v1/models/'.$name.'/predictions', ['input' => ['prompt' => trim($text), 'images' => $files, 'videos' => $videos, 'max_output_tokens' => 32000, 'dynamic_thinking' => true]]);
+            ->post('https://api.replicate.com/v1/models/'.$name.'/predictions', ['input' => ['prompt' => trim($text), 'images' => $files, 'videos' => $videos, 'max_output_tokens' => 32000] + (str_starts_with($name, 'google/gemini-3') ? ['thinking_level' => 'low'] : ['dynamic_thinking' => true])]);
         if (! $r->successful()) throw new \RuntimeException('Start '.$r->status().' '.mb_substr($r->body(), 0, 300));
         $p = $r->json();
         for ($i = 0; $i < 120 && ! in_array($p['status'] ?? '', ['succeeded', 'failed', 'canceled'], true); $i++) {
