@@ -169,4 +169,12 @@ class ShotRouteTest extends TestCase
         $this->assertNotContains('voiceover', array_column(PlanService::selectedMedia($plan), 'kind'), 'native speech needs no narration');
         $this->assertArrayHasKey('problem', ShotRoute::take([], ['narration' => ['Hi.'], 'voice' => 'clone', 'has_avatar' => false, 'has_sheet' => false]), 'lip-sync needs a presenter image');
     }
+
+    public function test_provider_cost_comes_from_the_providers_output_metrics_not_the_credit_price(): void
+    {
+        $this->assertSame(0.9248, ShotRoute::providerUsd('seedance25', ['video_output_duration_seconds' => 4, 'resolution_target' => '720p'], 5));
+        $this->assertSame(0.4112, ShotRoute::providerUsd('seedance25', ['video_output_duration_seconds' => 4, 'resolution_target' => '480p'], 5));
+        $this->assertSame(1.2, ShotRoute::providerUsd('omni', [], 8.0), 'the requested length when the provider reports none');
+        $this->assertNull(ShotRoute::providerUsd('mystery', [], 4), 'an unknown model is unknown, not a guess');
+    }
 }

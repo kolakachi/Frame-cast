@@ -200,6 +200,9 @@ class PlanMediaService
                 continue;
             }
             $urls[$k] = $state['url'];
+            // What this job cost us, from the provider's own metrics; recorded beside the credit price, never charged.
+            $seg = ($context['shot']['segments'] ?? [])[$k]['seconds'] ?? ($context['shot']['seconds'] ?? 0);
+            $pending['costs'][$k] = ShotRoute::providerUsd((string) ($pending['engine'] ?? $item['engine'] ?? ''), $state['metrics'] ?? [], (float) $seg);
         }
         if ($running) return $waiting;
 
@@ -215,7 +218,8 @@ class PlanMediaService
         $receipt = new VerifiedAttemptReceipt($pending['attempt_id'], 'succeeded', $id, $credits * 4000, 'pilot-tariff:catalogue; '.$item['kind'].' on '.($made['engine'] ?? '?').' at its listed price of '.$credits.' credits');
         $settled = $attempts->settle($runId, $lease, $pending['attempt_id'], $receipt->result(), $receipt);
         $record = [...$base, 'status' => 'succeeded', 'file' => $file, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
-            'jobs' => $pending['jobs'], 'failed_jobs' => $pending['failed_jobs'] ?? [], ...(isset($made['speech_check']) ? ['speech_check' => $made['speech_check']] : [])];
+            'jobs' => $pending['jobs'], 'failed_jobs' => $pending['failed_jobs'] ?? [], ...(isset($made['speech_check']) ? ['speech_check' => $made['speech_check']] : []),
+            'provider_cost_usd' => in_array(null, $pending['costs'] ?? [null], true) ? null : round(array_sum($pending['costs']), 4), 'cost_basis' => 'Replicate output metrics at list price'];
         $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
         foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir);
         return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];

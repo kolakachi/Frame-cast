@@ -453,7 +453,7 @@ class PlanMediaExecutor
         if ($status !== 'succeeded') return ['status' => 'running'];
         $out = $p['output'] ?? null;
         $url = is_array($out) ? (string) ($out[0] ?? '') : (string) $out;
-        return $url === '' ? ['status' => 'failed', 'declined' => false, 'error' => 'The video model finished without a clip.'] : ['status' => 'succeeded', 'url' => $url];
+        return $url === '' ? ['status' => 'failed', 'declined' => false, 'error' => 'The video model finished without a clip.'] : ['status' => 'succeeded', 'url' => $url, 'metrics' => (array) ($p['metrics'] ?? [])];
     }
 
     /** Stop a job we no longer need, so it is not billed further. Best effort. */

@@ -36,7 +36,7 @@ class CreateBenchReport extends Command
         $runs = DB::table('composition_runs')->where('conversation_id', $id)->orderBy('created_at')->get()->map(function ($r) use ($secs) {
             $input = json_decode((string) $r->input_json, true) ?: [];
             $attempts = DB::table('composition_attempts')->where('run_id', $r->id)->get();
-            // Until real provider receipts land (todo 0.5), generated-media cost is the tariff's estimate, not a bill.
+            // Plan-media attempts carry the credit tariff, not a bill; generated video's real provider cost is on its media line.
             $tariff = $attempts->filter(fn ($a) => $a->kind === 'plan_media')->count() > 0;
             return ['id' => $r->id, 'stage' => $input['build_stage'] ?? null, 'status' => $r->status, 'seconds' => $secs($r->created_at, $r->updated_at),
                 'held' => $r->worker_stopped_at !== null || $attempts->contains(fn ($a) => in_array($a->status, ['unknown', 'started'], true)),
@@ -48,7 +48,9 @@ class CreateBenchReport extends Command
         })->all();
 
         $media = DB::table('create_plan_media')->where('conversation_id', $id)->orderBy('item_index')->get()
-            ->map(fn ($m) => ['kind' => $m->kind, 'status' => $m->status, 'credits' => (int) $m->charged_credits, 'engine' => json_decode((string) $m->record_json, true)['engine'] ?? null, 'error' => $m->error])->all();
+            ->map(fn ($m) => ['kind' => $m->kind, 'status' => $m->status, 'credits' => (int) $m->charged_credits, 'engine' => json_decode((string) $m->record_json, true)['engine'] ?? null,
+                // Real provider cost where the item recorded it (generated video); otherwise unknown, never the tariff.
+                'provider_usd' => json_decode((string) $m->record_json, true)['provider_cost_usd'] ?? null, 'error' => $m->error])->all();
 
         $report = ['conversation' => $id, 'settings' => array_intersect_key($settings, array_flip(['aspect_ratio', 'duration_seconds', 'reference_match'])),
             'plans' => $plans, 'runs' => $runs, 'media' => $media,
@@ -59,7 +61,7 @@ class CreateBenchReport extends Command
         $this->info('Creation '.$id.' · '.json_encode($report['settings']));
         foreach ($plans as $p) $this->line(sprintf('Plan  %s  %-26s %4ss  media %s cr  tier %s  routes %s', substr($p['id'], 0, 8), $p['provider'], $p['seconds'] ?? '?', $p['media_credits'] ?? '?', $p['video_tier'] ?? '-', json_encode($p['routes'])));
         foreach ($runs as $r) $this->line(sprintf('Run   %s  %-11s %-14s %5ss  %5d cr  $%s (%s)  failed %d  calls %d%s', substr($r['id'], 0, 8), $r['stage'] ?? '?', $r['status'], $r['seconds'] ?? '?', $r['credits'], $r['provider_usd'], $r['provider_cost_basis'], $r['failed_attempts'], $r['model_calls'], $r['held'] ? '  HELD' : ''));
-        foreach ($media as $m) $this->line(sprintf('Media %-16s %-10s %4d cr  %s%s', $m['kind'], $m['status'], $m['credits'], $m['engine'] ?? '', $m['error'] ? '  '.mb_substr($m['error'], 0, 80) : ''));
+        foreach ($media as $m) $this->line(sprintf('Media %-16s %-10s %4d cr  %-11s %s%s', $m['kind'], $m['status'], $m['credits'], $m['engine'] ?? '', $m['provider_usd'] === null ? 'provider $?' : 'provider $'.$m['provider_usd'], $m['error'] ? '  '.mb_substr($m['error'], 0, 80) : ''));
         $this->info(sprintf('Total %d credits over %d runs; %d held; %d media failed.', $report['totals']['credits'], $report['totals']['runs'], $report['totals']['holds'], $report['totals']['failed_media']));
         return self::SUCCESS;
     }

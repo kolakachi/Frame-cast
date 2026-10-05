@@ -247,6 +247,24 @@ class ShotRoute
             'seconds' => array_sum(array_column($segments, 'seconds')), 'aspect' => $aspect, 'credits' => (int) $credits];
     }
 
+    /** Replicate list prices per output second, with audio (USD); kept beside the credit tariff, never used to charge. */
+    private const PROVIDER_USD_PER_SECOND = ['seedance25:720p' => 0.2312, 'seedance25:480p' => 0.1028, 'omni' => 0.15, 'veo_hq' => 0.40, 'veo' => 0.15];
+
+    /**
+     * What the provider charged us for one finished job: its reported output seconds (or the requested length) at the
+     * model's list rate. An estimate from Replicate's metrics, labelled as such; failed jobs on output-priced models
+     * are not billed.
+     */
+    public static function providerUsd(string $engine, array $metrics, float $seconds): ?float
+    {
+        $out = (float) ($metrics['video_output_duration_seconds'] ?? $seconds);
+        if ($engine === 'seedance25') return round($out * self::PROVIDER_USD_PER_SECOND['seedance25:'.(($metrics['resolution_target'] ?? '720p') === '480p' ? '480p' : '720p')], 4);
+        if (isset(self::PROVIDER_USD_PER_SECOND[$engine])) return round($out * self::PROVIDER_USD_PER_SECOND[$engine], 4);
+        if ($engine === 'lipsync') return CreditService::spokespersonCogsUsd($out);
+        if (isset(self::FIRST_FRAME[$engine])) return CreditService::animationCogsUsd(self::FIRST_FRAME[$engine]['tier'], null, (int) round($out));
+        return null;
+    }
+
     /** Speaking rates: words a second, or characters a second for scripts written without spaces. */
     private const WORDS_PER_SECOND = ['en' => 2.4, 'es' => 2.7, 'fr' => 2.6, 'it' => 2.7, 'pt' => 2.6, 'de' => 2.2, 'nl' => 2.4, 'ar' => 2.2, 'hi' => 2.4];
     private const CHARS_PER_SECOND = ['ja' => 7.0, 'zh' => 4.5, 'ko' => 4.5];
