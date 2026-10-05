@@ -179,7 +179,17 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 - [ ] **G1. Baseline round run** (needs the owner's inputs and cap).
 - [~] **G2. Reference analysis split** (`26c556bf`).
   - Done: behind `CREATE_STUDY_MODE=split`. Haiku reads every sheet in parallel into per-frame facts (text, type, elements, changes); Opus reads the facts plus the strongest motion windows frame by frame and the first sheet. `create:study-ab {asset}` compares both readings.
-  - Missing: motion measurement with confidence; the A/B results and the switch decision (running on DistroKid 2026-10-05; UI-motion next).
+  - **A/B on DistroKid, 2026-10-05:** not adopted; the default stays `opus`.
+
+    | Reading | Time | Model cost | Moments | Systems |
+    |---|---|---|---|---|
+    | Opus reads every sheet | 114 s | $0.44 | 22 | 2 |
+    | Split | 81 s | $0.42 | 18 | 1 |
+
+    - The facts text cost Opus about as many tokens as the images it replaced (about 40k either way), so nothing was saved.
+    - The split merged the closing logo, globe and tagline into one moment.
+    - It misread three subjects (a man whose glasses reflect waveforms became "a robot head"; a woman at the keys became "a character in a server room").
+  - Missing: a real saving needs motion *measurement* (positions and timing from the video, with confidence), not cheaper summaries. Open.
 - [ ] **G3. Build model by job.**
 - [~] **G4. Cost per accepted result.**
   - Done: real provider cost per generated item (0.5).
