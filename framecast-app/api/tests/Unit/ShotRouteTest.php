@@ -263,4 +263,14 @@ class ShotRouteTest extends TestCase
         $this->assertNotSame($before, ShotRoute::inputsSha($shot1, $files, $names), 'a new Maya does');
         $this->assertNotSame(ShotRoute::inputsSha(['refs' => ['sheet']], $files, $names), ShotRoute::inputsSha(['refs' => ['Shop']], $files, $names));
     }
+
+    public function test_a_refused_shot_is_offered_on_the_next_engine_with_its_price(): void
+    {
+        $item = ['engine' => 'seedance25', 'refs' => ['Maya'], 'first_frame' => 'Panel 1', 'seconds' => 5, 'aspect' => '9:16'];
+        $s = ShotRoute::fallback($item, ['has_sheet' => true, 'subjects' => ['Maya'], 'panels' => ['Panel 1'], 'aspect_ratio' => '9:16']);
+        $this->assertSame(['omni', 'Gemini Omni', 5 * ShotRoute::perSecond('omni')], [$s['engine'], $s['label'], $s['credits']]);
+        $plan = ['media' => [['kind' => 'generated_shot', 'description' => 'x', 'engine' => 'seedance25', 'action' => 'a', 'seconds' => 5]],
+            'selections' => ['narration' => [], 'choices' => [], 'engine_overrides' => ['1' => 'omni']], 'decisions' => [], 'shot_context' => ['aspect_ratio' => '9:16']];
+        $this->assertSame('omni', PlanService::selectedMedia($plan)[0]['engine'], 'the user\'s choice replaces the refused engine');
+    }
 }

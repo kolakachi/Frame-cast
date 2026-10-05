@@ -212,6 +212,16 @@ class PlanMediaService
             catch (\Illuminate\Http\Client\ConnectionException) { $running = true; continue; }
             if ($state['status'] === 'running') { $running = true; continue; }
             if ($state['status'] === 'failed') {
+                // Refused by the model's moderation: offer the next-best engine with its price (C3), never retry silently.
+                if ($state['declined'] && $item['kind'] === 'generated_shot') {
+                    // The shot's own inputs are known to exist (they were approved); only the engine changes.
+                    $suggest = ShotRoute::fallback($item, ['has_avatar' => in_array('avatar', (array) ($item['refs'] ?? []), true) || ($item['first_frame'] ?? '') === 'avatar', 'has_sheet' => true,
+                        'aspect_ratio' => json_decode((string) $run->input_json, true)['settings']['aspect_ratio'] ?? '9:16',
+                        'subjects' => array_values(array_diff((array) ($item['refs'] ?? []), ['avatar', 'sheet'])), 'panels' => [(string) ($item['first_frame'] ?? '')]]);
+                    $result = $fail($state['error']);
+                    if ($suggest) DB::table('create_plan_media')->where('plan_id', $planId)->where('item_index', $cacheIndex)->update(['record_json' => json_encode(['declined' => true, 'engine' => $item['engine'] ?? null, 'suggest' => $suggest])]);
+                    return $suggest ? [...$result, 'declined' => true, 'suggest' => $suggest] : $result;
+                }
                 if ($state['declined'] || ($pending['restarts'][$k] ?? 0) >= 1) return $fail($state['error']);
                 $pending['restarts'][$k] = ($pending['restarts'][$k] ?? 0) + 1;
                 $pending['failed_jobs'][] = $id;

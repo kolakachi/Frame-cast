@@ -153,6 +153,9 @@ class PlanService
                 $sel['style'] = $picked;
             }
             if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'] || collect($plan['media'] ?? [])->contains('kind', 'reference_sheet');
+            if (array_key_exists('engine_overrides', $input)) {
+                $sel['engine_overrides'] = collect((array) $input['engine_overrides'])->filter(fn ($e, $n) => (int) $n >= 1 && in_array($e, ShotRoute::ENGINES, true))->all();
+            }
             if (array_key_exists('panel_notes', $input)) {
                 // A note on a storyboard panel redraws that panel (its identity changes); the others are reused.
                 $count = count(collect(self::selectedMedia($plan))->firstWhere('kind', 'storyboard')['panels'] ?? []);
@@ -645,6 +648,10 @@ class PlanService
             'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name'), 'voice' => $voice];
         // With a cast sheet, every generated shot starts from its approved storyboard panel (unless the planner chose
         // another start frame), and the panels are drawn in the look stage from the cast.
+        // An engine the user chose for a shot (after a refusal, C3) replaces the planner's.
+        $n = 0;
+        foreach ($items as &$shotItem) if ($shotItem['kind'] === 'generated_shot') { $n++; if ($o = $plan['selections']['engine_overrides'][$n] ?? $plan['selections']['engine_overrides'][(string) $n] ?? null) $shotItem['engine'] = $o; }
+        unset($shotItem);
         $boarded = $shotCtx['has_sheet'] && collect($items)->contains('kind', 'generated_shot');
         if ($boarded) {
             $n = 0;

@@ -292,6 +292,10 @@ async function execute(run){
    else if(finalReview.status==='issues'){result.creative_review.findings=[...(result.creative_review.findings||[]),...finalReview.findings].slice(0,8);if(result.creative_review.status==='ready'||result.creative_review.status==='passed')result.creative_review.status='issues';}
    else if(finalReview.status==='unverified'&&result.creative_review.status==='passed')result.creative_review.status='ready';
   }
+  // Shots a model refused: the user chooses whether to make them on the next-best engine, at its price (C3).
+  {const items=run.input.plan_media??[];let n=0;const sugg=[];
+   for(const [k,it] of items.entries()){if(it.kind!=='generated_shot')continue;n++;const m=planMedia[k];if(m?.suggest)sugg.push({shot:n,engine:m.suggest.engine,label:m.suggest.label,credits:m.suggest.credits,declined_by:it.engine_label||it.engine||''});}
+   if(sugg.length){result.media_suggestions=sugg;result.creative_review.findings=[...sugg.map(x=>'Shot '+x.shot+' was declined by '+(x.declined_by||'the video model')+'; it can be made on '+x.label+' for '+x.credits+' credits.'),...(result.creative_review.findings||[])].slice(0,8);if(result.creative_review.status==='ready'||result.creative_review.status==='passed')result.creative_review.status='issues';}}
   // The agent's last review scores travel with the version, so the card can offer another round.
   if(Array.isArray(agentResult?.state?.scores))result.review=agentResult.state.scores.slice(0,5);
   // Persist completion before sending: a callback failure must not trigger rendering again.

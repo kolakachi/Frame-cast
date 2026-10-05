@@ -61,6 +61,30 @@ class ShotRoute
             'credits' => count($panels) * self::PANEL_CREDITS];
     }
 
+    /**
+     * When a model refuses a shot (its moderation declined it), the next-best engine that takes the same inputs, for
+     * the user to choose with its price: never a silent retry. Null when nothing else fits.
+     */
+    public static function fallback(array $item, array $ctx): ?array
+    {
+        $engine = (string) ($item['engine'] ?? '');
+        $first = ! empty($item['first_frame']);
+        $order = match (true) {
+            $engine === 'seedance25' => ['omni', 'veo_hq'],
+            $engine === 'omni' => ['veo_hq', 'kling'],
+            $engine === 'veo_hq' => ['omni'],
+            in_array($engine, ['seedance_lite', 'seedance_pro', 'hailuo', 'wan'], true) => ['kling', 'veo_fast'],
+            $engine === 'kling' => ['veo_fast', 'omni'],
+            default => ['omni'],
+        };
+        foreach ($order as $next) {
+            if (isset(self::FIRST_FRAME[$next]) && ! $first) continue;
+            $routed = self::shot(['engine' => $next] + $item, ['video_tier' => 'standard'] + $ctx);
+            if (($routed['engine'] ?? null) === $next && empty($routed['problem'])) return ['engine' => $next, 'label' => self::label($next), 'credits' => (int) $routed['credits']];
+        }
+        return null;
+    }
+
     /** Whether a shot shows a person: the avatar, or a character subject named (or the whole sheet when it has one). */
     public static function hasPerson(array $m, array $subjects): bool
     {
