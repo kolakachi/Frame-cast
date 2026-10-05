@@ -477,6 +477,14 @@
       return out;
     };
   });
+  // Which moves actually ran while the timeline was built (not merely appear in the code): the final check's evidence.
+  var used = {};
+  Object.keys(WM).forEach(function (name) {
+    if (typeof WM[name] !== 'function' || name === 'pinToClip') return;
+    var fn = WM[name];
+    WM[name] = function () { used[name] = (used[name] || 0) + 1; return fn.apply(WM, arguments); };
+  });
+  WM.movesUsed = function () { return Object.keys(used).map(function (n) { return { move: n, calls: used[n] }; }); };
   WM.sound = function (tl, name, at) { cues.push({ tl: tl, at: at, sound: name }); return tl; };
   /* Every cue in composition time: [{sound, t, len?}]. Read after the timelines are built and nested. */
   WM.cueTimes = function () {

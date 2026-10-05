@@ -69,6 +69,20 @@ export async function readCues({root,width,height,browserPath=process.env.HYPERF
  }finally{await browser.close();server.close();}
 }
 
+/** The motion-kit moves that ran when the page built its timeline: [{move, calls}] (evidence for the final check). */
+export async function readMoves({root,width,height,browserPath=process.env.HYPERFRAMES_BROWSER_PATH}){
+ const {default:puppeteer}=await import('puppeteer-core');
+ const runtime=await readFile('/opt/worker/node_modules/hyperframes/dist/hyperframe.runtime.iife.js','utf8');
+ const server=await serve(root,runtime,html=>html.replace(/<audio\b[^>]*>(?:[\s\S]*?<\/audio>)?/gi,''));
+ const browser=await puppeteer.launch({executablePath:browserPath,headless:true,args:['--no-sandbox','--disable-gpu']});
+ try{
+  const page=await browser.newPage();await page.setViewport({width,height});
+  await page.goto('http://127.0.0.1:'+server.address().port+'/index.html',{waitUntil:'load',timeout:30000});
+  await page.waitForFunction(()=>window.__player&&typeof window.__player.renderSeek==='function',{timeout:15000,polling:200});
+  return await page.evaluate(()=>window.WM&&typeof window.WM.movesUsed==='function'?window.WM.movesUsed():[]);
+ }finally{await browser.close();server.close();}
+}
+
 /** Runs the pass on a project folder in place; returns what it placed. Never throws past a note: sound is not worth a failed render. */
 export async function soundPass({root,width,height,duration,library='/opt/worker/runtime/sounds'}){
  try{

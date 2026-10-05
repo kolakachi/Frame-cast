@@ -34,3 +34,13 @@ test('a beat\'s planned transition move is required; a cut is not',async()=>{
  assert.deepEqual([...m.keys()],['morph']);
  assert.deepEqual(m.get('morph'),['the transition out of Upload']);
 });
+
+test('review P2: a move whose code is present but never runs is a finding when the render says what ran',async()=>{
+ const {moveFindings}=await import('../move-check.mjs');
+ const plan={reference_systems:[{system:'1:s1',name:'iris wipe',decision:'keep',move:'iris'}]};
+ const dead='function unused(){WM.iris(tl,"#b",3);}';
+ assert.equal(moveFindings({plan,sources:dead}).length,0,'code alone (no runtime evidence) still passes the build-time check');
+ const f=moveFindings({plan,sources:dead,ran:[{move:'pop',calls:2}]});
+ assert.equal(f.length,1);assert.equal(f[0].code,'reference_move_not_run');
+ assert.equal(moveFindings({plan,sources:dead,ran:[{move:'iris',calls:1}]}).length,0);
+});

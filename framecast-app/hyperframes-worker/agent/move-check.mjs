@@ -16,13 +16,22 @@ export function requiredMoves(plan){
  return out;
 }
 
-/** Findings for required moves the composition never calls. sources: every composition file except the kit's own. */
-export function moveFindings({plan,sources}){
+/**
+ * Findings for required moves the composition never calls. sources: every composition file except the kit's own.
+ * ran: the moves that actually ran when the page built its timeline ([{move}], from the render); when given, a move
+ * whose code is present but never runs (an unused function) is a finding too.
+ */
+export function moveFindings({plan,sources,ran=null}){
  const code=String(sources||'').replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
  const out=[];
  for(const [move,labels] of requiredMoves(plan)){
   const fn=RECIPES[move];
-  if(new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(code))continue;
+  if(new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(code)){
+   if(!Array.isArray(ran)||ran.some(r=>r?.move===fn))continue;
+   out.push({code:'reference_move_not_run',severity:'error',time:null,message:`WM.${fn} is in the code for ${labels.slice(0,3).join(', ')||'a reference element'} but never runs when the timeline is built.`,
+    fixHint:`Call WM.${fn}(…) on the timeline that plays (not inside a function that is never called).`});
+   continue;
+  }
   const what=labels.slice(0,3).join(', ')||'a reference element';
   out.push({code:'reference_move_missing',severity:'error',time:null,
    message:`The plan rebuilds ${what} with the reference's ${move} move, but the composition never calls WM.${fn}.`,

@@ -99,6 +99,8 @@ if(a.file){
  check('has sound',p.streams.some(s=>s.codec_type==='audio'));
  const sounds=JSON.parse(await readFile(dir(1)+'/render/sounds.json','utf8').catch(()=>'{}'));
  check('sound pass placed effects',(sounds.placed||[]).length>=3,`${(sounds.placed||[]).length} placed`);
+ const ran=JSON.parse(await readFile(dir(1)+'/render/moves.json','utf8').catch(()=>'[]'));
+ check('moves that ran recorded',Array.isArray(ran)&&['pop','stamp'].every(m=>ran.some(r=>r.move===m)),JSON.stringify(ran));
  const prepped=JSON.parse(await readFile(dir(1)+'/render/renderable.json','utf8').catch(()=>'[]'));
  check('render prep fixed the sparse clips',['screen.mp4','omni.mp4','cut1.mp4'].every(n=>prepped.some?.(c=>c.name===n)),prepped.map?.(c=>c.name).join(', '));
  const b=await render(2);

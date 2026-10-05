@@ -272,7 +272,7 @@ async function execute(run){
     const look=async frames=>{const form=new FormData();form.set('lease_token',run.lease_token);for(const [k,f] of frames.entries()){form.append('times[]',String(f.time));form.append('labels[]',f.label||'');form.append('frames[]',new Blob([f.jpeg],{type:'image/jpeg'}),'f'+k+'.jpg');}return request('runs/'+run.id+'/look',form,true,180000);};
     const sources=Object.entries(agentResult?.bundle??{}).filter(([n])=>!/^(gsap|wyv-|barty-)/.test(n)).map(([,t])=>t).join('\n');
     finalReview=await finalChecks({file,duration:audioReview?.duration||Number(run.input.settings?.duration_seconds)||15,plan:{...plan,settings_audio:run.input.settings?.audio},planMedia,
-     audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,moves:moveFindings({plan,sources}),look,html:agentResult?.bundle?.['index.html']||''});
+     audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,moves:moveFindings({plan,sources,ran:await readFile(dir+'/render/moves.json','utf8').then(t=>{const m=JSON.parse(t);return Array.isArray(m)?m:null;}).catch(()=>null)}),look,html:agentResult?.bundle?.['index.html']||''});
     await trace({phase:'review',status:finalReview.status==='blocked'?'failed':'succeeded',summary:'Checked the final video against the plan',detail:JSON.stringify(finalReview).slice(0,1900)});
    }catch(e){
     // Checks that could not run are unverified, never absent: the version is marked as not checked.

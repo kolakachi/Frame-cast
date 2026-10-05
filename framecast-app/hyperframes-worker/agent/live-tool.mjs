@@ -120,6 +120,10 @@ else if(operation==='render'){
  // Clips the render seeks in get dense keyframes first (builder cuts and generated clips often have them seconds apart).
  const {makeRenderable}=await import('./renderable.mjs');
  await writeFile(out+'/renderable.json',JSON.stringify(await makeRenderable(root).catch(e=>({error:String(e.message).slice(0,200)}))));
+ // Which motion-kit moves the page really runs (read before effects are added): the final check's evidence.
+ {const page=await readFile(root+'/index.html','utf8').catch(()=>'');
+  const moves=/wyv-motion\.js/.test(page)?await (await import('./sound-pass.mjs')).readMoves({root,width:dims[0],height:dims[1]}).catch(e=>({error:String(e.message).slice(0,200)})):[];
+  await writeFile(out+'/moves.json',JSON.stringify(moves));}
  const {soundPass}=await import('./sound-pass.mjs');
  await writeFile(out+'/sounds.json',JSON.stringify(settings.audio==='silent'?{placed:[],skipped:'silent'}:await soundPass({root,width:dims[0],height:dims[1],duration:settings.duration_seconds})));
  // 24 fps unless the user chose 30 or 60; the deadline grows with the frames rendered.
