@@ -15,7 +15,7 @@ Last updated: 2026-10-05.
 
 | Section | Done | Partly | Open |
 |---|---|---|---|
-| M. Coverage and intent | 1 | 1 | 3 |
+| M. Coverage and intent | 2 | 2 | 1 |
 | 0. Handoff integrity | 5 | 0 | 0 |
 | A. Direction (cast and storyboard) | 0 | 1 | 7 |
 | B. Generation routes | 0 | 1 | 4 |
@@ -27,7 +27,7 @@ Last updated: 2026-10-05.
 | H. Protect what works | 0 | 1 | 1 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Next:** M1 (intent agreement) and the `similar` mode, then A.
+**Next:** A (A6 planner by task, A2 directed shots, A7 pacing first; then A1, A3, A3a, A4, A5).
 **Waiting on the owner:** bench inputs and the budget cap (see the end of this file).
 
 ---
@@ -43,8 +43,16 @@ Last updated: 2026-10-05.
 
 ## M. What the system must cover
 
-- [ ] **M. Video types × creation modes as separate choices,** with a `similar` mode beside `exact` and `inspired`. Today: only exact and inspired; "similar" maps to inspired.
-- [ ] **M1. Intent agreement** (preserve, replace, flexible, required) inferred and shown on the plan card. Today: `reference_decisions` and `reference_observations` cover part of it, for references only.
+- [~] **M. Video types × creation modes as separate choices.**
+  - Done: `similar` is its own mode beside `exact` and `inspired`: settings, inference ("something similar", "keep the drawing style", typos), the question, Details, the planner prompt (`82a78006`).
+  - Missing: video type as an explicit plan field. Today it is `creative_intent.format`.
+- [x] **M1. Intent agreement** (preserve, replace, flexible, required):
+  - inferred by the planner;
+  - shown and editable on the plan card;
+  - kept on follow-ups;
+  - required items never empty (falling back to the user's requirements);
+  - passed to the build, which must deliver or report each required item (`82a78006`).
+  - The checks against it come with D.
 - [~] **M2. Layer-level routing.**
   - Done: clips and code layers compose together; `WM.layout` makes mixed layouts.
   - Missing: the planner choosing per layer inside a moment.
