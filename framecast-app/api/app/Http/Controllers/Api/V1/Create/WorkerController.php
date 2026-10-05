@@ -43,7 +43,7 @@ class WorkerController extends Controller
         $this->authorizeWorker($r);
         $v = $r->validate(['lease_token' => 'required|string|size:64', 'events' => 'required|array|min:1|max:50',
             'events.*.sequence' => 'required|integer|min:1|max:2000', 'events.*.at' => 'required|date',
-            'events.*.phase' => 'required|in:tool,run,limitation', 'events.*.status' => 'required|in:started,succeeded,failed,finished,reported',
+            'events.*.phase' => 'required|in:tool,run,limitation,review', 'events.*.status' => 'required|in:started,succeeded,failed,finished,reported',
             'events.*.tool' => 'nullable|string|max:100', 'events.*.call' => 'nullable|integer|min:0|max:10000',
             'events.*.revision' => 'nullable|integer|min:0|max:10000', 'events.*.duration_ms' => 'nullable|integer|min:0|max:86400000',
             'events.*.summary' => 'required|string|max:1200', 'events.*.detail' => 'nullable|string|max:1200',

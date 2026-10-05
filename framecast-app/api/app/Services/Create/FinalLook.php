@@ -27,6 +27,13 @@ class FinalLook
                 if (is_string($bytes) && $bytes !== '') $cast[] = ['name' => (string) ($c['names'][$k] ?? 'cast'), 'data' => base64_encode($bytes), 'mime' => (string) ($f['mime_type'] ?? 'image/png')];
             }
         }
+        // Without a cast sheet, the user's own photo is the identity a take or shot must keep.
+        if (! $cast && collect($input['plan_media'] ?? [])->contains(fn ($m) => in_array('avatar', (array) ($m['refs'] ?? []), true) || ($m['presenter'] ?? '') === 'avatar' || ($m['first_frame'] ?? '') === 'avatar')) {
+            foreach (collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => empty($f['operation']))->take(2) as $f) {
+                $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path'] ?? '');
+                if (is_string($bytes) && $bytes !== '' && strlen($bytes) < 4_000_000) $cast[] = ['name' => 'the user (their own photo)', 'data' => base64_encode($bytes), 'mime' => (string) ($f['mime_type'] ?? 'image/jpeg')];
+            }
+        }
         $key = (string) config('services.anthropic.key');
         if ($key === '' || ! $frames) return ['status' => 'unverified'];
         $content = [['type' => 'text', 'text' => 'You check a finished short video before it is delivered. Below are frames from it, each with its time, then the approved cast images (identity references), if any. Answer only from what is visible; when you cannot tell, say "unclear". Reply with JSON only:

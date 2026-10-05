@@ -51,6 +51,8 @@ class TranscriptService
         abort_if(RateLimiter::tooManyAttempts($key, (int) config('create.transcript_daily_limit')), 429, 'Daily transcript limit reached. Try again tomorrow.');
         RateLimiter::hit($key, 86400);
         $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, (string) ($file->getMimeType() ?: 'audio/wav'));
+        // A provider hiccup is retried once before the check is reported as unavailable (it then shows as unverified).
+        if (($result['provider_key'] ?? '') === 'local_fallback') { sleep(3); $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, (string) ($file->getMimeType() ?: 'audio/wav')); }
         abort_if(($result['provider_key'] ?? '') === 'local_fallback', 503, 'Listening is unavailable right now.');
         $record = ['provider' => $result['provider_key'], 'model' => $result['model'] ?? null, 'text' => mb_substr((string) ($result['transcript'] ?? ''), 0, 20000),
             'words' => array_slice($result['words'] ?? [], 0, 3000), 'segments' => array_slice($result['segments'] ?? [], 0, 600)];

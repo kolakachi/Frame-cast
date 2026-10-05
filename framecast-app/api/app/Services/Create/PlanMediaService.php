@@ -338,7 +338,9 @@ class PlanMediaService
     private function context(object $run, array $input): array
     {
         // A layered rig SVG is placed by the build, not sent to an image model as a photo reference.
-        $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => ($f['mime_type'] ?? '') !== 'image/svg+xml')
+        // The user's own images only: media an earlier run generated (a cast, panels) is inherited as a source too, and
+        // must never stand in for "your photo".
+        $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => ($f['mime_type'] ?? '') !== 'image/svg+xml' && empty($f['operation']))
             ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
         return ['character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images,
