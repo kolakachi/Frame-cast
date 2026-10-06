@@ -331,7 +331,7 @@ class PlanMediaService
     }
 
     /** Items that make one prediction: if creating it never connected, nothing billable exists. */
-    private const SINGLE_PREDICTION = ['music', 'generated_shot', 'animate_image', 'ai_image', 'talking_shot', 'talking_take'];
+    private const SINGLE_PREDICTION = ['music', 'generated_shot', 'animate_image', 'ai_image', 'talking_shot', 'talking_take', 'cutout'];
 
     /**
      * cURL could not resolve or connect while CREATING a prediction (or uploading its input), so no prediction exists.
@@ -350,7 +350,13 @@ class PlanMediaService
         // must never stand in for "your photo".
         $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => ($f['mime_type'] ?? '') !== 'image/svg+xml' && empty($f['operation']))
             ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
-        return ['character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
+        // What a cutout may start from: the run's files by the names the build knows them by (uploads, edited files, and
+        // anything bought in this run).
+        $bought = DB::table('create_plan_media')->where('run_id', $run->id)->where('status', 'succeeded')->pluck('record_json')
+            ->flatMap(fn ($r) => array_filter([json_decode((string) $r, true)['file'] ?? null, ...(json_decode((string) $r, true)['more_files'] ?? [])]))->all();
+        $cutoutFiles = collect([...($input['input_files'] ?? []), ...($input['derived_files'] ?? []), ...$bought])->filter(fn ($f) => is_array($f) && ! empty($f['name']) && ! empty($f['storage_path']))
+            ->map(fn ($f) => ['name' => $f['name'], 'path' => Storage::disk('local')->path($f['storage_path'])])->values()->all();
+        return ['cutout_files' => $cutoutFiles, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images, 'source_files' => $input['input_files'] ?? [],
             'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15),
             // Items made from earlier items (the talking shot) find them by the plan.

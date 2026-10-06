@@ -1666,6 +1666,17 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([$requirementId], $items[2]['requirement_ids']);
         // Character replacement is never an ad-hoc purchase, even when budget remains.
         $this->rejected(422, fn () => $service->produceAdHoc($run->id, $claim['lease_token'], 'character_poses', 'x'));
+        // A cutout starts from a file this run has, named first: here the file bought a moment ago.
+        $name = $bought['file']['name'];
+        $cutter = \Mockery::mock(\App\Services\Create\PlanMediaExecutor::class);
+        $cutter->shouldReceive('produce')->once()->with('cutout', \Mockery::any(), \Mockery::any(), \Mockery::any())->andReturnUsing(function ($k, $d, $ctx, $dir) use ($name) {
+            $this->assertContains($name, array_column($ctx['cutout_files'], 'name'));
+            $this->assertStringStartsWith($name, $d);
+            \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=8x8', '-frames:v', '1', $dir.'/cut.png']);
+            return ['path' => $dir.'/cut.png', 'mime' => 'image/png', 'title' => 'Cut out', 'provider_id' => 'cutout-1']; });
+        $this->app->instance(\App\Services\Create\PlanMediaExecutor::class, $cutter);
+        $cut = $service->produceAdHoc($run->id, $claim['lease_token'], 'cutout', $name.' the product on its own');
+        $this->assertSame(['succeeded', \App\Services\Create\CapabilityCatalogue::CUTOUT_CREDITS], [$cut['status'], $cut['charged_credits']]);
     }
 
     public function test_replicate_gateway_binds_calls_to_the_app_attempt_and_replays_receipts(): void
@@ -2262,6 +2273,28 @@ class CreateIntegrationTest extends TestCase
         // No edits and no second build from it: a new version starts from a new plan.
         $this->rejected(409, fn () => $plans->select($this->owner, $c->id, $p['id'], $version(), ['callouts' => ['New line']]));
         $this->rejected(409, fn () => $this->conversations->quote($this->owner, $c->id, $version()));
+    }
+
+    public function test_the_brand_library_keeps_brand_visuals_and_a_plan_that_uses_one_attaches_it(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $mascot = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready', 'storage_url' => 'minio://bear.png', 'title' => 'Wyv bear']);
+        $this->actingAs($this->owner)->postJson('/api/v1/create/brand-library', ['asset_id' => $mascot->id, 'role' => 'mascot'])->assertCreated()->assertJsonPath('data.role', 'mascot');
+        $this->actingAs($this->owner)->postJson('/api/v1/create/brand-library', ['asset_id' => $mascot->id, 'role' => 'spaceship'])->assertStatus(422);
+        $this->actingAs($this->owner)->getJson('/api/v1/create/brand-library')->assertOk()->assertJsonPath('data.0.asset_id', $mascot->id);
+        // The planner sees it and may use it without the user attaching it; the plan attaches what it uses.
+        $c = $this->brief();
+        $plans = app(\App\Services\Create\PlanService::class);
+        $ctx = (new \ReflectionMethod($plans, 'context'))->invoke($plans, $this->owner, $this->conversations->conversation($this->owner, $c->id));
+        $this->assertSame([['asset_id' => $mascot->id, 'role' => 'mascot', 'title' => 'Wyv bear', 'asset_type' => 'image']], $ctx['brand_library']);
+        $plan = $plans->normalize(['summary' => 'x', 'left_out' => '', 'reused' => [['asset_id' => $mascot->id, 'use' => 'Waves in the end card'], ['asset_id' => 999999, 'use' => 'not ours']],
+            'asks' => [['what' => 'Your mascot in another pose', 'kind' => 'mascot', 'why' => 'For the hook', 'fallback' => 'The saved bear']]], $ctx, (int) $this->workspace->id);
+        $this->assertSame([['asset_id' => $mascot->id, 'title' => 'Wyv bear', 'use' => 'Waves in the end card', 'from_brand' => 'mascot']], $plan['reused']);
+        $this->assertSame('mascot', $plan['asks'][0]['kind']);
+        \App\Services\Create\BrandLibrary::attachUsed($c->id, [$mascot->id], (string) now());
+        $this->assertSame('source', DB::table('create_attachments')->where('conversation_id', $c->id)->where('asset_id', $mascot->id)->value('purpose'));
+        $this->actingAs($this->owner)->deleteJson("/api/v1/create/brand-library/{$mascot->id}")->assertOk();
+        $this->assertSame([], \App\Services\Create\BrandLibrary::items((int) $this->workspace->id));
     }
 
     public function test_plan_colours_can_be_changed_and_are_kept_fixed(): void

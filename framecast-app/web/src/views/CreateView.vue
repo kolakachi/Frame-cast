@@ -429,6 +429,7 @@ async function answerAsk(p, a, file) {
     const added = (data.value.attachments || []).find(x => !before.has(x.asset_id))
     if (!added) throw Error('The upload did not attach. Please retry.')
     await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, asks: [{ id: a.id, asset_id: added.asset_id }] })
+    if (ASK_ROLE[a.kind]) await api.post('/create/brand-library', { asset_id: added.asset_id, role: ASK_ROLE[a.kind] }).then(loadBrand).catch(() => {})
     quote.value = null; await refresh()
   })
   askUploading.value = ''
@@ -1072,6 +1073,26 @@ const ROLE_ANSWERS = [
   { word: 'Make mine like it', label: 'Make mine like it', detail: 'Follow its format, look and pacing; nothing from it is shown.' },
 ]
 const isRoleQuestion = m => /^Should I put ".*" in your video, or make your video like it\?$/.test(m.content || '')
+// The brand library: the workspace's logo, mascot, products and illustrations, kept once and offered every time.
+const BRAND_ROLES = [{ id: 'logo', label: 'Logo' }, { id: 'mascot', label: 'Mascot' }, { id: 'product', label: 'Product' }, { id: 'illustration', label: 'Illustration' }]
+const ASK_ROLE = { logo: 'logo', mascot: 'mascot', photo: 'product', illustration: 'illustration' }
+const OURS_KINDS = ['mascot', 'illustration']
+const brandItems = ref([])
+async function loadBrand() { try { brandItems.value = (await api.get('/create/brand-library')).data.data } catch {} }
+const brandRole = assetId => brandItems.value.find(b => b.asset_id === assetId)?.role || ''
+async function setBrandRole(assetId, role) {
+  await guarded(async () => {
+    if (role) await api.post('/create/brand-library', { asset_id: assetId, role })
+    else await api.delete(`/create/brand-library/${assetId}`)
+    await loadBrand()
+  })
+}
+// A requested brand visual offers the library's items of its kind (a logo request shows logos).
+const brandFor = a => brandItems.value.filter(b => !ASK_ROLE[a.kind] || b.role === ASK_ROLE[a.kind])
+async function pickBrandForAsk(p, a, b) {
+  await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, asks: [{ id: a.id, asset_id: b.asset_id }] }); quote.value = null; await refresh() })
+}
+onMounted(loadBrand)
 onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
@@ -1134,7 +1155,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                       </div>
                       <div v-if="planFiles.length && planByMessage[m.id].status === 'proposed'" class="plan-files">
                         <span v-for="f in planFiles" :key="f.asset_id" class="plan-file" :title="f.title">
-                          <b>{{ f.purpose === 'source' ? 'Using' : 'Following' }}</b> {{ f.title }}
+                          <b>{{ f.purpose === 'source' ? 'Using' : 'Following' }}</b> {{ f.title }}<small v-if="brandRole(f.asset_id)" class="muted"> · brand {{ brandRole(f.asset_id) }}</small>
                           <button v-if="planEditable(planByMessage[m.id])" type="button" class="plan-file__switch" :disabled="locked || planning" @click="switchRole(f)">{{ f.purpose === 'source' ? 'Follow it instead' : 'Use it instead' }}</button>
                         </span>
                       </div>
@@ -1388,10 +1409,21 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
               <div v-for="a in data?.attachments || []" :key="a.asset_id" class="asset">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="asset__thumb" /><span v-else :class="['asset__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
                 <span><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'used in the video' : a.purpose === 'reference' ? 'reference' : 'role set when you send' }}</small></span>
+                <UiSelect v-if="canWrite && ['image', 'video'].includes(a.asset_type)" :model-value="brandRole(a.asset_id)" label="Keep in your brand library" align="right" :options="[{ value: '', label: 'Not a brand item' }, ...BRAND_ROLES.map(r => ({ value: r.id, label: 'Brand ' + r.label.toLowerCase() }))]" @update:model-value="v => setBrandRole(a.asset_id, v)" />
                 <button v-if="canWrite && !conversation.archived_at" type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
               </div>
               <p v-if="!data?.attachments?.length" class="muted">No files yet.</p>
               <button v-if="canWrite && !conversation.archived_at" type="button" class="quiet" :disabled="locked" @click="showLibrary">+ Add from library</button>
+            </section>
+            <section>
+              <h3>YOUR BRAND LIBRARY</h3>
+              <p class="muted">Kept for every creation: the planner uses these instead of asking again.</p>
+              <div v-for="b in brandItems" :key="b.asset_id" class="asset">
+                <img v-if="b.asset_type === 'image' && b.preview_url" :src="b.preview_url" alt="" class="asset__thumb" /><span v-else class="asset__thumb thumb--video" />
+                <span><b :title="b.title">{{ b.title }}</b><small>{{ BRAND_ROLES.find(r => r.id === b.role)?.label }}</small></span>
+                <button v-if="canWrite" type="button" class="upload__x" :aria-label="`Remove ${b.title} from your brand library`" @click="setBrandRole(b.asset_id, '')">×</button>
+              </div>
+              <p v-if="!brandItems.length" class="muted">Nothing yet. Keep a logo, mascot, product or illustration from the files above.</p>
             </section>
             <section>
               <h3>CONVERSATION</h3>
@@ -1557,8 +1589,12 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
           <PlanGroup v-if="drawerPlan.plan.asks?.length" title="Files we'd like" :summary="drawerPlan.plan.asks.length + ((drawerPlan.plan.asks.length === 1) ? ' file' : ' files')" :open="drawerPlan.plan.asks.some(a => askState(drawerPlan, a) === 'open')">
             <div v-for="a in drawerPlan.plan.asks" :key="a.id" class="pd-question">
               <p>{{ a.what }}</p>
-              <span v-if="askState(drawerPlan, a) === 'open' && planEditable(drawerPlan)" class="pd-actions"><label class="btn btn--ghost btn--sm pd-upload" tabindex="0" role="button" :aria-disabled="!!askUploading" @keydown.enter.prevent="$event.currentTarget.querySelector('input').click()" @keydown.space.prevent="$event.currentTarget.querySelector('input').click()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" /></svg>{{ askUploading === a.id ? 'Uploading…' : 'Upload' }}<input type="file" :accept="a.kind === 'recording' ? 'video/*' : 'image/*,video/*'" hidden :disabled="!!askUploading" @change="e => e.target.files[0] && answerAsk(drawerPlan, a, e.target.files[0])" /></label><button type="button" class="btn btn--ghost btn--sm" :disabled="!!askUploading" @click="skipAsk(drawerPlan, a)">Go without</button></span>
-              <small v-else class="muted">{{ askState(drawerPlan, a) === 'uploaded' ? 'Uploaded' : askState(drawerPlan, a) === 'skipped' ? 'Going without it' : '' }}</small>
+              <span v-if="askState(drawerPlan, a) === 'open' && planEditable(drawerPlan)" class="pd-actions"><label class="btn btn--ghost btn--sm pd-upload" tabindex="0" role="button" :aria-disabled="!!askUploading" @keydown.enter.prevent="$event.currentTarget.querySelector('input').click()" @keydown.space.prevent="$event.currentTarget.querySelector('input').click()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" /></svg>{{ askUploading === a.id ? 'Uploading…' : 'Upload' }}<input type="file" :accept="a.kind === 'recording' ? 'video/*' : 'image/*,video/*'" hidden :disabled="!!askUploading" @change="e => e.target.files[0] && answerAsk(drawerPlan, a, e.target.files[0])" /></label><button type="button" class="btn btn--ghost btn--sm" :disabled="!!askUploading" @click="skipAsk(drawerPlan, a)">{{ OURS_KINDS.includes(a.kind) ? 'Use ours' : 'Go without' }}</button></span>
+              <div v-if="askState(drawerPlan, a) === 'open' && planEditable(drawerPlan) && brandFor(a).length" class="ask-brand">
+                <span class="pd-q">Or pick from your brand library</span>
+                <div class="ask-brand__items"><button v-for="b in brandFor(a)" :key="b.asset_id" type="button" class="ask-brand__item" :disabled="locked || !!askUploading" :title="b.title" @click="pickBrandForAsk(drawerPlan, a, b)"><img v-if="b.preview_url && b.asset_type === 'image'" :src="b.preview_url" alt="" /><span>{{ b.title }}</span></button></div>
+              </div>
+              <small v-if="askState(drawerPlan, a) !== 'open'" class="muted">{{ askState(drawerPlan, a) === 'uploaded' ? 'Added' : askState(drawerPlan, a) === 'skipped' ? (OURS_KINDS.includes(a.kind) ? 'Using ours' : 'Going without it') : '' }}</small>
               <PlanNote label="Why" :text="a.why + ' Without it: ' + a.fallback" />
             </div>
           </PlanGroup>
@@ -2086,6 +2122,12 @@ label.tray-note{white-space:normal}
 .plan-file b{color:var(--text-2);font-weight:600}
 .plan-file__switch{border:0;background:none;color:var(--accent);font-size:12px;padding:0;cursor:pointer}
 .plan-file__switch:hover{text-decoration:underline}
+.ask-brand{display:flex;flex-direction:column;gap:6px}
+.ask-brand__items{display:flex;gap:6px;flex-wrap:wrap}
+.ask-brand__item{display:inline-flex;align-items:center;gap:6px;max-width:180px;padding:4px 8px 4px 4px;border:1px solid var(--line-3);border-radius:8px;background:var(--bg-3);color:var(--text-2);font-size:12px;cursor:pointer}
+.ask-brand__item:hover{border-color:var(--accent-line)}
+.ask-brand__item img{width:28px;height:28px;object-fit:cover;border-radius:5px}
+.ask-brand__item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .step{display:flex;flex-direction:column;gap:12px;margin-top:6px}
 .step-thumbs{display:flex;gap:4px;flex:0 0 auto}.step-thumbs img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--line-3)}
 .cs-subject{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--line-2)}

@@ -299,6 +299,27 @@ class CreateController extends Controller
         return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
     }
 
+    /** The workspace's brand library: its logo, mascot, products and illustrations, kept for every creation. */
+    public function brandLibrary(Request $r)
+    {
+        $this->service->authorize($r->user());
+        return response()->json(['data' => \App\Services\Create\BrandLibrary::items((int) $r->user()->workspace_id)]);
+    }
+
+    public function saveBrandItem(Request $r)
+    {
+        $this->service->authorize($r->user(), true);
+        $input = $r->validate(['asset_id' => 'required|integer|min:1', 'role' => 'required|in:'.implode(',', \App\Services\Create\BrandLibrary::ROLES)]);
+        return response()->json(['data' => \App\Services\Create\BrandLibrary::save($r->user(), $input['asset_id'], $input['role'])], 201);
+    }
+
+    public function removeBrandItem(Request $r, int $assetId)
+    {
+        $this->service->authorize($r->user(), true);
+        \App\Services\Create\BrandLibrary::remove($r->user(), $assetId);
+        return response()->json(['data' => ['removed' => true]]);
+    }
+
     public function cancel(Request $r, string $id, string $runId)
     {
         $this->service->authorize($r->user(), true);

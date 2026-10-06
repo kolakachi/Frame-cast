@@ -18,7 +18,7 @@ use RuntimeException;
 class PlanMediaExecutor
 {
     /** Kinds this executor can make; the catalogue must not offer anything outside it. */
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'reference_sheet', 'storyboard', 'generated_shot', 'ugc_take'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'cutout', 'reference_sheet', 'storyboard', 'generated_shot', 'ugc_take'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -38,11 +38,24 @@ class PlanMediaExecutor
             'talking_shot' => $this->talkingShot($ctx, $dir),
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
+            'cutout' => $this->cutout($description, $ctx, $dir),
             'reference_sheet' => $this->referenceSheet($description, $ctx, $dir),
             'storyboard' => $this->storyboard($description, $ctx, $dir),
             // Generated shots and takes run as provider jobs started and collected separately (startJob, pollJob, finishGenerated).
             default => throw new RuntimeException('This plan item cannot be made here.'),
         };
+    }
+
+    /** An image this run has (an upload, an edited file or one bought this run), cut out of its background. */
+    private function cutout(string $description, array $ctx, string $dir): array
+    {
+        $name = (string) (preg_split('/\s+/', trim($description))[0] ?? '');
+        $file = collect($ctx['cutout_files'] ?? [])->firstWhere('name', $name);
+        if (! $file || ! is_file($file['path'])) throw new RuntimeException('Name the image to cut out by its file name (one this run has): '.mb_substr($name, 0, 80));
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file['path']);
+        if (! in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) throw new RuntimeException('Only a PNG, JPEG or WebP image can be cut out.');
+        $cut = $this->replicate('851-labs/background-remover', ['image' => $this->replicateUpload((string) file_get_contents($file['path']), $mime), 'format' => 'png', 'background_type' => 'rgba']);
+        return ['path' => $this->fetch($cut, $dir.'/cutout.png'), 'mime' => 'image/png', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-'.Str::uuid(), 'extra' => []];
     }
 
     private function stock(string $kind, string $q, bool $portrait, string $dir): array

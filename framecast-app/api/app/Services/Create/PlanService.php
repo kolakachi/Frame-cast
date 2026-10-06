@@ -180,6 +180,8 @@ class PlanService
             DB::table('create_messages')->insert(['id' => $messageId, 'conversation_id' => $id, 'role' => 'assistant', 'content' => $plan['summary'],
                 'idempotency_key' => 'plan:'.$planId, 'request_hash' => hash('sha256', $plan['summary']), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
             DB::table('create_plans')->where('conversation_id', $id)->where('status', 'proposed')->update(['status' => 'superseded', 'updated_at' => now()]);
+            // Brand items the plan uses join the conversation's files, beside the brief they answer.
+            BrandLibrary::attachUsed($id, array_column(array_filter($plan['reused'] ?? [], fn ($r) => ! empty($r['from_brand'])), 'asset_id'), (string) DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderByDesc('sequence')->value('created_at'));
             DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $id, 'message_id' => $messageId, 'brief_sequence' => (int) $briefs->last()->sequence,
                 'idempotency_key' => $key, 'request_hash' => $hash, 'provider' => mb_substr($result['provider'], 0, 120), 'plan_json' => json_encode($plan),
                 'usage_json' => $result['usage'] ? json_encode($result['usage']) : null, 'status' => 'proposed', 'created_at' => now(), 'updated_at' => now()]);
@@ -287,7 +289,9 @@ class PlanService
                     abort_unless(in_array($a['id'] ?? '', $known, true), 422, 'That upload request is not in this plan.');
                     if (! empty($a['skip'])) { $sel['asks'][$a['id']] = 'skip'; continue; }
                     $assetId = (int) ($a['asset_id'] ?? 0);
-                    abort_unless($assetId && DB::table('create_attachments')->where('conversation_id', $id)->where('asset_id', $assetId)->exists(), 422, 'Attach the file to this conversation first.');
+                    $fromBrand = collect(BrandLibrary::items((int) $user->workspace_id))->contains('asset_id', $assetId);
+                    abort_unless($assetId && ($fromBrand || DB::table('create_attachments')->where('conversation_id', $id)->where('asset_id', $assetId)->exists()), 422, 'Attach the file to this conversation first.');
+                    if ($fromBrand) BrandLibrary::attachUsed($id, [$assetId], (string) now());
                     $sel['asks'][$a['id']] = $assetId;
                 }
             }
@@ -529,7 +533,7 @@ class PlanService
             // Voices the narration may use: the catalogue by character, plus the workspace's own clone.
             'voices' => array_merge(array_map(fn ($k) => ['key' => $k, 'character' => \App\Services\Generation\TTS\GeminiVoices::VOICES[$k], 'gender' => \App\Services\Generation\TTS\GeminiVoices::gender($k)], array_keys(\App\Services\Generation\TTS\GeminiVoices::VOICES)),
                 \Illuminate\Support\Facades\Schema::hasTable('voice_profiles') && DB::table('voice_profiles')->where('workspace_id', $user->workspace_id)->where('is_cloned', true)->exists() ? [['key' => 'clone', 'character' => "The workspace's own cloned voice", 'gender' => '']] : []),
-            'files' => $files, 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
+            'files' => $files, 'brand_library' => array_map(fn ($b) => array_intersect_key($b, array_flip(['asset_id', 'role', 'title', 'asset_type'])), BrandLibrary::items((int) $user->workspace_id)), 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
             // Pictures for the planner (underscored keys never reach the JSON): frames of each studied reference video, and the page capture.
             '_images' => $this->planImages($user, $files),
             // Built-in style packs to start from, and the ones this workspace used last, so the planner varies them.
@@ -575,8 +579,11 @@ class PlanService
         $image = ($ctx['settings']['output_kind'] ?? 'video') === 'image';
         $duration = (float) ($ctx['settings']['duration_seconds'] ?? 15);
         $sources = collect($ctx['files'])->where('purpose', 'source')->keyBy('asset_id');
-        $reused = collect((array) ($raw['reused'] ?? []))->filter(fn ($r) => is_array($r) && $sources->has((int) ($r['asset_id'] ?? 0)))
-            ->map(fn ($r) => ['asset_id' => (int) $r['asset_id'], 'title' => $sources[(int) $r['asset_id']]['title'], 'use' => $str($r['use'] ?? '', 120)])->unique('asset_id')->values()->all();
+        // The brand library's items can be used without being attached first; the plan attaches what it uses.
+        $brand = collect($ctx['brand_library'] ?? [])->keyBy('asset_id')->reject(fn ($b, $id) => collect($ctx['files'])->contains('asset_id', $id));
+        $reused = collect((array) ($raw['reused'] ?? []))->filter(fn ($r) => is_array($r) && ($sources->has((int) ($r['asset_id'] ?? 0)) || $brand->has((int) ($r['asset_id'] ?? 0))))
+            ->map(fn ($r) => ['asset_id' => (int) $r['asset_id'], 'title' => ($sources[(int) $r['asset_id']] ?? $brand[(int) $r['asset_id']])['title'], 'use' => $str($r['use'] ?? '', 120)]
+                + ($brand->has((int) $r['asset_id']) ? ['from_brand' => $brand[(int) $r['asset_id']]['role']] : []))->unique('asset_id')->values()->all();
         $scenes = $image ? [] : collect((array) ($raw['scenes'] ?? []))->filter(fn ($s) => is_array($s))->map(fn ($s) => [
             'requirement_ids' => $s['requirement_ids'] ?? [], 'label' => $str($s['label'] ?? '', 40), 'start' => round(max(0, min($duration, (float) ($s['start'] ?? 0))), 1),
             'end' => round(max(0, min($duration, (float) ($s['end'] ?? 0))), 1), 'idea' => $str($s['idea'] ?? '', 160),
@@ -732,7 +739,7 @@ class PlanService
         $plan['reference_unaccounted'] = array_values(array_diff($known, array_column($refDecisions, 'moment')));
         // Real things only the user has (screens, logo, photos, people, recordings): at most five, each with its beat and fallback.
         $labels = array_column($scenes, 'label');
-        $plan['asks'] = collect((array) ($raw['asks'] ?? []))->filter(fn ($a) => is_array($a) && $str($a['what'] ?? '', 80) !== '' && in_array($a['kind'] ?? '', ['screen', 'logo', 'photo', 'recording', 'person'], true))
+        $plan['asks'] = collect((array) ($raw['asks'] ?? []))->filter(fn ($a) => is_array($a) && $str($a['what'] ?? '', 80) !== '' && in_array($a['kind'] ?? '', ['screen', 'logo', 'photo', 'recording', 'person', 'mascot', 'illustration'], true))
             ->map(fn ($a) => ['id' => 'ask-'.substr(hash('sha256', mb_strtolower($str($a['what'], 80)).'|'.($a['beat'] ?? '')), 0, 8), 'what' => $str($a['what'], 80), 'kind' => $a['kind'], 'why' => $str($a['why'] ?? '', 120),
                 'beat' => in_array($a['beat'] ?? '', $labels, true) ? $a['beat'] : '', 'moments' => array_values(array_intersect((array) ($a['moments'] ?? []), $known)), 'fallback' => $str($a['fallback'] ?? '', 120)])
             ->unique('id')->take(5)->values()->all();

@@ -235,6 +235,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/capabilities', [$controller, 'capabilities']);
             Route::get('/conversations', [$controller, 'index']);
             Route::get('/styles', [$controller, 'styles']);
+            Route::get('/brand-library', [$controller, 'brandLibrary']);
+            Route::post('/brand-library', [$controller, 'saveBrandItem']);
+            Route::delete('/brand-library/{assetId}', [$controller, 'removeBrandItem'])->whereNumber('assetId');
             Route::get('/pronunciations', [$controller, 'pronunciations']);
             Route::put('/pronunciations', [$controller, 'savePronunciations']);
             Route::post('/styles', [$controller, 'saveStyle']);
