@@ -233,6 +233,7 @@ async function execute(run){
   // Render and check, and when the final check blocks on something the build can fix, fix it and do it again: at most
   // two repair rounds (todo D), within the calls already approved, never charged (a repair corrects our own work).
   let deliveryChecks=null,audioReview=null,paceReview=null,finalReview=null;const uploaded=new Set();
+  let lastFixKey=null;
   for(let round=0;;round++){
   // Derived media becomes a permanent source before rendering: upload it, give
   // it its stored name, and point the composition at that name, so later
@@ -318,6 +319,10 @@ async function execute(run){
   }
   const fixable=repairable(finalReview,{takeUsed:planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')});
   if(!paid||!agentArgs||finalReview?.status!=='blocked'||!fixable.length||round>=2||stopping||lost)break;
+  // A round that ends with exactly the same problems did not help: another would not either.
+  const fixKey=JSON.stringify(fixable.map(c=>[c.id,c.label,c.message]));
+  if(fixKey===lastFixKey){await trace({phase:'review',status:'failed',summary:'Repair stopped: the same problems remained after a round',detail:fixKey.slice(0,600)});break;}
+  lastFixKey=fixKey;
   stage='Fixing what the final check found';await beat();
   const brief=repairBrief(fixable);
   await trace({phase:'review',status:'started',summary:'Repair round '+(round+1),detail:brief.slice(0,1900)});

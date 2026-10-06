@@ -57,3 +57,22 @@ test('end to end on a real soundtrack: narration heard, music under it, faded en
   assert.equal(r.checks[0].status,'fulfilled');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test('a phrase the transcriber dropped after a pause is listened to again on its own before it is called missing',async()=>{
+ const dir=await mkdtemp('/tmp/relisten-');
+ try{
+  await run('ffmpeg',['-v','error','-y','-f','lavfi','-i','sine=frequency=300:duration=8','-f','lavfi','-i','color=c=black:s=64x64:d=8','-shortest','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',dir+'/video.mp4']);
+  const calls=[];
+  const listen=async f=>{calls.push(f);
+   // The whole video: the last line ("wyvstudio.com") is dropped. Its window alone: heard.
+   if(calls.length===1)return {words:[W('Describe',0.3,0.8),W('it.',0.8,1),W('Get',2,2.2),W('the',2.2,2.4),W('video.',2.4,2.9)],script:{written:['Describe it.','Get the video.','wyvstudio dot com, today.'],spoken:['Describe it.','Get the video.','Wiv Studio dot com, today.']}};
+   return {words:[W('www.wivstudio',0.6,1.4),W('dot',1.4,1.6),W('com,',1.6,1.9),W('today.',1.9,2.3)]};};
+  const r=await listenToExport({file:dir+'/video.mp4',listen});
+  assert.equal(calls.length,2,'the missing window was heard again');
+  assert.deepEqual(r.summary.missing,[]);assert.ok(r.summary.script_coverage>=0.9,JSON.stringify(r.summary));
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('the written or the spoken form of the script, whichever the voice matches better',()=>{
+ const words=[W('Try',0,0.3),W('wyvstudio.com',0.3,1.2),W('today',1.2,1.6)];
+ const spoken=alignScript(['Try Wiv Studio dot com today'],words),written=alignScript(['Try wyvstudio.com today'],words);
+ assert.ok(written.coverage>spoken.coverage);
+});

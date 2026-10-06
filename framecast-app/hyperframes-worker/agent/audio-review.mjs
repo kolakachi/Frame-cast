@@ -32,7 +32,13 @@ export function alignScript(lines,words){
  for(let i=0;i<n;i++){if(match[i]===null)runText.push(script[i].t);else flush();}flush();
  const matched=match.filter(x=>x!==null).length;
  const lineStarts=lines.map((_,line)=>{const i=script.findIndex((s,k)=>s.line===line&&match[k]!==null);return i<0?null:+heardWords[match[i]].start.toFixed(2);});
- return {words:n,heard:m,matched,coverage:n?+(matched/n).toFixed(3):null,missing:missing.slice(0,6),extra:Math.max(0,m-matched),lineStarts};
+ // Where each missing passage should be: from the last heard word before it to the next heard word after it.
+ const gaps=[];
+ for(let i=0;i<n;i++){if(match[i]!==null)continue;let j=i;while(j<n&&match[j]===null)j++;
+  if(j-i>=RULES.missingRun){const before=match.slice(0,i).filter(x=>x!==null).at(-1),after=match.slice(j).find(x=>x!==null);
+   gaps.push({from:before===undefined?0:+heardWords[before].end.toFixed(2),to:after===undefined?null:+heardWords[after].start.toFixed(2)});}
+  i=j;}
+ return {words:n,heard:m,matched,coverage:n?+(matched/n).toFixed(3):null,missing:missing.slice(0,6),extra:Math.max(0,m-matched),lineStarts,gaps:gaps.slice(0,3)};
 }
 
 /** Text tied to spoken words (data-spoken) against when those words are actually heard in the export. */
@@ -114,9 +120,24 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
   const {stdout}=await run('ffprobe',['-v','error','-show_entries','format=duration','-of','csv=p=0',file]);
   const duration=Number(stdout.trim())||0;
   const heardFile=await listen(wav);
-  const words=(heardFile?.words||[]).map(w=>({text:w.text,start:+w.start,end:+w.end}));
-  const lines=(heardFile?.script?.spoken?.length?heardFile.script.spoken:heardFile?.script?.written)||[];
-  const narration=lines.length?alignScript(lines,words):null;
+  let words=(heardFile?.words||[]).map(w=>({text:w.text,start:+w.start,end:+w.end}));
+  // The script as written and as the voice was asked to say it (pronunciations): whichever the voice matches better.
+  const forms=[heardFile?.script?.spoken,heardFile?.script?.written].filter(l=>Array.isArray(l)&&l.length);
+  const align=()=>forms.map(l=>alignScript(l,words)).sort((a,b)=>(b.coverage??0)-(a.coverage??0))[0]??null;
+  let narration=forms.length?align():null;
+  // A transcriber can drop a short phrase after a pause; a passage that seems missing is listened to again on its own
+  // (its window cut out) before it is called missing.
+  for(const gap of (narration?.gaps||[]).slice(0,2)){
+   const from=Math.max(0,gap.from-0.3),to=Math.min(duration,(gap.to??duration)+0.3);
+   if(to-from<0.4)continue;
+   const part=path.join(dir,'part-'+from.toFixed(2)+'.wav');
+   try{
+    await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(from),'-to',String(to),'-i',wav,'-ac','1','-ar','16000',part],{timeout:60000});
+    const again=await listen(part);
+    const extra=(again?.words||[]).map(w=>({text:w.text,start:+w.start+from,end:+w.end+from})).filter(w=>!words.some(x=>Math.abs(x.start-w.start)<0.15&&x.text===w.text));
+    if(extra.length){words=[...words,...extra].sort((a,b)=>a.start-b.start);narration=align();}
+   }catch{/* the first hearing stands */}
+  }
   const narration_ok=narration?narration.coverage>=RULES.coverage&&!narration.missing.length:null;
   const mix=mixFindings(await levelWindows(wav,ffmpeg),words,duration);
   const a={narration,narration_ok,sync:cueSync(html,words),mix,duration};
