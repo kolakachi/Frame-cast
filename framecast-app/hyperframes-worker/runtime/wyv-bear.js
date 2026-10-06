@@ -115,6 +115,25 @@
     return 0;
   }
 
+  // The video's dithered finish: greyscale, contrast, then a 4x4 ordered threshold in 2 px cells, alpha kept.
+  // One per bear, its region the whole box: the pattern cell sits at the box's origin and must be inside the region
+  // for feTile to repeat it, and the dots then stay still on screen while the bear moves, like a printed screen.
+  function ditherFilter(id, w, h) {
+    return '<filter id="' + id + '" filterUnits="userSpaceOnUse" x="0" y="0" width="' + w + '" height="' + h + '" color-interpolation-filters="sRGB">'
+      + '<feColorMatrix in="SourceGraphic" type="saturate" values="0" result="g0"/>'
+      + '<feComponentTransfer in="g0" result="g"><feFuncR type="linear" slope="1.3" intercept="0"/><feFuncG type="linear" slope="1.3" intercept="0"/><feFuncB type="linear" slope="1.3" intercept="0"/></feComponentTransfer>'
+      + '<feColorMatrix in="g" type="luminanceToAlpha" result="la"/>'
+      // The 4x4 ordered pattern built inside the filter (an image in a filter may not be loaded when a frame is captured).
+      + '<feFlood x="0" y="0" width="2" height="2" flood-color="rgb(8,8,8)" result="b0"/><feFlood x="2" y="0" width="2" height="2" flood-color="rgb(135,135,135)" result="b1"/><feFlood x="4" y="0" width="2" height="2" flood-color="rgb(40,40,40)" result="b2"/><feFlood x="6" y="0" width="2" height="2" flood-color="rgb(167,167,167)" result="b3"/><feFlood x="0" y="2" width="2" height="2" flood-color="rgb(199,199,199)" result="b4"/><feFlood x="2" y="2" width="2" height="2" flood-color="rgb(72,72,72)" result="b5"/><feFlood x="4" y="2" width="2" height="2" flood-color="rgb(231,231,231)" result="b6"/><feFlood x="6" y="2" width="2" height="2" flood-color="rgb(104,104,104)" result="b7"/><feFlood x="0" y="4" width="2" height="2" flood-color="rgb(56,56,56)" result="b8"/><feFlood x="2" y="4" width="2" height="2" flood-color="rgb(183,183,183)" result="b9"/><feFlood x="4" y="4" width="2" height="2" flood-color="rgb(24,24,24)" result="b10"/><feFlood x="6" y="4" width="2" height="2" flood-color="rgb(151,151,151)" result="b11"/><feFlood x="0" y="6" width="2" height="2" flood-color="rgb(247,247,247)" result="b12"/><feFlood x="2" y="6" width="2" height="2" flood-color="rgb(120,120,120)" result="b13"/><feFlood x="4" y="6" width="2" height="2" flood-color="rgb(215,215,215)" result="b14"/><feFlood x="6" y="6" width="2" height="2" flood-color="rgb(88,88,88)" result="b15"/><feMerge x="0" y="0" width="8" height="8" result="cell"><feMergeNode in="b0"/><feMergeNode in="b1"/><feMergeNode in="b2"/><feMergeNode in="b3"/><feMergeNode in="b4"/><feMergeNode in="b5"/><feMergeNode in="b6"/><feMergeNode in="b7"/><feMergeNode in="b8"/><feMergeNode in="b9"/><feMergeNode in="b10"/><feMergeNode in="b11"/><feMergeNode in="b12"/><feMergeNode in="b13"/><feMergeNode in="b14"/><feMergeNode in="b15"/></feMerge><feTile in="cell" result="tile"/>'
+      + '<feColorMatrix in="tile" type="luminanceToAlpha" result="ba"/>'
+      // Threshold in alpha (filters premultiply colour; alpha is not): light where the tone beats the pattern.
+      + '<feComposite in="la" in2="ba" operator="arithmetic" k1="0" k2="1" k3="-1" k4=".5" result="d"/>'
+      + '<feComponentTransfer in="d" result="m"><feFuncA type="discrete" tableValues="0 1"/></feComponentTransfer>'
+      + '<feFlood flood-color="#f2f2f2" result="paper"/><feComposite in="paper" in2="m" operator="in" result="light"/>'
+      + '<feFlood flood-color="#141414" result="ink"/><feMerge result="bw"><feMergeNode in="ink"/><feMergeNode in="light"/></feMerge>'
+      + '<feComposite in="bw" in2="SourceAlpha" operator="in"/></filter>';
+  }
+
   W3D.mascot = function (sel, opts) {
     defs();
     var canvas = typeof sel === 'string' ? document.querySelector(sel) : sel;
@@ -126,7 +145,11 @@
     for (var i = 0; i < canvas.attributes.length; i++) { var at = canvas.attributes[i]; if (at.name !== 'width' && at.name !== 'height') box.setAttribute(at.name, at.value); }
     box.setAttribute('viewBox', '0 0 ' + w + ' ' + h); box.setAttribute('width', w); box.setAttribute('height', h);
     box.style.position = 'absolute'; box.style.overflow = 'visible';
-    box.innerHTML = markup(37 + (made++) * 11);
+    var finish = opts.finish || (opts.spec && opts.spec.finish) || 'color';
+    box.innerHTML = finish === 'dither'
+      ? '<defs>' + ditherFilter('wb-dither-' + made, w, h) + '</defs><g filter="url(#wb-dither-' + made + ')">' + markup(37 + (made++) * 11) + '</g><g class="wb-blush"><ellipse cx="190" cy="692" rx="80" ry="54" fill="url(#wb-cheek)" opacity=".55"/><ellipse cx="580" cy="692" rx="80" ry="54" fill="url(#wb-cheek)" opacity=".55"/></g>'
+      : markup(37 + (made++) * 11);
+    var blush = box.querySelector('.wb-blush');
     canvas.parentNode.replaceChild(box, canvas);
     var q = function (c) { return box.querySelector(c); }, qa = function (c) { return box.querySelectorAll(c); };
     var root = q('.wb-root'), face = q('.wb-face'), earL = q('.wb-earL'), earR = q('.wb-earR'), head = q('.wb-head');
@@ -143,6 +166,7 @@
       root.setAttribute('transform', 'translate(' + (p.cx - 385 * k) + ' ' + (p.cy - 660 * k) + ') scale(' + k + ') rotate(' + tilt + ' 385 660)');
       // A flat drawing turns by sliding its face; the ears lag the head's movement and settle.
       face.setAttribute('transform', 'translate(' + (yaw * 38) + ' ' + (pitch * 40) + ')');
+      if (blush) blush.setAttribute('transform', root.getAttribute('transform') + ' translate(' + (yaw * 38) + ' ' + (pitch * 40) + ')');
       var drop = (p.cy - before.cy) / (k || 1), sway = Math.sin(t * 2.1) * 2;
       earL.setAttribute('transform', 'translate(' + (-yaw * 10) + ' 0) rotate(' + Math.max(-18, Math.min(18, -drop * 0.25 + sway)) + ' 200 470)');
       earR.setAttribute('transform', 'translate(' + (-yaw * 10) + ' 0) rotate(' + Math.max(-18, Math.min(18, drop * 0.25 - sway)) + ' 570 470)');
