@@ -22,9 +22,11 @@ function clips(html){
 }
 
 /** Adds the effects to the page: {html, placed:[{sound,t,start,volume}], skipped}. Pure; the files are copied by soundPass. */
-export function placeSounds({html,cues,library,duration}){
+export function placeSounds({html,cues,library,duration,reference=null}){
  html=String(html);
  if(/\bdata-sounds\s*=\s*["']off["']/i.test(html))return {html,placed:[],skipped:'off'};
+ // Following a reference (exact or similar): none when it has none, and no denser than it is.
+ if(reference&&Number(reference.count)===0)return {html,placed:[],skipped:'reference has none'};
  const root=html.match(/<[a-z][a-z0-9-]*\b[^>]*\bdata-composition-id\b[^>]*>/i);
  if(!root)return {html,placed:[],skipped:'no root'};
  const existing=clips(html);
@@ -33,7 +35,8 @@ export function placeSounds({html,cues,library,duration}){
  const voice=existing.filter(c=>c.dur>RULES.effectMax&&!c.muted&&!/music|duck|bed|song|beat/i.test(c.name));
  const wanted=(cues||[]).filter(c=>library[c.sound]&&Number.isFinite(c.t)&&c.t>=0.05&&c.t<=duration-0.05)
   .sort((a,b)=>(PRIORITY[b.sound]??1)-(PRIORITY[a.sound]??1)||a.t-b.t);
- const max=Math.max(1,Math.round(duration*RULES.perSecond)),kept=[];
+ const perSecond=reference&&Number(reference.per_10_seconds)>0?Math.min(RULES.perSecond,Number(reference.per_10_seconds)/10*1.25):RULES.perSecond;
+ const max=Math.max(1,Math.round(duration*perSecond)),kept=[];
  for(const c of wanted){
   if(kept.length>=max)break;
   if(kept.some(k=>Math.abs(k.t-c.t)<RULES.gap)||effects.some(t=>Math.abs(t-c.t)<RULES.nearEffect))continue;
@@ -84,13 +87,13 @@ export async function readMoves({root,width,height,browserPath=process.env.HYPER
 }
 
 /** Runs the pass on a project folder in place; returns what it placed. Never throws past a note: sound is not worth a failed render. */
-export async function soundPass({root,width,height,duration,library='/opt/worker/runtime/sounds'}){
+export async function soundPass({root,width,height,duration,reference=null,library='/opt/worker/runtime/sounds'}){
  try{
   const html=await readFile(root+'/index.html','utf8');
   if(!/wyv-motion\.js/.test(html))return {placed:[],skipped:'no motion kit'};
   const lib=JSON.parse(await readFile(library+'/sounds.json','utf8'));
   const cues=await readCues({root,width,height});
-  const out=placeSounds({html,cues,library:lib,duration});
+  const out=placeSounds({html,cues,library:lib,duration,reference});
   if(out.placed.length){
    for(const f of new Set(out.placed.map(p=>lib[p.sound].file)))await copyFile(library+'/'+f,root+'/'+f);
    await writeFile(root+'/index.html',out.html);

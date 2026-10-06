@@ -8,12 +8,12 @@ export async function accountedCall({key,kind,input,begin,settle,execute,receipt
  let output;
  try{output=await execute(attempt.id);}
  catch(error){
-  if(kind==='render' && error.code==='LOCAL_RENDER_FAILED') {
+  if(kind==='render' && (error.code==='LOCAL_RENDER_FAILED'||(error.code==='SANDBOX_QUEUE_TIMEOUT'&&error.sandboxNotStarted===true))) {
    try { await settle(attempt.id,{status:'failed',cost_microusd:0}); }
    catch (settlementError) { settlementError.code='ATTEMPT_NEEDS_ATTENTION'; throw settlementError; }
    throw error;
   }
-  if(error.code==='NOT_SENT')throw error; // settled as not sent by the app; nothing to reconcile
+  if(error.code==='NOT_SENT'||error.code==='VENDOR_REFUSED')throw error; // settled by the app (not sent, or refused at no charge); nothing to reconcile
   try{await settle(attempt.id,{status:'unknown'});}catch{/* durable started receipt still retains the hold */}
   error.code='ATTEMPT_NEEDS_ATTENTION';
   throw error;

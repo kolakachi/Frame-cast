@@ -23,6 +23,7 @@ COPY --from=registry /registry-catalog.json ./runtime/registry-catalog.json
 RUN node_modules/.bin/esbuild runtime/three/entry.js --bundle --format=iife --minify --alias:react=./runtime/three/shim-react.js --alias:remotion=./runtime/three/shim-remotion.js --outfile=runtime/three-wyv.js --log-level=warning
 RUN node scripts/verify-runtime.mjs
 COPY fixtures ./fixtures
+RUN mkdir -p /sandbox-lock && chown node:node /sandbox-lock
 USER node
-ENTRYPOINT ["flock", "-n", "/output/.worker.lock"]
+ENTRYPOINT ["/bin/sh", "/opt/worker/scripts/sandbox-entrypoint.sh"]
 CMD ["npm", "run", "smoke"]

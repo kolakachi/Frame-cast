@@ -1,3 +1,4 @@
+import {savedFailure,sandboxStopUnconfirmed} from './sandbox-failure.mjs';
 import {actionEvent} from './trajectory.mjs';
 import {recordCapability} from './capability-evidence.mjs';
 import {recordLimitation,observeToolResult,observeStop} from './limitations.mjs';
@@ -222,10 +223,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const executeAction=async(action,reviewImage)=>{
     let result;
       if(action.type==='read'){
+        // A guide asked for with a fragment ("kit/motion-kit.md#page=2") is the whole guide: guides have no pages.
+        if(/#/.test(action.path)&&/^(kit|skills|references|style-example|cards)\//.test(action.path))action.path=action.path.replace(/#.*$/,'');
         const guide=(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/reference-moves.html'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path==='kit/three.md'||action.path==='kit/three-example.html'||action.path.startsWith('cards/'))&&tools.guidance;
         // A file that isn't there is the builder's mistake to correct, not the end of the run.
         try{result={text:guide?await tools.guidance(action.path):await workspace.read(action.path)};}
-        catch(e){if(e?.code==='AUTHORING_REJECTED'){result={error:e.message};}else{if(e?.code!=='ENOENT')throw e;result={error:'There is no '+action.path+' in the composition.'+(/^wyv-|^barty-/.test(action.path)?' Runtime modules are added when the composition is checked or rendered; their API is in the kit guides (kit/remotion.md for wyv-mascot3d.js, kit/mascot.md, kit/motion-kit.md).':' Read index.html, style.css, main.js or a kit/ guide.')};}}
+        // Reading cannot change anything, so a path it may not read is the builder's mistake to correct, not a stop.
+        catch(e){if(e?.code==='AUTHORING_REJECTED'||/^Source path is not allowed/.test(String(e?.message))){result={error:'There is no '+action.path+' to read: read composition files by name (index.html, style.css, main.js) and guides by their exact names.'};}else{if(e?.code!=='ENOENT')throw e;result={error:'There is no '+action.path+' in the composition.'+(/^wyv-|^barty-/.test(action.path)?' Runtime modules are added when the composition is checked or rendered; their API is in the kit guides (kit/remotion.md for wyv-mascot3d.js, kit/mascot.md, kit/motion-kit.md).':' Read index.html, style.css, main.js or a kit/ guide.')};}}
       }
     else if(action.type==='report_limitation') {
       const item=recordLimitation(state,{...action,source:'agent_report',code:action.category});
@@ -411,10 +415,11 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)throw Error('Current draft requires check and snapshots');
       // Open pacing errors on this draft (stillness, small text, empty frames, reading time, blank frames) are sent back once:
       // fix them, or finish again with a summary that says why each one is intentional.
-      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'):[];
+      // Reading time is always sent back (words nobody can read are a fault, not a note); the rest only when asked.
+      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'&&(context.findingsBlockFinish===true||f.code==='reading_time')):[];
       const key=state.revision+':'+open.map(f=>f.code+'@'+f.time).join(',');
       // The user reviews the result: findings are notes on the version, never another round.
-      if(open.length&&state.pacingNoticed!==key&&context.findingsBlockFinish===true){
+      if(open.length&&state.pacingNoticed!==key){
         state.pacingNoticed=key;
         result={ok:false,error:'Not finished: this draft still has these findings. Fix them and check again, or finish again with a summary that says why each one is intentional.',findings:open.map(f=>({code:f.code,time:f.time,message:f.message,fixHint:f.fixHint}))};
       } else {
@@ -498,6 +503,11 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       if(!toolMode&&Buffer.byteLength(prompt)+Buffer.byteLength(skills)>cap.contextBytes)throw Error('Context limit reached');
       // Images are not text context: the one kept review frame or page capture is measured as a placeholder, not its bytes.
       if(toolMode){compactTurns();if(Buffer.byteLength(JSON.stringify(turns(),(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes)throw Error('Context limit reached');}
+      // No progress: calls that leave the video unchanged (no edit, no newly checked draft) are a loop, not work. After
+      // this many in a row the build stops: the last checked draft is delivered, or the build fails having spent little.
+      // Before the first draft it may take twice as many (studying the reference and the brief comes first).
+      if(state.revision!==state.progress?.revision||state.checkedRevision!==state.progress?.checked)state.progress={revision:state.revision,checked:state.checkedRevision,calls:state.calls};
+      else if(state.calls-state.progress.calls>=(cap.stallCalls??8)*(state.revision>0?1:2))throw Error('No progress');
       const reservation=provider.maxCallUsd;
       // A budgeted build counts what its calls actually cost, plus the most the next one may cost; otherwise every
       // call is counted at its ceiling.
@@ -517,7 +527,10 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         const response=await bounded(()=>provider.complete({prompt:'tool-mode call '+state.calls,system:toolHostPolicy+'\nPinned guidance:\n'+skills,maxTokens:cap.maxOutputTokens,messages:structuredClone(history),tools:toolDefinitions,signal:boundedSignal,onPrediction:async id=>{if(state.pending){state.pending.predictionId=id;await save();}}}));
         boundedSignal.throwIfAborted();
         state.usage??=[];state.usage.push({call:state.calls,predictionId:response.predictionId,promptBytes:Buffer.byteLength(JSON.stringify(history)),systemBytes:Buffer.byteLength(toolHostPolicy+skills),elapsedMs:Date.now()-callStarted,metrics:response.metrics,costUsd:Number(response.actualCostUsd)||0});
-        const content=(Array.isArray(response.content)&&response.content.length?response.content:[{type:'text',text:response.text||''}]).map(b=>b.type==='tool_use'&&(!b.input||typeof b.input!=='object'||Array.isArray(b.input))?{...b,input:{}}:b);
+        // The API refuses an empty text block in the history ("text content blocks must be non-empty"): a reply that was
+        // only thinking, or an empty text beside a tool call, is kept as a short placeholder or left out.
+        const blocks=(Array.isArray(response.content)?response.content:[]).filter(b=>b?.type!=='text'||String(b.text??'').trim()!=='');
+        const content=(blocks.length?blocks:[{type:'text',text:String(response.text??'').trim()||'(no reply)'}]).map(b=>b.type==='tool_use'&&(!b.input||typeof b.input!=='object'||Array.isArray(b.input))?{...b,input:{}}:b);
         state.pending=null;history.push({role:'assistant',content});state.messages.push({role:'assistant',content:JSON.stringify(content.map(b=>b.type==='tool_use'?{tool:b.name,input:b.input}:{text:(b.text||'').slice(0,400)}))});await save();
         const uses=content.filter(b=>b.type==='tool_use').slice(0,cap.usesPerTurn);
         if(!uses.length){
@@ -589,22 +602,23 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     if(state.lastGood&&!state.pending){await deliverGood('The call limit was reached during a later repair, so that repair is not included. Give it a look before posting.');await save();return state;}
     throw Error('Model call limit reached');
   } catch(e) {
-    if(e.code==='NOT_STARTED'||e.code==='NOT_SENT')state.pending=null;
+    if(e.code==='NOT_STARTED'||e.code==='NOT_SENT'||e.code==='VENDOR_REFUSED')state.pending=null;
     // Stop pressed while waiting out a busy model: nothing was sent, so keep the last checked version.
     if(e.code==='NOT_SENT'&&!signal?.aborted&&stopRequested())try{if(await stopNow())return state;}catch{/* fall through */}
     // Out of time (not cancelled by the user) with no paid call in doubt: deliver the last checked draft.
     // Running out of something (time, calls, context, output, repairs, the model itself), with no paid
     // call in doubt and not the user's own cancel, delivers the last checked draft. Rule breaks still fail.
-    const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
+    const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(No progress|Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
     // Any other unexpected error after a checked draft also delivers that draft (a stopped build should not throw
     // away a storyboard that passed a minute earlier); integrity stops still fail: changed protected files, a path
     // reaching outside the workspace, a locked source broken, or the build breaking its own workflow rules.
     const integrity=/Protected asset|escaped workspace|Symlinks are not allowed|^Source path is not allowed$|[Ll]ocked/.test(String(e.message))||MISUSE.test(String(e.message));
-    if((exhausted||!integrity)&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
-      const why=e.code==='NOT_SENT'?'The model was unavailable':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
+    if(!sandboxStopUnconfirmed(e)&&(exhausted||!integrity)&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
+      const why=e.code==='NOT_SENT'?'The model was unavailable':e.message==='No progress'?'The build stopped making progress':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
       state.pending=null;try{await deliverGood(why+' during a later repair, so that repair is not included. Give it a look before posting.');observeStop(state,why);await save();return state;}catch{/* fall through to the failure below */}
     }
-    state.status=state.pending?.kind==='provider'?'needs_attention':boundedSignal.aborted?'cancelled':'failed';
+    Object.assign(state,savedFailure(e));
+    state.status=sandboxStopUnconfirmed(e)||state.pending?.kind==='provider'?'needs_attention':boundedSignal.aborted?'cancelled':'failed';
     if(e.code==='BUDGET_EXHAUSTED'){state.pending=null;state.status='budget_exhausted';state.reason=e.message;observeStop(state,state.reason);await save();return state;}
     state.failureDetail=e.message;
     state.reason=state.pending?.kind==='provider'?'Provider outcome needs reconciliation; do not resubmit automatically':e.message;

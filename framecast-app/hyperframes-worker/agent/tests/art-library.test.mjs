@@ -34,3 +34,19 @@ test('an icon comes back as inline svg; a 3d image is copied into the project wi
   assert.deepEqual([...await readFile(path.join(project,'art-fluent3d-coin.png'))],[137,80,78,71]);
   await assert.rejects(useArt(art,'lucide:nope',project),/search first/);
 });
+
+test('a style word picks the style and is never matched as a name; each pack says its own image size',async()=>{
+  const dir=await fixture();
+  await mkdir(path.join(dir,'3dicons'));await writeFile(path.join(dir,'3dicons','wallet-dynamic-clay.png'),Buffer.from([137,80,78,71]));
+  const index=JSON.parse(await readFile(path.join(dir,'index.json'),'utf8'));
+  index.packs['3dicons']={license:'CC0-1.0'};
+  index.items.push({id:'3dicons:3d-dynamic-color',pack:'3dicons',style:'3d',kind:'png',size:400,file:'3dicons/3d.png',words:['3d','cube']},
+    {id:'3dicons:wallet-dynamic-clay',pack:'3dicons',style:'3d',kind:'png',size:400,file:'3dicons/wallet-dynamic-clay.png',words:['wallet','money','clay','dynamic']});
+  await writeFile(path.join(dir,'index.json'),JSON.stringify(index));
+  const art=await loadArt(dir);
+  assert.deepEqual(searchArt(art,{query:'wallet 3d'}).map(r=>r.id),['3dicons:wallet-dynamic-clay'],'"3d" is the style, not the icon named 3d');
+  assert.deepEqual(searchArt(art,{query:'3d'}),[]);
+  const project=await mkdtemp(path.join(os.tmpdir(),'proj-'));
+  assert.match((await useArt(art,'3dicons:wallet-dynamic-clay',project)).how,/400 px square/);
+  assert.match((await useArt(art,'fluent3d:coin',project)).how,/256 px square/);
+});

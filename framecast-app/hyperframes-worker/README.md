@@ -59,7 +59,34 @@ docker compose -f compose.local.yml run --rm smoke node scripts/acceptance.mjs
 This tests snapshot seeks in both orders, missing-font and overflow diagnostics,
 scoped paths (including symlinks), and network denial. The exact npm-bundled skill
 files are recorded in `runtime/skills-manifest.json` and verified at image build.
-The image uses `flock` on the shared output volume to reject overlapping runs.
+The current image queues sandbox commands with `flock` on the Compose-managed
+`sandbox-lock` volume (native Linux storage). Do not place this lock on the macOS
+artifact bind mount: cancellation of a waiter did not preserve exclusion in the
+local regression test. One command executes at a time. Waiting is bounded at
+600 seconds, can be cancelled, and makes no provider calls. Lock timeout exits
+with code 75 before executing the command. The app shows "Waiting for render
+capacity", records waiting/acquisition in its trajectory, and allows the queue
+wait in addition to the tool timeout. The execution clock starts at acquisition;
+startup/acquisition has a separate 630-second watchdog (600-second queue plus
+30 seconds to start/report). A watchdog expiry without an acquisition marker is
+uncertain, unlike a confirmed lock timeout. The overall agent deadline still applies.
+Confirmed queue expiry settles a render at zero cost once the container is stopped;
+a missing settlement acknowledgement still requires reconciliation. Failure codes
+and redacted exit diagnostics survive the agent-to-host boundary. If container
+termination cannot be confirmed, delivery/repair stops; the host also waits for
+cleanup still in progress when an agent deadline fires.
+This is bounded slot admission, not a durable FIFO scheduler or production scaling.
+
+Rebuild the image and restart the idle host worker after updating this code.
+Use current Compose for all local tools so they share the same lock volume;
+historical pinned images use the old lock and must not run alongside this worker.
+Direct `docker run` calls must also mount that shared volume at `/sandbox-lock`.
+
+Queue checks (offline, no AI calls): run `node --test agent/tests/sandbox-exec.test.mjs agent/tests/sandbox-recovery.test.mjs agent/tests/accounted-call.test.mjs`
+on the host, then run `scripts/sandbox-queue-test.mjs` inside Linux with the
+entrypoint bypassed (`--entrypoint node`), a **disposable** `/output` directory,
+and the native lock volume. The suite covers exclusion, cancelled waiters,
+queue expiry, command failure and killed-holder release.
 
 For an interrupted local run, first stop its worker container. Then run:
 

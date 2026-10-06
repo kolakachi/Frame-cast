@@ -26,8 +26,10 @@ export class PilotBudget {
  // unlimited: the run's approved policy lifted its limits (CREATE_UNLIMITED, local only); any ceiling up to $5 is accepted
  // for a known model, and the app gateway still meters and charges every call at its real cost.
  async reserve(model,usd,{unlimited=false}={}){
-  const known=['anthropic/claude-4.5-sonnet','claude-opus-5-5','google/nano-banana','wan-video/wan-2.5-i2v'].includes(model);
-  if(unlimited?!(known&&Number.isFinite(usd)&&usd>0&&usd<=5):!((model==='anthropic/claude-4.5-sonnet'&&usd===.3)||(model==='claude-opus-5-5'&&(usd===.3||usd===.45))||(model==='google/nano-banana'&&usd===.1)||(model==='wan-video/wan-2.5-i2v'&&usd===.6)))throw Error('Unpriced pilot call');
+  // The most one call of each model may be approved for (the app's policy sets each call's ceiling: the build at
+  // $1.20, its reviewer at $0.30, since 2026-10-06); anything above, or an unknown model, is refused.
+  const most={'anthropic/claude-4.5-sonnet':.3,'claude-opus-5-5':1.2,'google/nano-banana':.1,'wan-video/wan-2.5-i2v':.6}[model];
+  if(!most||!Number.isFinite(usd)||usd<=0||usd>(unlimited?5:most)+1e-9)throw Error('Unpriced pilot call');
   return this.ledger.update(ledger=>{
    const sum=ledger.calls.reduce((total,c)=>total+c.reservedUsd,0);
    if(this.cap!==null&&sum+usd>this.cap+1e-9)throw Object.assign(Error('Additional $'+this.cap+' pilot allowance exhausted'),{code:'BUDGET_EXHAUSTED'});

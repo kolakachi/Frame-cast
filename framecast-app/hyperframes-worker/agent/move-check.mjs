@@ -21,13 +21,17 @@ export function requiredMoves(plan){
  * ran: the moves that actually ran when the page built its timeline ([{move}], from the render); when given, a move
  * whose code is present but never runs (an unused function) is a finding too.
  */
-export function moveFindings({plan,sources,ran=null}){
+export function moveFindings({plan,sources,ran=null,requireRuntime=false}){
  const code=String(sources||'').replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
  const out=[];
  for(const [move,labels] of requiredMoves(plan)){
   const fn=RECIPES[move];
   if(new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(code)){
-   if(!Array.isArray(ran)||ran.some(r=>r?.move===fn))continue;
+   if(!Array.isArray(ran)){
+    if(requireRuntime)out.push({code:'reference_move_unverified',status:'unverified',severity:'error',move,time:null,message:`Execution evidence for WM.${fn} is unavailable. The planned move has not been verified.`,fixHint:'Restore runtime motion evidence and check the final render again.'});
+    continue;
+   }
+   if(ran.some(r=>r?.move===fn))continue;
    out.push({code:'reference_move_not_run',severity:'error',time:null,message:`WM.${fn} is in the code for ${labels.slice(0,3).join(', ')||'a reference element'} but never runs when the timeline is built.`,
     fixHint:`Call WM.${fn}(…) on the timeline that plays (not inside a function that is never called).`});
    continue;

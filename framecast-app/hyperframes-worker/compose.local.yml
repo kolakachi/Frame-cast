@@ -20,3 +20,8 @@ services:
       - /tmp:size=4294967296,mode=1777
     volumes:
       - ./artifacts:/output
+      # Native Linux locks; macOS bind-mounted files do not reliably preserve
+      # exclusion when a waiting process is cancelled.
+      - sandbox-lock:/sandbox-lock
+volumes:
+  sandbox-lock:

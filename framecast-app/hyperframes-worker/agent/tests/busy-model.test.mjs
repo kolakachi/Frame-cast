@@ -37,3 +37,24 @@ test('Stop during a busy-model wait ends the wait with the not-sent error, so th
  await assert.rejects(whenModelFree(async()=>{throw notSent();},{waits:[60000],stop:()=>stop}),e=>e.code==='NOT_SENT');
  assert.ok(Date.now()-t<3000);
 });
+
+test('a call is priced up to its model\'s most: the build at $1.20 and its reviewer at $0.30 are accepted, more is not',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'price-'));
+ try{
+  const b=new PilotBudget(path.join(dir,'ledger.json'),10);
+  for(const usd of [1.2,.6,.3,.1])assert.ok(await b.reserve('claude-opus-5-5',usd));
+  await assert.rejects(b.reserve('claude-opus-5-5',1.21),/Unpriced pilot call/);
+  await assert.rejects(b.reserve('some-other-model',.1),/Unpriced pilot call/);
+  assert.ok(await b.reserve('claude-opus-5-5',2,{unlimited:true}),'unlimited testing allows up to $5');
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('only a paid Thorough build (not its storyboard) is reviewed before it finishes',async()=>{
+ const {reviewedBuild}=await import('../composition-agent.mjs');
+ const build=(effort,extra={})=>({mode:'agent',execution_policy:{agent:{},critic:{max_calls:4}},settings:{effort},...extra});
+ assert.equal(reviewedBuild(build('thorough')),true);
+ assert.equal(reviewedBuild(build('standard')),false);
+ assert.equal(reviewedBuild(build('quick')),false);
+ assert.equal(reviewedBuild(build('thorough',{look_first:true})),false);
+ assert.equal(reviewedBuild(build('thorough',{mode:'fixture'})),false);
+ assert.equal(reviewedBuild({...build('thorough'),execution_policy:{agent:{}}}),false,'no approved reviewer, no review');
+});

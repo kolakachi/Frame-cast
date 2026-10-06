@@ -90,3 +90,34 @@ test('review P1: a generated shot made from the user photo, with no cast sheet, 
  const v=finalVerdict({look:{status:'checked',has_cast:true,identity:{status:'drift',times:[3]}},blanks:[],generatedPeople:peopleToKeep(plan,media)});
  assert.equal(v.status,'blocked');
 });
+
+test('Unicode requirements stay distinct and ambiguous review answers cannot pass',()=>{
+ const plan={agreement:{required:['显示蜡烛','显示价格']}};
+ const review=required=>finalVerdict({plan,look:{status:'checked',required}});
+ const v=review([{item:'显示价格',status:'present'}]);
+ assert.deepEqual(v.checks.map(c=>c.status),['unverified','pass']);
+ assert.equal(review([{id:'r1',status:'present'},{id:'r1',status:'missing'}]).checks[0].status,'unverified');
+ assert.equal(review([{item:'显示价格',status:'present'},{item:'显示价格',status:'missing'}]).checks[1].status,'unverified');
+ assert.equal(finalVerdict({plan:{agreement:{required:['!!!','???']}},look:{status:'checked',required:[{item:'???',status:'present'}]}}).status,'unverified');
+});
+
+test('unavailable runtime evidence remains unverified in the final verdict',async()=>{
+ const {moveFindings}=await import('../move-check.mjs');
+ const plan={scenes:[{transition_out:{move:'iris'}}]};
+ for(const ran of [null,{error:'page inspection failed'}]){
+  const moves=moveFindings({plan,sources:'function unused(){WM.iris(tl,el)}',ran,requireRuntime:true});
+  const v=finalVerdict({plan,moves});
+  assert.equal(v.status,'unverified');assert.equal(v.checks[0].status,'unverified');
+ }
+ assert.equal(finalVerdict({plan,moves:moveFindings({plan,sources:'WM.iris(tl,el)',ran:[],requireRuntime:true})}).status,'blocked');
+ assert.equal(finalVerdict({plan,moves:moveFindings({plan,sources:'WM.iris(tl,el)',ran:[{move:'iris',calls:1}],requireRuntime:true})}).status,'passed');
+});
+
+test('words on screen too briefly to read block delivery and go back to the build',()=>{
+ const v=finalVerdict({plan:{},look:{status:'checked'},reading:[{code:'reading_time',time:7.2,message:'"UGC" is fully on screen for 0.8 s; it needs 1.2 s to be read.'}]});
+ assert.equal(v.status,'blocked');
+ const fix=repairable(v);
+ assert.deepEqual(fix.map(c=>c.id),['reading']);
+ assert.match(repairBrief(fix),/at 7\.2 s, Every word on screen can be read .*0\.8 s/);
+ assert.equal(finalVerdict({plan:{},look:{status:'checked'},reading:[]}).status,'passed');
+});

@@ -12,7 +12,7 @@ export class AnthropicGatewayProvider {
     if(!attemptId)throw Error('Gateway calls need a recorded attempt');
     // The app checks each call against its run's approved limit; this is only an outer bound (64k for unlimited local testing).
     if(!Number.isInteger(maxTokens)||maxTokens<256||maxTokens>64000)throw Error('Output token limit outside the gateway bounds');
-    if(image&&(!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>1400000))throw Error('Only inline PNG or JPEG review images are sent');
+    if(image&&(!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>7000000))throw Error('Only inline PNG or JPEG review images are sent');
     signal?.throwIfAborted();
     let out;
     // The app says so when Anthropic was never reached: nothing to reconcile.
@@ -20,7 +20,9 @@ export class AnthropicGatewayProvider {
     const extra=messages?{messages_json:JSON.stringify(messages),tools_json:JSON.stringify(tools??[])}:{};
     if(extra.messages_json&&Buffer.byteLength(extra.messages_json)>5500000)throw Error('Tool conversation too large');
     try{out=await this.call(attemptId,{prompt,system,max_tokens:maxTokens,image:image??null,...extra});}
-    catch(e){if(/nothing was sent|nothing was charged/i.test(String(e.message)))e.code='NOT_SENT';throw e;}
+    // Busy or never reached is waited out (NOT_SENT); anything else the app classified ([vendor:kind]: a refusal, our
+    // account out of credit or a bad key) was settled at no charge and is not retried.
+    catch(e){const m=String(e.message),kind=m.match(/\[vendor:(\w+)\]/)?.[1];if(kind&&kind!=='busy')e.code='VENDOR_REFUSED';else if(/nothing was sent|nothing was charged/i.test(m))e.code='NOT_SENT';throw e;}
     if(out?.status!=='succeeded'||!/^[a-zA-Z0-9_-]+$/.test(out.message_id??'')||typeof out.text!=='string')throw Error('Gateway returned no usable answer');
     await recordPrediction(out.message_id);
     return {text:out.text,content:Array.isArray(out.content)?out.content:[{type:'text',text:out.text}],predictionId:out.message_id,metrics:out.usage??{},actualCostUsd:out.cost_microusd/1e6,stopReason:out.stop_reason??null};

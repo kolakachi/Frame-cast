@@ -1,5 +1,6 @@
 // The art library the builder can use instead of drawing or generating generic visuals: line and filled icons
-// (Lucide, Tabler) as SVG to inline, recolour and animate, and Microsoft's 3D emoji as transparent PNGs. Fetched by
+// (Lucide, Tabler) as SVG to inline, recolour and animate, and 3D objects as transparent PNGs (Microsoft's 3D emoji;
+// 3dicons' product and app objects in four finishes and two angles). Fetched by
 // scripts/fetch-art-packs.mjs into runtime/art-packs/ with their licenses (all allow commercial use).
 import {readFile,copyFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -15,7 +16,8 @@ export async function loadArt(dir){
 
 /** Best matches for the words, optionally of one style (line, filled or 3d). */
 export function searchArt(art,{query='',style=null,limit=12}={}){
-  const q=words(query).filter(w=>!STYLES.includes(w)||!style),wantStyle=style||STYLES.find(s=>words(query).includes(s))||null;
+  // A style word in the query (3d, line, filled) picks the style; it is not searched for as a name.
+  const q=words(query).filter(w=>!STYLES.includes(w)),wantStyle=style||STYLES.find(s=>words(query).includes(s))||null;
   if(!q.length)return [];
   const scored=[];
   for(const item of art.items){
@@ -50,5 +52,6 @@ export async function useArt(art,id,projectDir){
   const name='art-'+item.id.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+path.extname(item.file);
   await copyFile(source,path.join(projectDir,name));
   const sha256=createHash('sha256').update(await readFile(path.join(projectDir,name))).digest('hex');
-  return {id,kind:'png',file:{path:name,sha256},how:`Use it as <img src="${name}"> (transparent, 256 px square: keep it at or below about 260 px on screen).`,license:art.packs[item.pack]?.license||null};
+  const px=item.size||256;
+  return {id,kind:'png',file:{path:name,sha256},how:`Use it as <img src="${name}"> (transparent, ${px} px square: keep it at or below about ${px+4} px on screen).`,license:art.packs[item.pack]?.license||null};
 }

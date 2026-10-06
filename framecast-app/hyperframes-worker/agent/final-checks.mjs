@@ -54,7 +54,7 @@ const at=t=>Number.isFinite(t)?'At '+Number(t).toFixed(1)+' s: ':'';
  * Combines the measurements into checks. look: the vision verdict ({status:'checked'|'unverified', required, identity,
  * lettering, actions}); audio: the listening summary; moves: missing planned moves; blanks: unintended blank spans.
  */
-export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],expectsSpeech=false,generatedPeople=false}){
+export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],expectsSpeech=false,generatedPeople=false}){
  const checks=[];
  const add=(id,label,status,blocking,message,times=[])=>checks.push({id,label,status,blocking,message,times});
  // Approved words (narration or a take) in the delivered audio.
@@ -70,8 +70,12 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],ex
   else for(const [k,item] of required.entries()){
    // The plan's own items decide, matched by their id (r1, r2…) or exact wording, never by position: an item the
    // look did not answer stays unverified, and an answer about another item never passes it.
-   const key=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-   const r=(look.required||[]).find(x=>x.id==='r'+(k+1))??(look.required||[]).find(x=>!x.id&&key(x.item)===key(item))??{status:'unclear'};
+   const key=x=>typeof x==='string'?x.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim():'';
+   const answers=Array.isArray(look.required)?look.required.filter(x=>x&&typeof x==='object'):[];
+   const byId=answers.filter(x=>x.id==='r'+(k+1));
+   const exact=answers.filter(x=>!x.id&&key(item)&&key(x.item)===key(item));
+   const matches=byId.length?byId:required.filter(x=>key(x)===key(item)).length===1?exact:[];
+   const r=matches.length===1?matches[0]:{status:'unclear'};
    if(r.status==='missing')add('required','Must appear: '+item,'fail',true,'Not seen in the final video'+(r.note?' ('+r.note+')':'')+'.');
    else add('required','Must appear: '+item,r.status==='present'?'pass':'unverified',true,r.status==='present'?'':'Could not be confirmed by sight'+(r.note?': '+r.note:'')+'.',r.time!=null?[r.time]:[]);
   }
@@ -92,7 +96,9 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],blanks=[],ex
  if(blanks===null)add('blank','No blank frames','unverified',true,'Blank frames could not be measured.');
  else if(blanks.length)add('blank','No blank frames','fail',true,'The picture goes blank'+(blanks.length>1?' '+blanks.length+' times':'')+'.',blanks.map(b=>b.start));
  // Planned moves the plan named (a reference move, the signature move): blocking.
- for(const m of moves)add('move','Planned move: '+(m.move||m.code||'move'),'fail',true,String(m.message||'A planned move is missing.'),m.time!=null?[m.time]:[]);
+ for(const m of moves)add('move','Planned move: '+(m.move||m.code||'move'),m.status==='unverified'?'unverified':'fail',true,String(m.message||'A planned move is missing.'),m.time!=null?[m.time]:[]);
+ // Words on screen too briefly to read (the delivery check's reading time): blocking, and the build can fix it.
+ if(reading?.length)add('reading','Every word on screen can be read','fail',true,reading.map(r=>String(r.message||'')).filter(Boolean).slice(0,3).join(' ')||'Some words are not on screen long enough to read.',reading.map(r=>r.time).filter(t=>t!=null));
  const blocked=checks.some(c=>c.blocking&&c.status==='fail'),unverified=checks.some(c=>c.blocking&&c.status==='unverified');
  return {status:blocked?'blocked':unverified?'unverified':checks.some(c=>c.status==='fail')?'issues':'passed',checks:checks.slice(0,24),
   findings:checks.filter(c=>c.status==='fail').map(c=>at(c.times?.[0])+c.label+(c.message?': '+c.message:'')).slice(0,8)};
@@ -105,7 +111,7 @@ export function peopleToKeep(plan={},planMedia=[]){
 }
 
 /** Runs the measurements on the final file and returns the verdict. look(frames) sends frames to the app's vision check. */
-export async function finalChecks({file,duration,plan={},planMedia=[],audioSummary=null,moves=[],look,html='',ffmpeg='ffmpeg'}){
+export async function finalChecks({file,duration,plan={},planMedia=[],audioSummary=null,moves=[],reading=[],look,html='',ffmpeg='ffmpeg'}){
  let blanks=null;try{blanks=unintendedBlanks(await blankSpans(file,ffmpeg),duration);}catch{/* reported as unverified */}
  const generated=planMedia.some(m=>['generated_shot','ugc_take'].includes(m.kind)&&m.status==='succeeded');
  const generatedPeople=generated&&peopleToKeep(plan,planMedia);
@@ -116,16 +122,16 @@ export async function finalChecks({file,duration,plan={},planMedia=[],audioSumma
   try{verdict=await look(await Promise.all(frames.map(async f=>({time:f.time,label:f.label,jpeg:await readFile(f.path)}))));}catch{verdict=null;}finally{await cleanup();}
  }
  const expectsSpeech=plan.settings_audio!=='silent'&&((plan.narration||[]).length>0||planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'));
- return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,blanks,expectsSpeech,generatedPeople});
+ return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,expectsSpeech,generatedPeople});
 }
 
 /**
  * What the build can fix itself after a blocked final check: a required item not in view, blank frames, a planned
- * move left out, narration cut short when it is our own narration file. A person who changed, or a take's own words,
+ * move left out, words on screen too briefly to read, narration cut short when it is our own narration file. A person who changed, or a take's own words,
  * need a new clip: those go to the user.
  */
 export function repairable(verdict,{takeUsed=false}={}){
- return (verdict?.checks||[]).filter(c=>c.blocking&&c.status==='fail'&&(['required','blank','move'].includes(c.id)||(c.id==='words'&&!takeUsed)));
+ return (verdict?.checks||[]).filter(c=>c.blocking&&c.status==='fail'&&(['required','blank','move','reading'].includes(c.id)||(c.id==='words'&&!takeUsed)));
 }
 
 /** The repair round's brief to the builder: only these, with their times; everything else stays. */

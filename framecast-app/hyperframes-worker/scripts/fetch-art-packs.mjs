@@ -3,6 +3,8 @@
 // Only packs whose license allows commercial use, each kept with its license:
 //   lucide   line icons (ISC)        tabler   outline and filled icons (MIT)
 //   fluent3d Microsoft Fluent Emoji, 3D (MIT)
+//   3dicons  3dicons.co: about 120 product and app objects, each in 4 finishes (color, clay, gradient, premium) and
+//            2 angles (dynamic, front), 400 px transparent PNG (CC0)
 // Run on the worker host: node scripts/fetch-art-packs.mjs   (needs curl, tar and git)
 import {execFileSync} from 'node:child_process';
 import {mkdirSync,rmSync,readdirSync,readFileSync,writeFileSync,copyFileSync,existsSync,statSync} from 'node:fs';
@@ -12,7 +14,8 @@ import os from 'node:os';
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
 const out=path.join(root,'runtime','art-packs');
 const tmp=path.join(os.tmpdir(),'art-packs-'+process.pid);
-const PACKS={lucide:{npm:'lucide-static',version:'1.52.0',license:'ISC'},tabler:{npm:'@tabler/icons',version:'3.49.0',license:'MIT'},fluent3d:{git:'https://github.com/microsoft/fluentui-emoji.git',license:'MIT'}};
+const PACKS={lucide:{npm:'lucide-static',version:'1.52.0',license:'ISC'},tabler:{npm:'@tabler/icons',version:'3.49.0',license:'MIT'},fluent3d:{git:'https://github.com/microsoft/fluentui-emoji.git',license:'MIT'},
+  '3dicons':{github:'realvjy/3dicons',branch:'develop',license:'CC0-1.0'}};
 const run=(cmd,args,cwd)=>execFileSync(cmd,args,{cwd,stdio:['ignore','pipe','inherit']});
 const words=s=>String(s||'').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 rmSync(tmp,{recursive:true,force:true});mkdirSync(tmp,{recursive:true});
@@ -60,8 +63,30 @@ function npmPack(name,spec){
     if(!png||!existsSync(path.join(base,'metadata.json')))continue;
     const m=JSON.parse(readFileSync(path.join(base,'metadata.json'),'utf8')),slug=words(name).join('-');
     copyFileSync(png,path.join(out,'fluent3d',slug+'.png'));
-    index.push({id:'fluent3d:'+slug,pack:'fluent3d',style:'3d',kind:'png',file:'fluent3d/'+slug+'.png',glyph:m.glyph||null,words:[...new Set([...words(name),...(m.keywords||[]).flatMap(words),...words(m.group)])]});
+    index.push({id:'fluent3d:'+slug,pack:'fluent3d',style:'3d',kind:'png',size:256,file:'fluent3d/'+slug+'.png',glyph:m.glyph||null,words:[...new Set([...words(name),...(m.keywords||[]).flatMap(words),...words(m.group)])]});
   }
+}
+// 3dicons: each icon's page (content/3dicons-meta/<slug>.md) links its PNGs on the project's CDN; the other angle is
+// the same address with the angle swapped. Downloaded a few at a time.
+{
+  const spec=PACKS['3dicons'],dir=path.join(out,'3dicons');mkdirSync(dir,{recursive:true});
+  const raw=f=>`https://raw.githubusercontent.com/${spec.github}/${spec.branch}/${f}`;
+  const tree=JSON.parse(run('curl',['-sfL',`https://api.github.com/repos/${spec.github}/git/trees/${spec.branch}?recursive=1`]).toString());
+  writeFileSync(path.join(dir,'LICENSE'),run('curl',['-sfL',raw('LICENSE')]));
+  const pages=tree.tree.map(t=>t.path).filter(f=>/^content\/3dicons-meta\/[a-z0-9-]+\.md$/.test(f));
+  const jobs=[];
+  for(const page of pages){
+    const meta=Object.fromEntries(run('curl',['-sfL',raw(page)]).toString().split('---')[1].split('\n').map(l=>l.match(/^([a-z-]+):\s*(.+)$/)).filter(Boolean).map(m=>[m[1],m[2].trim()]));
+    const slug=meta['file-slug'];if(!slug||!meta.color)continue;
+    for(const finish of ['color','clay','gradient','premium'])for(const angle of ['dynamic','front']){
+      const url=(meta[finish]||'').replace('/v1/'+(meta.angle||'dynamic')+'/','/v1/'+angle+'/').replace('-'+(meta.angle||'dynamic')+'-','-'+angle+'-');
+      if(!/^https:\/\/3dicons\.[a-z0-9.]+\/v1\/[a-z]+\/[a-z]+\/[a-z0-9-]+\.png$/.test(url))continue;
+      const file=`3dicons/${slug}-${angle}-${finish}.png`;
+      jobs.push({url,file,item:{id:`3dicons:${slug}-${angle}-${finish}`,pack:'3dicons',style:'3d',kind:'png',size:400,file,words:[...new Set([...words(meta.title),...words(slug),...words(meta.category),finish,angle])]}});
+    }
+  }
+  const take=async j=>{const r=await fetch(j.url);if(!r.ok)return;writeFileSync(path.join(out,j.file),Buffer.from(await r.arrayBuffer()));index.push(j.item);};
+  for(let i=0;i<jobs.length;i+=8)await Promise.all(jobs.slice(i,i+8).map(j=>take(j).catch(()=>{})));
 }
 writeFileSync(path.join(out,'index.json'),JSON.stringify({packs:Object.fromEntries(Object.entries(PACKS).map(([k,v])=>[k,{license:v.license,version:v.version||null}])),items:index}));
 rmSync(tmp,{recursive:true,force:true});

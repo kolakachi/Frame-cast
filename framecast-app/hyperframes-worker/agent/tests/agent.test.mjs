@@ -213,7 +213,7 @@ test('the last call within the per-run budget is not refused by rounding',async(
  const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');
  const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
  const dir=await mkdtemp(tmpdir()+'/budget-');await writeFile(dir+'/index.html','<html></html>');let calls=0;
- const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0.45,complete:async()=>{calls++;return {text:JSON.stringify(calls<16?{type:'read',path:'index.html'}:{type:'needs_input',question:'q'}),actualCostUsd:0.01}}},context:{brief:'x'},limits:{calls:16,repairs:3,budgetUsd:16*0.45,maxOutputTokens:256,totalOutputTokenAllowance:100000},
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0.45,complete:async()=>{calls++;return {text:JSON.stringify(calls<16?{type:'read',path:'index.html'}:{type:'needs_input',question:'q'}),actualCostUsd:0.01}}},context:{brief:'x'},limits:{calls:16,repairs:3,budgetUsd:16*0.45,maxOutputTokens:256,totalOutputTokenAllowance:100000,stallCalls:100},
   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
  assert.equal(calls,16);
 });
@@ -257,6 +257,37 @@ test('when findings are set to block, finish is refused once while the checked d
  assert.equal(r.status,'preview_ready');assert.equal(h.seen.length,4);
  assert.match(h.seen[3].prompt,/Not finished: this draft still has these findings/);assert.match(h.seen[3].prompt,/still_stretch/);
  assert.doesNotMatch(h.seen[3].prompt.split('Not finished')[1]??'',/slow_drift/,'warnings do not hold a finish');
+});
+test('words on screen too briefly to read are always sent back once, even when other findings are notes',async t=>{
+ const read={code:'reading_time',severity:'error',time:7.2,message:'"UGC" is fully on screen for 0.8 s; it needs 1.2 s to be read.',fixHint:'Hold it longer'};
+ const still={code:'still_stretch',severity:'error',time:3,message:'Nothing moves from 3.0 s to 6.0 s.',fixHint:'Give the beat life'};
+ const tools={check:async()=>({ok:true,pacing:[read,still]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
+ const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'}),action({type:'finish',summary:'Done. UGC is held as long as the line allows.'})],{tools});
+ const r=await h.run();
+ assert.equal(r.status,'preview_ready');assert.equal(h.seen.length,4);
+ const sent=h.seen[3].prompt.split('Not finished')[1]??'';
+ assert.match(sent,/reading_time/);assert.doesNotMatch(sent,/still_stretch/,'other findings stay notes');
+});
+test('calls that leave the video unchanged stop the build: the last checked draft is delivered, the loop is not paid for',async t=>{
+ const read=()=>action({type:'read',path:'index.html'});
+ const h=await harness(t,[action({type:'patch',path:'index.html',before:'Original',after:'Checked'}),action({type:'check'}),action({type:'snapshot',times:[1]}),read(),read(),read(),read(),read(),read(),read(),read()],{limits:{stallCalls:3,calls:30}});
+ const r=await h.run();
+ assert.equal(r.status,'preview_ready');
+ assert.ok(h.seen.length<=7,'stopped soon after progress ended, not at the call limit: '+h.seen.length);
+ assert.match(r.internalNote??r.summary??'',/stopped making progress|later repair/);
+});
+test('a build that never makes a draft and keeps reading fails without spending its call limit',async t=>{
+ const h=await harness(t,Array.from({length:20},()=>action({type:'read',path:'index.html'})),{limits:{stallCalls:4,calls:20}});
+ const r=await h.run();
+ assert.equal(r.status,'failed');assert.equal(r.reason,'No progress');assert.ok(h.seen.length<=9,'twice the allowance before a first draft: '+h.seen.length);
+});
+test('a bad read path is an error the builder corrects, and a guide asked for by page is read whole',async t=>{
+ const h=await harness(t,[action({type:'read',path:'../secrets.txt'}),action({type:'read',path:'kit/motion-kit.md#page=2'}),action({type:'needs_input',question:'q'})],
+  {tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,paths:['frame.png']}),guidance:async p=>'guide '+p}});
+ const r=await h.run();
+ assert.equal(r.status,'needs_input');
+ assert.match(h.seen[1].prompt,/There is no \.\.\/secrets\.txt to read/);
+ assert.match(h.seen[2].prompt,/guide kit\/motion-kit\.md/);
 });
 test('a draft with no open pacing errors finishes at once',async t=>{
  const tools={check:async()=>({ok:true,pacing:[{code:'slow_drift',severity:'warning',time:1,message:'drift'}]}),snapshot:async()=>({ok:true,paths:['frame.png']})};

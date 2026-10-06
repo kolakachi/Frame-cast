@@ -1,3 +1,5 @@
+import {createSandboxSupervisor,confirmSandboxStopped} from './sandbox-exec.mjs';
+import {agentFailure,sandboxStopUnconfirmed} from './sandbox-failure.mjs';
 import {createTrajectory} from './trajectory.mjs';
 import {reviewStatus} from './review-status.mjs';
 import {finalChecks,repairable,repairBrief} from './final-checks.mjs';
@@ -60,7 +62,8 @@ async function execute(run){
  const listen=async file=>{const form=new FormData();form.set('lease_token',run.lease_token);form.set('file',new Blob([await readFile(file)]),path.basename(file));return request('runs/'+run.id+'/listen',form,true,180000);};
  await mkdir(dir+'/project');
  for(const name of ['index.html','product.svg'])await copyFile(root+'/fixtures/'+name,dir+'/project/'+name);
- await writeFile(dir+'/output-settings.json',JSON.stringify(run.input.mode==='fixture'?{aspect_ratio:'9:16',duration_seconds:15}:run.input.settings),{flag:'wx'});
+ // The reference's sound effects ride along for the sound pass (it runs in the sandbox, which sees only these files).
+ await writeFile(dir+'/output-settings.json',JSON.stringify(run.input.mode==='fixture'?{aspect_ratio:'9:16',duration_seconds:15}:{...run.input.settings,...(run.input.plan?.reference_sound?{reference_sound:run.input.plan.reference_sound}:{})}),{flag:'wx'});
  const trajectory=createTrajectory({file:dir+'/trajectory.jsonl',send:events=>request('runs/'+run.id+'/trajectory',{lease_token:run.lease_token,events},false,10000)});
  const trace=async event=>{try{await trajectory.record(event);}catch{console.error('Local trajectory write failed for '+run.id);}};
  const flushTrace=async()=>{try{await trajectory.flush();}catch{console.error('Trajectory sync pending for '+run.id);}};
@@ -68,6 +71,7 @@ async function execute(run){
  let seq=0,cancelled=false,lost=false,heartbeatBusy=false,stage='Preparing the local sample';
  // Where the build is, for Stop: while designing, Stop lets the current step finish and keeps the last checked
  // version; once rendering, the render finishes and is delivered. Before that, and on shutdown, it stops at once.
+ let sandboxWaiting=false;
  let phase='prepare',stopSeenAt=null;const STOP_GRACE_MS=360000;
  const aborter=new AbortController();
  // One slow heartbeat is not a lost lease (a busy single-threaded dev server
@@ -79,12 +83,22 @@ async function execute(run){
   try{const state=await request('runs/'+run.id+'/heartbeat',{lease_token:run.lease_token,sequence:++seq,stage},false,45000);cancelled||=state.cancel_requested;lastBeat=Date.now();}
   catch(e){if(/HTTP (403|404|409)\b/.test(String(e.message))||Date.now()-lastBeat>60000)lost=true;}finally{heartbeatBusy=false;}
   void flushTrace();
-  if(cancelled&&!lost&&!stopping&&(phase==='agent'||phase==='render')){
+  if(cancelled&&!lost&&!stopping&&!sandboxWaiting&&(phase==='agent'||phase==='render')){
    stopSeenAt??=Date.now();stage=phase==='agent'?'Stopping: finishing this step and keeping your last checked version':'Stopping: finishing the render of your last version';
    if(phase==='render'||Date.now()-stopSeenAt<STOP_GRACE_MS)return;
   }
-  if(cancelled||lost||stopping){aborter.abort();try{await exec(docker,['rm','-f',container]);}catch{/* final inspection below decides whether cancellation is safe */}}
+  if(cancelled||lost||stopping){aborter.abort();await confirmSandboxStopped(docker,[container,container+'-delivery']);}
  }
+ const sandboxSupervisor=createSandboxSupervisor();
+ const runSandbox=async(command,args,options={})=>{
+  const previousStage=stage;
+  try{return await sandboxSupervisor.run(command,args,{...options,signal:options.signal??aborter.signal,onQueue:state=>{
+   sandboxWaiting=state==='waiting';
+   stage=sandboxWaiting?'Waiting for render capacity':previousStage;
+   void trace({phase:'tool',tool:'sandbox_queue',status:sandboxWaiting?'started':'succeeded',summary:sandboxWaiting?'Waiting for render capacity':'Render capacity acquired'});
+   void beat();
+  }});}finally{sandboxWaiting=false;}
+ };
  await beat();
  const timer=setInterval(beat,20000);
  try{
@@ -121,7 +135,7 @@ async function execute(run){
    reservation=await pilotBudget.reserve(run.input.execution_policy.media.model,run.input.execution_policy.media.cost_limit_microusd/1e6);
    const gateway={prepare:()=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token},false,300000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)};
    const image=await executeImage({directory:dir,input:run.input,manifest,gateway,begin,settle,bindPrediction,signal:aborter.signal});
-   if(image.type==='video/mp4'){await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/prepare-animation.mjs',id],{timeout:120000,maxBuffer:1000000});image.artifact=dir+'/animation-silent.mp4';}
+   if(image.type==='video/mp4'){await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/prepare-animation.mjs',id],{timeout:120000,maxBuffer:1000000});image.artifact=dir+'/animation-silent.mp4';}
    await beat();if(cancelled||lost||stopping)throw Error('Stopped before delivering image');
    await finish(run,{status:'preview_ready',summary:image.summary,bundle:image.bundle},image.artifact,image.type);
    return;
@@ -131,7 +145,7 @@ async function execute(run){
   const unlimited=run.input.execution_policy?.agent?.unlimited===true;
   const callCapUsd=(run.input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6;
   const provider=viaGateway?new AnthropicGatewayProvider({model:agentModel,maxCallUsd:callCapUsd,
-    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,unlimited?960000:300000)})
+    call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/anthropic',{...body,lease_token:run.lease_token},false,960000)})
    :paid?new ReplicateGatewayProvider({maxCallUsd:callCapUsd,upload:image=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token,image},false,120000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)}):offlineContractProvider(run.input.base_bundle,manifest);
   // Reserve local allowance before the app records the attempt, so running out never leaves a held call.
   if(paid)provider.reserve=async()=>{reservation=await pilotBudget.reserve(viaGateway?agentModel:'anthropic/claude-4.5-sonnet',callCapUsd,{unlimited});};
@@ -155,9 +169,10 @@ async function execute(run){
    return;
   }
   if(run.input.execution_policy?.agent){
+   // One download for the plan's purchases and the builder's own (the buy tool below uses it too).
+   const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])});
    // Buy the approved plan items first, so the design can use them.
    if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
-    const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])});
     planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},
      produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,900000),
      download});
@@ -197,7 +212,7 @@ async function execute(run){
      const requestFile=dir+'/'+operation+'-request.json';
      // A command that runs past its limit is stuck, not slow: a 3D clip render gets 5 minutes, anything else 90 s.
      if(payload)await writeFile(requestFile,JSON.stringify(operation==='run'?{...payload,timeout_ms:cmd==='remotion'&&args?.[0]==='render'?300000:90000}:payload),{mode:0o600});
-     await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:unlimited?900000:operation==='run'?360000:180000,maxBuffer:8000000});
+     await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:900000,maxBuffer:8000000});
      const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));
      if(payload)await unlink(requestFile).catch(()=>{});
      const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg',detail:'detail/detail.jpg',compare:'compare/compare.jpg'})[operation];
@@ -205,10 +220,11 @@ async function execute(run){
      return result;
     }};
    agentResult=await executeCompositionAgent({...agentArgs,input:resume?{...run.input,resume}:run.input});
+   await sandboxSupervisor.drain();
    if(['needs_input','awaiting_media_approval'].includes(agentResult.state.status)){
     await finish(run,{status:'needs_input',summary:(agentResult.state.question??agentResult.state.proposal??'Please clarify your brief.').slice(0,2000)});return;
    }
-   if(agentResult.state.status!=='preview_ready')throw Object.assign(Error(agentResult.state.reason??'Agent needs input before rendering'),{code:agentResult.state.status==='needs_attention'?'ATTEMPT_NEEDS_ATTENTION':'AGENT_STOPPED'});
+   if(agentResult.state.status!=='preview_ready')throw agentFailure(agentResult.state);
    // From here a finished version exists: Stop lets it be saved and rendered.
    phase='render';
    // The review detail users no longer see stays in the trajectory.
@@ -253,7 +269,7 @@ async function execute(run){
   await accountedCall({key:'render-'+(round+1),kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
-   execute:async()=>{await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:unlimited?1800000:180000*renderLoad(run.input.settings),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error(await renderFailure(report,root)),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
+   execute:async()=>{await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:Math.max(1800000,180000*renderLoad(run.input.settings)),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error(await renderFailure(report,root)),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
@@ -261,12 +277,12 @@ async function execute(run){
   if(!(stopping||lost)){
    stage='Checking the final video';
    try{
-    await exec(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:unlimited?900000:200000,maxBuffer:2000000});
+    await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:900000,maxBuffer:2000000});
     const sandbox=JSON.parse(await readFile(dir+'/delivery/result.json','utf8'));
     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
     const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});
     deliveryChecks=deliverySummary(run.input.look_first===true?{...sandbox,pacing:(sandbox.pacing||[]).filter(f=>f.code!=='still_stretch')}:sandbox,loudness);
-   }catch{deliveryChecks=null;}
+   }catch(error){if(sandboxStopUnconfirmed(error))throw error;deliveryChecks=null;await trace({phase:'review',status:'failed',summary:'Delivery checks unavailable',detail:error.message});}
    // Listen to the export: narration against the script, text against speech, voice over music, the ending.
    const plan=run.input.plan??{};
    if(paid&&run.input.look_first!==true&&run.input.settings?.audio!=='silent'&&((plan.narration||[]).length||(plan.requirements||[]).length)){
@@ -293,7 +309,7 @@ async function execute(run){
     const look=async frames=>{const form=new FormData();form.set('lease_token',run.lease_token);for(const [k,f] of frames.entries()){form.append('times[]',String(f.time));form.append('labels[]',f.label||'');form.append('frames[]',new Blob([f.jpeg],{type:'image/jpeg'}),'f'+k+'.jpg');}return request('runs/'+run.id+'/look',form,true,180000);};
     const sources=Object.entries(agentResult?.bundle??{}).filter(([n])=>!/^(gsap|wyv-|barty-)/.test(n)).map(([,t])=>t).join('\n');
     finalReview=await finalChecks({file,duration:audioReview?.duration||Number(run.input.settings?.duration_seconds)||15,plan:{...plan,settings_audio:run.input.settings?.audio},planMedia,
-     audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,moves:moveFindings({plan,sources,ran:await readFile(dir+'/render/moves.json','utf8').then(t=>{const m=JSON.parse(t);return Array.isArray(m)?m:null;}).catch(()=>null)}),look,html:agentResult?.bundle?.['index.html']||''});
+     audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing}:null,reading:(deliveryChecks?.pacing||[]).filter(f=>f.code==='reading_time'),moves:moveFindings({plan,sources,requireRuntime:true,ran:await readFile(dir+'/render/moves.json','utf8').then(t=>{const m=JSON.parse(t);return Array.isArray(m)?m:null;}).catch(()=>null)}),look,html:agentResult?.bundle?.['index.html']||''});
     await trace({phase:'review',status:finalReview.status==='blocked'?'failed':'succeeded',summary:'Checked the final video against the plan',detail:JSON.stringify(finalReview).slice(0,1900)});
    }catch(e){
     // Checks that could not run are unverified, never absent: the version is marked as not checked.
@@ -306,6 +322,8 @@ async function execute(run){
   const brief=repairBrief(fixable);
   await trace({phase:'review',status:'started',summary:'Repair round '+(round+1),detail:brief.slice(0,1900)});
   const repaired=await executeCompositionAgent({...agentArgs,callPrefix:'repair'+(round+1)+'-agent',input:{...run.input,resume:{files:agentResult.bundle},messages:[...(run.input.messages||[]),{role:'user',content:brief}]}}).catch(e=>({state:{status:'failed',reason:e.message}}));
+  await sandboxSupervisor.drain();
+  if(repaired?.state?.failureCode==='SANDBOX_STOP_UNCONFIRMED')throw agentFailure(repaired.state);
   if(repaired?.state?.status!=='preview_ready'){await trace({phase:'review',status:'failed',summary:'Repair round '+(round+1)+' did not finish; the checked version stands',detail:String(repaired?.state?.reason||'').slice(0,300)});break;}
   agentResult=repaired;
   }
@@ -349,14 +367,13 @@ async function execute(run){
   console.log(JSON.stringify({run:run.id,status:'preview_ready'}));
  }catch(e){
   clearInterval(timer);
-  await trace({phase:'run',status:'failed',summary:'Worker encountered an error',detail:e.message});
-  let stopped=false;
-  try{await exec(docker,['rm','-f',container]);stopped=true;}catch{
-   try{const {stdout}=await exec(docker,['ps','-a','--filter','name=^/'+container+'$','--format','{{.Names}}']);stopped=!stdout.trim();}catch{/* Docker unreachable: unknown */}
-  }
-  const uncertain=e.code==='ATTEMPT_NEEDS_ATTENTION';
+  try{await sandboxSupervisor.drain();}catch(cleanupError){e=cleanupError;}
+  await trace({phase:'run',status:'failed',summary:'Worker encountered an error',detail:e.message+(e.sandboxDiagnostic?' '+JSON.stringify(e.sandboxDiagnostic):'')});
+  const stopped=await confirmSandboxStopped(docker,[container,container+'-delivery']);
+  const uncertain=e.code==='ATTEMPT_NEEDS_ATTENTION'||sandboxStopUnconfirmed(e);
   const result={status:stopped&&!uncertain?(cancelled||stopping?'cancelled':'failed'):'needs_attention',summary:uncertain?'This build stopped while a step was in progress. We are checking it before anything runs again; earlier versions are safe.':stopped?'This build stopped before it finished. You are only charged for the work it did, and earlier versions are safe. Try again, or change the brief.':'This build lost contact before it finished. We are checking it before anything runs again; earlier versions are safe.'};
-  await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,...result}),{mode:0o600});
+  if(e.code==='SANDBOX_QUEUE_TIMEOUT'&&result.status==='failed')result.summary='The render queue stayed busy too long. Your saved assets are safe. Please try again later.';
+  await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,diagnostic:e.sandboxDiagnostic??null,...result}),{mode:0o600});
   // If completion may already be accepted, the server rejects a conflicting result.
   if(!lost)try{await finish(run,result);}catch{}
   await flushTrace();

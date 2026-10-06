@@ -50,3 +50,10 @@ test('overlapping effects get separate tracks; a long sound is trimmed at the en
  const tracks=[...html.matchAll(/data-track-index="(\d+)"/g)].map(m=>m[1]);
  assert.equal(new Set(tracks).size,2);
 });
+
+test('following a reference: none when it has none, and no denser than it is', () => {
+ const cues=[1,2,3,4,5,6,7,8].map(t=>({sound:'pop',t}));
+ assert.equal(placeSounds({html:page(),cues,library,duration:10,reference:{count:0,per_10_seconds:0}}).skipped,'reference has none');
+ assert.equal(placeSounds({html:page(),cues,library,duration:10,reference:{count:2,per_10_seconds:2}}).placed.length,3,'2 a 10 s, with a little room');
+ assert.equal(placeSounds({html:page(),cues,library,duration:10}).placed.length,8,'without a reference the usual cap applies');
+});

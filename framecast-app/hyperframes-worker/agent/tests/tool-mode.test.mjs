@@ -308,3 +308,8 @@ test('a budgeted build counts what its calls cost, not each call at its ceiling'
  // Counted at the ceiling, the second call does not fit: the build stops and delivers its last checked draft.
  const capped=await run(false);assert.equal(capped.calls,1);
 });
+test('an empty text block in a reply never goes back to the model (the API refuses it)',async()=>{
+ const {state,seen}=await harness([[{type:'text',text:''},use('a','read',{path:'index.html'})],[],[use('b','needs_input',{question:'Continue?'})]]);
+ assert.equal(state.status,'needs_input');
+ for(const call of seen.slice(1))for(const m of JSON.parse(call.messages_json??JSON.stringify(call.messages??[])))for(const b of m.content)if(b.type==='text')assert.notEqual(String(b.text).trim(),'','no empty text block: '+JSON.stringify(m));
+});

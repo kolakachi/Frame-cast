@@ -20,3 +20,12 @@ test('an unusable gateway answer fails the call without retrying',async()=>{
  let calls=0;const p=new AnthropicGatewayProvider({model:'claude-opus-5-5',maxCallUsd:.3,call:async()=>{calls++;return {status:'failed'};}});
  await assert.rejects(p.complete({prompt:'p',system:'s',maxTokens:1024,attemptId:'a'}),/no usable answer/);assert.equal(calls,1);
 });
+
+test('a busy model is waited out; a classified refusal (our credit, a bad request) is not retried as busy',async()=>{
+ const fail=msg=>new AnthropicGatewayProvider({model:'claude-opus-5-5',maxCallUsd:.3,call:async()=>{throw Error(msg);}});
+ const code=async msg=>{try{await fail(msg).complete({prompt:'p',maxTokens:1000,attemptId:'a1'});}catch(e){return e.code;}};
+ assert.equal(await code('[vendor:busy] The model is busy right now; nothing was sent or charged.'),'NOT_SENT');
+ assert.equal(await code('Anthropic could not be reached; nothing was sent or charged. Try again shortly.'),'NOT_SENT');
+ assert.equal(await code('[vendor:vendor_credit] Our AI model is temporarily unavailable on our side. The team has been notified and nothing was charged for it; press Retry in a few minutes.'),'VENDOR_REFUSED');
+ assert.equal(await code('[vendor:other] The model refused this call (400); nothing was charged.'),'VENDOR_REFUSED');
+});
