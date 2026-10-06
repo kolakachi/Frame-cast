@@ -21,13 +21,14 @@ import {executeCompositionAgent,offlineContractProvider} from './composition-age
 import {findResume,planHash} from './resume.mjs';
 import {renderFailure} from './render-failure.mjs';
 import {accountedCall} from './accounted-call.mjs';
+import {apiOriginAllowed} from './api-origin.mjs';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const base=process.env.CREATE_API_URL??'http://localhost:8000';
 const url=new URL(base);
-if(!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||url.username||url.password||url.pathname!=='/')throw Error('Local API origin required');
+if(!apiOriginAllowed(url))throw Error('The API origin must be HTTPS, this machine, or a private network address');
 const token=process.env.CREATE_WORKER_TOKEN;
 if(!token||token.length<32)throw Error('Set the matching local CREATE_WORKER_TOKEN (32+ characters)');
 const docker=process.env.DOCKER_BIN??'docker';
