@@ -17,7 +17,7 @@ const form = reactive({ name: "", email: "", password: "" });
 const PLAN_LABELS = {
   lifetime_starter: "Starter — $59, 4,000 credits",
   lifetime_creator: "Creator — $199, 12,000 credits",
-  lifetime_agency: "Agency — $399, 20,000 credits",
+  lifetime_agency: "Agency — $399, 30,000 credits",
   starter: "Starter — $29/month",
   creator: "Creator — $59/month",
   pro: "Pro — $99/month",
