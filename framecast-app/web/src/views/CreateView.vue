@@ -10,6 +10,13 @@ import CreateDialog from '../components/create/CreateDialog.vue'
 import ThinkingLine from '../components/create/ThinkingLine.vue'
 import StoryboardCarousel from '../components/create/StoryboardCarousel.vue'
 import MascotPreview from '../components/create/MascotPreview.vue'
+import ReferencePills from '../components/create/ReferencePills.vue'
+import ComposerTray from '../components/create/ComposerTray.vue'
+import TurnActivity from '../components/create/TurnActivity.vue'
+import PlanningLive from '../components/create/PlanningLive.vue'
+import SideDrawer from '../components/create/SideDrawer.vue'
+import PlanGroup from '../components/create/PlanGroup.vue'
+import PlanNote from '../components/create/PlanNote.vue'
 import { conversationTimeline, acceptConversationResponse } from '../lib/createConversation.js'
 import { VOICE_DESCRIPTIONS, voiceHeadline } from '../lib/voices.js'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
@@ -21,7 +28,7 @@ const capabilities = ref(null), history = ref([]), search = ref(''), historyFilt
 const showHistory = ref(false), details = ref(false), libraryOpen = ref(false), compareOpen = ref(false)
 const data = ref(null), prompt = ref(''), quote = ref(null), selectedRevision = ref(null), outputKind = ref('video')
 const library = ref([]), librarySearch = ref(''), libraryPage = ref(1), libraryLastPage = ref(1)
-const purpose = ref('reference'), reuseConfirmed = ref(false), rename = ref(''), uploads = ref([])
+const rename = ref(''), uploads = ref([])
 const fileInput = ref(null), composer = ref(null), end = ref(null)
 const player = ref(null)
 const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), artifactGone = ref(''), historyLoading = ref(false), dragging = ref(false)
@@ -117,6 +124,20 @@ const pendingAttachments = computed(() => {
   const last = briefs.length ? Date.parse(briefs[briefs.length - 1].created_at) : -Infinity
   return (data.value?.attachments || []).filter(a => Date.parse(a.attached_at || 0) > last)
 })
+// The prompt box's pill row: files already attached for the next message, then files that upload when it is sent.
+const fileKind = type => type.startsWith('image/') ? 'image' : type.startsWith('audio/') ? 'audio' : 'video'
+const trayItems = computed(() => [
+  ...pendingAttachments.value.map(a => ({ key: 'a' + a.asset_id, title: a.title, type: a.asset_type, url: a.preview_url, link: !!a.source?.requested_url, purpose: a.purpose, note: a.reference?.summary, asset: a })),
+  ...uploads.value.map(u => ({ key: u.key, title: u.file.name, type: fileKind(u.file.type), url: u.preview_url, uploading: u.state === 'uploading', progress: u.progress, error: u.error, upload: u })),
+])
+const trayErrors = computed(() => trayItems.value.filter(i => i.error))
+// What we read from a reference, shown once under the pills (a pill is too small to hold it).
+const trayNotes = computed(() => pendingAttachments.value.flatMap(a => {
+  const rig = a.rig ? (a.rig.ready ? 'Character rig ready: it can blink, look around, tilt its head and change between four mouth shapes.' : 'Not ready to animate: ' + (a.rig.problems || []).slice(0, 3).join(' ')) : ''
+  const text = [a.reference?.summary, rig].filter(Boolean).join(' ')
+  return text ? [{ asset_id: a.asset_id, title: a.title, text, style: !!a.reference?.summary && canWrite.value }] : []
+}))
+function removeTrayItem(i) { if (i.upload) removeUpload(i.upload); else detach(i.asset) }
 const headStatus = computed(() => {
   if (!conversation.value) return null
   if (active.value?.status === 'needs_attention') return { cls: 'warn', text: 'NEEDS A CHECK' }
@@ -151,10 +172,13 @@ watch(() => data.value?.plans, list => {
   for (const p of list || []) {
     if (p.status !== 'proposed' || p.stale || planDrafts.value[p.id]) continue
     const sel = p.plan.selections
-    planDrafts.value[p.id] = { omitted_performance: [...(sel.omitted_performance || [])], callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept], agreement: agreementText(sel.agreement) }
+    planDrafts.value[p.id] = { omitted_performance: [...(sel.omitted_performance || [])], callouts: [...sel.callouts], narration: [...(sel.narration || [])], voice: sel.voice || '', style: styleKey(sel.style), look_first: !!sel.look_first, choices: { ...sel.choices }, kept: [...sel.kept], agreement: agreementText(sel.agreement), colours: colourDraft(p.plan) }
   }
 }, { immediate: true })
 function draftFor(p) { return planDrafts.value[p.id] || p.plan.selections }
+// The plan's colour roles as the user can change them: role -> hex.
+function colourDraft(plan) { return Object.fromEntries(Object.entries(plan.colour_treatment?.roles || {}).map(([role, c]) => [role, c.hex])) }
+function coloursDirty(p) { const d = planDrafts.value[p.id]; return !!d?.colours && JSON.stringify(d.colours) !== JSON.stringify(colourDraft(p.plan)) }
 // The intent agreement (what stays, what changes, what must appear), edited as one line per item.
 // What is being made and what sets its timing, as the plan card says it.
 const VIDEO_TYPE_LABEL = { motion_graphics: 'Motion graphics', ugc: 'UGC / presenter', footage: 'Footage', ugc_motion: 'UGC with motion graphics', footage_motion: 'Footage with motion graphics' }
@@ -167,6 +191,7 @@ function agreementShown(p) { return planDrafts.value[p.id]?.agreement ? agreemen
 function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
+  if (coloursDirty(p)) return true
   return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort(), d.agreement ? agreementLists(d.agreement) : null]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort(), d.agreement ? agreementLists(agreementText(sel.agreement)) : null])
 }
 // Generated video is priced by its route (engine and length), which the server resolves for the saved selections.
@@ -218,23 +243,47 @@ function voiceOptions(current) {
   return list
 }
 function toggleKept(p, item) { const d = draftFor(p); d.kept = d.kept.includes(item) ? d.kept.filter(k => k !== item) : [...d.kept, item] }
-async function makePlan() {
+// While a plan is made, its steps are read from the server as they happen (PlanActivity).
+// The reference question offers its three answers as cards; any wording in the composer also works.
+const MATCH_ANSWERS = [
+  { word: 'Exactly', label: 'Exactly', detail: 'Copy it moment for moment, with your brand, voice and content swapped in.' },
+  { word: 'Similar', label: 'Similar', detail: 'Keep its format, look and pacing, with your own story and shots.' },
+  { word: 'Inspired', label: 'Inspired', detail: 'Take just the idea and make something of your own.' },
+]
+const isMatchQuestion = m => /^How closely should I follow the reference video\?/.test(m.content || '')
+async function answerWith(word) { prompt.value = word; await send() }
+// A question asked before planning waits for its answer in the composer; it can be skipped.
+const pendingQuestion = computed(() => { const list = data.value?.messages || []; const last = list[list.length - 1]; return last?.role === 'assistant' && last.kind === 'question' ? last : null })
+const planLive = ref(null), planStarted = ref(0)
+let planPoll
+function watchPlanning(target) {
+  planLive.value = null; planStarted.value = Date.now(); clearInterval(planPoll)
+  planPoll = setInterval(async () => {
+    try {
+      const live = (await api.get(`${base(target)}/plan-activity`)).data.data
+      // A finished record from an earlier plan is not this one.
+      if (live && live.started_at >= planStarted.value - 5000 && id.value === target) planLive.value = live
+    } catch {}
+  }, 1500)
+}
+async function makePlan(skipQuestions = false) {
   if (!id.value || planning.value) return
   planning.value = true
+  watchPlanning(id.value)
   try {
     await guarded(async () => {
       planKey ||= crypto.randomUUID()
-      await api.post(`${base()}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey })
+      await api.post(`${base()}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey, ...(skipQuestions === true ? { skip_questions: true } : {}) })
       planKey = null; quote.value = null; await refresh()
       await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     })
     // A long planning request can lose its connection after the server has saved the plan: look before reporting a failure.
     if (error.value) { await refresh().catch(() => {}); if (currentPlan.value) { error.value = ''; planKey = null } }
-  } finally { planning.value = false }
+  } finally { planning.value = false; clearInterval(planPoll) }
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
-  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, omitted_performance: d.omitted_performance || [], callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept, ...(d.agreement && agreementLists(d.agreement).required.length ? { agreement: agreementLists(d.agreement) } : {}) })
+  await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, omitted_performance: d.omitted_performance || [], callouts: d.callouts.map(t => t.trim()).filter(Boolean), ...(d.narration ? { narration: d.narration.map(t => t.trim()).filter(Boolean) } : {}), ...(d.voice ? { voice: d.voice } : {}), ...(coloursDirty(p) ? { colours: d.colours } : {}), ...(d.style && d.style !== styleKey(p.plan.selections.style) ? { style: { route: d.style.split(':')[0], pack: d.style.split(':')[1] || null } } : {}), look_first: !!d.look_first, choices: d.choices, kept: d.kept, ...(d.agreement && agreementLists(d.agreement).required.length ? { agreement: agreementLists(d.agreement) } : {}) })
   const next = { ...planDrafts.value }; delete next[p.id]; planDrafts.value = next; quote.value = null; await refresh()
 }
 async function reviewPlanCost(p, buildStage = null, displayedCharacterToken = null) {
@@ -344,6 +393,22 @@ function date(value) { return new Date(value).toLocaleDateString(undefined,{mont
 function message(e) { return e.response?.data?.message || e.response?.data?.error?.message || 'Could not complete this action. Please retry.' }
 // A failed download's reason arrives as a file, not JSON; read it so the real message is shown.
 // Versions saved before summaries were written for users may carry review internals; show them in plain words.
+// A result's message: its first sentence stays in view, in bold; the rest (each moment, known gaps, what is not in
+// this stage) folds behind a caret, with the agent's light markdown shown as bold, numbered and bulleted lines.
+function summaryParts(text) {
+  const t = plainSummary(text).trim()
+  const m = t.match(/^(.*?[.!?])\s+(?=\*\*|\d+\.\s|-\s|[A-Z])([\s\S]*)$/)
+  if (!m || m[2].length < 80) return { lead: t.replace(/\*\*/g, ''), rest: '' }
+  return { lead: m[1].replace(/\*\*/g, ''), rest: m[2] }
+}
+function richText(text) {
+  const esc = String(text || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+  return esc.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\s(<strong>[^<]{2,40}:<\/strong>)(?=\s)/g, '\n$1')
+    .replace(/\s(\d+)\.\s/g, '\n$1. ')
+    .replace(/(^|\s)-\s(?=<strong>|[A-Z0-9"“])/g, '\n• ')
+    .split('\n').map(l => l.trim()).filter(Boolean).map(l => `<p>${l}</p>`).join('')
+}
 function plainSummary(text) {
   const t = String(text || '')
   if (/^Stopped at your request/.test(t)) return 'Stopped at your request. This is the last finished version.'
@@ -358,7 +423,7 @@ async function answerAsk(p, a, file) {
   askUploading.value = a.id
   await guarded(async () => {
     const before = new Set((data.value?.attachments || []).map(x => x.asset_id))
-    const form = new FormData(); form.append('asset_file', file); form.append('purpose', 'source'); form.append('reuse_confirmed', '1'); form.append('idempotency_key', crypto.randomUUID()); form.append('expected_version', conversation.value.version)
+    const form = new FormData(); form.append('asset_file', file); form.append('purpose', 'source'); form.append('idempotency_key', crypto.randomUUID()); form.append('expected_version', conversation.value.version)
     const result = await api.post(`${base()}/uploads`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
     data.value = result.data.data
     const added = (data.value.attachments || []).find(x => !before.has(x.asset_id))
@@ -383,9 +448,16 @@ async function guarded(fn) {
   try { await fn() } catch (e) { error.value = message(e); conflict.value = e.response?.status === 409; if (conflict.value) await refresh().catch(() => {}) }
   finally { busy.value = false }
 }
-async function loadHistory() {
-  const ticket = ++historyEpoch; historyLoading.value = true
-  try { const result = await api.get('/create/conversations',{params:{search:search.value,archived:archivedHistory.value}}); if(ticket === historyEpoch) history.value = result.data.data }
+// Recent conversations load a page at a time; scrolling to the end of the list loads the next page.
+const HISTORY_PAGE = 20, historyNext = ref(0), historySentinel = ref(null)
+let historyObserver
+async function loadHistory(more = false) {
+  if (more && (historyNext.value === null || historyLoading.value)) return
+  const ticket = more ? historyEpoch : ++historyEpoch; historyLoading.value = true
+  try {
+    const result = await api.get('/create/conversations',{params:{search:search.value,archived:archivedHistory.value,limit:HISTORY_PAGE,offset:more ? historyNext.value : 0}})
+    if(ticket === historyEpoch) { history.value = more ? [...history.value, ...result.data.data] : result.data.data; historyNext.value = result.data.meta?.next_offset ?? null }
+  }
   catch(e) { if(ticket === historyEpoch) error.value = message(e) }
   finally { if(ticket === historyEpoch) historyLoading.value = false }
 }
@@ -490,8 +562,7 @@ const approvedFacts = computed(() => { try { return JSON.parse(conversation.valu
 const claimsSettled = a => !!claimsDone.value[a.asset_id] || (a.suggested_claims || []).some(c => approvedFacts.value.includes(c.text))
 const approvedFrom = a => (a.suggested_claims || []).filter(c => approvedFacts.value.includes(c.text)).length
 const openClaims = computed(() => {
-  const pending = new Set(pendingAttachments.value.map(a => a.asset_id))
-  return (data.value?.attachments || []).filter(a => a.suggested_claims?.length && !pending.has(a.asset_id) && !claimsSettled(a))
+  return (data.value?.attachments || []).filter(a => a.suggested_claims?.length && !claimsSettled(a))
 })
 const VIDEO_HOSTS = ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
 const studySteps = computed(() => {
@@ -502,7 +573,6 @@ const studySteps = computed(() => {
 })
 // Keep the live thinking row in view as it appears.
 watch([() => linkStudying.value, () => planning.value, () => pendingText.value], async () => { await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' }) })
-const planSteps = ['Reading your brief', 'Looking at your files', 'Planning the scenes', 'Choosing the tools', 'Pricing the plan']
 const linkKeys = {}
 async function approveClaims(a) {
   const picked = (a.suggested_claims || []).filter((c, i) => claimPicks.value[a.asset_id + ':' + i]).map(c => c.text)
@@ -523,7 +593,6 @@ async function send() {
   await guarded(async () => {
     for (const u of [...uploads.value]) {
       if (u.error && u.state === 'ready') throw Error(u.error)
-      if (u.purpose === 'source' && !u.confirmed) throw Error('Confirm permission to reuse your attachment, or select Reference.')
       if (!await upload(u, true)) throw Error(u.error || 'Upload did not finish. Your message has not been sent.')
     }
     const target = await ensureConversation()
@@ -596,7 +665,7 @@ async function addLink() {
   } finally { linkBusy.value = false }
 }
 async function showLibrary() {
-  purpose.value = 'reference'; reuseConfirmed.value = false; librarySearch.value = ''; libraryPage.value = 1
+  librarySearch.value = ''; libraryPage.value = 1
   libraryOpen.value = true; await loadLibrary()
 }
 async function loadLibrary() {
@@ -605,10 +674,9 @@ async function loadLibrary() {
   catch(e) { if(ticket === libraryEpoch) error.value = message(e) }
 }
 async function attach(asset) {
-  if(purpose.value === 'source' && !reuseConfirmed.value) return
   await guarded(async () => {
     const target = await ensureConversation()
-    await api.post(`${base(target)}/attachments`,{asset_id:asset.id,purpose:purpose.value,reuse_confirmed:reuseConfirmed.value || undefined,expected_version:conversation.value.version})
+    await api.post(`${base(target)}/attachments`,{asset_id:asset.id,expected_version:conversation.value.version})
     quote.value = null; libraryOpen.value = false; await refresh(); await loadHistory()
   })
 }
@@ -618,20 +686,19 @@ function chooseFiles(files) {
   for(const file of Array.from(files || [])) {
     const validation = file.size > (capabilities.value?.uploads?.max_file_bytes || 104857600) ? 'This file is larger than 100 MB.' : !allowed.includes(file.type) ? 'Use PNG, JPEG, WebP, SVG, MP4, MP3 or WAV.' : null
     if(uploads.value.length + (data.value?.attachments?.length || 0) >= 20) { error.value = 'Use at most 20 attachments.'; break }
-    uploads.value.push({key:crypto.randomUUID(),file,progress:0,state:'ready',error:validation,purpose:'reference',confirmed:false,preview_url:validation ? '' : URL.createObjectURL(file)})
+    uploads.value.push({key:crypto.randomUUID(),file,progress:0,state:'ready',error:validation,preview_url:validation ? '' : URL.createObjectURL(file)})
   }
   if(fileInput.value) fileInput.value.value = ''
   dragging.value = false
 }
 function removeUpload(u) { if(u.preview_url) URL.revokeObjectURL(u.preview_url); uploads.value = uploads.value.filter(x => x !== u) }
 async function upload(u, fromSend = false) {
-  if(uploadRunning || (busy.value && !fromSend) || u.error && u.state === 'ready' || u.purpose === 'source' && !u.confirmed) return
+  if(uploadRunning || (busy.value && !fromSend) || u.error && u.state === 'ready') return
   uploadRunning = true; u.state = 'uploading'; u.error = ''; u.progress = 0
   let target
   try {
     target = await ensureConversation()
-    const form = new FormData(); form.append('asset_file',u.file); form.append('purpose',u.purpose); form.append('idempotency_key',u.key); form.append('expected_version',conversation.value.version)
-    if(u.purpose === 'source') form.append('reuse_confirmed','1')
+    const form = new FormData(); form.append('asset_file',u.file); form.append('idempotency_key',u.key); form.append('expected_version',conversation.value.version)
     const result = await api.post(`${base(target)}/uploads`,form,{headers:{'Content-Type':'multipart/form-data'},onUploadProgress:event => {u.progress = Math.min(99,Math.round(100*(event.loaded/(event.total || u.file.size))))}})
     if(id.value === target) { data.value = result.data.data; rename.value = data.value.conversation.title; quote.value = null }
     removeUpload(u); await loadHistory(); return true
@@ -671,6 +738,11 @@ function example(item) { if(!id.value) outputKind.value = item.kind; prompt.valu
 watch(prompt, value => persistDraft(id.value,value))
 watch([search,archivedHistory], () => {clearTimeout(searchTimer); searchTimer = setTimeout(loadHistory,250)})
 watch(showHistory, open => {if(open) loadHistory()})
+// The end of the list coming into view loads the next page.
+watch(historySentinel, el => {
+  historyObserver?.disconnect()
+  if (el && window.IntersectionObserver) { historyObserver = new IntersectionObserver(e => { if (e[0].isIntersecting) loadHistory(true) }, { rootMargin: '0px 0px 300px 0px' }); historyObserver.observe(el) }
+})
 watch(compareOpen, open => {if(!open) {compareEpoch++; if(compareMedia.value) URL.revokeObjectURL(compareMedia.value); compareMedia.value = ''}})
 watch(() => currentRevision.value?.id, loadArtifact)
 watch(id, async (value, old) => {
@@ -692,7 +764,315 @@ onMounted(async () => {
   finally {loaded.value = true}
   timer = setInterval(async () => {clock.value = Date.now(); if(active.value && active.value.status !== 'needs_attention' && !locked.value) {try {await refresh()} catch(e) {error.value = message(e)}}},2000)
 })
-onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterval(timer);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
+// The plan card (create-ui chat mockup): what will be made as pills, Preview to change it, and one Approve that
+// shows the price and starts the build. Older plans stay viewable but cannot be approved.
+const planDrawerId = ref(null), approvingPlan = ref(false), planPrice = ref({})
+const drawerPlan = computed(() => plans.value.find(p => p.id === planDrawerId.value) || null)
+function openPlan(p) { planDrawerId.value = p.id }
+const isLivePlan = p => p.status === 'proposed' && !p.stale && !p.plan.free_edit
+const planEditable = p => isLivePlan(p) && !p.approved && canWrite.value && !active.value
+function planPills(p) {
+  const st = settingsNow.value, out = [], scenes = p.plan.scenes || []
+  if (scenes.length) out.push(`${scenes.length} ${scenes.length === 1 ? 'shot' : 'shots'}`)
+  const len = st.duration_seconds || Math.round(Math.max(0, ...scenes.map(x => Number(x.end) || 0)))
+  if (len) out.push(`${len} s`)
+  if (st.aspect_ratio) out.push(st.aspect_ratio)
+  const kinds = routedMedia(p).map(x => x.kind)
+  if (kinds.includes('reference_sheet') || kinds.includes('ugc_take')) out.push('AI creator')
+  else if (kinds.includes('generated_shot')) out.push('Generated shots')
+  if ((draftFor(p).narration || []).length) out.push('Voiceover')
+  const style = styleOptions(p).find(o => o.key === (planDrafts.value[p.id]?.style ?? styleKey(p.plan.selections.style)))
+  if (style) out.push(style.label)
+  return out
+}
+function planEdited(p) {
+  const sel = p.plan.selections
+  return planDirty(p) || JSON.stringify(sel.callouts || []) !== JSON.stringify(p.plan.callouts || []) || JSON.stringify(sel.narration || []) !== JSON.stringify(p.plan.narration || []) || p.plan.colour_treatment?.source === 'user'
+}
+function planStatus(p) {
+  if (p.status === 'superseded') return 'Replaced by a newer plan'
+  if (p.status === 'proposed' && p.stale) return 'Out of date'
+  if (p.built) return 'Approved · video made from it'
+  if (p.approved || (isLivePlan(p) && (active.value || characterStep(p)))) return 'Approved'
+  return ''
+}
+// Motion graphics may show its look first (silent stills of each beat) or go straight to the video; a plan with a
+// generated person always shows its look first, so it has no choice.
+const LOOK_CHOICES = [
+  { id: 'video', label: 'Straight to video', detail: 'Fastest. Change text and colours for free afterwards.' },
+  { id: 'look', label: 'Look first', detail: 'Silent stills of each beat to approve before motion and sound. Adds a step.' },
+]
+function lookRequired(p) { return p.plan.look_required ?? routedMedia(p).some(x => ['reference_sheet', 'character_poses', 'character_variants', 'talking_shot', 'talking_take'].includes(x.kind)) }
+function lookChoice(p) { return (planDrafts.value[p.id]?.look_first ?? p.plan.selections.look_first) ? 'look' : 'video' }
+function voiceName(key) { const v = voiceOptions(key).find(x => x.key === key); return v ? v.label.split(' · ')[0] : 'Default voice' }
+function lookSummary(p) { return styleOptions(p).find(o => o.key === (planDrafts.value[p.id]?.style ?? styleKey(p.plan.selections.style)))?.label || '' }
+function optionsSummary(p) {
+  const d = draftFor(p), out = planDecisions(p).map(dec => dec.options.find(o => o.id === d.choices[dec.id])?.label).filter(Boolean)
+  if (!lookRequired(p) && !p.plan.mascot3d) out.push(lookChoice(p) === 'look' ? 'look first' : 'straight to video')
+  if (variantCount.value > 1) out.push(variantCount.value + ' variants')
+  return out.join(' · ')
+}
+function toggleAction(p, actionId, keep) { const d = planDrafts.value[p.id]; const list = (d.omitted_performance || []).filter(x => x !== actionId); d.omitted_performance = keep ? list : [...list, actionId] }
+// A voice question in the planner's options repeats the Voice picker, so it is not shown twice.
+const planDecisions = p => (p.plan.decisions || []).filter(d => !/voice/i.test(`${d.id} ${d.question}`))
+function planStage(p) { return p.plan.selections.look_first && !p.character_preview?.approved ? 'storyboard' : 'full_video' }
+function needsCharacterCheck(p) {
+  const sel = p.plan.selections
+  const kinds = [...(p.plan.media || []).map(x => x.kind), ...(p.plan.decisions || []).map(d => d.options.find(o => o.id === sel.choices[d.id])?.tool)]
+  return paid.value && planStage(p) === 'full_video' && kinds.some(k => ['character_poses', 'talking_take', 'talking_shot', 'reference_sheet'].includes(k)) && !p.character_preview?.approved
+}
+// The price is fetched with the plan, so Approve can say it and start the build in one click.
+async function pricePlan(p) {
+  if (!paid.value || !isLivePlan(p) || !canWrite.value || active.value || approvingPlan.value || needsCharacterCheck(p)) return
+  const version = conversation.value.version, target = id.value, have = planPrice.value[p.id]
+  if (have?.version === version && (have.quote || have.loading) && have.variants === variantCount.value) return
+  planPrice.value = { ...planPrice.value, [p.id]: { version, variants: variantCount.value, loading: true } }
+  try {
+    const q = (await api.post(`${base(target)}/quotes`, { expected_version: version, variant_count: variantCount.value, build_stage: planStage(p) })).data.data
+    if (id.value === target) planPrice.value = { ...planPrice.value, [p.id]: { version, variants: variantCount.value, quote: q } }
+  } catch (e) { if (id.value === target) planPrice.value = { ...planPrice.value, [p.id]: { version, variants: variantCount.value, error: message(e) } } }
+}
+// What Approve starts. A plan with a generated person or generated shots makes still frames first (the server
+// decides this from the media), so the expensive motion is only bought for a look the user has seen.
+const storyboardFirst = p => !!(planDrafts.value[p.id]?.look_first ?? p.plan.selections.look_first) && !p.character_preview?.approved
+const startsWithCharacter = p => routedMedia(p).some(x => x.kind === 'reference_sheet')
+function nextStep(p) {
+  if (startsWithCharacter(p)) return 'Approving draws the character first. You check them, then the storyboard drawn from them, then the video: each step has its own preview and its own price, and nothing moves on until you approve it.'
+  return storyboardFirst(p)
+    ? 'Approving makes still frames of each shot' + (routedMedia(p).some(x => x.kind === 'reference_sheet') ? ' and the character' : '') + ' first. You check them, then approve the full video with motion, voice and music, priced at that point.'
+    : 'Approving makes the full video straight away.'
+}
+function approveLabel(p) {
+  if (!paid.value) return 'Approve local sample'
+  if (needsCharacterCheck(p)) return 'Approve'
+  const pr = planPrice.value[p.id]
+  if (planDirty(p)) return pr?.quote ? `Save and approve · up to ${pr.quote.credits_max.toLocaleString()} cr` : 'Save and approve'
+  if (pr?.quote) return `${startsWithCharacter(p) ? 'Approve · draw the character' : storyboardFirst(p) ? 'Approve storyboard' : 'Approve'} · up to ${pr.quote.credits_max.toLocaleString()} cr`
+  return pr?.error ? 'Approve' : 'Pricing…'
+}
+const approveBlocked = p => paid.value && !needsCharacterCheck(p) && !!planPrice.value[p.id]?.loading
+async function approvePlan(p) {
+  if (!paid.value || needsCharacterCheck(p)) { planDrawerId.value = null; return reviewPlanCost(p) }
+  if (approvingPlan.value) return
+  approvingPlan.value = true
+  try {
+    await guarded(async () => {
+      const shown = planPrice.value[p.id]?.quote
+      if (planDirty(p)) await savePlanEdits(p)
+      let q = planPrice.value[p.id]?.quote
+      const fresh = q && planPrice.value[p.id].version === conversation.value.version && planPrice.value[p.id].variants === variantCount.value && Date.parse(q.expires_at) > Date.now() + 15000
+      if (!fresh) {
+        q = (await api.post(`${base()}/quotes`, { expected_version: conversation.value.version, variant_count: variantCount.value, build_stage: planStage(p) })).data.data
+        // A price the user has not seen, or a higher one, is shown on the button first, never charged silently.
+        const raised = !shown || q.credits_max > shown.credits_max
+        planPrice.value = { ...planPrice.value, [p.id]: { version: conversation.value.version, variants: variantCount.value, quote: q, raised: raised && !!shown } }
+        if (raised) return
+      }
+      await api.post(`${base()}/runs`, { quote_id: q.id, approved: true, provider_approved: true, idempotency_key: crypto.randomUUID() })
+      planDrawerId.value = null; quote.value = null; await refresh(); await loadHistory()
+    })
+  } finally { approvingPlan.value = false }
+}
+watch(() => [currentPlan.value?.id, conversation.value?.version, !!active.value, variantCount.value], () => { if (currentPlan.value) pricePlan(currentPlan.value) }, { immediate: true })
+// Durable steps after the plan, for a plan with a generated person: the character, then the storyboard drawn from
+// it, each with its own card, preview and approval. Approving one starts the next, at the price on its button.
+const stepDrawer = ref(null), stepBusy = ref(false), stepPrice = ref({}), looksDraft = ref({}), framesDraft = ref({}), frameAt = ref(0), subjectAt = ref(0)
+// A redraw runs behind the drawer: the changed people or places show "Redrawing" in place and swap when ready.
+const redrawing = ref(null)
+const isRedrawing = (p, name) => !!active.value && redrawing.value?.planId === p.id && redrawing.value.names.includes(name)
+watch(() => !!active.value, on => { if (!on && redrawing.value) { redrawing.value = null; if (stepDrawer.value?.step === 'character') { const p = stepPlan.value; if (p) looksDraft.value = Object.fromEntries((characterStep(p)?.subjects || []).map(x => [x.name, characterStep(p).looks?.[x.name] ?? x.looks])) } } })
+const stepPlan = computed(() => stepDrawer.value ? plans.value.find(p => p.id === stepDrawer.value.planId) || null : null)
+const characterStep = p => p.character_preview?.kind === 'reference_sheet' ? p.character_preview : null
+const storyboardStep = p => characterStep(p)?.approved ? p.storyboard_preview || null : null
+const stepEditable = p => isLivePlan(p) && !p.built && canWrite.value && !active.value
+function openStep(p, step) {
+  stepDrawer.value = { planId: p.id, step }
+  if (step === 'character') subjectAt.value = 0
+  if (step === 'character') looksDraft.value = Object.fromEntries((characterStep(p)?.subjects || []).map(x => [x.name, characterStep(p).looks?.[x.name] ?? x.looks]))
+  if (step === 'storyboard') { framesDraft.value = { ...(storyboardStep(p)?.panel_notes || {}) }; frameAt.value = 0 }
+}
+function subjectChanged(p, name) { const c = characterStep(p), x = c?.subjects.find(y => y.name === name); return !!x && (looksDraft.value[name] ?? '').trim() !== (c.looks?.[name] ?? x.looks).trim() }
+function looksChanged(p) { return (characterStep(p)?.subjects || []).filter(x => subjectChanged(p, x.name)).length }
+function framesChanged(p) { const saved = storyboardStep(p)?.panel_notes || {}; return Object.keys({ ...saved, ...framesDraft.value }).filter(k => (framesDraft.value[k] || '').trim() !== (saved[k] || '').trim()).length }
+const sheetCredits = p => routedMedia(p).find(x => x.kind === 'reference_sheet')?.credits || 35 * (characterStep(p)?.subjects.length || 1)
+function frameShot(p, k) { const shot = routedMedia(p).filter(x => x.kind === 'generated_shot')[k]; return shot ? shot.description : '' }
+function frameIssue(p, k) { const c = (storyboardStep(p)?.panel_checks?.panels || []).find(x => x.panel === 'Panel ' + (k + 1)); return c && !c.ok ? c.issue : '' }
+// The next step's price, before approving: a preview quote that assumes this step's approval.
+const stepKey = (p, step) => p.id + ':' + step
+function stepAssume(p, step) {
+  const a = { character_approval: characterStep(p)?.token }
+  if (step === 'storyboard') a.storyboard_approval = storyboardStep(p)?.token
+  return a
+}
+async function priceStep(p, step) {
+  if (!paid.value || !stepEditable(p) || stepBusy.value) return
+  const version = conversation.value.version, target = id.value, key = stepKey(p, step), have = stepPrice.value[key]
+  if (have?.version === version && (have.quote || have.loading)) return
+  stepPrice.value = { ...stepPrice.value, [key]: { version, loading: true } }
+  try {
+    const q = (await api.post(`${base(target)}/quotes`, { expected_version: version, variant_count: step === 'storyboard' ? variantCount.value : 1, assume: stepAssume(p, step) })).data.data
+    if (id.value === target) stepPrice.value = { ...stepPrice.value, [key]: { version, quote: q } }
+  } catch (e) { if (id.value === target) stepPrice.value = { ...stepPrice.value, [key]: { version, error: message(e) } } }
+}
+const stepPriceLoading = (p, step) => !!stepPrice.value[stepKey(p, step)]?.loading
+function stepPriceText(p, step) { const q = stepPrice.value[stepKey(p, step)]?.quote; return !q ? '' : q.credits_max ? `Next: up to ${q.credits_max.toLocaleString()} cr` : 'Next step is already paid for' }
+function stepApproveLabel(p, step) {
+  const q = stepPrice.value[stepKey(p, step)]?.quote, verb = step === 'character' ? 'Approve' : 'Approve · make video'
+  if (!paid.value) return verb
+  if (q && !q.credits_max) return verb
+  return q ? `${verb} · up to ${q.credits_max.toLocaleString()} cr` : stepPrice.value[stepKey(p, step)]?.error ? verb : 'Pricing…'
+}
+async function approveStepNow(p, step) {
+  const token = step === 'character' ? characterStep(p)?.token : storyboardStep(p)?.token
+  if (!token || stepBusy.value) return
+  stepBusy.value = true
+  try {
+    await guarded(async () => {
+      const shown = stepPrice.value[stepKey(p, step)]?.quote
+      if (!shown) { await priceStep(p, step); return }
+      const r = (await api.post(`${base()}/plans/${p.id}/approve-step`, { step, token, expected_version: conversation.value.version, max_credits: shown.credits_max, idempotency_key: crypto.randomUUID(), variant_count: step === 'storyboard' ? variantCount.value : 1 })).data.data
+      // A higher price than the one shown is shown, never charged: the approval is kept and the button updates.
+      if (r.needs_confirm) { stepPrice.value = { ...stepPrice.value, [stepKey(p, step)]: { version: conversation.value.version + 1, quote: { credits_max: r.credits_max } } }; await refresh(); return }
+      stepDrawer.value = null; await refresh(); await loadHistory()
+    })
+  } finally { stepBusy.value = false }
+}
+// A redraw is the same step again with the user's change, started at once at its price.
+async function startQuoted(expectMax) {
+  const q = (await api.post(`${base()}/quotes`, { expected_version: conversation.value.version })).data.data
+  if (q.credits_max > expectMax) throw Error(`This redraw now costs up to ${q.credits_max} credits. Try again to go ahead.`)
+  await api.post(`${base()}/runs`, { quote_id: q.id, approved: true, provider_approved: true, idempotency_key: crypto.randomUUID() })
+}
+async function redrawCharacter(p) {
+  if (stepBusy.value) return
+  stepBusy.value = true
+  try {
+    await guarded(async () => {
+      const c = characterStep(p), looks = Object.fromEntries(c.subjects.map(x => [x.name, (looksDraft.value[x.name] || '').trim()]).filter(([n, v]) => v && v !== x0(c, n)))
+      await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, character_looks: looks })
+      const names = c.subjects.filter(x => subjectChanged(p, x.name)).map(x => x.name)
+      await refresh(); await startQuoted(Math.max(sheetCredits(p), 35)); redrawing.value = { planId: p.id, names }; await refresh(); await loadHistory()
+    })
+  } finally { stepBusy.value = false }
+}
+const x0 = (c, name) => (c.subjects.find(x => x.name === name)?.looks || '').trim()
+async function redrawFrames(p) {
+  if (stepBusy.value) return
+  stepBusy.value = true
+  try {
+    await guarded(async () => {
+      const notes = Object.fromEntries(Object.entries(framesDraft.value).map(([k, v]) => [k, (v || '').trim()]).filter(([, v]) => v))
+      const n = framesChanged(p)
+      await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, panel_notes: notes })
+      await refresh(); await startQuoted(Math.max(n, 1) * 35); stepDrawer.value = null; await refresh(); await loadHistory()
+    })
+  } finally { stepBusy.value = false }
+}
+watch(() => [currentPlan.value?.id, conversation.value?.version, !!active.value, variantCount.value], () => {
+  const p = currentPlan.value; if (!p) return
+  const c = characterStep(p), b = storyboardStep(p)
+  if (c && !c.approved) priceStep(p, 'character')
+  else if (b && !b.approved) priceStep(p, 'storyboard')
+}, { immediate: true })
+// The finished version (create-ui chat mockup): one bold line and a card in the chat; the agent's full account, the
+// checks and the less common actions live in the "This version" drawer.
+const versionOpen = ref(false)
+const playerShape = computed(() => ({ '16:9': 'landscape', '1:1': 'square', '4:5': 'feed' })[settingsNow.value.aspect_ratio] || 'portrait')
+const versionPills = computed(() => {
+  const st = settingsNow.value, out = []
+  if (st.aspect_ratio && !imageOutput.value) out.push(st.aspect_ratio)
+  if (st.duration_seconds && !imageOutput.value && !outputMeta.value.look) out.push(st.duration_seconds + ' s')
+  const run = (data.value?.runs || []).find(r => r.id === currentRevision.value?.run_id)
+  if (run?.spent_credits) out.push(Number(run.spent_credits).toLocaleString() + ' cr')
+  return out
+})
+function summarySections(text) {
+  const { lead, rest } = summaryParts(text)
+  if (!rest) return { lead, groups: [] }
+  // "Things to know:", "**Known gap:**" and the like start a group when a list follows them.
+  const parts = (' ' + rest).split(/\s(?:\*\*)?([A-Z][A-Za-z' ]{2,40}):(?:\*\*)?\s+(?=-\s|\d+\.\s|\*\*)/)
+  const groups = []
+  if (parts[0].trim()) groups.push({ title: "What's in it", html: richText(parts[0]) })
+  for (let i = 1; i < parts.length; i += 2) groups.push({ title: parts[i], html: richText(parts[i + 1] || '') })
+  return { lead, groups }
+}
+// Share the finished video the way the editor and UGC results do: copy a public link, schedule a post, or send it
+// for approval. Each saves the version to Videos first when it is not saved yet (one click, no extra step).
+const sharing = ref(''), shareNote = ref(''), approvalOpen = ref(false), approvalSending = ref(false), approvalResult = ref(''), approvalError = ref('')
+const approvalForm = ref({ email: '', name: '', message: '' })
+let shareNoteTimer
+function noteShare(text) { shareNote.value = text; clearTimeout(shareNoteTimer); shareNoteTimer = setTimeout(() => { shareNote.value = '' }, 6000) }
+async function ensureSaved() {
+  const saved = (await api.post(`${base()}/revisions/${currentRevision.value.id}/save-output`, { expected_version: conversation.value.version })).data.data
+  await refresh()
+  return saved
+}
+async function copyShare() {
+  // A version without your latest changes is confirmed first, as before.
+  if (currentRevision.value?.has_newer_changes) return requestDelivery('share')
+  sharing.value = 'share'
+  try {
+    await guarded(async () => {
+      await ensureSaved()
+      const url = (await api.post(`${base()}/revisions/${currentRevision.value.id}/delivery`, { action: 'share', expected_version: conversation.value.version, confirmed: true })).data.data.url
+      await refresh()
+      try { await navigator.clipboard.writeText(url); noteShare('Link copied. Anyone with it can watch this version.') } catch { noteShare(url) }
+    })
+  } finally { sharing.value = '' }
+}
+async function scheduleNow() {
+  if (currentRevision.value?.has_newer_changes) return requestDelivery('schedule')
+  sharing.value = 'schedule'
+  try {
+    await guarded(async () => {
+      await ensureSaved()
+      scheduleTarget.value = { action: 'schedule', revision: currentRevision.value, version: conversation.value.version, allowOlder: false }
+    })
+  } finally { sharing.value = '' }
+}
+async function sendApproval() {
+  if (approvalSending.value || !approvalForm.value.email.trim()) return
+  approvalSending.value = true; approvalError.value = ''
+  try {
+    const saved = await ensureSaved()
+    const res = await api.post('/approvals', { project_id: saved.project_id, export_job_id: saved.export_job_id ?? null, reviewer_email: approvalForm.value.email.trim(),
+      reviewer_name: approvalForm.value.name.trim() || null, comment: approvalForm.value.message.trim() || null, expires_in_days: 7 })
+    approvalResult.value = res.data?.data?.public_url || 'sent'
+  } catch (e) { approvalError.value = message(e) }
+  finally { approvalSending.value = false }
+}
+// A failed step is retried in one click (create-ui chat mockup): the approval already given is used again, nothing
+// is quoted or consented to twice, and the retry resumes from what the failed run finished.
+const STEP_NAMES = { character: 'The character', storyboard: 'The storyboard', full_video: 'The video' }
+const retrying = ref(false), dismissedFailures = ref([])
+const lastFailure = computed(() => {
+  const runs = data.value?.runs || [], last = runs[runs.length - 1]
+  return last && last.status === 'failed' && !dismissedFailures.value.includes(last.id) ? last : null
+})
+const olderAttempts = computed(() => (data.value?.runs || []).filter(r => ['failed', 'cancelled', 'needs_input'].includes(r.status) && r.id !== lastFailure.value?.id))
+async function retryRun(run) {
+  if (retrying.value) return
+  retrying.value = true
+  try { await guarded(async () => { await api.post(`${base()}/runs/${run.id}/retry`, { idempotency_key: crypto.randomUUID() }); await refresh(); await loadHistory() }) }
+  finally { retrying.value = false }
+}
+// Which files the plan puts in the video and which it follows; switching one re-plans (planning is free).
+const planFiles = computed(() => (data.value?.attachments || []).filter(a => ['source', 'reference'].includes(a.purpose)))
+async function switchRole(f) {
+  await guarded(async () => {
+    await api.post(`${base()}/attachments`, { asset_id: f.asset_id, purpose: f.purpose === 'source' ? 'reference' : 'source', expected_version: conversation.value.version })
+    await refresh()
+  })
+  // Re-planned with questions allowed: a file now followed may need "how closely?".
+  if (!error.value) await makePlan()
+}
+// A file the brief does not make clear is asked about with two answers.
+const ROLE_ANSWERS = [
+  { word: 'Use it in my video', label: 'Use it in my video', detail: 'It appears in the video, as your own footage or image.' },
+  { word: 'Make mine like it', label: 'Make mine like it', detail: 'Follow its format, look and pacing; nothing from it is shown.' },
+]
+const isRoleQuestion = m => /^Should I put ".*" in your video, or make your video like it\?$/.test(m.content || '')
+onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
 <template>
@@ -700,7 +1080,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
     <AppSidebar :user="auth.user" active-page="create" @logout="auth.logout()" />
     <main class="agent-main">
       <header class="agent-header">
-        <div><div class="crumb">Create</div><h1>{{ conversation?.title || 'New creation' }}</h1></div>
+        <div class="agent-header__title"><div class="crumb">Create</div><h1 :title="conversation?.title || 'New creation'">{{ conversation?.title || 'New creation' }}</h1></div>
         <span v-if="headStatus" :class="['status', `status--${headStatus.cls}`]">{{ headStatus.text }}</span>
         <div class="header-actions">
           <span v-if="balance !== null" class="credits" :title="balanceTitle">{{ balance.toLocaleString() }} cr</span>
@@ -724,23 +1104,15 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             <div v-if="conversation?.archived_at" class="icard"><div class="icard__body"><p>This conversation is archived. Its briefs and versions are preserved.</p></div><div class="icard__foot"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="updateConversation(false)">Restore conversation</button></div></div>
 
             <template v-for="m in timeline" :key="m.id">
-              <div v-if="m.role === 'user'" class="user-message message">
-                <div v-if="messageAttachments[m.id]?.length" class="attachments">
-                  <span v-for="a in messageAttachments[m.id]" :key="a.asset_id" class="chip">
-                    <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="chip__thumb" />
-                    <span v-else :class="['chip__thumb', a.asset_type === 'video' ? 'thumb--video' : a.asset_type === 'audio' ? 'thumb--audio' : 'thumb--image']" />
-                    <span><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }}</small></span>
-                    <span :class="['chip__role', a.purpose === 'source' ? '' : 'chip__role--ref']">{{ a.purpose === 'source' ? 'REUSE' : 'REFERENCE' }}</span>
-                  </span>
-                </div>
+              <div v-if="m.role === 'user'" :class="['user-message', 'message', { 'has-refs': messageAttachments[m.id]?.length }]">
+                <ReferencePills v-if="messageAttachments[m.id]?.length" :assets="messageAttachments[m.id]" class="message-refs" />
                 <p>{{ m.content }}</p>
               </div>
               <div v-else-if="m.eventType === 'message'" class="assistant-message message">
                 <span class="speaker">WyvStudio <time>{{ time(m.created_at) }}</time></span>
                 <template v-if="planByMessage[m.id]">
-                  <details v-if="planByMessage[m.id].status !== 'proposed'" class="run-card"><summary>Earlier plan · {{ planByMessage[m.id].plan.summary }}</summary></details>
-                  <div v-else :class="['icard', planByMessage[m.id].stale ? '' : 'icard--warn']">
-                    <div class="icard__body">
+                  <TurnActivity v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.activity" :activity="planByMessage[m.id].plan.activity" />
+                  <div v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.free_edit && !planByMessage[m.id].stale" class="icard icard--warn"><div class="icard__body">
                       <p class="icard__summary">{{ planByMessage[m.id].plan.summary }}</p>
                       <div v-if="planByMessage[m.id].plan.free_edit" class="free-plan" role="group" aria-label="Free change">
                         <b>This is a free change</b>
@@ -748,153 +1120,79 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                         <ul><li v-for="(v, k) in planByMessage[m.id].plan.free_edit" :key="k"><span class="muted">{{ (editableFields.find(f => f.id === k) || {}).label || k }}:</span> <span v-if="String(v).startsWith('#')" class="free-plan__swatch" :style="{ background: v }" /> {{ v }}</li></ul>
                         <button type="button" class="btn btn--primary btn--sm" :disabled="locked || !canWrite" @click="applyPlanFreeEdit(planByMessage[m.id].plan.free_edit)">Apply for free</button>
                       </div>
-                      <p v-if="planByMessage[m.id].stale" class="notice">Your brief changed after this plan. Plan again to include it.</p>
-                      <template v-else>
-                        <div v-if="planByMessage[m.id].plan.callouts.length || draftFor(planByMessage[m.id]).callouts.length" class="claims">
-                          <span class="claims__label">ON-SCREEN COPY · EDIT BEFORE APPROVING</span>
-                          <div v-for="(t, i) in draftFor(planByMessage[m.id]).callouts" :key="i" class="claim"><span class="claim__n">{{ i + 1 }}</span><span v-if="(planByMessage[m.id].plan.new_wording || []).includes(t)" class="tier" title="Not in your brief, facts or page. Approving the plan approves this wording.">new wording</span><input v-model="draftFor(planByMessage[m.id]).callouts[i]" class="input" maxlength="120" :aria-label="`On-screen line ${i + 1}`" :disabled="!canWrite" /><button type="button" class="upload__x" :aria-label="`Remove line ${i + 1}`" :disabled="!canWrite" @click="draftFor(planByMessage[m.id]).callouts.splice(i, 1)">×</button></div>
-                          <button v-if="canWrite && draftFor(planByMessage[m.id]).callouts.length < 6" type="button" class="quiet quiet--sm" @click="draftFor(planByMessage[m.id]).callouts.push('')">+ Add a line</button>
-                          <span class="claims__note">Only the words here appear on screen.{{ planByMessage[m.id].plan.left_out ? ' ' + planByMessage[m.id].plan.left_out : '' }}</span>
-                        </div>
-                        <p v-else-if="planByMessage[m.id].plan.left_out" class="muted plan-note">{{ planByMessage[m.id].plan.left_out }}</p>
-                        <div v-if="(planByMessage[m.id].plan.narration || []).length || (draftFor(planByMessage[m.id]).narration || []).length" class="claims">
-                          <span class="claims__label">VOICEOVER SCRIPT · EDIT BEFORE APPROVING</span>
-                          <div v-for="(t, i) in draftFor(planByMessage[m.id]).narration" :key="'n' + i" class="claim"><span class="claim__n">{{ i + 1 }}</span><span v-if="(planByMessage[m.id].plan.new_wording || []).includes(t)" class="tier" title="Not in your brief, facts or page. Approving the plan approves this wording.">new wording</span><input v-model="draftFor(planByMessage[m.id]).narration[i]" class="input" maxlength="160" :aria-label="`Spoken line ${i + 1}`" :disabled="!canWrite" /><button type="button" class="upload__x" :aria-label="`Remove spoken line ${i + 1}`" :disabled="!canWrite" @click="draftFor(planByMessage[m.id]).narration.splice(i, 1)">×</button></div>
-                          <button v-if="canWrite && draftFor(planByMessage[m.id]).narration.length < 8" type="button" class="quiet quiet--sm" @click="draftFor(planByMessage[m.id]).narration.push('')">+ Add a spoken line</button>
-                          <label class="voice-pick"><span class="muted">Voice</span>
-                            <select v-model="draftFor(planByMessage[m.id]).voice" :disabled="!canWrite" aria-label="Voice for the script">
-                              <option v-for="v in voiceOptions(draftFor(planByMessage[m.id]).voice)" :key="v.key" :value="v.key">{{ v.label }}</option>
-                            </select>
-                          </label>
-                          <span class="claims__note">This is the approved script. Talking presenters generate their own voice unless you explicitly select a cloned voice; catalogue voice selection applies to separate narration. <button type="button" class="quiet quiet--sm" @click="openPronunciations">Pronunciations</button></span>
-                        </div>
-                        <p v-if="planByMessage[m.id].plan.length_note" class="muted">{{ planByMessage[m.id].plan.length_note }}</p>
-                      <div v-if="planByMessage[m.id].plan.creative_intent?.reason" class="checks">
-                          <b>Creative approach</b>
-                          <p>{{ planByMessage[m.id].plan.creative_intent.reason }}</p>
-                          <small v-if="planByMessage[m.id].plan.creative_intent.edit_scope === 'timing_only'" class="muted">Adjusting timing while keeping your approved script, voice and on-screen copy.</small>
-                        </div>
-                        <div v-if="planByMessage[m.id].plan.character_performance?.length" class="checks">
-                          <b>Character actions</b>
-                          <p class="muted">These movements must be present in the full video. A storyboard only previews the look.</p>
-                          <div v-for="action in planByMessage[m.id].plan.character_performance" :key="action.id">
-                            <p>{{ action.action }} · {{ action.start ?? '?' }}–{{ action.end ?? '?' }}s</p>
-                            <label v-if="planDrafts[planByMessage[m.id].id]" class="voice-pick">
-                              <input v-model="planDrafts[planByMessage[m.id].id].omitted_performance" type="checkbox" :value="action.id" :disabled="!canWrite || locked" /> Leave this action out
-                            </label>
+                  </div></div>
+                  <template v-else>
+                    <p v-if="planByMessage[m.id].status === 'proposed'" class="plan-lead">{{ planByMessage[m.id].plan.summary }}</p>
+                    <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.creative_intent?.reason" class="plan-approach" label="Creative approach" :text="planByMessage[m.id].plan.creative_intent.reason" />
+                    <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
+                    <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
+                    <div :class="['plan-card', { 'is-old': !isLivePlan(planByMessage[m.id]) }]">
+                      <div class="plan-pills">
+                        <span class="plan-title">Plan</span>
+                        <span v-for="t in planPills(planByMessage[m.id])" :key="t" class="pill">{{ t }}</span>
+                        <span v-if="planEdited(planByMessage[m.id])" class="pill is-edited">Edited</span>
+                      </div>
+                      <div v-if="planFiles.length && planByMessage[m.id].status === 'proposed'" class="plan-files">
+                        <span v-for="f in planFiles" :key="f.asset_id" class="plan-file" :title="f.title">
+                          <b>{{ f.purpose === 'source' ? 'Using' : 'Following' }}</b> {{ f.title }}
+                          <button v-if="planEditable(planByMessage[m.id])" type="button" class="plan-file__switch" :disabled="locked || planning" @click="switchRole(f)">{{ f.purpose === 'source' ? 'Follow it instead' : 'Use it instead' }}</button>
+                        </span>
+                      </div>
+                      <div class="plan-actions">
+                        <button type="button" class="btn btn--ghost btn--sm" @click="openPlan(planByMessage[m.id])">Preview</button>
+                        <button v-if="planEditable(planByMessage[m.id]) && !characterStep(planByMessage[m.id])" type="button" class="btn btn--primary btn--sm" :disabled="locked || approvingPlan || approveBlocked(planByMessage[m.id])" @click="approvePlan(planByMessage[m.id])">{{ approvingPlan ? 'Starting…' : approveLabel(planByMessage[m.id]) }}</button>
+                        <span v-if="planStatus(planByMessage[m.id])" class="plan-status">{{ planStatus(planByMessage[m.id]) }}</span>
+                      </div>
+                    </div>
+                    <PlanNote v-if="planEditable(planByMessage[m.id])" :label="startsWithCharacter(planByMessage[m.id]) ? 'Character, then storyboard, then the video' : storyboardFirst(planByMessage[m.id]) ? 'Storyboard first, then the video' : 'What happens next'" :text="nextStep(planByMessage[m.id])" />
+                    <p v-if="planEditable(planByMessage[m.id]) && planPrice[planByMessage[m.id].id]?.raised" class="notice">Your changes raised the price to up to {{ planPrice[planByMessage[m.id].id].quote.credits_max.toLocaleString() }} credits. Approve again to go ahead.</p>
+                    <p v-if="planEditable(planByMessage[m.id]) && planPrice[planByMessage[m.id].id]?.error" class="muted plan-note">Couldn’t price this plan: {{ planPrice[planByMessage[m.id].id].error }}</p>
+                    <template v-if="planByMessage[m.id].status === 'proposed' && !planByMessage[m.id].stale">
+                      <div v-if="characterStep(planByMessage[m.id])" class="step">
+                        <p class="plan-lead">{{ characterStep(planByMessage[m.id]).approved ? 'The creator is approved. They stay the same in every shot.' : 'Here’s the creator for your video. Check them before the storyboard: they stay the same in every shot.' }}</p>
+                        <div class="plan-card">
+                          <div class="step-thumbs"><img v-for="img in characterStep(planByMessage[m.id]).images.slice(0, 4)" :key="img.asset_id" :src="img.preview_url" :alt="img.label || img.name" /></div>
+                          <div class="plan-pills">
+                            <span class="plan-title">Character</span>
+                            <span v-for="n in characterStep(planByMessage[m.id]).subjects.map(x => x.name)" :key="n" class="pill">{{ n }}</span>
+                            <span v-if="Object.keys(characterStep(planByMessage[m.id]).looks || {}).length" class="pill is-edited">Edited</span>
                           </div>
-                          <p v-for="issue in planByMessage[m.id].performance_issues || []" :key="issue.id" class="notice">{{ issue.action }}: {{ issue.message }}</p>
-                          <small class="muted">Save changes to update these checks. Replan to remove any media you no longer need.</small>
-                        </div>
-                        <div v-if="planByMessage[m.id].plan.requirements?.length" class="checks"><b>What this creation needs to include</b><ul><li v-for="r in planByMessage[m.id].plan.requirements" :key="r.id || r.source_quote">{{ r.text }} <small>· {{ r.provenance === 'reference' ? 'Interpreted from your reference' : 'From your brief' }}<span v-if="r.order_unresolved || r.evidence_status === 'unverified'"> · Needs clarification</span></small></li></ul></div>
-                        <details v-if="planByMessage[m.id].plan.requirement_history?.length" class="checks"><summary>Changes to requirements</summary><ul><li v-for="(r, i) in planByMessage[m.id].plan.requirement_history" :key="i">{{ r.action === 'remove' ? 'Removed' : 'Replaced' }}: {{ r.previous_text }} · Your instruction: “{{ r.source_quote }}”</li></ul></details>
-                        <div v-if="planByMessage[m.id].plan.direction_notes?.length" class="checks"><b>Suggestions and open questions</b><ul><li v-for="(r, i) in planByMessage[m.id].plan.direction_notes" :key="i">{{ r.provenance === 'unknown' ? 'Unresolved' : 'Suggested' }}: {{ r.text }}</li></ul></div>
-                        <p v-if="planByMessage[m.id].plan.character_style" class="muted">Character appearance: {{ planByMessage[m.id].plan.character_style }}</p>
-                        <label v-if="planByMessage[m.id].plan.style" class="voice-pick style-line"><span class="muted">Style</span>
-                          <select :value="planDrafts[planByMessage[m.id].id]?.style ?? styleKey(planByMessage[m.id].plan.selections.style)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" aria-label="Style this video starts from" @change="planDrafts[planByMessage[m.id].id].style = $event.target.value">
-                            <option v-for="o in styleOptions(planByMessage[m.id])" :key="o.key" :value="o.key">{{ o.label }}</option>
-                          </select>
-                          <span v-if="planByMessage[m.id].plan.style.why" class="muted">{{ planByMessage[m.id].plan.style.why }}</span>
-                        </label>
-                        <div v-if="planByMessage[m.id].plan.colour_treatment" class="claims">
-                          <b>Colour direction</b>
-                          <span class="muted">{{ planByMessage[m.id].plan.colour_treatment.source_note || 'Proposed palette' }}</span>
-                          <div v-for="(colour, role) in planByMessage[m.id].plan.colour_treatment.roles" :key="role" class="voice-pick">
-                            <span aria-hidden="true" :style="{ backgroundColor: colour.hex, width: '1rem', height: '1rem', borderRadius: '50%', border: '1px solid currentColor', display: 'inline-block' }"></span>
-                            <span>{{ role }} · {{ colour.hex }}{{ colour.locked ? ' · Keep fixed' : '' }}</span>
+                          <div class="plan-actions">
+                            <button type="button" class="btn btn--ghost btn--sm" @click="openStep(planByMessage[m.id], 'character')">Preview</button>
+                            <button v-if="!characterStep(planByMessage[m.id]).approved && canWrite && !active" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(planByMessage[m.id], 'character')" @click="approveStepNow(planByMessage[m.id], 'character')">{{ stepBusy ? 'Starting…' : stepApproveLabel(planByMessage[m.id], 'character') }}</button>
+                            <span v-if="characterStep(planByMessage[m.id]).approved" class="plan-status">Approved · used in every shot</span>
                           </div>
-                          <span>{{ planByMessage[m.id].plan.colour_treatment.usage }}</span>
-                          <small class="muted">To change this direction, describe the colours you want and plan again.</small>
-                        </div>
-                        <ul v-if="(styleNotes[planStyleKey(planByMessage[m.id])] || []).length" class="style-notes"><li v-for="(n, i) in styleNotes[planStyleKey(planByMessage[m.id])]" :key="i">{{ n }}</li></ul>
-                        <label v-if="(planByMessage[m.id].plan.style || planByMessage[m.id].plan.mascot3d) && !planByMessage[m.id].plan.free_edit && conversation" class="voice-pick look-first"><input type="checkbox" :checked="!!(planDrafts[planByMessage[m.id].id]?.look_first ?? planByMessage[m.id].plan.selections.look_first)" :disabled="!canWrite || !planDrafts[planByMessage[m.id].id]" @change="planDrafts[planByMessage[m.id].id].look_first = $event.target.checked" /> <span>Storyboard only: silent still frames for approval before the full video <small class="muted">(audio and motion are priced separately when you build the full video)</small></span></label>
-                        <div v-for="dec in planByMessage[m.id].plan.decisions" :key="dec.id" class="decision">
-                          <b>{{ dec.question }}</b>
-                          <label v-for="o in dec.options" :key="o.id" class="choice"><input v-model="draftFor(planByMessage[m.id]).choices[dec.id]" type="radio" :name="`${planByMessage[m.id].id}-${dec.id}`" :value="o.id" :disabled="!canWrite" /><div><b>{{ o.label }} <span :class="['tier', o.kind === 'media' ? 'tier--media' : 'tier--free']">{{ o.kind === 'media' ? `~${o.credits} CREDITS` : 'INCLUDED' }}</span></b><p>{{ o.detail }}</p></div></label>
-                        </div>
-                        <div v-if="planByMessage[m.id].plan.kept_as_is.length" class="decision">
-                          <b>Kept as-is</b>
-                          <label v-for="k in planByMessage[m.id].plan.kept_as_is" :key="k" class="keep"><input type="checkbox" :checked="draftFor(planByMessage[m.id]).kept.includes(k)" :disabled="!canWrite" @change="toggleKept(planByMessage[m.id], k)" /> {{ k }}</label>
-                        </div>
-                      </template>
-                    </div>
-                    <div v-if="planByMessage[m.id].plan.mascot3d && !planByMessage[m.id].stale" class="checks character-approval-inline"><b>Your 3D mascot · check it before you approve</b><MascotPreview :spec="planByMessage[m.id].plan.mascot3d.spec" /><p class="muted">{{ mascotLine(planByMessage[m.id].plan.mascot3d) }}</p><p class="muted">Made from parts, no image generation: it talks with the narration, blinks, winks and turns. Check it from every angle here before you approve; this is the character in your video.</p><p v-if="planByMessage[m.id].plan.mascot3d.missing" class="muted">Not possible yet: {{ planByMessage[m.id].plan.mascot3d.missing }}</p></div>
-                    <div v-if="Object.values(agreementShown(planByMessage[m.id])).some(l => l?.length)" class="agreement" aria-label="What stays and what changes">
-                      <div class="agreement__head"><b>What stays and what changes</b><button v-if="canWrite && !planByMessage[m.id].stale" type="button" class="quiet quiet--sm" @click="agreementEditing[planByMessage[m.id].id] = !agreementEditing[planByMessage[m.id].id]">{{ agreementEditing[planByMessage[m.id].id] ? 'Done' : 'Edit' }}</button></div>
-                      <div class="agreement__cols">
-                        <div v-for="[key, label] in AGREEMENT" v-show="agreementEditing[planByMessage[m.id].id] || (agreementShown(planByMessage[m.id])[key] || []).length" :key="key" class="agreement__col">
-                          <span class="legend">{{ label }}</span>
-                          <textarea v-if="agreementEditing[planByMessage[m.id].id] && planDrafts[planByMessage[m.id].id]" v-model="planDrafts[planByMessage[m.id].id].agreement[key]" class="input" rows="3" :aria-label="label + ', one per line'" />
-                          <ul v-else><li v-for="item in agreementShown(planByMessage[m.id])[key]" :key="item">{{ item }}</li></ul>
                         </div>
                       </div>
-                    </div>
-                    <details v-if="!planByMessage[m.id].stale" class="more">
-                      <summary>View details</summary>
-                      <div v-if="planByMessage[m.id].plan.props3d?.length" class="checks"><b>3D objects</b><p v-for="o in planByMessage[m.id].plan.props3d" :key="o.name" class="muted">{{ o.name }}<template v-if="o.looks">: {{ o.looks }}</template><template v-if="o.spin"> · spins as it lands</template></p><p class="muted">Modelled for this video in the same finish, no image generation.</p></div>
-                      <div v-if="planByMessage[m.id].plan.reference_decisions?.length || planByMessage[m.id].plan.reference_unaccounted?.length" class="checks">
-                        <b>Moments from your reference</b>
-                        <p v-if="planByMessage[m.id].plan.video_type" class="muted plan-kind">{{ VIDEO_TYPE_LABEL[planByMessage[m.id].plan.video_type] || '' }} · {{ planByMessage[m.id].plan.reference_match ? (planByMessage[m.id].plan.reference_match === 'exact' ? 'copying a reference exactly' : planByMessage[m.id].plan.reference_match === 'similar' ? 'similar to a reference' : 'inspired by a reference') : 'from scratch' }}<template v-if="planByMessage[m.id].plan.creative_intent?.timing_driver"> · timed by {{ TIMING_LABEL[planByMessage[m.id].plan.creative_intent.timing_driver] }}</template></p>
-                        <p v-if="planByMessage[m.id].plan.reference_match" class="muted">{{ planByMessage[m.id].plan.reference_match === 'exact' ? 'Matched exactly: every moment keeps its timing, layout, transition and mascot placement; your brand, voice and content go in each slot. Change this in Details.' : planByMessage[m.id].plan.reference_match === 'similar' ? 'Similar: its format, look and pacing, your own story and shots. Change this in Details.' : 'Inspired by it: the idea, your own execution. Change this in Details.' }}</p>
-                        <p class="muted">{{ referenceTally(planByMessage[m.id].plan) }}</p>
-                        <ul><li v-for="d in planByMessage[m.id].plan.reference_decisions" :key="d.moment"><b>{{ ({ keep: 'Keep', replace: 'Change', drop: 'Leave out' })[d.decision] }}</b><template v-if="d.beat"> · {{ d.beat }}</template> — {{ d.how }}<template v-if="d.carried_by"> · its job: {{ d.carried_by }}</template></li></ul>
-                        <template v-if="planByMessage[m.id].plan.reference_systems?.length"><p class="muted">Repeated elements, built the same way each time:</p>
-                        <ul><li v-for="x in planByMessage[m.id].plan.reference_systems" :key="x.system"><b>{{ x.name || 'Element' }}</b><template v-if="x.decision === 'drop'"> · left out</template><template v-else-if="x.beats?.length"> · {{ x.beats.join(', ') }}</template> — {{ x.spec }}</li></ul></template>
-                        <p v-if="planByMessage[m.id].plan.reference_unaccounted?.length" class="muted">{{ planByMessage[m.id].plan.reference_unaccounted.length }} more {{ planByMessage[m.id].plan.reference_unaccounted.length === 1 ? 'moment was' : 'moments were' }} not planned yet; ask for them if they matter.</p>
-                      </div>
-                      <!-- Real things only the user has: upload one, or go without and the fallback is used. -->
-                      <div v-if="planByMessage[m.id].plan.asks?.length" class="checks">
-                        <b>Could you upload these?</b>
-                        <ul><li v-for="a in planByMessage[m.id].plan.asks" :key="a.id">{{ a.what }}<template v-if="a.beat"> · {{ a.beat }}</template> — {{ a.why }}<br><small class="muted">Without it: {{ a.fallback }}</small>
-                          <span v-if="askState(planByMessage[m.id], a) === 'open' && canWrite && !planByMessage[m.id].stale"> <label class="quiet quiet--sm">{{ askUploading === a.id ? 'Uploading…' : 'Upload' }}<input type="file" :accept="a.kind === 'recording' ? 'video/*' : 'image/*,video/*'" hidden :disabled="!!askUploading" @change="e => e.target.files[0] && answerAsk(planByMessage[m.id], a, e.target.files[0])" /></label> <button type="button" class="quiet quiet--sm" :disabled="!!askUploading" @click="skipAsk(planByMessage[m.id], a)">Go without</button></span>
-                          <small v-else-if="askState(planByMessage[m.id], a) !== 'open'" class="muted"> · {{ askState(planByMessage[m.id], a) === 'uploaded' ? 'Uploaded' : 'Going without it' }}</small>
-                        </li></ul>
-                      </div>
-                      <div v-if="planByMessage[m.id].plan.reference_observations?.length" class="checks">
-                        <b>What we’re taking from your reference</b>
-                        <div v-for="observation in planByMessage[m.id].plan.reference_observations" :key="observation.asset_id">
-                          <p v-if="observation.preserve">Keep: {{ observation.preserve }}</p>
-                          <p v-if="observation.replace">Change: {{ observation.replace }}</p>
-                          <p v-if="observation.uncertain" class="muted">To check: {{ observation.uncertain }}</p>
+                      <div v-if="storyboardStep(planByMessage[m.id])" class="step">
+                        <p class="plan-lead">{{ storyboardStep(planByMessage[m.id]).approved ? 'The storyboard is approved.' : 'The storyboard is ready. Change a frame in the preview, or approve it to make the video.' }}</p>
+                        <div class="plan-card">
+                          <div class="step-thumbs"><img v-for="img in storyboardStep(planByMessage[m.id]).images.slice(0, 5)" :key="img.asset_id" :src="img.preview_url" :alt="img.label" /></div>
+                          <div class="plan-pills">
+                            <span class="plan-title">Storyboard</span>
+                            <span class="pill">{{ storyboardStep(planByMessage[m.id]).images.length }} frames</span>
+                            <span v-if="Object.keys(storyboardStep(planByMessage[m.id]).panel_notes || {}).length" class="pill is-edited">Edited</span>
+                          </div>
+                          <div class="plan-actions">
+                            <button type="button" class="btn btn--ghost btn--sm" @click="openStep(planByMessage[m.id], 'storyboard')">Preview</button>
+                            <button v-if="!storyboardStep(planByMessage[m.id]).approved && canWrite && !active" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(planByMessage[m.id], 'storyboard')" @click="approveStepNow(planByMessage[m.id], 'storyboard')">{{ stepBusy ? 'Starting…' : stepApproveLabel(planByMessage[m.id], 'storyboard') }}</button>
+                            <span v-if="storyboardStep(planByMessage[m.id]).approved" class="plan-status">Approved · making the video</span>
+                          </div>
                         </div>
                       </div>
-                      <div class="more__body">
-                        <div class="plan-cols">
-                          <div class="plan-col"><span class="legend ok">REUSED</span><ul><li v-for="r in planByMessage[m.id].plan.reused" :key="r.asset_id">{{ r.title }} <small>{{ r.use }}</small></li><li v-if="!planByMessage[m.id].plan.reused.length" class="muted">Nothing supplied</li></ul></div>
-                          <div v-if="planByMessage[m.id].plan.scenes.length" class="plan-col plan-col--beats"><span class="legend info">BEATS</span><ul><li v-for="sc in planByMessage[m.id].plan.scenes" :key="sc.label + sc.start">{{ sc.label }} <small>{{ sc.start }}–{{ sc.end }}s</small><span v-if="sc.state_out" class="beat__state">{{ sc.state_in ? sc.state_in + ' → ' : '' }}{{ sc.state_out }}</span><span v-if="(sc.reads || []).length" class="beat__reads">{{ sc.reads.join(' · ') }}</span></li></ul></div>
-                          <div class="plan-col"><span class="legend muted">OUTPUT</span><ul><li>{{ outputSummary }}</li></ul></div>
-                        </div>
-                        <div v-if="routedMedia(planByMessage[m.id]).length" class="quote">
-                          <div v-for="md in routedMedia(planByMessage[m.id])" :key="md.kind + md.description" class="quote__line"><span>{{ md.description }}<small v-if="mediaMeta(md)" class="quote__meta">{{ mediaMeta(md) }}<template v-if="md.why"> — {{ md.why }}</template></small><small v-for="n in md.route_notes || []" :key="n" class="quote__meta">{{ n }}</small></span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
-                        </div>
-                      </div>
-                    </details>
-                    <div class="icard__foot">
-                      <template v-if="planByMessage[m.id].stale"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--primary btn--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></template>
-                      <template v-else>
-                        <div v-if="hasGenerated(planByMessage[m.id]) && canWrite" class="tier-pick" role="group" aria-label="Video quality">
-                          <span class="muted">Generated video</span>
-                          <button v-for="t in ['standard', 'premium']" :key="t" type="button" :class="['quiet', 'quiet--sm', (planByMessage[m.id].plan.selections.video_tier || 'standard') === t ? 'is-on' : '']" :disabled="locked" @click="setVideoTier(planByMessage[m.id], t)">{{ t === 'standard' ? 'Standard' : 'Premium (Veo 3.1 where it fits)' }}</button>
-                        </div>
-                        <div class="cost-line"><b>{{ optionCredits(planByMessage[m.id]) ? `+${optionCredits(planByMessage[m.id])} credits for new media` : 'Planning was free' }}</b><span>· building is priced on the next step</span></div>
-                        <label v-if="paid && optionCredits(planByMessage[m.id]) > SPEND_CONFIRM" class="spend-guard"><input v-model="spendOk[planByMessage[m.id].id]" type="checkbox" /> This plan's media costs {{ optionCredits(planByMessage[m.id]) }} credits. I want to spend that.</label>
-                        <span class="spacer" />
-                        <UiSelect v-if="paid && canWrite" v-model="variantCount" label="Results" :options="[{value:1,label:'One result'},{value:2,label:'Two variations'},{value:3,label:'Three variations'}]" />
-                        <button v-if="canWrite && planDirty(planByMessage[m.id])" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="guarded(() => savePlanEdits(planByMessage[m.id]))">Save changes</button>
-                        <button v-if="canWrite && !active && !quote && !(kind === 'image' && !paid)" type="button" class="btn btn--primary btn--sm" :disabled="locked || needsSpendOk(planByMessage[m.id])" @click="reviewPlanCost(planByMessage[m.id])">{{ paid ? 'Review cost' : 'Review local sample plan' }}</button>
-                      </template>
-                    </div>
-                  </div>
+                    </template>
+                  </template>
                 </template>
                 <p v-else>{{ m.content }}</p>
               </div>
             <div v-if="m.eventType === 'revision' && currentRevision" class="assistant-message">
               <span class="speaker">WyvStudio <time>{{ time(currentRevision.created_at) }}</time></span>
               <h3 v-if="outputMeta.look">Storyboard preview · no audio or motion</h3>
-              <p>{{ plainSummary(currentRevision.summary) }}</p>
+              <p class="result-lead"><strong>{{ summarySections(currentRevision.summary).lead }}</strong></p>
               <p v-if="currentRevision.conflict" class="notice">{{ outputMeta.variant_group ? 'An alternative variation. Inspect it, then restore it as a new version to make it current.' : 'Your brief changed while this was being made. This draft is kept; your current version did not change.' }}</p>
               <p v-if="isOldRevision" class="notice">You are viewing version {{ currentRevision.number }}. Version {{ currentNumber }} is still current. Download uses the version shown here.</p>
-              <div :class="['result', currentRevision.export_job_id || (imageOutput && currentRevision.output_asset_id) ? 'result--done' : '']">
+              <p v-if="outputMeta.final_checks?.status === 'blocked' && !outputMeta.look" class="notice">Not ready yet: this version misses something you approved. <button type="button" class="quiet quiet--sm" @click="versionOpen = true">See what</button></p>
+              <div :class="['result-card', 'result-card--' + playerShape]">
                 <div class="result__stage">
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
                   <StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
@@ -903,42 +1201,32 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <p v-if="artifactGone && !artifactLoading" class="muted">{{ artifactGone }}</p>
                   <button v-if="!media && !artifactLoading && !artifactGone" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
                 </div>
-                <div class="result__meta">
-                  <b>Version {{ currentRevision.number }}{{ outputMeta.look ? ' · storyboard' : imageOutput ? ' · image' : ' · video' }}</b>
-                  <span class="muted">{{ outputMeta.fixture === false ? (currentRevision.export_job_id ? 'Saved to Videos' : currentRevision.output_asset_id ? 'Saved to Assets' : 'Preview') : 'Local sample preview' }}</span>
-                  <span :class="['status', isOldRevision ? 'status--neutral' : 'status--ok']">{{ isOldRevision ? 'EARLIER' : 'CURRENT' }}</span>
+                <div class="result-side">
+                  <span class="result-title">{{ conversation?.title || 'Your video' }}</span>
+                  <div class="result-pills">
+                    <span class="pill">Version {{ currentRevision.number }}</span>
+                    <span v-for="t in versionPills" :key="t" class="pill">{{ t }}</span>
+                    <span :class="['pill', isOldRevision ? '' : 'pill--ok']">{{ isOldRevision ? 'Earlier' : 'Current' }}</span>
+                  </div>
+                  <div class="result-actions">
+                    <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve design & create video · review cost</button>
+                    <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
+                    <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
+                    <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
+                    <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
+                    <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
+                    <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
+                    <template v-if="!outputMeta.look && !imageOutput && media && canWrite && !conversation?.archived_at && paid">
+                      <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="copyShare">{{ sharing === 'share' ? 'Getting link…' : 'Copy share link' }}</button>
+                      <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="scheduleNow">{{ sharing === 'schedule' ? 'Saving…' : 'Schedule' }}</button>
+                      <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="approvalOpen = true; approvalResult = ''; approvalError = ''">Send for approval</button>
+                    </template>
+                    <button type="button" class="btn btn--ghost" @click="versionOpen = true">Details</button>
+                  </div>
+                  <p v-if="shareNote" class="result-hint result-share" role="status">{{ shareNote }}</p>
+                  <p v-if="!outputMeta.look && !isOldRevision && canWrite" class="result-hint">Want something different? Describe the change below, like “slower cuts” or “bigger captions”.</p>
                 </div>
-                <div v-if="delivery_checks && !outputMeta.look" class="checks" role="status" aria-label="Before you post">
-                  <b>{{ checkIssues.length ? 'Before you post' : 'Delivery checks complete' }}</b>
-                  <ul>
-                    <li v-for="(t, i) in checkIssues" :key="i" class="checks__warn">{{ t }}</li>
-                    <li v-if="delivery_checks.loudness?.status === 'levelled'">Sound level adjusted for social playback.</li>
-                    <li v-else-if="delivery_checks.loudness?.status === 'ok'">Sound level is right for social.</li>
-                    <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
-                  </ul>
-                </div>
-                <!-- Suggestions only, in plain words: users never see review scores or that a reviewer exists. -->
-                <p v-if="outputMeta.creative_review?.status === 'ready' && !outputMeta.look" class="muted" role="status">Checks passed. It's ready for your review: tell us anything you'd like changed.</p>
-                <div v-if="outputMeta.final_checks && !outputMeta.look && (finalFails.length || finalUnverified.length)" :class="['checks', outputMeta.final_checks.status === 'blocked' ? 'checks--blocked' : '']" role="status">
-                  <b>{{ outputMeta.final_checks.status === 'blocked' ? 'Not ready yet: this version misses something you approved' : 'Checked against your plan' }}</b>
-                  <ul>
-                    <li v-for="c in finalFails" :key="c.id + c.label" :class="c.blocking ? 'checks__warn' : ''">{{ checkTime(c) }}{{ c.label }}<template v-if="c.message">: {{ c.message }}</template></li>
-                    <li v-for="c in finalUnverified" :key="'u' + c.id + c.label" class="muted">Not checked automatically: {{ c.label }}<template v-if="c.message"> ({{ c.message }})</template></li>
-                  </ul>
-                  <p v-if="outputMeta.final_checks.status === 'blocked'" class="muted">Use “Keep improving” to fix these in a new version; this one stays saved.</p>
-                </div>
-                <div v-if="(outputMeta.media_suggestions || []).length && !outputMeta.look && !isOldRevision && canWrite && paid" class="checks" role="status">
-                  <b>A video model declined some shots</b>
-                  <p v-for="sg in outputMeta.media_suggestions" :key="sg.shot" class="suggestion-line">
-                    Shot {{ sg.shot }} was declined by {{ sg.declined_by || 'the video model' }}.
-                    <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active" @click="useEngineFor(sg)">Make it on {{ sg.label }} · {{ sg.credits }} cr</button>
-                  </p>
-                </div>
-                <div v-if="outputMeta.creative_review && !['passed', 'ready', 'blocked'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
-                  <b>{{ outputMeta.look ? 'Notes for the next round' : outputMeta.creative_review.status === 'issues' ? 'Things to check in this version' : 'Ideas for the next version' }}</b>
-                  <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
-                  <p v-else>Look over the stills and tell us what to change, or build the full video.</p>
-                </div>
+              </div>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
                 <section v-if="outputMeta.look && !isOldRevision && currentPlan?.character_preview" class="checks character-approval-inline" :aria-label="currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and world for the generated shots' : 'Character look for this video'">
                   <b>{{ currentPlan.character_preview.kind === 'reference_sheet' ? 'Cast and storyboard for the generated shots' : 'Character look for this video' }}</b>
@@ -946,7 +1234,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                     <figure v-for="image in currentPlan.character_preview.images" :key="image.asset_id">
                       <img :src="image.preview_url" :alt="image.label || image.name || 'Character preview'" />
                       <figcaption v-if="image.label">{{ image.label }}<span v-if="panelIssue(image.label)" class="panel-issue"> · {{ panelIssue(image.label) }}</span></figcaption>
-                      <input v-if="canWrite && isPanel(image.label) && !currentPlan.character_preview.approved" v-model="panelNoteDraft[image.label]" class="input input--sm" maxlength="240" :placeholder="'Change ' + image.label + '…'" :aria-label="'Note to redraw ' + image.label" />
+                      <textarea v-if="canWrite && isPanel(image.label) && !currentPlan.character_preview.approved" v-model="panelNoteDraft[image.label]" class="input input--sm grow" rows="2" maxlength="240" :placeholder="'Change ' + image.label + '…'" :aria-label="'Note to redraw ' + image.label" />
                     </figure>
                   </div>
                   <p v-if="currentPlan.character_preview.panel_checks?.status === 'unverified'" class="muted">The panels could not be checked automatically; look them over yourself.</p>
@@ -954,47 +1242,22 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   <p v-if="currentPlan.character_preview.kind === 'reference_sheet'">{{ currentPlan.character_preview.approved ? 'Every generated shot is made from these images.' : 'Approving the storyboard approves these images: every generated shot is made from them, so the people, places and products stay the same. You’ll review the cost before any clip is made.' }}</p>
                   <p v-else>{{ currentPlan.character_preview.approved ? 'This approved look will guide the poses and talking clips.' : 'Approving the design also approves this character look for the poses and talking clips. You’ll review the cost before generation starts.' }}</p>
                 </section>
-                <form v-if="paid && canWrite && !conversation.archived_at" class="note-form" @submit.prevent="saveNote">
-                  <input v-model="noteText" class="input" maxlength="400" placeholder="What worked, what to change next time (kept for this style)" aria-label="Note for this style" />
-                  <button type="submit" class="btn btn--ghost btn--sm" :disabled="!noteText.trim()">Save note</button>
-                  <small v-if="noteSaved" class="muted">Saved for {{ noteSaved }}</small>
-                </form>
-                <div class="result__actions">
-                  <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve design & create video · review cost</button>
-                  <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
-                  <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
-                  <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
-                  <button v-if="!outputMeta.look && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
-                  <button v-if="!outputMeta.look && canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
-                  <button v-if="canWrite && !conversation.archived_at && currentRevision.share_enabled" type="button" class="btn btn--ghost" @click="requestDelivery('unshare')">Turn off share link</button>
-                  <button v-if="!outputMeta.look && canWrite && !conversation.archived_at && !imageOutput && currentRevision.export_job_id" type="button" class="btn btn--outline" @click="requestDelivery('schedule')">Schedule post</button>
-                  <button v-if="paid && imageOutput && currentRevision.output_asset_id && canWrite && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="animateResult">Animate image</button>
-                  <button v-if="canWrite && !conversation.archived_at && !active && editableFields.length" type="button" class="btn btn--ghost" :aria-expanded="leversOpen" @click="openLevers">Edit text and colours <span class="tier tier--free">FREE</span></button>
-                  <button v-if="paid && !isOldRevision" type="button" class="btn btn--ghost" @click="editResult">Edit with a prompt</button>
-                  <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
-                  <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
-                  <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
-                  <button v-if="!outputMeta.look && !imageOutput && media" type="button" class="btn btn--ghost btn--safe" :aria-pressed="safeZones" @click="safeZones = !safeZones">Show safe margins</button>
-                </div>
-                <div v-if="leversOpen" class="levers">
-                  <div class="levers__grid">
-                    <label v-for="f in editableFields" :key="f.id" class="field-label">{{ f.label.toUpperCase() }}
-                      <span v-if="f.type === 'color'" class="colour"><input v-model="leverDraft[f.id]" type="color" :aria-label="f.label" /><input v-model="leverDraft[f.id]" class="input" maxlength="7" :aria-label="`${f.label} hex`" /></span>
-                      <select v-else-if="f.type === 'enum'" v-model="leverDraft[f.id]" class="input"><option v-for="o in f.options" :key="o" :value="o">{{ o }}</option></select>
-                      <input v-else v-model="leverDraft[f.id]" class="input" :type="f.type === 'number' ? 'number' : 'text'" maxlength="200" />
-                    </label>
-                  </div>
-                  <div class="levers__foot">
-                    <span class="muted">{{ isOldRevision ? 'Makes a new version from this one; the current version stays as it is.' : 'Makes a new version. No model call, no credits.' }} Size changes need the assistant to re-lay the design; ask in the chat.</span>
-                    <button type="button" class="btn btn--ok btn--sm" :disabled="locked || !Object.keys(leverChanges).length" @click="applyLevers">Apply as a new version <span class="sub">free</span></button>
-                  </div>
-                </div>
-              </div>
             </div>
             </template>
 
-            <div v-if="data?.runs?.some(r => ['failed','cancelled','needs_input'].includes(r.status))" class="assistant-message">
-              <details class="run-card"><summary>Earlier attempts</summary><p v-for="run in data.runs.filter(r => ['failed','cancelled','needs_input'].includes(r.status))" :key="run.id" class="run-line">{{ run.status === 'needs_input' ? 'Your input is needed' : run.status === 'failed' ? 'Stopped' : 'Cancelled' }} · {{ run.error || run.stage }}<button v-if="run.status === 'failed' && canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active" @click="plan(run.id)">Review cost to retry</button></p></details>
+            <div v-if="lastFailure && !active" class="assistant-message">
+              <div class="fail" role="alert">
+                <p class="fail-head"><span class="fail-glyph" aria-hidden="true">✕</span><b>{{ STEP_NAMES[lastFailure.build_stage] || 'The build' }} stopped before it finished.</b></p>
+                <p class="fail-sub">Everything it finished is kept, and you were charged only for the work it did. Retrying picks up from where it stopped, with the approval you already gave.</p>
+                <div class="result-actions">
+                  <button v-if="canWrite" type="button" class="btn btn--primary btn--sm" :disabled="locked || retrying" @click="retryRun(lastFailure)">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
+                  <button type="button" class="btn btn--ghost btn--sm" @click="dismissedFailures = [...dismissedFailures, lastFailure.id]">Stop here</button>
+                </div>
+                <PlanNote label="Details" :text="`Stopped ${time(lastFailure.created_at)}. ${lastFailure.error || lastFailure.stage || ''}`" />
+              </div>
+            </div>
+            <div v-if="olderAttempts.length" class="assistant-message">
+              <details class="run-card"><summary>Earlier attempts</summary><p v-for="run in olderAttempts" :key="run.id" class="run-line">{{ run.status === 'needs_input' ? 'Your input is needed' : run.status === 'failed' ? 'Stopped' : 'Cancelled' }} · {{ STEP_NAMES[run.build_stage] || 'Build' }} · {{ run.error || run.stage }}</p></details>
             </div>
 
             <div v-if="active" class="assistant-message" aria-live="polite">
@@ -1042,10 +1305,17 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
             </div>
             <div v-if="pendingText" class="user-message message">{{ pendingText }}</div>
             <div v-if="linkStudying" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :key="linkStudying" :steps="studySteps" :detail="linkStudying" :step-seconds="5" /></div>
-            <div v-if="planning" class="assistant-message"><span class="speaker">WyvStudio</span><ThinkingLine :steps="planSteps" detail="Studying your references and planning can take a few minutes. Planning is free; you see the cost before anything is spent." :step-seconds="4" /></div>
+            <div v-if="planning" class="assistant-message"><span class="speaker">WyvStudio</span><PlanningLive :live="planLive" :started-at="planStarted" /></div>
             <div v-else-if="!quote && conversation && canWrite && !active && data?.messages?.length && !conversation.archived_at && !currentPlan" class="next-step">
               <p v-if="kind === 'image' && !paid" class="muted">Your image brief is saved. Image generation and editing are not enabled in this local preview yet.</p>
-              <template v-if="!stalePlan"><p v-if="error" class="muted">Planning didn't finish. Your brief is saved; try planning again.</p><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan">{{ error ? 'Plan again' : 'Plan it' }}</button></template>
+              <div v-if="pendingQuestion && !error && isRoleQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How to use this file">
+                <button v-for="o in ROLE_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
+              </div>
+              <div v-if="pendingQuestion && !error && isMatchQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How closely to follow the reference">
+                <button v-for="o in MATCH_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
+              </div>
+              <p v-if="pendingQuestion && !error" class="question-hint">{{ isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
+              <template v-else-if="!stalePlan"><p v-if="error" class="muted">Planning didn't finish. Your brief is saved; try planning again.</p><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan()">{{ error ? 'Plan again' : 'Plan it' }}</button></template>
             </div>
             <div ref="end" />
           </div>
@@ -1063,32 +1333,12 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
                   </div></div>
               </div>
             </div>
-            <div v-if="uploads.length || pendingAttachments.length" class="attached">
-              <div v-for="a in pendingAttachments" :key="'a' + a.asset_id" class="upload">
-                <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
-                <div><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small><small v-if="a.reference?.summary" class="ref-note">{{ a.reference.summary }}</small><small v-if="a.rig" class="ref-note">{{ a.rig.ready ? 'Character rig ready: it can blink, look around, tilt its head and change between four mouth shapes.' : 'Not ready to animate: ' + (a.rig.problems || []).slice(0, 3).join(' ') }}</small>
-                  <small v-if="a.suggested_claims?.length && claimsSettled(a) && approvedFrom(a)" class="muted">{{ approvedFrom(a) }} {{ approvedFrom(a) === 1 ? 'claim' : 'claims' }} added to approved facts ✓</small>
-                  <div v-if="a.suggested_claims?.length && canWrite && !claimsSettled(a)" class="claims">
-                    <small class="muted">Claims on this page. Tick the ones that may appear on screen:</small>
-                    <label v-for="(c, i) in a.suggested_claims" :key="i" class="claims__row" :title="'From the page: ' + c.quote"><input v-model="claimPicks[a.asset_id + ':' + i]" type="checkbox" /> {{ c.text }}</label>
-                    <button type="button" class="quiet quiet--sm" :disabled="locked" @click="approveClaims(a)">Add to approved facts</button>
-                  </div><button v-if="a.reference?.summary && canWrite" type="button" class="quiet quiet--sm" @click="askSaveStyle({asset_id:a.asset_id}, a.title)">Save as style</button></div>
-                <button type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
-              </div>
-              <div v-for="u in uploads" :key="u.key" :class="['upload', u.error ? 'upload--error' : '']">
-                <img v-if="u.file.type.startsWith('image/') && u.preview_url" :src="u.preview_url" alt="" class="upload__thumb" /><span v-else :class="['upload__thumb', u.file.type.startsWith('audio/') ? 'thumb--audio' : 'thumb--video']" />
-                <div>
-                  <b :title="u.file.name">{{ u.file.name }}</b>
-                  <small>{{ u.error || (u.state === 'uploading' ? `uploading · ${u.progress}%` : `${(u.file.size / 1048576).toFixed(1)} MB · uploads when you send`) }}</small>
-                  <div v-if="u.state === 'uploading'" class="upload__bar"><span :style="{ width: u.progress + '%' }" /></div>
-                  <label v-if="u.purpose === 'source' && u.state !== 'uploading'" class="consent consent--sm"><input v-model="u.confirmed" type="checkbox" /> I own this or have permission to reuse it.</label>
-                </div>
-                <span v-if="u.state !== 'uploading'" class="role-toggle" role="group" :aria-label="`Use ${u.file.name} as`"><button type="button" :aria-pressed="u.purpose === 'source'" :disabled="u.state === 'failed'" @click="u.purpose = 'source'">REUSE</button><button type="button" :aria-pressed="u.purpose === 'reference'" :disabled="u.state === 'failed'" @click="u.purpose = 'reference'">REFERENCE</button></span>
-                <button v-if="u.state !== 'uploading'" type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!u.error && u.state === 'ready' || u.purpose === 'source' && !u.confirmed" @click="upload(u)">{{ u.state === 'failed' ? 'Retry upload' : 'Upload' }}</button>
-                <button type="button" class="upload__x" :disabled="u.state === 'uploading'" :aria-label="`Remove pending ${u.file.name}`" @click="removeUpload(u)">×</button>
-              </div>
-            </div>
             <form class="prompt-form" @submit.prevent="send">
+              <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" />
+              <div v-if="trayItems.length && (trayErrors.length || trayNotes.length)" class="tray-notes">
+                <p v-for="e in trayErrors" :key="'e' + e.key" class="tray-note tray-note--error">{{ e.title }}: {{ e.error }} <button v-if="e.upload?.state === 'failed'" type="button" class="quiet quiet--sm" :disabled="locked" @click="upload(e.upload)">Retry upload</button></p>
+                <p v-for="n in trayNotes" :key="'n' + n.asset_id" class="tray-note" :title="n.text"><b>{{ n.title }}</b> · {{ n.text }} <button v-if="n.style" type="button" class="quiet quiet--sm" @click="askSaveStyle({asset_id:n.asset_id}, n.title)">Save as style</button></p>
+              </div>
               <label for="create-prompt" class="sr-only">Describe what you want to create or change</label>
               <textarea ref="composer" id="create-prompt" v-model="prompt" rows="2" maxlength="10000" placeholder="Describe what you want to create or change…" @input="sendingKey = null" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send" />
               <div class="composer-bottom">
@@ -1107,8 +1357,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
         </section>
 
         <div v-if="details" class="panel-scrim" aria-hidden="true" @click="closePanel" />
-        <aside v-if="details && conversation" id="details-panel" aria-label="Details and versions">
-          <div class="panel-heading"><h2 ref="panelHeading" tabindex="-1">{{ kind === 'image' ? 'This image' : 'This video' }}</h2><button type="button" class="quiet" aria-label="Close details" @click="closePanel">×</button></div>
+        <SideDrawer :open="details && !!conversation" :title="kind === 'image' ? 'This image' : 'This video'" meta="Settings and versions" @close="closePanel">
+          <div v-if="conversation" id="details-panel" class="details-body">
           <div class="detail-tabs" role="group" aria-label="Panel"><button type="button" :aria-pressed="panelTab === 'details'" @click="panelTab = 'details'">Details</button><button type="button" :aria-pressed="panelTab === 'versions'" @click="panelTab = 'versions'">Versions</button></div>
           <template v-if="panelTab === 'details'">
             <section>
@@ -1137,7 +1387,7 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               <h3>FILES IN THIS {{ kind === 'image' ? 'IMAGE' : 'VIDEO' }}</h3>
               <div v-for="a in data?.attachments || []" :key="a.asset_id" class="asset">
                 <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="asset__thumb" /><span v-else :class="['asset__thumb', a.asset_type === 'video' ? 'thumb--video' : 'thumb--audio']" />
-                <span><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'reuse' : 'reference' }}</small></span>
+                <span><b :title="a.title">{{ a.title }}</b><small>{{ sizeLabel(a) }} · {{ a.purpose === 'source' ? 'used in the video' : a.purpose === 'reference' ? 'reference' : 'role set when you send' }}</small></span>
                 <button v-if="canWrite && !conversation.archived_at" type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
               </div>
               <p v-if="!data?.attachments?.length" class="muted">No files yet.</p>
@@ -1166,7 +1416,8 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
               <div v-for="r in [...revisions].reverse().filter(r => r.export_job_id || r.output_asset_id)" :key="'s' + r.id" class="version"><span class="version__row"><span><b>Version {{ r.number }}</b><small>{{ r.export_job_id ? 'in All Videos' : 'in Assets' }}{{ r.share_enabled ? ' · shared' : '' }}</small></span><span v-if="r.has_newer_changes && r.id === conversation.head_revision_id" class="status status--warn">OLDER THAN BRIEF</span></span></div>
             </section>
           </template>
-        </aside>
+          </div>
+        </SideDrawer>
       </div>
       <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
       <CreateDialog :open="!!characterReview" title="Approve your character’s look" @close="characterReview=null">
@@ -1189,17 +1440,20 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
       </CreateDialog>
       <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
-      <CreateDialog :open="showHistory" title="Recent conversations" drawer @close="showHistory = false">
-        <div class="drawer-top"><input v-model="search" type="search" class="input" aria-label="Search conversations" placeholder="Search titles, briefs or file names…" /><router-link to="/videos" class="quiet" @click="showHistory = false">All Videos</router-link></div>
+      <SideDrawer :open="showHistory" title="Recent conversations" meta="Newest first" @close="showHistory = false">
+        <div class="history-body">
+        <div class="drawer-top"><input v-model="search" type="search" class="input" aria-label="Search conversations" placeholder="Search titles, briefs or file names…" /></div>
         <div class="drawer-filters" role="group" aria-label="Filter"><button v-for="f in [{value:'all',label:'All'},{value:'working',label:'In progress'},{value:'needs',label:'Needs you'},{value:'done',label:'Ready'}]" :key="f.value" type="button" :aria-pressed="historyFilter === f.value" @click="historyFilter = f.value">{{ f.label }}</button></div>
         <label class="consent"><input v-model="archivedHistory" type="checkbox" /> Show archived conversations</label>
-        <p class="muted" v-if="historyLoading">Searching…</p><p class="muted" v-else-if="!filteredHistory.length">No matching conversations.</p>
+        <p class="muted" v-if="historyLoading && !history.length">Searching…</p><p class="muted" v-else-if="!filteredHistory.length && historyNext === null">No matching conversations.</p>
         <template v-for="g in historyGroups" :key="g.label">
           <div class="drawer-group">{{ g.label }}</div>
           <router-link v-for="c in g.items" :key="c.id" :class="['session', c.id === id ? 'is-current' : '']" :to="{name:'create',params:{conversationId:c.id}}" @click="showHistory = false"><span class="session__thumb" /><div><b>{{ c.title }}</b><small>{{ c.last_message || 'Add your first brief or attachment' }}</small><span :class="['status', state(c) === 'working' ? 'status--info' : state(c) === 'needs' ? 'status--warn' : state(c) === 'done' ? 'status--ok' : 'status--neutral']">{{ stateLabel(c).toUpperCase() }}</span></div><time>{{ date(c.updated_at) }}</time></router-link>
         </template>
-        <small class="muted">Showing up to 100 matching conversations.</small>
-      </CreateDialog>
+        <div ref="historySentinel" class="history-sentinel" aria-hidden="true" />
+        </div>
+        <template #footer><small class="muted">{{ historyLoading ? 'Loading…' : historyNext === null ? 'That’s everything' : 'Scroll for more' }}</small><span class="spacer" /><router-link to="/videos" class="btn btn--ghost btn--sm" @click="showHistory = false">All videos →</router-link></template>
+      </SideDrawer>
       <CreateDialog :open="pronOpen" title="Pronunciations" @close="pronOpen = false">
         <form class="link-form" @submit.prevent="savePronunciations">
           <p class="muted link-form__note">How the voice should say a word, for example WyvStudio as "Weave Studio". Only the voice changes; the screen keeps the written word. Applies to new voiceovers in this workspace.</p>
@@ -1243,9 +1497,231 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
           <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="linkBusy" @click="closeLink">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="linkBusy || !linkUrl.trim()">{{ linkBusy ? 'Studying…' : 'Add reference' }}</button></div>
         </form>
       </CreateDialog>
+      <SideDrawer :open="!!drawerPlan" title="Plan" :meta="drawerPlan ? planPills(drawerPlan).join(' · ') + (isLivePlan(drawerPlan) ? '' : ' · ' + (planStatus(drawerPlan) || 'view only')) : ''" @close="planDrawerId = null">
+        <template v-if="drawerPlan">
+          <PlanGroup v-if="drawerPlan.plan.callouts.length || draftFor(drawerPlan).callouts.length" title="On-screen copy" :summary="draftFor(drawerPlan).callouts.filter(t => t.trim()).length + ' lines'" open>
+            <div v-for="(t, i) in draftFor(drawerPlan).callouts" :key="i" class="pd-line"><div class="pd-line-head"><span class="pd-q">Line {{ i + 1 }}</span><span v-if="(drawerPlan.plan.new_wording || []).includes(t)" class="pd-flag" title="Not in your brief, facts or page. Approving the plan approves this wording.">new</span><button v-if="planEditable(drawerPlan)" type="button" class="pd-x" :aria-label="`Remove line ${i + 1}`" @click="draftFor(drawerPlan).callouts.splice(i, 1)">×</button></div><textarea v-model="draftFor(drawerPlan).callouts[i]" class="input pd-input grow" rows="1" maxlength="120" :aria-label="`On-screen line ${i + 1}`" :disabled="!planEditable(drawerPlan)" /></div>
+            <button v-if="planEditable(drawerPlan) && draftFor(drawerPlan).callouts.length < 6" type="button" class="pd-add" @click="draftFor(drawerPlan).callouts.push('')">+ Add a line</button>
+            <PlanNote label="What's left out" :text="'Only the words here appear on screen.' + (drawerPlan.plan.left_out ? ' ' + drawerPlan.plan.left_out : '')" />
+          </PlanGroup>
+          <PlanGroup v-if="(drawerPlan.plan.narration || []).length || (draftFor(drawerPlan).narration || []).length" title="Voiceover" :summary="(draftFor(drawerPlan).narration || []).filter(t => t.trim()).length + ' lines · ' + voiceName(draftFor(drawerPlan).voice)">
+            <div v-for="(t, i) in draftFor(drawerPlan).narration" :key="'n' + i" class="pd-line"><div class="pd-line-head"><span class="pd-q">Line {{ i + 1 }}</span><span v-if="(drawerPlan.plan.new_wording || []).includes(t)" class="pd-flag" title="Not in your brief, facts or page. Approving the plan approves this wording.">new</span><button v-if="planEditable(drawerPlan)" type="button" class="pd-x" :aria-label="`Remove spoken line ${i + 1}`" @click="draftFor(drawerPlan).narration.splice(i, 1)">×</button></div><textarea v-model="draftFor(drawerPlan).narration[i]" class="input pd-input grow" rows="1" maxlength="160" :aria-label="`Spoken line ${i + 1}`" :disabled="!planEditable(drawerPlan)" /></div>
+            <button v-if="planEditable(drawerPlan) && draftFor(drawerPlan).narration.length < 8" type="button" class="pd-add" @click="draftFor(drawerPlan).narration.push('')">+ Add a spoken line</button>
+            <div class="pd-row">
+              <div class="pd-field"><span>Voice</span><UiSelect v-model="draftFor(drawerPlan).voice" label="Voice for the script" :disabled="!planEditable(drawerPlan)" align="left" :options="voiceOptions(draftFor(drawerPlan).voice).map(v => ({ value: v.key, label: v.label }))" /></div>
+              <button type="button" class="btn btn--ghost btn--sm pd-btn" @click="openPronunciations"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 8v8M4 11v2M16 6v12M20 10v4" /></svg>Pronunciations</button>
+            </div>
+            <PlanNote label="Presenters" text="Talking presenters speak in their own generated voice unless you choose your cloned voice." />
+          </PlanGroup>
+          <PlanGroup v-if="drawerPlan.plan.style || drawerPlan.plan.colour_treatment || drawerPlan.plan.mascot3d" title="Look" :summary="lookSummary(drawerPlan)">
+            <template #aside><span v-if="drawerPlan.plan.colour_treatment" class="pd-dots" aria-hidden="true"><i v-for="(c, role) in drawerPlan.plan.colour_treatment.roles" :key="role" :style="{ background: planDrafts[drawerPlan.id]?.colours?.[role] || c.hex }" /></span></template>
+            <div v-if="drawerPlan.plan.style" class="pd-field"><span>Style</span>
+              <UiSelect :model-value="planDrafts[drawerPlan.id]?.style ?? styleKey(drawerPlan.plan.selections.style)" label="Style this video starts from" :disabled="!planEditable(drawerPlan) || !planDrafts[drawerPlan.id]" align="left" :options="styleOptions(drawerPlan).map(o => ({ value: o.key, label: o.label }))" @update:model-value="v => { planDrafts[drawerPlan.id].style = v }" />
+            </div>
+            <PlanNote v-if="drawerPlan.plan.style?.why || (styleNotes[planStyleKey(drawerPlan)] || []).length" label="Why this style" :text="[drawerPlan.plan.style?.why, ...(styleNotes[planStyleKey(drawerPlan)] || [])].filter(Boolean).join(' ')" />
+            <div v-if="drawerPlan.plan.colour_treatment" class="pd-colours" role="group" aria-label="Colours">
+              <label v-for="(colour, role) in drawerPlan.plan.colour_treatment.roles" :key="role" class="pd-colour" :title="(planDrafts[drawerPlan.id]?.colours?.[role] || colour.hex).toUpperCase()">
+                <input v-if="planEditable(drawerPlan) && planDrafts[drawerPlan.id]?.colours" v-model="planDrafts[drawerPlan.id].colours[role]" type="color" :aria-label="`${role} colour`" />
+                <span v-else class="pd-swatch" :style="{ backgroundColor: colour.hex }" aria-hidden="true" />
+                <span>{{ role }}</span>
+              </label>
+            </div>
+            <PlanNote v-if="drawerPlan.plan.colour_treatment" label="About these colours" :text="[drawerPlan.plan.colour_treatment.source_note, drawerPlan.plan.colour_treatment.usage].filter(Boolean).join(' ')" />
+            <PlanNote v-if="drawerPlan.plan.character_style" label="Character appearance" :text="drawerPlan.plan.character_style" />
+            <div v-if="drawerPlan.plan.mascot3d" class="pd-mascot"><MascotPreview :spec="drawerPlan.plan.mascot3d.spec" /><PlanNote label="Your mascot" :text="mascotLine(drawerPlan.plan.mascot3d) + (drawerPlan.plan.mascot3d.missing ? ' Not possible yet: ' + drawerPlan.plan.mascot3d.missing : '')" /></div>
+          </PlanGroup>
+          <PlanGroup v-if="drawerPlan.plan.character_performance?.length" title="Character actions" :summary="drawerPlan.plan.character_performance.length + ' actions'">
+            <label v-for="action in drawerPlan.plan.character_performance" :key="action.id" class="pd-check"><input v-if="planDrafts[drawerPlan.id]" type="checkbox" :checked="!(planDrafts[drawerPlan.id].omitted_performance || []).includes(action.id)" :disabled="!planEditable(drawerPlan)" @change="toggleAction(drawerPlan, action.id, $event.target.checked)" /><span>{{ action.action }} <small>{{ action.start ?? '?' }}–{{ action.end ?? '?' }} s</small></span></label>
+            <p v-for="issue in drawerPlan.performance_issues || []" :key="issue.id" class="notice">{{ issue.action }}: {{ issue.message }}</p>
+          </PlanGroup>
+          <PlanGroup v-if="planDecisions(drawerPlan).length || drawerPlan.plan.kept_as_is.length || hasGenerated(drawerPlan) || (paid && planEditable(drawerPlan)) || (!lookRequired(drawerPlan) && !drawerPlan.plan.mascot3d)" title="Options" :summary="optionsSummary(drawerPlan)">
+            <div v-for="dec in planDecisions(drawerPlan)" :key="dec.id" class="pd-choice-group" role="radiogroup" :aria-label="dec.question">
+              <span class="pd-q">{{ dec.question }}</span>
+              <label v-for="o in dec.options" :key="o.id" :class="['pd-card', { 'is-on': draftFor(drawerPlan).choices[dec.id] === o.id, 'is-off': !planEditable(drawerPlan) }]"><input v-model="draftFor(drawerPlan).choices[dec.id]" class="sr-only" type="radio" :name="`${drawerPlan.id}-${dec.id}`" :value="o.id" :disabled="!planEditable(drawerPlan)" /><span class="pd-card-top"><span class="pd-card-label">{{ o.label }}</span><span :class="['pd-cost-tag', { 'is-paid': o.kind === 'media' }]">{{ o.kind === 'media' ? `~${o.credits} cr` : 'Included' }}</span></span><span v-if="o.detail" class="pd-card-detail">{{ o.detail }}</span></label>
+            </div>
+            <div v-if="drawerPlan.plan.kept_as_is.length" class="pd-choice-group"><span class="pd-q">Kept as-is</span>
+              <label v-for="k in drawerPlan.plan.kept_as_is" :key="k" class="pd-check"><input type="checkbox" :checked="draftFor(drawerPlan).kept.includes(k)" :disabled="!planEditable(drawerPlan)" @change="toggleKept(drawerPlan, k)" /> <span>{{ k }}</span></label>
+            </div>
+            <div v-if="!lookRequired(drawerPlan) && !drawerPlan.plan.mascot3d" class="pd-choice-group" role="radiogroup" aria-label="How to build it">
+              <span class="pd-q">How to build it</span>
+              <label v-for="o in LOOK_CHOICES" :key="o.id" :class="['pd-card', { 'is-on': lookChoice(drawerPlan) === o.id, 'is-off': !planEditable(drawerPlan) || !planDrafts[drawerPlan.id] }]"><input class="sr-only" type="radio" :name="`${drawerPlan.id}-look`" :value="o.id" :checked="lookChoice(drawerPlan) === o.id" :disabled="!planEditable(drawerPlan) || !planDrafts[drawerPlan.id]" @change="planDrafts[drawerPlan.id].look_first = o.id === 'look'" /><span class="pd-card-top"><span class="pd-card-label">{{ o.label }}</span></span><span class="pd-card-detail">{{ o.detail }}</span></label>
+            </div>
+            <div v-if="hasGenerated(drawerPlan)" class="pd-row" role="group" aria-label="Video quality"><span class="pd-q">Video quality</span>
+              <span class="pd-seg"><button v-for="t in ['standard', 'premium']" :key="t" type="button" :aria-pressed="(drawerPlan.plan.selections.video_tier || 'standard') === t" :disabled="locked || !planEditable(drawerPlan)" @click="setVideoTier(drawerPlan, t)">{{ t === 'standard' ? 'Standard' : 'Premium' }}</button></span>
+            </div>
+            <div v-if="paid && planEditable(drawerPlan)" class="pd-row"><span class="pd-q">Variants</span>
+              <span class="pd-seg"><button v-for="n in [1, 2, 3]" :key="n" type="button" :aria-pressed="variantCount === n" @click="variantCount = n">{{ n }}</button></span>
+            </div>
+            <PlanNote label="About these options" text="Premium uses Veo 3.1 where it fits. Each extra variant is a separate take on the same plan, with its own cost." />
+          </PlanGroup>
+          <PlanGroup v-if="drawerPlan.plan.asks?.length" title="Files we'd like" :summary="drawerPlan.plan.asks.length + ((drawerPlan.plan.asks.length === 1) ? ' file' : ' files')" :open="drawerPlan.plan.asks.some(a => askState(drawerPlan, a) === 'open')">
+            <div v-for="a in drawerPlan.plan.asks" :key="a.id" class="pd-question">
+              <p>{{ a.what }}</p>
+              <span v-if="askState(drawerPlan, a) === 'open' && planEditable(drawerPlan)" class="pd-actions"><label class="btn btn--ghost btn--sm pd-upload" tabindex="0" role="button" :aria-disabled="!!askUploading" @keydown.enter.prevent="$event.currentTarget.querySelector('input').click()" @keydown.space.prevent="$event.currentTarget.querySelector('input').click()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" /></svg>{{ askUploading === a.id ? 'Uploading…' : 'Upload' }}<input type="file" :accept="a.kind === 'recording' ? 'video/*' : 'image/*,video/*'" hidden :disabled="!!askUploading" @change="e => e.target.files[0] && answerAsk(drawerPlan, a, e.target.files[0])" /></label><button type="button" class="btn btn--ghost btn--sm" :disabled="!!askUploading" @click="skipAsk(drawerPlan, a)">Go without</button></span>
+              <small v-else class="muted">{{ askState(drawerPlan, a) === 'uploaded' ? 'Uploaded' : askState(drawerPlan, a) === 'skipped' ? 'Going without it' : '' }}</small>
+              <PlanNote label="Why" :text="a.why + ' Without it: ' + a.fallback" />
+            </div>
+          </PlanGroup>
+        </template>
+        <template #footer>
+          <template v-if="drawerPlan">
+            <PlanNote v-if="planEditable(drawerPlan)" class="pd-next" :label="startsWithCharacter(drawerPlan) ? 'Character, then storyboard, then the video' : storyboardFirst(drawerPlan) ? 'Storyboard first, then the video' : 'What happens next'" :text="nextStep(drawerPlan)" />
+            <span class="pd-cost">{{ !isLivePlan(drawerPlan) ? 'View only' : planDirty(drawerPlan) ? 'Unsaved changes' : planPrice[drawerPlan.id]?.quote ? `Up to ${planPrice[drawerPlan.id].quote.credits_max.toLocaleString()} cr` : '' }}</span>
+            <span class="spacer" />
+            <button v-if="planEditable(drawerPlan) && planDirty(drawerPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="guarded(() => savePlanEdits(drawerPlan))">Save</button>
+            <button type="button" class="btn btn--ghost btn--sm" @click="planDrawerId = null">Close</button>
+            <button v-if="planEditable(drawerPlan)" type="button" class="btn btn--primary btn--sm" :disabled="locked || approvingPlan || approveBlocked(drawerPlan)" @click="approvePlan(drawerPlan)">{{ approvingPlan ? 'Starting…' : approveLabel(drawerPlan) }}</button>
+          </template>
+        </template>
+      </SideDrawer>
+      <SideDrawer :open="stepDrawer?.step === 'character' && !!stepPlan && !!characterStep(stepPlan)" title="Character" meta="The people and places in your video" @close="stepDrawer = null">
+        <template v-if="stepPlan && characterStep(stepPlan)">
+          <template v-for="(sub, k) in characterStep(stepPlan).subjects" :key="sub.name">
+            <div v-if="k === subjectAt" class="sb-frame">
+              <div class="sb-stage">
+                <img v-for="img in characterStep(stepPlan).images.filter(i => i.label === sub.name)" :key="img.asset_id" :src="img.preview_url" :alt="sub.name" :class="{ 'is-redrawing': isRedrawing(stepPlan, sub.name) }" />
+                <div v-if="isRedrawing(stepPlan, sub.name)" class="sb-busy" role="status"><span class="sb-spin" aria-hidden="true" />Redrawing {{ sub.name }}… about half a minute</div>
+                <button v-if="characterStep(stepPlan).subjects.length > 1" type="button" class="sb-nav sb-nav--prev" aria-label="Previous" :disabled="subjectAt === 0" @click="subjectAt--"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
+                <button v-if="characterStep(stepPlan).subjects.length > 1" type="button" class="sb-nav sb-nav--next" aria-label="Next" :disabled="subjectAt >= characterStep(stepPlan).subjects.length - 1" @click="subjectAt++"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></button>
+              </div>
+              <div class="cs-head"><b>{{ sub.name }}</b><span class="muted">{{ sub.kind === 'place' ? 'Place' : sub.kind === 'product' ? 'Product' : 'Person' }} · {{ k + 1 }} of {{ characterStep(stepPlan).subjects.length }}</span></div>
+              <label class="cs-look"><span class="pd-q">Look</span><textarea v-model="looksDraft[sub.name]" class="input pd-input" rows="3" maxlength="240" :disabled="!stepEditable(stepPlan) || isRedrawing(stepPlan, sub.name)" :aria-label="`How ${sub.name} looks`" /></label>
+            </div>
+          </template>
+          <div v-if="characterStep(stepPlan).subjects.length > 1" class="sb-thumbs"><button v-for="(sub, k) in characterStep(stepPlan).subjects" :key="sub.name" type="button" :class="{ 'is-on': k === subjectAt, 'has-note': subjectChanged(stepPlan, sub.name) }" :aria-label="sub.name" @click="subjectAt = k"><img v-for="img in characterStep(stepPlan).images.filter(i => i.label === sub.name).slice(0, 1)" :key="img.asset_id" :src="img.preview_url" alt="" /></button></div>
+          <PlanNote label="How changes work" text="Each person and place is drawn on its own, in the video's style. Change one and redraw: only that one is drawn again, and the storyboard frames it appears in are redrawn after you approve it." />
+        </template>
+        <template #footer>
+          <template v-if="stepPlan && characterStep(stepPlan)">
+            <span class="pd-cost">{{ looksChanged(stepPlan) ? `Redraw ${looksChanged(stepPlan)} · about ${looksChanged(stepPlan) * 35} cr` : characterStep(stepPlan).approved ? 'Approved' : stepPriceText(stepPlan, 'character') }}</span>
+            <span class="spacer" />
+            <button v-if="stepEditable(stepPlan) && looksChanged(stepPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked || stepBusy || !!active" @click="redrawCharacter(stepPlan)">Redraw</button>
+            <button type="button" class="btn btn--ghost btn--sm" @click="stepDrawer = null">Close</button>
+            <button v-if="stepEditable(stepPlan) && !characterStep(stepPlan).approved && !looksChanged(stepPlan)" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(stepPlan, 'character')" @click="approveStepNow(stepPlan, 'character')">{{ stepBusy ? 'Starting…' : stepApproveLabel(stepPlan, 'character') }}</button>
+          </template>
+        </template>
+      </SideDrawer>
+      <SideDrawer :open="stepDrawer?.step === 'storyboard' && !!stepPlan && !!storyboardStep(stepPlan)" title="Storyboard" meta="Still frames, no motion or sound yet" @close="stepDrawer = null">
+        <template v-if="stepPlan && storyboardStep(stepPlan)">
+          <div class="sb-frame">
+            <div class="sb-stage">
+              <img :src="storyboardStep(stepPlan).images[frameAt]?.preview_url" :alt="storyboardStep(stepPlan).images[frameAt]?.label" />
+              <button type="button" class="sb-nav sb-nav--prev" aria-label="Previous frame" :disabled="frameAt === 0" @click="frameAt--"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
+              <button type="button" class="sb-nav sb-nav--next" aria-label="Next frame" :disabled="frameAt >= storyboardStep(stepPlan).images.length - 1" @click="frameAt++"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></button>
+            </div>
+            <span class="pd-q">Frame {{ frameAt + 1 }} of {{ storyboardStep(stepPlan).images.length }}</span>
+          </div>
+          <p class="sb-shot">{{ frameShot(stepPlan, frameAt) }}</p>
+          <p v-if="frameIssue(stepPlan, frameAt)" class="notice">{{ frameIssue(stepPlan, frameAt) }}</p>
+          <label class="cs-look"><span class="pd-q">Change this frame</span><textarea v-model="framesDraft[frameAt + 1]" class="input pd-input grow" rows="2" maxlength="240" placeholder="e.g. phone in her left hand" :disabled="!stepEditable(stepPlan)" :aria-label="`Change frame ${frameAt + 1}`" /></label>
+          <div class="sb-thumbs"><button v-for="(img, k) in storyboardStep(stepPlan).images" :key="img.asset_id" type="button" :class="{ 'is-on': k === frameAt, 'has-note': (framesDraft[k + 1] || '').trim() }" :aria-label="`Frame ${k + 1}`" @click="frameAt = k"><img :src="img.preview_url" alt="" /></button></div>
+          <PlanNote label="How changes work" text="Only the frames you change are redrawn. The video is made from these frames: each shot starts from its frame." />
+        </template>
+        <template #footer>
+          <template v-if="stepPlan && storyboardStep(stepPlan)">
+            <span class="pd-cost">{{ framesChanged(stepPlan) ? `Redraw ${framesChanged(stepPlan)} · about ${framesChanged(stepPlan) * 35} cr` : storyboardStep(stepPlan).approved ? 'Approved' : stepPriceText(stepPlan, 'storyboard') }}</span>
+            <span class="spacer" />
+            <button v-if="stepEditable(stepPlan) && framesChanged(stepPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked || stepBusy" @click="redrawFrames(stepPlan)">Redraw</button>
+            <button type="button" class="btn btn--ghost btn--sm" @click="stepDrawer = null">Close</button>
+            <button v-if="stepEditable(stepPlan) && !storyboardStep(stepPlan).approved && !framesChanged(stepPlan)" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(stepPlan, 'storyboard')" @click="approveStepNow(stepPlan, 'storyboard')">{{ stepBusy ? 'Starting…' : stepApproveLabel(stepPlan, 'storyboard') }}</button>
+          </template>
+        </template>
+      </SideDrawer>
+      <SideDrawer :open="versionOpen && !!currentRevision" title="This version" :meta="currentRevision ? 'Version ' + currentRevision.number + (versionPills.length ? ' · ' + versionPills.join(' · ') : '') : ''" @close="versionOpen = false">
+        <template v-if="currentRevision">
+          <PlanGroup v-for="(g, i) in summarySections(currentRevision.summary).groups" :key="g.title" :title="g.title" :open="i < 2"><div class="result-more" v-html="g.html" /></PlanGroup>
+          <PlanGroup v-if="!outputMeta.look && (delivery_checks || outputMeta.final_checks || reviewNotes.length || (outputMeta.media_suggestions || []).length || outputMeta.creative_review?.status === 'ready')" title="Checks" :summary="checkIssues.length || finalFails.length ? 'needs a look' : 'all clear'" :open="!!(checkIssues.length || finalFails.length)">
+                <div v-if="delivery_checks && !outputMeta.look" class="checks" role="status" aria-label="Before you post">
+                  <b>{{ checkIssues.length ? 'Before you post' : 'Delivery checks complete' }}</b>
+                  <ul>
+                    <li v-for="(t, i) in checkIssues" :key="i" class="checks__warn">{{ t }}</li>
+                    <li v-if="delivery_checks.loudness?.status === 'levelled'">Sound level adjusted for social playback.</li>
+                    <li v-else-if="delivery_checks.loudness?.status === 'ok'">Sound level is right for social.</li>
+                    <li v-if="!checkIssues.length">Text clears the platform buttons and captions, stays inside the frame and is readable.</li>
+                  </ul>
+                </div>
+                <p v-if="outputMeta.creative_review?.status === 'ready' && !outputMeta.look" class="muted" role="status">Checks passed. It's ready for your review: tell us anything you'd like changed.</p>
+                <div v-if="outputMeta.final_checks && !outputMeta.look && (finalFails.length || finalUnverified.length)" :class="['checks', outputMeta.final_checks.status === 'blocked' ? 'checks--blocked' : '']" role="status">
+                  <b>{{ outputMeta.final_checks.status === 'blocked' ? 'Not ready yet: this version misses something you approved' : 'Checked against your plan' }}</b>
+                  <ul>
+                    <li v-for="c in finalFails" :key="c.id + c.label" :class="c.blocking ? 'checks__warn' : ''">{{ checkTime(c) }}{{ c.label }}<template v-if="c.message">: {{ c.message }}</template></li>
+                    <li v-for="c in finalUnverified" :key="'u' + c.id + c.label" class="muted">Not checked automatically: {{ c.label }}<template v-if="c.message"> ({{ c.message }})</template></li>
+                  </ul>
+                  <p v-if="outputMeta.final_checks.status === 'blocked'" class="muted">Use “Keep improving” to fix these in a new version; this one stays saved.</p>
+                </div>
+                <div v-if="(outputMeta.media_suggestions || []).length && !outputMeta.look && !isOldRevision && canWrite && paid" class="checks" role="status">
+                  <b>A video model declined some shots</b>
+                  <p v-for="sg in outputMeta.media_suggestions" :key="sg.shot" class="suggestion-line">
+                    Shot {{ sg.shot }} was declined by {{ sg.declined_by || 'the video model' }}.
+                    <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active" @click="useEngineFor(sg)">Make it on {{ sg.label }} · {{ sg.credits }} cr</button>
+                  </p>
+                </div>
+                <div v-if="outputMeta.creative_review && !['passed', 'ready', 'blocked'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">
+                  <b>{{ outputMeta.look ? 'Notes for the next round' : outputMeta.creative_review.status === 'issues' ? 'Things to check in this version' : 'Ideas for the next version' }}</b>
+                  <ul v-if="reviewNotes.length"><li v-for="(note, i) in reviewNotes" :key="i">{{ note }}</li></ul>
+                  <p v-else>Look over the stills and tell us what to change, or build the full video.</p>
+                </div>
+          </PlanGroup>
+          <PlanGroup v-if="!outputMeta.look && canWrite && !conversation?.archived_at" title="Edit" summary="text, colours, or a prompt">
+            <div class="result-actions">
+              <button v-if="canWrite && !conversation.archived_at && !active && editableFields.length" type="button" class="btn btn--ghost" :aria-expanded="leversOpen" @click="openLevers">Edit text and colours <span class="tier tier--free">FREE</span></button>
+              <button v-if="paid && !isOldRevision" type="button" class="btn btn--ghost" @click="editResult">Edit with a prompt</button>
+            </div>
+                <div v-if="leversOpen" class="levers">
+                  <div class="levers__grid">
+                    <label v-for="f in editableFields" :key="f.id" :class="['field-label', { 'levers__wide': !['color', 'enum', 'number'].includes(f.type) }]">{{ f.label.toUpperCase() }}
+                      <span v-if="f.type === 'color'" class="colour"><input v-model="leverDraft[f.id]" type="color" :aria-label="f.label" /><input v-model="leverDraft[f.id]" class="input" maxlength="7" :aria-label="`${f.label} hex`" /></span>
+                      <select v-else-if="f.type === 'enum'" v-model="leverDraft[f.id]" class="input"><option v-for="o in f.options" :key="o" :value="o">{{ o }}</option></select>
+                      <input v-else-if="f.type === 'number'" v-model="leverDraft[f.id]" class="input" type="number" />
+                      <textarea v-else v-model="leverDraft[f.id]" class="input grow" rows="2" maxlength="200" />
+                    </label>
+                  </div>
+                  <div class="levers__foot">
+                    <span class="muted">{{ isOldRevision ? 'Makes a new version from this one; the current version stays as it is.' : 'Makes a new version. No model call, no credits.' }} Size changes need the assistant to re-lay the design; ask in the chat.</span>
+                    <button type="button" class="btn btn--ok btn--sm" :disabled="locked || !Object.keys(leverChanges).length" @click="applyLevers">Apply as a new version <span class="sub">free</span></button>
+                  </div>
+                </div>
+                <form v-if="paid && canWrite && !conversation.archived_at" class="note-form" @submit.prevent="saveNote">
+                  <textarea v-model="noteText" class="input grow" rows="2" maxlength="400" placeholder="What worked, what to change next time (kept for this style)" aria-label="Note for this style" />
+                  <button type="submit" class="btn btn--ghost btn--sm" :disabled="!noteText.trim()">Save note</button>
+                  <small v-if="noteSaved" class="muted">Saved for {{ noteSaved }}</small>
+                </form>
+          </PlanGroup>
+          <PlanGroup v-if="!outputMeta.look" title="Share and save">
+            <div class="result-actions">
+              <button v-if="!outputMeta.look && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked || !!currentRevision.output_asset_id" @click="saveOutput">{{ currentRevision.output_asset_id ? (imageOutput ? 'Saved to Assets' : 'Saved to videos') : (imageOutput ? 'Save to Assets' : paid ? 'Save to videos' : 'Save sample to videos') }}</button>
+              <button v-if="!outputMeta.look && canWrite && !conversation.archived_at && currentRevision.output_asset_id" type="button" class="btn btn--outline" @click="requestDelivery('share')">Share link</button>
+              <button v-if="canWrite && !conversation.archived_at && currentRevision.share_enabled" type="button" class="btn btn--ghost" @click="requestDelivery('unshare')">Turn off share link</button>
+              <button v-if="!outputMeta.look && canWrite && !conversation.archived_at && !imageOutput && currentRevision.export_job_id" type="button" class="btn btn--outline" @click="requestDelivery('schedule')">Schedule post</button>
+              <button v-if="paid && imageOutput && currentRevision.output_asset_id && canWrite && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="animateResult">Animate image</button>
+              <button v-if="!outputMeta.look && !imageOutput && media" type="button" class="btn btn--ghost btn--safe" :aria-pressed="safeZones" @click="safeZones = !safeZones">Show safe margins</button>
+            </div>
+          </PlanGroup>
+        </template>
+        <template #footer>
+          <span class="spacer" />
+          <button type="button" class="btn btn--ghost btn--sm" @click="versionOpen = false">Close</button>
+          <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary btn--sm" @click="download">Download</button>
+        </template>
+      </SideDrawer>
+      <CreateDialog :open="approvalOpen" title="Send for approval" @close="approvalOpen = false">
+        <form v-if="!approvalResult" class="link-form" @submit.prevent="sendApproval">
+          <label class="link-form__label">Reviewer's email<input v-model="approvalForm.email" class="input" type="email" required maxlength="190" autocomplete="email" /></label>
+          <label class="link-form__label">Name (optional)<input v-model="approvalForm.name" class="input" maxlength="120" /></label>
+          <label class="link-form__label">Message (optional)<textarea v-model="approvalForm.message" class="input" rows="3" maxlength="1000" /></label>
+          <p class="muted link-form__note">They get a link to watch version {{ currentRevision?.number }} and approve it or ask for changes. The link works for 7 days.</p>
+          <p v-if="approvalError" class="create-error" role="alert">{{ approvalError }}</p>
+          <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" @click="approvalOpen = false">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="approvalSending || !approvalForm.email.trim()">{{ approvalSending ? 'Sending…' : 'Send' }}</button></div>
+        </form>
+        <div v-else class="link-form">
+          <p>Sent to {{ approvalForm.email }}. You can also share this review link:</p>
+          <input class="input" :value="approvalResult" readonly aria-label="Review link" @focus="$event.target.select()" />
+          <div class="link-form__actions"><button type="button" class="btn btn--primary btn--sm" @click="approvalOpen = false">Done</button></div>
+        </div>
+      </CreateDialog>
       <CreateDialog :open="libraryOpen" title="Add from your library" @close="libraryOpen = false">
-        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form><UiSelect v-model="purpose" label="How to use this asset" :options="[{value:'reference',label:'Reference only'},{value:'source',label:'Reuse in my creation'}]" /><p class="muted">A reference helps describe a style. It does not give permission to copy footage, people or branding.</p><label v-if="purpose === 'source'" class="consent"><input v-model="reuseConfirmed" type="checkbox" /> I own this media or have permission to reuse it.</label>
-        <div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked || purpose === 'source' && !reuseConfirmed" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
+        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form>
+        <div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
       </CreateDialog>
       <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
@@ -1282,16 +1758,18 @@ onBeforeUnmount(() => {window.removeEventListener('keydown', onKey);clearInterva
 .voice-pick{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px}.style-line{flex-wrap:wrap;margin:8px 0}.voice-pick select{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:8px;padding:4px 8px;font-size:12px}
 .pron-row{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center}
 .ref-note{display:block;font-size:11px;color:var(--text-3);margin-top:2px;max-width:420px}
-.fc-shell{--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
+.fc-shell{--surface:#17171f;--bg:#0b0d11;--bg-2:#0f1116;--bg-3:#14171d;--bg-4:#191d24;--bg-5:#111419;--line:#1f232b;--line-2:#262b34;--line-3:#2c313b;--text:#eceef1;--text-2:#b7bcc6;--text-3:#8f95a1;--text-4:#5d6472;--accent:var(--color-accent,#ff6b35);--accent-ink:#0b0d11;--accent-soft:rgba(255,107,53,.12);--accent-line:rgba(255,107,53,.35);--warn:#e3b64a;--warn-soft:rgba(227,182,74,.14);--warn-line:rgba(227,182,74,.35);--warn-bg:#16150f;--warn-edge:#3a3320;--ok:#4dc48a;--ok-soft:rgba(77,196,138,.10);--ok-line:rgba(77,196,138,.35);--info:#5b9dff;--info-soft:rgba(91,157,255,.12);--info-line:rgba(91,157,255,.35);--mono:"JetBrains Mono","Space Mono",ui-monospace,Menlo,monospace;--r:8px;--r-md:10px;--r-lg:12px;min-height:100vh;background:var(--bg);color:var(--text)}
 .agent-main{margin-left:var(--sidebar-width,220px);height:100dvh;display:flex;flex-direction:column;min-width:0}
 button{font:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}
 button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .muted{color:var(--text-3)}
-.agent-header{display:flex;align-items:center;gap:14px;padding:0 28px;min-height:64px;border-bottom:1px solid var(--line);flex-wrap:wrap;flex-shrink:0}
-.agent-header h1{margin:0;font-size:16px;font-weight:700;max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agent-header{display:flex;align-items:center;gap:14px;padding:0 28px;min-height:64px;border-bottom:1px solid var(--line);flex-wrap:nowrap;flex-shrink:0}
+.agent-header__title{flex:1 1 auto;min-width:0}
+.agent-header .status{flex:0 0 auto;white-space:nowrap}
+.agent-header h1{margin:0;font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .crumb{font-size:13px;color:var(--text-3)}
-.header-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:0 0 auto}.header-actions>*{white-space:nowrap}
 .quiet{border:1px solid var(--line-3);border-radius:var(--r);background:transparent;padding:8px 12px;color:var(--text-2);font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center}
 .quiet:hover{background:var(--bg-4);color:var(--text)}
 .quiet[aria-expanded="true"]{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
@@ -1312,16 +1790,11 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .agent-content{display:flex;flex:1;min-height:0;position:relative}
 .conversation{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
 .messages{flex:1;overflow:auto;padding:32px max(24px,calc((100% - 760px)/2)) 16px;display:flex;flex-direction:column;gap:28px}
-.user-message{align-self:flex-end;max-width:560px;background:var(--bg-4);border:1px solid var(--line-3);border-radius:16px 16px 4px 16px;padding:14px 18px;font-size:14px;line-height:1.55}
+/* The user's message: the create-ui chat bubble (flat, no border); with files, a pill row sits above the text. */
+.user-message{align-self:flex-end;max-width:75%;min-width:0;background:var(--surface);border-radius:12px;padding:10px 16px;font-size:14px;line-height:1.55;color:#ececec;overflow-wrap:anywhere}
+.user-message.has-refs{padding:14px 20px 16px;display:flex;flex-direction:column;gap:10px}
 .user-message p{margin:0;white-space:pre-wrap}
-.attachments{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-.chip{display:flex;align-items:center;gap:10px;padding:5px 10px 5px 5px;border:1px solid var(--line-3);border-radius:var(--r);background:var(--bg-3);max-width:260px}
-.chip>span:nth-child(2){min-width:0}
-.chip b{font-size:13px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip small{font:10px var(--mono);color:var(--text-3)}
-.chip__thumb{width:26px;height:26px;border-radius:5px;flex-shrink:0;object-fit:cover}
 .thumb--video{background:#3a2f4a}.thumb--image{background:#2a3441}.thumb--audio{background:#243a33}
-.chip__role{font:9px var(--mono);letter-spacing:1px;color:var(--ok)}.chip__role--ref{color:var(--info)}
 .assistant-message{display:flex;flex-direction:column;gap:12px;max-width:760px;font-size:15px;line-height:1.6;color:#d5d9e0}
 .assistant-message>p{margin:0}
 .speaker{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--text-3)}
@@ -1435,6 +1908,13 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .consent--sm{font-size:11px}
 .prompt-form{background:var(--bg-3);border:1px solid var(--line-3);border-radius:16px;padding:12px 14px}
 .prompt-form:focus-within{border-color:var(--text-4)}
+.prompt-form{display:flex;flex-direction:column;gap:10px}
+.prompt-form .composer-bottom{margin-top:0}
+.tray-notes{display:flex;flex-direction:column;gap:4px}
+.tray-note{margin:0;font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tray-note b{font-weight:600;color:var(--text-2)}
+.tray-note--error{color:var(--danger,#f0857a);white-space:normal}
+label.tray-note{white-space:normal}
 .prompt-form textarea{width:100%;resize:none;max-height:160px;background:none;border:0;color:var(--text);font:inherit;font-size:15px;line-height:1.5;outline:none}
 .composer-bottom{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
 .composer-bottom .quiet{border:0;padding:6px 8px;font-size:12px}
@@ -1453,12 +1933,12 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .dropzone{width:100%;padding:22px;border:1px dashed var(--line-3);border-radius:var(--r-lg);color:var(--text-3);font-size:13px;background:transparent;display:flex;flex-direction:column;gap:6px;align-items:center}
 .dropzone small{font:10px var(--mono);color:var(--text-4)}
 .dropzone:hover{border-color:var(--accent);color:var(--text-2)}
-#details-panel{width:320px;flex-shrink:0;border-left:1px solid var(--line);background:var(--bg-2);overflow:auto;display:flex;flex-direction:column}
+#details-panel{display:flex;flex-direction:column;margin:-6px -18px -18px}
 .panel-scrim{display:none}
 .panel-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 18px 0}
 .panel-heading h2{margin:0;font-size:15px;outline:none}
 .panel-heading .quiet{padding:4px 10px;font-size:16px}
-.detail-tabs{display:flex;gap:6px;padding:12px 18px 0;border-bottom:1px solid var(--line)}
+.detail-tabs{display:flex;gap:6px;padding:4px 18px 0;border-bottom:1px solid var(--line);position:sticky;top:-6px;background:var(--surface);z-index:1}
 .detail-tabs button{padding:10px 0;margin-right:12px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-3);font-size:13px;font-weight:600}
 .detail-tabs button[aria-pressed="true"]{color:var(--text);border-bottom-color:var(--accent);font-weight:700}
 #details-panel section{border-bottom:1px solid var(--line);padding:14px 18px;display:flex;flex-direction:column;gap:8px}
@@ -1504,10 +1984,10 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .comparison h3{font-size:13px}
 .drop-overlay{position:absolute;inset:16px;z-index:20;display:grid;place-items:center;border:2px dashed var(--accent);border-radius:20px;background:#1c1526ed;pointer-events:none}
 .loading{text-align:center;padding:60px;color:var(--text-3)}
-@media(max-width:1100px){#details-panel{width:290px}}
+
 @media(max-width:860px){
   .agent-main{margin-left:0;padding-top:calc(52px + env(safe-area-inset-top));height:calc(100dvh - 66px)}
-  .agent-header{padding:10px 14px;gap:8px}
+  .agent-header{padding:10px 14px;gap:8px;flex-wrap:wrap}
   .agent-header h1{font-size:15px;max-width:70vw}
   .header-actions{margin-left:0;width:100%}
   .messages{padding:20px 14px}
@@ -1516,8 +1996,125 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
   .library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .result__meta .status{margin-left:0}
   .panel-scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:24}
-  #details-panel{position:fixed;right:0;top:0;bottom:0;z-index:25;width:min(340px,100%);box-shadow:-30px 0 100px rgba(0,0,0,.6)}
   .composer-note{display:none}
   .credits{display:none}
 }
+
+/* The plan card and its drawer (create-ui chat mockup). */
+.plan-lead{margin:0;color:#ececec}
+.plan-approach{margin-top:-4px}
+.plan-card{border:1px solid var(--line-3);border-radius:12px;padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--surface)}
+.plan-card.is-old{opacity:.7}
+.plan-pills{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+.plan-title{font-weight:600;margin-right:4px}
+.pill{font-size:12px;color:var(--text-2);background:rgba(255,255,255,.06);border-radius:999px;padding:2px 10px}
+.pill.is-edited{color:#f26b3a;background:#3a2a22}
+.plan-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.plan-status{font-size:12px;color:#9b9b9b}
+.pd-question{display:flex;flex-direction:column;gap:6px}.pd-question p{margin:0}
+.pd-answer{display:flex;gap:6px}
+.pd-input{flex:1;min-width:0;padding:6px 10px;font-size:13px;border-radius:8px}
+.pd-line{display:flex;flex-direction:column;gap:4px}
+.pd-line .grow{width:100%}
+.pd-line-head{display:flex;align-items:center;gap:6px}.pd-line-head .pd-x{margin-left:auto}
+.pd-flag{font:10px var(--mono);color:#f5a524;flex:0 0 auto}
+.pd-x{flex:0 0 auto;width:24px;height:24px;border:0;border-radius:5px;background:transparent;color:#8e8e8e;cursor:pointer;font-size:15px;line-height:1}
+.pd-x:hover{background:#2e2e2e;color:#ececec}
+.pd-add{align-self:flex-start;border:0;background:transparent;color:#a7abb2;font-size:12px;padding:2px 0;cursor:pointer}
+.pd-add:hover{color:#ececec}
+.pd-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pd-field{display:flex;align-items:center;gap:8px;color:#8e8e8e;font-size:12px;min-width:0}
+.pd-select{background:#262626;border:1px solid #383838;color:#ececec;border-radius:7px;padding:4px 8px;font-size:12px;max-width:220px}
+.pd-dots{display:inline-flex;gap:3px;flex:0 0 auto}.pd-dots i{width:10px;height:10px;border-radius:50%;border:1px solid #ffffff30;display:block}
+.pd-colours{display:flex;flex-wrap:wrap;gap:10px 14px}
+.pd-colour{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#c9cbcf;text-transform:capitalize}
+.pd-colour input[type=color]{width:22px;height:22px;border:0;padding:0;background:none;cursor:pointer}
+.pd-swatch{width:18px;height:18px;border-radius:50%;border:1px solid #ffffff30;display:inline-block}
+.pd-mascot{display:flex;flex-direction:column;gap:6px}
+.pd-check{display:flex;align-items:center;gap:8px;font-size:13px}.pd-check small{color:#8e8e8e}
+.pd-choice-group{display:flex;flex-direction:column;gap:6px}
+.pd-q{font-size:12px;color:#8e8e8e}
+.pd-card{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);cursor:pointer;transition:border-color .12s,background .12s}
+.pd-card:hover{border-color:var(--text-4)}
+.pd-card.is-on{border-color:var(--accent-line);background:var(--accent-soft)}
+.pd-card.is-off{cursor:default}
+.pd-card:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.pd-card-top{display:flex;align-items:center;gap:8px}
+.pd-card-label{flex:1;min-width:0;font-weight:600}
+.pd-card-detail{font-size:12px;color:var(--text-3);line-height:1.4}
+.pd-cost-tag.is-paid{color:var(--accent)}
+.pd-btn{gap:6px}
+.pd-cost-tag{font:11px var(--mono);color:#8e8e8e;flex:0 0 auto}
+.pd-seg{display:inline-flex;border:1px solid #383838;border-radius:7px;overflow:hidden}
+.pd-seg button{border:0;background:transparent;color:#a7abb2;font-size:12px;padding:4px 10px;cursor:pointer}
+.pd-seg button[aria-pressed=true]{background:#2e2e2e;color:#ececec}
+.pd-cost{font-size:12px;color:#8e8e8e}
+/* Anything the user writes in their own words is a text area that grows with what they write. */
+.levers__wide{grid-column:1/-1}
+.note-form{flex-direction:column;align-items:stretch}.note-form .btn{align-self:flex-start}
+.grow{width:100%;box-sizing:border-box;field-sizing:content;min-height:2.3em;max-height:14em;resize:vertical;font:inherit;font-size:13px;line-height:1.45}
+.sb-stage{position:relative;border-radius:10px;overflow:hidden;background:var(--bg-3)}
+.sb-stage img{display:block}
+.sb-stage img.is-redrawing{opacity:.35;filter:blur(2px)}
+.sb-nav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(10,12,16,.72);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);transition:background .12s,transform .12s}
+.sb-nav:hover:not(:disabled){background:rgba(10,12,16,.92);transform:translateY(-50%) scale(1.06)}
+.sb-nav:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sb-nav:disabled{opacity:.3;cursor:default}
+.sb-nav--prev{left:10px}.sb-nav--next{right:10px}
+.sb-busy{position:absolute;inset:auto 0 0 0;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-size:13px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.75))}
+.sb-spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:sbspin .8s linear infinite}
+@keyframes sbspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.sb-spin{animation:none}.sb-nav{transition:none}}
+/* The player gets the room its shape needs; the details sit beside it, or under it when there is no room. */
+.result-card{--player-w:340px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;border:1px solid var(--line-3);border-radius:14px;padding:14px;background:var(--surface)}
+.result-card--square{--player-w:420px}.result-card--feed{--player-w:380px}.result-card--landscape{--player-w:100%}
+.result-card .result__stage{flex:0 0 auto;width:min(100%,var(--player-w));padding:0;min-height:0;background:none}
+.result-card .result__stage .player-wrap{max-width:none;width:100%}
+.result-side{flex:1 1 240px;display:flex;flex-direction:column;gap:10px;min-width:240px}
+.result-title{font-weight:600;font-size:15px}
+.result-pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill--ok{color:var(--ok);background:var(--ok-soft)}
+.result-actions{display:flex;flex-wrap:wrap;gap:8px}
+.result-hint{margin:0;font-size:12px;color:var(--text-3)}
+.result-share{color:var(--ok);overflow-wrap:anywhere}
+
+.fail{border:1px solid rgba(242,107,58,.35);border-radius:12px;padding:12px 14px;background:rgba(242,107,58,.06);display:flex;flex-direction:column;gap:8px}
+.fail-head{margin:0;display:flex;align-items:baseline;gap:8px}.fail-glyph{color:var(--accent)}
+.fail-sub{margin:0;font-size:13px;color:var(--text-2)}
+.plan-files{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--text-3)}
+.plan-file{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0}
+.plan-file b{color:var(--text-2);font-weight:600}
+.plan-file__switch{border:0;background:none;color:var(--accent);font-size:12px;padding:0;cursor:pointer}
+.plan-file__switch:hover{text-decoration:underline}
+.step{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.step-thumbs{display:flex;gap:4px;flex:0 0 auto}.step-thumbs img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--line-3)}
+.cs-subject{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--line-2)}
+.cs-image{width:100%;max-height:300px;object-fit:contain;border-radius:10px;background:var(--bg-3)}
+.cs-head{display:flex;align-items:baseline;gap:8px}.cs-head .muted{font-size:12px}
+.cs-look{display:flex;flex-direction:column;gap:4px}
+.cs-look textarea{resize:vertical;font:inherit;font-size:13px}
+.sb-frame{display:flex;flex-direction:column;gap:6px;padding-top:10px}
+.sb-frame img{width:100%;max-height:52vh;object-fit:contain;border-radius:10px;background:var(--bg-3)}
+.sb-bar{display:flex;align-items:center;justify-content:space-between}
+.sb-shot{margin:2px 0 0;font-size:13px;color:var(--text-2)}
+.sb-thumbs{display:flex;gap:6px;overflow-x:auto;padding:4px 0}
+.sb-thumbs button{flex:0 0 auto;padding:0;border:2px solid transparent;border-radius:7px;background:none;cursor:pointer;position:relative}
+.sb-thumbs button.is-on{border-color:var(--accent)}
+.sb-thumbs button.has-note::after{content:"";position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.sb-thumbs img{width:44px;height:64px;object-fit:cover;border-radius:5px;display:block}
+
+.result-lead{margin:0}
+.result-more{margin:6px 0 0 15px;display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:1.55;color:var(--text-2)}
+.result-more :deep(p){margin:0}
+.result-more :deep(strong){color:var(--text)}
+.pd-next{flex:1 0 100%}
+.history-body{display:flex;flex-direction:column;gap:10px;padding-top:10px}
+.history-body .drawer-top{display:block}.history-body .drawer-top .input{width:100%}
+.history-sentinel{height:1px}
+.question-hint{margin:0;font-size:12px;color:var(--text-3)}
+.answer-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:8px}
+.answer-card{text-align:left;font:inherit;color:inherit}
+.pd-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pd-upload{cursor:pointer}
+.pd-upload:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
