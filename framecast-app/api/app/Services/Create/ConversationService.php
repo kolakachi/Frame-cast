@@ -219,7 +219,7 @@ class ConversationService
                     abort_unless(in_array($settings['aspect_ratio'], ['9:16', '16:9'], true), 422, 'Native talking video currently supports 9:16 or 16:9.');
                 }
                 // A character build needs room for the scored review to converge: 20 calls (owner, 2026-10-01).
-                if ($paid && ! PilotPolicy::unlimited() && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = 20;
+                if ($paid && ! PilotPolicy::unlimited() && isset($policy['agent']) && collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'talking_shot'], true))) $policy['agent']['max_calls'] = max(20, (int) $policy['agent']['max_calls']);
                 // Design first: the look run builds one still per beat (cheap: 8 calls) for approval; approving it builds the motion from those stills.
                 $baseMeta = $base ? (json_decode((string) $base->metadata_json, true) ?: []) : [];
                 // Stage is explicit and frozen in the quote. Chat wording never authorizes a transition.
@@ -321,6 +321,9 @@ class ConversationService
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
+                    // The likely cost of this stage: images and media at their prices, the build agent from real runs.
+                    'estimate'=>$mediaEstimate + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agent(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15)) : 0),
+                    'effort'=>CostEstimate::effort($settings),
                     'build_stage'=>$step ?? ($lookFirst ? 'storyboard' : 'full_video'), 'step'=>$step, 'media_only'=>$step !== null, 'assumed'=>(bool) $assume, 'look_first'=>$lookFirst, 'from_look'=>$step ? false : $fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
@@ -389,6 +392,18 @@ class ConversationService
                 if(isset($p['retry_of'])) {
                     abort_if(DB::table('composition_runs')->where('input_json->retry_of',$p['retry_of'])->exists(),409,'Retry already approved.');
                     abort_unless(DB::table('composition_runs')->where('id',$p['retry_of'])->where('workspace_id',$user->workspace_id)->where('status','failed')->exists() && !AttemptService::unresolved($p['retry_of']),409,'Original outcome is not retryable.');
+                }
+                // Enough for the likely cost but not the ceiling: the step runs with what is available as its ceiling
+                // (the build agent's budget shrinks; images and media keep their prices) and pauses if it reaches it.
+                $credits = $this->creditAvailability($user);
+                if ($credits['available'] < (int) $quote->credits_max && isset($p['execution_policy']['agent']['total_credits'])) {
+                    $agentBudget = (int) $p['execution_policy']['agent']['total_credits'];
+                    $room = $credits['available'] - ((int) $quote->credits_max - $agentBudget);
+                    $agentNeed = max(0, (int) ($p['estimate'] ?? 0) - (int) ($p['media_estimate'] ?? 0));
+                    abort_if($room < $agentNeed || $room <= 0, 402, sprintf('Top up to continue: this usually takes about %s credits and you have %s available.', number_format((int) ($p['estimate'] ?? $quote->credits_max)), number_format($credits['available'])));
+                    $p['execution_policy']['agent']['total_credits'] = $room;
+                    $p['credit_limited'] = true;
+                    $quote->update(['payload_json' => $p, 'credits_max' => (int) $quote->credits_max - $agentBudget + $room]);
                 }
                 try {
                     $operation = OperationAccounting::reserve($quote, null);

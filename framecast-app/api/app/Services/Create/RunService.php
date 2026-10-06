@@ -111,6 +111,8 @@ class RunService
 
     // 'run' is the sandbox program runner: its files may be generated from scratch, so they can have no parent.
     // 'library' is an item from the art library (a 3D object the build placed): it has no parent either.
+    public const OUT_OF_CREDITS = 'Paused: this step used the credits set aside for it. Everything it finished is kept. Top up if needed, then press Retry to continue where it stopped.';
+
     public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade', 'duck', 'fade', 'space', 'run', 'library'];
     private const DERIVED_TYPES = ['video/mp4' => ['video', 'mp4'], 'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg'], 'image/webp' => ['image', 'webp'], 'image/svg+xml' => ['image', 'svg']];
 
@@ -351,6 +353,13 @@ class RunService
                     'conflict' => $conflict, 'created_at' => now(),
                 ]);
                 if (! $conflict) DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $revision, 'version' => $c->version + 1, 'updated_at' => now()]);
+            }
+            // A step that reached the credits set aside for it pauses: everything it finished is kept and Retry
+            // continues it after a top-up. The worker's own error says which limit it reached.
+            if ($status === 'failed') {
+                $cause = DB::table('composition_trace_events')->where('run_id', $id)->orderByDesc('sequence')->limit(6)->pluck('event_json')
+                    ->map(fn ($e) => (string) (json_decode((string) $e, true)['detail'] ?? ''))->implode(' ');
+                if (preg_match('/Model budget exhausted|Over the approved media ceiling/', $cause)) $result['summary'] = self::OUT_OF_CREDITS;
             }
             DB::table('composition_runs')->where('id', $id)->update([
                 'status' => $status, 'stage' => mb_substr((string) $result['summary'], 0, 250), 'error' => in_array($status, ['preview_ready', 'step_ready'], true) ? null : $result['summary'],

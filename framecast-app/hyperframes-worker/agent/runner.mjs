@@ -499,7 +499,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       // Images are not text context: the one kept review frame or page capture is measured as a placeholder, not its bytes.
       if(toolMode){compactTurns();if(Buffer.byteLength(JSON.stringify(turns(),(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes)throw Error('Context limit reached');}
       const reservation=provider.maxCallUsd;
-      if(!Number.isFinite(reservation)||reservation<0||state.reservedUsd+reservation>cap.budgetUsd+1e-9)throw Error('Model budget exhausted');
+      // A budgeted build counts what its calls actually cost, plus the most the next one may cost; otherwise every
+      // call is counted at its ceiling.
+      if(!Number.isFinite(reservation)||reservation<0||(cap.spendBudget?spentUsd():state.reservedUsd)+reservation>cap.budgetUsd+1e-9)throw Error('Model budget exhausted');
       if(state.reservedOutputTokens+cap.maxOutputTokens>cap.totalOutputTokenAllowance)throw Error('Output token allowance exhausted');
       state.reservedOutputTokens+=cap.maxOutputTokens;
       state.reservedUsd+=reservation;state.calls++;state.pending={kind:'provider',call:state.calls};await save();

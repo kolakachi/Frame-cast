@@ -294,3 +294,17 @@ test('a review that stops improving ends the build with the best draft and its o
  assert.match(state.internalNote,/stopped improving after 3 rounds/);assert.match(state.internalNote,/Fill the lower third/);assert.equal(state.summary,'Here is the best version so far. You can keep improving it.');
  assert.ok(state.calls<10,'it did not run on toward the call limit');
 });
+
+test('a budgeted build counts what its calls cost, not each call at its ceiling',async()=>{
+ const turns=[[use('a','write',{path:'index.html',content:'<html>ok</html>'}),use('b','preview',{times:[1]})],[use('c','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('d','finish',{summary:'Done'})]];
+ const run=async spendBudget=>{
+  const dir=await mkdtemp(tmpdir()+'/budget-');await writeFile(dir+'/index.html','<html></html>');let i=0;
+  // Each call may cost up to $0.30 but actually costs $0.05; the step's budget is $0.50.
+  const provider={id:'t',maxCallUsd:0.3,complete:async()=>{const t=turns[i++]??turns.at(-1);return {content:t,text:'',predictionId:'p'+i,metrics:{},actualCostUsd:0.05};}};
+  return runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[],dir+'-work'),provider,context:{brief:'x',toolMode:true},limits:{calls:6,repairs:3,budgetUsd:0.5,spendBudget},requireVisualReview:true,
+   tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
+ };
+ const spent=await run(true);assert.equal(spent.status,'preview_ready');assert.equal(spent.calls,2,'two $0.05 calls fit a $0.50 budget');
+ // Counted at the ceiling, the second call does not fit: the build stops and delivers its last checked draft.
+ const capped=await run(false);assert.equal(capped.calls,1);
+});

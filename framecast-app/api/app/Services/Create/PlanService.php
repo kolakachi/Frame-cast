@@ -16,10 +16,12 @@ class PlanService
 {
     public function __construct(private ConversationService $conversations) {}
 
-    public function planner(string $task = 'edit'): Planner
+    public function planner(string $task = 'edit', string $effort = 'standard'): Planner
     {
         $choice = config('create.mode') === 'fixture' ? 'offline' : (string) config('create.planner', 'offline');
         $model = $task === 'creative' ? (string) config('create.planner_model_creative', 'claude-opus-5-5') : (string) config('create.planner_model', 'claude-opus-5-5');
+        // Quick effort plans on Sonnet: a lighter plan at a fraction of the cost.
+        if ($effort === 'quick' && $choice === 'anthropic') $model = 'claude-sonnet-5';
         return match ($choice) {
             'replicate' => new ReplicatePlanner((string) config('create.planner_model', 'anthropic/claude-sonnet-5'), (string) config('services.replicate.api_token')),
             'anthropic' => new AnthropicPlanner($model, (string) config('services.anthropic.key')),
@@ -153,7 +155,7 @@ class PlanService
         $task = self::plannerTask($c);
         $activity->step($task === 'edit' ? 'Updating the plan' : 'Planning the video');
         try {
-            $result = $this->planner($task)->plan($context);
+            $result = $this->planner($task, CostEstimate::effort(json_decode((string) $c->settings_json, true) ?: []))->plan($context);
         } catch (\Throwable $e) {
             report($e);
             abort(502, 'The planner could not make a plan just now. Nothing was charged; try again.');
@@ -167,6 +169,11 @@ class PlanService
         $activity->relabel($task === 'edit' ? 'Updated the plan' : 'Planned '.$shots.' '.($shots === 1 ? 'shot' : 'shots'));
         // The planner's own short account of what it took from the files and chose.
         foreach (array_slice(array_filter((array) ($result['plan']['highlights'] ?? []), 'is_string'), 0, 3) as $line) $activity->item($line);
+        // Planning is billed at half its real cost (its model calls at the gateway's tariff), never over the cap, and
+        // waived when the balance cannot cover it: nobody is blocked at the first step.
+        $planningCredits = array_sum(array_map(fn ($call) => CostEstimate::callCredits((array) $call), (array) ($result['usage']['calls'] ?? [])));
+        $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'charge' => CostEstimate::planningCharge($planningCredits), 'charged' => 0, 'waived' => false];
+        if ($plan['planning_charge']['charge'] > 0) $activity->item('Planning · '.$plan['planning_charge']['charge'].' credits (half price)');
         $plan['activity'] = $activity->finish();
         } catch (\Throwable $e) {
             $activity->abandon();
@@ -182,6 +189,11 @@ class PlanService
             DB::table('create_plans')->where('conversation_id', $id)->where('status', 'proposed')->update(['status' => 'superseded', 'updated_at' => now()]);
             // Brand items the plan uses join the conversation's files, beside the brief they answer.
             BrandLibrary::attachUsed($id, array_column(array_filter($plan['reused'] ?? [], fn ($r) => ! empty($r['from_brand'])), 'asset_id'), (string) DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderByDesc('sequence')->value('created_at'));
+            if (($charge = (int) ($plan['planning_charge']['charge'] ?? 0)) > 0) {
+                $available = $this->conversations->creditAvailability($user)['available'];
+                $paid = $available >= $charge && app(\App\Services\CreditService::class)->deduct((int) $user->workspace_id, $charge, 'create_planning', ['conversation_id' => $id, 'plan_id' => $planId]);
+                $plan['planning_charge'] = [...$plan['planning_charge'], 'charged' => $paid ? $charge : 0, 'waived' => ! $paid];
+            }
             DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $id, 'message_id' => $messageId, 'brief_sequence' => (int) $briefs->last()->sequence,
                 'idempotency_key' => $key, 'request_hash' => $hash, 'provider' => mb_substr($result['provider'], 0, 120), 'plan_json' => json_encode($plan),
                 'usage_json' => $result['usage'] ? json_encode($result['usage']) : null, 'status' => 'proposed', 'created_at' => now(), 'updated_at' => now()]);

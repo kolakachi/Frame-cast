@@ -1362,7 +1362,7 @@ class CreateIntegrationTest extends TestCase
         $c = $this->brief();
         $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-20');
         $plain = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
-        $this->assertSame(16, $plain->payload_json['execution_policy']['agent']['max_calls']);
+        $this->assertSame(30, $plain->payload_json['execution_policy']['agent']['max_calls'], 'Standard effort: 30 calls within a credit budget');
         $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
         $json['media'] = [['kind' => 'character_poses', 'description' => 'Mascot: talking', 'credits' => 210]];
         DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
@@ -1372,7 +1372,7 @@ class CreateIntegrationTest extends TestCase
         $json['selections']['character_approval'] = $candidate['token'];
         DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
         $withCharacter = $this->conversations->quote($this->owner, $c->id, $version, 'full_video');
-        $this->assertSame(20, $withCharacter->payload_json['execution_policy']['agent']['max_calls']);
+        $this->assertGreaterThanOrEqual(20, $withCharacter->payload_json['execution_policy']['agent']['max_calls']);
         $this->assertGreaterThan($plain->credits_max, $withCharacter->credits_max, 'the extra calls are reserved up front');
     }
 
@@ -1518,7 +1518,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([false, true], [$q2->payload_json['look_first'], $q2->payload_json['from_look']]);
         $this->assertContains('Maya is still photoreal.', $q2->payload_json['base_review']['findings']);
         $this->assertSame(['index.html' => '<html>look</html>'], $q2->payload_json['base_bundle'], 'the motion is built from the approved stills');
-        $this->assertSame(16, $q2->payload_json['execution_policy']['agent']['max_calls']);
+        $this->assertSame(30, $q2->payload_json['execution_policy']['agent']['max_calls']);
     }
 
     public function test_notes_on_a_version_feed_the_next_plan_and_build_in_that_style(): void
@@ -2297,6 +2297,65 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([], \App\Services\Create\BrandLibrary::items((int) $this->workspace->id));
     }
 
+    public function test_costs_are_estimated_per_stage_and_planning_is_half_price_capped(): void
+    {
+        $e = \App\Services\Create\CostEstimate::class;
+        // Until enough real runs exist, the curve fitted to the measured runs: about 290 for 15 s, 800 for 30 s at Standard.
+        $this->assertSame([289, 795, 116, 1511], [$e::agent('standard', 15), $e::agent('standard', 30), $e::agent('quick', 15), $e::agent('thorough', 30)]);
+        $this->assertSame([867, 2385], [$e::agentCeiling('standard', 15), $e::agentCeiling('standard', 30)]);
+        $this->assertSame([30, 75, 100, 100], [$e::planningCharge(60), $e::planningCharge(150), $e::planningCharge(200), $e::planningCharge(290)], 'half the real cost, never more than 100');
+        // Effort sets the build: Quick has no reviewer and 12 calls; every effort has a credit budget, not a call count.
+        $quick = \App\Services\Create\PilotPolicy::class;
+        config(['create.agent_provider' => 'anthropic', 'services.anthropic.key' => 'k', 'create.mode' => 'agent', 'create.paid_execution_enabled' => true, 'create.pilot_budget_id' => 'e3-test', 'create.pilot_budget_microusd' => 5000000]);
+        $q = $quick::execution(['effort' => 'quick', 'duration_seconds' => 15, 'output_kind' => 'video']);
+        $t = $quick::execution(['effort' => 'thorough', 'duration_seconds' => 30, 'output_kind' => 'video']);
+        $this->assertSame([12, 'low', false, $e::agentCeiling('quick', 15)], [$q['agent']['max_calls'], $q['agent']['effort'], isset($q['critic']), $q['agent']['total_credits']]);
+        $this->assertSame([40, 'high', 4], [$t['agent']['max_calls'], $t['agent']['effort'], $t['critic']['max_calls']]);
+        $this->assertThrows(fn () => \App\Services\Create\OutputSettings::normalize(['effort' => 'extreme']), \Illuminate\Validation\ValidationException::class);
+
+        // Planning: billed at half its real tokens' cost when the plan arrives, waived when the balance cannot cover it.
+        config(['create.planner' => 'anthropic', 'create.mode' => 'agent']);
+        $reply = ['summary' => 'A kinetic launch video', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'Title lands']]];
+        $plan = fn ($id) => ['id' => $id, 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => ['input_tokens' => 100000, 'output_tokens' => 2000]];
+        Http::fake(['api.anthropic.com/*' => Http::sequence()->push(['content' => [['type' => 'text', 'text' => '{"question": null}']]])->push($plan('one'))->push($plan('two'))]);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        $service = app(\App\Services\Create\PlanService::class);
+        $first = $service->propose($this->owner, $c->id, 1, 'pc-1');
+        // 100,000 input and 2,000 output tokens at the gateway's tariff: 110 credits, billed 55.
+        $this->assertSame(['cost_credits' => 110, 'charge' => 55, 'charged' => 55, 'waived' => false], $first['plan']['planning_charge']);
+        $this->assertSame(45, $this->conversations->creditAvailability($this->owner)['available']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Bigger title.', 'expected_version' => (int) $this->conversations->conversation($this->owner, $c->id)->version, 'idempotency_key' => 'b2']);
+        $second = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'pc-2');
+        $this->assertSame(['charged' => 0, 'waived' => true], array_intersect_key($second['plan']['planning_charge'], array_flip(['charged', 'waived'])), 'a short balance never blocks a plan');
+    }
+
+    public function test_a_step_starts_on_what_is_available_when_it_covers_the_likely_cost_and_pauses_at_it(): void
+    {
+        $this->pilot();
+        config(['create.agent_provider' => 'anthropic', 'services.anthropic.key' => 'k']);
+        $c = $this->brief();
+        $q = $this->conversations->quote($this->owner, $c->id, 1);
+        $budget = $q->payload_json['execution_policy']['agent']['total_credits'];
+        $this->assertSame(\App\Services\Create\CostEstimate::agentCeiling('standard', 15), $budget);
+        $this->assertGreaterThan(0, $q->payload_json['estimate']);
+        // Less than the likely cost: refused, saying what it usually takes.
+        $this->workspace->update(['credits_monthly' => (int) $q->payload_json['estimate'] - 10]);
+        $this->rejected(402, fn () => $this->conversations->approve($this->owner, $c->id, $q->id, 'limited-low', true));
+        // More than the likely cost but less than the ceiling: it starts, with what is available as its ceiling.
+        $available = (int) $q->payload_json['estimate'] + 100;
+        $this->workspace->update(['credits_monthly' => $available]);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'limited-ok', true);
+        $input = json_decode($run->input_json, true);
+        $this->assertTrue($input['credit_limited']);
+        $this->assertSame($available, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('authorized_credits'));
+        // Reaching it pauses the step: the run says so, and Retry continues it.
+        $claim = $this->runs->claim();
+        DB::table('composition_trace_events')->insert(['run_id' => $run->id, 'sequence' => 1, 'event_json' => json_encode(['phase' => 'run', 'status' => 'failed', 'detail' => 'Model budget exhausted']), 'created_at' => now()]);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'This build stopped before it finished.'], null, null);
+        $this->assertSame(\App\Services\Create\RunService::OUT_OF_CREDITS, DB::table('composition_runs')->where('id', $run->id)->value('error'));
+    }
+
     public function test_plan_colours_can_be_changed_and_are_kept_fixed(): void
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
@@ -2849,7 +2908,7 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(503,fn()=>\App\Services\Create\PilotPolicy::execution([]));
         config(['services.anthropic.key'=>'k']);
         $agent=\App\Services\Create\PilotPolicy::execution([])['agent'];
-        $this->assertSame(['anthropic','claude-opus-5-5',450000,16384,'medium'],[$agent['provider'],$agent['model'],$agent['cost_limit_microusd'],$agent['max_output_tokens'],$agent['effort']]);
+        $this->assertSame(['anthropic','claude-opus-5-5',600000,16384,'medium'],[$agent['provider'],$agent['model'],$agent['cost_limit_microusd'],$agent['max_output_tokens'],$agent['effort']]);
     }
 
     public function test_confirmed_render_queue_expiry_releases_hold_without_recovery(): void
@@ -3032,7 +3091,7 @@ class CreateIntegrationTest extends TestCase
         config(['create.unlimited'=>false]);
         $this->assertFalse(\App\Services\Create\PilotPolicy::enabled(), 'without the switch, paid testing needs a spend cap again');
         config(['create.pilot_budget_microusd'=>5000000]);
-        $this->assertSame(16, \App\Services\Create\PilotPolicy::execution(['output_kind'=>'video','duration_seconds'=>15])['agent']['max_calls']);
+        $this->assertSame(30, \App\Services\Create\PilotPolicy::execution(['output_kind'=>'video','duration_seconds'=>15])['agent']['max_calls']);
     }
     public function test_pilot_metering_is_provider_verified_and_charged_once(): void {
         $this->pilot();$c=$this->brief();$q=$this->conversations->quote($this->owner,$c->id,1);

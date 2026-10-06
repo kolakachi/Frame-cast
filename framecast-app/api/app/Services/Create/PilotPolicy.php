@@ -37,7 +37,10 @@ class PilotPolicy
             abort_unless((string)config('services.anthropic.key')!=='',503,'The Claude API key is not configured.');
             // Thinking is output. With style packs and craft rules pinned, even medium effort spends most of
             // 8k tokens planning a first draft and gets cut off, so every build gets 16k and the matching cap.
-            $effort=(string)config('create.agent_effort','medium');
+            // The user's effort (Quick, Standard, Thorough) sets how hard the build agent thinks, how many calls it
+            // may make and how much review it gets; the ceiling is a credit budget sized from real runs (CostEstimate).
+            $level=CostEstimate::effort($settings);
+            $effort=['quick'=>'low','standard'=>(string)config('create.agent_effort','medium'),'thorough'=>'high'][$level];
             if(self::unlimited()) {
                 // Per-call ceilings sized so a long, thinking-heavy call settles at its real cost (1 credit = $0.004).
                 return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>1250,'effort'=>$effort,
@@ -47,15 +50,17 @@ class PilotPolicy
                     // A render per repair round (todo D): the first render and up to two re-renders.
                     'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
             }
-            return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>$effort,
+            // Real builds (2026-10-06) took 3 to 21 calls, the dearest $0.42: calls are capped per effort with room, a
+            // call at $0.60, and the whole build at its budget, of which only what is used is charged.
+            $calls=['quick'=>12,'standard'=>30,'thorough'=>40][$level];
+            $budget=CostEstimate::agentCeiling($level,(int)($settings['duration_seconds']??15));
+            return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>150,'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
-                // 16 calls (owner, 2026-10-01): UI-heavy parity builds with visual repairs need 14 to 16;
-                // plain builds still finish in 7 to 8. Builds with a character get 20 (ConversationService).
-                'cost_limit_microusd'=>450000,'max_calls'=>16,'max_output_tokens'=>16384,'context_bytes'=>128000,
+                'cost_limit_microusd'=>600000,'max_calls'=>$calls,'total_credits'=>$budget,'level'=>$level,'max_output_tokens'=>16384,'context_bytes'=>128000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
-                // The critic: a separate reviewer, two short low-effort calls with the frames and the strip.
-                'critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>25,'effort'=>'low','cost_limit_microusd'=>100000,'max_calls'=>2,'max_output_tokens'=>4096],
+                // The critic: a separate reviewer of short low-effort calls with the frames and the strip (none at Quick).
+                ...($level==='quick'?[]:['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>25,'effort'=>'low','cost_limit_microusd'=>100000,'max_calls'=>$level==='thorough'?4:2,'max_output_tokens'=>4096]]),
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

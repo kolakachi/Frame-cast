@@ -545,7 +545,7 @@ async function deleteStyle(s) { await guarded(async () => { await api.delete(`/c
 async function ensureConversation() {
   if(id.value) return id.value
   const draft = prompt.value
-  const c = (await api.post('/create/conversations',{output_kind:outputKind.value,...(pendingStyleId.value ? Object.fromEntries(Object.entries(styleSettings(pendingStyleId.value)).filter(([,v]) => v)) : {})})).data.data
+  const c = (await api.post('/create/conversations',{output_kind:outputKind.value,...(pendingEffort.value !== 'standard' ? { effort: pendingEffort.value } : {}),...(pendingStyleId.value ? Object.fromEntries(Object.entries(styleSettings(pendingStyleId.value)).filter(([,v]) => v)) : {})})).data.data
   persistDraft(c.id,draft); persistDraft(null,'')
   await router.replace({name:'create',params:{conversationId:c.id}}); persistDraft(null,''); await refresh()
   return c.id
@@ -809,6 +809,7 @@ function voiceName(key) { const v = voiceOptions(key).find(x => x.key === key); 
 function lookSummary(p) { return styleOptions(p).find(o => o.key === (planDrafts.value[p.id]?.style ?? styleKey(p.plan.selections.style)))?.label || '' }
 function optionsSummary(p) {
   const d = draftFor(p), out = planDecisions(p).map(dec => dec.options.find(o => o.id === d.choices[dec.id])?.label).filter(Boolean)
+  out.push(EFFORTS.find(e => e.id === currentEffort.value)?.label.toLowerCase() + ' effort')
   if (!lookRequired(p) && !p.plan.mascot3d) out.push(lookChoice(p) === 'look' ? 'look first' : 'straight to video')
   if (variantCount.value > 1) out.push(variantCount.value + ' variants')
   return out.join(' · ')
@@ -847,8 +848,8 @@ function approveLabel(p) {
   if (!paid.value) return 'Approve local sample'
   if (needsCharacterCheck(p)) return 'Approve'
   const pr = planPrice.value[p.id]
-  if (planDirty(p)) return pr?.quote ? `Save and approve · up to ${pr.quote.credits_max.toLocaleString()} cr` : 'Save and approve'
-  if (pr?.quote) return `${startsWithCharacter(p) ? 'Approve · draw the character' : storyboardFirst(p) ? 'Approve storyboard' : 'Approve'} · up to ${pr.quote.credits_max.toLocaleString()} cr`
+  if (planDirty(p)) return pr?.quote ? `Save and approve · ${priceText(pr.quote)}` : 'Save and approve'
+  if (pr?.quote) return `${startsWithCharacter(p) ? 'Approve · draw the character' : storyboardFirst(p) ? 'Approve storyboard' : 'Approve'} · ${priceText(pr.quote)}`
   return pr?.error ? 'Approve' : 'Pricing…'
 }
 const approveBlocked = p => paid.value && !needsCharacterCheck(p) && !!planPrice.value[p.id]?.loading
@@ -916,12 +917,12 @@ async function priceStep(p, step) {
   } catch (e) { if (id.value === target) stepPrice.value = { ...stepPrice.value, [key]: { version, error: message(e) } } }
 }
 const stepPriceLoading = (p, step) => !!stepPrice.value[stepKey(p, step)]?.loading
-function stepPriceText(p, step) { const q = stepPrice.value[stepKey(p, step)]?.quote; return !q ? '' : q.credits_max ? `Next: up to ${q.credits_max.toLocaleString()} cr` : 'Next step is already paid for' }
+function stepPriceText(p, step) { const q = stepPrice.value[stepKey(p, step)]?.quote; return !q ? '' : q.credits_max ? `Next: ${priceText(q)} · ${ceilingText(q)}` : 'Next step is already paid for' }
 function stepApproveLabel(p, step) {
   const q = stepPrice.value[stepKey(p, step)]?.quote, verb = step === 'character' ? 'Approve' : 'Approve · make video'
   if (!paid.value) return verb
   if (q && !q.credits_max) return verb
-  return q ? `${verb} · up to ${q.credits_max.toLocaleString()} cr` : stepPrice.value[stepKey(p, step)]?.error ? verb : 'Pricing…'
+  return q ? `${verb} · ${priceText(q)}` : stepPrice.value[stepKey(p, step)]?.error ? verb : 'Pricing…'
 }
 async function approveStepNow(p, step) {
   const token = step === 'character' ? characterStep(p)?.token : storyboardStep(p)?.token
@@ -1093,6 +1094,31 @@ async function pickBrandForAsk(p, a, b) {
   await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, asks: [{ id: a.id, asset_id: b.asset_id }] }); quote.value = null; await refresh() })
 }
 onMounted(loadBrand)
+// Effort: how much care, and cost, goes into the video. Visible in the prompt box and on the plan, and switchable
+// until the plan is approved; the price on Approve follows it.
+const EFFORTS = [
+  { id: 'quick', label: 'Quick', cost: 'about 0.4×', detail: 'Fastest and cheapest: a lighter plan and build, no review pass.' },
+  { id: 'standard', label: 'Standard', cost: 'default', detail: 'Balanced care and cost, with two review passes.' },
+  { id: 'thorough', label: 'Thorough', cost: 'about 2×', detail: 'Most care: deeper thinking, more calls and more review.' },
+]
+const pendingEffort = ref('standard')
+const currentEffort = computed(() => settingsNow.value.effort || (conversation.value ? 'standard' : pendingEffort.value))
+async function setEffort(v) {
+  if (!conversation.value) { pendingEffort.value = v; return }
+  await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { effort: v } }); quote.value = null; await refresh() })
+}
+// A price: the likely cost; the ceiling ("never more than") only where it differs.
+const priceText = q => q.estimate && q.estimate < q.credits_max ? `about ${q.estimate.toLocaleString()} cr` : `${(q.estimate || q.credits_max).toLocaleString()} cr`
+const ceilingText = q => q.estimate && q.estimate < q.credits_max ? `never more than ${q.credits_max.toLocaleString()}` : 'exact'
+// The bill, stage by stage: each plan's charge, then each step and the video at what they spent.
+const spendRows = computed(() => {
+  const rows = []
+  for (const p of plans.value) { const c = p.plan.planning_charge; if (c) rows.push({ label: 'Planning', text: c.waived ? 'waived' : `${c.charged} cr (half price)`, cr: c.charged || 0, at: p.created_at }) }
+  for (const r of data.value?.runs || []) if (Number(r.spent_credits) > 0) rows.push({ label: STEP_NAMES[r.build_stage] ? STEP_NAMES[r.build_stage].replace(/^The /, '').replace(/^./, c => c.toUpperCase()) : 'Build', text: `${Number(r.spent_credits).toLocaleString()} cr`, cr: Number(r.spent_credits), at: r.created_at })
+  return rows.sort((a, b) => String(a.at).localeCompare(String(b.at)))
+})
+const spendTotal = computed(() => spendRows.value.reduce((n, r) => n + r.cr, 0))
+const outOfCredits = run => /^Paused: this step used the credits/.test(run?.error || '')
 onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
@@ -1152,6 +1178,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                         <span class="plan-title">Plan</span>
                         <span v-for="t in planPills(planByMessage[m.id])" :key="t" class="pill">{{ t }}</span>
                         <span v-if="planEdited(planByMessage[m.id])" class="pill is-edited">Edited</span>
+                        <span class="pill pill--effort" :title="EFFORTS.find(e => e.id === currentEffort)?.detail">{{ EFFORTS.find(e => e.id === currentEffort)?.label }} effort</span>
                       </div>
                       <div v-if="planFiles.length && planByMessage[m.id].status === 'proposed'" class="plan-files">
                         <span v-for="f in planFiles" :key="f.asset_id" class="plan-file" :title="f.title">
@@ -1268,9 +1295,10 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
 
             <div v-if="lastFailure && !active" class="assistant-message">
               <div class="fail" role="alert">
-                <p class="fail-head"><span class="fail-glyph" aria-hidden="true">✕</span><b>{{ STEP_NAMES[lastFailure.build_stage] || 'The build' }} stopped before it finished.</b></p>
-                <p class="fail-sub">Everything it finished is kept, and you were charged only for the work it did. Retrying picks up from where it stopped, with the approval you already gave.</p>
+                <p class="fail-head"><span class="fail-glyph" aria-hidden="true">{{ outOfCredits(lastFailure) ? '⏸' : '✕' }}</span><b>{{ STEP_NAMES[lastFailure.build_stage] || 'The build' }} {{ outOfCredits(lastFailure) ? 'paused: it used the credits set aside for it.' : 'stopped before it finished.' }}</b></p>
+                <p class="fail-sub">{{ outOfCredits(lastFailure) ? 'Everything it finished is kept. Top up if your balance is low, then Retry continues where it stopped.' : 'Everything it finished is kept, and you were charged only for the work it did. Retrying picks up from where it stopped, with the approval you already gave.' }}</p>
                 <div class="result-actions">
+                  <button v-if="outOfCredits(lastFailure)" type="button" class="btn btn--ghost btn--sm" @click="router.push({ name: 'settings', query: { section: 'billing' } })">Top up</button>
                   <button v-if="canWrite" type="button" class="btn btn--primary btn--sm" :disabled="locked || retrying" @click="retryRun(lastFailure)">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
                   <button type="button" class="btn btn--ghost btn--sm" @click="dismissedFailures = [...dismissedFailures, lastFailure.id]">Stop here</button>
                 </div>
@@ -1368,6 +1396,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                 <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
                 <label v-if="styles.length || packs.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Style" @change="chooseStyle($event.target.value)"><option value="">Style: WyvStudio chooses</option><optgroup v-if="packs.length" label="WyvStudio styles"><option v-for="k in packs" :key="k.slug" :value="'pack:' + k.slug">Style: {{ k.name }}</option></optgroup><optgroup v-if="styles.length" label="Your styles"><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></optgroup></select></label>
                 <button v-if="styles.length" type="button" class="quiet" @click="stylesOpen = true">Manage styles</button>
+                <UiSelect v-if="outputKind === 'video' || conversation" :model-value="currentEffort" label="Effort: how much care, and cost, goes into the video" align="left" drop="up" :disabled="locked" :options="EFFORTS.map(e => ({ value: e.id, label: 'Effort · ' + e.label }))" @update:model-value="setEffort" />
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
                 <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
@@ -1414,6 +1443,11 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
               </div>
               <p v-if="!data?.attachments?.length" class="muted">No files yet.</p>
               <button v-if="canWrite && !conversation.archived_at" type="button" class="quiet" :disabled="locked" @click="showLibrary">+ Add from library</button>
+            </section>
+            <section v-if="spendRows.length">
+              <h3>SPENT ON THIS CREATION</h3>
+              <div v-for="(row, i) in spendRows" :key="i" class="spend-row"><span>{{ row.label }}</span><b>{{ row.text }}</b></div>
+              <div class="spend-row spend-row--total"><span>Total</span><b>{{ spendTotal.toLocaleString() }} cr</b></div>
             </section>
             <section>
               <h3>YOUR BRAND LIBRARY</h3>
@@ -1566,13 +1600,17 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
             <label v-for="action in drawerPlan.plan.character_performance" :key="action.id" class="pd-check"><input v-if="planDrafts[drawerPlan.id]" type="checkbox" :checked="!(planDrafts[drawerPlan.id].omitted_performance || []).includes(action.id)" :disabled="!planEditable(drawerPlan)" @change="toggleAction(drawerPlan, action.id, $event.target.checked)" /><span>{{ action.action }} <small>{{ action.start ?? '?' }}–{{ action.end ?? '?' }} s</small></span></label>
             <p v-for="issue in drawerPlan.performance_issues || []" :key="issue.id" class="notice">{{ issue.action }}: {{ issue.message }}</p>
           </PlanGroup>
-          <PlanGroup v-if="planDecisions(drawerPlan).length || drawerPlan.plan.kept_as_is.length || hasGenerated(drawerPlan) || (paid && planEditable(drawerPlan)) || (!lookRequired(drawerPlan) && !drawerPlan.plan.mascot3d)" title="Options" :summary="optionsSummary(drawerPlan)">
+          <PlanGroup title="Options" :summary="optionsSummary(drawerPlan)">
             <div v-for="dec in planDecisions(drawerPlan)" :key="dec.id" class="pd-choice-group" role="radiogroup" :aria-label="dec.question">
               <span class="pd-q">{{ dec.question }}</span>
               <label v-for="o in dec.options" :key="o.id" :class="['pd-card', { 'is-on': draftFor(drawerPlan).choices[dec.id] === o.id, 'is-off': !planEditable(drawerPlan) }]"><input v-model="draftFor(drawerPlan).choices[dec.id]" class="sr-only" type="radio" :name="`${drawerPlan.id}-${dec.id}`" :value="o.id" :disabled="!planEditable(drawerPlan)" /><span class="pd-card-top"><span class="pd-card-label">{{ o.label }}</span><span :class="['pd-cost-tag', { 'is-paid': o.kind === 'media' }]">{{ o.kind === 'media' ? `~${o.credits} cr` : 'Included' }}</span></span><span v-if="o.detail" class="pd-card-detail">{{ o.detail }}</span></label>
             </div>
             <div v-if="drawerPlan.plan.kept_as_is.length" class="pd-choice-group"><span class="pd-q">Kept as-is</span>
               <label v-for="k in drawerPlan.plan.kept_as_is" :key="k" class="pd-check"><input type="checkbox" :checked="draftFor(drawerPlan).kept.includes(k)" :disabled="!planEditable(drawerPlan)" @change="toggleKept(drawerPlan, k)" /> <span>{{ k }}</span></label>
+            </div>
+            <div class="pd-choice-group" role="radiogroup" aria-label="Effort">
+              <span class="pd-q">Effort</span>
+              <label v-for="e in EFFORTS" :key="e.id" :class="['pd-card', { 'is-on': currentEffort === e.id, 'is-off': !planEditable(drawerPlan) }]"><input class="sr-only" type="radio" name="plan-effort" :value="e.id" :checked="currentEffort === e.id" :disabled="!planEditable(drawerPlan)" @change="setEffort(e.id)" /><span class="pd-card-top"><span class="pd-card-label">{{ e.label }}</span><span class="pd-cost-tag">{{ e.cost }}</span></span><span class="pd-card-detail">{{ e.detail }}</span></label>
             </div>
             <div v-if="!lookRequired(drawerPlan) && !drawerPlan.plan.mascot3d" class="pd-choice-group" role="radiogroup" aria-label="How to build it">
               <span class="pd-q">How to build it</span>
@@ -1602,7 +1640,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
         <template #footer>
           <template v-if="drawerPlan">
             <PlanNote v-if="planEditable(drawerPlan)" class="pd-next" :label="startsWithCharacter(drawerPlan) ? 'Character, then storyboard, then the video' : storyboardFirst(drawerPlan) ? 'Storyboard first, then the video' : 'What happens next'" :text="nextStep(drawerPlan)" />
-            <span class="pd-cost">{{ !isLivePlan(drawerPlan) ? 'View only' : planDirty(drawerPlan) ? 'Unsaved changes' : planPrice[drawerPlan.id]?.quote ? `Up to ${planPrice[drawerPlan.id].quote.credits_max.toLocaleString()} cr` : '' }}</span>
+            <span class="pd-cost">{{ !isLivePlan(drawerPlan) ? 'View only' : planDirty(drawerPlan) ? 'Unsaved changes' : planPrice[drawerPlan.id]?.quote ? `${priceText(planPrice[drawerPlan.id].quote)} · ${ceilingText(planPrice[drawerPlan.id].quote)}` : '' }}</span>
             <span class="spacer" />
             <button v-if="planEditable(drawerPlan) && planDirty(drawerPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="guarded(() => savePlanEdits(drawerPlan))">Save</button>
             <button type="button" class="btn btn--ghost btn--sm" @click="planDrawerId = null">Close</button>
@@ -2128,6 +2166,9 @@ label.tray-note{white-space:normal}
 .ask-brand__item:hover{border-color:var(--accent-line)}
 .ask-brand__item img{width:28px;height:28px;object-fit:cover;border-radius:5px}
 .ask-brand__item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill--effort{color:var(--text-2);border:1px solid var(--line-3);background:transparent}
+.spend-row{display:flex;justify-content:space-between;gap:10px;font-size:13px}.spend-row b{font-variant-numeric:tabular-nums}
+.spend-row--total{border-top:1px solid var(--line-2);padding-top:6px;margin-top:2px}
 .step{display:flex;flex-direction:column;gap:12px;margin-top:6px}
 .step-thumbs{display:flex;gap:4px;flex:0 0 auto}.step-thumbs img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--line-3)}
 .cs-subject{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--line-2)}
