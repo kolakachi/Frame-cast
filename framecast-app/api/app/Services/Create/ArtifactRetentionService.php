@@ -9,7 +9,7 @@ class ArtifactRetentionService
 {
     public function sweep(): int
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled'), 404);
+        abort_unless(config('create.enabled'), 404);
         $keep = [];
         foreach (DB::table('composition_runs')->select('input_json')->cursor() as $run) {
             foreach (json_decode($run->input_json, true)['input_files'] ?? [] as $f) $keep[$f['storage_path']] = true;

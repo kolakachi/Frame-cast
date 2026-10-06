@@ -113,7 +113,7 @@ class AttemptService
         abort_unless($run->lease_hash && hash_equals($run->lease_hash, hash('sha256', $token)), 403);
         $live = $run->status === 'running' || ($stopping && $run->status === 'cancel_requested');
         abort_unless(($settling || ($live && now()->lessThan($run->lease_expires_at)))
-            && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409, 'Attempt lease is no longer current.');
+            && \App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id), 409, 'Attempt lease is no longer current.');
         return $run;
     }
 

@@ -364,7 +364,7 @@ class AssetController extends Controller
         $rawStorageUrl  = (string) $asset->storage_url;
         if ($storageService->isCreatePrivate($rawStorageUrl)) {
             abort_unless(app()->environment(['local','testing']) && config('create.enabled')
-                && in_array((int)$asset->workspace_id, config('create.workspaces',[]),true)
+                && \App\Services\Create\ConversationService::workspaceAllowed((int) $asset->workspace_id)
                 && $asset->status !== 'archived' && $asset->workspace?->status === 'active', 404);
         }
         $path           = $storageService->extractPath($rawStorageUrl);

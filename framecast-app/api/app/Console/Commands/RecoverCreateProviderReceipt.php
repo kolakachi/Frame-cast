@@ -12,7 +12,7 @@ class RecoverCreateProviderReceipt extends Command
 
     public function handle(): int
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled') && $this->option('worker-stopped'), 403);
+        abort_unless(config('create.enabled') && $this->option('worker-stopped'), 403);
         $a = DB::table('composition_attempts')->where('id', $this->argument('attempt'))->firstOrFail();
         abort_unless($a->provider === 'anthropic' && $a->provider_response_json, 409, 'No saved Anthropic receipt. Keep the hold; locate provider evidence.');
         $saved = json_decode($a->provider_response_json, true);

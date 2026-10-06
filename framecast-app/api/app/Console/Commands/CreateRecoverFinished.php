@@ -22,7 +22,7 @@ class CreateRecoverFinished extends Command
 
     public function handle(RunService $runs): int
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled'), 403, 'Local Create only.');
+        abort_unless(config('create.enabled'), 403, 'Create is not enabled here.');
         $id = (string) $this->argument('run');
         $run = DB::table('composition_runs')->where('id', $id)->firstOrFail();
         if ($run->status !== 'failed') { $this->error('Only a failed run can be recovered; this one is '.$run->status.'.'); return self::FAILURE; }

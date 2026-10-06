@@ -14,14 +14,14 @@ class ReconciliationService
      */
     public function releaseUnstarted(string $runId, bool $workerStopped): array
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled') && $workerStopped, 403);
+        abort_unless(config('create.enabled') && $workerStopped, 403);
         return DB::transaction(function () use ($runId) {
             $unlocked = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
             $workspace = Workspace::findOrFail($unlocked->workspace_id);
             Workspace::whereIn('id', array_unique([$workspace->id, $workspace->creditRootId()]))->orderBy('id')->lockForUpdate()->get();
             $run = DB::table('composition_runs')->where('id', $runId)->lockForUpdate()->firstOrFail();
             abort_unless(in_array($run->status, ['needs_attention', 'failed'], true)
-                && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409);
+                && (\App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id)), 409);
             $op = DB::table('api_operations')->where('id', $run->operation_id)->lockForUpdate()->firstOrFail();
             abort_unless(in_array($op->status, ['running', 'needs_attention'], true), 409);
             $attempts = DB::table('composition_attempts')->where('run_id', $runId)->lockForUpdate()->get();
@@ -56,7 +56,7 @@ class ReconciliationService
      */
     public function reconcile(VerifiedAttemptReceipt $receipt, bool $workerStopped): array
     {
-        abort_unless(app()->environment(['local','testing']) && config('create.enabled') && $workerStopped, 403);
+        abort_unless(config('create.enabled') && $workerStopped, 403);
         $hash = hash('sha256',json_encode([$receipt->result(),$receipt->evidence]));
         return DB::transaction(function () use ($receipt,$hash) {
             $attempt = DB::table('composition_attempts')->where('id',$receipt->attemptId)->firstOrFail();
@@ -68,7 +68,7 @@ class ReconciliationService
             $old = DB::table('composition_reconciliations')->where('attempt_id',$attempt->id)->first();
             if ($old) { abort_unless(hash_equals($old->receipt_hash,$hash),409,'A different reconciliation is already recorded.');return ['replayed'=>true,'charged_credits'=>(int)$attempt->charged_credits]; }
             abort_unless($run->status === 'needs_attention' && in_array($attempt->status,['started','unknown'],true),409,'Only unresolved interrupted work can be reconciled.');
-            abort_unless(in_array((int)$run->workspace_id,config('create.workspaces',[]),true),403);
+            abort_unless(\App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id),403);
             $lease = Str::random(64);
             // All temporary state is inside this transaction; other workers never
             // see an executable lease and the old worker's token is revoked.
@@ -100,14 +100,14 @@ class ReconciliationService
      */
     public function closeSettled(string $runId, bool $workerStopped): array
     {
-        abort_unless(app()->environment(['local','testing']) && config('create.enabled') && $workerStopped, 403);
+        abort_unless(config('create.enabled') && $workerStopped, 403);
         return DB::transaction(function () use ($runId) {
             $unlocked = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
             $workspace = Workspace::findOrFail($unlocked->workspace_id);
             Workspace::whereIn('id', array_unique([$workspace->id, $workspace->creditRootId()]))->orderBy('id')->lockForUpdate()->get();
             $run = DB::table('composition_runs')->where('id',$runId)->lockForUpdate()->firstOrFail();
             abort_unless($run->status === 'needs_attention', 409, 'Only a held run can be closed.');
-            abort_unless(in_array((int) $run->workspace_id, config('create.workspaces', []), true), 403);
+            abort_unless(\App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id), 403);
             abort_if(AttemptService::unresolved($run->id), 409, 'Some calls are still unresolved; reconcile them with a verified receipt.');
             $attempts = DB::table('composition_attempts')->where('run_id', $runId)->lockForUpdate()->get();
             abort_if($attempts->contains(fn ($a) => !self::hasSettlement($a)), 409, 'A terminal label without a settlement receipt is not proof of billing. Hold retained.');

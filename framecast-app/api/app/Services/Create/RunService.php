@@ -25,7 +25,7 @@ class RunService
             }
             if (DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested'])->exists()
                 || DB::table('composition_runs')->where('status', 'needs_attention')->whereNull('worker_stopped_at')->exists()) return null;
-            $query = DB::table('composition_runs')->where('status', 'queued')->whereIn('workspace_id', config('create.workspaces', []))->whereNotExists(fn ($q) => $q->selectRaw('1')->from('composition_runs as held')->whereColumn('held.conversation_id', 'composition_runs.conversation_id')->where('held.status', 'needs_attention'))->orderBy('created_at');
+            $query = DB::table('composition_runs')->where('status', 'queued')->when(config('create.workspaces'), fn ($q, $ws) => $q->whereIn('workspace_id', $ws))->whereNotExists(fn ($q) => $q->selectRaw('1')->from('composition_runs as held')->whereColumn('held.conversation_id', 'composition_runs.conversation_id')->where('held.status', 'needs_attention'))->orderBy('created_at');
             $run = $query->lockForUpdate()->first();
             if (! $run) return null;
             $token = Str::random(64);
@@ -96,7 +96,7 @@ class RunService
         $file = DB::transaction(function () use ($id, $token, $assetId) {
             $run = $this->leased($id, $token);
             abort_unless($run->status === 'running' && now()->lessThan($run->lease_expires_at)
-                && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409, 'Input lease is no longer current.');
+                && \App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id), 409, 'Input lease is no longer current.');
             abort_unless(\App\Models\Workspace::whereKey($run->workspace_id)->where('status', 'active')->exists(), 403);
             $input = json_decode($run->input_json, true);
             $file = collect(array_merge($input['input_files'] ?? [], $input['derived_files'] ?? []))->first(fn ($f) => (int) $f['asset_id'] === $assetId);

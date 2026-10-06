@@ -21,6 +21,13 @@ class ConversationService
         return ['total' => $total, 'reserved' => $reserved, 'available' => max(0, $total - $reserved)];
     }
 
+    /** A workspace may use Create: any, unless CREATE_WORKSPACES lists some. */
+    public static function workspaceAllowed(int $workspaceId): bool
+    {
+        $list = (array) config('create.workspaces', []);
+        return ! $list || in_array($workspaceId, $list, true);
+    }
+
     /** Only the team's accounts (CREATE_ALLOWED_DOMAINS) and named addresses (CREATE_ALLOWED_EMAILS) see Create. */
     public static function personAllowed(User $user): bool
     {
@@ -31,8 +38,8 @@ class ConversationService
 
     public function authorize(User $user, bool $write = false): void
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled')
-            && in_array((int) $user->workspace_id, config('create.workspaces', []), true) && self::personAllowed($user), 404);
+        // On wherever CREATE_ENABLED is set; the workspace list narrows it when given, and only allowed people see it.
+        abort_unless(config('create.enabled') && self::workspaceAllowed((int) $user->workspace_id) && self::personAllowed($user), 404);
         abort_if($write && ! in_array($user->role, ['owner', 'admin', 'editor', 'super_admin', 'platform_admin', 'client_admin', 'client_editor'], true), 403);
         $workspace = Workspace::findOrFail($user->workspace_id);
         abort_if($workspace->status !== 'active', 403);

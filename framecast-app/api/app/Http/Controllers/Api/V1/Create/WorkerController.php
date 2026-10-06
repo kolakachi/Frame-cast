@@ -13,7 +13,7 @@ class WorkerController extends Controller
 
     private function authorizeWorker(Request $r): void
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled'), 404);
+        abort_unless(config('create.enabled'), 404);
         $token = (string) config('create.worker_token');
         abort_unless(strlen($token) >= 32 && hash_equals($token, (string) $r->bearerToken()), 403);
     }

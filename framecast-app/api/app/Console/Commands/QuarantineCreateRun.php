@@ -11,7 +11,7 @@ class QuarantineCreateRun extends Command
 
     public function handle(): int
     {
-        abort_unless(app()->environment(['local', 'testing']) && config('create.enabled') && $this->option('worker-stopped'), 403);
+        abort_unless(config('create.enabled') && $this->option('worker-stopped'), 403);
         if ($this->option('release-unstarted')) {
             $result = app(\App\Services\Create\ReconciliationService::class)->releaseUnstarted($this->argument('run'), true);
             $this->info("Released {$result['released_credits']} unused credits; retained {$result['retained_credits']} for uncertain calls. No balance change or generation.");
@@ -19,7 +19,7 @@ class QuarantineCreateRun extends Command
         }
         DB::transaction(function () {
             $run = DB::table('composition_runs')->where('id', $this->argument('run'))->lockForUpdate()->firstOrFail();
-            abort_unless($run->status === 'needs_attention' && in_array((int) $run->workspace_id, config('create.workspaces', []), true), 409);
+            abort_unless($run->status === 'needs_attention' && \App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id), 409);
             DB::table('composition_runs')->where('id', $run->id)->update(['worker_stopped_at' => now(), 'lease_hash' => null,
                 'lease_expires_at' => null, 'stage' => 'Worker stopped; external work needs reconciliation', 'updated_at' => now()]);
             DB::table('api_operations')->where('id', $run->operation_id)->update([

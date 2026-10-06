@@ -2513,8 +2513,11 @@ class CreateIntegrationTest extends TestCase
     public function test_feature_off_and_non_allowlisted_workspaces_cannot_create(): void
     {
         config(['create.enabled' => false]); $this->rejected(404, fn () => $this->brief());
-        config(['create.enabled' => true, 'create.workspaces' => []]); $this->rejected(404, fn () => $this->brief());
+        // A workspace list narrows it; an empty list allows any workspace (the people gate still decides).
+        config(['create.enabled' => true, 'create.workspaces' => [999]]); $this->rejected(404, fn () => $this->brief());
         $this->assertSame(0, DB::table('create_conversations')->count());
+        config(['create.workspaces' => []]); $this->brief();
+        $this->assertSame(1, DB::table('create_conversations')->count());
     }
 
     public function test_viewer_can_read_but_cannot_write(): void
@@ -3370,7 +3373,8 @@ class CreateIntegrationTest extends TestCase
         $env = app()['env']; app()['env'] = 'production';
         try { $this->assertFalse(\App\Services\Create\PilotPolicy::unlimited()); } finally { app()['env'] = $env; }
         config(['create.unlimited'=>false]);
-        $this->assertFalse(\App\Services\Create\PilotPolicy::enabled(), 'without the switch, paid testing needs a spend cap again');
+        $this->assertTrue(\App\Services\Create\PilotPolicy::enabled(), 'paid builds need no overall cap (owner, 2026-10-06)');
+        \App\Services\Create\PilotPolicy::admit($p); // no overall cap set: nothing to check
         config(['create.pilot_budget_microusd'=>5000000]);
         $this->assertSame(100, \App\Services\Create\PilotPolicy::execution(['output_kind'=>'video','duration_seconds'=>15])['agent']['max_calls']);
     }

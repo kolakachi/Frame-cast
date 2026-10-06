@@ -14,10 +14,10 @@ class DeliveryController extends Controller
   return response()->json(['data'=>app(DeliveryService::class)->deliver($r->user(),$id,$revisionId,$input,$r)]);
  }
  public function show(string $token,StorageService $storage) {
-  abort_unless(app()->environment(['local','testing']) && config('create.enabled') && preg_match('/^[a-zA-Z0-9]{48}$/D',$token),404);
+  abort_unless(config('create.enabled') && preg_match('/^[a-zA-Z0-9]{48}$/D',$token),404);
   $revision=DB::table('composition_revisions')->where('share_token',$token)->where('share_enabled',true)->firstOrFail();
   $c=DB::table('create_conversations')->where('id',$revision->conversation_id)->whereNull('archived_at')->firstOrFail();
-  abort_unless(in_array((int)$c->workspace_id,config('create.workspaces',[]),true) && Workspace::whereKey($c->workspace_id)->where('status','active')->exists(),404);
+  abort_unless(\App\Services\Create\ConversationService::workspaceAllowed((int) $c->workspace_id) && Workspace::whereKey($c->workspace_id)->where('status','active')->exists(),404);
   $asset=Asset::where('workspace_id',$c->workspace_id)->where('status','!=','archived')->findOrFail($revision->output_asset_id);
   return response()->json(['data'=>['title'=>$c->title,'version'=>$revision->number,'kind'=>$asset->asset_type,'url'=>$storage->url($asset->storage_url)]])->header('Cache-Control','no-store');
  }

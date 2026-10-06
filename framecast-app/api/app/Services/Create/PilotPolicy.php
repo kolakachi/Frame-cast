@@ -8,8 +8,9 @@ class PilotPolicy
 {
     public static function enabled(): bool
     {
-        return app()->environment(['local','testing']) && config('create.paid_execution_enabled')
-            && config('create.pilot_budget_id') && (self::unlimited() || config('create.pilot_budget_microusd',0)>0);
+        // Paid builds where they are switched on. The budget id tags runs; a budget of 0 means no overall cap (owner,
+        // 2026-10-06: each build's own budget and the user's balance still bound it).
+        return (bool) config('create.paid_execution_enabled') && (bool) config('create.pilot_budget_id');
     }
 
     /**
@@ -83,6 +84,7 @@ class PilotPolicy
     {
         abort_unless(self::enabled(),503);
         if(self::unlimited()) return; // No spend cap while testing; every call is still recorded at its cost.
+        if((int)config('create.pilot_budget_microusd',0)<=0) return; // No overall cap set.
         if(DB::connection()->getDriverName()==='pgsql') DB::select('select pg_advisory_xact_lock(783430)');
         $used=0;
         foreach(DB::table('composition_runs')->get(['id','input_json','status']) as $run) {
