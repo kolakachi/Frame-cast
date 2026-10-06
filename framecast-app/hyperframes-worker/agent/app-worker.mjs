@@ -138,6 +138,19 @@ async function execute(run){
   if(paid)provider.release=async()=>{await pilotBudget.release(reservation);reservation=null;};
   // The bought plan items, kept at run scope: the final checks and the refusal report read them after the build.
   let agentResult,planMedia=[],agentArgs=null;
+  // A character or storyboard step only buys its images: the user checks and approves them before anything is built.
+  if(run.input.media_only===true){
+   if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
+    const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal:AbortSignal.any([signal??aborter.signal,AbortSignal.timeout(120000)])});
+    planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},
+     produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,900000),
+     download});
+    if(lost||cancelled||stopping)throw Error('Stopped while getting plan media');
+   }
+   await finish(run,{status:'step_ready',summary:run.input.step==='character'?'The character is ready for you to check.':'The storyboard is ready for you to check.'});
+   console.log(JSON.stringify({run:run.id,status:'step_ready',step:run.input.step}));
+   return;
+  }
   if(run.input.execution_policy?.agent){
    // Buy the approved plan items first, so the design can use them.
    if(paid&&Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
@@ -210,9 +223,14 @@ async function execute(run){
    const ids=new Map(manifest.map(f=>[f.name,f.asset_id]));
    // Only what the finished composition uses: a builder that tried several frame grabs leaves the discarded ones behind.
    const used=Object.values(agentResult.bundle??{}).join('\n');
+   // A used file keeps its lineage: the files it was made from are saved too (music ducked, then faded, keeps the
+   // ducked file as the faded one's source), even though the composition only names the last one.
+   const byPath=new Map(agentResult.derived.map(d=>[d.path,d])),needed=new Set();
+   for(const d of agentResult.derived)if(!agentResult.bundle||used.includes(d.path))for(let x=d,i=0;x&&i<12&&!needed.has(x.path);i++){needed.add(x.path);x=byPath.get(x.derivedFrom??x.origin);}
    for(const d of agentResult.derived){
-    if(uploaded.has(d.path))continue;uploaded.add(d.path);
-    if(agentResult.bundle&&!used.includes(d.path))continue;
+    if(uploaded.has(d.path))continue;
+    if(!needed.has(d.path))continue;
+    uploaded.add(d.path);
     // A run-made file may have no source (generated from scratch); a media edit always has one.
     const from=ids.get(d.derivedFrom??d.origin);if(!from&&d.operation!=='run')throw Error('Derived media has no known source');
     const form=new FormData();form.append('lease_token',run.lease_token);if(from)form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));

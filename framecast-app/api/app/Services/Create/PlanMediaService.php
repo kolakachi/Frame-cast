@@ -26,7 +26,7 @@ class PlanMediaService
         abort_unless(is_array($item) && isset($input['plan']['plan_id']), 404, 'This run has no such plan item.');
         app(RunService::class)->validateResultLease($runId, $lease);
         abort_if(! empty($input['look_first']) && in_array($item['kind'], self::PRODUCTION_ONLY, true), 422, 'Audio and motion are deferred until the full video build.');
-        if (empty($input['look_first']) && collect($input['plan_media'])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take', 'reference_sheet'], true) || ShotRoute::usesSheet($m))) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
+        if (empty($input['look_first']) && collect($input['plan_media'])->contains(fn ($m) => in_array($m['kind'], ['character_poses', 'character_variants', 'talking_shot', 'talking_take', 'reference_sheet'], true) || ShotRoute::usesSheet($m))) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id, $input['input_files'] ?? []);
         abort_if($item['kind'] === 'character_poses' && ($item['character_contract'] ?? '') !== CharacterApproval::CONTRACT, 409, 'The character workflow changed. Review a fresh storyboard quote.');
         $planId = $input['plan']['plan_id'];
         $cacheIndex = (int) ($item['plan_item_index'] ?? $index);
@@ -39,7 +39,7 @@ class PlanMediaService
             $context['narration'] = array_slice($context['narration'], 1);
         }
         if (in_array($item['kind'], ['character_variants', 'talking_shot', 'talking_take'], true) || ($item['kind'] === 'animate_image' && ($item['subject'] ?? '') === 'approved_character')) {
-            $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
+            $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id, $input['input_files'] ?? []);
             if ($item['kind'] === 'character_variants' || $item['kind'] === 'animate_image') abort_unless(hash_equals($approved['files'][0]['sha256'], (string) ($item['master_sha256'] ?? '')), 409, 'The approved character changed. Review a fresh quote.');
             $context['animation_subject'] = $item['subject'] ?? 'source';
             $context['approved_character_media_id'] = $approved['media_id'];
@@ -48,14 +48,18 @@ class PlanMediaService
         // Generated video: the approved sheet's files and the user's avatar are its references.
         if (in_array($item['kind'], ['generated_shot', 'ugc_take'], true)) {
             if (ShotRoute::usesSheet($item)) {
-                $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
+                $approved = CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id, $input['input_files'] ?? []);
                 abort_unless(hash_equals(ShotRoute::inputsSha($item, $approved['files'], $approved['names']), (string) ($item['sheet_sha256'] ?? '')), 409, 'The approved images this clip uses changed. Review a fresh quote.');
                 // Each approved image with its label (a cast subject, or "Panel n"); a file's own "name" is its stored file name.
                 $context['sheet_files'] = array_map(fn ($f, $k) => ['label' => $approved['names'][$k] ?? null] + $f, $approved['files'], array_keys($approved['files']));
             }
         }
+        // Each person or place on the sheet is its own drawing: one already drawn the same way in this creation is kept,
+        // so changing one redraws only that one.
+        if ($item['kind'] === 'reference_sheet') $context['prior_subjects'] = Storyboard::priorSubjects((string) $run->conversation_id);
         if ($item['kind'] === 'storyboard') {
-            // Panels are drawn from the cast this plan just drew (approved together on one screen); their identity includes it.
+            // Panels are drawn only from the character the user approved (its own step); their identity includes it.
+            if (($input['step'] ?? null) === 'storyboard') CharacterApproval::requireCharacter($input['plan'], $input['settings'], (int) $run->workspace_id, $input['input_files'] ?? []);
             $cast = Storyboard::cast($planId);
             abort_unless($cast, 409, 'The cast is not ready, so the storyboard cannot be drawn yet.');
             $item['cast_sha256'] = Storyboard::castSha($cast);
@@ -146,7 +150,7 @@ class PlanMediaService
             $record = ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null,
                 'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
                 'character_contract' => $made['character_contract'] ?? null, 'master_sha256' => $made['master_sha256'] ?? null,
-                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks']))];
+                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks', 'subject_keys']))];
             $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
             $recorded = true;
             return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];
@@ -312,7 +316,7 @@ class PlanMediaService
         $credits = $kind === 'music' ? CapabilityCatalogue::musicCredits((int) ($input['settings']['duration_seconds'] ?? 15)) : CapabilityCatalogue::credits($kind, (int) $run->workspace_id);
         abort_unless(is_int($credits) && $credits > 0, 422, 'That item is not for sale here.');
         abort_if($kind === 'cloned_voiceover' && ($input['plan']['voice'] ?? null) !== 'clone', 422, 'Select a cloned voice explicitly before generating cloned speech.');
-        if (in_array($kind, ['talking_shot', 'talking_take'], true)) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id);
+        if (in_array($kind, ['talking_shot', 'talking_take'], true)) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id, $input['input_files'] ?? []);
         $talkingRoute = in_array($kind, ['talking_shot', 'talking_take'], true) ? TalkingPresenter::route($kind, $input['plan']['voice'] ?? null, (int) ($input['settings']['duration_seconds'] ?? 15)) : [];
         $credits = $talkingRoute['credits'] ?? $credits;
         $ceiling = (int) ($input['execution_policy']['plan_media']['total_credits'] ?? 0);
@@ -347,7 +351,7 @@ class PlanMediaService
         $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => ($f['mime_type'] ?? '') !== 'image/svg+xml' && empty($f['operation']))
             ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
         return ['character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
-            'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images,
+            'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images, 'source_files' => $input['input_files'] ?? [],
             'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15),
             // Items made from earlier items (the talking shot) find them by the plan.
             'plan_id' => $input['plan']['plan_id'] ?? null];

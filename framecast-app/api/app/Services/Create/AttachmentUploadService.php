@@ -26,9 +26,10 @@ class AttachmentUploadService
         }
         $type = self::TYPES[$mime] ?? null;
         abort_unless($file->isValid() && $type && $size > 0 && $size <= config('create.input_file_bytes'), 422, 'Use PNG, JPEG, WebP, SVG, MP4, MP3 or WAV, up to 100 MB per file.');
-        abort_unless(in_array($purpose,['source','reference'],true),422);
-        // Footage the video will cut from is made renderable once, here (references are only studied).
-        if ($purpose === 'source' && $type[0] === 'video') {
+        abort_unless(in_array($purpose,['source','reference','auto'],true),422);
+        // Footage the video will cut from is made renderable once, here (references are only studied). A file whose
+        // role is not decided yet is prepared too, so it is ready if the brief puts it in the video.
+        if ($purpose !== 'reference' && $type[0] === 'video') {
             try { $path = VideoIntake::prepare($path); } catch (\RuntimeException $e) { abort(422, $e->getMessage()); }
             $size = (int) filesize($path);
             abort_unless($size <= config('create.input_file_bytes'), 422, 'That video is over 100 MB once prepared. Upload a shorter clip.');

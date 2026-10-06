@@ -194,6 +194,12 @@ class CreateIntegrationTest extends TestCase
         $plans = app(\App\Services\Create\PlanService::class);
         $p = $plans->propose($this->owner, $c->id, $v, 'plan-1');
         $this->assertSame('offline-planner-v1', $p['provider']);
+        // The turn's activity is saved with the plan, and the live record ends when planning does.
+        $this->assertIsInt($p['plan']['activity']['worked_ms']);
+        $this->assertMatchesRegularExpression('/^Planned \d+ shots?$/', end($p['plan']['activity']['steps'])['label']);
+        $this->assertFalse(\App\Services\Create\PlanActivity::live($c->id)['running']);
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->owner)->getJson("/api/v1/create/conversations/$c->id/plan-activity")->assertOk()->assertJsonPath('data.running', false);
         $this->assertSame(['Sit-stand in 8 seconds', 'Holds two monitors'], $p['plan']['callouts']);
         $this->assertSame('type_on', $p['plan']['selections']['choices']['opening']);
         $this->assertFalse($p['stale']);
@@ -609,7 +615,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($edited, \App\Services\Create\PlanService::forQuote($this->conversations->conversation($this->owner, $c->id))['agreement'], 'the build follows what the user approved');
     }
 
-    public function test_the_cast_and_storyboard_are_approved_together_and_a_note_redraws_one_panel(): void
+    public function test_the_character_and_the_storyboard_are_separate_approved_steps_and_a_note_redraws_one_panel(): void
     {
         $this->pilot(); config(['create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000, 'services.anthropic.key' => '']);
         $c = $this->brief();
@@ -625,8 +631,10 @@ class CreateIntegrationTest extends TestCase
         DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
         $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
 
+        // Step 1, the character: only the sheet is drawn; no video is built.
         $look = $this->conversations->quote($this->owner, $c->id, $version());
-        $this->assertSame(['reference_sheet', 'storyboard'], array_column($look->payload_json['plan_media'], 'kind'), 'the look stage draws the cast, then the panels; no clip yet: '.json_encode([$look->payload_json['build_stage'] ?? null, array_column($look->payload_json['plan_media'], 'kind')]));
+        $this->assertSame(['character', ['reference_sheet'], true], [$look->payload_json['step'], array_column($look->payload_json['plan_media'], 'kind'), $look->payload_json['media_only']]);
+        $this->assertArrayNotHasKey('agent', $look->payload_json['execution_policy'], 'a step buys images only');
         $drawn = [];
         app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class($drawn) extends \App\Services\Create\PlanMediaExecutor {
             public function __construct(private array &$drawn) {}
@@ -645,25 +653,61 @@ class CreateIntegrationTest extends TestCase
             }
         });
         $run = $this->conversations->approve($this->owner, $c->id, $look->id, 'approve-look', true);
+        // Approving the plan freezes it: its content no longer changes; only the steps move on.
+        $this->assertTrue(\App\Services\Create\PlanService::approved($plan['id']));
+        $this->rejected(409, fn () => $service->select($this->owner, $c->id, $plan['id'], $version(), ['callouts' => ['A new line']]));
         $claim = $this->runs->claim();
         $media = app(\App\Services\Create\PlanMediaService::class);
         $media->produce($run->id, $claim['lease_token'], 0);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'step_ready', 'summary' => 'The character is ready for you to check.'], null, null);
+        $this->assertSame('step_ready', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $present = fn () => $service->present(DB::table('create_plans')->where('id', $plan['id'])->first(), DB::table('create_conversations')->where('id', $c->id)->first());
+        $shown = $present()['character_preview'];
+        $this->assertSame(['Maya', 'Shop'], array_column($shown['images'], 'label'), 'the character is reviewed on its own');
+        $this->assertSame('reference_sheet', $shown['kind']);
+        $this->assertNull($present()['storyboard_preview']);
+        $this->rejected(422, fn () => $this->conversations->quote($this->owner, $c->id, $version(), 'full_video'));
+
+        // Step 2, the storyboard: drawn only from the approved character.
+        // The next step's price is shown before approving (a preview quote that cannot itself be approved) ...
+        $preview = $this->conversations->quote($this->owner, $c->id, $version(), null, ['character_approval' => $shown['token']]);
+        $this->assertSame('storyboard', $preview->payload_json['step']);
+        $this->rejected(422, fn () => $this->conversations->approve($this->owner, $c->id, $preview->id, 'approve-preview', true));
+        // ... and one action approves the character and starts the storyboard; a higher price is shown, not charged.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $url = "/api/v1/create/conversations/$c->id/plans/{$plan['id']}/approve-step";
+        $this->actingAs($this->owner)->postJson($url, ['step' => 'character', 'token' => $shown['token'], 'expected_version' => $version(), 'max_credits' => $preview->credits_max - 1, 'idempotency_key' => 'step-low'])
+            ->assertOk()->assertJsonPath('data.needs_confirm', true);
+        $started = $this->actingAs($this->owner)->postJson($url, ['step' => 'character', 'token' => $shown['token'], 'expected_version' => $version(), 'max_credits' => $preview->credits_max, 'idempotency_key' => 'step-board'])
+            ->assertStatus(202)->assertJsonPath('data.build_stage', 'storyboard');
+        $run = DB::table('composition_runs')->where('id', $started->json('data.id'))->first();
+        $boardInput = json_decode($run->input_json, true);
+        $this->assertSame(['reference_sheet' => 0, 'storyboard' => 2 * \App\Services\Create\ShotRoute::PANEL_CREDITS], array_column($boardInput['plan_media'], 'credits', 'kind'), 'the approved sheet is not bought again');
+        $claim = $this->runs->claim();
+        $media->produce($run->id, $claim['lease_token'], 0);
         $board = $media->produce($run->id, $claim['lease_token'], 1);
         $this->assertSame([2 * \App\Services\Create\ShotRoute::PANEL_CREDITS, ['Panel 1', 'Panel 2']], [$board['charged_credits'], $this->collectDrawn($drawn)]);
-        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'look done'], null, null);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'step_ready', 'summary' => 'The storyboard is ready for you to check.'], null, null);
+        $frames = $present()['storyboard_preview'];
+        $this->assertSame(['Panel 1', 'Panel 2'], array_column($frames['images'], 'label'));
+        $this->assertFalse($frames['approved']);
+        $this->rejected(422, fn () => $this->conversations->quote($this->owner, $c->id, $version(), 'full_video'));
 
-        $shown = $service->present(DB::table('create_plans')->where('id', $plan['id'])->first(), DB::table('create_conversations')->where('id', $c->id)->first())['character_preview'];
-        $this->assertSame(['Maya', 'Shop', 'Panel 1', 'Panel 2'], array_column($shown['images'], 'label'), 'one review: the cast and its panels');
-        $this->assertSame('reference_sheet', $shown['kind']);
-
-        $service->select($this->owner, $c->id, $plan['id'], $version(), ['character_approval' => $shown['token']]);
-        $full = $this->conversations->quote($this->owner, $c->id, $version(), 'full_video');
+        // Step 3, the video: made from the approved character and frames.
+        $service->select($this->owner, $c->id, $plan['id'], $version(), ['storyboard_approval' => $frames['token']]);
+        $full = $this->conversations->quote($this->owner, $c->id, $version());
+        $this->assertSame('full_video', $full->payload_json['build_stage']);
         $ids = array_column($full->payload_json['input_files'], 'asset_id');
         $this->assertSame(array_values(array_unique($ids)), $ids, 'each input once: the worker refuses a manifest with a repeated asset');
         $items = collect($full->payload_json['plan_media'])->keyBy(fn ($m) => $m['kind'].($m['first_frame'] ?? ''));
         $this->assertSame(0, $items['storyboard']['credits'], 'the approved panels are not bought again');
         $this->assertTrue($items->has('generated_shotPanel 1') && $items->has('generated_shotPanel 2'), 'each shot starts from its approved panel: '.json_encode($items->keys()));
 
+        // A new look for the character asks for the character again, and the frames after it.
+        $service->select($this->owner, $c->id, $plan['id'], $version(), ['character_looks' => ['Maya' => 'green coat, short hair']]);
+        $this->assertFalse($present()['character_preview']['approved'] ?? false);
+        $this->assertSame('character', $this->conversations->quote($this->owner, $c->id, $version())->payload_json['step']);
+        $service->select($this->owner, $c->id, $plan['id'], $version(), ['character_looks' => []]);
         $service->select($this->owner, $c->id, $plan['id'], $version(), ['panel_notes' => ['2' => 'phone in her left hand']]);
         $redo = $this->conversations->quote($this->owner, $c->id, $version(), 'storyboard');
         $this->assertSame(\App\Services\Create\ShotRoute::PANEL_CREDITS, collect($redo->payload_json['plan_media'])->firstWhere('kind', 'storyboard')['credits'], 'a note on one panel redraws only that panel');
@@ -1179,7 +1223,9 @@ class CreateIntegrationTest extends TestCase
                 ['id' => 'title', 'text' => 'Show Offer', 'source_quote' => 'Show Offer', 'category' => 'text']],
             'scenes' => [['label' => 'Offer', 'start' => 0, 'end' => 15, 'idea' => 'Mascot with title', 'requirement_ids' => ['style', 'title']]],
             'media' => [['kind' => 'ai_image', 'description' => 'A halftone mascot', 'requirement_ids' => ['style']]]];
+        // A new creation first checks whether it must ask anything (here: no question), then plans.
         Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['id' => 'ask', 'content' => [['type' => 'text', 'text' => '{"question": null}']], 'usage' => []])
             ->push(['id' => 'first', 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => []])
             ->push(['id' => 'second', 'content' => [['type' => 'text', 'text' => '{"summary":"Make it calmer","scenes":[]}']], 'usage' => []])]);
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
@@ -1797,6 +1843,50 @@ class CreateIntegrationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_changed_source_bytes_are_requoted_and_redrawn_instead_of_reusing_the_old_identity(): void
+    {
+        $this->pilot(); config(['create.planner' => 'offline']);
+        $c = $this->brief();
+        $this->imageAttachment($c, 'source');
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $p = $plans->propose($this->owner, $c->id, $version(), 'avatar-cache');
+        $json = $p['plan'];
+        $json['media'] = [['kind' => 'reference_sheet', 'description' => 'The user', 'subjects' => [['name' => 'User', 'kind' => 'character', 'looks' => 'the uploaded person']], 'credits' => 35]];
+        $json['look_first'] = $json['selections']['look_first'] = true;
+        DB::table('create_plans')->where('id', $p['id'])->update(['plan_json' => json_encode($json)]);
+        $calls = [];
+        app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class($calls) extends \App\Services\Create\PlanMediaExecutor {
+            public function __construct(private array &$calls) {}
+            public function produce(string $kind, string $description, array $ctx, string $dir): array {
+                $bytes = file_get_contents($ctx['source_images'][0]);
+                $this->calls[] = hash('sha256', $bytes);
+                file_put_contents($dir.'/x.png', $bytes);
+                return ['path' => $dir.'/x.png', 'mime' => 'image/png', 'title' => 'User', 'poses' => ['User'], 'provider_id' => 'offline-'.count($this->calls), 'character_contract' => \App\Services\Create\CharacterApproval::CONTRACT];
+            }
+        });
+        $quote = $this->conversations->quote($this->owner, $c->id, $version(), 'storyboard');
+        $run = $this->conversations->approve($this->owner, $c->id, $quote->id, 'avatar-first', true);
+        $claim = $this->runs->claim();
+        $media = app(\App\Services\Create\PlanMediaService::class);
+        $first = $media->produce($run->id, $claim['lease_token'], 0);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'offline look done'], null, null);
+        $this->assertNotNull($plans->present(DB::table('create_plans')->where('id', $p['id'])->first(), $this->conversations->conversation($this->owner, $c->id))['character_preview'], 'the approval candidate uses the same source fingerprint');
+        $again = $this->conversations->quote($this->owner, $c->id, $version(), 'storyboard');
+        $this->assertSame(0, $again->payload_json['plan_media'][0]['credits'], 'unchanged source reuses the paid sheet');
+        $disk = \Illuminate\Support\Facades\Storage::disk('minio');
+        $disk->put('sample.png', $disk->get('sample.png').'new source bytes');
+        $changed = $this->conversations->quote($this->owner, $c->id, $version(), 'storyboard');
+        $this->assertGreaterThan(0, $changed->payload_json['plan_media'][0]['credits'], 'changed source is quoted before buying');
+        $run2 = $this->conversations->approve($this->owner, $c->id, $changed->id, 'avatar-second', true);
+        $claim2 = $this->runs->claim();
+        $second = $media->produce($run2->id, $claim2['lease_token'], 0);
+        $this->assertFalse($second['reused']);
+        $this->assertCount(2, $calls);
+        $this->assertNotSame($first['file']['sha256'], $second['file']['sha256']);
+        Http::assertNothingSent();
+    }
+
     private function seedCharacter(string $planId, array $p, object $c): array
     {
         $bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
@@ -2074,16 +2164,137 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(1,Asset::count());
     }
 
-    public function test_upload_http_requires_reuse_confirmation_and_image_briefs_cannot_render_video_fixture(): void
+    public function test_upload_http_needs_no_role_or_consent_and_image_briefs_cannot_render_video_fixture(): void
     {
         $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);$this->actingAs($this->owner);
         \Illuminate\Support\Facades\Storage::fake('local');
         $c=$this->postJson('/api/v1/create/conversations',['output_kind'=>'image'])->assertCreated()->json('data.id');
-        $this->post("/api/v1/create/conversations/$c/uploads",['asset_file'=>$this->uploadPng(),'purpose'=>'source','idempotency_key'=>'a','expected_version'=>0],['Accept'=>'application/json'])->assertStatus(422);
-        $this->post("/api/v1/create/conversations/$c/uploads",['asset_file'=>$this->uploadPng(),'purpose'=>'source','reuse_confirmed'=>true,'idempotency_key'=>'a','expected_version'=>0],['Accept'=>'application/json'])->assertOk()->assertJsonPath('data.attachments.0.purpose','source');
-        $this->postJson("/api/v1/create/conversations/$c/messages",['content'=>'Make a product image','expected_version'=>1,'idempotency_key'=>'brief'])->assertCreated();
-        $this->postJson("/api/v1/create/conversations/$c/quotes",['expected_version'=>2])->assertStatus(422);
+        // Attaching is one step: the role is read from the brief when it is sent.
+        $this->post("/api/v1/create/conversations/$c/uploads",['asset_file'=>$this->uploadPng(),'idempotency_key'=>'a','expected_version'=>0],['Accept'=>'application/json'])->assertOk()->assertJsonPath('data.attachments.0.purpose','auto');
+        $this->post("/api/v1/create/conversations/$c/uploads",['asset_file'=>$this->uploadPng('b.png'),'purpose'=>'source','idempotency_key'=>'b','expected_version'=>1],['Accept'=>'application/json'])->assertOk();
+        $this->postJson("/api/v1/create/conversations/$c/messages",['content'=>'Make a product image','expected_version'=>2,'idempotency_key'=>'brief'])->assertCreated();
+        $this->postJson("/api/v1/create/conversations/$c/quotes",['expected_version'=>3])->assertStatus(422);
         $this->assertSame(0,\App\Models\ApiQuote::count());Bus::assertNothingDispatched();
+    }
+
+    public function test_a_new_creation_asks_its_questions_one_at_a_time_before_planning(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'An ad for my shop.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => '{"question": "Which product should it feature?"}']]])]);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $out = $plans->propose($this->owner, $c->id, 1, 'p1');
+        $this->assertSame(['needs_answer' => 'clarify', 'question' => 'Which product should it feature?'], $out);
+        $this->assertSame(0, DB::table('create_plans')->count());
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->owner)->getJson("/api/v1/create/conversations/$c->id")->assertOk()->assertJsonPath('data.messages.1.kind', 'question');
+        // The user can skip the questions; the plan is then made with the planner's best guess.
+        config(['create.mode' => 'fixture']);
+        $p = $plans->propose($this->owner, $c->id, 2, 'p2', true);
+        $this->assertSame('proposed', $p['status']);
+        // A plan never asks again on its own: the cap stops a fourth question.
+        $this->assertNull(app(\App\Services\Create\Planning\Clarifier::class)->question([], \App\Services\Create\Planning\Clarifier::MAX_QUESTIONS));
+    }
+
+    public function test_people_and_places_already_drawn_are_found_by_their_own_drawing_key(): void
+    {
+        $c = $this->brief();
+        $row = ['conversation_id' => $c->id, 'plan_id' => (string) \Illuminate\Support\Str::uuid(), 'item_index' => 0, 'kind' => 'reference_sheet', 'description_hash' => str_repeat('a', 64), 'status' => 'succeeded', 'created_at' => now(), 'updated_at' => now()];
+        $columns = array_flip(\Illuminate\Support\Facades\Schema::getColumnListing('create_plan_media'));
+        DB::table('create_plan_media')->insert(array_intersect_key($row + ['id' => (string) \Illuminate\Support\Str::uuid(), 'record_json' => json_encode(['file' => ['asset_id' => 1, 'sha256' => 'm'], 'more_files' => [['asset_id' => 2, 'sha256' => 's']], 'poses' => ['Maya', 'Shop'], 'subject_keys' => ['key-maya', 'key-shop']])], $columns));
+        $prior = \App\Services\Create\Storyboard::priorSubjects($c->id);
+        $this->assertSame(['key-maya' => ['asset_id' => 1, 'sha256' => 'm'], 'key-shop' => ['asset_id' => 2, 'sha256' => 's']], $prior, 'each drawing is kept under its own key, so changing Maya leaves the shop as it was');
+    }
+
+    public function test_the_reference_question_never_repeats_an_unclear_answer_or_a_skip(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $video = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'status' => 'ready', 'storage_url' => 'minio://ref.mp4', 'title' => 'their-ugc.mp4']);
+        $this->conversations->attach($this->owner, $c->id, $video->id, 'reference', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Make one for my shop.', 'expected_version' => 1, 'idempotency_key' => 'b1']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $this->assertSame('reference_match', $plans->propose($this->owner, $c->id, $version(), 'p1')['needs_answer']);
+        // An answer that names none of the three choices is still an answer: the plan is made, not the question again.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'kinda close but punchier', 'expected_version' => $version(), 'idempotency_key' => 'b2']);
+        $p = $plans->propose($this->owner, $c->id, $version(), 'p2');
+        $this->assertSame('proposed', $p['status']);
+        $this->assertSame('similar', json_decode((string) $this->conversations->conversation($this->owner, $c->id)->settings_json, true)['reference_match']);
+        $this->assertSame(1, DB::table('create_messages')->where('conversation_id', $c->id)->where('content', \App\Services\Create\ReferenceMatch::QUESTION)->count());
+    }
+
+    public function test_a_file_whose_role_is_unclear_is_asked_about_and_the_reply_decides_it(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $video = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'status' => 'ready', 'storage_url' => 'minio://clip.mp4', 'title' => 'WhatsApp Video.mp4']);
+        $this->conversations->attach($this->owner, $c->id, $video->id, 'auto', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'I want this 30 secs video for my site.', 'expected_version' => 1, 'idempotency_key' => 'b1']);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['content' => [['type' => 'text', 'text' => '{"roles": {"'.$video->id.'": "unsure"}}']]])
+            ->push(['content' => [['type' => 'text', 'text' => '{"question": null}']]])]);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $asked = $plans->propose($this->owner, $c->id, $version(), 'p1');
+        $this->assertSame(['role', 'Should I put "WhatsApp Video.mp4" in your video, or make your video like it?'], [$asked['needs_answer'], $asked['question']]);
+        $this->assertSame('auto', DB::table('create_attachments')->where('asset_id', $video->id)->value('purpose'), 'nothing is decided on a guess');
+        // The reply decides that file (in the cards' words or the user's own).
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Make mine like it', 'expected_version' => $version(), 'idempotency_key' => 'b2']);
+        config(['create.mode' => 'fixture']);
+        $plans->propose($this->owner, $c->id, $version(), 'p2');
+        $this->assertSame('reference', DB::table('create_attachments')->where('asset_id', $video->id)->value('purpose'));
+        $this->assertSame(['source', 'reference', null], [\App\Services\Create\AttachmentRoles::fromAnswer('Use it in my video'), \App\Services\Create\AttachmentRoles::fromAnswer('make mine like it'), \App\Services\Create\AttachmentRoles::fromAnswer('hmm')]);
+    }
+
+    public function test_a_plan_that_made_its_video_is_frozen(): void
+    {
+        $c = $this->brief();
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $p = $plans->propose($this->owner, $c->id, $version(), 'plan-freeze');
+        $q = $this->conversations->quote($this->owner, $c->id, $version());
+        $this->assertSame($p['id'], $q->payload_json['plan']['plan_id'] ?? null);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-freeze');
+        DB::table('composition_runs')->where('id', $run->id)->update(['status' => 'preview_ready']);
+        $this->assertTrue(\App\Services\Create\PlanService::built($p['id']));
+        $this->assertTrue($plans->present(DB::table('create_plans')->where('id', $p['id'])->first(), $this->conversations->conversation($this->owner, $c->id))['built']);
+        // No edits and no second build from it: a new version starts from a new plan.
+        $this->rejected(409, fn () => $plans->select($this->owner, $c->id, $p['id'], $version(), ['callouts' => ['New line']]));
+        $this->rejected(409, fn () => $this->conversations->quote($this->owner, $c->id, $version()));
+    }
+
+    public function test_plan_colours_can_be_changed_and_are_kept_fixed(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $p = $plans->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-1');
+        $plan = $p['plan']; $plan['colour_treatment'] = ['source' => 'agent', 'source_note' => '', 'roles' => ['accent' => ['hex' => '#FF6B35', 'locked' => false]], 'usage' => ''];
+        DB::table('create_plans')->where('id', $p['id'])->update(['plan_json' => json_encode($plan)]);
+        $v = (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $out = $plans->select($this->owner, $c->id, $p['id'], $v, ['colours' => ['accent' => '#3355ff']]);
+        $this->assertSame(['hex' => '#3355FF', 'locked' => true], $out['plan']['colour_treatment']['roles']['accent']);
+        $this->assertSame('user', $out['plan']['colour_treatment']['source']);
+        $this->rejected(422, fn () => $plans->select($this->owner, $c->id, $p['id'], $v + 1, ['colours' => ['background' => '#000000']]));
+    }
+
+    public function test_attachment_roles_are_settled_from_the_brief_and_kept_on_reattach(): void
+    {
+        $c = $this->brief();
+        $image = $this->imageAttachment($c, 'auto');
+        $video = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'status' => 'ready', 'storage_url' => 'minio://clip.mp4', 'title' => 'their-ugc.mp4']);
+        $this->conversations->attach($this->owner, $c->id, $video->id, 'auto', 2);
+        // No model in fixture mode: a video follows as a reference, an image is used in the video.
+        $roles = app(\App\Services\Create\AttachmentRoles::class)->resolve($this->owner, $this->conversations->conversation($this->owner, $c->id));
+        $this->assertSame(['roles' => [$image->id => 'source', $video->id => 'reference'], 'unsure' => []], $roles);
+        $this->assertSame('source', DB::table('create_attachments')->where('asset_id', $image->id)->value('purpose'));
+        // Settled roles are not asked again, and attaching the same file without a role keeps its role.
+        $this->assertSame(['roles' => [], 'unsure' => []], app(\App\Services\Create\AttachmentRoles::class)->resolve($this->owner, $this->conversations->conversation($this->owner, $c->id)));
+        $this->conversations->attach($this->owner, $c->id, $image->id, 'auto', 3);
+        $this->assertSame('source', DB::table('create_attachments')->where('asset_id', $image->id)->value('purpose'));
+        // An image brief uses a video too: nothing is studied, it is edited from.
+        $this->assertSame('source', \App\Services\Create\AttachmentRoles::fallback('video', 'image'));
     }
 
     public function test_history_search_archive_restore_and_active_archive_guard(): void
@@ -2608,6 +2819,27 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['anthropic','claude-opus-5-5',450000,16384,'medium'],[$agent['provider'],$agent['model'],$agent['cost_limit_microusd'],$agent['max_output_tokens'],$agent['effort']]);
     }
 
+    public function test_confirmed_render_queue_expiry_releases_hold_without_recovery(): void
+    {
+        $this->pilot();
+        $c = $this->brief(); $q = $this->conversations->quote($this->owner, $c->id, 1);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'queue-expiry', true);
+        $claim = $this->runs->claim(); $attempts = app(\App\Services\Create\AttemptService::class);
+        $this->assertGreaterThan(0, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits'));
+        $attempt = $attempts->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('a', 64));
+        // The host confirmed flock expired before execution and the container stopped.
+        $receipt = ['status' => 'failed', 'cost_microusd' => 0];
+        $attempts->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt);
+        $this->assertTrue($attempts->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt)['replayed']);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'The render queue stayed busy too long.'], null, null);
+        $op = DB::table('api_operations')->where('id', $run->operation_id)->first();
+        $this->assertSame(['failed', 0, 0], [$op->status, (int) $op->reserved_credits, (int) $op->spent_credits]);
+        $this->assertFalse($attempts::unresolved($run->id));
+        $next = $this->brief(); $quote = $this->conversations->quote($this->owner, $next->id, 1);
+        $nextRun = $this->conversations->approve($this->owner, $next->id, $quote->id, 'after-queue-expiry', true);
+        $this->assertSame($nextRun->id, $this->runs->claim()['id'], 'queue expiry does not block subsequent work');
+    }
+
     public function test_expired_or_cancelled_attempt_cannot_start_but_cancel_can_settle_known_work(): void
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
@@ -2826,7 +3058,11 @@ class CreateIntegrationTest extends TestCase
         $claim=$this->runs->claim();$this->runs->finish($claim['id'],$claim['lease_token'],['status'=>'failed','summary'=>'Confirmed pre-provider failure'],null,null);
         $retry=$v->retryQuote($this->owner,$c->id,$claim['id'],1);
         $this->assertSame($claim['id'],$retry->payload_json['retry_of']);
-        $v->approve($this->owner,$c->id,$retry->id,'retry',true);
+        $this->assertSame(10,$retry->credits_max,'a retry holds what the approved run held, no more');
+        // One action: the approval already given is used again; no new cost review.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $started=$this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/runs/{$claim['id']}/retry",['idempotency_key'=>'retry'])->assertStatus(202);
+        $this->assertSame($claim['id'],json_decode(DB::table('composition_runs')->where('id',$started->json('data.id'))->value('input_json'),true)['retry_of']);
         $this->rejected(409,fn()=>$v->retryQuote($this->owner,$c->id,$claim['id'],1));
         $this->assertSame(4,DB::table('composition_runs')->count());
     }

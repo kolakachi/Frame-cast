@@ -249,9 +249,12 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/references', [$controller, 'reference']);
             Route::delete('/conversations/{id}/attachments/{assetId}', [$controller, 'detach'])->whereNumber('assetId');
             Route::post('/conversations/{id}/plans', [$controller, 'plan']);
+            Route::get('/conversations/{id}/plan-activity', [$controller, 'planActivity']);
             Route::patch('/conversations/{id}/plans/{planId}', [$controller, 'selectPlan']);
+            Route::post('/conversations/{id}/plans/{planId}/approve-step', [$controller, 'approveStep']);
             Route::post('/conversations/{id}/quotes', [$controller, 'quote']);
             Route::post('/conversations/{id}/runs', [$controller, 'approve']);
+            Route::post('/conversations/{id}/runs/{runId}/retry', [$controller, 'retry']);
             Route::post('/conversations/{id}/runs/{runId}/cancel', [$controller, 'cancel']);
             Route::post('/conversations/{id}/revisions/{revisionId}/save-output', [$controller, 'saveOutput']);
             Route::post('/conversations/{id}/revisions/{revisionId}/restore', [$controller, 'restore']);

@@ -8,15 +8,18 @@ use Illuminate\Support\Str;
 /** Each variation owns its hold, attempts and immutable result. A group approval is atomic. */
 class VariantService
 {
-    public function quote(User $user,string $id,int $version,int $count, ?string $buildStage = null): ApiQuote
+    public function quote(User $user,string $id,int $version,int $count, ?string $buildStage = null, ?array $assume = null): ApiQuote
     {
         abort_unless($count>=1 && $count<=3,422,'Choose at most three variations.');
         $service=app(ConversationService::class);
-        if($count===1) return $service->quote($user,$id,$version,$buildStage);
+        $first=$service->quote($user,$id,$version,$buildStage,$assume);
+        if($assume) return $first;
+        // The character and the storyboard are one set of images each; variations are of the video.
+        if($count===1 || !empty($first->payload_json['step'])) return $first;
         abort_unless(PilotPolicy::enabled() && config('create.mode')==='agent',422,'Variations require prompt generation.');
         $group=(string)Str::uuid();$quotes=[];
         for($i=1;$i<=$count;$i++) {
-            $q=$service->quote($user,$id,$version,$buildStage);$p=$q->payload_json;
+            $q=$i===1 ? $first : $service->quote($user,$id,$version,$buildStage);$p=$q->payload_json;
             $p['variant_group']=$group;$p['variant_index']=$i;
             $p['variant_direction']=['Quiet editorial composition','Bold graphic composition','Airy minimal composition'][$i-1];
             if($p['media_input']) $p['media_input']['prompt'].=' Visual variation: '.$p['variant_direction'].'. Preserve supplied subjects and facts.';
@@ -54,6 +57,7 @@ class VariantService
         $p['source_revision_id']=$p['base_revision_id'];$p['base_revision_id']=$c->head_revision_id;$p['version']=$version;$p['retry_of']=$runId;
         abort_unless($p['mode']===config('create.mode'),409);
         return ApiQuote::create(['id'=>ApiQuote::newId(),'workspace_id'=>$user->workspace_id,'created_by_user_id'=>$user->id,'payload_json'=>$p,
-            'credits_min'=>0,'credits_max'=>array_sum(array_map(fn($v)=>$v['credits']*$v['max_calls'],$p['execution_policy'])),'expires_at'=>now()->addMinutes(10)]);
+            // The same hold as the approved run: media is held at its approved ceiling, not at its dearest item times its calls.
+            'credits_min'=>0,'credits_max'=>array_sum(array_map(fn($v)=>$v['total_credits'] ?? $v['credits']*$v['max_calls'],$p['execution_policy'])),'expires_at'=>now()->addMinutes(10)]);
     }
 }

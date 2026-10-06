@@ -10,6 +10,20 @@ class CharacterApproval
 {
     public const CONTRACT = 'approved-master-v2';
 
+    /** The same ordered user images used by the executor; generated images and reference-only uploads are excluded. */
+    public static function sourceFiles(array $files): array
+    {
+        return array_values(array_filter($files, fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image'
+            && ($f['mime_type'] ?? '') !== 'image/svg+xml' && empty($f['operation'])));
+    }
+
+    public static function sourceIdentity(array $context): array
+    {
+        if (isset($context['source_files'])) return array_map(fn ($f) => ['asset_id' => $f['asset_id'], 'sha256' => $f['sha256']], self::sourceFiles($context['source_files']));
+        // Standalone callers with local inputs must also follow changed bytes, not just the filename.
+        return array_map(fn ($path) => ['path' => $path, 'sha256' => is_file($path) ? hash_file('sha256', $path) : null], $context['source_images'] ?? []);
+    }
+
     public static function mediaHash(array $item, array $context): string
     {
         $contract = match ($item['kind']) {
@@ -22,6 +36,11 @@ class CharacterApproval
             default => '',
         };
         if (in_array($item['kind'], [...ShotRoute::KINDS, 'storyboard'], true)) $contract .= '|'.json_encode(array_intersect_key($item, array_flip([...ShotRoute::ROUTE_KEYS, 'panels', 'cast_sha256'])));
+        $usesSource = in_array($item['kind'], ['reference_sheet', 'character_poses', 'ai_image'], true)
+            || ($item['kind'] === 'animate_image' && ($item['subject'] ?? '') !== 'approved_character')
+            || in_array('avatar', (array) ($item['refs'] ?? []), true) || ($item['first_frame'] ?? '') === 'avatar' || ($item['presenter'] ?? '') === 'avatar'
+            || ($item['kind'] === 'storyboard' && collect($item['panels'] ?? [])->contains(fn ($p) => in_array('avatar', $p['refs'] ?? [], true)));
+        if ($usesSource && ($identity = self::sourceIdentity($context))) $contract .= '|source-v1:'.json_encode($identity);
         // Pictures do not depend on the script: a sheet, panels or a silent shot survive a narration or voice change.
         $script = in_array($item['kind'], ['reference_sheet', 'storyboard', 'generated_shot'], true) ? [null, null] : [$context['narration'], $context['voice']];
         return hash('sha256', $contract.$item['kind'].'|'.$item['description'].(! empty($item['requirements']) ? '|requirements:'.json_encode($item['requirements']) : '').'|'.json_encode([
@@ -29,13 +48,20 @@ class CharacterApproval
         ]));
     }
 
-    public static function candidate(array $plan, array $settings, int $workspace): ?array
+    public static function candidate(array $plan, array $settings, int $workspace, ?array $sourceFiles = null): ?array
     {
         // The look the user approves: the character preview, or the cast and world sheet for generated shots.
         $pose = collect($plan['media'] ?? [])->firstWhere('kind', 'character_poses') ?? collect($plan['media'] ?? [])->firstWhere('kind', 'reference_sheet');
         if (! $pose || empty($plan['plan_id'])) return null;
+        $row = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', $pose['kind'])->where('status', 'succeeded')->orderByDesc('updated_at')->first();
+        if (! $row) return null;
+        // Presentation uses the producing run's immutable sources; quote/execute callers pass their current snapshot.
+        if ($sourceFiles === null) {
+            $input = json_decode((string) DB::table('composition_runs')->where('id', $row->run_id)->value('input_json'), true) ?: [];
+            $sourceFiles = $input['input_files'] ?? [];
+        }
         $hash = self::mediaHash($pose, ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null,
-            'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '']);
+            'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '', 'source_files' => $sourceFiles]);
         $row = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', $pose['kind'])
             ->where('description_hash', $hash)->where('status', 'succeeded')->first();
         if (! $row) return null;
@@ -45,20 +71,7 @@ class CharacterApproval
         if (! $files) return null;
         $names = $record['poses'] ?? [];
         $checks = null;
-        // With generated shots, the storyboard drawn from this cast is approved with it: one review, one token.
-        if ($pose['kind'] === 'reference_sheet' && ($board = collect($plan['media'] ?? [])->firstWhere('kind', 'storyboard'))) {
-            $boardHash = self::mediaHash($board + ['cast_sha256' => Storyboard::castSha($files)], ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null,
-                'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '']);
-            $boardRow = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', 'storyboard')->where('description_hash', $boardHash)->where('status', 'succeeded')->first();
-            if (! $boardRow) return null;
-            $b = json_decode($boardRow->record_json, true);
-            $panels = array_values(array_filter([$b['file'] ?? null, ...($b['more_files'] ?? [])]));
-            if (! $panels) return null;
-            $files = [...$files, ...$panels];
-            $names = [...array_pad($names, count($files) - count($panels), null), ...($b['poses'] ?? [])];
-            $hash .= '|'.$boardHash;
-            $checks = $b['panel_checks'] ?? null;
-        }
+        // The storyboard is its own step now (board()); the character is approved on its own.
         $images = [];
         foreach ($files as $f) {
             $a = Asset::where('workspace_id', $workspace)->where('status', '!=', 'archived')->find($f['asset_id']);
@@ -69,11 +82,62 @@ class CharacterApproval
         return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $files, 'kind' => $pose['kind'], 'names' => $names, 'panel_checks' => $checks];
     }
 
-    public static function requireApproved(array $plan, array $settings, int $workspace): array
+    /**
+     * The storyboard drawn from the approved character: its own step and its own approval. Its token covers the
+     * panels and the character token they were drawn from, so a redrawn character always asks for the panels again.
+     */
+    public static function board(array $plan, array $settings, int $workspace, ?array $sourceFiles = null, ?array $character = null): ?array
     {
-        $candidate = self::candidate($plan, $settings, $workspace);
+        $board = collect($plan['media'] ?? [])->firstWhere('kind', 'storyboard');
+        if (! $board || empty($plan['plan_id'])) return null;
+        $character ??= self::candidate($plan, $settings, $workspace, $sourceFiles);
+        if (! $character || $character['kind'] !== 'reference_sheet') return null;
+        if ($sourceFiles === null) {
+            $input = json_decode((string) DB::table('composition_runs')->where('id', DB::table('create_plan_media')->where('id', $character['media_id'])->value('run_id'))->value('input_json'), true) ?: [];
+            $sourceFiles = $input['input_files'] ?? [];
+        }
+        $boardHash = self::mediaHash($board + ['cast_sha256' => Storyboard::castSha($character['files'])], ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null,
+            'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '', 'source_files' => $sourceFiles]);
+        $row = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', 'storyboard')->where('description_hash', $boardHash)->where('status', 'succeeded')->first();
+        if (! $row) return null;
+        $b = json_decode($row->record_json, true);
+        $panels = array_values(array_filter([$b['file'] ?? null, ...($b['more_files'] ?? [])]));
+        if (! $panels) return null;
+        $images = [];
+        foreach ($panels as $k => $f) {
+            $a = Asset::where('workspace_id', $workspace)->where('status', '!=', 'archived')->find($f['asset_id']);
+            if (! $a || $a->asset_type !== 'image') return null;
+            $images[] = ['asset_id' => (int) $a->id, 'name' => $a->title, 'label' => $b['poses'][$k] ?? null, 'preview_url' => app(StorageService::class)->url($a->storage_url)];
+        }
+        $token = hash('sha256', json_encode([$plan['plan_id'], 'board', $character['token'], $boardHash, array_map(fn ($f) => [$f['asset_id'], $f['sha256']], $panels)]));
+        return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $panels, 'names' => $b['poses'] ?? [], 'panel_checks' => $b['panel_checks'] ?? null];
+    }
+
+    /** The character is approved (the step before the storyboard). */
+    public static function requireCharacter(array $plan, array $settings, int $workspace, ?array $sourceFiles = null): array
+    {
+        $candidate = self::candidate($plan, $settings, $workspace, $sourceFiles);
+        abort_unless($candidate && hash_equals($candidate['token'], (string) ($plan['character_approval'] ?? '')), 422, 'Approve the character before the storyboard is drawn.');
+        app(InputSnapshotService::class)->verify($candidate['files']);
+        return $candidate;
+    }
+
+    /**
+     * Everything the video is made from is approved: the character, and the storyboard when the plan has one. The
+     * result lists the character's files then the panels, with their labels (a cast name, or "Panel n").
+     */
+    public static function requireApproved(array $plan, array $settings, int $workspace, ?array $sourceFiles = null): array
+    {
+        $candidate = self::candidate($plan, $settings, $workspace, $sourceFiles);
         abort_unless($candidate && hash_equals($candidate['token'], (string) ($plan['character_approval'] ?? '')), 422,
-            'Review and approve the character preview before generating poses or the full video. Create a storyboard first if there is no current preview.');
+            'Review and approve the character before generating poses or the full video.');
+        if ($candidate['kind'] === 'reference_sheet' && collect($plan['media'] ?? [])->contains('kind', 'storyboard')) {
+            $board = self::board($plan, $settings, $workspace, $sourceFiles, $candidate);
+            abort_unless($board && hash_equals($board['token'], (string) ($plan['storyboard_approval'] ?? '')), 422, 'Review and approve the storyboard before the video is made.');
+            $candidate['names'] = [...array_pad($candidate['names'], count($candidate['files']), null), ...$board['names']];
+            $candidate['files'] = [...$candidate['files'], ...$board['files']];
+            $candidate['panel_checks'] = $board['panel_checks'];
+        }
         app(InputSnapshotService::class)->verify($candidate['files']);
         return $candidate;
     }

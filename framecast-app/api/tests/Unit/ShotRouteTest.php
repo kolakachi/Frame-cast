@@ -308,7 +308,7 @@ class ShotRouteTest extends TestCase
     {
         $ctx = ['has_avatar' => true, 'aspect_ratio' => '9:16', 'language' => 'en'];
         // The user changed "ninety" to "nine" after the plan was made: the take says "nine".
-        $take = ShotRoute::take(['kind' => 'ugc_take', 'presenter' => 'avatar', 'lines' => ['Start with the ninety dollar pass today.']], $ctx + ['narration' => ['Meet WyvStudio.', 'Start with the nine dollar pass today.']]);
+        $take = ShotRoute::take(['kind' => 'ugc_take', 'presenter' => 'avatar', 'lines' => ['Start with the ninety dollar pass today.']], $ctx + ['original_narration' => ['Meet WyvStudio.', 'Start with the ninety dollar pass today.'], 'narration' => ['Meet WyvStudio.', 'Start with the nine dollar pass today.']]);
         $said = implode(' ', array_merge(...array_column($take['segments'], 'lines')));
         $this->assertStringContainsString('nine dollar', $said);
         $this->assertStringNotContainsString('ninety', $said);
@@ -326,5 +326,52 @@ class ShotRouteTest extends TestCase
         $parts = \App\Services\Create\PlanService::splitLine($line, 160);
         $this->assertTrue(max(array_map('mb_strlen', $parts)) <= 160);
         $this->assertSame(preg_replace('/\s+/', ' ', $line), implode(' ', $parts));
+    }
+
+    public function test_a_rewritten_cta_survives_unchanged_lines_and_is_repriced(): void
+    {
+        $old = ['Welcome to our studio today.', 'Buy the monthly package for ninety dollars.'];
+        $approved = ['Welcome to our studio today.', 'Get unlimited access starting at nine bucks.'];
+        $plan = ['narration' => $old, 'media' => [['kind' => 'ugc_take', 'description' => 'Presenter', 'presenter' => 'avatar', 'lines' => $old, 'credits' => 1]],
+            'decisions' => [], 'selections' => ['narration' => $approved, 'choices' => []], 'shot_context' => ['has_avatar' => true]];
+        $take = PlanService::selectedMedia($plan)[0];
+        $this->assertSame(implode(' ', $approved), implode(' ', array_merge(...array_column($take['segments'], 'lines'))));
+        $this->assertGreaterThan(1, $take['credits']);
+        $this->assertSame([$approved[1]], ShotRoute::approvedLines([$old[1]], $approved, $old), 'a partial take keeps its position even when every word changes');
+    }
+
+    public function test_an_ambiguous_partial_take_stops_before_purchase(): void
+    {
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        ShotRoute::approvedLines(['Buy today.'], ['Welcome.', 'New line.', 'Subscribe.'], ['Welcome.', 'Buy today.']);
+    }
+
+    public function test_script_splitting_keeps_non_whitespace_languages(): void
+    {
+        $script = str_repeat('この動画をご覧ください', 30);
+        $parts = PlanService::splitLine($script, 160);
+        $this->assertSame($script, implode('', $parts));
+        $this->assertLessThanOrEqual(160, max(array_map('mb_strlen', $parts)));
+    }
+
+    public function test_avatar_bytes_invalidate_only_the_media_and_panels_that_use_them(): void
+    {
+        $source = fn ($id, $hash) => ['asset_id' => $id, 'sha256' => $hash, 'purpose' => 'source', 'asset_type' => 'image'];
+        $ctx = ['narration' => [], 'voice' => null, 'aspect_ratio' => '9:16', 'character_style' => ''];
+        $a = $ctx + ['source_files' => [$source(1, 'a')]];
+        $b = $ctx + ['source_files' => [$source(2, 'b')]];
+        $changedBytes = $ctx + ['source_files' => [$source(1, 'new')]];
+        foreach ([['kind' => 'generated_shot', 'refs' => ['avatar']], ['kind' => 'ugc_take', 'presenter' => 'avatar'], ['kind' => 'reference_sheet'], ['kind' => 'storyboard', 'panels' => [['refs' => ['avatar']]]]] as $item) {
+            $item['description'] = 'Presenter';
+            $h = \App\Services\Create\CharacterApproval::mediaHash($item, $a);
+            $this->assertNotSame($h, \App\Services\Create\CharacterApproval::mediaHash($item, $b));
+            $this->assertNotSame($h, \App\Services\Create\CharacterApproval::mediaHash($item, $changedBytes));
+        }
+        $cast = [['subject' => 'Candle', 'sha256' => 'c']];
+        $hash = fn ($refs, $ctx) => \App\Services\Create\Storyboard::panelHash(['refs' => $refs], $cast, '', '9:16', \App\Services\Create\CharacterApproval::sourceIdentity($ctx));
+        $this->assertNotSame($hash(['avatar'], $a), $hash(['avatar'], $b));
+        $this->assertSame($hash(['Candle'], $a), $hash(['Candle'], $b));
+        $generated = $source(2, 'generated') + ['operation' => 'generated'];
+        $this->assertSame(\App\Services\Create\CharacterApproval::sourceIdentity($a), \App\Services\Create\CharacterApproval::sourceIdentity($ctx + ['source_files' => [$source(1, 'a'), $generated]]));
     }
 }

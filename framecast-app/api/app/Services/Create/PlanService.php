@@ -38,7 +38,7 @@ class PlanService
         return count(preg_split('/\s+/u', trim($last), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
     }
 
-    public function propose(User $user, string $id, int $version, string $key): array
+    public function propose(User $user, string $id, int $version, string $key, bool $skipQuestions = false): array
     {
         $this->conversations->authorize($user, true);
         $c = $this->conversations->conversation($user, $id);
@@ -56,6 +56,32 @@ class PlanService
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
         abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
 
+        // What planning does is recorded step by step: shown live while it runs, then saved with the plan.
+        $activity = PlanActivity::begin($id);
+        try {
+        // Files attached without a role get one now, before anything reads them: from the brief and from looking at
+        // each file. A file whose role is unclear is asked about, one at a time, and the reply decides it.
+        $lastTwo = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->limit(2)->get(['role', 'content', 'idempotency_key']);
+        $roleAnswer = ($lastTwo[0]->role ?? null) === 'user' && str_starts_with((string) ($lastTwo[1]->idempotency_key ?? ''), AttachmentRoles::ASK_PREFIX)
+            ? [(int) explode(':', (string) $lastTwo[1]->idempotency_key)[1], (string) $lastTwo[0]->content] : null;
+        $sorted = app(AttachmentRoles::class)->resolve($user, $c, $roleAnswer, $skipQuestions);
+        if ($sorted['unsure']) {
+            $assetId = (int) $sorted['unsure'][0];
+            $question = AttachmentRoles::question((string) (Asset::where('workspace_id', $user->workspace_id)->find($assetId)?->title ?? 'this file'));
+            $next = (int) $c->version + 1;
+            DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
+                'idempotency_key' => AttachmentRoles::ASK_PREFIX.$assetId.':'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+            $activity->abandon();
+            return ['needs_answer' => 'role', 'question' => $question, 'asset_id' => $assetId];
+        }
+        // Every file's role, every time, so the plan's activity always says what is used and what is followed.
+        $placed = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')->where('create_attachments.conversation_id', $id)
+            ->whereIn('create_attachments.purpose', ['source', 'reference'])->orderBy('create_attachments.id')->get(['assets.title', 'create_attachments.purpose']);
+        if ($placed->isNotEmpty()) {
+            $activity->step('Sorted your files');
+            foreach ($placed as $f) $activity->item(($f->title ?: 'A file').($f->purpose === 'source' ? ' goes in the video' : ' is the reference to follow'));
+        }
         // With a reference video, how closely to follow it is decided before planning: from Details, from the
         // brief, or by asking (a copy and an inspiration plan differently, so the planner does not guess).
         $settings = json_decode($c->settings_json, true) ?: [];
@@ -63,6 +89,15 @@ class PlanService
             ->where('create_attachments.conversation_id', $id)->where('create_attachments.purpose', 'reference')->where('assets.asset_type', 'video')->exists();
         if ($hasReferenceVideo && ($settings['output_kind'] ?? 'video') === 'video' && empty($settings['reference_match'])) {
             $match = ReferenceMatch::infer($briefs->pluck('content')->implode("\n"));
+            // An answer in the user's own words is read for its meaning, and skipping takes the usual choice: the
+            // question is never asked twice.
+            $recent = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->limit(2)->get();
+            $answered = ($recent[0]->role ?? null) === 'user' && ($recent[1]->content ?? null) === ReferenceMatch::QUESTION;
+            if (! $match && ($answered || $skipQuestions)) {
+                $match = ($answered ? (ReferenceMatch::answer((string) $recent[0]->content) ?? app(Planning\Clarifier::class)->referenceMatch((string) $recent[0]->content)) : null) ?? 'similar';
+                $activity->step('Read your answer');
+                $activity->item('Following the reference: '.['exact' => 'exactly, moment for moment', 'similar' => 'its format, look and pacing, with your own story', 'inspired' => 'just the idea'][$match].'. Change this in Details.');
+            }
             if (! $match) {
                 $last = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->first();
                 if (! $last || $last->content !== ReferenceMatch::QUESTION) {
@@ -71,13 +106,31 @@ class PlanService
                         'idempotency_key' => 'reference-match:'.$key, 'request_hash' => hash('sha256', ReferenceMatch::QUESTION), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
                     DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
                 }
+                $activity->abandon();
                 return ['needs_answer' => 'reference_match', 'question' => ReferenceMatch::QUESTION];
             }
             DB::table('create_conversations')->where('id', $id)->update(['settings_json' => json_encode(OutputSettings::normalize([...$settings, 'reference_match' => $match]))]);
             $c = $this->conversations->conversation($user, $id);
         }
-        // Every attached reference video is studied before planning (normally already done in the background at attach time).
+        // Every attached reference video is studied before planning (a link's study may have started when it was added).
         $this->studyReferences($user, $c);
+        $this->notePages($user, $c, $activity);
+        // Questions come before the plan, one at a time, for a new creation only (a change to a plan is planned
+        // straight away). Each answer is a message; the next call asks the next question or plans.
+        if (! $skipQuestions && self::plannerTask($c) === 'creative') {
+            $since = DB::table('create_plans')->where('conversation_id', $id)->max('created_at');
+            $asked = DB::table('create_messages')->where('conversation_id', $id)->where('idempotency_key', 'like', 'clarify:%')->when($since, fn ($q) => $q->where('created_at', '>', $since))->count();
+            $activity->step('Checking what I need to know');
+            $question = app(Planning\Clarifier::class)->question($this->context($user, $c), $asked);
+            if ($question) {
+                $next = (int) $c->version + 1;
+                DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
+                    'idempotency_key' => 'clarify:'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+                $activity->abandon();
+                return ['needs_answer' => 'clarify', 'question' => $question];
+            }
+        }
         // An exact copy runs as long as its reference (up to the 30 s Create makes), unless the user chose a length.
         $settings = json_decode($c->settings_json, true) ?: [];
         $lengthNote = null;
@@ -98,6 +151,7 @@ class PlanService
         $context = $this->context($user, $c);
         $context['_planner_deadline'] = $deadline;
         $task = self::plannerTask($c);
+        $activity->step($task === 'edit' ? 'Updating the plan' : 'Planning the video');
         try {
             $result = $this->planner($task)->plan($context);
         } catch (\Throwable $e) {
@@ -109,6 +163,15 @@ class PlanService
         $plan = $this->normalize($result['plan'], $context, (int) $user->workspace_id);
         $plan['planner_task'] = $task;
         if ($lengthNote) $plan['direction_notes'][] = ['text' => $lengthNote, 'provenance' => 'inferred'];
+        $shots = count($plan['scenes'] ?? []);
+        $activity->relabel($task === 'edit' ? 'Updated the plan' : 'Planned '.$shots.' '.($shots === 1 ? 'shot' : 'shots'));
+        // The planner's own short account of what it took from the files and chose.
+        foreach (array_slice(array_filter((array) ($result['plan']['highlights'] ?? []), 'is_string'), 0, 3) as $line) $activity->item($line);
+        $plan['activity'] = $activity->finish();
+        } catch (\Throwable $e) {
+            $activity->abandon();
+            throw $e;
+        }
 
         return DB::transaction(function () use ($user, $id, $version, $key, $hash, $plan, $result, $briefs) {
             $c = $this->conversations->conversation($user, $id, true);
@@ -125,6 +188,32 @@ class PlanService
         });
     }
 
+    /** The plan has made (or is making) its video: it is frozen; changes are asked for in the chat and planned anew. */
+    public static function built(string $planId): bool
+    {
+        return DB::table('composition_runs')->where('input_json->plan->plan_id', $planId)->where('input_json->build_stage', 'full_video')
+            ->whereIn('status', ['queued', 'running', 'cancel_requested', 'preview_ready', 'needs_attention'])->exists();
+    }
+
+    public const BUILT_MESSAGE = 'This plan already made its video. Tell me what to change in the chat and I will make a new plan.';
+
+    /** The plan was approved (a step or its video was started from it): its content is frozen from then on. */
+    public static function approved(string $planId): bool
+    {
+        return DB::table('composition_runs')->where('input_json->plan->plan_id', $planId)->exists();
+    }
+
+    public const APPROVED_MESSAGE = 'This plan is approved, so it no longer changes. Tell me what to change in the chat and I will make a new plan.';
+    /** After approval only the steps move on: the character's looks, notes on frames, and their approvals. */
+    public const STEP_FIELDS = ['character_approval', 'storyboard_approval', 'character_looks', 'panel_notes'];
+
+    /** Media whose look must be approved before it is animated: a generated person, their clips, or a cast sheet. */
+    public static function lookRequired(array $media): bool
+    {
+        return collect($media)->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take', 'reference_sheet'], true)
+            || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'));
+    }
+
     /** Save the user's edits to callouts, choices and kept items. */
     public function select(User $user, string $id, string $planId, int $version, array $input): array
     {
@@ -134,6 +223,8 @@ class PlanService
             abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Refresh before editing the plan.');
             $row = DB::table('create_plans')->where('conversation_id', $id)->where('id', $planId)->lockForUpdate()->firstOrFail();
             abort_unless($row->status === 'proposed' && ! $this->stale($row, $c), 409, 'This plan is out of date. Plan again from the latest brief.');
+            abort_if(self::built($planId), 409, self::BUILT_MESSAGE);
+            abort_if(self::approved($planId) && array_diff(array_keys(array_diff_key($input, ['expected_version' => 1])), self::STEP_FIELDS), 409, self::APPROVED_MESSAGE);
             $plan = json_decode($row->plan_json, true);
             $sel = $plan['selections'];
             if (array_key_exists('callouts', $input)) {
@@ -152,9 +243,14 @@ class PlanService
                 abort_unless($picked['route'] === ($want['route'] ?? null), 422, 'That style is not available for this brief.');
                 $sel['style'] = $picked;
             }
-            if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'] || collect($plan['media'] ?? [])->contains('kind', 'reference_sheet');
+            if (array_key_exists('look_first', $input)) $sel['look_first'] = (bool) $input['look_first'] || ! empty($plan['look_required']) || self::lookRequired($plan['media'] ?? []);
             if (array_key_exists('engine_overrides', $input)) {
                 $sel['engine_overrides'] = collect((array) $input['engine_overrides'])->filter(fn ($e, $n) => (int) $n >= 1 && in_array($e, ShotRoute::ENGINES, true))->all();
+            }
+            if (array_key_exists('character_looks', $input)) {
+                $names = array_column(ShotRoute::sheet(collect($plan['media'] ?? [])->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name');
+                $sel['character_looks'] = collect((array) $input['character_looks'])->filter(fn ($look, $name) => in_array($name, $names, true))
+                    ->map(fn ($look) => mb_substr(trim((string) $look), 0, 240))->filter()->all();
             }
             if (array_key_exists('panel_notes', $input)) {
                 // A note on a storyboard panel redraws that panel (its identity changes); the others are reused.
@@ -200,12 +296,28 @@ class PlanService
                 abort_if(array_diff($ids, array_column($plan['character_performance'] ?? [], 'id')) !== [], 422, 'Only listed character actions can be removed.');
                 $sel['omitted_performance'] = $ids;
             }
+            if (array_key_exists('colours', $input)) {
+                // The user's own colours for the planned roles; they stay fixed when the plan is made again.
+                abort_unless(is_array($plan['colour_treatment'] ?? null), 422, 'This plan has no colour direction to change.');
+                foreach ((array) $input['colours'] as $role => $hex) {
+                    abort_unless(isset($plan['colour_treatment']['roles'][$role]), 422, 'Only the planned colour roles can be changed.');
+                    if (strtoupper((string) $hex) === $plan['colour_treatment']['roles'][$role]['hex']) continue;
+                    $plan['colour_treatment']['roles'][$role] = ['hex' => strtoupper((string) $hex), 'locked' => true];
+                    $plan['colour_treatment']['source'] = 'user';
+                }
+            }
             $plan['selections'] = $sel;
             $plan['credits'] = $this->credits($plan);
             if (array_key_exists('character_approval', $input)) {
                 $candidate = CharacterApproval::candidate($this->quotePlan($plan, $planId), json_decode($c->settings_json, true), (int) $c->workspace_id);
                 abort_unless($candidate && hash_equals($candidate['token'], (string) $input['character_approval']), 409, 'Character images changed. Review the current images.');
                 $plan['selections']['character_approval'] = $candidate['token'];
+            }
+            if (array_key_exists('storyboard_approval', $input)) {
+                // The panels are approved for the character they were drawn from; a new character asks for them again.
+                $board = CharacterApproval::board($this->quotePlan($plan, $planId), json_decode($c->settings_json, true), (int) $c->workspace_id);
+                abort_unless($board && hash_equals($board['token'], (string) $input['storyboard_approval']), 409, 'The storyboard changed. Review the current frames.');
+                $plan['selections']['storyboard_approval'] = $board['token'];
             }
             DB::table('create_plans')->where('id', $planId)->update(['plan_json' => json_encode($plan), 'updated_at' => now()]);
             DB::table('create_conversations')->where('id', $id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
@@ -227,7 +339,7 @@ class PlanService
         $s = $p['selections'];
         $omittedIds = collect($p['character_performance'] ?? [])->filter(fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))->flatMap(fn ($r) => $r['requirement_ids'] ?? [])->unique()->all();
         $activeRequirements = RequirementContract::excluding($p['requirements'] ?? [], $omittedIds);
-        return ['omitted_requirements' => array_values(array_filter($p['requirements'] ?? [], fn ($r) => in_array($r['id'] ?? '', $omittedIds, true))), 'requirements_schema' => $p['requirements_schema'] ?? null, 'requirement_history' => $p['requirement_history'] ?? [], 'direction_notes' => $p['direction_notes'] ?? [], 'reference_evidence' => $p['reference_evidence'] ?? [], 'creative_intent' => $p['creative_intent'] ?? null, 'omitted_character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => ! in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'reference_observations' => $p['reference_observations'] ?? [], 'character_approval' => $s['character_approval'] ?? null, 'requirements' => $activeRequirements, 'character_style' => $p['character_style'] ?? '', 'plan_id' => $planId, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
+        return ['omitted_requirements' => array_values(array_filter($p['requirements'] ?? [], fn ($r) => in_array($r['id'] ?? '', $omittedIds, true))), 'requirements_schema' => $p['requirements_schema'] ?? null, 'requirement_history' => $p['requirement_history'] ?? [], 'direction_notes' => $p['direction_notes'] ?? [], 'reference_evidence' => $p['reference_evidence'] ?? [], 'creative_intent' => $p['creative_intent'] ?? null, 'omitted_character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'character_performance' => array_values(array_filter($p['character_performance'] ?? [], fn ($r) => ! in_array($r['id'], $s['omitted_performance'] ?? [], true))), 'reference_observations' => $p['reference_observations'] ?? [], 'character_approval' => $s['character_approval'] ?? null, 'storyboard_approval' => $s['storyboard_approval'] ?? null, 'requirements' => $activeRequirements, 'character_style' => $p['character_style'] ?? '', 'plan_id' => $planId, 'summary' => $p['summary'], 'reused' => $p['reused'], 'scenes' => $p['scenes'],
             'asks' => array_map(fn ($a) => $a + (is_int($s['asks'][$a['id']] ?? null) ? ['asset_id' => $s['asks'][$a['id']]] : (($s['asks'][$a['id']] ?? null) === 'skip' ? ['skipped' => true] : [])), $p['asks'] ?? []),
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
@@ -247,12 +359,15 @@ class PlanService
     {
         $p = json_decode($row->plan_json, true);
         $candidate = CharacterApproval::candidate(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), (int) $c->workspace_id);
+        $board = $candidate ? CharacterApproval::board(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), (int) $c->workspace_id, null, $candidate) : null;
         // A talking face or a ready rig attached to the conversation performs without new media.
         $performers = CharacterPerformance::performers($c->id);
         return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => array_map(fn ($img, $k) => $img + ['label' => $candidate['names'][$k] ?? null], $candidate['images'], array_keys($candidate['images'])),
-            'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? '')), 'kind' => $candidate['kind'] ?? null, 'panel_checks' => $candidate['panel_checks'] ?? null,
-            'panel_notes' => $p['selections']['panel_notes'] ?? []] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
-            'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at,
+            'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? '')), 'kind' => $candidate['kind'] ?? null,
+            'looks' => $p['selections']['character_looks'] ?? [], 'subjects' => ShotRoute::sheet(collect($p['media'] ?? [])->firstWhere('kind', 'reference_sheet') ?? [])['subjects']] : null,
+            'storyboard_preview' => $board ? ['token' => $board['token'], 'images' => $board['images'], 'approved' => hash_equals($board['token'], (string) ($p['selections']['storyboard_approval'] ?? '')),
+                'panel_checks' => $board['panel_checks'], 'panel_notes' => $p['selections']['panel_notes'] ?? []] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
+            'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at, 'built' => self::built($row->id), 'approved' => self::approved($row->id),
             // What would be bought as the selections stand: generated shots with their engine, length and price.
             'media_routed' => rescue(fn () => self::selectedMedia($p), [], false)];
     }
@@ -320,10 +435,33 @@ class PlanService
         foreach (DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'reference')->pluck('asset_id') as $id) {
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($id);
             if (! $asset || $asset->asset_type !== 'video') continue;
+            PlanActivity::current()?->step('Watching '.$asset->title);
             try { $studies = app(\App\Services\Create\References\ReferenceStudy::class); $studies->forAsset($asset, \App\Services\Create\References\ReferenceStudy::coverageMode(json_decode($c->settings_json, true)['reference_effort'] ?? null));
                 // Copying exactly: where every element sits at every moment, measured once and cached with the study.
                 if ((json_decode($c->settings_json, true)['reference_match'] ?? null) === 'exact') $studies->layoutForAsset($asset->refresh()); }
             catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('Create reference study failed', ['asset' => $id, 'error' => mb_substr($e->getMessage(), 0, 300)]); }
+            if ($activity = PlanActivity::current()) {
+                $study = data_get($asset->refresh()->metadata_json, 'reference_study');
+                $activity->relabel(($study ? 'Watched ' : 'Could not watch ').$asset->title);
+                if ($study) {
+                    $shots = count((array) ($study['shots'] ?? [])); $seconds = (float) ($study['duration_seconds'] ?? 0);
+                    if ($shots && $seconds) $activity->item($shots.' '.($shots === 1 ? 'shot' : 'shots').' over '.round($seconds).' s, a cut about every '.round($seconds / $shots, 1).' s');
+                    if (! empty($study['speech'])) $activity->item('Listened to what is said');
+                }
+            }
+        }
+    }
+
+    /** Pages read from links since the last plan, as activity: "Read wyvstudio.com" and what the page is. */
+    private function notePages(User $user, object $c, PlanActivity $activity): void
+    {
+        $since = DB::table('create_plans')->where('conversation_id', $c->id)->max('created_at');
+        $rows = DB::table('create_attachments')->where('conversation_id', $c->id)->when($since, fn ($q) => $q->where('created_at', '>', $since))->pluck('asset_id');
+        foreach (Asset::where('workspace_id', $user->workspace_id)->whereIn('id', $rows)->get() as $asset) {
+            $url = (string) data_get($asset->metadata_json, 'reference_source.requested_url', '');
+            if ($url === '' || $asset->asset_type === 'video') continue;
+            $activity->step('Read '.(parse_url($url, PHP_URL_HOST) ?: $url));
+            $activity->item((string) data_get($asset->metadata_json, 'reference_analysis.notes.summary', ''));
         }
     }
 
@@ -332,9 +470,15 @@ class PlanService
     {
         $out = []; $transitions = [];
         foreach ($files as $f) {
-            if (count($out) >= 9 || ($f['purpose'] ?? '') !== 'reference') continue;
+            if (count($out) >= 9) continue;
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($f['asset_id']);
             if (! $asset) continue;
+            // The user's own video is seen too (a sheet of its frames): the plan never places footage it has not looked at.
+            if (($f['purpose'] ?? '') === 'source' && $asset->asset_type === 'video') {
+                try { if ($path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset)) $out[] = ['label' => 'Your video "'.$asset->title.'" (asset '.$asset->id.', it goes in the video): '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($path))]; } catch (\Throwable) {}
+                continue;
+            }
+            if (($f['purpose'] ?? '') !== 'reference') continue;
             try {
                 $study = data_get($asset->metadata_json, 'reference_study');
                 if ($asset->asset_type === 'video' && ! empty($study['sheets'])) {
@@ -558,16 +702,19 @@ class PlanService
                 'moments' => collect((array) ($x['moments'] ?? []))->map(fn ($m) => $str($m, 40))->filter()->take(12)->values()->all(),
                 'spin' => (bool) ($x['spin'] ?? false)])->unique('name')->take(8)->values()->all();
         if ($props) $plan['props3d'] = $props;
-        // Decided on the final media (a 3D mascot has dropped any character image by now); the selection follows it.
-        $plan['look_first'] = (bool) ($raw['look_first'] ?? false) && collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)
-            || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'));
+        // A plan that buys a look-dependent person or clip always makes still frames for approval first (a 3D mascot
+        // has dropped any character image by now). Anything else goes straight to the video unless the user asked to
+        // see the look first (the planner's flag), and the user can switch that on the plan.
+        $plan['look_required'] = self::lookRequired($plan['media']);
+        // A 3D mascot's turnaround on the plan is its look, so the flag is not followed for it.
+        $plan['look_first'] = $plan['look_required'] || ((bool) ($raw['look_first'] ?? false) && empty($plan['mascot3d']));
         $plan['selections']['look_first'] = $plan['look_first'];
         // Generated video: what its routing depends on, and the cast/world sheet is approved before any clip is bought.
         if (collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ShotRoute::KINDS, true))) {
             $plan['shot_context'] = ['has_avatar' => collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image'),
                 'aspect_ratio' => $ctx['settings']['aspect_ratio'] ?? '9:16', 'language' => $ctx['settings']['language'] ?? 'en'];
             $plan['selections']['video_tier'] = in_array($ctx['previous_plan']['video_tier'] ?? null, ['standard', 'premium'], true) ? $ctx['previous_plan']['video_tier'] : 'standard';
-            if (collect($plan['media'])->contains('kind', 'reference_sheet')) $plan['look_first'] = $plan['selections']['look_first'] = true;
+            if (collect($plan['media'])->contains('kind', 'reference_sheet')) $plan['look_first'] = $plan['selections']['look_first'] = $plan['look_required'] = true;
         }
         // How closely the build follows the reference (Details, the brief, or the user's answer to the planner's question).
         if (! empty($ctx['settings']['reference_match']) && $refDecisions) $plan['reference_match'] = $ctx['settings']['reference_match'];
@@ -640,7 +787,7 @@ class PlanService
             if (max(array_map('mb_strlen', $out)) <= $max) return $out;
             return array_merge(...array_map(fn ($o) => self::splitLine($o, $max), $out));
         }
-        return [mb_substr($line, 0, $max)];
+        return mb_str_split($line, $max);
     }
 
     /** The teaching arc's steps (educational format), in order. */
@@ -692,6 +839,7 @@ class PlanService
         $shotCtx = ['video_tier' => $plan['selections']['video_tier'] ?? 'standard', 'has_avatar' => (bool) data_get($plan, 'shot_context.has_avatar', false),
             'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'), 'language' => data_get($plan, 'shot_context.language', 'en'),
             'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? [],
+            'original_narration' => $plan['narration'] ?? $plan['selections']['narration'] ?? [],
             'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name'), 'voice' => $voice];
         // With a cast sheet, every generated shot starts from its approved storyboard panel (unless the planner chose
         // another start frame), and the panels are drawn in the look stage from the cast.
@@ -710,7 +858,7 @@ class PlanService
         foreach ($items as &$shotItem) {
             if (! in_array($shotItem['kind'], ShotRoute::KINDS, true) || $shotItem['kind'] === 'storyboard') continue;
             $shotItem = array_merge($shotItem, match ($shotItem['kind']) {
-                'reference_sheet' => ShotRoute::sheet($shotItem),
+                'reference_sheet' => ShotRoute::sheet($shotItem, (array) ($plan['selections']['character_looks'] ?? [])),
                 'generated_shot' => ShotRoute::shot($shotItem, $shotCtx),
                 'ugc_take' => ShotRoute::take($shotItem, $shotCtx),
             });

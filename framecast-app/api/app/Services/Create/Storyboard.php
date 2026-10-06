@@ -17,10 +17,12 @@ class Storyboard
     }
 
     /** $cast: the cast's files (each with its subject), so only the members this panel uses count. */
-    public static function panelHash(array $panel, array $cast, string $style, string $aspect): string
+    public static function panelHash(array $panel, array $cast, string $style, string $aspect, array $sources = []): string
     {
-        return hash('sha256', json_encode([array_intersect_key($panel, array_flip(['description', 'action', 'gaze', 'camera', 'aspect', 'refs', 'note', 'screen'])),
-            self::castSha(self::panelCast($panel, $cast)), $style, $aspect]));
+        $identity = [array_intersect_key($panel, array_flip(['description', 'action', 'gaze', 'camera', 'aspect', 'refs', 'note', 'screen'])),
+            self::castSha(self::panelCast($panel, $cast)), $style, $aspect];
+        if (in_array('avatar', $panel['refs'] ?? [], true)) $identity[] = ['avatar' => $sources];
+        return hash('sha256', json_encode($identity));
     }
 
     /** The cast files a panel is drawn from: every member for "sheet" (or an unknown name), else the named ones. */
@@ -55,11 +57,23 @@ class Storyboard
         return $out;
     }
 
+    /** People and places already drawn in this creation, by their drawing's key: [key => file]. */
+    public static function priorSubjects(string $conversationId): array
+    {
+        $out = [];
+        foreach (DB::table('create_plan_media')->where('conversation_id', $conversationId)->where('kind', 'reference_sheet')->where('status', 'succeeded')->orderBy('updated_at')->get() as $row) {
+            $r = json_decode((string) $row->record_json, true) ?: [];
+            $files = array_values(array_filter([$r['file'] ?? null, ...($r['more_files'] ?? [])]));
+            foreach ((array) ($r['subject_keys'] ?? []) as $k => $key) if (isset($files[$k])) $out[$key] = $files[$k];
+        }
+        return $out;
+    }
+
     /** Panels still to draw for this storyboard item, given the cast it will be drawn from. */
-    public static function toDraw(array $item, ?array $cast, string $conversationId, string $style, string $aspect): int
+    public static function toDraw(array $item, ?array $cast, string $conversationId, string $style, string $aspect, array $sources = []): int
     {
         if (! $cast) return count($item['panels'] ?? []);
         $prior = self::prior($conversationId);
-        return count(array_filter($item['panels'] ?? [], fn ($p) => ! isset($prior[self::panelHash($p, $cast, $style, $p['aspect'] ?? $aspect)])));
+        return count(array_filter($item['panels'] ?? [], fn ($p) => ! isset($prior[self::panelHash($p, $cast, $style, $p['aspect'] ?? $aspect, $sources)])));
     }
 }

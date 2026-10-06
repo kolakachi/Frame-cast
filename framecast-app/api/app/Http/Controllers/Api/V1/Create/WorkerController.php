@@ -191,7 +191,7 @@ class WorkerController extends Controller
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'result' => 'required|json', 'artifact' => 'nullable|file|max:102400|mimetypes:video/mp4,image/png,image/jpeg,image/webp']);
         $result = json_decode($input['result'], true);
         abort_unless(is_array($result), 422, 'Expected a result object.');
-        validator($result, ['status' => 'required|in:preview_ready,failed,cancelled,needs_attention,needs_input', 'summary' => 'required|string|max:2000', 'bundle' => 'required_if:status,preview_ready|array|max:30'])->validate();
+        validator($result, ['status' => 'required|in:preview_ready,step_ready,failed,cancelled,needs_attention,needs_input', 'summary' => 'required|string|max:2000', 'bundle' => 'required_if:status,preview_ready|array|max:30'])->validate();
         $this->runs->validateResultLease($id, $input['lease_token']);
         $path = $hash = null;
         if ($r->hasFile('artifact')) {

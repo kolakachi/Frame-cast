@@ -38,7 +38,7 @@ ARG YTDLP_VERSION=2026.08.19
 RUN set -eux; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     case "$arch" in amd64) bin=yt-dlp_linux ;; arm64) bin=yt-dlp_linux_aarch64 ;; *) echo "unsupported arch $arch"; exit 1 ;; esac; \
-    curl -fsSL -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${bin}"; \
+    curl -fsSL --retry 4 --retry-all-errors --connect-timeout 20 --max-time 300 -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${bin}"; \
     chmod 0755 /usr/local/bin/yt-dlp; \
     /usr/local/bin/yt-dlp --version
 

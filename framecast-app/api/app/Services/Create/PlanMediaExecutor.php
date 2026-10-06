@@ -323,13 +323,20 @@ class PlanMediaExecutor
             $keys[$k] = hash('sha256', json_encode([$prompt, $jobs[$k][1], $jobs[$k][2], $inputs]));
         }
         // Every subject is independent: drawn at the same time (F2); each finished image is kept, so a failed batch
-        // never pays twice for the ones that finished.
+        // never pays twice for the ones that finished. One drawn the same way before in this creation is reused, so
+        // changing one person or place redraws only that one; all share the same style images and treatment.
         $paths = array_map(fn ($k) => $dir.'/sheet-'.$k.'.png', array_combine(array_keys($subjects), array_keys($subjects)));
-        $this->drawKept($jobs, $keys, $paths, (int) ($ctx['workspace_id'] ?? 0), array_column($subjects, 'name'));
+        $prior = $ctx['prior_subjects'] ?? [];
+        foreach (array_keys($jobs) as $k) {
+            if (isset($prior[$keys[$k]]) && ($bytes = $this->assetBytes((int) ($prior[$keys[$k]]['asset_id'] ?? 0)))) { file_put_contents($paths[$k], $bytes); unset($jobs[$k]); }
+        }
+        $drawn = count($jobs);
+        if ($jobs) $this->drawKept($jobs, array_intersect_key($keys, $jobs), array_intersect_key($paths, $jobs), (int) ($ctx['workspace_id'] ?? 0), array_intersect_key(array_column($subjects, 'name'), $jobs));
         foreach ($subjects as $k => $subject) $files[] = ['path' => $paths[$k], 'title' => 'Sheet · '.$subject['name'], 'pose' => $subject['name']];
         $first = array_shift($files);
         return ['path' => $first['path'], 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($first['path']), 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(),
-            'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT];
+            'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT,
+            'subject_keys' => array_values($keys), 'credits' => $drawn * CapabilityCatalogue::CHARACTER_MASTER_CREDITS];
     }
 
     /**
@@ -348,7 +355,7 @@ class PlanMediaExecutor
         $upload = fn (array $f) => $this->replicateUpload((string) $this->assetBytes((int) $f['asset_id']), 'image/png');
         $files = []; $hashes = []; $drawn = 0; $jobs = []; $keys = [];
         foreach ($panels as $k => $panel) {
-            $h = Storyboard::panelHash($panel, $cast, $style, $panel['aspect'] ?? $aspect);
+            $h = Storyboard::panelHash($panel, $cast, $style, $panel['aspect'] ?? $aspect, CharacterApproval::sourceIdentity($ctx));
             $path = $dir.'/panel-'.$k.'.png';
             if (isset($prior[$h]) && ($bytes = $this->assetBytes((int) ($prior[$h]['asset_id'] ?? 0)))) file_put_contents($path, $bytes);
             else {
@@ -466,11 +473,17 @@ class PlanMediaExecutor
             $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
         } catch (\Throwable) { $json = null; }
         if (! is_array($json['panels'] ?? null)) return ['status' => 'unverified', 'panels' => []];
-        $out = collect($json['panels'])->filter(fn ($x) => is_array($x) && isset($x['panel']))->map(fn ($x) => ['panel' => mb_substr((string) $x['panel'], 0, 20), 'ok' => (bool) ($x['ok'] ?? true), 'issue' => mb_substr(trim((string) ($x['issue'] ?? '')), 0, 160)])->values()->all();
-        // "ok" only when every panel was answered; a panel the check skipped is not a pass.
-        $answered = collect($out)->pluck('panel')->map(fn ($p) => mb_strtolower(trim($p)))->all();
-        $missing = collect($files)->keys()->filter(fn ($k) => ! in_array(mb_strtolower(trim((string) ($panels[$k]['label'] ?? 'Panel '.($k + 1)))), $answered, true))->count();
-        return ['status' => collect($out)->contains('ok', false) ? 'issues' : ($missing || ! $out ? 'unverified' : 'ok'), 'panels' => $out];
+        $expected = array_map(fn ($k) => (string) ($panels[$k]['label'] ?? 'Panel '.($k + 1)), array_keys($files));
+        $out = []; $seen = [];
+        foreach ($json['panels'] as $x) {
+            if (! is_array($x) || ! is_string($x['panel'] ?? null) || ! is_bool($x['ok'] ?? null)
+                || ! in_array($x['panel'], $expected, true) || isset($seen[$x['panel']])
+                || (isset($x['issue']) && ! is_string($x['issue']))) return ['status' => 'unverified', 'panels' => []];
+            $seen[$x['panel']] = true;
+            $out[] = ['panel' => $x['panel'], 'ok' => $x['ok'], 'issue' => mb_substr(trim($x['issue'] ?? ''), 0, 160)];
+        }
+        if (count($seen) !== count($expected)) return ['status' => 'unverified', 'panels' => $out];
+        return ['status' => collect($out)->contains('ok', false) ? 'issues' : 'ok', 'panels' => $out];
     }
 
     /**

@@ -327,7 +327,10 @@ class RunService
             $status = $result['status'];
             abort_if($status !== 'needs_attention' && AttemptService::unresolved($id), 409, 'External attempts require settlement before closing this run.');
             // Stop keeps the last version that passed every check: the worker may deliver it instead of cancelling.
-            if ($run->status === 'cancel_requested') abort_unless(in_array($status, ['cancelled', 'needs_attention', 'preview_ready'], true), 409, 'Stop the worker before acknowledging cancellation.');
+            if ($run->status === 'cancel_requested') abort_unless(in_array($status, ['cancelled', 'needs_attention', 'preview_ready', 'step_ready'], true), 409, 'Stop the worker before acknowledging cancellation.');
+            // A character or storyboard step ends with its images bought and nothing built: the plan shows them for approval.
+            abort_if($status === 'step_ready' && empty($input['media_only']), 422, 'Only a character or storyboard step ends without a video.');
+            if ($status === 'step_ready') DB::table('create_conversations')->where('id', $c->id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
             if ($status === 'preview_ready') {
                 abort_unless($artifactPath && $artifactHash, 422, 'A verified encoded preview is required.');
                 $bundle = $result['bundle'];
@@ -349,7 +352,7 @@ class RunService
                 if (! $conflict) DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $revision, 'version' => $c->version + 1, 'updated_at' => now()]);
             }
             DB::table('composition_runs')->where('id', $id)->update([
-                'status' => $status, 'stage' => mb_substr((string) $result['summary'], 0, 250), 'error' => $status === 'preview_ready' ? null : $result['summary'],
+                'status' => $status, 'stage' => mb_substr((string) $result['summary'], 0, 250), 'error' => in_array($status, ['preview_ready', 'step_ready'], true) ? null : $result['summary'],
                 'result_hash' => $fingerprint, 'updated_at' => now(),
             ]);
             if ($status === 'needs_attention') {

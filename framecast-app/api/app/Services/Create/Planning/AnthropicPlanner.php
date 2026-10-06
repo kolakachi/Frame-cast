@@ -101,6 +101,8 @@ class AnthropicPlanner implements Planner
                             $inspectionContext = $context + ['_planner_deadline' => $deadline];
                             $result = $inspector->inspect($inspectionContext, is_array($tool['input'] ?? null) ? $tool['input'] : []);
                             $evidence[] = $result['evidence'];
+                            $looked = collect($context['files'] ?? [])->firstWhere('asset_id', $result['evidence']['asset_id'] ?? null);
+                            \App\Services\Create\PlanActivity::current()?->item('Looked closer at '.($looked['title'] ?? 'the reference'));
                             $inspections[] = ['status' => 'inspected', 'evidence_id' => $result['evidence']['id']];
                             $blocks = [['type' => 'text', 'text' => json_encode($result['evidence'], JSON_THROW_ON_ERROR)], $result['image']];
                             $results[] = ['type' => 'tool_result', 'tool_use_id' => $tool['id'], 'content' => $blocks];

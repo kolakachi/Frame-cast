@@ -288,17 +288,23 @@ class ShotRoute
      * Route a UGC take: a presenter speaking the script to camera with native speech, in segments the engine can
      * make (Omni about 10 s, Veo 3.1 8 s), joined into one take. The presenter is the user's avatar or a sheet subject.
      */
-    /** The approved lines a take's own lines point at, in script order; all of them when none match. */
-    public static function approvedLines(array $asked, array $approved): array
+    /** Bind a take to exact positions in the original script, never to similarity with edited words. */
+    public static function approvedLines(array $asked, array $approved, ?array $original = null): array
     {
         if (! $asked) return $approved;
-        $words = fn (string $t) => array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($t))));
-        $pool = array_count_values($words(implode(' ', $asked)));
-        $picked = array_values(array_filter($approved, function ($line) use ($words, $pool) {
-            $w = $words($line);
-            return $w && count(array_filter($w, fn ($x) => isset($pool[$x]))) / count($w) >= 0.6;
-        }));
-        return $picked ?: $approved;
+        $original ??= $approved;
+        $text = fn (array $lines) => preg_replace('/\s+/u', ' ', trim(implode(' ', $lines)));
+        if ($text($asked) === $text($original)) return $approved;
+        // A take may cover a contiguous subset, including planner lines merged from several script lines.
+        $matches = [];
+        foreach (array_keys($original) as $start) {
+            for ($length = 1; $length <= count($original) - $start; $length++) {
+                if ($text(array_slice($original, $start, $length)) === $text($asked)) $matches[] = [$start, $length];
+            }
+        }
+        abort_unless(count($matches) === 1 && count($approved) === count($original), 422,
+            'The presenter script no longer maps to the approved narration. Re-plan this take before creating the video.');
+        return array_slice($approved, ...$matches[0]);
     }
 
     public static function take(array $item, array $ctx): array
@@ -307,8 +313,8 @@ class ShotRoute
         $asked = array_values(array_filter(array_map(fn ($l) => trim((string) $l), (array) ($item['lines'] ?? [])), fn ($l) => $l !== ''));
         $approved = array_values(array_filter(array_map(fn ($l) => trim((string) $l), (array) ($ctx['narration'] ?? [])), fn ($l) => $l !== ''));
         // The take speaks the approved script, as the user last edited it: its own lines only say which approved
-        // lines it speaks (matched by wording, so an edited line is spoken as edited).
-        $lines = $approved ? self::approvedLines($asked, $approved) : $asked;
+        // lines it speaks, bound to their original positions before the user edited them.
+        $lines = $approved ? self::approvedLines($asked, $approved, $ctx['original_narration'] ?? null) : $asked;
         $presenter = ($item['presenter'] ?? '') === 'avatar' && ! empty($ctx['has_avatar']) ? 'avatar'
             : (! empty($ctx['has_sheet']) ? 'sheet' : (! empty($ctx['has_avatar']) ? 'avatar' : 'none'));
         // A selected cloned voice: the approved cloned narration drives a lip-synced presenter (the existing route),
@@ -404,10 +410,11 @@ class ShotRoute
     }
 
     /** The cast and world sheet: one still per subject (up to four), in the video's look. */
-    public static function sheet(array $item): array
+    /** The cast and world to draw; $looks holds the user's own description for a subject, which replaces the planned one. */
+    public static function sheet(array $item, array $looks = []): array
     {
         $subjects = collect((array) ($item['subjects'] ?? []))->filter(fn ($s) => is_array($s) && trim((string) ($s['name'] ?? '')) !== '')
-            ->map(fn ($s) => ['name' => mb_substr(trim((string) $s['name']), 0, 40), 'looks' => mb_substr(trim((string) ($s['looks'] ?? '')), 0, 240),
+            ->map(fn ($s) => ['name' => mb_substr(trim((string) $s['name']), 0, 40), 'looks' => mb_substr(trim((string) ($looks[trim((string) $s['name'])] ?? $s['looks'] ?? '')), 0, 240),
                 // What it is decides how it is drawn: a character neutral, a place empty, a product in clear view.
                 'kind' => in_array($s['kind'] ?? null, ['character', 'place', 'product'], true) ? $s['kind'] : 'character',
                 'framing' => in_array($s['framing'] ?? null, ['full', 'portrait'], true) ? $s['framing'] : 'full',

@@ -34,10 +34,14 @@ class CreateController extends Controller
                         ->whereColumn('conversation_id','create_conversations.id')->whereColumn('assets.workspace_id','create_conversations.workspace_id')->whereRaw('LOWER(assets.title) LIKE ?', [mb_strtolower($term)]));
             });
         }
-        return response()->json(['data'=>$query->select('create_conversations.*')->addSelect([
+        // A page at a time, newest first: the list loads more as it is scrolled (offset + limit, one extra row to
+        // know whether more remain).
+        $offset = max(0, (int) $r->integer('offset')); $limit = min(100, max(1, (int) ($r->integer('limit') ?: 100)));
+        $rows = $query->select('create_conversations.*')->addSelect([
             'latest_run_status'=>DB::table('composition_runs')->select('status')->whereColumn('conversation_id','create_conversations.id')->orderByDesc('created_at')->orderByDesc('id')->limit(1),
             'last_message'=>DB::table('create_messages')->select('content')->whereColumn('conversation_id','create_conversations.id')->orderByDesc('sequence')->limit(1),
-        ])->orderByDesc('updated_at')->limit(100)->get()]);
+        ])->orderByDesc('updated_at')->orderByDesc('id')->offset($offset)->limit($limit + 1)->get();
+        return response()->json(['data' => $rows->take($limit)->values(), 'meta' => ['next_offset' => $rows->count() > $limit ? $offset + $limit : null]]);
     }
 
     public function store(Request $r)
@@ -67,7 +71,10 @@ class CreateController extends Controller
         return response()->json(['data' => [
             'conversation' => $c,
             'credit_availability' => $this->service->creditAvailability($r->user()),
-            'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at']),
+            // A question asked before planning is marked, so the conversation can offer to skip it.
+            'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at', 'idempotency_key'])
+                ->map(fn ($m) => ['id' => $m->id, 'role' => $m->role, 'content' => $m->content, 'created_at' => $m->created_at,
+                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|reference-match|role):/', (string) $m->idempotency_key) ? 'question' : null]),
             'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
                 $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
                 if (!$asset) return null;
@@ -80,7 +87,7 @@ class CreateController extends Controller
             // held_credits: what a run still holds of its approval (released as it settles), shown beside an active build.
             'runs' => DB::table('composition_runs')->leftJoin('api_operations', 'api_operations.id', '=', 'composition_runs.operation_id')
                 ->where('composition_runs.conversation_id', $id)->orderBy('composition_runs.created_at')
-                ->get(['composition_runs.id', 'composition_runs.status', 'composition_runs.stage', 'composition_runs.error', 'composition_runs.created_at', 'api_operations.reserved_credits as held_credits']),
+                ->get(['composition_runs.id', 'composition_runs.status', 'composition_runs.stage', 'composition_runs.error', 'composition_runs.created_at', 'api_operations.reserved_credits as held_credits', 'api_operations.spent_credits', 'composition_runs.input_json->build_stage as build_stage', 'composition_runs.input_json->retry_of as retry_of']),
             'plans' => \Illuminate\Support\Facades\Schema::hasTable('create_plans') ? DB::table('create_plans')->where('conversation_id', $id)->orderBy('created_at')->get()->map(fn ($p) => app(\App\Services\Create\PlanService::class)->present($p, $c))->values() : [],
         ]]);
     }
@@ -117,10 +124,10 @@ class CreateController extends Controller
     public function upload(Request $r, string $id)
     {
         $this->service->authorize($r->user(),true);
-        $input = $r->validate(['asset_file'=>'required|file|max:102400','purpose'=>'required|in:source,reference',
-            'idempotency_key'=>'required|string|max:128','expected_version'=>'required|integer|min:0',
-            'reuse_confirmed'=>'exclude_unless:purpose,source|required|accepted']);
-        app(AttachmentUploadService::class)->upload($r->user(),$id,$r->file('asset_file'),$input['purpose'],$input['idempotency_key'],$input['expected_version']);
+        // Without a purpose the file's role is read from the brief when it is sent (AttachmentRoles).
+        $input = $r->validate(['asset_file'=>'required|file|max:102400','purpose'=>'nullable|in:source,reference,auto',
+            'idempotency_key'=>'required|string|max:128','expected_version'=>'required|integer|min:0']);
+        app(AttachmentUploadService::class)->upload($r->user(),$id,$r->file('asset_file'),$input['purpose'] ?? 'auto',$input['idempotency_key'],$input['expected_version']);
         return $this->show($r,$id);
     }
 
@@ -191,8 +198,8 @@ class CreateController extends Controller
 
     public function attach(Request $r, string $id)
     {
-        $input = $r->validate(['asset_id' => 'required|integer|min:1', 'purpose' => 'required|in:source,reference', 'reuse_confirmed'=>'exclude_unless:purpose,source|required|accepted', 'expected_version' => 'required|integer|min:0']);
-        $this->service->attach($r->user(), $id, $input['asset_id'], $input['purpose'], $input['expected_version']);
+        $input = $r->validate(['asset_id' => 'required|integer|min:1', 'purpose' => 'nullable|in:source,reference,auto', 'expected_version' => 'required|integer|min:0']);
+        $this->service->attach($r->user(), $id, $input['asset_id'], $input['purpose'] ?? 'auto', $input['expected_version']);
         return $this->show($r, $id);
     }
 
@@ -218,25 +225,34 @@ class CreateController extends Controller
 
     public function plan(Request $r, string $id)
     {
-        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128']);
-        return response()->json(['data' => app(\App\Services\Create\PlanService::class)->propose($r->user(), $id, $input['expected_version'], $input['idempotency_key'])], 201);
+        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'skip_questions' => 'sometimes|boolean']);
+        return response()->json(['data' => app(\App\Services\Create\PlanService::class)->propose($r->user(), $id, $input['expected_version'], $input['idempotency_key'], $r->boolean('skip_questions'))], 201);
+    }
+
+    /** What planning is doing right now, step by step (PlanActivity), polled while a plan is being made. */
+    public function planActivity(Request $r, string $id)
+    {
+        $this->service->authorize($r->user(), false);
+        $this->service->conversation($r->user(), $id);
+        return response()->json(['data' => \App\Services\Create\PlanActivity::live($id)]);
     }
 
     public function selectPlan(Request $r, string $id, string $planId)
     {
         $input = $r->validate(['expected_version' => 'required|integer|min:0', 'callouts' => 'sometimes|array|max:6', 'callouts.*' => 'nullable|string|max:120',
             'choices' => 'sometimes|array|max:3', 'choices.*' => 'string|max:32', 'kept' => 'sometimes|array|max:8', 'kept.*' => 'string|max:80',
-            'narration' => 'sometimes|array|max:8', 'narration.*' => 'nullable|string|max:160', 'voice' => 'sometimes|string|max:40',
-            'style' => 'sometimes|array', 'style.route' => 'required_with:style|in:pack,saved,reference,free', 'style.pack' => 'nullable|string|max:40', 'omitted_performance' => 'sometimes|array|max:24', 'omitted_performance.*' => 'string|max:40', 'look_first' => 'sometimes|boolean', 'video_tier' => 'sometimes|in:standard,premium', 'agreement' => 'sometimes|array', 'agreement.*' => 'array|max:6', 'agreement.*.*' => 'nullable|string|max:120', 'panel_notes' => 'sometimes|array|max:16', 'panel_notes.*' => 'nullable|string|max:240', 'engine_overrides' => 'sometimes|array|max:16', 'engine_overrides.*' => 'string|max:20', 'character_approval' => 'sometimes|string|regex:/^[a-f0-9]{64}$/',
+            'narration' => 'sometimes|array|max:8', 'narration.*' => 'nullable|string|max:160', 'voice' => 'sometimes|string|max:40', 'colours' => 'sometimes|array|max:4', 'colours.*' => ['string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'style' => 'sometimes|array', 'style.route' => 'required_with:style|in:pack,saved,reference,free', 'style.pack' => 'nullable|string|max:40', 'omitted_performance' => 'sometimes|array|max:24', 'omitted_performance.*' => 'string|max:40', 'look_first' => 'sometimes|boolean', 'video_tier' => 'sometimes|in:standard,premium', 'agreement' => 'sometimes|array', 'agreement.*' => 'array|max:6', 'agreement.*.*' => 'nullable|string|max:120', 'panel_notes' => 'sometimes|array|max:16', 'panel_notes.*' => 'nullable|string|max:240', 'engine_overrides' => 'sometimes|array|max:16', 'engine_overrides.*' => 'string|max:20', 'character_approval' => 'sometimes|string|regex:/^[a-f0-9]{64}$/', 'storyboard_approval' => 'sometimes|string|regex:/^[a-f0-9]{64}$/', 'character_looks' => 'sometimes|array|max:4', 'character_looks.*' => 'nullable|string|max:240',
             'asks' => 'sometimes|array|max:5', 'asks.*.id' => 'required|string|max:20', 'asks.*.asset_id' => 'nullable|integer|min:1', 'asks.*.skip' => 'sometimes|boolean']);
         return response()->json(['data' => app(\App\Services\Create\PlanService::class)->select($r->user(), $id, $planId, $input['expected_version'], $input)]);
     }
 
     public function quote(Request $r, string $id)
     {
-        $input = $r->validate(['expected_version'=>'required|integer|min:0','variant_count'=>'sometimes|integer|min:1|max:3','retry_run_id'=>'sometimes|uuid','build_stage'=>'sometimes|in:storyboard,full_video']);
+        $input = $r->validate(['expected_version'=>'required|integer|min:0','variant_count'=>'sometimes|integer|min:1|max:3','retry_run_id'=>'sometimes|uuid','build_stage'=>'sometimes|in:character,storyboard,full_video',
+            'assume'=>'sometimes|array','assume.character_approval'=>'sometimes|string|regex:/^[a-f0-9]{64}$/','assume.storyboard_approval'=>'sometimes|string|regex:/^[a-f0-9]{64}$/']);
         $variants=app(\App\Services\Create\VariantService::class);
-        $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1,$input['build_stage']??null);
+        $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1,$input['build_stage']??null,$input['assume']??null);
         return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'expires_at' => $q->expires_at,
             'credit_availability' => $this->service->creditAvailability($r->user()),
             'build_stage'=>$q->payload_json['build_stage']??null,'variants'=>count($q->payload_json['variant_quotes']??[1]),'plan_media'=>array_map(fn($m)=>['kind'=>$m['kind'],'description'=>$m['description'],'credits'=>$m['credits']],$q->payload_json['plan_media']??[]),'media_estimate'=>$q->payload_json['media_estimate']??0,'media_ceiling'=>$q->payload_json['media_ceiling']??0,'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
@@ -249,6 +265,37 @@ class CreateController extends Controller
         $run = $r->boolean('auto')
             ? $this->service->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key'], $r->boolean('provider_approved'), true)
             : app(\App\Services\Create\VariantService::class)->approve($r->user(), $id, $input['quote_id'], $input['idempotency_key'], $r->boolean('provider_approved'));
+        return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
+    }
+
+    /**
+     * Approve the character or the storyboard and start the next step in one action. The price the user saw is the
+     * limit: when the next step costs more, the approval is kept and the new price is returned instead of a run.
+     */
+    public function approveStep(Request $r, string $id, string $planId)
+    {
+        $input = $r->validate(['step' => 'required|in:character,storyboard', 'token' => 'required|string|regex:/^[a-f0-9]{64}$/', 'expected_version' => 'required|integer|min:0',
+            'max_credits' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'variant_count' => 'sometimes|integer|min:1|max:3']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $plans->select($r->user(), $id, $planId, $input['expected_version'], [$input['step'] === 'character' ? 'character_approval' : 'storyboard_approval' => $input['token']]);
+        $version = (int) $this->service->conversation($r->user(), $id)->version;
+        $q = app(\App\Services\Create\VariantService::class)->quote($r->user(), $id, $version, $input['variant_count'] ?? 1);
+        if ($q->credits_max > $input['max_credits']) return response()->json(['data' => ['needs_confirm' => true, 'credits_max' => $q->credits_max, 'build_stage' => $q->payload_json['build_stage'] ?? null]], 200);
+        $run = app(\App\Services\Create\VariantService::class)->approve($r->user(), $id, $q->id, $input['idempotency_key'], true);
+        return response()->json(['data' => ['id' => $run->id, 'status' => $run->status, 'build_stage' => $q->payload_json['build_stage'] ?? null]], 202);
+    }
+
+    /**
+     * Retry a failed run in one action: the user already approved this work and its cost, so the same approval is
+     * used again (the same hold, the same provider consent). It resumes from what the failed run finished and buys
+     * nothing twice.
+     */
+    public function retry(Request $r, string $id, string $runId)
+    {
+        $input = $r->validate(['idempotency_key' => 'required|string|max:128']);
+        $c = $this->service->conversation($r->user(), $id);
+        $q = app(\App\Services\Create\VariantService::class)->retryQuote($r->user(), $id, $runId, (int) $c->version);
+        $run = $this->service->approve($r->user(), $id, $q->id, $input['idempotency_key'], true);
         return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
     }
 
