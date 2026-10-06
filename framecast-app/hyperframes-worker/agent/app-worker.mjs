@@ -147,6 +147,9 @@ async function execute(run){
      download});
     if(lost||cancelled||stopping)throw Error('Stopped while getting plan media');
    }
+   // A step is ready only when every image was made; otherwise it fails (the made ones are kept) and Retry redraws the rest.
+   const missing=planMedia.find(m=>m.status!=='succeeded');
+   if(missing)throw Object.assign(Error((missing.error||'An image could not be made').slice(0,300)),{code:'STEP_MEDIA_FAILED'});
    await finish(run,{status:'step_ready',summary:run.input.step==='character'?'The character is ready for you to check.':'The storyboard is ready for you to check.'});
    console.log(JSON.stringify({run:run.id,status:'step_ready',step:run.input.step}));
    return;

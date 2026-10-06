@@ -2356,6 +2356,15 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(\App\Services\Create\RunService::OUT_OF_CREDITS, DB::table('composition_runs')->where('id', $run->id)->value('error'));
     }
 
+    public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
+    {
+        $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);
+        $this->assertTrue($busy('nano-banana failed: Prediction failed: Async prediction failed: ModelRateLimitError: Service is currently unavailable due to high demand.'));
+        $this->assertTrue($busy('HTTP 429 Too Many Requests'));
+        $this->assertFalse($busy('The input was flagged as sensitive (E005)'));
+        $this->assertFalse($busy(''));
+    }
+
     public function test_plan_colours_can_be_changed_and_are_kept_fixed(): void
     {
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);

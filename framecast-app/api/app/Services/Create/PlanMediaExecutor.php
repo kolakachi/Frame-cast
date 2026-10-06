@@ -422,8 +422,22 @@ class PlanMediaExecutor
             try { return app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($j[0], $j[1], $j[2], ['reference_image_urls' => $j[3]]); }
             catch (\Throwable $e) { return ['error' => mb_substr($e->getMessage(), 0, 300)]; }
         };
-        if (count($tasks) === 1 || app()->runningUnitTests()) return array_map(fn ($t) => $t(), $tasks);
-        return \Illuminate\Support\Facades\Concurrency::run($tasks);
+        $results = count($tasks) === 1 || app()->runningUnitTests() ? array_map(fn ($t) => $t(), $tasks) : \Illuminate\Support\Facades\Concurrency::run($tasks);
+        // The image model sometimes refuses for a moment ("high demand", rate limits): those are drawn once more after
+        // a short wait before the batch reports them, so a busy minute does not stop a step.
+        $busy = array_filter($results, fn ($r) => self::busy((string) ($r['error'] ?? '')));
+        if ($busy && ! app()->runningUnitTests()) {
+            sleep(20);
+            $again = array_intersect_key($tasks, $busy);
+            foreach (count($again) === 1 ? array_map(fn ($t) => $t(), $again) : \Illuminate\Support\Facades\Concurrency::run($again) as $k => $r) $results[$k] = $r;
+        }
+        return $results;
+    }
+
+    /** A refusal that passes: the model is busy or rate limited, not refusing the request itself. */
+    public static function busy(string $error): bool
+    {
+        return (bool) preg_match('/high demand|ModelRateLimitError|rate limit|temporarily unavailable|currently unavailable|overloaded|\b(429|503)\b/i', $error);
     }
 
     /**
