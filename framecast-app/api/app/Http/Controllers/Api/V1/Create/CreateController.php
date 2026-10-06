@@ -225,8 +225,31 @@ class CreateController extends Controller
 
     public function plan(Request $r, string $id)
     {
-        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'skip_questions' => 'sometimes|boolean']);
-        return response()->json(['data' => app(\App\Services\Create\PlanService::class)->propose($r->user(), $id, $input['expected_version'], $input['idempotency_key'], $r->boolean('skip_questions'))], 201);
+        $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'skip_questions' => 'sometimes|boolean', 'async' => 'sometimes|boolean']);
+        $user = $r->user(); $skip = $r->boolean('skip_questions');
+        if (! $r->boolean('async')) return response()->json(['data' => app(\App\Services\Create\PlanService::class)->propose($user, $id, $input['expected_version'], $input['idempotency_key'], $skip)], 201);
+        // Planning takes minutes, longer than a proxy (Cloudflare: 100 s) keeps a request open: the request answers at once
+        // and planning finishes after the response is sent; plan-activity reports when it is done (or why it failed).
+        $this->service->authorize($user, true);
+        $this->service->conversation($user, $id);
+        $key = 'create:plan-job:'.$id;
+        $job = \Illuminate\Support\Facades\Cache::get($key);
+        if ($job && ($job['key'] ?? null) === $input['idempotency_key']) return response()->json(['data' => $job], $job['state'] === 'running' ? 202 : 200);
+        $job = ['key' => $input['idempotency_key'], 'state' => 'running', 'started_at' => now()->toIso8601String()];
+        \Illuminate\Support\Facades\Cache::put($key, $job, now()->addMinutes(30));
+        // Runs once the response has been sent (PHP-FPM finishes the request first, then the app's terminating step).
+        app()->terminating(function () use ($user, $id, $input, $skip, $key) {
+            try {
+                $out = app(\App\Services\Create\PlanService::class)->propose($user, $id, $input['expected_version'], $input['idempotency_key'], $skip);
+                \Illuminate\Support\Facades\Cache::put($key, ['key' => $input['idempotency_key'], 'state' => 'done', 'needs_answer' => $out['needs_answer'] ?? null, 'plan_id' => $out['id'] ?? null], now()->addMinutes(30));
+            } catch (\Throwable $e) {
+                $status = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500;
+                if ($status >= 500) report($e);
+                \Illuminate\Support\Facades\Cache::put($key, ['key' => $input['idempotency_key'], 'state' => 'failed', 'status' => $status,
+                    'error' => $status >= 500 && ! $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? 'Planning did not finish. Nothing was charged; try again.' : $e->getMessage()], now()->addMinutes(30));
+            }
+        });
+        return response()->json(['data' => $job], 202);
     }
 
     /** What planning is doing right now, step by step (PlanActivity), polled while a plan is being made. */
@@ -234,7 +257,7 @@ class CreateController extends Controller
     {
         $this->service->authorize($r->user(), false);
         $this->service->conversation($r->user(), $id);
-        return response()->json(['data' => \App\Services\Create\PlanActivity::live($id)]);
+        return response()->json(['data' => \App\Services\Create\PlanActivity::live($id), 'job' => \Illuminate\Support\Facades\Cache::get('create:plan-job:'.$id)]);
     }
 
     public function selectPlan(Request $r, string $id, string $planId)

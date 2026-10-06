@@ -272,6 +272,17 @@ function watchPlanning(target) {
     } catch {}
   }, 1500)
 }
+async function waitForPlan(target, key) {
+  for (let i = 0; i < 480; i++) {
+    await new Promise(resolve => setTimeout(resolve, 2500))
+    let job = null
+    try { job = (await api.get(`${base(target)}/plan-activity`)).data.job } catch { continue }
+    if (!job || job.key !== key || job.state === 'running') continue
+    if (job.state === 'failed') throw Object.assign(new Error(job.error || 'Planning did not finish. Nothing was charged; try again.'), { response: { status: job.status, data: { message: job.error } } })
+    return job
+  }
+  throw new Error('Planning is taking longer than usual. Your brief is saved; check back in a minute.')
+}
 async function makePlan(skipQuestions = false) {
   if (!id.value || planning.value) return
   planning.value = true
@@ -279,7 +290,10 @@ async function makePlan(skipQuestions = false) {
   try {
     await guarded(async () => {
       planKey ||= crypto.randomUUID()
-      await api.post(`${base()}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey, ...(skipQuestions === true ? { skip_questions: true } : {}) })
+      // Planning runs after the request is answered (it takes minutes, longer than a proxy keeps a request open):
+      // wait for its outcome, shown live meanwhile, then load the plan or the question it asked.
+      const started = (await api.post(`${base()}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey, async: true, ...(skipQuestions === true ? { skip_questions: true } : {}) })).data.data
+      if (started?.state === 'running') await waitForPlan(id.value, planKey)
       planKey = null; quote.value = null; await refresh()
       await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     })

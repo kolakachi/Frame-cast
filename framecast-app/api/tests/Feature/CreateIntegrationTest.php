@@ -3167,6 +3167,28 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['Free trial, no price shown'], $plan['plan']['assumptions']);
     }
 
+    public function test_planning_can_answer_at_once_and_finish_after_the_response(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        $started = $this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/plans", ['expected_version' => 1, 'idempotency_key' => 'bg-1', 'async' => true])->assertStatus(202)->json('data');
+        $this->assertSame(['bg-1', 'running'], [$started['key'], $started['state']]);
+        $this->app->terminate(); // what PHP-FPM does once the response is sent
+        // The work ran after the response: the activity endpoint says it is done, and the plan exists.
+        $job = $this->actingAs($this->owner)->getJson("/api/v1/create/conversations/$c->id/plan-activity")->assertOk()->json('job');
+        $this->assertSame(['bg-1', 'done'], [$job['key'], $job['state']]);
+        $this->assertSame(1, DB::table('create_plans')->where('conversation_id', $c->id)->count());
+        // Asking again with the same key does not plan twice.
+        $this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/plans", ['expected_version' => 1, 'idempotency_key' => 'bg-1', 'async' => true])->assertOk();
+        $this->assertSame(1, DB::table('create_plans')->where('conversation_id', $c->id)->count());
+        // A refusal is reported, not lost: a stale version.
+        $this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/plans", ['expected_version' => 99, 'idempotency_key' => 'bg-2', 'async' => true])->assertStatus(202);
+        $this->app->terminate();
+        $failed = $this->actingAs($this->owner)->getJson("/api/v1/create/conversations/$c->id/plan-activity")->json('job');
+        $this->assertSame(['failed', 409], [$failed['state'], $failed['status']]);
+    }
+
     public function test_every_vendors_errors_are_read_the_same_way(): void
     {
         $k = fn ($text, $status = null) => \App\Services\Vendors\VendorError::classify($text, $status);
