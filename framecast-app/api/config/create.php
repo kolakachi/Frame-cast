@@ -62,7 +62,8 @@ return [
     'ytdlp_path' => env('CREATE_YTDLP_PATH', 'yt-dlp'),
     'chromium_path' => env('CREATE_CHROMIUM_PATH', 'chromium'),
     'lease_seconds' => 90,
-    'input_workspace_bytes' => 1024 * 1024 * 1024,
+    // Local upload storage per workspace (bytes); a heavy test workspace can be given more with this variable.
+    'input_workspace_bytes' => (int) env('CREATE_INPUT_WORKSPACE_BYTES', 1024 * 1024 * 1024),
     'input_file_bytes' => 100 * 1024 * 1024,
     'input_total_bytes' => 200 * 1024 * 1024,
 ];

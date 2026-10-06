@@ -54,7 +54,8 @@ class AttachmentUploadService
                 abort_if((clone $attached)->count() >= 20,422,'Use at most 20 attachments.');
                 $total = Asset::whereIn('id',(clone $attached)->pluck('asset_id'))->sum('file_size_bytes');
                 abort_if($total + $size > config('create.input_total_bytes'),422,'Use at most 200 MB of attachments per conversation.');
-                $stored = Asset::where('workspace_id',$user->workspace_id)->where('storage_url','like','create-upload://%')->sum('file_size_bytes');
+                // Files still in use: an archived upload's bytes are gone or going, so it no longer counts.
+                $stored = Asset::where('workspace_id',$user->workspace_id)->where('storage_url','like','create-upload://%')->where('status','!=','archived')->sum('file_size_bytes');
                 abort_if($stored + $size > config('create.input_workspace_bytes'),422,'Local upload storage is full. Existing files are preserved.');
                 $suffix = $user->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
                 $written = 'create/uploads/'.$suffix;
