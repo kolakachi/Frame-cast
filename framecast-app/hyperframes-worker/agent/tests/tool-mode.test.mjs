@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile} from 'node:fs/promises';import {tmpdir} from 'node:os';
+import {createHash} from 'node:crypto';
 import {runAgent} from '../runner.mjs';import {Workspace} from '../workspace.mjs';
 import {parseAction,actionFromToolUse} from '../protocol.mjs';
 test('requirement links work in native and envelope purchases and reach the host',async()=>{
@@ -18,9 +19,10 @@ async function harness(turns,{limits={},requireVisualReview=true,tools,context={
  const dir=await mkdtemp(tmpdir()+'/tool-');await writeFile(dir+'/index.html','<html></html>');
  let i=0;const seen=[];
  const provider={id:'t',maxCallUsd:0,complete:async args=>{seen.push(args);const t=turns[i++]??turns.at(-1);return {content:t,text:'',predictionId:'p'+i,metrics:{}};}};
- const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[],dir+'-work'),provider,context:{brief:'x',toolMode:true,...context},limits:{calls:6,repairs:3,budgetUsd:0,...limits},requireVisualReview,
+ const workspace=new Workspace(dir,[],dir+'-work');
+ const state=await runAgent({stateFile:dir+'/s.json',workspace,provider,context:{brief:'x',toolMode:true,...context},limits:{calls:6,repairs:3,budgetUsd:0,...limits},requireVisualReview,
   tools:(typeof tools==='function'?tools(dir):tools)??{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='})}});
- return {state,seen,dir};
+ return {state,seen,dir,workspace};
 }
 test('one model call can write three files and preview; the next reviews and finishes',async()=>{
  const {state,seen,dir}=await harness([
@@ -87,6 +89,17 @@ test('catalog searches through the host tool; an over-long query is refused as m
   [use('e','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('f','finish',{summary:'Done'})],
  ],{tools:{check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),catalog:async a=>{seen.push(a.query);return {results:[{name:'browser-device-stage'}]};}}});
  assert.equal(state.status,'preview_ready');assert.deepEqual(seen,['browser frame']);assert.equal(state.repairs,1);
+});
+test('art searches and places through the host tool; a 3D item becomes a protected, kept file',async()=>{
+ const seen=[];
+ const {state,workspace}=await harness([
+  [use('a','art',{query:'coin 3d'}),use('b','art',{query:'coin',use:'fluent3d:coin'}),use('c','art',{query:'x',use:'../escape'}),use('d','write',{path:'index.html',content:'<html><img src="art-fluent3d-coin.png"></html>'}),use('e','preview',{times:[1]})],
+  [use('f','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('g','finish',{summary:'Done'})],
+ ],{tools:dir=>({check:async()=>({ok:true}),snapshot:async()=>({ok:true,providerImage:'data:image/jpeg;base64,YQ=='}),art:async a=>{seen.push([a.query,a.use??null]);
+   if(a.use)await writeFile(dir+'/art-fluent3d-coin.png','png');
+   return a.use?{id:a.use,kind:'png',file:{path:'art-fluent3d-coin.png',sha256:createHash('sha256').update('png').digest('hex')},how:'img'}:{results:[{id:'fluent3d:coin',style:'3d',kind:'png'}]};}})});
+ assert.equal(state.status,'preview_ready');assert.deepEqual(seen,[['coin 3d',null],['coin','fluent3d:coin']]);assert.equal(state.repairs,1,'a use that is not an id is refused as misuse');
+ assert.deepEqual(workspace.assets.filter(a=>a.operation==='library').map(a=>[a.path,a.params.art]),[['art-fluent3d-coin.png','fluent3d:coin']]);
 });
 test('the critic has the last word: a revise verdict returns directives and blocks finish until the next passing review; a pass finishes with its scores',async()=>{
  const critics=[],strips=[];

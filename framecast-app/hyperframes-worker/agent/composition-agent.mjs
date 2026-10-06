@@ -5,6 +5,7 @@ import {runAgent} from './runner.mjs';
 import {accountedCall} from './accounted-call.mjs';
 import {loadCoreGuidance,readGuidanceReference} from './context.mjs';
 import {loadCatalog,searchCatalog,catalogItem} from './registry.mjs';
+import {loadArt,searchArt,useArt} from './art-library.mjs';
 import {cardRoute,loadCards,readCard,availableCards} from './cards.mjs';
 import {criticSystem,criticMessages,parseCriticVerdict} from './critic.mjs';
 import {voiceTiming} from './narration-timing.mjs';
@@ -188,6 +189,13 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   const results=tagged?searchCatalog(catalog,{tag:tagged[1],limit:20}):searchCatalog(catalog,{query:q,limit:12});
   return {results:results.map(({variables,...r})=>({...r,variables:variables.map(v=>v.id)})),hint:results.length?'Call catalog with an exact name for its variables, mount and usage header.':'No match; try other words, tag:<tag>, or hand-build it.'};
  };
+ // The art library: icons to inline and 3D objects to place, instead of hand-drawing or generating a generic visual.
+ const art=await loadArt(guidanceDirectory+'/../../runtime/art-packs').catch(()=>null);
+ const artTool=async({query,style,use})=>{
+  if(use)return await useArt(art,use,directory+'/project');
+  const results=searchArt(art,{query,style,limit:12});
+  return {results,hint:results.length?'Call art again with use: an id to get it.':'No match; try other words, or draw it yourself.'};
+ };
  // A captured web page is shown to the agent as its first image, so it can rebuild the brand's real screens.
  let initialImage;
  const page=manifest.find(f=>f.purpose==='reference'&&f.asset_type==='image'&&f.reference?.from==='page');
@@ -218,6 +226,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
     howToUse:'This is the craft the build starts from, not a template. Follow its rules. If exampleFiles are listed, read style-example/index.html once to learn its technique; never copy its layout wholesale. The fingerprint describes the example on six points: structure, opening, signature shot, camera path, score shape and ending. Use the fingerprint to identify techniques the brief asks to preserve and content it asks to replace; do not impose a numerical divergence quota. In your finish summary say which techniques you retained and how you changed the content. Explicit user colour/type direction and the approved plan take precedence over saved defaults; respect explicit brand locks and ask about conflicts. Borrowing reference motion does not automatically mean borrowing its palette.'}:null,
    variantDirection:input.variant_direction??null,approvedFacts:[...(settings.approved_facts??[]),...(input.plan?.on_screen_copy??[])],settings,output:{width:dims[0],height:dims[1],durationSeconds:settings.duration_seconds??15},
    registry:catalog.length?{items:catalog.length,howToUse:'Search with the catalog action before hand-building any named visual; read kit/registry.md once before wiring an item.'}:null,
+   art:art?.items?.length?{items:art.items.length,howToUse:'For a generic object or icon (coins, a brain, a calendar, a checkmark, a shop), search the art action and use what it finds before drawing or generating one. Brand visuals come from the user\'s files.'}:null,
    cards:{route,pinned:cards.names,onDemand:otherCards.map(n=>'cards/'+n+'.md')},
    runtimeFiles:[{path:'wyv-3d.js',purpose:'3D inside the composition (load after gsap.min.js and three-wyv.js): W3D.mascot draws plan.mascot3d on a canvas (talking on the narration, blinking, winking, turning), W3D.prop draws an object modelled in code (with the product spin), W3D.clock(tl, duration) drives them from the timeline. The default for 3D. Read kit/three.md, worked example kit/three-example.html.'},{path:'three-wyv.js',purpose:'three.js with the mascot and prop builders as one browser script; load before wyv-3d.js.'},{path:'wyv-mascot3d.js',purpose:'Parametric 3D mascot for Remotion clips (import {Mascot3D} from \'./wyv-mascot3d.js\'): a character from plan.mascot3d.spec, rigged by construction (head turn, blink, wink, gaze, mouth on the words, expressions), clay, ordered-dither or toon finish; and Prop3D, shapes and spinAt for 3D objects modelled in code in the same finishes. Read kit/remotion.md, sections 3D characters and 3D props.'},{path:'wyv-mascot.js',purpose:'Character performance on the Hyperframes timeline: WyvMascot.face plays a face kit (an asset with face_kit) as a talking, blinking face with expressions; WyvMascot.attach drives a prepared layered-SVG rig (blinks, gaze, head tilt, four mouths). Not an image-to-rig converter: a face kit comes from an expression sheet. Read kit/mascot.md first. Never substitute the fixture for an approved character.'},{path:'barty-motion.js',purpose:'Optional pinned Barty spring/shape engine. Load with barty-hyperframes.js after GSAP; read kit/barty.md first. One full-frame scene; no standalone render commands.'},{path:'barty-hyperframes.js',purpose:'Barty to Hyperframes timeline bridge; approved colours remain authored inputs.'},{path:'gsap.min.js',purpose:'Local GSAP runtime'},{path:'wyv-motion.js',purpose:'WyvStudio motion kit, load after gsap.min.js: spring eases, cursor, button press, typing, toggle, counter, shape morph and scene transitions (whip, push, wipe, light leak). Read kit/motion-kit.md for the API before using it.'},{path:'font.ttf',purpose:'DejaVu Sans, plain fallback'},
     {path:'inter.ttf',purpose:'Inter, variable weight 100-900: clean modern sans for body and bold headlines'},
@@ -232,7 +241,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   skills:(await loadCoreGuidance(guidanceDirectory))+'\n\n'+await readFile(guidanceDirectory+'/../craft.md','utf8')+(cards.text?'\n\n'+cards.text:'')+await pinnedKits(guidanceDirectory,input.plan),signal,requireVisualReview:false,
   // Unlimited local testing (frozen in the approved policy): limits sit far past any expected build so trajectories show real needs.
   limits:unlimited?{reviewReserveMs:critic?300000:0,repairs:1000,runs:1000,inspections:100,resultBytes:64000,usesPerTurn:20,criticCalls:critic?Math.min(1,Math.max(0,Number(criticPolicy.max_calls)||0)):0,calls:input.execution_policy.agent.max_calls,budgetUsd:input.execution_policy.agent.max_calls*input.execution_policy.agent.cost_limit_microusd/1e6,contextBytes:Number(input.execution_policy.agent.context_bytes)||600000,maxOutputTokens:Number(input.execution_policy.agent.max_output_tokens)||32000,totalOutputTokenAllowance:input.execution_policy.agent.max_calls*(Number(input.execution_policy.agent.max_output_tokens)||32000),elapsedMs:4*3600000}:{reviewReserveMs:critic?300000:0,repairs:paid?8:2,criticCalls:critic?Math.min(1,Math.max(0,Number(criticPolicy.max_calls)||0)):0,calls:input.execution_policy?.agent?.max_calls??0,budgetUsd:paid?(input.execution_policy?.agent?.max_calls??8)*(input.execution_policy?.agent?.cost_limit_microusd??300000)/1e6:0,contextBytes:paid?Math.max(96000,Number(input.execution_policy?.agent?.context_bytes)||0):200000,maxOutputTokens:Math.min(16384,Math.max(256,input.execution_policy?.agent?.max_output_tokens??4096)),totalOutputTokenAllowance:Math.max(98304,(input.execution_policy?.agent?.max_calls??12)*Math.min(16384,input.execution_policy?.agent?.max_output_tokens??4096)),elapsedMs:paid?1800000:600000},
-  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),inspect_reference:args=>invoke('inspect_reference',args),media:args=>invoke('media',args),run:args=>invoke('run',args),...(catalog.length?{catalog:catalogTool}:{}),...(critic?{critic,strip:args=>invoke('strip',args),detail:args=>invoke('detail',args)}:{}),...(buy?{buy:async args=>{
+  tools:{...(transcribe?{transcript:args=>transcribe(args)}:{}),inspect_reference:args=>invoke('inspect_reference',args),media:args=>invoke('media',args),run:args=>invoke('run',args),...(catalog.length?{catalog:catalogTool}:{}),...(art?.items?.length?{art:artTool}:{}),...(critic?{critic,strip:args=>invoke('strip',args),detail:args=>invoke('detail',args)}:{}),...(buy?{buy:async args=>{
    // Stage what was bought into the project so the composition can use it at once.
    const r=await buy(args);if(!r?.ok)return r;
    const files=[];for(const f of r.files||[]){await copyFile(directory+'/inputs/source/'+f.name,directory+'/project/'+f.name).catch(()=>{});files.push({path:f.name,sha256:f.sha256});}
@@ -255,7 +264,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const bundle={};
  for(const name of (await readdir(directory+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)).sort())bundle[name]=await readFile(directory+'/project/'+name,'utf8');
  // Files the sandbox derived during this run, with where they came from.
- return {state,bundle,derived:workspace.assets.filter(a=>a.derivedFrom||a.operation==='run')};
+ return {state,bundle,derived:workspace.assets.filter(a=>a.derivedFrom||a.operation==='run'||a.operation==='library')};
 }
 
 // Explicit offline contract probe, not a generative model. It exercises reads,

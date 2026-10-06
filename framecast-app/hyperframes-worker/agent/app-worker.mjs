@@ -232,7 +232,7 @@ async function execute(run){
     if(!needed.has(d.path))continue;
     uploaded.add(d.path);
     // A run-made file may have no source (generated from scratch); a media edit always has one.
-    const from=ids.get(d.derivedFrom??d.origin);if(!from&&d.operation!=='run')throw Error('Derived media has no known source');
+    const from=ids.get(d.derivedFrom??d.origin);if(!from&&d.operation!=='run'&&d.operation!=='library')throw Error('Derived media has no known source');
     const form=new FormData();form.append('lease_token',run.lease_token);if(from)form.append('derived_from_asset_id',String(from));form.append('operation',d.operation);form.append('params',JSON.stringify(d.params??{}));
     form.append('file',new Blob([await readFile(dir+'/project/'+d.path)]),d.path);
     const response=await fetch(new URL('/api/internal/create/runs/'+run.id+'/derived',base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},body:form,signal:aborter.signal});

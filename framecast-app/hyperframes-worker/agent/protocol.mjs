@@ -11,6 +11,7 @@ const fields = {
   buy: ['type', 'kind', 'description'],
   run: ['type', 'cmd', 'args'],
   catalog: ['type', 'query'],
+  art: ['type', 'query'],
   transcript: ['type', 'input'],
   inspect_reference: ['type', 'input', 'params'],
   report_limitation: ['type', ...reportFields],
@@ -40,7 +41,8 @@ export function checkRunArgs(cmd,args){
 // The same rules for an action that arrived as a native tool call.
 export function validateAction(action) {
   if (!action || Array.isArray(action) || !fields[action.type]) throw Error('Unsupported action');
-  const required = action.type==='buy' && 'requirement_ids' in action ? [...fields.buy,'requirement_ids'] : fields[action.type];
+  const required = action.type==='buy' && 'requirement_ids' in action ? [...fields.buy,'requirement_ids']
+    : action.type==='art' ? [...fields.art, ...['style', 'use'].filter(k => k in action)] : fields[action.type];
   if(action.type==='buy'&&'requirement_ids' in action&&(!Array.isArray(action.requirement_ids)||action.requirement_ids.length>24||action.requirement_ids.some(id=>typeof id!=='string'||!/^req-[a-f0-9]{20}$/.test(id))))throw Error('buy requirement_ids must be approved requirement IDs');
   if (Object.keys(action).length !== required.length || required.some(k => !(k in action))) throw Error('Unexpected or missing action fields');
   if (action.type === 'buy' && !/^[a-z_]{3,40}$/.test(action.kind)) throw Error('buy takes a catalogue kind and a description');
@@ -49,6 +51,7 @@ export function validateAction(action) {
   if (action.type === 'inspect_reference') validateInspection(action.input,action.params);
   if (action.type === 'run') checkRunArgs(action.cmd, action.args);
   if (action.type === 'catalog' && (typeof action.query !== 'string' || action.query.length > 200)) throw Error('catalog takes a short query, a tag, or an exact item name');
+  if (action.type === 'art' && ((typeof action.query !== 'string' || action.query.length > 120) || (action.use !== undefined && (typeof action.use !== 'string' || !/^[a-z0-9]+(:[a-z0-9-]+){1,2}$/.test(action.use))) || (action.style !== undefined && !['line', 'filled', '3d'].includes(action.style)))) throw Error('art takes a short query, an optional style (line, filled, 3d), and use: an id from its results');
   for (const key of required.filter(k => !['type', 'times', 'params', 'scores', 'args', 'requirement_ids'].includes(k))) {
     if (typeof action[key] !== 'string' || (key !== 'after' && !action[key].trim())) throw Error(`Invalid ${key}`);
   }
@@ -97,6 +100,7 @@ const DESC={
  media:'Edit a supplied media file in the sandbox for free: op probe|silences|levels|screen|fade|space|trim|cut|remove_silence|clean_audio|loudness|stabilize|speed|crop|frame|grade|duck|beats|tighten with params.',
  inspect_reference:'Inspect a staged reference image or video as a visual contact sheet. params: {mode:frames,times:[0]} (1-8 timestamps; image uses 0), {mode:sequence,start,end,count} (2-8 samples over <=2 seconds), {mode:sequence,start,end,every_frame:true,page:1} (all source frames over <=2 seconds/120 frames, eight per page, cached), or {mode:shots,start,end} (heuristic cuts in <=30 seconds). frames/sequence optionally take crop:{x,y,width,height} normalized 0-1. Input is context.assets[].name, purpose reference. Free local extraction; results cannot be used as footage or output review.',
  transcript:'Word timings for a supplied speech file: [text,start,end] on that file\'s timeline, with suggested cuts.',
+ art:'Search the art library before drawing or generating a generic visual: about 8,700 line and filled icons (SVG, recolourable and animatable) and 1,285 3D emoji objects (transparent PNG: coins, money bag, brain, notebook, calendar, shop, phone, rocket and more). query: words (add 3d, line or filled, or pass style). Then call again with use: an id from the results: an icon returns inline <svg> markup to place in the HTML; a 3D item is copied into the project as a file to use with <img>. Prefer it to hand-drawing a generic object; brand visuals (logo, mascot, product) come from the user\'s files, never from here.',
  catalog:'Search the vendored HyperFrames registry (353 finished blocks and components) by words, a tag (transition, captions, mock-ui, product-demo, typography, background, cta, character, overlay, texture) or an exact name, which returns the item in full with its variables and usage header. Search before hand-building any named visual; wire the item with data-composition-src as kit/registry.md explains.',
  run:'Run one program in the sandbox when the fixed tools fall short (free, no network, 90 s; never a probe such as node -e 0, only real work): cmd ffmpeg | ffprobe | node | fc-list | hyperframes | remotion, args as an argv list (never a shell line). Runs in the work folder: project/<file> reaches the composition files; scratch files go beside it. remotion accepts render project/<source>.js <seconds> or still project/<source>.js <seconds> <frame>; read kit/remotion.md first. node runs a script you wrote to work/<name>.mjs. New png, jpg, webp, svg, mp4, mp3 or wav files in project/ become assets; existing project files are never changed by run. hyperframes subcommands: beats, normalize-audio, media-treatment, grade-compare, compare, info, compositions, timeline, lint, validate, inspect, keyframes, snapshot, check (check/preview/render of the draft itself go through the dedicated tools).',
  buy:'Buy one catalogue item now, within the media ceiling the user approved: kind (ai_image, stock_image, stock_video, voiceover, cloned_voiceover, music, sfx, character_poses, talking_shot, talking_take, animate_image) and a description, with optional requirement_ids from the frozen plan for the requirements this purchase serves. Use [] for optional creative additions; never invent an ID. The file lands in the assets. Over the ceiling it is refused: then propose_media instead.',
@@ -113,8 +117,9 @@ const SCHEMA={
  buy:{kind:{type:'string'},description:{type:'string'},requirement_ids:{type:'array',items:{type:'string',pattern:'^req-[a-f0-9]{20}$'},maxItems:24}},
  run:{cmd:{type:'string',enum:['ffmpeg','ffprobe','node','fc-list','hyperframes','remotion']},args:{type:'array',items:{type:'string'},maxItems:48}},
  catalog:{query:{type:'string'}},
+ art:{query:{type:'string'},style:{type:'string',enum:['line','filled','3d']},use:{type:'string'}},
 };
-export const toolDefinitions=Object.keys(fields).map(name=>({name,description:DESC[name]||name,input_schema:{type:'object',properties:SCHEMA[name]||{},required:Object.keys(SCHEMA[name]||{}).filter(k=>name!=='buy'||k!=='requirement_ids'),additionalProperties:false}}));
+export const toolDefinitions=Object.keys(fields).map(name=>({name,description:DESC[name]||name,input_schema:{type:'object',properties:SCHEMA[name]||{},required:Object.keys(SCHEMA[name]||{}).filter(k=>(name!=='buy'||k!=='requirement_ids')&&(name!=='art'||k==='query')),additionalProperties:false}}));
 // A tool call becomes an action: the tool name is the type, its input the fields; absent optional fields are filled.
 export function actionFromToolUse(block){
  const input=block&&typeof block.input==='object'&&block.input&&!Array.isArray(block.input)?block.input:{};

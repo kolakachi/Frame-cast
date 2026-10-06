@@ -215,7 +215,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   // A plain label for an action, for the activity line.
   // What the user sees while the build works: plain and calm, never a file, tool or command name.
   const describe=a=>({read:'Looking over the work',write:'Shaping the scenes',patch:'Refining the scenes',check:'Checking the details',preview:'Checking how it looks',snapshot:'Checking how it looks',
-    report_limitation:'Making a note',timeline:'Checking the timing',primitives:'Getting organised',assets:'Getting organised',visual_review:'Reviewing the frames',finish:'Wrapping up',needs_input:'Preparing a question for you',propose_media:'Suggesting extra media',
+    report_limitation:'Making a note',art:'Picking art',timeline:'Checking the timing',primitives:'Getting organised',assets:'Getting organised',visual_review:'Reviewing the frames',finish:'Wrapping up',needs_input:'Preparing a question for you',propose_media:'Suggesting extra media',
     inspect_reference:'Studying your reference',catalog:'Choosing design pieces',media:'Preparing your media',transcript:'Listening to the narration',buy:'Getting media for your video',run:'Preparing your media'})[a.type]||'Working on your video';
   // One action against the draft and the sandbox; shared by the JSON protocol and tool mode.
   const MISUSE=/requires current host-provided snapshot|Check the current draft before snapshots|Visual review is required|requires check and snapshots|not installed/;
@@ -335,6 +335,12 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         for(const f of result?.outputs??[])if(!workspace.assets.some(a=>a.path===f.path))workspace.assets.push({path:f.path,sha256:f.sha256,operation:'run',origin,params:{cmd:action.cmd,args:action.args.join(' ').slice(0,1500)}});
         if(!result?.ok&&++state.repairs>cap.repairs)throw Error('Run repair limit reached');
       }
+    }
+    else if(action.type==='art') {
+      if(!tools.art)throw Error('The art library is not available in this run');
+      result=await tools.art({query:action.query,style:action.style,use:action.use});
+      // A 3D object joins the protected files and is kept with the version like any run-made file.
+      if(result?.file&&!workspace.assets.some(a=>a.path===result.file.path))workspace.assets.push({path:result.file.path,sha256:result.file.sha256,operation:'library',params:{art:action.use}});
     }
     else if(action.type==='buy') {
       if(!tools.buy)throw Error('Purchases are not available in this run');

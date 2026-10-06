@@ -110,7 +110,8 @@ class RunService
     }
 
     // 'run' is the sandbox program runner: its files may be generated from scratch, so they can have no parent.
-    public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade', 'duck', 'fade', 'space', 'run'];
+    // 'library' is an item from the art library (a 3D object the build placed): it has no parent either.
+    public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade', 'duck', 'fade', 'space', 'run', 'library'];
     private const DERIVED_TYPES = ['video/mp4' => ['video', 'mp4'], 'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg'], 'image/webp' => ['image', 'webp'], 'image/svg+xml' => ['image', 'svg']];
 
     /**
@@ -121,7 +122,7 @@ class RunService
     public function derived(string $id, string $token, \Illuminate\Http\UploadedFile $file, ?int $fromAssetId, string $op, array $params): array
     {
         abort_unless(in_array($op, self::DERIVED_OPS, true), 422, 'Unknown media operation.');
-        abort_unless($fromAssetId !== null || $op === 'run', 422, 'Derived media must name its source file.');
+        abort_unless($fromAssetId !== null || in_array($op, ['run', 'library'], true), 422, 'Derived media must name its source file.');
         abort_unless($file->isValid() && $file->getSize() > 0 && $file->getSize() <= (int) config('create.input_file_bytes'), 422, 'Derived file size is not allowed.');
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file->getRealPath());
         $type = self::DERIVED_TYPES[$mime] ?? null;
