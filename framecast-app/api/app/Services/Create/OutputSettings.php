@@ -6,6 +6,8 @@ class OutputSettings
         'aspect_ratio'=>'sometimes|in:9:16,16:9,1:1,4:5','duration_seconds'=>'sometimes|integer|min:5|max:30',
         'language'=>'sometimes|string|in:en,fr,es,de,pt,it,nl,ar,hi,ja,ko,zh',
         'audio'=>'sometimes|in:original,silent','captions'=>'sometimes|in:off,provided',
+        // The user asked for no words on screen; "off" alone only means no caption text was supplied.
+        'no_captions'=>'sometimes|boolean',
         'caption_text'=>'nullable|string|max:4000','approved_facts'=>'sometimes|array|max:20',
         'approved_facts.*'=>'string|max:500', 'output_kind'=>'sometimes|in:video,image','video_mode'=>'sometimes|in:composition,animate_image',
         'origin_conversation_id'=>'sometimes|uuid','origin_revision_id'=>'sometimes|uuid','style_id'=>'sometimes|nullable|uuid','style_pack'=>'sometimes|nullable|string|max:40',

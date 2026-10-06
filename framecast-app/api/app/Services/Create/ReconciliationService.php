@@ -78,6 +78,11 @@ class ReconciliationService
             $result=app(AttemptService::class)->settle($run->id,$lease,$attempt->id,$receipt->result(),$receipt);
             DB::table('composition_reconciliations')->insert(['attempt_id'=>$attempt->id,'receipt_hash'=>$hash,
                 'previous_status'=>$attempt->status,'previous_result_hash'=>$attempt->result_hash,'evidence'=>$receipt->evidence,'created_at'=>now()]);
+            // A bought plan item's record follows its attempt (plan-media-<item index>): settled as failed, the item can be
+            // bought again by a new run; left "unknown", every later run would refuse it.
+            if ($attempt->kind==='plan_media' && preg_match('/^plan-media-(\d+)$/',(string)$attempt->attempt_key,$m) && ($receipt->result()['status'] ?? null)==='failed')
+                DB::table('create_plan_media')->where('run_id',$run->id)->where('item_index',(int)$m[1])->where('status','unknown')
+                    ->update(['status'=>'failed','error'=>'Reconciled: '.mb_substr($receipt->evidence,0,240),'updated_at'=>now()]);
             $unresolved=AttemptService::unresolved($run->id);
             if ($unresolved) DB::table('api_operations')->where('id',$run->operation_id)->update(['status'=>'needs_attention']);
             else OperationAccounting::close($run->operation_id);

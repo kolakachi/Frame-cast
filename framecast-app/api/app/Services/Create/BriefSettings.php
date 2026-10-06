@@ -69,8 +69,9 @@ class BriefSettings
             } elseif (preg_match('/\bkeep (?:the |my )?(?:original )?(?:audio|sound|voice)\b/', $text)) {
                 if (($settings['audio'] ?? 'original') !== 'original') $changes['audio'] = 'original';
             }
-            if (preg_match('/\b(no captions?|without captions?|no subtitles?)\b/', $text) && ($settings['captions'] ?? 'off') !== 'off') {
-                $changes['captions'] = 'off';
+            if (preg_match('/\b(no captions?|without captions?|no subtitles?)\b/', $text)) {
+                if (($settings['captions'] ?? 'off') !== 'off') $changes['captions'] = 'off';
+                if (empty($settings['no_captions'])) $changes['no_captions'] = true;
             }
         }
 
@@ -109,6 +110,7 @@ class BriefSettings
                 'language' => 'language '.(array_search($value, self::LANGUAGES, true) ? ucfirst(array_search($value, self::LANGUAGES, true)) : $value),
                 'audio' => $value === 'silent' ? 'audio off' : 'original audio kept',
                 'captions' => 'captions off',
+                'no_captions' => 'no words on screen',
                 'reference_match' => match ($value) { 'exact' => 'the reference matched exactly (same timing, layout, transitions and mascot placement, with your brand and content)', 'similar' => 'the reference followed closely (its format, look and pacing, with your own story and shots)', default => 'the reference used as inspiration' },
                 default => "$key $value",
             };

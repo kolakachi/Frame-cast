@@ -175,9 +175,9 @@ class WorkerController extends Controller
     {
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64', 'prompt' => 'required|string|max:200000', 'system' => 'required|string|max:200000',
-            'max_tokens' => 'required|integer|min:256|max:'.(\App\Services\Create\PilotPolicy::unlimited() ? 64000 : 16384), 'image' => 'nullable|string|max:'.(\App\Services\Create\PilotPolicy::unlimited() ? 7000000 : 1500000),
+            'max_tokens' => 'required|integer|min:256|max:64000', 'image' => 'nullable|string|max:7000000',
             // Tool mode: the conversation so far and the tools on offer, as the exact JSON strings the worker hashed.
-            'messages_json' => 'nullable|string|max:'.(\App\Services\Create\PilotPolicy::unlimited() ? 30000000 : 6000000), 'tools_json' => 'nullable|string|max:200000']);
+            'messages_json' => 'nullable|string|max:30000000', 'tools_json' => 'nullable|string|max:200000']);
         // The recorded hash covers the exact text; the global string trimming must not alter it.
         $raw = json_decode($r->getContent(), true, 32, JSON_THROW_ON_ERROR);
         foreach (['prompt', 'system', 'image', 'messages_json', 'tools_json'] as $k) $input[$k] = $raw[$k] ?? null;

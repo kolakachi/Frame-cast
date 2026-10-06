@@ -59,7 +59,10 @@ class PlanService
         abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
 
         // What planning does is recorded step by step: shown live while it runs, then saved with the plan.
+        // While our model account is failing (out of credit, a bad key), planning waits instead of failing.
+        \App\Services\Vendors\VendorAlerts::assertUp(config('create.mode') === 'fixture' ? [] : ['anthropic']);
         $activity = PlanActivity::begin($id);
+        PlanningCosts::begin($id);
         try {
         // Files attached without a role get one now, before anything reads them: from the brief and from looking at
         // each file. A file whose role is unclear is asked about, one at a time, and the reply decides it.
@@ -115,8 +118,28 @@ class PlanService
             $c = $this->conversations->conversation($user, $id);
         }
         // Every attached reference video is studied before planning (a link's study may have started when it was added).
-        $this->studyReferences($user, $c);
+        $thin = $this->studyReferences($user, $c);
         $this->notePages($user, $c, $activity);
+        // A reference that could not be studied properly is not followed blind: for an exact or similar video the user
+        // chooses to study it again or to plan from a quick look (each reply studies it again first). Otherwise, or
+        // after "go ahead" or a skip, the plan says it followed a quick look.
+        $thinNote = null;
+        if ($thin) {
+            $last = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->limit(2)->get();
+            $goAhead = ($last[0]->role ?? null) === 'user' && str_starts_with((string) ($last[1]->idempotency_key ?? ''), 'study:')
+                && preg_match('/\b(go ahead|quick look|continue|proceed|anyway|skip|just plan|without)\b/i', (string) $last[0]->content);
+            $match = json_decode((string) $this->conversations->conversation($user, $id)->settings_json, true)['reference_match'] ?? null;
+            if (! $goAhead && ! $skipQuestions && in_array($match, ['exact', 'similar'], true)) {
+                $question = 'I couldn\'t study "'.$thin[0]['title'].'" properly just now: '.mb_strtolower(self::studyWhy($thin[0]['why'])).' Study it again, or plan from a quick look at it?';
+                $next = (int) $c->version + 1;
+                DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
+                    'idempotency_key' => 'study:'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+                $activity->abandon();
+                return ['needs_answer' => 'study', 'question' => $question];
+            }
+            $thinNote = 'Planned from a quick look at "'.$thin[0]['title'].'": its full study did not finish ('.mb_strtolower(rtrim(self::studyWhy($thin[0]['why']), '.')).').';
+        }
         // Questions come before the plan, one at a time, for a new creation only (a change to a plan is planned
         // straight away). Each answer is a message; the next call asks the next question or plans.
         if (! $skipQuestions && self::plannerTask($c) === 'creative') {
@@ -133,10 +156,10 @@ class PlanService
                 return ['needs_answer' => 'clarify', 'question' => $question];
             }
         }
-        // An exact copy runs as long as its reference (up to the 30 s Create makes), unless the user chose a length.
+        // An exact or similar video runs as long as its reference (up to the 30 s Create makes), unless the user chose a length.
         $settings = json_decode($c->settings_json, true) ?: [];
         $lengthNote = null;
-        if (($settings['reference_match'] ?? null) === 'exact' && empty($settings['duration_chosen'])) {
+        if (in_array($settings['reference_match'] ?? null, ['exact', 'similar'], true) && empty($settings['duration_chosen'])) {
             $refSeconds = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')->where('create_attachments.conversation_id', $id)
                 ->where('create_attachments.purpose', 'reference')->where('assets.asset_type', 'video')->pluck('assets.metadata_json')
                 ->map(fn ($m) => (float) data_get(json_decode((string) $m, true), 'reference_study.duration_seconds', 0))->filter()->first();
@@ -148,8 +171,9 @@ class PlanService
             }
         }
         // The planning request is synchronous; unlimited testing allows a longer wait for more inspection.
-        $deadline = microtime(true) + (PilotPolicy::unlimited() ? 600 : 100);
-        if (PilotPolicy::unlimited()) set_time_limit(640);
+        // Every plan gets the time unlimited testing had to inspect the reference (plans took 3.5 to 6.5 minutes).
+        $deadline = microtime(true) + 600;
+        set_time_limit(640);
         $context = $this->context($user, $c);
         $context['_planner_deadline'] = $deadline;
         $task = self::plannerTask($c);
@@ -158,6 +182,7 @@ class PlanService
             $result = $this->planner($task, CostEstimate::effort(json_decode((string) $c->settings_json, true) ?: []))->plan($context);
         } catch (\Throwable $e) {
             report($e);
+            if (preg_match('/^\[vendor:(busy|content_refused|vendor_credit|vendor_config)\]/', $e->getMessage(), $m)) abort($m[1] === 'content_refused' ? 422 : 503, \App\Services\Vendors\VendorAlerts::userMessage('anthropic', $m[1]));
             abort(502, 'The planner could not make a plan just now. Nothing was charged; try again.');
         }
         // Only host tool receipts can establish inspection evidence; model-written receipts are discarded.
@@ -165,14 +190,18 @@ class PlanService
         $plan = $this->normalize($result['plan'], $context, (int) $user->workspace_id);
         $plan['planner_task'] = $task;
         if ($lengthNote) $plan['direction_notes'][] = ['text' => $lengthNote, 'provenance' => 'inferred'];
+        if ($thinNote) $plan['direction_notes'][] = ['text' => $thinNote, 'provenance' => 'inferred'];
         $shots = count($plan['scenes'] ?? []);
         $activity->relabel($task === 'edit' ? 'Updated the plan' : 'Planned '.$shots.' '.($shots === 1 ? 'shot' : 'shots'));
         // The planner's own short account of what it took from the files and chose.
         foreach (array_slice(array_filter((array) ($result['plan']['highlights'] ?? []), 'is_string'), 0, 3) as $line) $activity->item($line);
         // Planning is billed at half its real cost (its model calls at the gateway's tariff), never over the cap, and
         // waived when the balance cannot cover it: nobody is blocked at the first step.
-        $planningCredits = array_sum(array_map(fn ($call) => CostEstimate::callCredits((array) $call), (array) ($result['usage']['calls'] ?? [])));
-        $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'charge' => CostEstimate::planningCharge($planningCredits), 'charged' => 0, 'waived' => false];
+        // The questions, file sorting and reference study before it count too (PlanningCosts), each part shown.
+        $parts = ['planner' => array_sum(array_map(fn ($call) => CostEstimate::callCredits((array) $call), (array) ($result['usage']['calls'] ?? [])))]
+            + array_map(fn ($micro) => (int) ceil($micro / 4000), PlanningCosts::take($id));
+        $planningCredits = array_sum($parts);
+        $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'parts' => $parts, 'charge' => CostEstimate::planningCharge($planningCredits), 'charged' => 0, 'waived' => false];
         if ($plan['planning_charge']['charge'] > 0) $activity->item('Planning · '.$plan['planning_charge']['charge'].' credits (half price)');
         $plan['activity'] = $activity->finish();
         } catch (\Throwable $e) {
@@ -362,7 +391,7 @@ class PlanService
             'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard',
             'agreement' => $s['agreement'] ?? $p['agreement'] ?? null]
             // What the build and its checks follow from a reference and the 3D route; without these the builder never sees them.
-            + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d']));
+            + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_sound', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d']));
     }
 
     public function stale(object $plan, object $c): bool
@@ -434,6 +463,10 @@ class PlanService
             'video_type' => $s['video_type'] ?? null, 'fps' => $s['fps'] ?? null, 'treatment' => ! empty($s['treatment']['look']) ? $s['treatment'] : null,
             'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
             'music' => ! empty($s['music']['present']) ? array_intersect_key($s['music'], array_flip(['tempo_bpm', 'beat_seconds', 'cuts_on_beat', 'confidence'])) : null,
+            // Sound effects heard with the voice taken out (times measured, kinds rough); none means the reference has none.
+            'sound_effects' => is_array($s['sound'] ?? null) ? ['count' => $s['sound']['count'] ?? 0, 'per_10_seconds' => $s['sound']['per_10_seconds'] ?? 0, 'kinds' => $s['sound']['kinds'] ?? [],
+                'on_cuts' => $s['sound']['on_cuts'] ?? null, 'read' => ($s['sound']['method'] ?? '') === 'separated' ? 'the whole video, voice removed' : 'between words only',
+                'events' => array_map(fn ($e) => $e['at'].' s '.$e['kind'].($e['on_cut'] ? ' (on a cut)' : ''), array_slice((array) ($s['sound']['events'] ?? []), 0, 40))] : null,
             // With a layout pass (copying exactly), each moment also says where its elements sit at its key time.
             'moments' => array_map(fn ($m) => ['id' => $assetId.':'.$m['id']] + (($m['system'] ?? '') !== '' ? ['system' => $assetId.':'.$m['system']] : []) + array_diff_key($m, ['id' => 1, 'system' => 1])
                 + (($l = collect(data_get($s, 'layout.moments', []))->firstWhere('moment', $m['id'])) ? ['layout' => array_intersect_key($l, array_flip(['at', 'background', 'elements']))] : []), (array) ($s['moments'] ?? [])),
@@ -445,9 +478,22 @@ class PlanService
     }
 
     /** Studies any attached reference video that has no study for its current bytes; failures leave planning on the older evidence. */
-    private function studyReferences(User $user, object $c): void
+    /** Why a reference's study did not finish, in plain words. */
+    public static function studyWhy(string $kind): string
     {
-        if (config('create.mode') === 'fixture') return;
+        return match ($kind) {
+            'busy' => 'The model was busy.',
+            'vendor_credit', 'vendor_config' => 'A service is unavailable on our side; the team has been notified.',
+            'content_refused' => 'The model declined to read it.',
+            default => 'The reading did not come back complete.',
+        };
+    }
+
+    /** Studies every reference video; returns the ones whose reading failed: [['title' => ..., 'why' => kind], ...]. */
+    private function studyReferences(User $user, object $c): array
+    {
+        $thin = [];
+        if (config('create.mode') === 'fixture') return $thin;
         foreach (DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'reference')->pluck('asset_id') as $id) {
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($id);
             if (! $asset || $asset->asset_type !== 'video') continue;
@@ -456,9 +502,16 @@ class PlanService
                 // Copying exactly: where every element sits at every moment, measured once and cached with the study.
                 if ((json_decode($c->settings_json, true)['reference_match'] ?? null) === 'exact') $studies->layoutForAsset($asset->refresh()); }
             catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('Create reference study failed', ['asset' => $id, 'error' => mb_substr($e->getMessage(), 0, 300)]); }
+            // Studying is part of planning: its cost (and its sound and layout passes) is billed once, with the first plan that uses it.
+            $asset->refresh();
+            foreach (['reference_study', 'reference_study.sound', 'reference_study.layout'] as $part) PlanningCosts::once($asset, $part, 'cost_microusd', 'reference');
+            $study = data_get($asset->refresh()->metadata_json, 'reference_study');
+            // A study whose reading failed has its frames and speech but not its moments: say so, never "Watched".
+            $partial = is_array($study) && ($study['moments_status'] ?? null) === 'failed';
+            if (! $study || $partial) $thin[] = ['title' => (string) $asset->title, 'why' => $partial ? (string) ($study['moments_failure'] ?? 'other') : 'other'];
             if ($activity = PlanActivity::current()) {
-                $study = data_get($asset->refresh()->metadata_json, 'reference_study');
-                $activity->relabel(($study ? 'Watched ' : 'Could not watch ').$asset->title);
+                $activity->relabel(($study && ! $partial ? 'Watched ' : ($partial ? 'Could not fully watch ' : 'Could not watch ')).$asset->title);
+                if ($partial) $activity->item(self::studyWhy($thin[array_key_last($thin)]['why']));
                 if ($study) {
                     $shots = count((array) ($study['shots'] ?? [])); $seconds = (float) ($study['duration_seconds'] ?? 0);
                     if ($shots && $seconds) $activity->item($shots.' '.($shots === 1 ? 'shot' : 'shots').' over '.round($seconds).' s, a cut about every '.round($seconds / $shots, 1).' s');
@@ -466,6 +519,7 @@ class PlanService
                 }
             }
         }
+        return $thin;
     }
 
     /** Pages read from links since the last plan, as activity: "Read wyvstudio.com" and what the page is. */
@@ -477,6 +531,7 @@ class PlanService
             $url = (string) data_get($asset->metadata_json, 'reference_source.requested_url', '');
             if ($url === '' || $asset->asset_type === 'video') continue;
             $activity->step('Read '.(parse_url($url, PHP_URL_HOST) ?: $url));
+            PlanningCosts::once($asset, 'reference_analysis', 'notes_cost_microusd', 'reference');
             $activity->item((string) data_get($asset->metadata_json, 'reference_analysis.notes.summary', ''));
         }
     }
@@ -757,6 +812,9 @@ class PlanService
             ->unique('id')->take(5)->values()->all();
         // The reference's rhythm travels to the build (and to the comparison after the render).
         $studied = collect($ctx['files'] ?? [])->first(fn ($f) => is_array(data_get($f, 'reference.study.pacing')));
+        // The reference's sound effects travel to the build: the sound pass follows their density (none means none).
+        $heard = collect($ctx['files'] ?? [])->first(fn ($f) => is_array(data_get($f, 'reference.study.sound_effects')));
+        if ($heard && in_array($ctx['settings']['reference_match'] ?? null, ['exact', 'similar'], true)) $plan['reference_sound'] = array_intersect_key((array) data_get($heard, 'reference.study.sound_effects'), array_flip(['count', 'per_10_seconds', 'kinds', 'on_cuts', 'read']));
         if ($studied) $plan['reference_pacing'] = array_filter(array_intersect_key((array) data_get($studied, 'reference.study.pacing'), array_flip(['average_shot_seconds', 'cuts_per_10_seconds', 'words_per_second', 'text_to_speech_delay_seconds']))
             + (is_array(data_get($studied, 'reference.study.music')) ? ['tempo_bpm' => data_get($studied, 'reference.study.music.tempo_bpm'), 'cuts_on_beat' => data_get($studied, 'reference.study.music.cuts_on_beat')] : []), fn ($v) => $v !== null);
         // Length from narration: a script that fills clearly less of the video than its length leads to a stated choice, not silent holds.

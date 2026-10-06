@@ -46,7 +46,7 @@ class CreateReferenceStudyTest extends TestCase
         $stt->shouldReceive('transcribeLocalMediaWithTimestamps')->once()->andReturn(['provider_key' => 'openai', 'transcript' => 'Grow fast. Here is how.',
             'words' => [['text' => 'Grow', 'start' => 0.2, 'end' => 0.5], ['text' => 'fast.', 'start' => 0.5, 'end' => 0.9], ['text' => 'Here', 'start' => 2.3, 'end' => 2.5], ['text' => 'is', 'start' => 2.5, 'end' => 2.6], ['text' => 'how.', 'start' => 2.6, 'end' => 2.9]]]);
         $this->app->instance(\App\Services\Media\MediaTranscriptionService::class, $stt);
-        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5']);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5', 'services.replicate.api_token' => '']);
         Http::fake(['api.anthropic.com/*' => Http::response(['usage' => ['input_tokens' => 1000, 'output_tokens' => 200], 'content' => [['type' => 'text', 'text' => json_encode([
             'summary' => 'Three colour cards with a sliding badge.',
             'systems' => [['id' => 's1', 'name' => 'Colour card', 'look' => 'Full-frame flat colour', 'entry' => 'hard cut', 'active' => 'holds', 'hold' => '2 s', 'exit' => 'hard cut'], ['name' => '']],
@@ -64,6 +64,8 @@ class CreateReferenceStudyTest extends TestCase
         // Speech timing and pacing from the transcript.
         $this->assertSame([['at' => 0.9, 'seconds' => 1.4, 'before' => 'Here']], $study['speech']['pauses']);
         $this->assertSame(3, $study['pacing']['shots']);
+        // Sound effects: without voice separation only the gaps between words are read; a steady tone has none.
+        $this->assertSame(['gaps_only', 0], [$study['sound']['method'], $study['sound']['count']]);
         $this->assertNotNull($study['pacing']['words_per_second']);
         // Moments come back ordered with ids, and text moments know when their words were spoken.
         $this->assertSame(['m1', 'm2', 'm3'], array_column($study['moments'], 'id'));

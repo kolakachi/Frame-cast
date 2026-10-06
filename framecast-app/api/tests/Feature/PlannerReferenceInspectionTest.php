@@ -85,7 +85,7 @@ class PlannerReferenceInspectionTest extends TestCase
         Log::shouldReceive('warning')->once()->with('create.planner.failed', \Mockery::on(fn ($x) => $x['calls'][0]['message_id'] === 'msg1' && $x['possible_unreceipted_call']));
         Http::fake(['api.anthropic.com/*' => Http::sequence()->push($this->reply([$this->tool()], 'msg1'))->push([], 503)]);
         try { (new AnthropicPlanner('test', 'fake'))->plan($this->context()); $this->fail('Must fail'); }
-        catch (\RuntimeException $e) { $this->assertSame('Planner request failed.', $e->getMessage()); }
+        catch (\RuntimeException $e) { $this->assertSame('[vendor:busy] Planner request failed.', $e->getMessage(), 'a 503 is read as busy, so planning can say so'); }
         $this->assertCount(2, Http::recorded());
     }
     public function test_untrusted_evidence_cannot_survive_normalization_or_changed_source_quote(): void

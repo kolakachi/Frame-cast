@@ -103,16 +103,29 @@ class PlanMediaService
                 $providerStarted = true;
                 // A request that never connected (the host did not resolve, the connection was refused) reached no
                 // provider: try once more, and if it still cannot connect it is a plain failure, not an unknown outcome.
-                for ($try = 1; ; $try++) {
+                // A busy model (overloaded, rate-limited: nothing was made) is asked once more after a short wait.
+                for ($try = 1, $busy = 0; ; $try++) {
                     try { $made = app(PlanMediaExecutor::class)->produce($item['kind'], $item['description'], $context, $dir); break; }
                     catch (\Illuminate\Http\Client\ConnectionException $e) {
                         if (! self::neverConnected($e, $item['kind']) || $try > count(NetRetry::WAITS)) throw $e;
                         \Illuminate\Support\Sleep::for(NetRetry::WAITS[$try - 1])->seconds();
                     }
+                    catch (\RuntimeException $e) {
+                        if ($busy++ >= 1 || \App\Services\Vendors\VendorError::classify($e->getMessage()) !== 'busy') throw $e;
+                        \Illuminate\Support\Sleep::for(20)->seconds();
+                    }
                 }
+                if ($vendor = self::vendorFor($item['kind'])) \App\Services\Vendors\VendorAlerts::recovered($vendor);
             } catch (\Throwable $e) {
                 report($e);
                 if (self::neverConnected($e, $item['kind'])) $providerStarted = false;
+                // Our own check of the request failed before any provider was called: nothing started.
+                if ($e instanceof \InvalidArgumentException) $providerStarted = false;
+                // A refusal, a busy model or our own account failing made nothing: a plain failure the user can retry,
+                // never a hold. Our account's problems alert the team (VendorAlerts) and the user is told it is on our side.
+                $vendorKind = ($vendor = self::vendorFor($item['kind'])) ? \App\Services\Vendors\VendorAlerts::observe($vendor, $e->getMessage(), null,
+                    ['run_id' => $runId, 'workspace_id' => $run->workspace_id ?? null, 'kind' => $item['kind'], 'prompt' => $item['description'] ?? null]) : 'other';
+                if (in_array($vendorKind, \App\Services\Vendors\VendorError::NOTHING_MADE, true)) $providerStarted = false;
                 // Lack of usable output is not evidence that a generation was unbilled.
                 // Keep the reservation and stop; a new run must not repurchase this item blindly.
                 // A sheet is a few cheap images: one that fails partway is a plain failure (the user pays only for a
@@ -127,7 +140,8 @@ class PlanMediaService
                 $attempts->bindPrediction($runId, $lease, $attempt['id'], $id);
                 $receipt = new VerifiedAttemptReceipt($attempt['id'], 'failed', $id, 0, 'pilot-tariff:catalogue; not produced');
                 $attempts->settle($runId, $lease, $attempt['id'], $receipt->result(), $receipt);
-                $message = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface || $e instanceof \RuntimeException ? $e->getMessage() : 'The provider did not return a result.';
+                $message = $vendorKind !== 'other' ? \App\Services\Vendors\VendorAlerts::userMessage($vendor, $vendorKind)
+                    : ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface || $e instanceof \RuntimeException || $e instanceof \InvalidArgumentException ? $e->getMessage() : 'The provider did not return a result.');
                 $this->record($run, $planId, $cacheIndex, $item, $hash, 'failed', null, 0, mb_substr($message, 0, 280));
                 $recorded = true;
                 return ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'status' => 'failed', 'error' => $message, 'charged_credits' => 0];
@@ -337,6 +351,12 @@ class PlanMediaService
      * cURL could not resolve or connect while CREATING a prediction (or uploading its input), so no prediction exists.
      * A failure while polling (/predictions/{id}) means one does; items making several predictions may have made some.
      */
+    /** Which vendor makes an item (stock, brand kit and library items are not bought from one). */
+    public static function vendorFor(string $kind): ?string
+    {
+        return in_array($kind, ['stock_video', 'stock_image', 'brand_kit', 'library_music', 'library'], true) ? null : 'replicate';
+    }
+
     public static function neverConnected(\Throwable $e, string $kind): bool
     {
         return $e instanceof \Illuminate\Http\Client\ConnectionException && in_array($kind, self::SINGLE_PREDICTION, true)
@@ -356,7 +376,13 @@ class PlanMediaService
             ->flatMap(fn ($r) => array_filter([json_decode((string) $r, true)['file'] ?? null, ...(json_decode((string) $r, true)['more_files'] ?? [])]))->all();
         $cutoutFiles = collect([...($input['input_files'] ?? []), ...($input['derived_files'] ?? []), ...$bought])->filter(fn ($f) => is_array($f) && ! empty($f['name']) && ! empty($f['storage_path']))
             ->map(fn ($f) => ['name' => $f['name'], 'path' => Storage::disk('local')->path($f['storage_path'])])->values()->all();
-        return ['cutout_files' => $cutoutFiles, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
+        // An image bought earlier in this plan (a stock or generated image) is what a cutout means when it names no file
+        // the run has: the planner cannot know a bought file's name in advance.
+        // This plan's images, bought by this run or an earlier one (a retried build reuses them without a new row).
+        $boughtImages = DB::table('create_plan_media')->where('conversation_id', $run->conversation_id)->where('plan_id', $input['plan']['plan_id'] ?? '')->where('status', 'succeeded')->orderBy('item_index')->pluck('record_json')
+            ->map(fn ($r) => json_decode((string) $r, true)['file'] ?? null)->filter(fn ($f) => is_array($f) && str_starts_with((string) ($f['mime_type'] ?? ''), 'image/') && ! empty($f['storage_path']))->values();
+        $latest = $boughtImages->last();
+        return ['cutout_files' => $cutoutFiles, 'cutout_latest' => $latest ? ['name' => $latest['name'], 'path' => Storage::disk('local')->path($latest['storage_path'])] : null, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images, 'source_files' => $input['input_files'] ?? [],
             'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15),
             // Items made from earlier items (the talking shot) find them by the plan.

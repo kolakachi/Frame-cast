@@ -74,7 +74,7 @@ class CreateController extends Controller
             // A question asked before planning is marked, so the conversation can offer to skip it.
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at', 'idempotency_key'])
                 ->map(fn ($m) => ['id' => $m->id, 'role' => $m->role, 'content' => $m->content, 'created_at' => $m->created_at,
-                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|reference-match|role):/', (string) $m->idempotency_key) ? 'question' : null]),
+                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|reference-match|role|study):/', (string) $m->idempotency_key) ? 'question' : null]),
             'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
                 $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
                 if (!$asset) return null;
@@ -253,7 +253,9 @@ class CreateController extends Controller
             'assume'=>'sometimes|array','assume.character_approval'=>'sometimes|string|regex:/^[a-f0-9]{64}$/','assume.storyboard_approval'=>'sometimes|string|regex:/^[a-f0-9]{64}$/']);
         $variants=app(\App\Services\Create\VariantService::class);
         $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1,$input['build_stage']??null,$input['assume']??null);
-        return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'estimate' => $q->payload_json['estimate'] ?? null, 'effort' => $q->payload_json['effort'] ?? null, 'expires_at' => $q->expires_at,
+        return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'estimate' => $q->payload_json['estimate'] ?? null,
+            // "Never more than": the real hold; while testing without limits, what a real hold would be.
+            'ceiling' => \App\Services\Create\PilotPolicy::unlimited() && isset($q->payload_json['shown_ceiling']) ? min((int) $q->credits_max, max((int) $q->payload_json['shown_ceiling'], (int) ($q->payload_json['estimate'] ?? 0))) : $q->credits_max, 'effort' => $q->payload_json['effort'] ?? null, 'expires_at' => $q->expires_at,
             'credit_availability' => $this->service->creditAvailability($r->user()),
             'build_stage'=>$q->payload_json['build_stage']??null,'variants'=>count($q->payload_json['variant_quotes']??[1]),'plan_media'=>array_map(fn($m)=>['kind'=>$m['kind'],'description'=>$m['description'],'credits'=>$m['credits']],$q->payload_json['plan_media']??[]),'media_estimate'=>$q->payload_json['media_estimate']??0,'media_ceiling'=>$q->payload_json['media_ceiling']??0,'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
             'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief with our AI providers. Your brief and approved media may be sent to them. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);

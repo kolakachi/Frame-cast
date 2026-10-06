@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\{DB, Schema, Bus, Http, Redis};
 use Illuminate\Database\Schema\Blueprint;
 use App\Services\Create\{ConversationService, RunService, AttemptService};
 use App\Models\{Workspace, User};
-config(['database.default'=>'pgsql','cache.default'=>'array','services.posthog.key'=>'','create.enabled'=>true,'create.workspaces'=>[1],'create.mode'=>'fixture','developer.operation_accounting'=>true]);
+config(['database.default'=>'pgsql','cache.default'=>'array','services.posthog.key'=>'','create.enabled'=>true,'create.workspaces'=>[1],'create.allowed_domains'=>['example.test','example.com'],'create.mode'=>'fixture','developer.operation_accounting'=>true]);
 Bus::fake(); Http::preventStrayRequests(); Redis::shouldReceive('get')->andReturn(null);
 $action=$argv[1]??'parent';
 if ($action !== 'parent') {

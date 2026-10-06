@@ -339,7 +339,7 @@ class RunService
                 $bundle = $result['bundle'];
                 abort_unless(isset($bundle['index.html']), 422);
                 foreach ($bundle as $name => $contents) {
-                    abort_unless(preg_match('/^[a-zA-Z0-9_-]+\.(html|css|js)$/D', $name) && is_string($contents) && strlen($contents) <= (PilotPolicy::unlimited() ? 1000000 : 128000), 422, 'Invalid source bundle.');
+                    abort_unless(preg_match('/^[a-zA-Z0-9_-]+\.(html|css|js)$/D', $name) && is_string($contents) && strlen($contents) <= 1000000, 422, 'Invalid source bundle.');
                 }
                 ksort($bundle);
                 $revision = (string) Str::uuid();
@@ -360,6 +360,9 @@ class RunService
                 $cause = DB::table('composition_trace_events')->where('run_id', $id)->orderByDesc('sequence')->limit(6)->pluck('event_json')
                     ->map(fn ($e) => (string) (json_decode((string) $e, true)['detail'] ?? ''))->implode(' ');
                 if (preg_match('/Model budget exhausted|Over the approved media ceiling/', $cause)) $result['summary'] = self::OUT_OF_CREDITS;
+                // A vendor's failure says what it was: busy (retry soon), declined, or our own account (the team is told).
+                elseif (preg_match('/\[vendor:(busy|content_refused|vendor_credit|vendor_config)\]/', $cause.' '.$result['summary'], $m)) $result['summary'] = \App\Services\Vendors\VendorAlerts::userMessage('anthropic', $m[1]);
+                elseif (preg_match('/(The image, voice and video models|Our AI model) (is|are) (busy right now|temporarily unavailable on our side)[^.]*\.[^.]*\.[^.]*\./', $cause, $m)) $result['summary'] = $m[0];
             }
             DB::table('composition_runs')->where('id', $id)->update([
                 'status' => $status, 'stage' => mb_substr((string) $result['summary'], 0, 250), 'error' => in_array($status, ['preview_ready', 'step_ready'], true) ? null : $result['summary'],

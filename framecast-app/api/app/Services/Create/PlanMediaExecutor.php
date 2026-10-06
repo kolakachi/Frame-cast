@@ -49,11 +49,12 @@ class PlanMediaExecutor
     /** An image this run has (an upload, an edited file or one bought this run), cut out of its background. */
     private function cutout(string $description, array $ctx, string $dir): array
     {
-        $name = (string) (preg_split('/\s+/', trim($description))[0] ?? '');
-        $file = collect($ctx['cutout_files'] ?? [])->firstWhere('name', $name);
-        if (! $file || ! is_file($file['path'])) throw new RuntimeException('Name the image to cut out by its file name (one this run has): '.mb_substr($name, 0, 80));
+        $name = rtrim((string) (preg_split('/\s+/', trim($description))[0] ?? ''), ':,.;');
+        // A named file of the run, else the image bought just before it in this plan (a stock or generated image).
+        $file = collect($ctx['cutout_files'] ?? [])->firstWhere('name', $name) ?? ($ctx['cutout_latest'] ?? null);
+        if (! $file || ! is_file($file['path'])) throw new \InvalidArgumentException('Name the image to cut out by its file name (one this run has), or buy the image earlier in the plan: '.mb_substr($name, 0, 80));
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file['path']);
-        if (! in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) throw new RuntimeException('Only a PNG, JPEG or WebP image can be cut out.');
+        if (! in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) throw new \InvalidArgumentException('Only a PNG, JPEG or WebP image can be cut out.');
         $cut = $this->replicate('851-labs/background-remover', ['image' => $this->replicateUpload((string) file_get_contents($file['path']), $mime), 'format' => 'png', 'background_type' => 'rgba']);
         return ['path' => $this->fetch($cut, $dir.'/cutout.png'), 'mime' => 'image/png', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-'.Str::uuid(), 'extra' => []];
     }
@@ -619,7 +620,7 @@ class PlanMediaExecutor
                 default => [],
             };
             $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
-            $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person.' : '')
+            $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person; the image decides who they are, whatever "he" or "she" the direction says.' : '')
                 .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
                 .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
                 .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
@@ -651,7 +652,10 @@ class PlanMediaExecutor
         if (in_array($status, ['failed', 'canceled'], true)) {
             $error = (string) ($p['error'] ?? 'no detail');
             \Illuminate\Support\Facades\Log::info('generated video failed', ['prediction_id' => $id, 'error' => mb_substr($error, 0, 500)]);
-            $declined = str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false;
+            // Kept and acted on like every vendor failure (a refusal is a moderation event; our credit alerts the team).
+            $kind = \App\Services\Vendors\VendorAlerts::observe('replicate', $error, null, ['prediction_id' => $id, 'kind' => 'generated_video']);
+            if (in_array($kind, \App\Services\Vendors\VendorAlerts::OURS, true) || $kind === 'busy') return ['status' => 'failed', 'declined' => false, 'error' => \App\Services\Vendors\VendorAlerts::userMessage('replicate', $kind)];
+            $declined = $kind === 'content_refused' || str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false;
             return ['status' => 'failed', 'declined' => $declined, 'error' => $declined ? 'The video model declined this shot: its moderation flags some content even in tasteful ads. Nothing was charged.' : 'The video model could not make this shot: '.mb_substr($error, 0, 200)];
         }
         if ($status !== 'succeeded') return ['status' => 'running'];

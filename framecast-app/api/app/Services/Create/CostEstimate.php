@@ -7,9 +7,12 @@ use Illuminate\Support\Facades\DB;
  * What a stage will probably cost, so the price on a button is the likely figure, not the ceiling.
  *
  * The video's build agent is the only part that varies: its estimate is the median of real finished runs at the same
- * effort and a similar length (at least three of them), else a curve fitted to the runs measured on 2026-10-06
- * (Standard: about 250 credits for 15 s, 800 for 30 s), scaled by effort. Its ceiling is a budget of three times the
- * estimate: the most a step may spend, of which only what is used is charged. Images (the character and the
+ * effort and a similar length (at least three of them), of the same video type and kind of request (a new video or
+ * a change) when there are enough of those, else of the same type, else of any; failing that, a curve fitted to the runs measured on 2026-10-06
+ * (Standard: about 250 credits for 15 s, 800 for 30 s), scaled by effort. Its ceiling is a budget of five times the
+ * estimate (2 of 18 real builds went past three times): the most a step may spend, of which only what is used is
+ * charged. Runaway builds are stopped by the build's own guards (calls, repairs, time, no progress), not by a tight
+ * budget. Images (the character and the
  * storyboard) and bought media are priced exactly, so they need no estimate.
  */
 class CostEstimate
@@ -17,35 +20,42 @@ class CostEstimate
     public const EFFORTS = ['quick', 'standard', 'thorough'];
     /** Against Standard: Quick plans on Sonnet and builds with fewer, lighter calls; Thorough reviews more. */
     public const SCALE = ['quick' => 0.4, 'standard' => 1.0, 'thorough' => 1.9];
-    public const CEILING_TIMES = 3;
-    public const CEILING_FLOOR = 600;
-    /** Planning is billed at half its real cost, never more than this. */
-    public const PLANNING_CAP = 100;
+    public const CEILING_TIMES = 5;
+    /** Room for a few of the dearest calls (each may cost up to $1.20) even on a short Quick build. */
+    public const CEILING_FLOOR = 1000;
 
     public static function effort(array $settings): string
     {
         return in_array($settings['effort'] ?? null, self::EFFORTS, true) ? $settings['effort'] : 'standard';
     }
 
-    /** The build agent's likely credits for a video of this length at this effort. */
-    public static function agent(string $effort, int $seconds): int
+    /** The build agent's likely credits for a video of this length at this effort; $kind narrows it (see kindOf). */
+    public static function agent(string $effort, int $seconds, array $kind = []): int
     {
-        $learned = self::learned($effort, $seconds);
+        $learned = self::learned($effort, $seconds, $kind);
         if ($learned !== null) return $learned;
         $seconds = max(5, min(60, $seconds));
         return (int) round((120 + 0.75 * $seconds * $seconds) * (self::SCALE[$effort] ?? 1.0));
     }
 
-    /** The most the build agent may spend: three times its estimate, never under the floor. */
-    public static function agentCeiling(string $effort, int $seconds): int
+    /** The most the build agent may spend: five times its estimate, never under the floor. */
+    public static function agentCeiling(string $effort, int $seconds, array $kind = []): int
     {
-        return max(self::CEILING_FLOOR, self::CEILING_TIMES * self::agent($effort, $seconds));
+        return max(self::CEILING_FLOOR, self::CEILING_TIMES * self::agent($effort, $seconds, $kind));
     }
 
-    /** Half the plan's real cost, at most PLANNING_CAP credits. $credits is its real cost in credits. */
+    /** What kind of build a plan is: its video type and whether it makes a new video or changes one. */
+    public static function kindOf(?array $plan): array
+    {
+        $json = ! empty($plan['plan_id']) ? DB::table('create_plans')->where('id', $plan['plan_id'])->value('plan_json') : null;
+        $p = json_decode((string) $json, true) ?: [];
+        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $p['planner_task'] ?? null]);
+    }
+
+    /** Half the plan's real cost (owner, 2026-10-06: no cap). $credits is its real cost in credits. */
     public static function planningCharge(int $credits): int
     {
-        return min(self::PLANNING_CAP, (int) ceil(max(0, $credits) / 2));
+        return (int) ceil(max(0, $credits) / 2);
     }
 
     /** A model call's real cost in credits from its tokens, at the tariff the gateway charges (create.anthropic_rates). */
@@ -57,16 +67,27 @@ class CostEstimate
         return (int) ceil($micro / 4000);
     }
 
-    /** The median build-agent spend of finished runs at this effort and a similar length, once there are enough. */
-    private static function learned(string $effort, int $seconds): ?int
+    /**
+     * The median build-agent spend of finished runs at this effort and a similar length, once there are three: of the
+     * same type and kind of request first, then the same type, then any.
+     */
+    private static function learned(string $effort, int $seconds, array $kind = []): ?int
     {
-        $spent = DB::table('composition_runs')->where('status', 'preview_ready')->where('input_json->build_stage', 'full_video')
-            ->where('created_at', '>=', now()->subDays(60))->orderByDesc('created_at')->limit(200)->get(['id', 'input_json'])
-            ->filter(function ($r) use ($effort, $seconds) {
-                $s = json_decode((string) $r->input_json, true)['settings'] ?? [];
-                return self::effort($s) === $effort && abs((int) ($s['duration_seconds'] ?? 15) - $seconds) <= 5;
-            })->take(30)->map(fn ($r) => (int) DB::table('composition_attempts')->where('run_id', $r->id)->whereIn('kind', ['agent', 'critic'])->sum('charged_credits'))
-            ->filter(fn ($c) => $c > 0)->sort()->values();
-        return $spent->count() >= 3 ? (int) $spent[intdiv($spent->count(), 2)] : null;
+        $runs = DB::table('composition_runs')->where('status', 'preview_ready')->where('input_json->build_stage', 'full_video')
+            ->where('created_at', '>=', now()->subDays(60))->orderByDesc('created_at')->limit(300)->get(['id', 'input_json'])
+            ->map(fn ($r) => ['id' => $r->id, 'input' => json_decode((string) $r->input_json, true) ?: []])
+            ->filter(fn ($r) => self::effort($r['input']['settings'] ?? []) === $effort && abs((int) ($r['input']['settings']['duration_seconds'] ?? 15) - $seconds) <= 5)
+            ->take(60)->values();
+        if ($runs->count() < 3) return null;
+        $plans = DB::table('create_plans')->whereIn('id', $runs->pluck('input.plan.plan_id')->filter()->unique()->all())->pluck('plan_json', 'id')
+            ->map(fn ($j) => json_decode((string) $j, true) ?: []);
+        $runs = $runs->map(fn ($r) => $r + ['type' => $plans[$r['input']['plan']['plan_id'] ?? '']['video_type'] ?? null, 'task' => $plans[$r['input']['plan']['plan_id'] ?? '']['planner_task'] ?? null,
+            'credits' => (int) DB::table('composition_attempts')->where('run_id', $r['id'])->whereIn('kind', ['agent', 'critic'])->sum('charged_credits')])->filter(fn ($r) => $r['credits'] > 0);
+        foreach ([array_intersect_key($kind, ['type' => 1, 'task' => 1]), array_intersect_key($kind, ['type' => 1]), []] as $want) {
+            if (count($want) !== count(array_filter($want))) continue;
+            $spent = $runs->filter(fn ($r) => ! array_diff_assoc($want, array_intersect_key($r, $want)))->take(30)->pluck('credits')->sort()->values();
+            if ($spent->count() >= 3) return (int) $spent[intdiv($spent->count(), 2)];
+        }
+        return null;
     }
 }

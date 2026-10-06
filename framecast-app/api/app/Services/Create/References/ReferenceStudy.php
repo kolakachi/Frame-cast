@@ -22,6 +22,8 @@ class ReferenceStudy
 {
     // 2: frames labelled with the words being spoken; recurring systems; a purpose for each moment.
     public const VERSION = 4;
+    /** Demucs (htdemucs) on Replicate: separates the voice so effects can be heard on their own. */
+    public const SEPARATOR = 'ff5ad47d2685b27c0f820ee134c4394140804f08fa755cb20c846459faa4b337';
     public const METHODS = ['motion_graphics', 'render_3d', 'generated_video', 'footage', 'presenter', 'screen_recording', 'stock', 'still', 'audiogram'];
     public const VIDEO_TYPES = ['ugc_ad', 'faceless_explainer', 'product_ad', 'saas_motion', 'mascot_explainer', 'podcast_clip', 'other'];
     private const MAX_SAMPLES = 80;
@@ -57,12 +59,12 @@ class ReferenceStudy
         if (! is_string($bytes) || $bytes === '') return null;
         $sha = hash('sha256', $bytes);
         $have = data_get($asset->metadata_json, 'reference_study');
-        if (self::reusable($have, $sha, $mode)) return $have;
+        if (self::reusable($have, $sha, $mode)) return $this->withSound($asset, $have, $bytes);
         // One study per source at a time; a second caller waits for the first instead of paying twice.
         return Cache::lock('create-reference-study:'.$sha, 600)->block(300, function () use ($asset, $bytes, $sha, $mode) {
             $asset->refresh();
             $have = data_get($asset->metadata_json, 'reference_study');
-            if (self::reusable($have, $sha, $mode)) return $have;
+            if (self::reusable($have, $sha, $mode)) return $this->withSound($asset, $have, $bytes);
             $dir = sys_get_temp_dir().'/create-study-'.Str::uuid();
             @mkdir($dir, 0700, true);
             try {
@@ -225,13 +227,14 @@ class ReferenceStudy
             'width' => $video['width'] ?? null, 'height' => $video['height'] ?? null, 'has_audio' => $hasAudio,
             'coverage_mode' => $mode, 'frames' => $looks['frames'] ?? null, 'looks' => $looks ? count($looks['looks']) : null,
             'shots' => $shots, 'cuts' => $cuts, 'change_windows' => $windows, 'samples' => $samples, 'sheets' => $sheets, 'speech' => $speech,
-            'pacing' => self::pacing($shots, $duration, $speech), 'music' => $hasAudio ? self::beatMap($this->lowBand($file), $cuts) : null, 'moments' => [], 'systems' => [], 'patterns' => null, 'summary' => null,
-            'coverage' => ($looks !== null ? count($samples).' frames, one for every distinct look in '.$looks['frames'].' frames' : count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change').'; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; the audio is described from the transcript, not listened to.'];
+            'pacing' => self::pacing($shots, $duration, $speech), 'music' => ($music = $hasAudio ? self::beatMap($this->lowBand($file), $cuts) : null), 'moments' => [], 'systems' => [], 'patterns' => null, 'summary' => null,
+            'sound' => $hasAudio ? $this->sound($file, $speech, $music, $cuts) : null,
+            'coverage' => ($looks !== null ? count($samples).' frames, one for every distinct look in '.$looks['frames'].' frames' : count($samples).' frames covering all '.count($shots).' shots and '.count($windows).' moments of change').'; '.($speech ? 'speech transcribed with word times' : 'no speech found').'. Not every frame; speech is read from the transcript, and sound effects are found from the audio levels (times are measured, kinds are rough).'];
         $study['treatment'] = $this->treatment($file, $samples);
         $study['moments_status'] = 'skipped';
         if (config('create.mode') !== 'fixture' && (string) config('services.anthropic.key') !== '' && $sheets) {
             $found = $this->moments($study, $file, $sha, $work);
-            $study = [...$study, ...$found, 'moments_status' => $found ? 'ok' : 'failed'];
+            $study = [...$study, ...$found, 'moments_status' => $found ? 'ok' : 'failed', 'moments_failure' => $found ? null : ($this->lastFailure ?? 'other')];
         }
         $study['moments'] = self::withSpokenDelay($study['moments'], $speech);
         $study['pacing']['text_to_speech_delay_seconds'] = self::medianDelay($study['moments']);
@@ -403,10 +406,126 @@ class ReferenceStudy
     /** Loudness of the low band (kick, bass) every 10 ms, in dB: the pulse a beat grid is read from. */
     private function lowBand(string $file): array
     {
-        $r = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-nostats', '-i', $file, '-vn', '-af', 'aresample=16000,lowpass=f=150,asetnsamples=n=160:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level', '-f', 'null', '-']);
+        return $this->band($file, 'lowpass=f=150');
+    }
+
+    /** Loudness every 10 ms, in dB, after a filter (a band of the spectrum). */
+    private function band(string $file, string $filter): array
+    {
+        $r = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-nostats', '-i', $file, '-vn', '-af', 'aresample=16000,'.$filter.',asetnsamples=n=160:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level', '-f', 'null', '-']);
         $out = [];
         foreach (preg_split('/\R/', $r->errorOutput()) as $line) if (preg_match('/RMS_level=(-?[\d.]+|-inf)/', $line, $m)) $out[] = $m[1] === '-inf' ? -90.0 : max(-90.0, (float) $m[1]);
         return $out;
+    }
+
+    /**
+     * The sound effects of a local file (see soundEvents). The voice is separated out first (Demucs on Replicate,
+     * about a second), so consonants are not read as pops; without separation only the gaps between words are read.
+     */
+    private function sound(string $file, ?array $speech, ?array $music, array $cuts): ?array
+    {
+        try {
+            if ($stems = $this->separate($file)) {
+                $rest = $stems['no_vocals'];
+                return [...self::soundEvents($this->band($rest, 'highpass=f=4000'), $this->band($rest, 'lowpass=f=100'), $this->band($rest, 'highpass=f=60'),
+                    self::loudEnd($this->band($stems['vocals'], 'highpass=f=60')), null, $music, $cuts), 'method' => 'separated', 'cost_microusd' => $stems['cost_microusd']];
+            }
+            $full = $this->band($file, 'highpass=f=60');
+            return [...self::soundEvents($this->band($file, 'highpass=f=4000'), $this->band($file, 'lowpass=f=100'), $full, self::loudEnd($full), $speech, $music, $cuts), 'method' => 'gaps_only'];
+        } catch (\Throwable) { return null; }
+    }
+
+    /** The voice and everything else as two local WAV files beside the source, or null when separation is unavailable. */
+    private function separate(string $file): ?array
+    {
+        $token = (string) config('services.replicate.api_token');
+        if ($token === '' || config('create.mode') === 'fixture') return null;
+        $dir = dirname($file); $mp3 = $dir.'/sound-in.mp3';
+        if (! Process::timeout(60)->run(['ffmpeg', '-v', 'error', '-y', '-i', $file, '-vn', '-t', '180', '-ac', '1', '-ar', '44100', '-b:a', '64k', $mp3])->successful() || ! is_file($mp3)) return null;
+        $http = fn () => Http::withToken($token)->acceptJson()->timeout(90);
+        $r = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/predictions', ['version' => self::SEPARATOR,
+            'input' => ['audio' => 'data:audio/mpeg;base64,'.base64_encode((string) file_get_contents($mp3)), 'isolate_stem' => 'vocals', 'format' => 'wav']])->json();
+        for ($i = 0; $i < 30 && ! in_array($r['status'] ?? 'failed', ['succeeded', 'failed', 'canceled'], true) && ! empty($r['urls']['get']); $i++) { sleep(3); $r = $http()->get($r['urls']['get'])->json(); }
+        if (($r['status'] ?? null) !== 'succeeded') return null;
+        $out = [];
+        foreach (['vocals', 'no_vocals'] as $stem) {
+            $url = (string) data_get($r, 'output.'.$stem);
+            // A prediction that finished within the wait returns its files inline (data URLs), otherwise as links.
+            $bytes = str_starts_with($url, 'data:') ? (string) base64_decode(substr($url, strpos($url, ',') + 1)) : ($url !== '' ? Http::timeout(60)->get($url)->body() : '');
+            if ($bytes === '') return null;
+            file_put_contents($out[$stem] = $dir.'/sound-'.$stem.'.wav', $bytes);
+        }
+        // Replicate bills GPU seconds; about 0.000725 USD a second on the model's hardware.
+        return [...$out, 'cost_microusd' => (int) ceil(((float) data_get($r, 'metrics.predict_time', 2)) * 725)];
+    }
+
+    /** The loud end (90th percentile) of 10 ms levels, in dB. */
+    public static function loudEnd(array $db): ?float
+    {
+        if (! $db) return null;
+        sort($db);
+        return (float) $db[(int) floor(count($db) * 0.9)];
+    }
+
+    /** A study made before sound effects were listened for gets them once, without being studied again. */
+    private function withSound(Asset $asset, array $study, string $bytes): array
+    {
+        if (array_key_exists('sound', $study) || empty($study['has_audio'])) return $study;
+        $dir = sys_get_temp_dir().'/create-sound-'.Str::uuid();
+        @mkdir($dir, 0700, true);
+        try {
+            file_put_contents($dir.'/in.mp4', $bytes);
+            $study['sound'] = $this->sound($dir.'/in.mp4', $study['speech'] ?? null, $study['music'] ?? null, (array) ($study['cuts'] ?? []));
+            $meta = (array) $asset->refresh()->metadata_json; $meta['reference_study'] = $study;
+            $asset->forceFill(['metadata_json' => $meta])->save();
+            return $study;
+        } finally { foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir); }
+    }
+
+    /**
+     * Sound effects from 10 ms band levels (dB) of the audio without the voice: a sudden rise in the high band (pop,
+     * whoosh, riser) or the low band (impact, boom) above the level just before it, loud enough to be heard beside
+     * the voice (within 22 dB of its loud end). Given speech (no separation), only the gaps between words are read.
+     * With music, rises on its beats are the music. Times are measured; kinds come from band, attack and length.
+     */
+    public static function soundEvents(array $high, array $low, array $full, ?float $voiceDb, ?array $speech, ?array $music, array $cuts): array
+    {
+        $n = min(count($high), count($low), count($full));
+        $level = self::loudEnd($full);
+        $empty = ['events' => [], 'count' => 0, 'per_10_seconds' => 0.0, 'kinds' => [], 'on_cuts' => null, 'below_voice_db' => $voiceDb !== null && $level !== null ? round($voiceDb - $level, 1) : null];
+        if ($n < 50) return $empty;
+        $words = array_map(fn ($w) => [(float) $w[1] - 0.06, (float) $w[2] + 0.06], (array) ($speech['words'] ?? []));
+        $spoken = fn (float $t) => (bool) array_filter($words, fn ($w) => $t >= $w[0] && $t <= $w[1]);
+        $beats = ! empty($music['present']) ? (array) ($music['beats'] ?? []) : [];
+        $gate = $voiceDb !== null ? $voiceDb - 22 : -60.0;
+        $base = function (array $b, int $i) { $w = array_slice($b, max(0, $i - 45), max(1, min(40, $i - 5))); sort($w); return $w ? $w[(int) floor(count($w) / 2)] : $b[$i]; };
+        $events = [];
+        for ($i = 5; $i < $n && count($events) < 60; $i++) {
+            $t = $i / 100;
+            if ($words && $spoken($t)) continue;
+            $rises = ['high' => $high[$i] - $base($high, $i), 'low' => $low[$i] - $base($low, $i)];
+            $sharp = ['high' => $high[$i] - $high[$i - 3], 'low' => $low[$i] - $low[$i - 3]];
+            $band = null;
+            foreach (['high', 'low'] as $k) if ($rises[$k] >= 10 && $sharp[$k] >= 5 && (! $band || $rises[$k] > $rises[$band])) $band = $k;
+            if (! $band || ($beats && min(array_map(fn ($b) => abs($b - $t), $beats)) <= 0.05)) continue;
+            $lv = $band === 'high' ? $high : $low; $floor = $base($lv, $i);
+            // The peak, then where it falls back near the level before it; the attack is read backwards from the onset.
+            $peak = $i; for ($j = $i; $j < min($n, $i + 150) && $lv[$j] > $floor + 3; $j++) if ($lv[$j] > $lv[$peak]) $peak = $j;
+            $end = $j; $start = $i; while ($start > max(0, $i - 120) && $lv[$start - 1] > $floor + 3 && $lv[$start - 1] < $lv[$start]) $start--;
+            $i = max($i + 12, $end);
+            if (max(array_slice($full, $start, max(1, $end - $start))) < $gate) continue;
+            $seconds = round(($end - $start) / 100, 2); $attack = ($peak - $start) / 100;
+            $lowRise = $low[$peak] - $base($low, $start); $highRise = $high[$peak] - $base($high, $start);
+            $kind = $lowRise >= $highRise + 4 ? ($seconds < 0.5 ? 'impact' : 'boom')
+                : ($attack >= 0.5 && $lv[$peak] - $lv[max($start, $peak - 5)] < ($lv[$peak] - $lv[$start]) / 2 ? 'riser' : ($seconds <= 0.15 ? 'pop' : ($seconds <= 1.2 ? 'whoosh' : 'hit')));
+            $at = round($peak / 100, 2);
+            $events[] = ['at' => $at, 'seconds' => $seconds, 'kind' => $kind, 'band' => $band, 'rise_db' => round($rises[$band], 1),
+                'on_cut' => (bool) array_filter($cuts, fn ($c) => abs((float) $c - $at) <= 0.1)];
+        }
+        if (! $events) return $empty;
+        $kinds = array_count_values(array_column($events, 'kind')); arsort($kinds);
+        return [...$empty, 'events' => $events, 'count' => count($events), 'per_10_seconds' => round(count($events) / ($n / 100) * 10, 1), 'kinds' => $kinds,
+            'on_cuts' => round(count(array_filter($events, fn ($e) => $e['on_cut'])) / count($events), 2)];
     }
 
     /**
@@ -662,14 +781,37 @@ class ReferenceStudy
     private function ask(string $model, array $content, bool $long, string $effort = 'low'): ?array
     {
         if (str_starts_with($model, 'openai:') || str_starts_with($model, 'replicate:')) return OtherReader::ask($model, $content, self::OTHER_RATES[$model] ?? [0, 0]);
+        // The study is the most important call in planning: a busy model is waited out (10 s, 30 s, 60 s), and a
+        // failure is classified (VendorAlerts) and kept in lastFailure, so planning can say why and ask.
+        $this->lastFailure = null;
+        foreach ([0, 10, 30, 60] as $wait) {
+            if ($wait) \Illuminate\Support\Sleep::for($wait)->seconds();
+            $this->lastFailure = null;
+            $answer = $this->askOnce($model, $content, $long, $effort);
+            if ($answer !== null || $this->lastFailure !== 'busy') return $answer;
+        }
+        return null;
+    }
+
+    /** Why the last reading failed: busy, content_refused, vendor_credit, vendor_config, other, unreadable; null when it worked. */
+    public ?string $lastFailure = null;
+
+    private function askOnce(string $model, array $content, bool $long, string $effort): ?array
+    {
         try {
             $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout($long ? 600 : 180)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => $long ? 32000 : 8000, 'output_config' => ['effort' => $effort], 'messages' => [['role' => 'user', 'content' => $content]]]));
-        } catch (\Throwable) { return null; }
-        if (! $r->successful()) { \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]); return null; }
+        } catch (\Throwable $e) { $this->lastFailure = \App\Services\Vendors\VendorError::classify($e->getMessage()); return null; }
+        if (! $r->successful()) {
+            \Illuminate\Support\Facades\Log::warning('Create reference study: moment list failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 300)]);
+            $this->lastFailure = \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status(), ['kind' => 'reference_study']);
+            return null;
+        }
+        \App\Services\Vendors\VendorAlerts::recovered('anthropic');
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
         $start = strpos($text, '{'); $end = strrpos($text, '}');
         $json = $start !== false && $end !== false ? json_decode(substr($text, $start, $end - $start + 1), true) : null;
+        if (! is_array($json)) $this->lastFailure = 'unreadable';
         return is_array($json) ? [$json, $r->json('usage', [])] : null;
     }
 

@@ -15,9 +15,9 @@ class AnthropicGateway
     /** Tool-mode history must be a bounded, well-formed conversation: known roles and block types, few images, modest size. */
     public static function checkToolMessages(mixed $messages, mixed $tools): void
     {
-        $unlimited = PilotPolicy::unlimited();
-        abort_unless(is_array($messages) && count($messages) >= 1 && count($messages) <= ($unlimited ? 2000 : 120), 422, 'Invalid tool conversation.');
-        abort_unless(is_array($tools) && count($tools) <= ($unlimited ? 64 : 24), 422, 'Invalid tool list.');
+        // Every build has the room unlimited testing had (owner, 2026-10-06); money is bounded by the run's budget.
+        abort_unless(is_array($messages) && count($messages) >= 1 && count($messages) <= 2000, 422, 'Invalid tool conversation.');
+        abort_unless(is_array($tools) && count($tools) <= 64, 422, 'Invalid tool list.');
         foreach ($tools as $t) abort_unless(is_array($t) && preg_match('/^[a-z_]{2,40}$/', (string) ($t['name'] ?? '')) && is_array($t['input_schema'] ?? null), 422, 'Invalid tool definition.');
         $images = 0;
         foreach ($messages as $m) {
@@ -29,8 +29,8 @@ class AnthropicGateway
                 foreach ([$b, ...$inner] as $x) {
                     if (($x['type'] ?? '') !== 'image') continue;
                     $src = $x['source'] ?? [];
-                    abort_unless(($src['type'] ?? '') === 'base64' && in_array($src['media_type'] ?? '', ['image/png', 'image/jpeg'], true) && is_string($src['data'] ?? null) && strlen($src['data']) <= ($unlimited ? 6_800_000 : 1_400_000), 422, 'Only inline PNG or JPEG images are accepted.');
-                    abort_if(++$images > ($unlimited ? 20 : 4), 422, 'Too many images in one request.');
+                    abort_unless(($src['type'] ?? '') === 'base64' && in_array($src['media_type'] ?? '', ['image/png', 'image/jpeg'], true) && is_string($src['data'] ?? null) && strlen($src['data']) <= 6_800_000, 422, 'Only inline PNG or JPEG images are accepted.');
+                    abort_if(++$images > 20, 422, 'Too many images in one request.');
                 }
             }
         }
@@ -54,7 +54,7 @@ class AnthropicGateway
 
         $content = [];
         if (! empty($input['image'])) {
-            abort_unless(preg_match('~^data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$~', $input['image'], $m) && strlen($m[2]) <= (PilotPolicy::unlimited() ? 6_800_000 : 1_400_000), 422, 'Only an inline review image is accepted.');
+            abort_unless(preg_match('~^data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$~', $input['image'], $m) && strlen($m[2]) <= 6_800_000, 422, 'Only an inline review image is accepted.');
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $m[1], 'data' => $m[2]]];
         }
         $content[] = ['type' => 'text', 'text' => $input['prompt']];
@@ -80,7 +80,7 @@ class AnthropicGateway
                 $block->cache_control = (object) ['type' => 'ephemeral'];
         }
         // Opus can take over two minutes to write a full composition with its thinking.
-        set_time_limit(PilotPolicy::unlimited() ? 960 : 320);
+        set_time_limit(960);
         $attempts = app(AttemptService::class);
         $body = ['model' => $attempt->model, 'max_tokens' => (int) $input['max_tokens'],
             // The effort approved with the run, so a later settings change never alters a build in flight.
@@ -95,7 +95,7 @@ class AnthropicGateway
         for ($try = 1; ! $response; $try++) {
             try {
                 $response = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
-                    ->acceptJson()->connectTimeout(10)->timeout(PilotPolicy::unlimited() ? 900 : 280)->post('https://api.anthropic.com/v1/messages', $body);
+                    ->acceptJson()->connectTimeout(10)->timeout(900)->post('https://api.anthropic.com/v1/messages', $body);
                 // Overloaded or rate-limited: refused and not billed, so a short wait and another try is safe.
                 if (in_array($response->status(), [429, 529], true) && $try < 3 && ! $notSent) {
                     \Illuminate\Support\Facades\Log::warning('Create gateway call refused, retrying', ['run' => $runId, 'attempt' => $attemptId, 'try' => $try, 'status' => $response->status()]);
@@ -138,7 +138,12 @@ class AnthropicGateway
             $receipt = new VerifiedAttemptReceipt($attemptId, 'failed', $requestId, 0, 'pilot-tariff:2026-09-30; anthropic refused the request ('.$response->status().')');
             $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);
             \Illuminate\Support\Facades\Log::warning('Create gateway call refused', ['run' => $runId, 'attempt' => $attemptId, 'status' => $response->status(), 'body' => mb_substr($response->body(), 0, 300)]);
-            abort(503, 'The model refused this call ('.$response->status().'); nothing was charged.');
+            // Busy still after the retries above is waited out by the worker ("nothing was sent or charged"); anything
+            // else carries its kind ([vendor:...]) and is never retried as busy: our account out of credit or a bad key
+            // alerts the team and holds new work (VendorAlerts), a refusal is a moderation event, a bad request stops.
+            $kind = \App\Services\Vendors\VendorAlerts::observe('anthropic', $response->body(), $response->status(), ['run_id' => $runId, 'workspace_id' => DB::table('composition_runs')->where('id', $runId)->value('workspace_id')]);
+            if ($kind === 'busy') abort(503, '[vendor:busy] The model is busy right now; nothing was sent or charged.');
+            abort(503, '[vendor:'.$kind.'] '.(in_array($kind, \App\Services\Vendors\VendorAlerts::OURS, true) ? \App\Services\Vendors\VendorAlerts::userMessage('anthropic', $kind) : 'The model refused this call ('.$response->status().'); nothing was charged.'));
         }
         $id = (string) $response->json('id');
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D', $id), 502, 'The model response had no usable id.');
@@ -158,6 +163,8 @@ class AnthropicGateway
         $blocks = collect($response->json('content', []))->filter(fn ($b) => is_array($b) && in_array($b['type'] ?? '', ['text', 'tool_use'], true))
             ->map(fn ($b) => $b['type'] === 'tool_use' && is_array($b['input'] ?? null) && $b['input'] === [] ? [...$b, 'input' => new \stdClass] : $b)->values()->all();
         $text = collect($blocks)->where('type', 'text')->pluck('text')->implode('');
+        \App\Services\Vendors\VendorAlerts::recovered('anthropic');
+        if ($response->json('stop_reason') === 'refusal') \App\Services\Vendors\VendorAlerts::record('anthropic', 'content_refused', 'The build model declined the request (stop_reason refusal).', ['run_id' => $runId]);
         return ['text' => $text, 'content' => $blocks, 'message_id' => $id, 'stop_reason' => (string) $response->json('stop_reason'), 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
             'usage' => ['input_tokens' => $in, 'output_tokens' => $out, 'cache_write_tokens' => $write, 'cache_read_tokens' => $read], 'status' => 'succeeded'];
     }

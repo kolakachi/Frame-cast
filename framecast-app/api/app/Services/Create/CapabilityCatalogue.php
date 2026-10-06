@@ -25,7 +25,7 @@ class CapabilityCatalogue
             ['kind' => 'stock_image', 'what' => 'Licensed stock photo found by search', 'credits' => CreditService::STOCK],
             ['kind' => 'ai_image', 'what' => 'A new generated image or scene background', 'credits' => app(ImageAdapterFactory::class)->costFor(null)],
             // 851-labs/background-remover on Replicate: a fraction of a cent per image, sold at the smallest useful price.
-            ['kind' => 'cutout', 'what' => 'Cut an image this run has out of its background (a transparent PNG): the description starts with its file name', 'credits' => self::CUTOUT_CREDITS],
+            ['kind' => 'cutout', 'what' => 'Cut an image out of its background (a transparent PNG): the description starts with the file name of an image the run has; to cut out a stock or generated image bought in this plan, put the cutout after it (it uses the image bought just before it)', 'credits' => self::CUTOUT_CREDITS],
             ['kind' => 'animate_image', 'what' => 'A 5-second generated motion clip from a still', 'credits' => CreditService::animationCost('quick', '480p', 5)],
             // Generated video. Priced per item from its engine and length (ShotRoute); the figure here is a typical item.
             ['kind' => 'reference_sheet', 'what' => 'The cast and world sheet for generated shots: one still per subject (a character, a place, a product, up to 4) in the video\'s look, approved before any clip is made. 35 credits a subject', 'credits' => 2 * self::CHARACTER_MASTER_CREDITS],

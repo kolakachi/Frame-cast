@@ -4,6 +4,9 @@ return [
     // Local integration only. A production rollout needs its own acceptance gate.
     'enabled' => (bool) env('CREATE_ENABLED', false),
     'workspaces' => array_filter(array_map('intval', explode(',', (string) env('CREATE_WORKSPACES', '')))),
+    // Who may see and use Create (owner, 2026-10-06): accounts on these email domains, plus these addresses.
+    'allowed_domains' => array_values(array_filter(array_map(fn ($d) => strtolower(trim($d)), explode(',', (string) env('CREATE_ALLOWED_DOMAINS', 'wyvstudio.com'))))),
+    'allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('CREATE_ALLOWED_EMAILS', 'kolakachi@gmail.com'))))),
     'worker_token' => env('CREATE_WORKER_TOKEN', ''),
     'mode' => env('CREATE_MODE', 'fixture'),
     // Native script-to-speech video. Cloned voices use the separate audio-driven route.
@@ -50,7 +53,13 @@ return [
     // Opus 5.5 cannot turn thinking off; effort bounds it (low, medium, high, xhigh, max).
     'agent_effort' => env('CREATE_AGENT_EFFORT', 'medium'),
     // Microdollars per token (= dollars per million tokens). Opus 5.5 list price.
+    // Vendor alerts (VendorAlerts): who hears when our account with a vendor fails, besides the super admins, and how
+    // long new work that needs that vendor is held after it does.
+    'admin_alert_emails' => array_values(array_filter(array_map('trim', explode(',', (string) env('ADMIN_ALERT_EMAILS', 'kolakachi@gmail.com'))))),
+    'vendor_hold_minutes' => (int) env('CREATE_VENDOR_HOLD_MINUTES', 10),
     'anthropic_rates' => ['input' => 4, 'output' => 20, 'cache_write' => 5, 'cache_read' => 0.2],
+    // The smaller models planning uses besides the planner (questions, file roles), in micro-dollars a token.
+    'model_rates' => ['claude-sonnet-5' => ['input' => 3, 'output' => 15, 'cache_write' => 3.75, 'cache_read' => 0.3], 'claude-haiku-4-5-20251001' => ['input' => 1, 'output' => 5, 'cache_write' => 1.25, 'cache_read' => 0.1]],
     // Word-timed transcripts of supplied speech (free; OpenAI Whisper cost is about $0.006 a minute).
     'transcript_daily_limit' => (int) env('CREATE_TRANSCRIPT_DAILY_LIMIT', 30),
     'transcript_max_seconds' => 600,

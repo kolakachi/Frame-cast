@@ -50,17 +50,21 @@ class PilotPolicy
                     // A render per repair round (todo D): the first render and up to two re-renders.
                     'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
             }
-            // Real builds (2026-10-06) took 3 to 21 calls, the dearest $0.42: calls are capped per effort with room, a
-            // call at $0.60, and the whole build at its budget, of which only what is used is charged.
-            $calls=['quick'=>12,'standard'=>30,'thorough'=>40][$level];
+            // Real builds (2026-10-06) took 3 to 21 calls, the dearest $0.60, 95% under $0.26: calls are capped per effort
+            // with room, a call at $1.20 (a reviewer call at $0.30, the dearest seen $0.14), and the whole build at its
+            // budget, of which only what is used is charged.
+            // The same room unlimited testing had (owner, 2026-10-06: real builds used up to 61 calls, 38 minutes, the
+            // dearest call $0.60): calls, context and output are generous; the budget, the no-progress guard and the
+            // user's balance are what stop a build.
+            $calls=['quick'=>24,'standard'=>100,'thorough'=>150][$level];
             $budget=CostEstimate::agentCeiling($level,(int)($settings['duration_seconds']??15));
-            return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>150,'effort'=>$effort,
+            return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>300,'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
-                'cost_limit_microusd'=>600000,'max_calls'=>$calls,'total_credits'=>$budget,'level'=>$level,'max_output_tokens'=>16384,'context_bytes'=>128000,
+                'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'level'=>$level,'max_output_tokens'=>32000,'context_bytes'=>600000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
                 // The critic: a separate reviewer of short low-effort calls with the frames and the strip (none at Quick).
-                ...($level==='quick'?[]:['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>25,'effort'=>'low','cost_limit_microusd'=>100000,'max_calls'=>$level==='thorough'?4:2,'max_output_tokens'=>4096]]),
+                ...($level==='quick'?[]:['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>'low','cost_limit_microusd'=>300000,'max_calls'=>$level==='thorough'?4:2,'max_output_tokens'=>4096]]),
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

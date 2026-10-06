@@ -33,7 +33,7 @@ const fileInput = ref(null), composer = ref(null), end = ref(null)
 const player = ref(null)
 const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), artifactGone = ref(''), historyLoading = ref(false), dragging = ref(false)
 const clock = ref(Date.now()), providerApproved = ref(false), variantCount = ref(1)
-const settingsDraft = ref({aspect_ratio:'9:16',duration_seconds:15,frame_rate:24,language:'en',audio:'original',captions:'off',caption_text:'',approved_facts:[],reference_effort:'',reference_match:''})
+const settingsDraft = ref({aspect_ratio:'9:16',duration_seconds:15,frame_rate:24,language:'en',audio:'original',captions:'off',no_captions:false,caption_text:'',approved_facts:[],reference_effort:'',reference_match:''})
 const factsText = ref('')
 const delivery = ref(null), shareUrl = ref(''), scheduleTarget = ref(null), safeZones = ref(false)
 const downloadName = computed(()=>`wyvstudio-v${currentRevision.value?.number}.${imageOutput.value ? (outputMeta.value.media?.mime_type === 'image/jpeg' ? 'jpg' : outputMeta.value.media?.mime_type === 'image/webp' ? 'webp' : 'png') : 'mp4'}`)
@@ -48,6 +48,12 @@ async function performDelivery() {
 function download(){if(currentRevision.value?.has_newer_changes)requestDelivery('download');else{delivery.value={action:'download',revision:currentRevision.value};performDelivery()}}
 async function updateForDelivery(){delivery.value=null;selectedRevision.value=null;await plan()}
 
+// Captions in Details: automatic (the plan decides, and keeps a reference's word-by-word captions), none, or the
+// user's exact text. "off" on the server only means no text was supplied; "none" is no_captions.
+const captionMode = computed({
+  get: () => settingsDraft.value.captions === 'provided' ? 'provided' : settingsDraft.value.no_captions ? 'none' : 'auto',
+  set: v => { settingsDraft.value.captions = v === 'provided' ? 'provided' : 'off'; settingsDraft.value.no_captions = v === 'none' },
+})
 const paid = computed(() => capabilities.value?.paid_generation && capabilities.value?.mode === 'agent')
 const outputMeta = computed(() => {try{return JSON.parse(currentRevision.value?.metadata_json || '{}')}catch{return {}}})
 // Delivery checks the worker ran on the final file, in plain words.
@@ -149,7 +155,7 @@ const settingsNow = computed(() => { try { return JSON.parse(conversation.value?
 const outputSummary = computed(() => {
   const st = settingsNow.value, ratio = { '9:16': 'Portrait 9:16', '16:9': 'Landscape 16:9', '1:1': 'Square 1:1', '4:5': 'Feed 4:5' }[st.aspect_ratio] || 'Portrait 9:16'
   if ((st.output_kind || kind.value) === 'image') return `${ratio} · image`
-  return [ratio, `${st.duration_seconds || 15} seconds`, st.audio === 'silent' ? 'silent' : 'your audio', st.language && st.language !== 'en' ? st.language.toUpperCase() : null].filter(Boolean).join(' · ')
+  return [ratio, `${st.duration_seconds || 15} seconds`, st.audio === 'silent' ? 'silent' : 'your audio', st.no_captions ? 'no captions' : null, st.language && st.language !== 'en' ? st.language.toUpperCase() : null].filter(Boolean).join(' · ')
 })
 const historyGroups = computed(() => {
   const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -942,7 +948,7 @@ async function approveStepNow(p, step) {
 // A redraw is the same step again with the user's change, started at once at its price.
 async function startQuoted(expectMax) {
   const q = (await api.post(`${base()}/quotes`, { expected_version: conversation.value.version })).data.data
-  if (q.credits_max > expectMax) throw Error(`This redraw now costs up to ${q.credits_max} credits. Try again to go ahead.`)
+  if (q.credits_max > expectMax) throw Error(`This redraw now costs up to ${ceilingOf(q)} credits. Try again to go ahead.`)
   await api.post(`${base()}/runs`, { quote_id: q.id, approved: true, provider_approved: true, idempotency_key: crypto.randomUUID() })
 }
 async function redrawCharacter(p) {
@@ -1074,6 +1080,12 @@ const ROLE_ANSWERS = [
   { word: 'Make mine like it', label: 'Make mine like it', detail: 'Follow its format, look and pacing; nothing from it is shown.' },
 ]
 const isRoleQuestion = m => /^Should I put ".*" in your video, or make your video like it\?$/.test(m.content || '')
+// A reference whose study did not finish: study it again, or plan from a quick look.
+const STUDY_ANSWERS = [
+  { word: 'Study it again', label: 'Study it again', detail: 'Read the whole reference again before planning.' },
+  { word: 'Go ahead with a quick look', label: 'Plan from a quick look', detail: 'Plan now from what was seen; less faithful to the reference.' },
+]
+const isStudyQuestion = m => /^I couldn't study ".*" properly just now/.test(m.content || '')
 // The brand library: the workspace's logo, mascot, products and illustrations, kept once and offered every time.
 const BRAND_ROLES = [{ id: 'logo', label: 'Logo' }, { id: 'mascot', label: 'Mascot' }, { id: 'product', label: 'Product' }, { id: 'illustration', label: 'Illustration' }]
 const ASK_ROLE = { logo: 'logo', mascot: 'mascot', photo: 'product', illustration: 'illustration' }
@@ -1108,8 +1120,10 @@ async function setEffort(v) {
   await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { effort: v } }); quote.value = null; await refresh() })
 }
 // A price: the likely cost; the ceiling ("never more than") only where it differs.
-const priceText = q => q.estimate && q.estimate < q.credits_max ? `about ${q.estimate.toLocaleString()} cr` : `${(q.estimate || q.credits_max).toLocaleString()} cr`
-const ceilingText = q => q.estimate && q.estimate < q.credits_max ? `never more than ${q.credits_max.toLocaleString()}` : 'exact'
+// The ceiling shown is the real hold (q.ceiling; while testing without limits, what a real hold would be).
+const ceilingOf = q => q.ceiling ?? q.credits_max
+const priceText = q => q.estimate && q.estimate < ceilingOf(q) ? `about ${q.estimate.toLocaleString()} cr` : `${(q.estimate || ceilingOf(q)).toLocaleString()} cr`
+const ceilingText = q => q.estimate && q.estimate < ceilingOf(q) ? `never more than ${ceilingOf(q).toLocaleString()}` : 'exact'
 // The bill, stage by stage: each plan's charge, then each step and the video at what they spent.
 const spendRows = computed(() => {
   const rows = []
@@ -1119,6 +1133,8 @@ const spendRows = computed(() => {
 })
 const spendTotal = computed(() => spendRows.value.reduce((n, r) => n + r.cr, 0))
 const outOfCredits = run => /^Paused: this step used the credits/.test(run?.error || '')
+// A vendor's failure, in the words the app chose (VendorAlerts::userMessage): busy, declined, or on our side.
+const vendorIssue = run => { const e = run?.error || ''; return /is busy right now/.test(e) ? 'the model is busy right now.' : /temporarily unavailable on our side/.test(e) ? 'a service is temporarily unavailable on our side.' : /declined part of this request/.test(e) ? 'part of it was declined under the model\'s content rules.' : '' }
 onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
@@ -1193,7 +1209,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                       </div>
                     </div>
                     <PlanNote v-if="planEditable(planByMessage[m.id])" :label="startsWithCharacter(planByMessage[m.id]) ? 'Character, then storyboard, then the video' : storyboardFirst(planByMessage[m.id]) ? 'Storyboard first, then the video' : 'What happens next'" :text="nextStep(planByMessage[m.id])" />
-                    <p v-if="planEditable(planByMessage[m.id]) && planPrice[planByMessage[m.id].id]?.raised" class="notice">Your changes raised the price to up to {{ planPrice[planByMessage[m.id].id].quote.credits_max.toLocaleString() }} credits. Approve again to go ahead.</p>
+                    <p v-if="planEditable(planByMessage[m.id]) && planPrice[planByMessage[m.id].id]?.raised" class="notice">Your changes raised the price to up to {{ ceilingOf(planPrice[planByMessage[m.id].id].quote).toLocaleString() }} credits. Approve again to go ahead.</p>
                     <p v-if="planEditable(planByMessage[m.id]) && planPrice[planByMessage[m.id].id]?.error" class="muted plan-note">Couldn’t price this plan: {{ planPrice[planByMessage[m.id].id].error }}</p>
                     <template v-if="planByMessage[m.id].status === 'proposed' && !planByMessage[m.id].stale">
                       <div v-if="characterStep(planByMessage[m.id])" class="step">
@@ -1295,8 +1311,8 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
 
             <div v-if="lastFailure && !active" class="assistant-message">
               <div class="fail" role="alert">
-                <p class="fail-head"><span class="fail-glyph" aria-hidden="true">{{ outOfCredits(lastFailure) ? '⏸' : '✕' }}</span><b>{{ STEP_NAMES[lastFailure.build_stage] || 'The build' }} {{ outOfCredits(lastFailure) ? 'paused: it used the credits set aside for it.' : 'stopped before it finished.' }}</b></p>
-                <p class="fail-sub">{{ outOfCredits(lastFailure) ? 'Everything it finished is kept. Top up if your balance is low, then Retry continues where it stopped.' : 'Everything it finished is kept, and you were charged only for the work it did. Retrying picks up from where it stopped, with the approval you already gave.' }}</p>
+                <p class="fail-head"><span class="fail-glyph" aria-hidden="true">{{ outOfCredits(lastFailure) ? '⏸' : '✕' }}</span><b>{{ STEP_NAMES[lastFailure.build_stage] || 'The build' }} {{ outOfCredits(lastFailure) ? 'paused: it used the credits set aside for it.' : vendorIssue(lastFailure) ? 'stopped: ' + vendorIssue(lastFailure) : 'stopped before it finished.' }}</b></p>
+                <p class="fail-sub">{{ outOfCredits(lastFailure) ? 'Everything it finished is kept. Top up if your balance is low, then Retry continues where it stopped.' : vendorIssue(lastFailure) ? lastFailure.error + ' Everything it finished is kept.' : 'Everything it finished is kept, and you were charged only for the work it did. Retrying picks up from where it stopped, with the approval you already gave.' }}</p>
                 <div class="result-actions">
                   <button v-if="outOfCredits(lastFailure)" type="button" class="btn btn--ghost btn--sm" @click="router.push({ name: 'settings', query: { section: 'billing' } })">Top up</button>
                   <button v-if="canWrite" type="button" class="btn btn--primary btn--sm" :disabled="locked || retrying" @click="retryRun(lastFailure)">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
@@ -1343,7 +1359,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                     <button v-if="ceilingDraft !== quote.media_ceiling" type="button" class="quiet quiet--sm" :disabled="busy" @click="setCeiling">Set</button>
                     <small class="muted">The agent may buy more media under this ceiling; anything over it waits for your approval.</small>
                   </div>
-                  <div class="cost-line"><b>{{ quote.paid ? `Up to ${quote.credits_max} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
+                  <div class="cost-line"><b>{{ quote.paid ? `Up to ${ceilingOf(quote)} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
                   <p v-if="quoteCreditAvailability" class="muted">Balance {{ quoteCreditAvailability.total.toLocaleString() }}<template v-if="quoteCreditAvailability.reserved"> · {{ quoteCreditAvailability.reserved.toLocaleString() }} held for unfinished work · {{ quoteCreditAvailability.available.toLocaleString() }} free for this approval</template>. Checked again when you approve.</p>
                   <span class="spacer" />
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
@@ -1360,10 +1376,13 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
               <div v-if="pendingQuestion && !error && isRoleQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How to use this file">
                 <button v-for="o in ROLE_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
               </div>
+              <div v-if="pendingQuestion && !error && isStudyQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="Study the reference again">
+                <button v-for="o in STUDY_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
+              </div>
               <div v-if="pendingQuestion && !error && isMatchQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How closely to follow the reference">
                 <button v-for="o in MATCH_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
               </div>
-              <p v-if="pendingQuestion && !error" class="question-hint">{{ isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
+              <p v-if="pendingQuestion && !error" class="question-hint">{{ isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) || isStudyQuestion(pendingQuestion) ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
               <template v-else-if="!stalePlan"><p v-if="error" class="muted">Planning didn't finish. Your brief is saved; try planning again.</p><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan()">{{ error ? 'Plan again' : 'Plan it' }}</button></template>
             </div>
             <div ref="end" />
@@ -1423,7 +1442,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                 <UiSelect v-if="kind === 'video'" v-model="settingsDraft.frame_rate" label="Frame rate" :options="[{value:24,label:'24 fps · film'},{value:30,label:'30 fps'},{value:60,label:'60 fps · smoothest UI motion (the final render takes about 2.5 times as long)'}]" />
                 <label v-if="kind === 'video'" class="field-label field-label--check"><input v-model="settingsDraft.motion_blur" type="checkbox" /> Motion blur on the final video <small class="muted">(smoother fast motion; the final render takes about twice as long)</small></label>
                 <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" />
-                <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><UiSelect v-model="settingsDraft.captions" label="Captions" :options="[{value:'off',label:'Off'},{value:'provided',label:'Use my exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input" placeholder="Paste the exact words." /></template>
+                <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><UiSelect v-model="captionMode" label="Captions" :options="[{value:'auto',label:'Automatic (follows your reference)'},{value:'none',label:'None'},{value:'provided',label:'My exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input" placeholder="Paste the exact words." /></template>
                 <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply</button>
               </details>
             </section>

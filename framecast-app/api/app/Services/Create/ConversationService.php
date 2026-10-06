@@ -21,10 +21,18 @@ class ConversationService
         return ['total' => $total, 'reserved' => $reserved, 'available' => max(0, $total - $reserved)];
     }
 
+    /** Only the team's accounts (CREATE_ALLOWED_DOMAINS) and named addresses (CREATE_ALLOWED_EMAILS) see Create. */
+    public static function personAllowed(User $user): bool
+    {
+        $email = strtolower(trim((string) $user->email));
+        return $email !== '' && (in_array($email, (array) config('create.allowed_emails', []), true)
+            || in_array(substr(strrchr($email, '@') ?: '', 1), (array) config('create.allowed_domains', []), true));
+    }
+
     public function authorize(User $user, bool $write = false): void
     {
         abort_unless(app()->environment(['local', 'testing']) && config('create.enabled')
-            && in_array((int) $user->workspace_id, config('create.workspaces', []), true), 404);
+            && in_array((int) $user->workspace_id, config('create.workspaces', []), true) && self::personAllowed($user), 404);
         abort_if($write && ! in_array($user->role, ['owner', 'admin', 'editor', 'super_admin', 'platform_admin', 'client_admin', 'client_editor'], true), 403);
         $workspace = Workspace::findOrFail($user->workspace_id);
         abort_if($workspace->status !== 'active', 403);
@@ -189,6 +197,9 @@ class ConversationService
                 $plan = PlanService::forQuote($c);
                 if ($plan && $assume) foreach (['character_approval', 'storyboard_approval'] as $k) if (! empty($assume[$k])) $plan[$k] = (string) $assume[$k];
                 \App\Services\Create\Planning\PlannerReferenceInspector::verifyEvidence($plan ?? [], $files);
+                // The build budget follows what this plan is (its video type, a new video or a change), from real runs.
+                $buildKind = CostEstimate::kindOf($plan);
+                if ($paid && ! PilotPolicy::unlimited() && isset($policy['agent']['level'])) $policy['agent']['total_credits'] = CostEstimate::agentCeiling($policy['agent']['level'], (int) ($settings['duration_seconds'] ?? 15), $buildKind);
                 $planMedia = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && $plan
                     ? collect($plan['media'] ?? [])->filter(fn ($m) => in_array($m['kind'] ?? '', PlanMediaExecutor::KINDS, true))
                         ->map(function ($m, $i) use ($settings, $user, $plan) {
@@ -292,7 +303,6 @@ class ConversationService
                     elseif (! in_array($mediaItem['kind'], PlanMediaService::NEVER_CARRIED, true) && DB::table('create_plan_media')->where('conversation_id', $id)->where('kind', $mediaItem['kind'])->where('description_hash', $hash)->where('status', 'succeeded')->exists()) $mediaItem['credits'] = 0;
                 }
                 unset($mediaItem);
-                if ($lookFirst && ! $step && ! PilotPolicy::unlimited()) { $policy['agent']['max_calls'] = min($policy['agent']['max_calls'], 8); if (isset($policy['critic'])) $policy['critic']['max_calls'] = 1; }
                 $resolvedPack = StylePacks::resolve($plan['style_route'] ?? null, (int) $user->workspace_id, $settings,
                     DB::table('create_attachments')->where('conversation_id',$id)->where('purpose','reference')->orderBy('asset_id')->pluck('asset_id')->map(fn($a)=>(int)$a)->all());
                 // Media is approved as a ceiling, not an item list: the plan's items are the estimate; the agent may buy
@@ -301,6 +311,9 @@ class ConversationService
                 $mediaCeiling = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition'
                     ? max($mediaEstimate, isset($settings['media_ceiling_credits']) ? (int) $settings['media_ceiling_credits'] : (int) ceil($mediaEstimate * 1.5)) : 0;
                 // Testing without limits: the agent may buy what it needs; each purchase is still priced and recorded.
+                // A storyboard (look) run has a build's room but needs no more than one reviewer round held for it.
+                if ($lookFirst && ! $step && isset($policy['critic'])) $policy['critic']['max_calls'] = 1;
+                $realMediaCeiling = $step ? $mediaEstimate : $mediaCeiling;
                 if ($mediaCeiling > 0 && PilotPolicy::unlimited()) $mediaCeiling = max($mediaCeiling, 100000);
                 // A step buys exactly its images: no agent is there to buy more, so its ceiling is its price.
                 if ($step) $mediaCeiling = $mediaEstimate;
@@ -308,7 +321,7 @@ class ConversationService
                     // A step buys only its own items, so each purchase is held at the dearest of those, not the whole catalogue.
                     $top = $step ? max(array_merge([0], array_column($planMedia, 'credits'))) : max(array_merge([0], array_column($planMedia, 'credits'), array_map(fn ($t) => (int) $t['credits'], array_filter(CapabilityCatalogue::forWorkspace((int) $user->workspace_id), fn ($t) => in_array($t['kind'], PlanMediaExecutor::KINDS, true)))));
                     $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => $top, 'cost_limit_microusd' => $top * 4000,
-                        'max_calls' => count($planMedia) + (PilotPolicy::unlimited() ? 100 : 6), 'total_credits' => $mediaCeiling];
+                        'max_calls' => count($planMedia) + (PilotPolicy::unlimited() ? 100 : 20), 'total_credits' => $mediaCeiling];
                 }
                 if ($step && ! isset($policy['plan_media'])) $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => count($planMedia), 'total_credits' => 0];
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
@@ -322,7 +335,9 @@ class ConversationService
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
                     // The likely cost of this stage: images and media at their prices, the build agent from real runs.
-                    'estimate'=>$mediaEstimate + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agent(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15)) : 0),
+                    'estimate'=>$mediaEstimate + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agent(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : 0),
+                    // What a real (not unlimited-test) hold would be, for "never more than" while testing without limits.
+                    'shown_ceiling'=>$realMediaCeiling + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agentCeiling(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : 0),
                     'effort'=>CostEstimate::effort($settings),
                     'build_stage'=>$step ?? ($lookFirst ? 'storyboard' : 'full_video'), 'step'=>$step, 'media_only'=>$step !== null, 'assumed'=>(bool) $assume, 'look_first'=>$lookFirst, 'from_look'=>$step ? false : $fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
@@ -372,6 +387,9 @@ class ConversationService
                 $p = $quote->payload_json;
                 abort_unless(($p['kind'] ?? '') === 'composition_fixture' && ($p['conversation_id'] ?? '') === $id, 422, 'Wrong quote.');
                 abort_if(! empty($p['assumed']), 422, 'This price is a preview. Approve the step to start it.');
+                // While our account with a vendor this work needs is failing, it waits (VendorAlerts) instead of failing partway.
+                if (($p['mode'] ?? '') === 'agent') \App\Services\Vendors\VendorAlerts::assertUp([...(empty($p['media_only']) && isset($p['execution_policy']['agent']) ? ['anthropic'] : []),
+                    ...array_filter(array_map(fn ($m) => PlanMediaService::vendorFor((string) ($m['kind'] ?? '')), (array) ($p['plan_media'] ?? [])))]);
                 abort_if($quote->isExpired() || $quote->consumed_at, 409, 'This quote expired or was already used.');
                 abort_unless((int) $c->version === $p['version'] && $c->head_revision_id === $p['base_revision_id'], 409, 'The brief changed. Review a new quote.');
                 abort_unless($p['mode']===config('create.mode') && ($p['mode']==='fixture' || PilotPolicy::enabled()),503);
@@ -398,12 +416,24 @@ class ConversationService
                 $credits = $this->creditAvailability($user);
                 if ($credits['available'] < (int) $quote->credits_max && isset($p['execution_policy']['agent']['total_credits'])) {
                     $agentBudget = (int) $p['execution_policy']['agent']['total_credits'];
-                    $room = $credits['available'] - ((int) $quote->credits_max - $agentBudget);
+                    // The reviewer's rounds come out of what is left after the likely cost: fewer when that is short,
+                    // none when nothing is (its spend is part of the estimate, so its hold must not block the start).
+                    $critic = $p['execution_policy']['critic'] ?? null;
+                    $criticEach = $critic ? (int) ceil(((int) $critic['cost_limit_microusd']) / 4000) : 0;
+                    $criticHold = $critic ? $criticEach * (int) $critic['max_calls'] : 0;
+                    $fixed = (int) $quote->credits_max - $agentBudget - $criticHold;
                     $agentNeed = max(0, (int) ($p['estimate'] ?? 0) - (int) ($p['media_estimate'] ?? 0));
-                    abort_if($room < $agentNeed || $room <= 0, 402, sprintf('Top up to continue: this usually takes about %s credits and you have %s available.', number_format((int) ($p['estimate'] ?? $quote->credits_max)), number_format($credits['available'])));
+                    $spare = $credits['available'] - $fixed - $agentNeed;
+                    abort_if($spare < 0 || $credits['available'] - $fixed <= 0, 402, sprintf('Top up to continue: this usually takes about %s credits and you have %s available.', number_format((int) ($p['estimate'] ?? $quote->credits_max)), number_format($credits['available'])));
+                    if ($critic) {
+                        $rounds = min((int) $critic['max_calls'], $criticEach > 0 ? intdiv($spare, $criticEach) : 0);
+                        if ($rounds > 0) $p['execution_policy']['critic']['max_calls'] = $rounds; else unset($p['execution_policy']['critic']);
+                        $criticHold = $criticEach * max(0, $rounds);
+                    }
+                    $room = $credits['available'] - $fixed - $criticHold;
                     $p['execution_policy']['agent']['total_credits'] = $room;
                     $p['credit_limited'] = true;
-                    $quote->update(['payload_json' => $p, 'credits_max' => (int) $quote->credits_max - $agentBudget + $room]);
+                    $quote->update(['payload_json' => $p, 'credits_max' => $fixed + $criticHold + $room]);
                 }
                 try {
                     $operation = OperationAccounting::reserve($quote, null);

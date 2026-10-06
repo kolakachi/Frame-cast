@@ -90,7 +90,8 @@ class AttachmentRoles
         try {
             $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(30)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => self::MODEL, 'max_tokens' => 300, 'messages' => [['role' => 'user', 'content' => $content]]]);
-            if (! $r->successful()) { Log::warning('Create attachment roles: model call failed', ['status' => $r->status()]); return null; }
+            if (! $r->successful()) { Log::warning('Create attachment roles: model call failed', ['status' => $r->status()]); \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status()); return null; }
+            PlanningCosts::call('files', self::MODEL, (array) $r->json('usage', []));
             $raw = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
             $start = strpos($raw, '{');
             $json = $start === false ? null : json_decode(substr($raw, $start, strrpos($raw, '}') - $start + 1), true);

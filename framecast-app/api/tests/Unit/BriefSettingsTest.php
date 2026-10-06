@@ -12,7 +12,7 @@ class BriefSettingsTest extends TestCase
     public function test_supported_wording_becomes_settings(): void
     {
         $r = BriefSettings::infer('Make it square, 20 seconds, in French, silent, no captions please.', $this->video);
-        $this->assertSame(['aspect_ratio' => '1:1', 'duration_seconds' => 20, 'language' => 'fr', 'audio' => 'silent'], $r['changes']);
+        $this->assertSame(['aspect_ratio' => '1:1', 'duration_seconds' => 20, 'language' => 'fr', 'audio' => 'silent', 'no_captions' => true], $r['changes']);
         $this->assertSame([], $r['questions']);
         $this->assertStringContainsString('square (1:1)', BriefSettings::describe($r['changes']));
     }

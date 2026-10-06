@@ -6,8 +6,9 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Before a creation is planned, one question at a time: only what would change the plan and cannot be chosen well
- * without the user (the product, the offer, who it is for, which footage). Looks, colours, music, voice and copy are
- * not asked; the user changes those on the plan. Each answer is a message, so the next call sees it.
+ * without the user (the product, the offer, who it is for, which footage), and material only the user has (their
+ * screens, real results, numbers) when the reference depends on it. Looks, colours, music, voice and copy are not
+ * asked; the user changes those on the plan. Each answer is a message, so the next call sees it.
  */
 class Clarifier
 {
@@ -25,6 +26,7 @@ class Clarifier
                 ->post('https://api.anthropic.com/v1/messages', ['model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 60, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
             $raw = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
             $start = strpos($raw, '{');
+            \App\Services\Create\PlanningCosts::call('questions', 'claude-haiku-4-5-20251001', (array) $r->json('usage', []));
             $m = $start === false ? null : (json_decode(substr($raw, $start, strrpos($raw, '}') - $start + 1), true)['match'] ?? null);
             return in_array($m, ['exact', 'similar', 'inspired'], true) ? $m : null;
         } catch (\Throwable) { return null; }
@@ -37,23 +39,32 @@ class Clarifier
         $messages = collect($context['messages'] ?? [])->map(fn ($m) => strtoupper((string) $m['role']).': '.mb_substr((string) $m['content'], 0, 2000))->implode("\n");
         $files = collect($context['files'] ?? [])->map(fn ($f) => '- "'.$f['title'].'" ('.$f['asset_type'].', '.($f['purpose'] === 'source' ? 'goes in the video' : 'reference to follow').')'
             .(data_get($f, 'reference.summary') ? ': '.mb_substr((string) data_get($f, 'reference.summary'), 0, 300) : ''))->implode("\n");
+        // What the reference shows moment by moment, so material only the user has (their screens, real results,
+        // numbers) is asked for before the plan, not left to a fallback after it.
+        $moments = collect($context['files'] ?? [])->flatMap(fn ($f) => (array) data_get($f, 'reference.study.moments', []))
+            ->map(fn ($m) => '- '.($m['kind'] ?? 'moment').': '.mb_substr((string) ($m['visual'] ?? $m['purpose'] ?? ''), 0, 110))->take(30)->implode("\n");
+        $brand = collect($context['brand_library'] ?? [])->map(fn ($b) => ($b['role'] ?? 'item').': '.($b['title'] ?? ''))->implode(', ');
         $settings = collect($context['settings'] ?? [])->only(['output_kind', 'duration_seconds', 'aspect_ratio', 'reference_match', 'approved_facts'])->toJson();
         $prompt = "You are about to plan a short video for this user. Decide whether you must ask them ONE question first.\n"
             ."Ask only when the answer would change the plan and you cannot choose it well yourself: e.g. which product or offer to feature, the price or call to action, who it is for, which of their files to use. "
             ."Never ask about style, colours, music, voice, pacing or exact wording: you choose those and the user edits them on the plan. "
             ."Never ask something the conversation already answers, and never ask more than you need: ".self::MAX_QUESTIONS." questions in total at most, ".$askedSoFar." asked so far. "
+            ."Also ask for material only the user has when the reference or brief depends on it and nothing in Files, the brand library or approved facts covers it: real screens or recordings of their product, real results or videos made with it, numbers or reviews they can stand behind, product photos, their logo. "
+            ."Ask for all of it in one question that names each item and says they can attach it here or reply \"go without\"; ask for material once only. "
             ."If the user said to go ahead, or you can make a good plan now, ask nothing.\n"
-            .'Reply with JSON only: {"question": "one short question, under 25 words, plain words" | null}'
-            ."\n\nSettings: ".$settings."\nFiles:\n".($files ?: '(none)')."\n\nConversation:\n".$messages;
+            .'Reply with JSON only: {"question": "one short question, under 25 words (up to 45 when asking for material), plain words" | null}'
+            ."\n\nSettings: ".$settings."\nFiles:\n".($files ?: '(none)')."\nBrand library: ".($brand ?: '(empty)')
+            .($moments ? "\nWhat the reference shows:\n".$moments : '')."\n\nConversation:\n".$messages;
         try {
             $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(30)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => self::MODEL, 'max_tokens' => 300, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
-            if (! $r->successful()) { Log::warning('Create clarifier: model call failed', ['status' => $r->status()]); return null; }
+            if (! $r->successful()) { Log::warning('Create clarifier: model call failed', ['status' => $r->status()]); \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status()); return null; }
+            \App\Services\Create\PlanningCosts::call('questions', self::MODEL, (array) $r->json('usage', []));
             $raw = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
             $start = strpos($raw, '{');
             $json = $start === false ? null : json_decode(substr($raw, $start, strrpos($raw, '}') - $start + 1), true);
             $q = trim((string) ($json['question'] ?? ''));
-            return $q === '' ? null : mb_substr($q, 0, 240);
+            return $q === '' ? null : mb_substr($q, 0, 400);
         } catch (\Throwable $e) {
             Log::warning('Create clarifier: '.mb_substr($e->getMessage(), 0, 200));
             return null;
