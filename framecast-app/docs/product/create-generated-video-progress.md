@@ -1,6 +1,6 @@
 # Create generated video: progress
 
-Tracks `create-generated-video-todo.md`, item by item. Bench: `create-bench.md`.
+Tracks `create-generated-video-todo.md`, item by item. Bench: `create-bench.md`. All pending items: `create-pending.md`.
 
 **Legend:**
 - **[x]** done and tested locally.
@@ -9,7 +9,7 @@ Tracks `create-generated-video-todo.md`, item by item. Bench: `create-bench.md`.
 
 "Local" means committed, unpushed and running in the local stack: not deployed, and not yet proven on a paid bench run.
 
-Last updated: 2026-10-05 (evening).
+Last updated: 2026-10-06 (afternoon).
 
 ## Summary
 
@@ -18,19 +18,37 @@ Last updated: 2026-10-05 (evening).
 | M. Coverage and intent | 5 | 0 | 0 |
 | 0. Handoff integrity | 4 | 1 | 0 |
 | A. Direction (cast and storyboard) | 8 | 0 | 0 |
-| B. Generation routes | 1 | 1 | 3 |
+| B. Generation routes | 1 | 1 | 2 |
 | C. Reliability | 6 | 0 | 0 |
 | D. Delivery checks | 6 | 1 | 1 |
 | E. Composition with generated worlds | 1 | 2 | 0 |
 | F. Speed | 1 | 1 | 1 |
 | G. Cost | 2 | 2 | 1 |
 | H. Protect what works | 1 | 1 | 0 |
+| S. Steps, files and credits (2026-10-06) | 7 | 1 | 3 |
 | Rollout gate | 0 | 0 | 2 |
 
-**Review, 2026-10-05 evening:** an independent audit reproduced seven gaps the suites missed (the take speaking an
-older script, false passes in the final and storyboard checks, the avatar identity gate, panel reuse, image recovery,
-code-only move checks) and overstated claims below. All seven are fixed and tested (`f3484f9b` to `a71abcb2`); the
-claims are corrected in place. What is open needs paid runs or the owner:
+**Review, 2026-10-05 evening:** the first fixes (`f3484f9b` to `a71abcb2`) addressed the original
+reproductions, but a second audit found five remaining edge cases. The follow-up changes are **uncommitted local
+changes**, checked offline; this does not establish paid creative quality or deployment readiness:
+- **0.1:** take dialogue binds to exact positions in the original plan script. A whole-script take follows the whole
+  approved revision; a partial take follows its mapped positions. Ambiguous mappings stop before purchase and ask
+  for a re-plan. No word-overlap guessing. Non-whitespace scripts split without losing their trailing characters.
+- **A4:** source asset IDs and content hashes participate in image/take/shot reuse and avatar-panel reuse. Quote,
+  approval and execution use the same immutable input snapshots. Unrelated named-cast panels keep their cache keys.
+- **A5:** panel review requires actual JSON booleans and exactly one result per expected panel. Missing fields,
+  string booleans, duplicates and unknown panel labels are unverified.
+- **D2:** requirement matching preserves Unicode. Empty or ambiguous fallback keys and duplicate answers cannot pass.
+- **D6:** final review requires runtime evidence; a missing file or instrumentation error is unverified. Build-time
+  source checks remain separate. This proves a kit call ran, not that its visual execution looks correct.
+
+Validation for this follow-up: **90 PHP unit tests (519 assertions), 143 Create integration tests (1,000 assertions),
+and 35 worker tests passed**. Tests use local fixtures and mocked providers; no paid generations were started.
+The integration regression verifies that unchanged source bytes reuse the paid sheet, changed bytes receive a new
+quote and generation, and the approval candidate resolves the same input identity.
+
+**Remaining work includes engineering as well as paid tests:** image-job recovery is still partial (0.4), best-segment
+selection is open (D7), and the other partial/open items below retain their stated limitations. Next validation:
 - Your tests now: UGC from a reference, and from scratch with a split-screen UGC ad (proves E2, and E1 if a screen is planned).
 - With the cap and inputs: the bench baseline (G1, F1, G4, H1's B1 to B3), then the B2 bake-off and B3 drafts; B1's sequence route only if B2 earns it; D3 follows B1.
 - Deferred with reasons: F2's builder overlap (after the bench), G3's Sonnet builds (measured on the bench).
@@ -73,7 +91,7 @@ claims are corrected in place. What is open needs paid runs or the owner:
 All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 
 - [x] **0.1 Every approved word survives:** split long lines, no dropped or clamped segments, rates per language, the delivered take transcribed and compared (`2de661aa`).
-  - Reopened by the review and fixed (`f3484f9b`): a take spoke its stored lines over the approved narration, so an edited line ("ninety" to "nine dollars") was spoken as first planned, and take lines were cut at 160 characters. The take now always speaks the approved narration as last edited (its lines only select which approved lines); planner lines over 160 characters are split at sentences.
+  - Reopened by the review and fixed (`f3484f9b`): a take spoke its stored lines over the approved narration, so an edited line ("ninety" to "nine dollars") was spoken as first planned, and take lines were cut at 160 characters. The follow-up fix binds a take to original script positions before applying approved edits; ambiguous partial mappings stop before purchase. Long planner lines split at sentences or Unicode character boundaries without truncating the remainder.
 - [x] **0.2 Explicit inputs per engine** (`ShotRoute::INPUTS`); an unresolved reference is a plan problem, never a fallback (`8e9dd394`). Omni corrected to "start frame or references, not both" after a live refusal (`d150cebe`); the adapter is tested against the table per engine (`b3730e91`).
 - [x] **0.3 A cloned voice lip-syncs the take** to the approved cloned narration; the quote refuses a cloned take without it (`b76e7e3f`).
 - [~] **0.4 Provider jobs recorded.** Generated video: every job recorded on submission; restart once; cancel when abandoned; adopted by the next run (`a2693652`).
@@ -95,20 +113,20 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 - [x] **A3. Storyboard panels drawn from the cast** (`437b2302`):
   - one panel per generated shot (its opening moment), in the look stage;
   - composed stills for code beats (builder);
-  - cast and panels on one review screen;
+  - ~~cast and panels on one review screen~~: superseded 2026-10-06 by separate character and storyboard steps (S1);
   - a note on a panel redraws only that panel.
 - [x] **A3a. Dependency order.**
   - Panels are drawn after the cast in the same look run, and shown together; cast images and then panels are drawn in parallel (`7c638502`).
-  - Decided: panels do not wait for a separate cast approval. One approval screen (owner decision for plan media) is worth more than the panels a rejected identity wastes (35 credits each); a redrawn cast redraws only its own panels, and unchanged ones carry over (A4).
+  - Superseded 2026-10-06 (owner): panels now wait for the character approval (S1), so a rejected identity buys no panels.
 - [x] **A4. Approval versions.**
   - Unchanged media carries across plans of a creation by content (`437b2302`).
   - A cast change redraws its panels.
   - A clip depends only on the images it uses, so redrawing one panel re-buys only that shot (`f628614a`).
-  - Reopened by the review and fixed (`4920317a`): each panel's fingerprint covered the whole cast, so changing one person redrew a candle-only panel, and a change to `screen` kept the old panel. Panels now depend on their own cast members and their screen.
+  - Reopened by the review and fixed (`4920317a`): each panel's fingerprint covered the whole cast, so changing one person redrew a candle-only panel, and a change to `screen` kept the old panel. Panels now depend on their own cast members and their screen. Follow-up: avatar panels and source-dependent media also include the source asset ID and content hash; quoting, approval and execution share that identity.
 - [x] **A5. Board checked against its direction and the agreement** by a cheap vision pass (Haiku 4.5).
   - Contradictions are shown under each panel.
   - A check that could not run says so (`437b2302`).
-  - Reopened by the review and fixed (`91a07053`): an empty or partial answer counted as "ok"; now "ok" needs an answer for every panel, else unverified.
+  - Reopened by the review and fixed (`91a07053`): an empty or partial answer counted as "ok"; now "ok" needs an answer for every panel, else unverified. Follow-up: each answer must have a real boolean, an expected label and no duplicate; malformed reviews are unverified.
 - [x] **A6. Planner model by task in code:** Opus for new creative direction, the configured model for short follow-up edits (`ce165eb0`).
 - [x] **A7. Pacing as a creative choice** in the planner prompt (`ce165eb0`).
 
@@ -120,7 +138,6 @@ All built and tested locally on 2026-10-05; none exercised on a paid run yet.
 - [ ] **B2. Bounded bake-off:** test groups, thresholds, cap, failure scenarios. Blocked on the owner: the budget cap and the bench inputs.
 - [ ] **B3. Drafts:** does a re-render reproduce the performance, per engine (the same input and seed twice, about 8 short clips). Blocked on the owner's cap.
 - [x] **B4. Timing driver** (speech, music or action) set in the plan and shown on the card; a UGC or talking take always times by its speech (`28ba7815`).
-- [ ] **B1 sequence route,** gated on B2.
 
 ## C. Reliability
 
@@ -152,7 +169,7 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - Listening retries a provider hiccup once (`c8cbe2a6`).
 
 - [x] **D1. The same people throughout:** the final frames are compared with the approved cast images. Drift blocks. Review fix (`91a07053`): a generated shot made from the user's photo with no cast sheet was not checked; it is now.
-- **Review fixes to the verdict** (`91a07053`): required items are matched by id or exact wording, never by position (an answer about the price no longer passes the candle; unanswered stays unverified); a blank-frame detector that fails, and final checks that throw, now show as unverified instead of vanishing.
+- **Review fixes to the verdict** (`91a07053`): required items are matched by id or exact wording, never by position; Unicode wording is preserved and ambiguous/duplicate answers stay unverified (an answer about the price no longer passes the candle; unanswered stays unverified); a blank-frame detector that fails, and final checks that throw, now show as unverified instead of vanishing.
 - [x] **D2. Required actions.**
   - "Must appear" items and each directed action are judged on frames sampled from the final cut. A missing required item blocks; a directed action is advisory.
   - Each generated shot also gets three frames across its own place in the cut (early, middle, late), labelled with the shot, so its action is judged on its own frames (`7edb8379`).
@@ -162,7 +179,7 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - lost approved words block (listening to the export, script coverage at least 90% with no missing passage);
   - mix, dead air and abrupt endings are flagged by the existing listening review;
   - loudness is levelled.
-- [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery. Review fix (`fafb1258`): the code alone no longer counts; the move must actually run when the timeline is built (recorded by the kit, saved by the render). Equivalent motion from other code is not recognised; whether a transition reads on screen is not yet judged from the frames.
+- [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery. Review fix (`fafb1258`): the code alone no longer counts; the move must actually run when the timeline is built (recorded by the kit, saved by the render). Missing runtime evidence is explicitly unverified at final review, rather than falling back to source-only approval. Equivalent motion from other code is not recognised; whether a transition reads on screen is not yet judged from the frames.
 - [~] **D7. Build hygiene.**
   - Unintended blank frames block (a fade of up to 0.6 s at the start or end is allowed); bought clips must appear; a take must play at least 90%.
   - Best seconds: open (reopened by the review). Routing rounds lengths to what each engine makes (Veo 4, 6 or 8 s; Seedance at least 4 s; Omni at most 10 s), so a clip can be longer than its slot and the builder plays it from the start.
@@ -233,7 +250,58 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
   - Sound pass: a built-in library of 12 effects synthesized in code; every motion-kit move records its hit, and before the render the host lays the matching sound with its peak on the hit, quieter under the voice; the bought sfx sheet is for unusual sounds only (`b347e18b`). Proof render and listening page: claude.ai/artifact/UskLNGBj9N5T2Wicx9Tr9S.
   - 24, 30 or 60 fps in Details; motion blur works at each rate (`47943fef`).
 
+## S. Steps, files and credits (2026-10-06)
+
+Built and tested locally (901 API tests, 322 worker tests). Live: the owner's step run went character → storyboard →
+video, and a failed run's one-click retry (`be117fac`) finished.
+
+- [x] **S1. Durable steps:** Plan → Character → Storyboard → Video, each approved once. The character is approved
+  before the storyboard is drawn; the look step is required for a generated person, optional for motion graphics.
+  Subjects are drawn independently in a shared style; changing one redraws only it. A plan freezes on approval and a
+  built plan is read-only. One-click retry from where it stopped, without re-quoting (`9032531e`). A step whose
+  image failed fails and can be retried; a busy image model is tried again (`75180911`).
+- [x] **S2. Questions first:** up to 3, one at a time, before the plan; small edits (copy, voice, colours) never
+  restart it (`9032531e`).
+- [x] **S3. Files in one step:** no role toggle, no consent; roles are decided at submit, an unsure one is asked;
+  the planner never places a file it has not seen (the Invoicer postmortem) (`9032531e`).
+- [x] **S4. The chat UI from the create-ui mockup:** plan card and drawer, step and result drawers, sharing, effort
+  chip, paginated history (`0a97b863`).
+- [~] **S5. Art library:** Lucide, Tabler and Fluent 3D emoji, searched by the builder before it draws or generates
+  (`50795026`). Missing: the packs on prod, a bigger 3D pack, a real run that uses one.
+- [x] **S6. Brand library,** brand-only upload requests, and cutouts (`3940456f`).
+- [x] **S7. Credits:** effort levels (Quick, Standard, Thorough), an estimate and ceiling per stage, billing per
+  stage, planning at half price capped at 100, a pause with Top up when credits run out (`14dd2226`). Standard was
+  calibrated from 8 real runs' token counts (median 404 credits, max 855).
+- [x] **S8. Upload storage** counts only files still in use; its cap can be raised per machine (`0a26917e`).
+- [ ] **S9. Change… from the video:** re-enter at Plan, Character or Storyboard, redoing only the later steps.
+- [ ] **S10. Pause and ask inside a step** (at most 2), resuming without re-approval.
+- [ ] **S11. Ask, don't assume** on unclear change requests and planner unknowns.
+
+Credit follow-ups (Quick/Thorough calibration, estimates per video type, test-mode ceiling) and the rest are in the
+todo's open lists; vendor errors in `create-vendor-errors-todo.md`.
+
 ## Rollout gate
+
+Local reliability update (2026-10-06): sandbox contention now waits up to ten
+minutes instead of failing immediately. Waiting/acquisition appears in the
+trajectory, the activity line reports waiting, cancellation stops queued work,
+and failure records retain exit/signal diagnostics. Locks use a Docker-managed
+Linux volume; the Mac artifact bind mount failed the cancelled-waiter test.
+Verified: four host-wrapper tests, Linux contention/cancellation/timeout/crash
+tests, and two real Compose containers sharing the slot. Rebuilt the local image
+and restarted the idle local worker. No paid generation or failed-run replay.
+Overall run deadlines still apply. This closes local lock contention handling;
+production scheduling, capacity and acceptance remain open below.
+
+Audit follow-up (2026-10-06): corrected four integration gaps in that queue change.
+Confirmed unstarted render timeouts settle at zero cost instead of becoming unknown;
+execution deadlines start at acquisition; agent failures preserve their code and
+redacted exit evidence; unconfirmed container cleanup blocks delivery and draft
+fallback. The host drains outstanding tool cleanup after an agent deadline before
+continuing. Validation: 125 Node tests passed, a dedicated API test proved zero-cost
+settlement/replay/reservation release and subsequent admission, and real competing
+Docker containers proved queue expiry plus enforced execution timeout and removal.
+No paid calls, customer-run retries or production deployment.
 
 - [ ] **Local acceptance on the bench** (8 of 9; B1 to B3 all pass; zero lost words, identity failures or manual recoveries).
 - [ ] **Limited audience with an off switch,** then the bench re-run before widening.
@@ -244,4 +312,3 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 - [ ] A UGC reference video (B9).
 - [ ] A product photo (B8; a stock candle is the fallback).
 - [ ] Confirm the baseline budget cap: 7,000 credits.
-- [ ] Confirm the recommended decisions in the todo: image model, look approval, planner by task, spend confirmation as a warning, sequence mode experimental, delivery-check policy.
