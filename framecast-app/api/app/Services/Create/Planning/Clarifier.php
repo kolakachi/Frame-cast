@@ -32,6 +32,30 @@ class Clarifier
         } catch (\Throwable) { return null; }
     }
 
+    /**
+     * For a change to an existing plan or video: one question when the request is too vague to act on ("make it
+     * better", "different vibe", "fix it"), naming 2 to 4 likely meanings; null when it is clear enough.
+     */
+    public function changeQuestion(array $context): ?string
+    {
+        if (config('create.mode') === 'fixture' || (string) config('services.anthropic.key') === '') return null;
+        $messages = collect($context['messages'] ?? [])->slice(-6)->map(fn ($m) => strtoupper((string) $m['role']).': '.mb_substr((string) $m['content'], 0, 1200))->implode("\n");
+        $prompt = "A user is changing a short video they already have a plan or a version of. Their latest message is the change they want.\n"
+            ."Decide whether it is clear enough to act on. It is clear when it names what to change or how (\"bigger title\", \"warmer colours\", \"cut the second scene\", \"slower voice\"). "
+            ."It is too vague when it could mean very different changes (\"make it better\", \"different vibe\", \"fix it\", \"I don't like it\"). Only then ask ONE short question naming 2 to 4 likely meanings, e.g. \"Which part should change: the hook, the colours, the voice, or the pacing?\"\n"
+            .'Reply with JSON only: {"question": "under 30 words" | null}'."\n\nConversation (latest last):\n".$messages;
+        try {
+            $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(30)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => self::MODEL, 'max_tokens' => 200, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+            if (! $r->successful()) { \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status()); return null; }
+            \App\Services\Create\PlanningCosts::call('questions', self::MODEL, (array) $r->json('usage', []));
+            $raw = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+            $start = strpos($raw, '{');
+            $q = trim((string) (($start === false ? null : json_decode(substr($raw, $start, strrpos($raw, '}') - $start + 1), true))['question'] ?? ''));
+            return $q === '' ? null : mb_substr($q, 0, 240);
+        } catch (\Throwable) { return null; }
+    }
+
     /** The next question, or null when the plan can be made now. */
     public function question(array $context, int $askedSoFar): ?string
     {

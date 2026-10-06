@@ -146,11 +146,36 @@ class PlanService
             $since = DB::table('create_plans')->where('conversation_id', $id)->max('created_at');
             $asked = DB::table('create_messages')->where('conversation_id', $id)->where('idempotency_key', 'like', 'clarify:%')->when($since, fn ($q) => $q->where('created_at', '>', $since))->count();
             $activity->step('Checking what I need to know');
+            // Material only the user has, by rule and asked once: when the reference shows product screens, recordings,
+            // numbers or reviews and none of the user's own are attached (a page capture is not one), ask before planning.
+            if (! DB::table('create_messages')->where('conversation_id', $id)->where('idempotency_key', 'like', 'materials:%')->exists() && ($wanted = self::materialsWanted($c))) {
+                $question = 'Before I plan: your reference shows '.$wanted.'. Do you have yours? Attach them here, or reply "go without" and I\'ll use illustrative versions.';
+                $next = (int) $c->version + 1;
+                DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
+                    'idempotency_key' => 'materials:'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+                $activity->abandon();
+                return ['needs_answer' => 'clarify', 'question' => $question];
+            }
             $question = app(Planning\Clarifier::class)->question($this->context($user, $c), $asked);
             if ($question) {
                 $next = (int) $c->version + 1;
                 DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
                     'idempotency_key' => 'clarify:'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+                $activity->abandon();
+                return ['needs_answer' => 'clarify', 'question' => $question];
+            }
+        }
+        // A change to a plan or a video that is too vague to act on ("make it better", "fix it") gets one question
+        // first, with suggested answers; an answer to it, or a skip, plans straight away.
+        if (! $skipQuestions && self::plannerTask($c) === 'edit') {
+            $lastTwo = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->limit(2)->get(['role', 'idempotency_key']);
+            $answering = str_starts_with((string) ($lastTwo[1]->idempotency_key ?? ''), 'clarify-change:');
+            if (! $answering && ($question = app(Planning\Clarifier::class)->changeQuestion($this->context($user, $c)))) {
+                $next = (int) $c->version + 1;
+                DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
+                    'idempotency_key' => 'clarify-change:'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
                 DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
                 $activity->abandon();
                 return ['needs_answer' => 'clarify', 'question' => $question];
@@ -478,6 +503,24 @@ class PlanService
     }
 
     /** Studies any attached reference video that has no study for its current bytes; failures leave planning on the older evidence. */
+    /** What the reference shows that only the user can supply, in words ("screens or a recording of your product and real numbers"), or null. */
+    public static function materialsWanted(object $c): ?string
+    {
+        $files = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')->where('create_attachments.conversation_id', $c->id)
+            ->get(['create_attachments.purpose', 'assets.asset_type', 'assets.metadata_json']);
+        // The user's own screens, recordings or photos are already here: nothing to ask.
+        if ($files->contains(fn ($f) => $f->purpose === 'source' && in_array($f->asset_type, ['image', 'video'], true))) return null;
+        $kinds = $files->where('purpose', 'reference')->flatMap(fn ($f) => array_column((array) data_get(json_decode((string) $f->metadata_json, true), 'reference_study.moments', []), 'kind'))->unique()->all();
+        $want = array_values(array_filter([
+            array_intersect($kinds, ['ui', 'screen_recording']) ? 'screens or a screen recording of the product' : null,
+            in_array('stat', $kinds, true) ? 'real numbers (users, ratings or results)' : null,
+            in_array('product', $kinds, true) ? 'product photos' : null,
+            array_intersect($kinds, ['testimonial', 'review']) ? 'a real review or testimonial' : null,
+        ]));
+        if (! $want) return null;
+        return count($want) === 1 ? $want[0] : implode(', ', array_slice($want, 0, -1)).' and '.end($want);
+    }
+
     /** Why a reference's study did not finish, in plain words. */
     public static function studyWhy(string $kind): string
     {
@@ -740,7 +783,9 @@ class PlanService
         }
         unset($decision);
         $plan = ['requirements_schema' => RequirementContract::VERSION, 'requirement_history' => $contract['requirement_history'], 'direction_notes' => $contract['direction_notes'], 'reference_evidence' => $contract['reference_evidence'], 'creative_intent' => $intent, 'character_performance' => CharacterPerformance::normalize($raw['character_performance'] ?? [], [...$ctx, '_requirement_contract' => $contract]), 'reference_observations' => $observations, 'colour_treatment' => $colour, 'summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
-            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
+            'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
+            // What the planner assumed rather than knew, shown on the plan card so the user can correct it.
+            'assumptions' => array_values(array_slice(array_filter(array_map(fn ($a) => is_string($a) ? $str($a, 120) : '', (array) ($raw['assumptions'] ?? []))), 0, 4)), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
             'requirements' => $requirements, 'character_style' => $characterStyle,
             // The user reviews the plan, then the video is built straight away. A separate look stage only when

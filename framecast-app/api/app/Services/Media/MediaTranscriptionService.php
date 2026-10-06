@@ -107,14 +107,22 @@ class MediaTranscriptionService
                 $payload['timestamp_granularities[]'] = 'word';
             }
 
-            // A network drop before the request reaches the provider is waited out (up to about a minute).
-            $response = \App\Services\Create\NetRetry::run(fn () => Http::timeout(120)
+            // A network drop before the request reaches the provider is waited out (up to about a minute); a busy or
+            // failed answer is asked once more after a short wait. Every failure is logged and classified
+            // (VendorAlerts: our account out of credit or a bad key alerts the team), never swallowed silently.
+            $send = fn () => \App\Services\Create\NetRetry::run(fn () => Http::timeout(120)
                 ->withToken($apiKey)
-                ->attach('file', file_get_contents($path), basename($path))
+                ->attach('file', file_get_contents($path), self::uploadName($path))
                 ->post('https://api.openai.com/v1/audio/transcriptions', $payload));
+            $response = $send();
+            if (! $response->ok() && ! in_array(\App\Services\Vendors\VendorError::classify($response->body(), $response->status()), ['vendor_credit', 'vendor_config', 'content_refused'], true)) {
+                \Illuminate\Support\Sleep::for(5)->seconds();
+                $response = $send();
+            }
 
             if (! $response->ok()) {
-                throw new RuntimeException('Transcription provider request failed.');
+                \App\Services\Vendors\VendorAlerts::observe('openai', $response->body(), $response->status(), ['kind' => 'transcription']);
+                throw new RuntimeException('Transcription provider request failed ('.$response->status().'): '.mb_substr($response->body(), 0, 200));
             }
 
             $json = $response->json();
@@ -136,7 +144,8 @@ class MediaTranscriptionService
             }
 
             return $result;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Transcription fell back to the placeholder', ['error' => mb_substr(get_class($e).': '.$e->getMessage(), 0, 300)]);
             return $this->fallbackTranscript($fallbackTitle);
         }
     }
@@ -220,6 +229,22 @@ class MediaTranscriptionService
     /**
      * @return array{transcript:string,provider_key:string,model:string}
      */
+    /**
+     * The name the file is sent under: the provider reads the format from its extension, so an upload saved without
+     * one (a PHP temp file such as phpAb12Cd) is named by its content.
+     */
+    public static function uploadName(string $path): string
+    {
+        $base = basename($path);
+        if (preg_match('/\.(flac|m4a|mp3|mp4|mpeg|mpga|oga|ogg|wav|webm)$/i', $base)) return $base;
+        $mime = (string) (@mime_content_type($path) ?: '');
+        $ext = match (true) {
+            str_contains($mime, 'wav') => 'wav', str_contains($mime, 'mpeg') => 'mp3', str_contains($mime, 'mp4') => 'mp4',
+            str_contains($mime, 'ogg') => 'ogg', str_contains($mime, 'webm') => 'webm', str_contains($mime, 'flac') => 'flac', default => 'wav',
+        };
+        return $base.'.'.$ext;
+    }
+
     private function fallbackTranscript(string $title): array
     {
         return [

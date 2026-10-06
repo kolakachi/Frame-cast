@@ -1086,6 +1086,8 @@ const STUDY_ANSWERS = [
   { word: 'Go ahead with a quick look', label: 'Plan from a quick look', detail: 'Plan now from what was seen; less faithful to the reference.' },
 ]
 const isStudyQuestion = m => /^I couldn't study ".*" properly just now/.test(m.content || '')
+// Material the reference shows that only the user has: attach it with the + in the composer, or go without.
+const isMaterialsQuestion = m => /^Before I plan: your reference shows/.test(m.content || '')
 // The brand library: the workspace's logo, mascot, products and illustrations, kept once and offered every time.
 const BRAND_ROLES = [{ id: 'logo', label: 'Logo' }, { id: 'mascot', label: 'Mascot' }, { id: 'product', label: 'Product' }, { id: 'illustration', label: 'Illustration' }]
 const ASK_ROLE = { logo: 'logo', mascot: 'mascot', photo: 'product', illustration: 'illustration' }
@@ -1189,6 +1191,7 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
                     <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.creative_intent?.reason" class="plan-approach" label="Creative approach" :text="planByMessage[m.id].plan.creative_intent.reason" />
                     <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
+                    <p v-if="isLivePlan(planByMessage[m.id]) && planByMessage[m.id].plan.assumptions?.length" class="plan-assumed"><b>Assumed:</b> {{ planByMessage[m.id].plan.assumptions.join(' · ') }}. Tell me if any is wrong.</p>
                     <div :class="['plan-card', { 'is-old': !isLivePlan(planByMessage[m.id]) }]">
                       <div class="plan-pills">
                         <span class="plan-title">Plan</span>
@@ -1378,6 +1381,9 @@ onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener(
               </div>
               <div v-if="pendingQuestion && !error && isStudyQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="Study the reference again">
                 <button v-for="o in STUDY_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
+              </div>
+              <div v-if="pendingQuestion && !error && isMaterialsQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="Your own material">
+                <button type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith('Go without')"><span class="pd-card-label">Go without</span><span class="pd-card-detail">Plan now with illustrative versions; you can add yours later.</span></button>
               </div>
               <div v-if="pendingQuestion && !error && isMatchQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How closely to follow the reference">
                 <button v-for="o in MATCH_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
@@ -2098,6 +2104,7 @@ label.tray-note{white-space:normal}
 .plan-approach{margin-top:-4px}
 .plan-card{border:1px solid var(--line-3);border-radius:12px;padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--surface)}
 .plan-card.is-old{opacity:.7}
+.plan-assumed{font-size:12.5px;color:var(--text-2,var(--color-text-secondary));margin:2px 0 8px}
 .plan-pills{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .plan-title{font-weight:600;margin-right:4px}
 .pill{font-size:12px;color:var(--text-2);background:rgba(255,255,255,.06);border-radius:999px;padding:2px 10px}

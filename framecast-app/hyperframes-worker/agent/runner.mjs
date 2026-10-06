@@ -343,6 +343,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     else if(action.type==='art') {
       if(!tools.art)throw Error('The art library is not available in this run');
       result=await tools.art({query:action.query,style:action.style,use:action.use});
+      state.artSearched=true;
       // A 3D object joins the protected files and is kept with the version like any run-made file.
       if(result?.file&&!workspace.assets.some(a=>a.path===result.file.path))workspace.assets.push({path:result.file.path,sha256:result.file.sha256,operation:'library',params:{art:action.use}});
     }
@@ -416,8 +417,14 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       // Open pacing errors on this draft (stillness, small text, empty frames, reading time, blank frames) are sent back once:
       // fix them, or finish again with a summary that says why each one is intentional.
       // Reading time is always sent back (words nobody can read are a fault, not a note); the rest only when asked.
-      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'&&(context.findingsBlockFinish===true||f.code==='reading_time')):[];
+      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'&&(context.findingsBlockFinish===true||['reading_time','slideshow'].includes(f.code))):[];
       const key=state.revision+':'+open.map(f=>f.code+'@'+f.time).join(',');
+      // The brief asks for icons or 3D objects and the library was never looked at: sent back once (search it and use
+      // what fits, or say why none does), never forced.
+      if(context.artExpected===true&&!state.artSearched&&!state.artNoticed&&tools.art){
+        state.artNoticed=true;
+        result={ok:false,error:'Not finished: the brief asks for icons or 3D objects, and the art library was not searched. Search it with the art action (add 3d, line or filled) and use what fits, or finish again saying why nothing in it fits.'};
+      } else
       // The user reviews the result: findings are notes on the version, never another round.
       if(open.length&&state.pacingNoticed!==key){
         state.pacingNoticed=key;

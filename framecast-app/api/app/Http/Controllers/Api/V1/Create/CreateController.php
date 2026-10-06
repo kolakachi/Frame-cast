@@ -74,7 +74,7 @@ class CreateController extends Controller
             // A question asked before planning is marked, so the conversation can offer to skip it.
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at', 'idempotency_key'])
                 ->map(fn ($m) => ['id' => $m->id, 'role' => $m->role, 'content' => $m->content, 'created_at' => $m->created_at,
-                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|reference-match|role|study):/', (string) $m->idempotency_key) ? 'question' : null]),
+                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|clarify-change|reference-match|role|study|materials):/', (string) $m->idempotency_key) ? 'question' : null]),
             'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
                 $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
                 if (!$asset) return null;

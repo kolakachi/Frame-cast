@@ -17,7 +17,7 @@ Plan: `create-steps-asking-plan.md` (order S11, S10, S9; three decisions).
 |---|---|---|---|---|---|
 | S9 | Change… from the video: re-enter at Plan, Character or Storyboard; redo only later steps | open | — | build | progress S9 |
 | S10 | Pause and ask inside a step (at most 2), resume without re-approval | open | — | build | progress S10 |
-| S11 | Ask, don't assume: unclear change requests and planner unknowns become questions | open | — | build | progress S11 |
+| S11 | Ask, don't assume: a vague change gets one question; the plan card shows what was assumed | ready | — | check in the app | progress S11 |
 
 ## Reference following (from the b49db3b7 review, 2026-10-06)
 
@@ -27,7 +27,7 @@ words on screen too briefly to read block delivery and go back to the build; the
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| RF1 | Re-run the WyvStudio UGC brief from b49db3b7 to prove the fixes | ready | — | paid run | this review |
+| RF1 | Re-run the WyvStudio UGC brief: length, captions, proof and sound confirmed in the plan; materials now asked by rule | partly | — | the video build | this review |
 | RF2 | The reference study listens for sound effects; the sound pass follows them (none when the reference has none) | ready | — | prove on a real reference with effects | this review |
 | RF3 | Captions in Details: Automatic, None, My exact text | ready | — | check in the app | this review |
 | RF4 | A mascot for mascot moments (WyvBear) | parked | owner: not now | — | AB3 |
@@ -47,7 +47,7 @@ Built 2026-10-06 (uncommitted), all of `create-vendor-errors-todo.md` except the
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| V8 | Reference study, final checks and transcription record vendor failures too | open | — | build | vendor-errors |
+| V8 | Reference study and transcription record vendor failures (done); final checks still skip quietly | partly | — | final checks | vendor-errors |
 | V9 | Prove an alert end to end (a real mail arrives) | ready | — | send a test alert | vendor-errors |
 
 ## Build guards and caps (2026-10-06)
@@ -87,7 +87,7 @@ reference study retries a busy model, says when it is partial, and asks before a
 | AB1 | Art packs on prod: part of `create-production-plan.md` (Create is not on prod at all) | blocked | owner: plan decisions | — | production plan |
 | AB2 | 3dicons added: 120 objects × 4 finishes × 2 angles, CC0, 960 files | ready | — | — | todo: art |
 | AB3 | WyvBear and GSAP plugins staged into the builder | open | — | build | todo: art |
-| AB4 | One real run using an art pick, a brand item and a cutout | ready | — | run | todo: art |
+| AB4 | Brand logo and cutout proven in a real build; the builder must now search the art library when the brief asks for icons | partly | — | a run that uses art | todo: art |
 
 ## From scratch (proposed)
 
@@ -97,14 +97,14 @@ Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your vi
 |---|---|---|---|---|---|
 | FS1 | Three direction cards before the plan | proposed | owner's approval | scope | todo: from scratch |
 | FS2 | Format playbooks | proposed | owner's approval | scope | todo: from scratch |
-| FS3 | Slideshow-risk check before render | proposed | owner's approval | scope | todo: from scratch |
+| FS3 | Slideshow check: mostly still text cards are sent back to the builder once | ready | sandbox image rebuild | rebuild, then a real run | todo: from scratch |
 | FS4 | Exemplar library | blocked | 15–25 videos from the owner | collect | todo: from scratch |
 
 ## Infra and release
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| I1 | API image rebuild hangs on the yt-dlp download | open | — | fix (containers carry copied-in changes) | todo: infra |
+| I1 | API image rebuild hangs on the yt-dlp download | local ARM64 verified | production AMD64 build | bounded download + checksum patch; rollout separate (containers carry copied-in changes) | production plan: build diagnostics |
 | I2 | horizon and reverb run old images | open | I1 | rebuild | todo: infra |
 | I3 | Create on production (worker server, production mode, B2 storage, allowlist, daily brake) | blocked | owner: 4 decisions | see `create-production-plan.md` | production plan |
 | I4 | Paid canary after the deploy | ready | I3 | run | verify-and-teach step 5 |
@@ -120,7 +120,7 @@ Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your vi
 | O2 | A UGC reference video | bench B9 |
 | O3 | A product photo (stock candle is the fallback) | bench B8 |
 | O4 | Baseline budget cap: 7,000 credits? | B2, B3, G1, F1, H1, R1 |
-| O6 | From scratch: approve FS1–FS3; send 15–25 exemplar videos | FS1–FS4 |
+| O6 | From scratch: approve FS1 and FS2; send 15–25 exemplar videos | FS1, FS2, FS4 |
 | O7 | Go to push and deploy | I3, I4, AB1 |
 
 ## Older docs: open lines that are no longer live

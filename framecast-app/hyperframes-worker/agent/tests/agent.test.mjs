@@ -289,6 +289,16 @@ test('a bad read path is an error the builder corrects, and a guide asked for by
  assert.match(h.seen[1].prompt,/There is no \.\.\/secrets\.txt to read/);
  assert.match(h.seen[2].prompt,/guide kit\/motion-kit\.md/);
 });
+test('when the brief asks for icons and the art library was never searched, finish is sent back once',async t=>{
+ const tools={check:async()=>({ok:true}),snapshot:async()=>({ok:true,paths:['frame.png']}),art:async({query})=>({results:[{id:'3dicons:wallet-dynamic-clay'}],query})};
+ const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'}),action({type:'art',query:'wallet 3d'}),action({type:'finish',summary:'Done'})],{tools});
+ h.args.context.artExpected=true;
+ const r=await h.run();
+ assert.equal(r.status,'preview_ready');assert.equal(h.seen.length,5);
+ assert.match(h.seen[3].prompt,/the art library was not searched/);
+ const quiet=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'})],{tools});
+ assert.equal((await quiet.run()).status,'preview_ready','no icons asked for: finishes at once');assert.equal(quiet.seen.length,3);
+});
 test('a draft with no open pacing errors finishes at once',async t=>{
  const tools={check:async()=>({ok:true,pacing:[{code:'slow_drift',severity:'warning',time:1,message:'drift'}]}),snapshot:async()=>({ok:true,paths:['frame.png']})};
  const h=await harness(t,[action({type:'check'}),action({type:'snapshot',times:[1]}),action({type:'finish',summary:'Done'})],{tools});

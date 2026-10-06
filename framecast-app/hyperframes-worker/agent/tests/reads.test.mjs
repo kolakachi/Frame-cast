@@ -45,3 +45,15 @@ test('a small card alone in a big frame is mostly empty; a big headline or a fil
  const e=visualFindings(f,6).filter(x=>x.code==='mostly_empty');
  assert.equal(e.length,1);assert.equal(e[0].time,0);assert.match(e[0].message,/for 3\.0 s/);
 });
+test('text cards that barely change for most of the video are a slideshow; kinetic type that keeps moving and pictured beats are not',()=>{
+ // Four cards of 3.75 s each, text on a plain background, each held still.
+ const cards=frames(151,t=>({texts:[],small:[],W,H,held:false,things:[bg,box(10+Math.floor(t/3.75),90,700,900,300,{text:true})]}));
+ const s=visualFindings(cards,15).filter(x=>x.code==='slideshow');
+ assert.equal(s.length,1);assert.match(s[0].message,/slideshow of cards/);
+ // The same cards with words building on the voice every step: kinetic, not a slideshow.
+ const kinetic=frames(151,t=>({texts:[],small:[],W,H,held:false,things:[bg,box(10+Math.floor(t/3.75),90,700,900,300+Math.round(t*10)%7,{text:true})]}));
+ assert.equal(visualFindings(kinetic,15).filter(x=>x.code==='slideshow').length,0);
+ // Cards beside a product picture for most of it: not a slideshow.
+ const pictured=frames(151,t=>({texts:[],small:[],W,H,held:false,things:[bg,box(10+Math.floor(t/3.75),90,700,900,300,{text:true}),...(t<10?[box(50,200,1200,600,600,{media:true})]:[])]}));
+ assert.equal(visualFindings(pictured,15).filter(x=>x.code==='slideshow').length,0);
+});

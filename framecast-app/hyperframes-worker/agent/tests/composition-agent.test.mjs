@@ -69,3 +69,15 @@ test('prepared mascot runtime is discoverable and its limits are readable throug
   assert.equal(result.state.status,'preview_ready');assert.equal(calls,6);
  }finally{await rm(directory,{recursive:true,force:true});}
 });
+test('a repair round is a new pass over the same folder: it never trips on the first pass\'s saved state',async()=>{
+ const {directory,files}=await setup();
+ const base={directory,manifest:files,provider:offlineContractProvider(),begin:async()=>({id:'a'+Math.random(),may_execute:true}),settle:async()=>({}),receipt:()=>({status:'succeeded',cost_microusd:0}),invoke:async()=>({ok:true}),guidanceDirectory:root+'agent/guidance'};
+ try{
+  const first=await executeCompositionAgent({...base,input:{messages:[{role:'user',content:'A product sample'}],execution_policy:{agent:{max_calls:5}}}});
+  const repair=await executeCompositionAgent({...base,callPrefix:'repair1-agent',input:{messages:[{role:'user',content:'A product sample'},{role:'user',content:'Fix only these: the title is on screen too briefly.'}],execution_policy:{agent:{max_calls:5}}}});
+  assert.notEqual(repair.state.reason,'Run context changed; start a new run');
+  assert.equal(first.state.status,'preview_ready');
+  assert.notEqual(repair.state.failureDetail,'Run context changed; start a new run','the repair pass ran (the offline stand-in\'s scripted edit no longer applies, which is not the point)');
+  await access(directory+'/agent-state.json');await access(directory+'/agent-state-repair1-agent.json');
+ }finally{await rm(directory,{recursive:true,force:true});}
+});

@@ -14,12 +14,16 @@
 //   side, which a phone cannot read.
 // - Mostly empty: for EMPTY seconds the content covers under SPARSE of the frame
 //   and nothing spans half of it (full-frame backgrounds are not content).
+// - Slideshow: at least CARDS of the video is text on a plain background (no
+//   picture, video or drawing on screen) and those stretches barely change
+//   (under CHANGE of their steps): cards cut one after another. Kinetic type
+//   that keeps moving is not a slideshow.
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Short-form reading speed: about 17 characters a second plus a second to find the words.
-export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15};
+export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15,cards:0.6,change:0.25};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
 // transform: an optional edit of index.html as served (the sound pass serves it without its audio).
@@ -64,7 +68,7 @@ function sample(minFont,smallFont){
   if(el.closest('[data-hold]'))held=true;
   const scale=el.offsetHeight?r.height/el.offsetHeight:1,size=own?parseFloat(getComputedStyle(el).fontSize)*scale:0;
   if(own&&inside&&size<smallFont&&(own.split(' ').length>=4||own.length>=20))small.push({id:key(el),text:own.slice(0,60),size:Math.round(size)});
-  things.push({...item,w:r.width,h:r.height,sig:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height),Math.round(o*20),own.slice(0,40)].join(','),live,bg});
+  things.push({...item,w:r.width,h:r.height,media,text:!!own,sig:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height),Math.round(o*20),own.slice(0,40)].join(','),live,bg});
   if(own&&inside&&parseFloat(getComputedStyle(el).fontSize)>=minFont)texts.push({...item,text:(el.innerText||own).replace(/\s+/g,' ').trim()});
  }
  // An accent word inside a headline is part of that headline, not a block of its own.
@@ -179,6 +183,16 @@ export function visualFindings(frames,duration,rules=RULES){
   const f=frames[i],on=f&&sparse(f);
   if(on&&start===null)start=f.t;
   if(!on&&start!==null){const len=frames[i-1].t-start+rules.step;if(len>=rules.empty)out.push({code:'mostly_empty',severity:'error',time:start,message:`From ${start.toFixed(1)} s for ${len.toFixed(1)} s the content fills under ${Math.round(rules.sparse*100)}% of the frame and nothing spans half of it.`,fixHint:'Scale the main element up so it fills at least half the width, or bring the next element in sooner.'});start=null;}
+ }
+ // Slideshow: text on a plain background for most of the video, and those stretches barely change.
+ const card=f=>!f.things.some(x=>x.live||x.media)&&f.things.some(x=>x.text);
+ const cards=frames.filter(card);
+ if(frames.length>=20&&cards.length/frames.length>=rules.cards){
+  let changes=0;for(let i=1;i<frames.length;i++)if(card(frames[i])&&card(frames[i-1])&&sig(frames[i])!==sig(frames[i-1]))changes++;
+  const ratio=changes/Math.max(1,cards.length-1);
+  if(ratio<rules.change)out.push({code:'slideshow',severity:'error',time:cards[0].t,
+   message:`About ${Math.round(cards.length/frames.length*100)}% of the video is text on a plain background that barely moves: it reads as a slideshow of cards.`,
+   fixHint:'Give the beats a picture or motion: a product shot, a 3D object or icon from the art library, a UI panel, words building on the voice, a camera push, or one element that carries from beat to beat.'});
  }
  return out;
 }

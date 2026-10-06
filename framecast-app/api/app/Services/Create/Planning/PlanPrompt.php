@@ -64,6 +64,7 @@ Be brief: the user reads this on a phone. summary under 45 words; each use, idea
 
 Reply with one JSON object and nothing else:
 {"summary": string (1-3 sentences, first person, what you will make),
+ "assumptions": [string] (up to 4, under 14 words each: what you had to assume because the user did not say it, e.g. "Free trial, no price shown"; never invent a price, number, claim or product: assume conservatively and say so here),
  "highlights": [string] (up to 3, past tense, under 12 words each: what you took from the user's files and what you chose, e.g. "Matched the reference's 2 s caption cuts"),
  "creative_intent": {"format":"educational"|"talking_head"|"footage_edit"|"slideshow"|"motion_graphics"|"character_animation"|"mixed"|"still_image", "motion":"none"|"restrained"|"kinetic"|"natural"|"mixed", "timing_driver":"narration"|"source"|"music"|"visual", "reason":string, "source_quote":string, "edit_scope":"content"|"timing_only", "edit_source_quote":string|null},
  "reused": [{"asset_id": int, "use": string}],

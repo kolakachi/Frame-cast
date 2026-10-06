@@ -1232,6 +1232,8 @@ class CreateIntegrationTest extends TestCase
         Http::fake(['api.anthropic.com/*' => Http::sequence()
             ->push(['id' => 'ask', 'content' => [['type' => 'text', 'text' => '{"question": null}']], 'usage' => []])
             ->push(['id' => 'first', 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => []])
+            // The follow-up is clear, so the change check asks nothing.
+            ->push(['id' => 'clear', 'content' => [['type' => 'text', 'text' => '{"question": null}']], 'usage' => []])
             ->push(['id' => 'second', 'content' => [['type' => 'text', 'text' => '{"summary":"Make it calmer","scenes":[]}']], 'usage' => []])]);
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
         $this->conversations->message($this->owner, $c->id, ['content' => 'Use a halftone mascot. Show Offer', 'expected_version' => 0, 'idempotency_key' => 'req-brief']);
@@ -2363,7 +2365,7 @@ class CreateIntegrationTest extends TestCase
         $reply = ['summary' => 'A kinetic launch video', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'Title lands']]];
         $plan = fn ($id) => ['id' => $id, 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => ['input_tokens' => 100000, 'output_tokens' => 2000]];
         // The question check before it (Sonnet: 2,000 in, 100 out) is part of planning too.
-        Http::fake(['api.anthropic.com/*' => Http::sequence()->push(['content' => [['type' => 'text', 'text' => '{"question": null}']], 'usage' => ['input_tokens' => 2000, 'output_tokens' => 100]])->push($plan('one'))->push($plan('two'))]);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()->push(['content' => [['type' => 'text', 'text' => '{"question": null}']], 'usage' => ['input_tokens' => 2000, 'output_tokens' => 100]])->push($plan('one'))->push(['content' => [['type' => 'text', 'text' => '{"question": null}']]])->push($plan('two'))]);
         $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
         $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
         $service = app(\App\Services\Create\PlanService::class);
@@ -3108,6 +3110,58 @@ class CreateIntegrationTest extends TestCase
         $this->actingAs($this->owner->fresh())->getJson('/api/v1/create/capabilities')->assertNotFound();
         $this->owner->update(['email' => 'team@wyvstudio.com']);
         $this->actingAs($this->owner->fresh())->getJson('/api/v1/create/capabilities')->assertOk()->assertJsonPath('data.enabled', true);
+    }
+
+    public function test_material_the_reference_shows_is_asked_for_by_rule_once_and_go_without_plans(): void
+    {
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.planner' => 'anthropic']);
+        $study = ['duration_seconds' => 20, 'moments_status' => 'ok', 'moments' => [['id' => 'm1', 'kind' => 'ui'], ['id' => 'm2', 'kind' => 'stat'], ['id' => 'm3', 'kind' => 'text']]];
+        $ref = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'ref.mp4', 'storage_url' => 'create-upload://r', 'status' => 'active', 'metadata_json' => ['reference_study' => $study]]);
+        $fake = \Mockery::mock(\App\Services\Create\References\ReferenceStudy::class);
+        $fake->shouldReceive('forAsset')->andReturn($study);
+        $this->app->instance(\App\Services\Create\References\ReferenceStudy::class, $fake);
+        $c = $this->conversations->create($this->owner, ['reference_match' => 'similar', 'duration_chosen' => true]);
+        $this->conversations->attach($this->owner, $c->id, $ref->id, 'reference', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Something like this for my app.', 'expected_version' => 1, 'idempotency_key' => 'b1']);
+        $v = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $plans = app(\App\Services\Create\PlanService::class);
+        Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => '{"question": null}']]])]);
+        $asked = $plans->propose($this->owner, $c->id, $v(), 'm1');
+        $this->assertSame('Before I plan: your reference shows screens or a screen recording of the product and real numbers (users, ratings or results). Do you have yours? Attach them here, or reply "go without" and I\'ll use illustrative versions.', $asked['question']);
+        Http::assertNothingSent();
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Go without', 'expected_version' => $v(), 'idempotency_key' => 'b2']);
+        $reply = ['summary' => 'A similar app video', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'Title lands']]];
+        Http::fake(fn ($r) => Http::response(! isset($r['system']) ? ['content' => [['type' => 'text', 'text' => '{"question": null}']]]
+            : ['id' => 'p', 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => ['input_tokens' => 10, 'output_tokens' => 10]]));
+        try { $plans->propose($this->owner, $c->id, $v(), 'm2'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException) { /* the stand-in planner's reply is not the point */ }
+        $this->assertSame(1, DB::table('create_messages')->where('conversation_id', $c->id)->where('idempotency_key', 'like', 'materials:%')->count(), 'asked once');
+        Http::assertSent(fn ($r) => ($r['model'] ?? '') === \App\Services\Create\Planning\Clarifier::MODEL);
+        // The user's own screens attached: nothing to ask.
+        $mine = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'title' => 'screen.png', 'storage_url' => 'create-upload://s', 'status' => 'active']);
+        $c2 = $this->conversations->create($this->owner, ['reference_match' => 'similar']);
+        $this->conversations->attach($this->owner, $c2->id, $ref->id, 'reference', 0);
+        $this->conversations->attach($this->owner, $c2->id, $mine->id, 'source', 1);
+        $this->assertNull(\App\Services\Create\PlanService::materialsWanted($this->conversations->conversation($this->owner, $c2->id)));
+    }
+
+    public function test_a_vague_change_gets_one_question_and_the_plan_says_what_it_assumed(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $v = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $plans->propose($this->owner, $c->id, $v(), 'p1', true);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'make it better', 'expected_version' => $v(), 'idempotency_key' => 'b2']);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.planner' => 'anthropic']);
+        $reply = ['summary' => 'A sharper launch video', 'assumptions' => ['Free trial, no price shown', ''], 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'Title lands']]];
+        Http::fake(fn ($r) => Http::response(! isset($r['system']) ? ['content' => [['type' => 'text', 'text' => '{"question": "Which part should change: the hook, the colours, the voice, or the pacing?"}']]]
+            : ['id' => 'p', 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => ['input_tokens' => 10, 'output_tokens' => 10]]));
+        $asked = $plans->propose($this->owner, $c->id, $v(), 'p2');
+        $this->assertSame('Which part should change: the hook, the colours, the voice, or the pacing?', $asked['question']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'the hook', 'expected_version' => $v(), 'idempotency_key' => 'b3']);
+        $plan = $plans->propose($this->owner, $c->id, $v(), 'p3');
+        $this->assertSame('proposed', $plan['status'], 'the answer plans; it is not asked again');
+        $this->assertSame(['Free trial, no price shown'], $plan['plan']['assumptions']);
     }
 
     public function test_every_vendors_errors_are_read_the_same_way(): void
