@@ -2441,13 +2441,23 @@ class CreateIntegrationTest extends TestCase
         // Less than the likely cost: refused, saying what it usually takes.
         $this->workspace->update(['credits_monthly' => (int) $q->payload_json['estimate'] - 10]);
         $this->rejected(402, fn () => $this->conversations->approve($this->owner, $c->id, $q->id, 'limited-low', true));
-        // More than the likely cost but less than the ceiling: it starts, with what is available as its ceiling.
-        $available = (int) $q->payload_json['estimate'] + 100;
+        // The likely cost but not one call's ceiling on top: the build would stop part-way, so it is refused too.
+        $min = \App\Services\Create\ConversationService::MIN_CALL_CREDITS;
+        $this->workspace->update(['credits_monthly' => (int) $q->payload_json['estimate'] + $min - 10]);
+        $this->rejected(402, fn () => $this->conversations->approve($this->owner, $c->id, $q->id, 'limited-short', true));
+        // More than the likely cost but less than the ceiling: it starts, with what is available as its ceiling, and
+        // a per-call ceiling small enough that the likely cost fits under it.
+        $available = (int) $q->payload_json['estimate'] + $min + 40;
         $this->workspace->update(['credits_monthly' => $available]);
         $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'limited-ok', true);
         $input = json_decode($run->input_json, true);
         $this->assertTrue($input['credit_limited']);
         $this->assertSame($available, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('authorized_credits'));
+        $agent = $input['execution_policy']['agent'];
+        $this->assertGreaterThanOrEqual($min, $agent['credits']);
+        $this->assertLessThan(300, $agent['credits']);
+        $this->assertSame($agent['credits'] * 4000, $agent['cost_limit_microusd']);
+        $this->assertGreaterThanOrEqual((int) $q->payload_json['estimate'] - (int) ($q->payload_json['media_estimate'] ?? 0), $agent['total_credits'] - $agent['credits'], 'the likely cost fits under room less one ceiling');
         // Reaching it pauses the step: the run says so, and Retry continues it.
         $claim = $this->runs->claim();
         DB::table('composition_trace_events')->insert(['run_id' => $run->id, 'sequence' => 1, 'event_json' => json_encode(['phase' => 'run', 'status' => 'failed', 'detail' => 'Model budget exhausted']), 'created_at' => now()]);

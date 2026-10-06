@@ -11,6 +11,9 @@ use Illuminate\Support\Str;
 class ConversationService
 {
     public const ACTIVE = ['queued', 'running', 'cancel_requested', 'needs_attention'];
+    // The smallest per-call ceiling a credit-limited build gets: $0.60, above the dearest build call measured
+    // ($0.595 across 1,488 calls, 2026-09-26 to 10-06; median $0.07).
+    public const MIN_CALL_CREDITS = 150;
 
     public function creditAvailability(User $user): array
     {
@@ -430,8 +433,12 @@ class ConversationService
                     $criticHold = $critic ? $criticEach * (int) $critic['max_calls'] : 0;
                     $fixed = (int) $quote->credits_max - $agentBudget - $criticHold;
                     $agentNeed = max(0, (int) ($p['estimate'] ?? 0) - (int) ($p['media_estimate'] ?? 0));
-                    $spare = $credits['available'] - $fixed - $agentNeed;
-                    abort_if($spare < 0 || $credits['available'] - $fixed <= 0, 402, sprintf('Top up to continue: this usually takes about %s credits and you have %s available.', number_format((int) ($p['estimate'] ?? $quote->credits_max)), number_format($credits['available'])));
+                    // Each call holds its ceiling while it runs, so the build can only spend up to its room less one
+                    // ceiling. A short room gets a smaller ceiling (never below MIN_CALL_CREDITS, above any call seen)
+                    // so the likely cost fits; less than that asks for a top-up rather than stopping part-way.
+                    $callFloor = min((int) $p['execution_policy']['agent']['credits'], self::MIN_CALL_CREDITS);
+                    $spare = $credits['available'] - $fixed - $agentNeed - $callFloor;
+                    abort_if($spare < 0 || $credits['available'] - $fixed <= 0, 402, sprintf('Top up to continue: this usually takes about %s credits, and starting needs %s available (you have %s).', number_format((int) ($p['estimate'] ?? $quote->credits_max)), number_format($fixed + $agentNeed + $callFloor), number_format($credits['available'])));
                     if ($critic) {
                         $rounds = min((int) $critic['max_calls'], $criticEach > 0 ? intdiv($spare, $criticEach) : 0);
                         if ($rounds > 0) $p['execution_policy']['critic']['max_calls'] = $rounds; else unset($p['execution_policy']['critic']);
@@ -439,6 +446,9 @@ class ConversationService
                     }
                     $room = $credits['available'] - $fixed - $criticHold;
                     $p['execution_policy']['agent']['total_credits'] = $room;
+                    $call = max($callFloor, min((int) $p['execution_policy']['agent']['credits'], $room - $agentNeed));
+                    $p['execution_policy']['agent']['credits'] = $call;
+                    $p['execution_policy']['agent']['cost_limit_microusd'] = $call * 4000;
                     $p['credit_limited'] = true;
                     $quote->update(['payload_json' => $p, 'credits_max' => $fixed + $criticHold + $room]);
                 }
