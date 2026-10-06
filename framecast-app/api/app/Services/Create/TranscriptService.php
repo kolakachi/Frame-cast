@@ -53,9 +53,8 @@ class TranscriptService
         $seconds = (float) trim(\Illuminate\Support\Facades\Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
         abort_unless($seconds > 0, 422, 'That file has no sound to listen to.');
         abort_if($seconds > config('create.transcript_max_seconds'), 422, 'Listening covers up to 10 minutes.');
-        $key = 'create-transcript:'.$run->workspace_id.':'.now()->toDateString();
-        abort_if(RateLimiter::tooManyAttempts($key, (int) config('create.transcript_daily_limit')), 429, 'Daily transcript limit reached. Try again tomorrow.');
-        RateLimiter::hit($key, 86400);
+        // No daily limit here: this is the build's own check of a video someone already paid for, bounded by that
+        // build. The daily limit protects the free transcripts users ask for (transcribe above).
         $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, (string) ($file->getMimeType() ?: 'audio/wav'));
         // A provider hiccup is retried once before the check is reported as unavailable (it then shows as unverified).
         if (($result['provider_key'] ?? '') === 'local_fallback') { sleep(3); $result = app(MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, (string) ($file->getMimeType() ?: 'audio/wav')); }

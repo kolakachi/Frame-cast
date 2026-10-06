@@ -61,7 +61,7 @@ return [
     // The smaller models planning uses besides the planner (questions, file roles), in micro-dollars a token.
     'model_rates' => ['claude-sonnet-5' => ['input' => 3, 'output' => 15, 'cache_write' => 3.75, 'cache_read' => 0.3], 'claude-haiku-4-5-20251001' => ['input' => 1, 'output' => 5, 'cache_write' => 1.25, 'cache_read' => 0.1]],
     // Word-timed transcripts of supplied speech (free; OpenAI Whisper cost is about $0.006 a minute).
-    'transcript_daily_limit' => (int) env('CREATE_TRANSCRIPT_DAILY_LIMIT', 200),
+    'transcript_daily_limit' => (int) env('CREATE_TRANSCRIPT_DAILY_LIMIT', 30),
     'transcript_max_seconds' => 600,
     // Public posts pasted as style references (X, YouTube, TikTok). Fetched
     // privately, attached as reference only, never placed in an output.
