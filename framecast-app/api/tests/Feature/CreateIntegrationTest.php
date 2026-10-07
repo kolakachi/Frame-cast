@@ -4813,6 +4813,7 @@ class CreateIntegrationTest extends TestCase
         $frame = DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'current')->first();
         $this->assertSame(['kind' => 'screenshot', 'use' => 'Make the drop golden and slower', 'time' => 9.2], json_decode($frame->notes_json, true));
         $this->assertSame('queued', $out['planning']['state']);
+        $this->assertTrue((bool) DB::table('create_planning_jobs')->where('conversation_id', $c->id)->orderByDesc('created_at')->value('skip_questions'), 'a drawer change is specific: planned without a question');
         $this->assertSame('edit', \App\Services\Create\PlanService::plannerTask(DB::table('create_conversations')->where('id', $c->id)->first()), 'a long drawer request is still a change');
         $this->rejected(422, fn () => app(\App\Services\Create\ChangeService::class)->change($this->owner, $c->id, $revision, ['expected_version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'moments' => [['time' => 1, 'text' => ' ']]], []));
     }

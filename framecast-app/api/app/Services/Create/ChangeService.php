@@ -47,7 +47,9 @@ class ChangeService
             if (($f['purpose'] ?? '') !== 'source' || ! in_array($f['asset_type'] ?? '', ['image', 'video'], true) || ! empty($f['operation'])) continue;
             $notes = json_decode((string) DB::table('create_attachments')->where('conversation_id', $c->id)->where('asset_id', $f['asset_id'] ?? 0)->value('notes_json'), true) ?: [];
             $logo = ($notes['kind'] ?? '') === 'logo' || str_contains(mb_strtolower((string) ($f['name'] ?? '')), 'logo');
-            $parts[] = ['id' => 'file-'.($f['asset_id'] ?? 0), 'kind' => $logo ? 'logo' : 'your_'.$f['asset_type'], 'name' => $logo ? 'Logo' : Str::limit((string) ($f['name'] ?? 'Your file'), 40),
+            // Named by the file's title as the user knows it, never its storage name ("asset-5094-…").
+            $title = (string) (Asset::where('workspace_id', $user->workspace_id)->whereKey((int) ($f['asset_id'] ?? 0))->value('title') ?: 'Your '.($f['asset_type'] === 'video' ? 'video' : 'picture'));
+            $parts[] = ['id' => 'file-'.($f['asset_id'] ?? 0), 'kind' => $logo ? 'logo' : 'your_'.$f['asset_type'], 'name' => $logo ? 'Logo' : Str::limit($title, 40),
                 'what' => (string) ($notes['use'] ?? ''), 'times' => null, 'remake_credits' => null, 'clip' => $f['asset_type'] === 'video', 'asset_id' => (int) ($f['asset_id'] ?? 0)];
         }
         $sound = collect($input['plan_media'] ?? [])->whereIn('kind', ['music', 'voiceover', 'cloned_voiceover'])->pluck('kind')->unique()->values()->all();
@@ -149,7 +151,7 @@ class ChangeService
                     'notes_json' => json_encode(['kind' => $part['kind'] === 'logo' ? 'logo' : ($asset->asset_type === 'video' ? 'footage' : 'photo'), 'use' => 'Replaces the '.$label]), 'updated_at' => now()]);
                 $lines[] = '- Replace the '.$label.' with my file "'.$asset->title.'"'.($text !== '' ? ': '.$text : '').'.';
             } elseif (($p['action'] ?? '') === 'remake') {
-                $lines[] = '- Make a new '.$label.($text !== '' ? ': '.$text : '').'.';
+                $lines[] = '- Make a new '.$label.($text !== '' ? ': '.rtrim($text, '. ') : '').'.';
             } elseif ($text !== '') {
                 $lines[] = '- The '.$label.': '.$text;
             }
@@ -170,14 +172,16 @@ class ChangeService
             $lines[] = '- Music: use my track "'.Asset::whereKey($musicId)->value('title').'".';
         }
         if (($input['voice'] ?? 'keep') === 'another') $lines[] = '- Voice: a different voice.';
-        if (($note = trim((string) ($input['note'] ?? ''))) !== '') $lines[] = '- Also: '.$note;
+        if (($note = trim((string) ($input['note'] ?? ''))) !== '') $lines[] = '- '.($lines ? 'Also: ' : '').$note;
         abort_unless($lines, 422, 'Tell me what to change first.');
 
         $content = 'Change version '.$rev->number." of the video:\n".implode("\n", $lines)."\nKeep everything else as it is.";
         $key = 'change:'.$rev->id.':'.hash('sha256', $content);
         $version = (int) DB::table('create_conversations')->where('id', $c->id)->value('version');
         $message = $conversations->message($user, $c->id, ['content' => $content, 'idempotency_key' => $key, 'expected_version' => $version]);
-        $job = app(PlanningJobService::class)->submit($user, $c->id, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), $key.':plan', false);
+        // The drawer's change is already specific (it names the moment, the part or the words), so it is planned
+        // without a clarifying question (GTM-1: #5 and #9 were asked about the end card and the cut's sentences).
+        $job = app(PlanningJobService::class)->submit($user, $c->id, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), $key.':plan', true);
         return ['message' => $message, 'planning' => $job];
     }
 
