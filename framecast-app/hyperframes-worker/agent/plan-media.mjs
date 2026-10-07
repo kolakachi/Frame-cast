@@ -42,7 +42,9 @@ export async function buyPlanMedia({items,produce,download,directory,manifest,on
   }
   results[i]=out;
  };
- for(let i=0;i<items.length;i++){
+ // Voices first: a lip-synced take is driven by the narration, so it must exist before the take starts.
+ const voice=m=>['voiceover','cloned_voiceover'].includes(m?.kind)?0:1;
+ for(const i of [...items.keys()].sort((a,b)=>voice(items[a])-voice(items[b])||a-b)){
   signal?.throwIfAborted();
   onStage((items[i].kind==='generated_shot'||items[i].kind==='ugc_take'?'Starting ':'Getting ')+(LABEL[items[i].kind]||'plan media')+' ('+(i+1)+' of '+items.length+')');
   const r=await produce(i);

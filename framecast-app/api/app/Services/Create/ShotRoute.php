@@ -319,9 +319,12 @@ class ShotRoute
             : (! empty($ctx['has_sheet']) ? 'sheet' : (! empty($ctx['has_avatar']) ? 'avatar' : 'none'));
         // A selected cloned voice: the approved cloned narration drives a lip-synced presenter (the existing route),
         // never a native take beside an unused cloned purchase.
-        if (($ctx['voice'] ?? null) === 'clone') {
+        // A take that says a name with a saved pronunciation does the same with our narration, which says it as saved.
+        $names = array_values(array_filter((array) ($ctx['spoken_names'] ?? []), fn ($n) => preg_match('/(?<![\p{L}\p{N}])'.preg_quote((string) ($n['written'] ?? ''), '/').'(?![\p{L}\p{N}])/iu', implode("\n", $lines))));
+        if (($ctx['voice'] ?? null) === 'clone' || ($names && $presenter !== 'none')) {
             $secs = (int) ceil(self::speechSeconds(implode(' ', $lines), (string) ($ctx['language'] ?? 'en')) + 1);
-            return array_filter(['engine' => 'lipsync', 'engine_label' => 'Lip-sync to your cloned voice', 'presenter' => $presenter, 'speech_mode' => 'cloned_lipsync',
+            $label = ($ctx['voice'] ?? null) === 'clone' ? 'Lip-sync to your cloned voice' : 'Lip-sync to the narration, so '.implode(' and ', array_column($names, 'written')).' is said as saved';
+            return array_filter(['engine' => 'lipsync', 'engine_label' => $label, 'presenter' => $presenter, 'speech_mode' => 'cloned_lipsync',
                 'segments' => [['lines' => $lines, 'seconds' => $secs]], 'seconds' => $secs, 'aspect' => $ctx['aspect_ratio'] ?? '9:16',
                 'credits' => CreditService::spokespersonCost((float) $secs),
                 'problem' => $presenter === 'none' ? 'A lip-synced take needs a presenter image: attach your photo or add the presenter to the sheet.' : null], fn ($v) => $v !== null);

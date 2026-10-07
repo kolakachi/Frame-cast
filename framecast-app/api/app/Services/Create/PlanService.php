@@ -882,6 +882,9 @@ class PlanService
             'look_first' => (bool) ($raw['look_first'] ?? false) && collect($media)->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)
                 || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character')),
             'selections' => ['omitted_performance' => $ctx['previous_plan']['omitted_performance'] ?? [], 'callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+        // Names in the script with a saved pronunciation: a take that speaks them lip-syncs to our narration, which follows
+        // the pronunciation; a video model's own voice does not (GTM-1 #5 said "Wyve Studio").
+        $plan['spoken_names'] = PlanMediaExecutor::pronunciationsIn(implode("\n", array_map('strval', (array) $narration)), $workspaceId);
         // The reference study's moments: every one gets an explicit keep, replace or drop, and nothing disappears silently.
         $known = collect($ctx['files'] ?? [])->flatMap(fn ($f) => collect(data_get($f, 'reference.study.moments', []))->pluck('id'))->filter()->values()->all();
         $refDecisions = collect((array) ($raw['reference_decisions'] ?? []))->filter(fn ($d) => is_array($d) && in_array($d['moment'] ?? null, $known, true) && in_array($d['decision'] ?? null, ['keep', 'replace', 'drop'], true))
@@ -1051,7 +1054,8 @@ class PlanService
             'has_sheet' => collect($items)->contains('kind', 'reference_sheet'), 'aspect_ratio' => data_get($plan, 'shot_context.aspect_ratio', '9:16'), 'language' => data_get($plan, 'shot_context.language', 'en'),
             'narration' => $plan['selections']['narration'] ?? $plan['narration'] ?? [],
             'original_narration' => $plan['narration'] ?? $plan['selections']['narration'] ?? [],
-            'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name'), 'voice' => $voice];
+            'subjects' => array_column(ShotRoute::sheet(collect($items)->firstWhere('kind', 'reference_sheet') ?? [])['subjects'], 'name'), 'voice' => $voice,
+            'spoken_names' => (array) ($plan['spoken_names'] ?? [])];
         // With a cast sheet, every generated shot starts from its approved storyboard panel (unless the planner chose
         // another start frame), and the panels are drawn in the look stage from the cast.
         // An engine the user chose for a shot (after a refusal, C3) replaces the planner's.
@@ -1083,7 +1087,11 @@ class PlanService
         }
         // A UGC take speaks the script itself: no separate narration is bought, unless a cloned voice is selected, when
         // the cloned narration is what the take lip-syncs to.
-        if (collect($items)->contains('kind', 'ugc_take') && $voice !== 'clone') $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
+        $lipsync = collect($items)->contains(fn ($m) => $m['kind'] === 'ugc_take' && ($m['speech_mode'] ?? '') === 'cloned_lipsync');
+        if (collect($items)->contains('kind', 'ugc_take') && $voice !== 'clone' && ! $lipsync) $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
+        // A take that says a saved name lip-syncs to our narration: the narration is bought (first) for it.
+        if ($lipsync && $voice !== 'clone' && ! collect($items)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)))
+            array_unshift($items, ['kind' => 'voiceover', 'description' => 'Narration of the approved script for the lip-synced take, saying names as saved', 'credits' => \App\Services\CreditService::TTS_GEMINI]);
         if (collect($items)->contains('kind', 'ugc_take') && $voice === 'clone' && ! collect($items)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)))
             $items[] = ['kind' => 'cloned_voiceover', 'description' => 'Narration in your cloned voice for the lip-synced take', 'credits' => \App\Services\CreditService::TTS_CLONE];
         $hasTake = collect($items)->contains('kind', 'talking_take');

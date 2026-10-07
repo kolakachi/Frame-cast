@@ -13,7 +13,8 @@ test('buys each item, stages files as sources and reports failures without stopp
  assert.equal(r[2].brand.colors[0],'#F26A1B');assert.deepEqual(r[0].cues,[{name:'click',start:0,end:0.3}],'sound cues reach the agent');assert.equal(r[1].error,'No lines');
  assert.equal(manifest[0].path,'source/'+file.name);assert.equal(manifest[0].plan_media.kind,'ai_image');
  assert.deepEqual(await readFile(dir+'/source/'+file.name),bytes);
- assert.match(stages[0],/Getting an AI image \(1 of 3\)/);
+ assert.match(stages[1],/Getting an AI image \(1 of 3\)/);
+ assert.match(stages[0],/Getting narration \(2 of 3\)/,'the narration is made first, so a lip-synced take can use it');
 });
 test('a tampered or mislabelled file is refused',async()=>{
  const dir=await mkdtemp(tmpdir()+'/pm-');
