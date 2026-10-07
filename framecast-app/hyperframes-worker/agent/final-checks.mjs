@@ -50,6 +50,12 @@ export function shotFrames(windows,duration,max=6){
 
 const at=t=>Number.isFinite(t)?'At '+Number(t).toFixed(1)+' s: ':'';
 
+/** What the final verdict hears from the listening check's summary (names included: GTM-1 found them dropped here). */
+export function audioForVerdict(summary){
+ if(!summary)return null;
+ return {script_coverage:summary.script_coverage,missing:summary.missing,music:summary.mix?.music===true,names:summary.names||[]};
+}
+
 /**
  * Combines the measurements into checks. look: the vision verdict ({status:'checked'|'unverified', required, identity,
  * lettering, actions}); audio: the listening summary; moves: missing planned moves; blanks: unintended blank spans.
@@ -139,7 +145,8 @@ export async function finalChecks({file,duration,plan={},planMedia=[],audioSumma
  let verdict=null;
  if(needsLook&&look){
   const {frames,cleanup}=await sampleFrames(file,duration,{ffmpeg,extra:shotFrames(shotWindows(html,planMedia),duration)});
-  try{verdict=await look(await Promise.all(frames.map(async f=>({time:f.time,label:f.label,jpeg:await readFile(f.path)}))));}catch{verdict=null;}finally{await cleanup();}
+  // A look that errors says why (GTM-1 #6 showed only "could not be looked at" and the reason was lost).
+  try{verdict=await look(await Promise.all(frames.map(async f=>({time:f.time,label:f.label,jpeg:await readFile(f.path)}))));}catch(e){verdict={status:'unverified',note:'the check request failed: '+String(e?.message||e).slice(0,100)};}finally{await cleanup();}
  }
  const expectsSpeech=plan.settings_audio!=='silent'&&((plan.narration||[]).length>0||planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'));
  return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,expectsSpeech,generatedPeople});

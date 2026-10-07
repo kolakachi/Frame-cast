@@ -5,7 +5,7 @@ import {createSandboxSupervisor,confirmSandboxStopped} from './sandbox-exec.mjs'
 import {agentFailure,sandboxStopUnconfirmed} from './sandbox-failure.mjs';
 import {createTrajectory} from './trajectory.mjs';
 import {reviewStatus} from './review-status.mjs';
-import {finalChecks,repairable,repairBrief} from './final-checks.mjs';
+import {finalChecks,repairable,repairBrief,audioForVerdict} from './final-checks.mjs';
 import {moveFindings} from './move-check.mjs';
 import {createDiskGate,diskPolicy} from './disk-capacity.mjs';
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
@@ -339,7 +339,7 @@ async function execute(run){
     const look=async frames=>{const form=new FormData();form.set('lease_token',run.lease_token);for(const [k,f] of frames.entries()){form.append('times[]',String(f.time));form.append('labels[]',f.label||'');form.append('frames[]',new Blob([f.jpeg],{type:'image/jpeg'}),'f'+k+'.jpg');}return request('runs/'+run.id+'/look',form,true,180000);};
     const sources=Object.entries(agentResult?.bundle??{}).filter(([n])=>!/^(gsap|wyv-|barty-)/.test(n)).map(([,t])=>t).join('\n');
     finalReview=await finalChecks({file,duration:audioReview?.duration||Number(run.input.settings?.duration_seconds)||15,plan:{...plan,settings_audio:run.input.settings?.audio},planMedia,
-     audioSummary:audioReview?{script_coverage:audioReview.summary.script_coverage,missing:audioReview.summary.missing,music:audioReview.summary.mix?.music===true}:null,reading:(deliveryChecks?.pacing||[]).filter(f=>f.code==='reading_time'),moves:moveFindings({plan,sources,requireRuntime:true,ran:await readFile(dir+'/render/moves.json','utf8').then(t=>{const m=JSON.parse(t);return Array.isArray(m)?m:null;}).catch(()=>null)}),look,html:agentResult?.bundle?.['index.html']||''});
+     audioSummary:audioForVerdict(audioReview?.summary),reading:(deliveryChecks?.pacing||[]).filter(f=>f.code==='reading_time'),moves:moveFindings({plan,sources,requireRuntime:true,ran:await readFile(dir+'/render/moves.json','utf8').then(t=>{const m=JSON.parse(t);return Array.isArray(m)?m:null;}).catch(()=>null)}),look,html:agentResult?.bundle?.['index.html']||''});
     await trace({phase:'review',status:finalReview.status==='blocked'?'failed':'succeeded',summary:'Checked the final video against the plan',detail:JSON.stringify(finalReview).slice(0,1900)});
    }catch(e){
     // Checks that could not run are unverified, never absent: the version is marked as not checked.

@@ -164,3 +164,11 @@ test('a name said wrongly blocks delivery, by ear; a pronunciation requirement i
  assert.equal(right.checks.find(c=>c.id==='required').status,'pass');
  assert.equal(right.checks.find(c=>c.id==='said').status,'pass');
 });
+test('what the verdict hears carries the name results from the listening summary',async()=>{
+ const {audioForVerdict}=await import('../final-checks.mjs');
+ const names=[{written:'WyvStudio',spoken:'weave studio',status:'fail',heard:'wyve studio',time:1.8}];
+ const a=audioForVerdict({script_coverage:1,missing:[],mix:{music:true},names});
+ assert.deepEqual(a,{script_coverage:1,missing:[],music:true,names});
+ assert.equal(finalVerdict({plan:{},look:{status:'checked'},audio:a}).checks.find(c=>c.id==='said').status,'fail');
+ assert.equal(audioForVerdict(null),null);
+});
