@@ -4896,4 +4896,18 @@ class CreateIntegrationTest extends TestCase
         $this->artisan('create:model-balance', ['usd' => '300'])->assertSuccessful();
         $this->assertArrayNotHasKey('balance', app(\App\Services\Create\CreateHealth::class)->problems(), 'a top-up recorded clears it');
     }
+
+    public function test_a_replan_keeps_the_people_already_made_unless_asked_for_someone_else(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $cast = ['kind' => 'reference_sheet', 'description' => 'Warm creator room, the approved woman with curly hair', 'subjects' => [['name' => 'Creator', 'looks' => 'curly hair']], 'credits' => 35];
+        $raw = ['summary' => 'Reaction ad.', 'scenes' => [['label' => 'React', 'start' => 0, 'end' => 4, 'idea' => 'She reacts']], 'left_out' => '',
+            'media' => [['kind' => 'reference_sheet', 'description' => 'Look of the whole video: near-black field, orange accents', 'subjects' => [['name' => 'Creator', 'looks' => 'new person']]]]];
+        $ctx = fn ($ask) => ['files' => [], 'previous_plan' => ['cast' => [$cast]], 'messages' => [['role' => 'user', 'content' => 'A reaction ad.'], ['role' => 'user', 'content' => $ask]]];
+        $kept = $plans->normalize($raw, $ctx('Show the plan turning into a product ad in the phone instead of the creator again.'), $this->workspace->id);
+        $sheet = collect($kept['media'])->firstWhere('kind', 'reference_sheet');
+        $this->assertSame('Warm creator room, the approved woman with curly hair', $sheet['description'], 'the same person: the sheet is reused, nobody new is drawn');
+        $new = $plans->normalize($raw, $ctx('Use a different presenter, someone older.'), $this->workspace->id);
+        $this->assertSame('Look of the whole video: near-black field, orange accents', collect($new['media'])->firstWhere('kind', 'reference_sheet')['description'], 'asked for someone else: the new sheet');
+    }
 }

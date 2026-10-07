@@ -744,9 +744,22 @@ class PlanService
                     'video_tier' => json_decode($prev->plan_json, true)['selections']['video_tier'] ?? null,
                     'approved_agreement' => json_decode($prev->plan_json, true)['selections']['agreement'] ?? null,
                     'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? [],
+                    // The cast sheet the user saw (and may have approved): a re-plan keeps it unless they ask for someone else.
+                    'cast' => self::deliveredCast($c) ?? array_values(array_filter((array) (json_decode($prev->plan_json, true)['media'] ?? []), fn ($m) => ($m['kind'] ?? '') === 'reference_sheet')),
                     // The directions the user was shown, so "plan 3" or "2, with the look of 5" can be read.
                     'concept' => json_decode($prev->plan_json, true)['concept'] ?? null] : null,
         ];
+    }
+
+    /** The cast sheet of the plan behind the version the user has (its head revision), when there is one. */
+    private static function deliveredCast(object $c): ?array
+    {
+        $runId = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('run_id') : null;
+        $planId = $runId ? data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'plan.plan_id') : null;
+        $json = $planId ? DB::table('create_plans')->where('id', $planId)->value('plan_json') : null;
+        if (! $json) return null;
+        $cast = array_values(array_filter((array) (json_decode((string) $json, true)['media'] ?? []), fn ($m) => ($m['kind'] ?? '') === 'reference_sheet'));
+        return $cast ?: null;
     }
 
     public function normalize(array $raw, array $ctx, int $workspaceId): array
@@ -818,6 +831,21 @@ class PlanService
             // A talking shot or take is made from the poses and the narration, so it is always bought after them;
             // generated shots and takes are made from the approved sheet, so after it.
             ->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0, SORT_NUMERIC, false)->values()->all();
+        // A re-plan keeps the people already made: the previous cast sheet is carried over word for word, so it is reused
+        // and nobody new is drawn (GTM-1 #7: a change about the phone view re-described the sheet and made a new person).
+        // Only a message asking for a different person or look of the cast lets the planner's new sheet through.
+        $cast = (array) ($ctx['previous_plan']['cast'] ?? []);
+        $lastAsk = (string) (collect($ctx['messages'] ?? [])->where('role', 'user')->last()['content'] ?? '');
+        $newPerson = preg_match('/\b(different|new|another|change|replace|swap|younger|older)\b[^.!?]{0,40}\b(person|people|presenter|creator|character|avatar|face|actor|actress|cast|woman|man|girl|guy|model|host)s?\b/i', $lastAsk)
+            || preg_match('/\b(person|presenter|creator|character|avatar|face|actor|cast|woman|man|host)\b[^.!?]{0,30}\b(look|looks) (different|older|younger)/i', $lastAsk);
+        if ($cast && ! $newPerson && collect($media)->contains('kind', 'reference_sheet')) {
+            $kept = false;
+            $media = collect($media)->map(function ($m) use ($cast, &$kept) {
+                if ($m['kind'] !== 'reference_sheet' || $kept) return $m;
+                $kept = true;
+                return ['requirement_ids' => $m['requirement_ids'] ?? []] + $cast[0];
+            })->values()->all();
+        }
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
         // Measured: the catalogue voices speak about 2 words a second with pauses; leave 1.5 s at the end.
