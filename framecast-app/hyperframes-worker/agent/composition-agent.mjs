@@ -52,7 +52,10 @@ export async function pinnedKits(guidanceDirectory,plan){
  if((plan?.reference_decisions||[]).some(d=>d?.move)||(plan?.reference_systems||[]).some(x=>x?.move))kits.push(['kit/motion-kit.md','motion-kit.md']);
  let out='';
  for(const [name,file] of kits)try{out+='\n\n# '+name+' (pinned; do not read it again)\n'+await readFile(guidanceDirectory+'/../'+file,'utf8');}catch{/* readable on demand */}
- return out?out+'\n\nThe worked examples (kit/three-example.html, kit/reference-moves.html) are long: read one only when something you built does not work.':'';
+ if(out)out+='\n\nThe worked examples (kit/three-example.html, kit/reference-moves.html) are long: read one only when something you built does not work.';
+ // From scratch: the approved concept, format playbook and motion voice (written by the app from the plan).
+ if(typeof plan?.scratch_guide==='string')out+=plan.scratch_guide.slice(0,6000);
+ return out;
 }
 export async function executeCompositionAgent({directory,input,manifest,planMedia=[],callPrefix='agent',provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,stopRequested=()=>false,onProgress,onTrace}) {
  const assets=[];

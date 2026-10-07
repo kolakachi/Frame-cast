@@ -2636,6 +2636,41 @@ class CreateIntegrationTest extends TestCase
         $this->withToken(str_repeat('b', 64))->postJson('/api/internal/create/runs/'.$run->id.'/inputs/'.$mine->id, ['lease_token' => $claim['lease_token']])->assertForbidden();
     }
 
+    public function test_a_from_scratch_plan_carries_a_concept_a_playbook_and_a_motion_voice_to_the_build(): void
+    {
+        config(['create.planner' => 'anthropic', 'create.mode' => 'agent', 'services.anthropic.key' => 'k']);
+        $sent = [];
+        $reply = ['summary' => 'A kinetic launch teaser', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'The promise lands']],
+            'concept' => ['name' => 'One word becomes it', 'idea' => 'The word "shoot" crosses out and becomes the product', 'hook' => 'A giant SHOOT, struck through', 'look' => 'Black, orange, bold type',
+                'structure' => 'One object transforms through every feature', 'opening' => 'A giant word', 'ending' => 'Logo lockup', 'why' => 'Most specific to the brand',
+                'alternatives' => [['name' => 'Countdown', 'idea' => 'A countdown to the reveal'], ['name' => 'Problem flash', 'idea' => 'Three bad shoots, then the answer'], ['name' => 'Extra', 'idea' => 'Dropped: only two kept']]],
+            'playbook' => 'launch_promo', 'motion_voice' => ['id' => 'bold_playful', 'why' => 'A startup launch']];
+        Http::fake(['api.anthropic.com/*' => function ($request) use (&$sent, $reply) {
+            $sent[] = $request->data();
+            $planning = str_contains(json_encode($request->data()['system'] ?? ''), 'creative planner');
+            return Http::response(['id' => 'm'.count($sent), 'content' => [['type' => 'text', 'text' => $planning ? json_encode($reply) : '{"question": null}']], 'usage' => ['input_tokens' => 100, 'output_tokens' => 10]]);
+        }]);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch teaser for WyvStudio Create.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        $p = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, 1, 'scratch-1')['plan'];
+        // The planner was given the playbooks and motion voices.
+        $planner = collect($sent)->first(fn ($d) => str_contains(json_encode($d['system'] ?? ''), 'creative planner'));
+        $this->assertStringContainsString('format_playbooks', json_encode($planner['messages']));
+        $this->assertStringContainsString('launch_promo', json_encode($planner['messages']));
+        // The plan keeps the concept with two alternatives, the full playbook and the voice's timings.
+        $this->assertSame('The word "shoot" crosses out and becomes the product', $p['concept']['idea']);
+        $this->assertCount(2, $p['concept']['alternatives']);
+        $this->assertSame('launch_promo', $p['playbook']['id']);
+        $this->assertNotEmpty($p['playbook']['beats']);
+        $this->assertSame('back.out(1.8)', $p['motion_voice']['ease']);
+        // Unknown ids are dropped; a plan with a reference keeps no concept.
+        $this->assertSame([], \App\Services\Create\FormatPlaybooks::normalize(['playbook' => 'made_up', 'motion_voice' => ['id' => 'loud']], true));
+        $this->assertArrayNotHasKey('concept', \App\Services\Create\FormatPlaybooks::normalize($reply, false));
+        // The build gets the guide: beats with energy and holds, the concept and the motion voice.
+        $guide = \App\Services\Create\FormatPlaybooks::guide($p);
+        foreach (['# Format playbook: Launch or motion promo', 'energy high', '# Concept (approved)', 'back.out(1.8)'] as $part) $this->assertStringContainsString($part, $guide);
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);

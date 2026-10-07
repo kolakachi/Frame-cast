@@ -435,7 +435,9 @@ class PlanService
             'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard',
             'agreement' => $s['agreement'] ?? $p['agreement'] ?? null]
             // What the build and its checks follow from a reference and the 3D route; without these the builder never sees them.
-            + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_sound', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d']));
+            + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_sound', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d', 'concept', 'playbook', 'motion_voice']))
+            // From scratch: the playbook, concept and motion voice as the build's pinned guide.
+            + (($guide = FormatPlaybooks::guide($p)) !== '' ? ['scratch_guide' => $guide] : []);
     }
 
     public function stale(object $plan, object $c): bool
@@ -667,6 +669,9 @@ class PlanService
             '_images' => $this->planImages($user, $files),
             // Built-in style packs to start from, and the ones this workspace used last, so the planner varies them.
             'style_packs' => StylePacks::catalogue(),
+            // From scratch: format playbooks (beats, energy, structures, openings, endings) and motion voices.
+            'format_playbooks' => FormatPlaybooks::catalogue()['playbooks'],
+            'motion_voices' => FormatPlaybooks::catalogue()['motion_voices'],
             // The user's verdicts on earlier videos, per style key (pack:<slug>, saved:<id>, reference, free).
             'style_notes' => app(StyleNotes::class)->all((int) $user->workspace_id),
             // A pack the user pinned: the planner writes the scenes inside its rules.
@@ -805,6 +810,8 @@ class PlanService
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
             // What the planner assumed rather than knew, shown on the plan card so the user can correct it.
             'assumptions' => array_values(array_slice(array_filter(array_map(fn ($a) => is_string($a) ? $str($a, 120) : '', (array) ($raw['assumptions'] ?? []))), 0, 4)), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
+            // From scratch: the concept (with the two directions not taken), the format playbook and the motion voice.
+            ...FormatPlaybooks::normalize($raw, ! collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'reference')),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
             'requirements' => $requirements, 'character_style' => $characterStyle,
             // The user reviews the plan, then the video is built straight away. A separate look stage only when
