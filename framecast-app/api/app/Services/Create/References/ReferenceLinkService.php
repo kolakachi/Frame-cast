@@ -18,6 +18,7 @@ class ReferenceLinkService
     public function add(User $user, string $conversationId, string $url, int $version, string $key): Asset
     {
         app(ConversationService::class)->authorize($user, true);
+        app(\App\Services\Create\AdmissionControl::class)->assertOpen();
         $old = Asset::where('workspace_id', $user->workspace_id)->where('metadata_json->create_upload_key', $key)->first();
         if ($old) {
             abort_unless(data_get($old->metadata_json, 'conversation_id') === $conversationId && data_get($old->metadata_json, 'reference_source.requested_url') === $url, 409, 'This request key belongs to a different link.');

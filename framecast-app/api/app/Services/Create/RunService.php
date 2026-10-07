@@ -9,20 +9,16 @@ use Illuminate\Support\Str;
 /** Leases fence callbacks, not external costs. Expiry always requires reconciliation. */
 class RunService
 {
-    public function claim(): ?array
+    public function claim(?array $identity = null): ?array
     {
-        return DB::transaction(function () {
+        app(WorkerOwnership::class)->validate($identity);
+        if (app(AdmissionControl::class)->paused()) return null;
+        app(DiskSpace::class)->admission();
+        return DB::transaction(function () use ($identity) {
+            if (app(AdmissionControl::class)->paused(true)) return null;
             // One local render host. Serialize claim decisions without holding locks during rendering.
             if (DB::connection()->getDriverName() === 'pgsql') DB::select('select pg_advisory_xact_lock(783429)');
-            // Unknown work is never put back on the queue automatically.
-            $expired = DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested'])
-                ->where('lease_expires_at', '<', now())->lockForUpdate()->get();
-            foreach ($expired as $run) {
-                DB::table('composition_runs')->where('id', $run->id)->update([
-                    'status' => 'needs_attention', 'stage' => 'Worker disconnected', 'error' => 'Confirm the worker stopped before retrying.', 'updated_at' => now(),
-                ]);
-                DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'updated_at' => now()]);
-            }
+            $this->expireLocked();
             if (DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested'])->exists()
                 || DB::table('composition_runs')->where('status', 'needs_attention')->whereNull('worker_stopped_at')->exists()) return null;
             $query = DB::table('composition_runs')->where('status', 'queued')->when(config('create.workspaces'), fn ($q, $ws) => $q->whereIn('workspace_id', $ws))->whereNotExists(fn ($q) => $q->selectRaw('1')->from('composition_runs as held')->whereColumn('held.conversation_id', 'composition_runs.conversation_id')->where('held.status', 'needs_attention'))->orderBy('created_at');
@@ -35,8 +31,33 @@ class RunService
             ]);
             $input = json_decode($run->input_json, true);
             $input['input_files'] = array_map(function ($file) { unset($file['storage_path']); return $file; }, $input['input_files'] ?? []);
-            return ['id' => $run->id, 'lease_token' => $token, 'input' => $input];
+            $assignment = app(WorkerOwnership::class)->claimed($run->id, $token, $identity);
+            return ['id' => $run->id, 'lease_token' => $token, 'input' => $input, ...($assignment ? ['assignment' => $assignment] : [])];
         });
+    }
+
+    /** Scheduler detection does not depend on another worker making a claim. Never frees capacity or money. */
+    public function expireLeases(): int
+    {
+        return DB::transaction(function () {
+            if (DB::connection()->getDriverName() === 'pgsql') DB::select('select pg_advisory_xact_lock(783429)');
+            return $this->expireLocked();
+        });
+    }
+
+    private function expireLocked(): int
+    {
+        $expired = DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested'])
+            ->where('lease_expires_at', '<', now())->orderBy('id')->limit(100)->lockForUpdate()->get();
+        foreach ($expired as $run) {
+            DB::table('composition_runs')->where('id', $run->id)->update([
+                'status' => 'needs_attention', 'stage' => 'Worker disconnected',
+                'error' => 'Confirm the worker stopped before retrying.', 'updated_at' => now(),
+            ]);
+            DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'updated_at' => now()]);
+            \Illuminate\Support\Facades\Log::warning('create.worker_lease_expired', ['run_id' => $run->id, 'operation_id' => $run->operation_id]);
+        }
+        return $expired->count();
     }
 
     /** Called by the authenticated host only after its sandbox has stopped. Billing remains held. */
@@ -44,8 +65,13 @@ class RunService
     {
         $handed = 0;
         $result = DB::transaction(function () use ($id, $token, &$handed) {
+            $run = DB::table('composition_runs')->where('id', $id)->lockForUpdate()->firstOrFail();
+            if (app(WorkerOwnership::class)->replayedStop($run, $token)) {
+                return ['status' => $run->status, 'hold_retained' => $run->status === 'needs_attention', 'replayed' => true];
+            }
             $run = $this->leased($id, $token);
             abort_unless(in_array($run->status, ['needs_attention', 'running', 'cancel_requested'], true), 409);
+            app(WorkerOwnership::class)->acknowledge($run);
             // Clips still rendering are handed to the next run while the lease is still valid (C2).
             if ($run->status !== 'needs_attention') $handed = (int) rescue(fn () => app(PlanMediaService::class)->handOverPending($run, $token), 0);
             DB::table('composition_runs')->where('id', $id)->update([
@@ -56,6 +82,7 @@ class RunService
             DB::table('api_operations')->where('id', $run->operation_id)->update(['status' => 'needs_attention', 'capacity_slots' => 0, 'updated_at' => now()]);
             return ['status' => 'needs_attention', 'hold_retained' => true];
         });
+        if ($result['replayed'] ?? false) return $result;
         // Nothing left in doubt (every paid call settled, clips handed over): close the run now instead of holding it.
         if (! AttemptService::unresolved($id)) {
             $closed = rescue(fn () => app(ReconciliationService::class)->closeSettled($id, true), null, false);
@@ -142,7 +169,7 @@ class RunService
             abort_unless($fromAssetId === null || $parent, 422, 'Derived media must come from a source file of this run.');
             $suffix = $run->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
             $path = 'create/uploads/'.$suffix;
-            abort_unless(Storage::disk('local')->putFileAs(dirname($path), $file, basename($path)), 503, 'Could not store derived media.');
+            abort_unless(app(\App\Services\Create\CreateStorage::class)->putFileAs(dirname($path), $file, basename($path)), 503, 'Could not store derived media.');
             $origin = $fromAssetId === null ? 'generated' : (\App\Models\Asset::whereKey($fromAssetId)->value('title') ?: 'media');
             $asset = \App\Models\Asset::create(['workspace_id' => $run->workspace_id, 'asset_type' => $type[0],
                 'title' => mb_substr(ucfirst(str_replace('_', ' ', $op)).' · '.$origin, 0, 180), 'storage_url' => 'create-upload://'.$suffix,
@@ -180,7 +207,7 @@ class RunService
             $suffix = $run->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
             $path = 'create/uploads/'.$suffix;
             $stream = fopen($localPath, 'rb');
-            try { abort_unless(Storage::disk('local')->put($path, $stream, ['visibility' => 'private']), 503, 'Could not store generated media.'); }
+            try { abort_unless(app(\App\Services\Create\CreateStorage::class)->put($path, $stream, ['visibility' => 'private']), 503, 'Could not store generated media.'); }
             finally { if (is_resource($stream)) fclose($stream); }
             $asset = \App\Models\Asset::create(['workspace_id' => $run->workspace_id, 'asset_type' => $type[0], 'title' => mb_substr($title, 0, 180),
                 'storage_url' => 'create-upload://'.$suffix, 'mime_type' => $mime, 'file_size_bytes' => filesize($localPath), 'status' => 'active', 'restriction_scope' => 'workspace',
@@ -288,6 +315,7 @@ class RunService
         return DB::transaction(function () use ($id, $token, $sequence, $stage) {
             $run = $this->leased($id, $token);
             abort_unless(in_array($run->status, ['running', 'cancel_requested'], true) && now()->lessThan($run->lease_expires_at), 409, 'Lease is no longer current.');
+            app(WorkerOwnership::class)->seen($id);
             // Replayed events cannot regress the visible stage.
             DB::table('composition_runs')->where('id', $id)->update([
                 'sequence' => max($sequence, $run->sequence), 'stage' => $sequence > $run->sequence ? $stage : $run->stage,

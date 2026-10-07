@@ -28,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->scoped(\App\Services\Create\CreateStorage::class);
+        $this->app->scoped(\App\Services\Create\LocalStorageUse::class);
+        $this->app->scoped(\App\Services\Create\PrivateBucketGuard::class);
         // Router sends creative templates to the premium brain (Claude via
         // Replicate) and everything else — including all vision calls — to
         // OpenAI. Premium failures fall back to cheap automatically.

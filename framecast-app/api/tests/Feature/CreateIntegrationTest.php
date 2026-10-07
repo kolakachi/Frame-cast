@@ -22,7 +22,7 @@ class CreateIntegrationTest extends TestCase
         parent::setUp();
         config(['database.default' => 'create_test', 'database.connections.create_test' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false,
-        ], 'cache.default' => 'array', 'services.posthog.key' => '', 'create.enabled' => true, 'create.mode' => 'fixture', 'developer.operation_accounting' => true]);
+        ], 'cache.default' => 'array', 'services.posthog.key' => '', 'create.enabled' => true, 'create.runtime_controls_enabled' => false, 'create.worker_ownership_required' => false, 'create.mode' => 'fixture', 'developer.operation_accounting' => true]);
         DB::purge('create_test');
         Bus::fake(); Http::preventStrayRequests(); Redis::shouldReceive('get')->andReturn(null);
         $this->buildDeveloperSchema();
@@ -43,6 +43,10 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_10_03_150000_create_composition_trace_events.php'))->up();
         (require database_path('migrations/2026_10_03_160000_widen_create_plan_media_item_index.php'))->up();
         (require database_path('migrations/2026_10_06_160000_create_vendor_incidents.php'))->up();
+        (require database_path('migrations/2026_10_06_220000_create_create_planning_jobs.php'))->up();
+        (require database_path('migrations/2026_10_06_230000_create_create_stored_files.php'))->up();
+        (require database_path('migrations/2026_10_07_000000_create_create_runtime_controls.php'))->up();
+        (require database_path('migrations/2026_10_07_010000_create_create_worker_assignments.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -306,7 +310,7 @@ class CreateIntegrationTest extends TestCase
     {
         [$c, , $run] = $this->admitted(); $lease = $this->runs->claim();
         $html = '<!doctype html><html lang="en" data-composition-variables=\'[{"id":"headline","type":"string","label":"Headline","default":"Your product. Your story."},{"id":"cta","type":"string","label":"Button text","default":"Explore the collection"},{"id":"color_background","type":"color","label":"Background","default":"#17151d"},{"id":"color_accent","type":"color","label":"Accent","default":"#ff6b32"}]\'><head></head><body><div id="root" data-composition-id="main"><div id="cta">Explore the collection</div></div></body></html>';
-        $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => $html]], 'private/v1.mp4', 'hash');
+        $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => $html]], 'create/previews/test/v1.mp4', 'hash');
         $c = $this->conversations->conversation($this->owner, $c->id);
         $rev = DB::table('composition_revisions')->first();
         $decl = \App\Services\Create\CompositionVariables::declarations($html);
@@ -393,7 +397,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringStartsWith('Run · generated', Asset::find($generated['asset_id'])->title);
 
         // Finish; the next run inherits the derived file alongside the original source.
-        $this->runs->finish($run->id, $lease, ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<img src="'.$record['name'].'">']], 'private/v1.mp4', 'h');
+        $this->runs->finish($run->id, $lease, ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<img src="'.$record['name'].'">']], 'create/previews/test/v1.mp4', 'h');
         $head = $this->conversations->conversation($this->owner, $c->id)->head_revision_id;
         $inherited = app(\App\Services\Create\InputSnapshotService::class)->inherited($c->id, $head);
         $this->assertEqualsCanonicalizing([$source->id, $record['asset_id'], $generated['asset_id']], array_column($inherited, 'asset_id'));
@@ -765,7 +769,7 @@ class CreateIntegrationTest extends TestCase
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
         $html = '<html data-composition-variables=\'[{"id":"color_background","type":"color","label":"Background","default":"#F2EDE4"},{"id":"color_accent","type":"color","label":"Accent","default":"#E07A52"},{"id":"headline","type":"string","label":"Headline","default":"Hi"}]\'><style>h1{font-family:"Inter", sans-serif}</style></html>';
-        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => $html]], 'private/v1.mp4', 'h');
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => $html]], 'create/previews/test/v1.mp4', 'h');
         $rev = $this->conversations->conversation($this->owner, $c->id)->head_revision_id;
         $styles = app(\App\Services\Create\StyleService::class);
         $fromVersion = $styles->fromRevision($this->owner, $c->id, $rev, 'Paper warm');
@@ -800,7 +804,7 @@ class CreateIntegrationTest extends TestCase
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
         $checks = ['ok' => false, 'safe_area' => [['selector' => '#cta', 'time' => 13.456, 'message' => 'Collides with the caption band', 'extra' => 'dropped']],
             'edges' => 'not a list', 'contrast' => [], 'loudness' => ['status' => 'levelled', 'from' => -23.44, 'lufs' => -14.02, 'peak' => -1.6], 'injected' => '<script>'];
-        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<html></html>'], 'delivery_checks' => $checks, 'creative_review' => ['status' => 'passed', 'findings' => ['Fix the headline'], 'unknown' => 'discard']], 'private/v1.mp4', 'h');
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<html></html>'], 'delivery_checks' => $checks, 'creative_review' => ['status' => 'passed', 'findings' => ['Fix the headline'], 'unknown' => 'discard']], 'create/previews/test/v1.mp4', 'h');
         $meta = json_decode(DB::table('composition_revisions')->where('run_id', $run->id)->value('metadata_json'), true);
         $this->assertEquals(['ok' => false, 'safe_area' => [['selector' => '#cta', 'time' => 13.46, 'message' => 'Collides with the caption band']], 'edges' => [], 'contrast' => [],
             'pacing' => [], 'loudness' => ['status' => 'levelled', 'lufs' => -14.0, 'from' => -23.4, 'peak' => -1.6]], $meta['delivery_checks']);
@@ -914,7 +918,7 @@ class CreateIntegrationTest extends TestCase
     {
         [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
         $summary = str_repeat('Long visual review sentence. ', 60);
-        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => $summary, 'bundle' => ['index.html' => '<html></html>']], 'private/v1.mp4', 'h');
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => $summary, 'bundle' => ['index.html' => '<html></html>']], 'create/previews/test/v1.mp4', 'h');
         $this->assertLessThanOrEqual(255, mb_strlen(DB::table('composition_runs')->where('id', $run->id)->value('stage')), 'Postgres varchar(255)');
         $this->assertSame($summary, DB::table('composition_revisions')->where('run_id', $run->id)->value('summary'));
     }
@@ -1416,8 +1420,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([0.88, 1.0, 1.12, 1.88, 2.0, 2.12], $detail['times']);
         $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists($detail['path']));
         $bytes = file_get_contents($tmp.'/ref.mp4');
-        \Illuminate\Support\Facades\Storage::disk('local')->put('frozen-reference.mp4', $bytes);
-        $frozen = ['purpose' => 'reference', 'asset_type' => 'video', 'storage_path' => 'frozen-reference.mp4',
+        \Illuminate\Support\Facades\Storage::disk('local')->put('create/inputs/test/frozen-reference.mp4', $bytes);
+        $frozen = ['purpose' => 'reference', 'asset_type' => 'video', 'storage_path' => 'create/inputs/test/frozen-reference.mp4',
             'bytes' => strlen($bytes), 'sha256' => hash('sha256', $bytes)];
         $frames = $sheets->characterStyleImages([
             ['purpose' => 'reference', 'asset_type' => 'image', 'reference' => ['from' => 'page']],
@@ -1426,7 +1430,7 @@ class CreateIntegrationTest extends TestCase
         ], $tmp);
         $this->assertCount(2, $frames, 'Only the uploaded style reference supplies character treatment, never the brand page or source image');
         foreach ($frames as $frame) $this->assertSame('image/jpeg', (new \finfo(FILEINFO_MIME_TYPE))->file($frame));
-        \Illuminate\Support\Facades\Storage::disk('local')->put('frozen-reference.mp4', 'changed');
+        \Illuminate\Support\Facades\Storage::disk('local')->put('create/inputs/test/frozen-reference.mp4', 'changed');
         $this->rejected(409, fn () => $sheets->characterStyleImages([$frozen], $tmp));
         foreach (glob($tmp.'/*') as $f) unlink($f); rmdir($tmp);
     }
@@ -1540,7 +1544,7 @@ class CreateIntegrationTest extends TestCase
         $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-notes', true);
         $claim = $this->runs->claim();
         $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'V1', 'bundle' => ['index.html' => '<html></html>'],
-            'review' => [['time' => 1, 'score' => 9, 'problems' => []], ['time' => 7, 'score' => 6, 'problems' => ['Word too small', 'x', 'y', 'dropped fourth']], 'junk']], 'private/v1.mp4', 'h');
+            'review' => [['time' => 1, 'score' => 9, 'problems' => []], ['time' => 7, 'score' => 6, 'problems' => ['Word too small', 'x', 'y', 'dropped fourth']], 'junk']], 'create/previews/test/v1.mp4', 'h');
         $rev = DB::table('composition_revisions')->where('run_id', $run->id)->first();
         $this->assertEquals([['time' => 1, 'score' => 9, 'problems' => []], ['time' => 7, 'score' => 6, 'problems' => ['Word too small', 'x', 'y']]], json_decode($rev->metadata_json, true)['review'], 'review scores travel with the version, bounded');
 
@@ -2155,6 +2159,61 @@ class CreateIntegrationTest extends TestCase
         return \Illuminate\Http\UploadedFile::fake()->createWithContent($name,base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII='));
     }
 
+    private function privateCreateStorage(): \App\Services\Create\CreateStorage
+    {
+        \Illuminate\Support\Facades\Storage::fake('create_private');
+        config(['create.storage_disk' => 'create_private']);
+        $privacy = \Mockery::mock(\App\Services\Create\PrivateBucketGuard::class);
+        $privacy->shouldReceive('assertPrivate')->with('create_private');
+        $this->app->instance(\App\Services\Create\PrivateBucketGuard::class, $privacy);
+        $this->app->forgetInstance(\App\Services\Create\CreateStorage::class);
+        return app(\App\Services\Create\CreateStorage::class);
+    }
+
+    public function test_private_bucket_upload_and_worker_input_survive_a_fresh_local_disk(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $storage = $this->privateCreateStorage();
+        $c = $this->conversations->create($this->owner, []);
+        $asset = app(\App\Services\Create\AttachmentUploadService::class)->upload($this->owner, $c->id, $this->uploadPng(), 'source', 'remote-upload', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Make a short product video', 'expected_version' => 1, 'idempotency_key' => 'remote-brief']);
+        $q = $this->conversations->quote($this->owner, $c->id, 2);
+        $f = $q->payload_json['input_files'][0];
+        $this->assertSame('create_private', DB::table('create_stored_files')->where('path', $f['storage_path'])->value('disk'));
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'remote-approve');
+        $claim = $this->runs->claim();
+        \Illuminate\Support\Facades\Storage::fake('local'); // Simulate a separate API host with no originals/cache.
+        $this->assertSame($f['sha256'], hash('sha256', $storage->get($f['storage_path'])));
+        config(['create.worker_token' => str_repeat('w', 64)]);
+        $url = "/api/internal/create/runs/{$run->id}/inputs/{$asset->id}";
+        $this->withToken(str_repeat('w', 64))->postJson($url, ['lease_token' => $claim['lease_token']])->assertOk()->assertHeader('Content-Type', 'image/png');
+        $this->withToken(str_repeat('w', 64))->postJson($url, ['lease_token' => str_repeat('z', 64)])->assertForbidden();
+        Http::assertNothingSent();
+    }
+
+    public function test_migrated_video_plays_in_production_with_ranges_and_expiring_signed_access(): void
+    {
+        [$c, $revision, $output] = $this->registeredOutput();
+        $storage = $this->privateCreateStorage();
+        $path = DB::table('composition_revisions')->where('id', $revision)->value('artifact_path');
+        $storage->migrate($path);
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $asset = Asset::findOrFail($output['asset_id']);
+        $url = app(\App\Services\Media\StorageService::class)->url($asset->storage_url);
+        $this->app->instance('env', 'production');
+        $response = $this->get($url, ['Range' => 'bytes=0-6'])->assertStatus(206)->assertHeader('Content-Range', 'bytes 0-6/29');
+        $this->assertSame('offline', $response->streamedContent());
+        $this->get(preg_replace('/signature=[^&]+/', 'signature=bad', $url))->assertForbidden();
+        $this->get(str_replace('/assets/'.$asset->id, '/assets/'.($asset->id + 1), $url))->assertForbidden();
+        $preview = \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', now()->addMinutes(5), ['revisionId' => $revision]);
+        $this->get($preview, ['Range' => 'bytes=0-6'])->assertStatus(206)->assertHeader('Content-Range', 'bytes 0-6/29');
+        $this->travel(11)->minutes();
+        try { $this->get($url)->assertForbidden(); $this->get($preview)->assertForbidden(); }
+        finally { $this->travelBack(); }
+        $this->workspace->update(['status' => 'suspended']);
+        $this->get($url)->assertNotFound();
+    }
+
     public function test_create_upload_is_private_idempotent_and_never_dispatches_paid_jobs(): void
     {
         \Illuminate\Support\Facades\Storage::fake('local');
@@ -2644,7 +2703,7 @@ class CreateIntegrationTest extends TestCase
     {
         [$c, , $run] = $this->admitted(); $lease = $this->runs->claim();
         $this->runs->cancel($this->workspace->id, $c->id, $run->id);
-        $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'Stopped at your request. This is the last version that passed every check.', 'bundle' => ['index.html' => '<html></html>']], 'private/v1.mp4', 'h');
+        $this->runs->finish($run->id, $lease['lease_token'], ['status' => 'preview_ready', 'summary' => 'Stopped at your request. This is the last version that passed every check.', 'bundle' => ['index.html' => '<html></html>']], 'create/previews/test/v1.mp4', 'h');
         $this->assertSame('preview_ready', DB::table('composition_runs')->where('id', $run->id)->value('status'));
         $this->assertSame(1, DB::table('composition_revisions')->where('run_id', $run->id)->count());
         $this->assertSame(0, (int) DB::table('api_operations')->value('reserved_credits'), 'the hold is released');
@@ -3198,6 +3257,545 @@ class CreateIntegrationTest extends TestCase
         $plan = $plans->propose($this->owner, $c->id, $v(), 'p3');
         $this->assertSame('proposed', $plan['status'], 'the answer plans; it is not asked again');
         $this->assertSame(['Free trial, no price shown'], $plan['plan']['assumptions']);
+    }
+
+    private function workerIdentity(): array
+    {
+        return ['worker_id' => 'create-test-host', 'instance_id' => (string) \Illuminate\Support\Str::uuid(), 'slot' => 'render-1'];
+    }
+
+    public function test_worker_ownership_is_required_after_rollout_and_claim_is_bound_to_an_instance(): void
+    {
+        [, , $run] = $this->admitted();
+        config(['create.worker_ownership_required' => true, 'create.worker_token' => str_repeat('a', 64)]);
+        $identity = $this->workerIdentity();
+        $this->withToken(str_repeat('a', 64))->postJson('/api/internal/create/claim', [])->assertStatus(422);
+        $this->withToken(str_repeat('a', 64))->postJson('/api/internal/create/claim', ['worker_id' => 'missing-instance'])->assertStatus(422);
+        $this->assertSame('queued', DB::table('composition_runs')->value('status'));
+        $claim = $this->withToken(str_repeat('a', 64))->postJson('/api/internal/create/claim', $identity)->assertOk()->json('data');
+        $this->assertSame($run->id, $claim['id']);
+        $this->assertSame($identity['instance_id'], $claim['assignment']['instance_id']);
+        $this->assertArrayNotHasKey('lease_fingerprint', $claim['assignment']);
+        $this->assertNull($this->runs->claim($this->workerIdentity()), 'New process identity cannot take another active execution');
+        $this->travel(10)->seconds();
+        $this->runs->heartbeat($run->id, $claim['lease_token'], 1, 'Working');
+        $owner = app(\App\Services\Create\WorkerOwnership::class)->find($run->id);
+        $this->assertEquals(now()->toDateTimeString(), $owner->last_seen_at);
+        $this->assertSame($claim['assignment']['id'], $owner->id);
+    }
+
+    public function test_operator_stop_is_assignment_bound_revokes_callbacks_and_preserves_uncertain_billing(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $ownership = app(\App\Services\Create\WorkerOwnership::class);
+        $attempts = app(\App\Services\Create\AttemptService::class);
+        $a = $attempts->begin($run->id, $claim['lease_token'], 'render', 'render', str_repeat('a', 64));
+        // Nonzero accounting fixture makes an unintended reservation release observable.
+        DB::table('api_operations')->where('id', $run->operation_id)->update(['reserved_credits' => 42, 'spent_credits' => 7]);
+        $before = DB::table('api_operations')->where('id', $run->operation_id)->first();
+        $assignment = $claim['assignment']['id'];
+        $this->rejected(409, fn () => $ownership->confirmStopped($run->id, $assignment, 'incident-123: host checked'));
+        $this->travel(100)->seconds(); $this->runs->expireLeases();
+        $this->rejected(409, fn () => $ownership->confirmStopped($run->id, (string) \Illuminate\Support\Str::uuid(), 'incident-123: host checked'));
+        $this->rejected(422, fn () => $ownership->confirmStopped($run->id, $assignment, ''));
+        $this->rejected(409, fn () => app(\App\Services\Create\ReconciliationService::class)->closeSettled($run->id, true));
+        $this->assertNull(DB::table('composition_runs')->where('id', $run->id)->value('worker_stopped_at'));
+        $this->assertNull($this->runs->claim($this->workerIdentity()));
+        $proof = $ownership->confirmStopped($run->id, $assignment, 'incident-123: original process and both containers stopped');
+        $this->assertFalse($proof['replayed']);
+        $this->assertTrue($ownership->confirmStopped($run->id, $assignment, 'incident-123: repeated acknowledgement')['replayed']);
+        $owner = $ownership->find($run->id);
+        $this->assertSame('operator', $owner->stop_source);
+        $this->assertSame('incident-123: original process and both containers stopped', $owner->stop_evidence);
+        $after = DB::table('api_operations')->where('id', $run->operation_id)->first();
+        $this->assertEquals($before->reserved_credits, $after->reserved_credits);
+        $this->assertEquals($before->spent_credits, $after->spent_credits);
+        $this->assertSame(0, (int) $after->capacity_slots);
+        $this->assertSame('started', DB::table('composition_attempts')->where('id', $a['id'])->value('status'));
+        $this->rejected(403, fn () => $this->runs->heartbeat($run->id, $claim['lease_token'], 2, 'Late'));
+        $this->rejected(403, fn () => $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Late'], null, null));
+        // Recorded stop frees execution capacity, never the uncertain credit hold.
+        [, , $next] = $this->admitted();
+        $this->assertSame($next->id, $this->runs->claim($this->workerIdentity())['id']);
+    }
+
+    public function test_worker_stop_acknowledgement_is_durable_and_safe_to_repeat_after_lost_response(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $attempts = app(\App\Services\Create\AttemptService::class);
+        $a = $attempts->begin($run->id, $claim['lease_token'], 'render', 'render', str_repeat('a', 64));
+        $attempts->settle($run->id, $claim['lease_token'], $a['id'], ['status' => 'unknown']);
+        $first = $this->runs->workerStopped($run->id, $claim['lease_token']);
+        $again = $this->runs->workerStopped($run->id, $claim['lease_token']);
+        $this->assertTrue($first['hold_retained']); $this->assertTrue($again['hold_retained']); $this->assertTrue($again['replayed']);
+        $owner = app(\App\Services\Create\WorkerOwnership::class)->find($run->id);
+        $this->assertSame('worker', $owner->stop_source); $this->assertNotNull($owner->stopped_at);
+        $this->rejected(403, fn () => $this->runs->workerStopped($run->id, str_repeat('x', 64)));
+        $this->assertSame('unknown', DB::table('composition_attempts')->where('id', $a['id'])->value('status'));
+    }
+
+    public function test_assigned_reconciliation_cannot_bypass_stop_record_with_a_boolean(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $a = app(\App\Services\Create\AttemptService::class)->begin($run->id, $claim['lease_token'], 'render', 'render', str_repeat('a', 64));
+        $this->travel(100)->seconds(); $this->runs->expireLeases();
+        $service = app(\App\Services\Create\ReconciliationService::class);
+        $receipt = new \App\Services\Create\VerifiedAttemptReceipt($a['id'], 'failed', null, 0, 'Offline test: no render ran');
+        $this->rejected(409, fn () => $service->reconcile($receipt, true));
+        $this->rejected(409, fn () => $service->releaseUnstarted($run->id, true));
+        $this->rejected(409, fn () => $service->closeSettled($run->id, true));
+        app(\App\Services\Create\WorkerOwnership::class)->confirmStopped($run->id, $claim['assignment']['id'], 'incident-456: host and containers verified stopped');
+        $service->reconcile($receipt, true);
+        $this->assertSame('failed', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->assertTrue($service->reconcile($receipt, true)['replayed']);
+        $this->assertSame(1, DB::table('composition_reconciliations')->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_worker_recovery_inspection_is_read_only_and_trajectory_has_no_lease_secret(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $ownership = app(\App\Services\Create\WorkerOwnership::class);
+        $before = DB::table('composition_runs')->where('id', $run->id)->first();
+        $this->artisan('create:worker-recovery', ['run' => $run->id])->assertSuccessful();
+        $this->artisan('create:worker-recovery', ['run' => $run->id, '--worker-stopped' => true])->assertFailed();
+        $this->artisan('create:worker-recovery', ['run' => $run->id, '--confirm-stopped' => $claim['assignment']['id']])->assertFailed();
+        $this->assertEquals($before, DB::table('composition_runs')->where('id', $run->id)->first());
+        $text = json_encode($ownership->inspect($run->id));
+        $this->assertStringNotContainsString($claim['lease_token'], $text);
+        $this->assertStringNotContainsString(hash('sha256', $claim['lease_token']), $text);
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $url = '/api/v1/admin/create-trajectories/'.$c->id;
+        $this->actingAs($this->owner)->getJson($url)->assertForbidden();
+        $this->owner->forceFill(['role' => 'super_admin'])->save();
+        $response = $this->actingAs($this->owner)->getJson($url)->assertOk();
+        $response->assertJsonPath('data.runs.0.worker_assignment.id', $claim['assignment']['id']);
+        $this->assertStringNotContainsString(hash('sha256', $claim['lease_token']), $response->getContent());
+        $this->travel(100)->seconds(); $this->runs->expireLeases();
+        $this->artisan('create:worker-recovery', ['run' => $run->id, '--confirm-stopped' => $claim['assignment']['id'], '--worker-stopped' => true, '--evidence' => 'incident-789: original process and containers stopped'])->assertSuccessful();
+        $this->assertSame('operator', $ownership->find($run->id)->stop_source);
+    }
+
+    public function test_stop_confirmation_rejects_changed_lease_and_missing_ownership_schema_fails_closed(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $this->travel(100)->seconds(); $this->runs->expireLeases();
+        DB::table('composition_runs')->where('id', $run->id)->update(['lease_hash' => hash('sha256', 'changed')]);
+        $ownership = app(\App\Services\Create\WorkerOwnership::class);
+        $this->rejected(409, fn () => $ownership->confirmStopped($run->id, $claim['assignment']['id'], 'incident-123: incorrect old lease'));
+        $this->assertNull($ownership->find($run->id)->stopped_at);
+        \Illuminate\Support\Facades\Schema::drop('create_worker_assignments');
+        $this->rejected(503, fn () => $this->runs->claim($this->workerIdentity()));
+    }
+
+    public function test_recorded_stop_can_close_only_fully_settled_work_without_buying_anything(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $this->travel(100)->seconds(); $this->runs->expireLeases();
+        $ownership = app(\App\Services\Create\WorkerOwnership::class);
+        $ownership->confirmStopped($run->id, $claim['assignment']['id'], 'incident-closed: coordinator and containers stopped');
+        $this->artisan('create:worker-recovery', ['run' => $run->id, '--close-settled' => true])->assertSuccessful();
+        $this->assertSame('failed', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->assertSame(0, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits'));
+        $again = $this->runs->workerStopped($run->id, $claim['lease_token']);
+        $this->assertTrue($again['replayed']); $this->assertFalse($again['hold_retained']);
+        [, , $next] = $this->admitted(); $lease = $this->runs->claim($this->workerIdentity());
+        $a = app(\App\Services\Create\AttemptService::class)->begin($next->id, $lease['lease_token'], 'render', 'render', str_repeat('a', 64));
+        $this->runs->workerStopped($next->id, $lease['lease_token']);
+        $this->rejected(409, fn () => \Illuminate\Support\Facades\Artisan::call('create:worker-recovery', ['run' => $next->id, '--close-settled' => true]));
+        $this->assertSame('started', DB::table('composition_attempts')->where('id', $a['id'])->value('status'));
+        Http::assertNothingSent();
+    }
+
+    public function test_failed_finished_recovery_rolls_back_temporary_lease_and_requires_assignment_stop(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim($this->workerIdentity());
+        $attempts = app(\App\Services\Create\AttemptService::class);
+        $attempt = $attempts->begin($run->id, $claim['lease_token'], 'render', 'render', str_repeat('a', 64));
+        $attempts->settle($run->id, $claim['lease_token'], $attempt['id'], ['status' => 'failed', 'cost_microusd' => 0]);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Saving failed'], null, null);
+        $args = ['run' => $run->id, 'completion' => '/not-read-before-stop-check', 'artifact' => '/not-read-before-stop-check'];
+        $this->rejected(409, fn () => \Illuminate\Support\Facades\Artisan::call('create:recover-finished', $args));
+        app(\App\Services\Create\WorkerOwnership::class)->confirmStopped($run->id, $claim['assignment']['id'], 'incident-save: original execution has stopped');
+        $receiptHash = DB::table('composition_attempts')->where('id', $attempt['id'])->value('result_hash');
+        DB::table('composition_attempts')->where('id', $attempt['id'])->update(['result_hash' => null]);
+        $this->rejected(409, fn () => \Illuminate\Support\Facades\Artisan::call('create:recover-finished', $args));
+        DB::table('composition_attempts')->where('id', $attempt['id'])->update(['result_hash' => $receiptHash]);
+        $dir = sys_get_temp_dir().'/recover-atomic-'.\Illuminate\Support\Str::uuid(); mkdir($dir);
+        try {
+            (new \Symfony\Component\Process\Process(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=108x192:d=15', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', $dir.'/video.mp4']))->mustRun();
+            file_put_contents($dir.'/completion.json', json_encode(['result' => ['status' => 'preview_ready', 'summary' => 'Saved local result', 'bundle' => ['index.html' => '<html>Saved</html>']]]));
+            $args = ['run' => $run->id, 'completion' => $dir.'/completion.json', 'artifact' => $dir.'/video.mp4'];
+            $beforeRun = DB::table('composition_runs')->where('id', $run->id)->first();
+            $beforeOp = DB::table('api_operations')->where('id', $run->operation_id)->first();
+            $mock = \Mockery::mock(RunService::class);
+            $mock->shouldReceive('finish')->once()->andThrow(new \RuntimeException('Injected delivery failure'));
+            $this->app->instance(RunService::class, $mock);
+            try {
+                \Illuminate\Support\Facades\Artisan::call('create:recover-finished', $args);
+                $this->fail('Expected the injected recovery failure');
+            } catch (\RuntimeException $e) { $this->assertSame('Injected delivery failure', $e->getMessage()); }
+            finally { $this->app->instance(RunService::class, $this->runs); }
+            $this->assertEquals($beforeRun, DB::table('composition_runs')->where('id', $run->id)->first());
+            $this->assertEquals($beforeOp, DB::table('api_operations')->where('id', $run->operation_id)->first());
+            $this->assertSame(0, DB::table('composition_revisions')->where('run_id', $run->id)->count());
+            $this->artisan('create:recover-finished', $args)->assertSuccessful();
+            $this->assertSame('preview_ready', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+            $this->assertNull(DB::table('composition_runs')->where('id', $run->id)->value('lease_hash'));
+            Http::assertNothingSent();
+        } finally { foreach (glob($dir.'/*') ?: [] as $file) unlink($file); rmdir($dir); }
+    }
+
+    private function drainControl(): \App\Services\Create\AdmissionControl
+    {
+        config(['create.runtime_controls_enabled' => true]);
+        return app(\App\Services\Create\AdmissionControl::class);
+    }
+
+    public function test_drain_preserves_existing_approvals_and_blocks_new_holds_and_claims(): void
+    {
+        [$c, $q, $run] = $this->admitted();
+        $other = $this->brief(); $quote = $this->conversations->quote($this->owner, $other->id, 1);
+        $control = $this->drainControl(); $control->setPaused(true, 'Test deployment');
+        $before = DB::table('api_operations')->count();
+        $this->assertSame($run->id, $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-'.$c->id)->id);
+        $this->rejected(503, fn () => $this->conversations->approve($this->owner, $other->id, $quote->id, 'new-approval'));
+        $this->assertSame($before, DB::table('api_operations')->count());
+        $this->assertNull($this->runs->claim());
+        $this->assertSame('queued', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        // Reading and saving the brief still work during a drain.
+        $this->conversations->message($this->owner, $other->id, ['content' => 'Use a blue background.', 'expected_version' => 1, 'idempotency_key' => 'saved-during-drain']);
+        $this->assertSame(2, (int) $this->conversations->conversation($this->owner, $other->id)->version);
+        $control->setPaused(false, null);
+        $this->assertSame($run->id, $this->runs->claim()['id']);
+    }
+
+    public function test_drain_keeps_worker_auth_heartbeat_attempt_settlement_and_delivery_available(): void
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $this->drainControl()->setPaused(true, 'Test');
+        config(['create.worker_token' => str_repeat('a', 64)]);
+        $url = '/api/internal/create/runs/'.$run->id;
+        $body = ['lease_token' => $claim['lease_token']];
+        $this->withToken(str_repeat('x', 64))->postJson($url.'/heartbeat', $body + ['sequence' => 1, 'stage' => 'Working'])->assertForbidden();
+        $this->withToken(str_repeat('a', 64))->postJson($url.'/heartbeat', $body + ['sequence' => 1, 'stage' => 'Finishing during drain'])->assertOk();
+        $attempt = app(\App\Services\Create\AttemptService::class)->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('b', 64));
+        $this->withToken(str_repeat('a', 64))->postJson($url.'/attempts/'.$attempt['id'].'/settle', $body + ['status' => 'succeeded', 'cost_microusd' => 0])->assertOk();
+        $result = json_encode(['status' => 'failed', 'summary' => 'Offline fixture finished its work.']);
+        $this->withToken(str_repeat('a', 64))->postJson($url.'/finish', $body + ['result' => $result])->assertOk();
+        $this->withToken(str_repeat('a', 64))->postJson($url.'/finish', $body + ['result' => $result])->assertOk()->assertJsonPath('data.replayed', true);
+        $this->assertSame('failed', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->assertSame(0, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits'));
+        // The separate emergency off switch keeps its original semantics.
+        config(['create.enabled' => false]);
+        $this->withToken(str_repeat('a', 64))->postJson($url.'/heartbeat', $body + ['sequence' => 2, 'stage' => 'Late'])->assertNotFound();
+    }
+
+    public function test_drain_keeps_queued_plans_and_allows_admitted_planning_to_finish(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'queued', true);
+        $control = $this->drainControl(); $control->setPaused(true, null);
+        $this->assertSame($job['id'], $plans->submit($this->owner, $c->id, 1, 'queued', true)['id']);
+        $this->rejected(503, fn () => $plans->submit($this->owner, $c->id, 1, 'new', true));
+        $plans->execute($job['id']);
+        $this->travel(6)->minutes(); $plans->recover();
+        $this->assertSame('queued', $plans->latest($c->id)['state']);
+        $this->assertNull(DB::table('create_planning_jobs')->value('execution_token'));
+        $this->assertSame(0, DB::table('create_plans')->count());
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 1);
+        $control->setPaused(false, null); $plans->recover();
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 2);
+        $real = new \App\Services\Create\PlanService($this->conversations);
+        $mock = \Mockery::mock(\App\Services\Create\PlanService::class);
+        $mock->shouldReceive('propose')->once()->andReturnUsing(function ($user, $id, $version, $key, $skip, $token) use ($control, $real) {
+            $control->setPaused(true, 'Drain after planning execution admitted');
+            $this->rejected(409, fn () => $real->propose($user, $id, $version, $key, $skip, 'forged-token'));
+            return $real->propose($user, $id, $version, $key, $skip, $token);
+        });
+        $this->app->instance(\App\Services\Create\PlanService::class, $mock);
+        $plans->execute($job['id']);
+        $this->assertSame('done', $plans->latest($c->id)['state']);
+        $this->assertSame(1, DB::table('create_plans')->count());
+        $plans->execute($job['id']); // No new execution even after queue redelivery.
+        $this->assertSame(1, DB::table('create_plans')->count());
+    }
+
+    public function test_drain_blocks_legacy_planning_and_new_expensive_intake_before_io(): void
+    {
+        $c = $this->durablePlanningBrief(); config(['create.durable_planning' => false]);
+        $this->drainControl()->setPaused(true, null);
+        foreach ([false, true] as $async) {
+            $this->actingAs($this->owner)->postJson('/api/v1/create/conversations/'.$c->id.'/plans', [
+                'expected_version' => 1, 'idempotency_key' => 'legacy', 'async' => $async,
+            ])->assertStatus(503);
+        }
+        $this->rejected(503, fn () => app(\App\Services\Create\AttachmentUploadService::class)->upload($this->owner, $c->id, $this->uploadPng(), 'reference', 'upload', 1));
+        foreach (['ReferenceLinkService', 'MediaLinkService', 'PageReferenceService'] as $service) {
+            $this->rejected(503, fn () => app('App\\Services\\Create\\References\\'.$service)->add($this->owner, $c->id, 'https://example.test/file', 1, 'link'));
+        }
+        $this->rejected(503, fn () => $this->conversations->quote($this->owner, $c->id, 1));
+        $this->assertSame(0, DB::table('create_plans')->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_lease_sweep_during_drain_retains_unknown_spend_and_requires_stop_confirmation(): void
+    {
+        [, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $attempts = app(\App\Services\Create\AttemptService::class);
+        $a = $attempts->begin($run->id, $claim['lease_token'], 'render-1', 'render', str_repeat('c', 64));
+        $this->drainControl()->setPaused(true, null);
+        $held = DB::table('api_operations')->where('id', $run->operation_id)->first();
+        $this->travel(100)->seconds();
+        $this->artisan('create:check-leases')->assertSuccessful();
+        $this->assertSame(0, $this->runs->expireLeases(), 'No repeated transition or automatic replay');
+        $state = DB::table('composition_runs')->where('id', $run->id)->first();
+        $this->assertSame('needs_attention', $state->status);
+        $this->assertNull($state->worker_stopped_at);
+        $after = DB::table('api_operations')->where('id', $run->operation_id)->first();
+        $this->assertSame($held->reserved_credits, $after->reserved_credits);
+        $this->assertSame($held->capacity_slots, $after->capacity_slots);
+        $this->rejected(409, fn () => $this->runs->heartbeat($run->id, $claim['lease_token'], 2, 'Late'));
+        $this->rejected(409, fn () => $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'Late'], null, null));
+        $this->assertTrue($this->runs->workerStopped($run->id, $claim['lease_token'])['hold_retained']);
+        $this->assertSame('started', DB::table('composition_attempts')->where('id', $a['id'])->value('status'));
+        $this->assertEquals($held->reserved_credits, DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits'));
+    }
+
+    public function test_drain_command_is_persistent_and_missing_controls_fail_closed(): void
+    {
+        $control = $this->drainControl();
+        $this->artisan('create:drain', ['action' => 'pause', '--reason' => 'Test'])->assertSuccessful();
+        $this->assertTrue((new \App\Services\Create\AdmissionControl)->paused());
+        $this->artisan('create:drain', ['action' => 'invalid'])->assertFailed();
+        $this->assertTrue($control->paused());
+        $status = $control->status();
+        $this->assertSame(0, $status['unconfirmed_workers']);
+        $this->assertArrayNotHasKey('safe_to_shutdown', $status);
+        $this->artisan('create:drain', ['action' => 'resume'])->assertSuccessful();
+        $this->assertFalse($control->paused());
+        DB::table('create_runtime_controls')->delete();
+        $this->rejected(503, fn () => $this->runs->claim());
+    }
+
+    public function test_bounded_drain_wait_requires_enabled_paused_durable_planning(): void
+    {
+        $this->artisan('create:drain', ['action' => 'wait', '--timeout' => 0])->assertFailed();
+        config(['create.durable_planning' => true]);
+        $control = $this->drainControl();
+        $this->artisan('create:drain', ['action' => 'wait', '--timeout' => 0])->assertFailed();
+        $control->setPaused(true, 'Test');
+        $this->artisan('create:drain', ['action' => 'wait', '--timeout' => 0])->assertSuccessful();
+        $this->assertTrue($control->paused(), 'Wait never resumes admission');
+        $this->artisan('create:drain', ['action' => 'wait', '--timeout' => -1])->assertFailed();
+    }
+
+    public function test_drain_wait_preserves_active_work_and_its_hold(): void
+    {
+        [, , $run] = $this->admitted(); $this->runs->claim();
+        config(['create.durable_planning' => true]);
+        $control = $this->drainControl(); $control->setPaused(true, 'Test');
+        $before = DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits');
+        $this->artisan('create:drain', ['action' => 'wait', '--timeout' => 0])->assertFailed();
+        $this->assertSame('running', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->assertSame($before, DB::table('api_operations')->where('id', $run->operation_id)->value('reserved_credits'));
+        $status = $control->status();
+        $this->assertContains('builds.running', \App\Services\Create\AdmissionControl::drainBlockers($status));
+        $status['builds'] = []; $status['pending_media'] = 1;
+        $this->assertContains('pending_media', \App\Services\Create\AdmissionControl::drainBlockers($status));
+        $status['pending_media'] = 0; $status['planning'] = ['needs_attention' => 1];
+        $this->assertContains('planning.needs_attention', \App\Services\Create\AdmissionControl::drainBlockers($status));
+        $status['planning'] = []; unset($status['unresolved_attempts']);
+        $this->assertContains('unresolved_attempts', \App\Services\Create\AdmissionControl::drainBlockers($status));
+    }
+
+    private function durablePlanningBrief(): object
+    {
+        config(['create.durable_planning' => true]);
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
+        return $c;
+    }
+
+    public function test_low_disk_preserves_brief_and_leaves_accepted_planning_queued_without_model_work(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $low = \Mockery::mock(\App\Services\Create\DiskSpace::class);
+        $low->shouldReceive('admission')->andThrow(new \App\Services\Create\DiskCapacityException());
+        $this->app->instance(\App\Services\Create\DiskSpace::class, $low);
+        $this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/plans", [
+            'expected_version' => 1, 'idempotency_key' => 'low-disk', 'async' => true,
+        ])->assertStatus(503);
+        $this->assertSame(1, DB::table('create_messages')->where('role', 'user')->count());
+        $this->assertSame(0, DB::table('create_planning_jobs')->count());
+        Bus::assertNothingDispatched(); Http::assertNothingSent();
+        $this->app->forgetInstance(\App\Services\Create\DiskSpace::class);
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'low-disk', false);
+        $this->app->instance(\App\Services\Create\DiskSpace::class, $low);
+        $plans->execute($job['id']);
+        $this->assertSame('queued', DB::table('create_planning_jobs')->value('state'));
+        $this->assertNull(DB::table('create_planning_jobs')->value('execution_token'));
+        $this->assertSame(0, DB::table('create_plans')->count());
+        $this->assertSame($job['id'], $plans->submit($this->owner, $c->id, 1, 'low-disk', false)['id']);
+        $this->app->forgetInstance(\App\Services\Create\DiskSpace::class);
+        $plans->execute($job['id']);
+        $this->assertSame('done', DB::table('create_planning_jobs')->value('state'));
+        $this->assertSame(1, DB::table('create_plans')->count());
+    }
+
+    public function test_low_api_disk_does_not_claim_or_fail_a_queued_build(): void
+    {
+        [, , $run] = $this->admitted();
+        $low = \Mockery::mock(\App\Services\Create\DiskSpace::class);
+        $low->shouldReceive('admission')->andThrow(new \App\Services\Create\DiskCapacityException());
+        $this->app->instance(\App\Services\Create\DiskSpace::class, $low);
+        $this->rejected(503, fn () => $this->runs->claim());
+        $this->assertSame('queued', DB::table('composition_runs')->where('id', $run->id)->value('status'));
+        $this->assertNull(DB::table('composition_runs')->where('id', $run->id)->value('lease_expires_at'));
+        Http::assertNothingSent();
+    }
+
+    public function test_durable_planning_persists_admission_and_deduplicates_before_any_work(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $url = "/api/v1/create/conversations/$c->id/plans";
+        $body = ['expected_version' => 1, 'idempotency_key' => 'durable-1', 'async' => true];
+        $job = $this->actingAs($this->owner)->postJson($url, $body)->assertStatus(202)->json('data');
+        $this->assertSame('queued', $job['state']);
+        $this->assertSame(0, DB::table('create_plans')->count());
+        $this->actingAs($this->owner)->postJson($url, $body)->assertStatus(202)->assertJsonPath('data.id', $job['id']);
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 1);
+        $this->actingAs($this->owner)->postJson($url, [...$body, 'skip_questions' => true])->assertStatus(409);
+        $this->actingAs($this->owner)->postJson($url, [...$body, 'idempotency_key' => 'other'])->assertStatus(409);
+        $this->assertSame(1, DB::table('create_planning_jobs')->count());
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $plans->execute($job['id']);
+        $plans->execute($job['id']);
+        $this->assertSame(1, DB::table('create_plans')->count(), 'a repeated delivery cannot buy another plan');
+        \Illuminate\Support\Facades\Cache::flush();
+        $saved = $this->actingAs($this->owner)->getJson("/api/v1/create/conversations/$c->id/plan-activity?key=durable-1")
+            ->assertOk()->assertJsonPath('job.state', 'done')->json('job');
+        $this->assertSame(DB::table('create_plans')->value('id'), $saved['plan_id']);
+        $this->actingAs($this->owner)->postJson($url, $body)->assertOk()->assertJsonPath('data.state', 'done');
+    }
+
+    public function test_durable_planning_scheduler_redelivers_only_unstarted_work(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'queued', false);
+        DB::table('create_planning_jobs')->where('id', $job['id'])->update(['dispatched_at' => null]);
+        $plans->recover();
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 2);
+        DB::table('create_planning_jobs')->where('id', $job['id'])->update([
+            'state' => 'running', 'execution_token' => (string) \Illuminate\Support\Str::uuid(), 'deadline_at' => now()->subMinute(),
+        ]);
+        $plans->recover();
+        $this->assertSame('needs_attention', $plans->latest($c->id)['state']);
+        $plans->execute($job['id']);
+        $this->assertSame(0, DB::table('create_plans')->count(), 'uncertain execution is never replayed');
+        $this->rejected(409, fn () => $plans->submit($this->owner, $c->id, 1, 'fresh-key', false));
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 2);
+    }
+
+    public function test_durable_planning_recovers_a_plan_committed_before_the_worker_died(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'commit-gap', false);
+        $plans->execute($job['id']);
+        $planId = $plans->latest($c->id)['plan_id'];
+        $credits = $this->workspace->fresh()->credits_monthly;
+        DB::table('create_planning_jobs')->where('id', $job['id'])->update(['state' => 'running', 'result_json' => null, 'deadline_at' => now()->subMinute()]);
+        $plans->recover();
+        $this->assertSame('done', $plans->latest($c->id)['state']);
+        $this->assertSame($planId, $plans->latest($c->id)['plan_id']);
+        $this->assertSame(1, DB::table('create_plans')->count());
+        $this->assertSame($credits, $this->workspace->fresh()->credits_monthly);
+    }
+
+    public function test_durable_planning_rechecks_version_and_access_before_work(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'stale', false);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Change the headline.', 'expected_version' => 1, 'idempotency_key' => 'changed']);
+        $plans->execute($job['id']);
+        $this->assertSame('failed', $plans->latest($c->id)['state']);
+        $this->assertSame(409, $plans->latest($c->id)['status']);
+        $job2 = $plans->submit($this->owner, $c->id, 2, 'access', false);
+        $this->owner->forceFill(['workspace_id' => 99999])->save();
+        $plans->execute($job2['id']);
+        $this->assertSame(403, $plans->latest($c->id, 'access')['status']);
+        $this->assertSame(0, DB::table('create_plans')->count());
+    }
+
+    public function test_durable_planning_failure_is_visible_and_not_automatically_replayed(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'interrupted', false);
+        $fake = \Mockery::mock(\App\Services\Create\PlanService::class);
+        $fake->shouldReceive('propose')->once()->andThrow(new \RuntimeException('secret provider detail'));
+        $this->app->instance(\App\Services\Create\PlanService::class, $fake);
+        $plans->execute($job['id']);
+        $plans->execute($job['id']);
+        $result = $plans->latest($c->id);
+        $this->assertSame('needs_attention', $result['state']);
+        $this->assertStringNotContainsString('secret', $result['error']);
+        $this->assertSame(0, DB::table('create_plans')->count());
+    }
+
+    public function test_durable_planning_keeps_accepted_work_when_queue_publish_fails(): void
+    {
+        $c = $this->durablePlanningBrief();
+        Bus::swap(\Mockery::mock(\Illuminate\Contracts\Bus\QueueingDispatcher::class, function ($mock) {
+            $mock->shouldReceive('dispatch')->once()->andThrow(new \RuntimeException('Redis unavailable'));
+        }));
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'redis-down', false);
+        $this->assertSame('queued', $job['state']);
+        $this->assertNull(DB::table('create_planning_jobs')->where('id', $job['id'])->value('dispatched_at'));
+        Bus::fake();
+        $plans->recover();
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 1);
+    }
+
+    public function test_durable_planning_latest_request_is_ordered_even_with_identical_timestamps(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $this->freezeTime();
+        $first = $plans->submit($this->owner, $c->id, 1, 'first', false);
+        DB::table('create_planning_jobs')->where('id', $first['id'])->update(['state' => 'failed']);
+        $second = $plans->submit($this->owner, $c->id, 1, 'second', false);
+        $this->assertSame($second['id'], $plans->latest($c->id)['id']);
+        $this->assertSame($first['id'], $plans->latest($c->id, 'first')['id']);
+    }
+
+    public function test_durable_planning_status_is_private_to_the_conversation_workspace(): void
+    {
+        $c = $this->durablePlanningBrief();
+        app(\App\Services\Create\PlanningJobService::class)->submit($this->owner, $c->id, 1, 'private', false);
+        $other = Workspace::create(['name' => 'Other', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active']);
+        $this->owner->forceFill(['workspace_id' => $other->id])->save();
+        config(['create.workspaces' => []]);
+        $this->actingAs($this->owner)->getJson("/api/v1/create/conversations/$c->id/plan-activity?key=private")->assertNotFound();
+        $this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/plans", ['expected_version' => 1, 'idempotency_key' => 'private', 'async' => true])->assertNotFound();
+    }
+
+    public function test_durable_planning_disabled_workers_leave_queued_work_untouched(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $job = $plans->submit($this->owner, $c->id, 1, 'disabled', false);
+        config(['create.enabled' => false]);
+        $plans->execute($job['id']);
+        $this->assertSame('queued', $plans->latest($c->id)['state']);
+        $this->assertSame(0, DB::table('create_plans')->count());
     }
 
     public function test_planning_can_answer_at_once_and_finish_after_the_response(): void

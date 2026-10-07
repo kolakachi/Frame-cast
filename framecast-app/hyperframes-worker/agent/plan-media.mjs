@@ -11,7 +11,8 @@ export async function stageFile(f,{manifest,directory,download,signal,kind,descr
  if(!Number.isSafeInteger(f.asset_id)||!/^[a-f0-9]{64}$/.test(f.sha256)||!new RegExp('^asset-'+f.asset_id+'-'+f.sha256+'\\.(png|jpg|webp|mp4|mp3|wav)$').test(f.name))throw Error('Invalid plan media record');
  if(!manifest.some(m=>m.asset_id===f.asset_id)){
   const response=await download(f.asset_id,signal);
-  if(!response.ok)throw Error('Plan media download failed');
+  // Keep a useful diagnostic without logging response bodies, URLs or credentials.
+  if(!response.ok)throw Error(`Plan media download failed (asset ${f.asset_id}, HTTP ${Number.isInteger(response.status)?response.status:'unknown'}). Saved media needs recovery; no regeneration was attempted.`);
   const data=Buffer.from(await response.arrayBuffer());
   if(data.length!==f.bytes||createHash('sha256').update(data).digest('hex')!==f.sha256)throw Error('Plan media hash or size mismatch');
   await mkdir(directory+'/source',{recursive:true});

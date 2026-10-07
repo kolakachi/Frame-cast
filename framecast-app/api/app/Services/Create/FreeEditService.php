@@ -20,6 +20,7 @@ class FreeEditService
         $this->conversations->authorize($user, true);
         $existing = DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('idempotency_key', $key)->first();
         if ($existing) return $existing;
+        app(AdmissionControl::class)->assertOpen();
         $c = $this->conversations->conversation($user, $id);
         abort_if($c->archived_at, 409, 'Restore this conversation before editing.');
         abort_unless((int) $c->version === $version, 409, 'Conversation changed. Refresh before editing.');

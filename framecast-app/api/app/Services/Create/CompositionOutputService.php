@@ -29,7 +29,8 @@ class CompositionOutputService
             $remaining = app(WorkspaceUsageService::class)->exportsRemaining($user);
             $pending = ExportJob::where('workspace_id', $workspace->id)->whereIn('status',['queued','processing'])->count();
             abort_if(!$image && $remaining !== null && $remaining <= $pending, 402, 'Your monthly export allowance is already used or reserved.');
-            $path = Storage::disk('local')->path($revision->artifact_path ?? 'missing');
+            abort_unless($revision->artifact_path, 409, 'The saved video is unavailable.');
+            $path = app(\App\Services\Create\CreateStorage::class)->path($revision->artifact_path);
             abort_unless(is_file($path) && !is_link($path) && hash_equals($revision->artifact_hash ?? '', hash_file('sha256',$path)), 409, 'The saved video is unavailable or changed.');
             abort_unless(preg_match('~^create/previews/[a-f0-9-]{36}/[a-f0-9]{64}\.(?:mp4|png|jpg|webp)$~D', $revision->artifact_path), 422);
             if($image) {

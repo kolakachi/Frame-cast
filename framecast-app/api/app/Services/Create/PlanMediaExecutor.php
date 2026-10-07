@@ -94,7 +94,7 @@ class PlanMediaExecutor
         $files = $ctx['approved_character_files'] ?? [];
         if (count($files) !== 1) throw new RuntimeException('Character animation requires exactly one approved master.');
         app(InputSnapshotService::class)->verify($files);
-        return \Illuminate\Support\Facades\Storage::disk('local')->path($files[0]['storage_path']);
+        return app(\App\Services\Create\CreateStorage::class)->path($files[0]['storage_path']);
     }
 
     /** Character motion uses the verified approved master; generic motion uses a source photo. */
@@ -205,7 +205,7 @@ class PlanMediaExecutor
         $master = $ctx['approved_character_files'][0] ?? null;
         if (! $master) throw new RuntimeException('Approve the character preview before generating poses.');
         app(InputSnapshotService::class)->verify([$master]);
-        $refUrl = $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($master['storage_path']), $master['mime_type']);
+        $refUrl = $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($master['storage_path']), $master['mime_type']);
         $files = []; $poses = self::requestedPoses($description);
         foreach ($poses as $i => $pose) {
             $prompt = 'Edit the approved character in image 1 into this pose/expression: '.$pose.'. Keep the EXACT same character design: face, eye/head proportions, hair, outfit, body proportions, crop, palette, lighting, shading, halftone/dither dot scale and edge treatment. Change only pose/expression. Do not restyle or return a photographic alternative. One character, plain flat cream background.';
@@ -248,7 +248,7 @@ class PlanMediaExecutor
             $frozen = collect($ctx['approved_character_files'])->firstWhere('asset_id', $files[$i]['asset_id']);
             if (! $frozen) throw new RuntimeException('The talking pose is not one of the approved images.');
             app(InputSnapshotService::class)->verify([$frozen]);
-            $image = \Illuminate\Support\Facades\Storage::disk('local')->get($frozen['storage_path']); $imageMime = $frozen['mime_type'];
+            $image = app(\App\Services\Create\CreateStorage::class)->get($frozen['storage_path']); $imageMime = $frozen['mime_type'];
         } else [$image, $imageMime] = $read($files[$i]);
         if ($native) return $this->nativeTalking($line, $image, $imageMime, $ctx, $route, $dir, $whole);
         [$audio, $audioMime] = $read($v['file']);
@@ -448,7 +448,7 @@ class PlanMediaExecutor
      */
     private function drawKept(array $jobs, array $keys, array $paths, int $workspaceId, array $names): array
     {
-        $disk = Storage::disk('local'); $kept = fn ($k) => 'create/image-jobs/'.$workspaceId.'/'.$keys[$k].'.png';
+        $disk = app(\App\Services\Create\CreateStorage::class); $kept = fn ($k) => 'create/image-jobs/'.$workspaceId.'/'.$keys[$k].'.png';
         $out = [];
         foreach ($jobs as $k => $j) if ($disk->exists($kept($k))) { file_put_contents($paths[$k], $disk->get($kept($k))); $out[$k] = $paths[$k]; unset($jobs[$k]); }
         $failed = [];
@@ -533,7 +533,7 @@ class PlanMediaExecutor
             if (! $files) throw new RuntimeException('This shot uses the approved sheet, but no sheet is approved.');
             foreach ($files as $f) {
                 app(InputSnapshotService::class)->verify([$f]);
-                $out[] = ['url' => $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']), 'name' => $f['label'] ?? 'the cast'];
+                $out[] = ['url' => $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']), 'name' => $f['label'] ?? 'the cast'];
             }
         }
         return $out;
@@ -557,7 +557,7 @@ class PlanMediaExecutor
         }
         $f = $this->sheetFile((string) ($shot['first_frame'] ?? ''), $ctx);
         app(InputSnapshotService::class)->verify([$f]);
-        return $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']);
+        return $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']);
     }
 
     private function shotPrompt(string $description, array $shot, array $refs): string
@@ -609,7 +609,7 @@ class PlanMediaExecutor
             $bytes = $audio?->storage_url ? app(StorageService::class)->get((string) $audio->storage_url) : null;
             if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The cloned narration is not ready, so the take cannot be lip-synced.');
             $presenter = ($shot['presenter'] ?? '') === 'avatar' ? $this->firstFrame(['first_frame' => 'avatar'], $ctx)
-                : (($f = $ctx['sheet_files'][0] ?? null) ? $this->replicateUpload(\Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path']), $f['mime_type']) : throw new RuntimeException('The take has no presenter image.'));
+                : (($f = $ctx['sheet_files'][0] ?? null) ? $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']) : throw new RuntimeException('The take has no presenter image.'));
             return app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($presenter, $this->replicateUpload($bytes, (string) ($audio->mime_type ?: 'audio/wav')), null);
         }
         if ($kind === 'ugc_take') {

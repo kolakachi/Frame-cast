@@ -9,6 +9,16 @@ use Tests\TestCase;
 
 class CreateReferenceStudyTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['database.default' => 'reference_study_test', 'database.connections.reference_study_test' => [
+            'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
+        ]]);
+        \Illuminate\Support\Facades\DB::purge('reference_study_test');
+        (require database_path('migrations/2026_10_06_230000_create_create_stored_files.php'))->up();
+    }
+
     public function test_shots_change_windows_and_samples_cover_every_shot_and_short_moments(): void
     {
         $scores = [];

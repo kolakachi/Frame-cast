@@ -23,14 +23,14 @@ class FinalLook
         if (collect($input['plan_media'] ?? [])->contains('kind', 'reference_sheet') && ($c = CharacterApproval::candidate($plan, $input['settings'] ?? [], (int) $run->workspace_id))) {
             foreach ($c['files'] as $k => $f) {
                 if (str_starts_with((string) ($c['names'][$k] ?? ''), 'Panel ') || count($cast) >= 3) continue;
-                $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path'] ?? '');
+                $bytes = app(\App\Services\Create\CreateStorage::class)->get($f['storage_path'] ?? '');
                 if (is_string($bytes) && $bytes !== '') $cast[] = ['name' => (string) ($c['names'][$k] ?? 'cast'), 'data' => base64_encode($bytes), 'mime' => (string) ($f['mime_type'] ?? 'image/png')];
             }
         }
         // Without a cast sheet, the user's own photo is the identity a take or shot must keep.
         if (! $cast && collect($input['plan_media'] ?? [])->contains(fn ($m) => in_array('avatar', (array) ($m['refs'] ?? []), true) || ($m['presenter'] ?? '') === 'avatar' || ($m['first_frame'] ?? '') === 'avatar')) {
             foreach (collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => empty($f['operation']))->take(2) as $f) {
-                $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($f['storage_path'] ?? '');
+                $bytes = app(\App\Services\Create\CreateStorage::class)->get($f['storage_path'] ?? '');
                 if (is_string($bytes) && $bytes !== '' && strlen($bytes) < 4_000_000) $cast[] = ['name' => 'the user (their own photo)', 'data' => base64_encode($bytes), 'mime' => (string) ($f['mime_type'] ?? 'image/jpeg')];
             }
         }
@@ -40,7 +40,7 @@ class FinalLook
         $key = (string) config('services.anthropic.key');
         if ($key === '' || ! $frames) return ['status' => 'unverified'];
         $content = [['type' => 'text', 'text' => 'You check a finished short video before it is delivered. Below are frames from it, each with its time, then the approved cast images (identity references), if any. Answer only from what is visible; when you cannot tell, say "unclear". Reply with JSON only:
-{"required": [{"id": "<the item's id, as given>", "item": "<as given>", "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words>"}],
+{"required": [{"id": "<the item id, as given>", "item": "<as given>", "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words>"}],
  "identity": {"status": "consistent"|"drift"|"unclear"|"none", "times": [<seconds where a person looks like someone else>], "note": "<under 20 words>"},
  "lettering": {"status": "clean"|"garbled", "times": [<seconds>], "note": "<garbled letters or fake logos baked into the picture; clean overlay captions and real product labels are fine>"},
  "actions": [{"shot": <n>, "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words; say if the person looks into the camera when they should not>"}],

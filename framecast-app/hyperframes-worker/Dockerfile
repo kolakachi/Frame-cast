@@ -9,6 +9,9 @@ COPY scripts/vendor-registry.mjs /vendor-registry.mjs
 RUN node /vendor-registry.mjs --source /src/registry --out /registry --catalog /registry-catalog.json && cp /src/LICENSE /registry/LICENSE
 
 FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+ARG CREATE_REVISION=development
+ARG CREATE_SOURCE_SHA256=development
+LABEL com.wyv.create.revision=$CREATE_REVISION com.wyv.create.source=$CREATE_SOURCE_SHA256
 RUN apt-get update && apt-get install -y --no-install-recommends chromium ffmpeg fonts-dejavu-core ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/worker
 COPY package*.json ./

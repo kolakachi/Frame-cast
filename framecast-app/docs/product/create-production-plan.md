@@ -1,6 +1,8 @@
 # Create on production: plan
 
-Drafted 2026-10-06. Nothing here is built. **Decide** marks what the owner chooses before work starts.
+Drafted 2026-10-06. The initial state below predates the team deployment. See `create-go-live.md` for the rollout
+record and customer readiness gates; local build diagnostics remain recorded below.
+**Decide** marks what the owner chooses before work starts.
 
 ## Where we are
 
@@ -17,7 +19,22 @@ Drafted 2026-10-06. Nothing here is built. **Decide** marks what the owner choos
     4 GB each, one at a time;
   - the art packs (188 MB) on the host;
   - run artifacts and uploads on local disk (uploads capped at 1 GB a workspace).
-- **The API image build hangs** on the yt-dlp download inside buildkit. A deploy builds images, so this blocks it.
+- **The API image build passed locally on 2026-10-06.** A hang was reported at the yt-dlp download. The version was already
+  pinned, but the old retry policy allowed roughly 25 minutes with no progress output. The 2026-10-06 patch adds a
+  180-second total download deadline, progress, pinned release checksums for both architectures, and a bounded version
+  check. The exact ARM64 release downloaded on the host in about seven seconds and matched its official checksum.
+  An isolated, uncached BuildKit install also passed in 7.6 seconds, including checksum and executable version checks.
+  Seven offline shell cases passed (both architectures, download failure/stall, corrupt bytes, wrong version and
+  unsupported architecture). The first full build reproduced a GitHub HTTPS connect timeout and failed clearly after
+  34 seconds. One retry passed (yt-dlp: 6.2 seconds), producing ARM64 image
+  `wyv-api-build-check:local`, ID `fc134a4fdcf937891e998c166c555d36210e9ca563a38eef73b4d3c5522fea70`.
+  GitHub connectivity is intermittent; the new limits bound failure, not eliminate network dependency. The rebuilt
+  image has not replaced running services, and this patch still needs verification in the production ARM64 build.
+- **Local Docker failure found during diagnosis:** listing build history (`docker buildx history ls`) triggered a
+  BuildKit `filterHistoryEvents` nil-pointer panic and stopped Docker Desktop. Avoid that command on this installation;
+  recover with a normal Docker restart, not a factory reset. Docker and the local containers recovered normally.
+  The stack matches [upstream issue 52257](https://github.com/moby/moby/issues/52257). This crash is separate from the
+  reported download stall.
 - **Measured local cost:**
   - a Standard 15 s build: median 238 credits (about $0.95);
   - renders: 1.5 to 4 minutes;
@@ -25,6 +42,11 @@ Drafted 2026-10-06. Nothing here is built. **Decide** marks what the owner choos
   - plans: 3.5 to 6.5 minutes.
 
 ## Decide
+
+Decided 2026-10-06: builds run on `framecast-create` (Oracle A1, us-ashburn-1, 4 cores, 6 GB, 30 GB disk, Oracle
+Linux 9.8, user `opc`); files live on B2. Open: a private bucket for customer uploads (recommended) or the existing
+public-read `frame-cast` bucket; the first audience; the daily brake.
+
 
 | Decision | Recommendation |
 |---|---|
@@ -35,8 +57,10 @@ Drafted 2026-10-06. Nothing here is built. **Decide** marks what the owner choos
 
 ## Work, in order
 
-1. **Unblock deploys:** fix the API image build (pin or vendor the yt-dlp binary instead of downloading it inside
-   buildkit).
+1. **Unblock deploys:** local ARM64 image build verified; verify the patched production ARM64 image before deployment. If
+   release downloads remain unreliable, stage checksum-verified release artifacts in the build context or a controlled
+   artifact store. Pinning alone is not a fix: the version was already pinned. Roll out rebuilt service images separately;
+   do not recreate services carrying copied-in changes prematurely.
 2. **Production mode in code:**
    - Replace the local-only checks with `CREATE_ENABLED` plus the allowlist.
    - Reconciliation and recovery become super-admin commands.

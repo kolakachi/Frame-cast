@@ -63,8 +63,10 @@ class TrajectoryService
                 'id', 'kind', 'provider', 'model', 'request_hash', 'prediction_id', 'status', 'charged_credits', 'cost_microusd', 'dispatched_at', 'created_at', 'updated_at',
             ]);
             $events = DB::table('composition_trace_events')->where('run_id', $r->id)->orderBy('sequence')->get();
+            $owner = app(WorkerOwnership::class)->find($r->id);
+            $ownership = $owner ? array_intersect_key((array) $owner, array_flip(['id', 'worker_id', 'instance_id', 'slot', 'claimed_at', 'last_seen_at', 'stopped_at', 'stop_source'])) : null;
             $runs[] = ['id' => $r->id, 'message_id' => $requestId, 'plan_id' => $input['plan']['plan_id'] ?? null,
-                'quote_id' => $r->quote_id, 'operation_id' => $r->operation_id, 'status' => $r->status, 'stage' => self::safe($r->stage),
+                'worker_assignment' => $ownership, 'quote_id' => $r->quote_id, 'operation_id' => $r->operation_id, 'status' => $r->status, 'stage' => self::safe($r->stage),
                 'build_stage' => $input['build_stage'] ?? (! empty($input['look_first']) ? 'storyboard' : 'full_video'),
                 'charged_credits' => (int) $attempts->sum('charged_credits'), 'known_cost_microusd' => (int) $attempts->sum('cost_microusd'),
                 'unknown_attempts' => $attempts->whereIn('status', ['started', 'unknown'])->count(),
@@ -78,6 +80,10 @@ class TrajectoryService
                 'character_style' => self::safe($input['plan']['character_style'] ?? ''),
                 'execution_policy' => array_map(fn ($p) => array_intersect_key($p, array_flip(['provider', 'model', 'max_calls', 'max_output_tokens', 'credits', 'total_credits', 'cost_limit_microusd'])), $input['execution_policy'] ?? []),
                 'planned_media' => array_map(fn ($m) => ['task_id' => $m['id'] ?? null, 'requirement_ids' => $m['requirement_ids'] ?? [], 'kind' => $m['kind'], 'credits' => $m['credits'], 'description' => self::safe($m['description'] ?? ''), 'reused' => isset($m['reuse_media_id'])], $input['plan_media'] ?? [])], $r->id);
+            if ($owner) {
+                $add($owner->claimed_at, 'worker_assignment', $owner->id, 'Run assigned to '.$owner->worker_id.' / '.$owner->slot, $ownership, $r->id);
+                if ($owner->stopped_at) $add($owner->stopped_at, 'worker_stop', $owner->id.'-stop', 'Stop attestation recorded by '.$owner->stop_source, $ownership, $r->id);
+            }
             foreach ($attempts as $a) {
                 $data = ['attempt_id' => $a->id, 'kind' => $a->kind, 'provider' => $a->provider, 'model' => $a->model, 'request_hash' => $a->request_hash,
                     'prediction_id' => $a->prediction_id, 'status' => $a->status, 'charged_credits' => (int) $a->charged_credits,

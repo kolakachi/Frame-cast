@@ -17,6 +17,8 @@ final class PlanningCosts
     /** Costs recorded from here on belong to this conversation's next plan. */
     public static function begin(string $conversationId): void { self::$conversation = $conversationId; }
 
+    public static function end(): void { self::$conversation = null; }
+
     public static function add(string $what, int $microusd): void
     {
         if (! self::$conversation || $microusd <= 0) return;

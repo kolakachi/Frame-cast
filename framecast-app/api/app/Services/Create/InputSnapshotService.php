@@ -35,19 +35,18 @@ class InputSnapshotService
 
     public function capture(int $workspaceId, array $attachments): array
     {
-        // Local host lock also protects concurrent PHP requests while copying.
-        $disk = Storage::disk('local');
-        $disk->makeDirectory('create/locks');
-        $lock = fopen($disk->path('create/locks/inputs-'.$workspaceId.'.lock'), 'c');
-        abort_unless($lock && flock($lock, LOCK_EX), 503, 'Input storage is busy.');
-        try { return $this->captureLocked($workspaceId, $attachments); }
-        finally { flock($lock, LOCK_UN); fclose($lock); }
+        if ($attachments) app(DiskSpace::class)->admission();
+        // Serialize quota accounting across API and planning hosts, not only PHP processes on one host.
+        return DB::transaction(function () use ($workspaceId, $attachments) {
+            \App\Models\Workspace::whereKey($workspaceId)->lockForUpdate()->firstOrFail();
+            return $this->captureLocked($workspaceId, $attachments);
+        });
     }
 
     private function captureLocked(int $workspaceId, array $attachments): array
     {
         $files = []; $total = 0;
-        $disk = Storage::disk('local');
+        $disk = app(\App\Services\Create\CreateStorage::class);
         $stored = 0;
         foreach ($disk->allFiles('create/inputs/'.$workspaceId) as $existing) $stored += $disk->size($existing);
         try {
@@ -76,9 +75,9 @@ class InputSnapshotService
                     $path = 'create/inputs/'.$workspaceId.'/'.Str::uuid().'/'.$name;
                     rewind($tmp);
                     try {
-                        if (! Storage::disk('local')->put($path, $tmp, ['visibility' => 'private'])) throw new \RuntimeException('Input storage unavailable.');
+                        if (! app(\App\Services\Create\CreateStorage::class)->put($path, $tmp, ['visibility' => 'private'])) throw new \RuntimeException('Input storage unavailable.');
                     } catch (\Throwable $e) {
-                        Storage::disk('local')->delete($path);
+                        app(\App\Services\Create\CreateStorage::class)->delete($path);
                         throw $e;
                     }
                     $files[] = ['asset_id' => $asset->id, 'purpose' => $attachment->purpose, 'name' => $name,
@@ -102,13 +101,13 @@ class InputSnapshotService
 
     public function discard(array $files): void
     {
-        foreach ($files as $file) Storage::disk('local')->delete($file['storage_path']);
+        foreach ($files as $file) app(\App\Services\Create\CreateStorage::class)->delete($file['storage_path']);
     }
 
     public function verify(array $files): void
     {
         foreach ($files as $file) {
-            $path = Storage::disk('local')->path($file['storage_path']);
+            $path = app(\App\Services\Create\CreateStorage::class)->path($file['storage_path']);
             abort_unless(is_file($path) && ! is_link($path) && filesize($path) === $file['bytes']
                 && hash_equals($file['sha256'], hash_file('sha256', $path)), 409, 'An input snapshot is unavailable or changed. Prepare a new quote.');
         }

@@ -84,7 +84,7 @@ reference study retries a busy model, says when it is partial, and asks before a
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| AB1 | Art packs on prod: part of `create-production-plan.md` (Create is not on prod at all) | blocked | owner: plan decisions | — | production plan |
+| AB1 | Art packs on the build worker (10,923 items, 3dicons included) | done | — | — | `create-go-live.md` |
 | AB2 | 3dicons added: 120 objects × 4 finishes × 2 angles, CC0, 960 files | ready | — | — | todo: art |
 | AB3 | WyvBear and GSAP plugins staged into the builder | open | — | build | todo: art |
 | AB4 | Brand logo and cutout proven in a real build; the builder must now search the art library when the brief asks for icons | partly | — | a run that uses art | todo: art |
@@ -106,8 +106,8 @@ Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your vi
 |---|---|---|---|---|---|
 | I1 | API image rebuild hangs on the yt-dlp download | local ARM64 verified | production AMD64 build | bounded download + checksum patch; rollout separate (containers carry copied-in changes) | production plan: build diagnostics |
 | I2 | horizon and reverb run old images | open | I1 | rebuild | todo: infra |
-| I3 | Create on production (worker server, production mode, B2 storage, allowlist, daily brake) | blocked | owner: 4 decisions | see `create-production-plan.md` | production plan |
-| I4 | Paid canary after the deploy | ready | I3 | run | verify-and-teach step 5 |
+| I3 | Create on production: live for the team; L1 to L10 left (B2 files, worker concurrency, auto worker deploy, stale-page reload) | partly | see `create-go-live.md` | L1 | `create-go-live.md` |
+| I4 | Paid canary after the deploy: plan passed; build 1 failed (per-call hold), fix `304200b9` deployed | partly | owner: credits in ws 1 (L1) | re-run | `create-go-live.md` |
 | I5 | Brief refused by the 24-requirement limit on a re-plan | open | — | look at | verify-and-teach step 4 |
 | R1 | Local acceptance on the bench (8 of 9) | blocked | bench | run | progress: rollout |
 | R2 | Limited audience with an off switch | open | R1 | build switch | progress: rollout |
@@ -121,7 +121,7 @@ Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your vi
 | O3 | A product photo (stock candle is the fallback) | bench B8 |
 | O4 | Baseline budget cap: 7,000 credits? | B2, B3, G1, F1, H1, R1 |
 | O6 | From scratch: approve FS1 and FS2; send 15–25 exemplar videos | FS1, FS2, FS4 |
-| O7 | Go to push and deploy | I3, I4, AB1 |
+| O7 | Credits for the canary re-run: release the stale 368 hold or top up ws 1; planning on an empty balance (L2) | I4 |
 
 ## Older docs: open lines that are no longer live
 

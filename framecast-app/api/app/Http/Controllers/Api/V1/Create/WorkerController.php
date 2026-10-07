@@ -21,7 +21,8 @@ class WorkerController extends Controller
     public function claim(Request $r)
     {
         $this->authorizeWorker($r);
-        return response()->json(['data' => $this->runs->claim()]);
+        $identity = $r->hasAny(['worker_id', 'instance_id', 'slot']) ? $r->only(['worker_id', 'instance_id', 'slot']) : null;
+        return response()->json(['data' => $this->runs->claim($identity)]);
     }
 
     public function stopped(Request $r, string $id)
@@ -57,7 +58,7 @@ class WorkerController extends Controller
         $this->authorizeWorker($r);
         $input = $r->validate(['lease_token' => 'required|string|size:64']);
         $file = $this->runs->inputFile($id, $input['lease_token'], $assetId);
-        return response()->file(Storage::disk('local')->path($file['storage_path']), [
+        return response()->file(app(\App\Services\Create\CreateStorage::class)->path($file['storage_path']), [
             'Content-Type' => $file['mime_type'], 'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
         ]);
@@ -217,7 +218,7 @@ class WorkerController extends Controller
             }
             $path = 'create/previews/'.$id.'/'.$hash.'.'.$extension;
             // Content-addressed, private, never overwritten with a different file.
-            if (! Storage::disk('local')->exists($path)) $r->file('artifact')->storeAs(dirname($path), basename($path), 'local');
+            if (! app(\App\Services\Create\CreateStorage::class)->exists($path)) app(\App\Services\Create\CreateStorage::class)->putFileAs(dirname($path), $r->file('artifact'), basename($path));
         }
         return response()->json(['data' => $this->runs->finish($id, $input['lease_token'], $result, $path, $hash)]);
     }

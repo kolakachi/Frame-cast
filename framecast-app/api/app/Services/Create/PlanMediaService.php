@@ -369,20 +369,20 @@ class PlanMediaService
         // The user's own images only: media an earlier run generated (a cast, panels) is inherited as a source too, and
         // must never stand in for "your photo".
         $images = collect($input['input_files'] ?? [])->where('purpose', 'source')->where('asset_type', 'image')->filter(fn ($f) => ($f['mime_type'] ?? '') !== 'image/svg+xml' && empty($f['operation']))
-            ->map(fn ($f) => Storage::disk('local')->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
+            ->map(fn ($f) => app(CreateStorage::class)->path($f['storage_path']))->filter(fn ($p) => is_file($p))->values()->all();
         // What a cutout may start from: the run's files by the names the build knows them by (uploads, edited files, and
         // anything bought in this run).
         $bought = DB::table('create_plan_media')->where('run_id', $run->id)->where('status', 'succeeded')->pluck('record_json')
             ->flatMap(fn ($r) => array_filter([json_decode((string) $r, true)['file'] ?? null, ...(json_decode((string) $r, true)['more_files'] ?? [])]))->all();
         $cutoutFiles = collect([...($input['input_files'] ?? []), ...($input['derived_files'] ?? []), ...$bought])->filter(fn ($f) => is_array($f) && ! empty($f['name']) && ! empty($f['storage_path']))
-            ->map(fn ($f) => ['name' => $f['name'], 'path' => Storage::disk('local')->path($f['storage_path'])])->values()->all();
+            ->map(fn ($f) => ['name' => $f['name'], 'path' => app(CreateStorage::class)->path($f['storage_path'])])->values()->all();
         // An image bought earlier in this plan (a stock or generated image) is what a cutout means when it names no file
         // the run has: the planner cannot know a bought file's name in advance.
         // This plan's images, bought by this run or an earlier one (a retried build reuses them without a new row).
         $boughtImages = DB::table('create_plan_media')->where('conversation_id', $run->conversation_id)->where('plan_id', $input['plan']['plan_id'] ?? '')->where('status', 'succeeded')->orderBy('item_index')->pluck('record_json')
             ->map(fn ($r) => json_decode((string) $r, true)['file'] ?? null)->filter(fn ($f) => is_array($f) && str_starts_with((string) ($f['mime_type'] ?? ''), 'image/') && ! empty($f['storage_path']))->values();
         $latest = $boughtImages->last();
-        return ['cutout_files' => $cutoutFiles, 'cutout_latest' => $latest ? ['name' => $latest['name'], 'path' => Storage::disk('local')->path($latest['storage_path'])] : null, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
+        return ['cutout_files' => $cutoutFiles, 'cutout_latest' => $latest ? ['name' => $latest['name'], 'path' => app(CreateStorage::class)->path($latest['storage_path'])] : null, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images, 'source_files' => $input['input_files'] ?? [],
             'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15),
             // Items made from earlier items (the talking shot) find them by the plan.

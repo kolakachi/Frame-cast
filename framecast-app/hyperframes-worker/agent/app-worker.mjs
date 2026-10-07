@@ -1,9 +1,13 @@
+import {workerIdentity,verifyClaimAssignment} from './worker-identity.mjs';
+import {verifyRelease} from './release-manifest.mjs';
+import {createWorkerShutdown,runWorkerLoop} from './worker-lifecycle.mjs';
 import {createSandboxSupervisor,confirmSandboxStopped} from './sandbox-exec.mjs';
 import {agentFailure,sandboxStopUnconfirmed} from './sandbox-failure.mjs';
 import {createTrajectory} from './trajectory.mjs';
 import {reviewStatus} from './review-status.mjs';
 import {finalChecks,repairable,repairBrief} from './final-checks.mjs';
 import {moveFindings} from './move-check.mjs';
+import {createDiskGate,diskPolicy} from './disk-capacity.mjs';
 // Local app bridge. Paid calls require both app and host opt-in plus durable limits.
 // Credentials stay on the host; no shell text or Docker socket enters the sandbox.
 import {readFile,writeFile,mkdir,copyFile,access,readdir,rename,unlink} from 'node:fs/promises';
@@ -32,8 +36,21 @@ if(!apiOriginAllowed(url))throw Error('The API origin must be HTTPS, this machin
 const token=process.env.CREATE_WORKER_TOKEN;
 if(!token||token.length<32)throw Error('Set the matching local CREATE_WORKER_TOKEN (32+ characters)');
 const docker=process.env.DOCKER_BIN??'docker';
+let sandboxCompose=root+'/compose.local.yml';
+if(process.env.CREATE_RELEASE_REQUIRED==='1'){
+ const manifest=JSON.parse(await readFile(root+'/RELEASE.json','utf8'));
+ const inspection=await exec(docker,['image','inspect',manifest.sandbox_image],{timeout:30000,maxBuffer:1000000});
+ await verifyRelease(root,manifest,JSON.parse(inspection.stdout)[0]);
+ process.env.CREATE_SANDBOX_IMAGE=manifest.sandbox_image;
+ sandboxCompose=root+'/compose.release.yml';
+ console.error(JSON.stringify({event:'create.release_verified',revision:manifest.revision,sandbox_image:manifest.sandbox_image,art:manifest.art}));
+}
+const identity=workerIdentity();
+const diskGate=createDiskGate(diskPolicy(root),{notify:event=>console.error(JSON.stringify(event))});
 let stopping=false;
-process.on('SIGINT',()=>{stopping=true;});process.on('SIGTERM',()=>{stopping=true;});
+const shutdown=createWorkerShutdown({notify:event=>console.error(JSON.stringify(event))});
+process.on('SIGINT',()=>{stopping=true;shutdown.signal('SIGINT');});
+process.on('SIGTERM',()=>shutdown.signal('SIGTERM'));
 // The app accepts 2,000 characters; the cut note is kept whole and the review is shortened first.
 function fitSummary(review,note){const room=2000-note.length;return (review.length>room?review.slice(0,Math.max(0,room-1)).replace(/\s+\S*$/,'')+'…':review)+note;}
 // Words cut from the user's own speech are always listed, so meaning never changes silently.
@@ -58,7 +75,7 @@ async function execute(run){
  await mkdir(dir,{recursive:true});
  // A prior process may have spent/rendered. Never replay an interrupted run.
  try{await access(dir+'/started.json');throw Error('Run journal exists; reconcile instead of replaying');}catch(e){if(e.code!=='ENOENT')throw e;}
- await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,startedAt:new Date().toISOString(),conversationId:run.input.conversation_id??null,planId:run.input.plan?.plan_id??null,stage:run.input.build_stage??null,planHash:planHash(run.input)}),{flag:'wx',mode:0o600});
+ await writeFile(dir+'/started.json',JSON.stringify({runId:run.id,assignment:run.assignment??null,coordinatorPid:process.pid,startedAt:new Date().toISOString(),conversationId:run.input.conversation_id??null,planId:run.input.plan?.plan_id??null,stage:run.input.build_stage??null,planHash:planHash(run.input)}),{flag:'wx',mode:0o600});
  // The app listens to a sound file the build made (its export, or narration it edited) and returns the words.
  const listen=async file=>{const form=new FormData();form.set('lease_token',run.lease_token);form.set('file',new Blob([await readFile(file)]),path.basename(file));return request('runs/'+run.id+'/listen',form,true,180000);};
  await mkdir(dir+'/project');
@@ -93,6 +110,7 @@ async function execute(run){
  const sandboxSupervisor=createSandboxSupervisor();
  const runSandbox=async(command,args,options={})=>{
   const previousStage=stage;
+  await diskGate.require();
   try{return await sandboxSupervisor.run(command,args,{...options,signal:options.signal??aborter.signal,onQueue:state=>{
    sandboxWaiting=state==='waiting';
    stage=sandboxWaiting?'Waiting for render capacity':previousStage;
@@ -136,7 +154,7 @@ async function execute(run){
    reservation=await pilotBudget.reserve(run.input.execution_policy.media.model,run.input.execution_policy.media.cost_limit_microusd/1e6);
    const gateway={prepare:()=>request('runs/'+run.id+'/replicate/prepare',{lease_token:run.lease_token},false,300000),call:(attemptId,body)=>request('runs/'+run.id+'/attempts/'+attemptId+'/replicate',{...body,lease_token:run.lease_token},false,120000)};
    const image=await executeImage({directory:dir,input:run.input,manifest,gateway,begin,settle,bindPrediction,signal:aborter.signal});
-   if(image.type==='video/mp4'){await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/prepare-animation.mjs',id],{timeout:120000,maxBuffer:1000000});image.artifact=dir+'/animation-silent.mp4';}
+   if(image.type==='video/mp4'){await runSandbox(docker,['compose','-f',sandboxCompose,'run','--rm','--name',container,'smoke','node','agent/prepare-animation.mjs',id],{timeout:120000,maxBuffer:1000000});image.artifact=dir+'/animation-silent.mp4';}
    await beat();if(cancelled||lost||stopping)throw Error('Stopped before delivering image');
    await finish(run,{status:'preview_ready',summary:image.summary,bundle:image.bundle},image.artifact,image.type);
    return;
@@ -213,7 +231,7 @@ async function execute(run){
      const requestFile=dir+'/'+operation+'-request.json';
      // A command that runs past its limit is stuck, not slow: a 3D clip render gets 5 minutes, anything else 90 s.
      if(payload)await writeFile(requestFile,JSON.stringify(operation==='run'?{...payload,timeout_ms:cmd==='remotion'&&args?.[0]==='render'?300000:90000}:payload),{mode:0o600});
-     await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:900000,maxBuffer:8000000});
+     await runSandbox(docker,['compose','-f',sandboxCompose,'run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,operation,...(times.length?[times.join(',')]:[])],{signal,timeout:900000,maxBuffer:8000000});
      const result=JSON.parse(await readFile(dir+'/'+operation+'/result.json','utf8'));
      if(payload)await unlink(requestFile).catch(()=>{});
      const imageFile=({snapshot:'snapshot/contact-sheet.jpg',strip:'strip/strip.jpg',inspect_reference:'inspect_reference/contact-sheet.jpg',detail:'detail/detail.jpg',compare:'compare/compare.jpg'})[operation];
@@ -271,7 +289,7 @@ async function execute(run){
   await accountedCall({key:'render-'+(round+1),kind:'render',input:{runId:run.id,mode:run.input.mode},
    begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
-   execute:async()=>{await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:Math.max(1800000,180000*renderLoad(run.input.settings)),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error(await renderFailure(report,root)),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
+   execute:async()=>{await runSandbox(docker,['compose','-f',sandboxCompose,'run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:Math.max(1800000,180000*renderLoad(run.input.settings)),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error(await renderFailure(report,root)),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
@@ -279,7 +297,7 @@ async function execute(run){
   if(!(stopping||lost)){
    stage='Checking the final video';
    try{
-    await runSandbox(docker,['compose','-f',root+'/compose.local.yml','run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:900000,maxBuffer:2000000});
+    await runSandbox(docker,['compose','-f',sandboxCompose,'run','--rm','--name',container+'-delivery','smoke','node','agent/live-tool.mjs',id,'delivery'],{timeout:900000,maxBuffer:2000000});
     const sandbox=JSON.parse(await readFile(dir+'/delivery/result.json','utf8'));
     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
     const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});
@@ -379,6 +397,7 @@ async function execute(run){
   const uncertain=e.code==='ATTEMPT_NEEDS_ATTENTION'||sandboxStopUnconfirmed(e);
   const result={status:stopped&&!uncertain?(cancelled||stopping?'cancelled':'failed'):'needs_attention',summary:uncertain?'This build stopped while a step was in progress. We are checking it before anything runs again; earlier versions are safe.':stopped?'This build stopped before it finished. You are only charged for the work it did, and earlier versions are safe. Try again, or change the brief.':'This build lost contact before it finished. We are checking it before anything runs again; earlier versions are safe.'};
   if(e.code==='SANDBOX_QUEUE_TIMEOUT'&&result.status==='failed')result.summary='The render queue stayed busy too long. Your saved assets are safe. Please try again later.';
+  if(e.code==='CREATE_DISK_CAPACITY'&&result.status==='failed')result.summary='This build stopped because the worker ran short of disk space. Existing assets and drafts are retained. Please try again after capacity is restored.';
   await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,diagnostic:e.sandboxDiagnostic??null,...result}),{mode:0o600});
   // If completion may already be accepted, the server rejects a conflicting result.
   if(!lost)try{await finish(run,result);}catch{}
@@ -389,9 +408,7 @@ async function execute(run){
 }
 // How much longer than a plain 24 fps render the final render takes (60 fps, motion blur).
 function renderLoad(settings){const fps=[30,60].includes(settings?.frame_rate)?settings.frame_rate:24;return Math.max(1,fps*(settings?.motion_blur===true?(fps>=60?2:4):1)/24);}
-while(!stopping){
- try{const run=await request('claim',{});if(run)await execute(run);else if(process.argv.includes('--once'))break;}
- catch(e){console.error(e.message);if(process.argv.includes('--once'))process.exitCode=1;}
- if(process.argv.includes('--once'))break;
- await new Promise(resolve=>setTimeout(resolve,2000));
-}
+process.exitCode=await runWorkerLoop({shutdown,
+ claim:()=>diskGate.claim(async()=>verifyClaimAssignment(await request('claim',identity??{}),identity)),execute,
+ once:process.argv.includes('--once'),onError:e=>console.error(e.message),
+});

@@ -91,6 +91,16 @@ Schedule::call(function (): void {
 Schedule::command('create:cleanup')->hourly()->withoutOverlapping()
     ->when(fn () => (bool) config('create.enabled'));
 
+// Runs on each API/planning host that owns a local cache; file locks protect paths in active use.
+Schedule::command('create:maintain-storage --apply --originals --limit=100')->hourly()->withoutOverlapping()
+    ->when(fn () => (bool) config('create.local_maintenance_enabled'));
+
+Schedule::command('create:check-leases')->everyMinute()->withoutOverlapping()
+    ->when(fn () => (bool) config('create.enabled'));
+
+Schedule::command('create:recover-planning')->everyMinute()->withoutOverlapping()
+    ->when(fn () => (bool) config('create.enabled') && (bool) config('create.durable_planning'));
+
 // Create's provider contracts (docs/product/create-verify-and-teach-scope.md, 1c): free, reads model schemas only.
 Schedule::command('create:provider-contracts')->dailyAt('06:10')->name('create-provider-contracts')->withoutOverlapping();
 // Vendor failures of the last day (refusals, busy, our own credit or key), to the alert list; quiet days send nothing.

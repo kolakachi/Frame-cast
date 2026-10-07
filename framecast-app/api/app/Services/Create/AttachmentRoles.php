@@ -110,7 +110,7 @@ class AttachmentRoles
         try {
             if ($a->asset_type === 'video') {
                 $path = app(References\ReferenceSheets::class)->pathFor($a);
-                return $path ? ['image/jpeg', (string) Storage::disk('local')->get($path)] : null;
+                return $path ? ['image/jpeg', (string) app(\App\Services\Create\CreateStorage::class)->get($path)] : null;
             }
             if ($a->asset_type === 'image' && in_array($a->mime_type, ['image/png', 'image/jpeg', 'image/webp'], true)) {
                 $bytes = app(StorageService::class)->get((string) $a->storage_url);

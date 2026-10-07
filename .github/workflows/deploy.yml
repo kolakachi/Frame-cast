@@ -15,7 +15,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  web-checks:
+    uses: ./.github/workflows/web-checks.yml
+
+  create-release-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 -m unittest discover -s framecast-app/ops/tests -v
+      - run: node --test framecast-app/hyperframes-worker/agent/tests/release-manifest.test.mjs framecast-app/hyperframes-worker/agent/tests/plan-media.test.mjs
+
   deploy:
+    needs: [web-checks, create-release-checks]
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
@@ -30,7 +44,7 @@ jobs:
           script_stop: true
           script: |
             set -e
-            echo '==> Syncing to origin/master...'
+            echo '==> Syncing to the revision validated by this workflow...'
             cd /opt/framecast/app
             # fetch + reset, never `git pull`. The server's checkout is
             # disposable and must simply match origin. A plain pull needs the
@@ -41,6 +55,8 @@ jobs:
             # Untracked files are left alone, which is what keeps the .env
             # files on the box safe.
             git fetch origin master
+            TARGET_REVISION='${{ github.sha }}'
+            git cat-file -e "$TARGET_REVISION^{commit}"
 
             # Decide how much of the stack this push touches BEFORE moving the
             # checkout, by diffing what the box runs against what it is about
@@ -50,7 +66,7 @@ jobs:
             # workers: that recreation takes the whole product down for tens
             # of seconds and has interrupted customers' generations mid-poll.
             # Anything else, or a re-run of the same commit, takes the full path.
-            CHANGED=$(git diff --name-only HEAD origin/master || true)
+            CHANGED=$(git diff --name-only HEAD "$TARGET_REVISION")
             MODE=full
             if [ -n "$CHANGED" ]; then
               MODE=light
@@ -67,7 +83,7 @@ jobs:
             echo "==> Deploy mode: $MODE"
             echo "$CHANGED" | sed 's/^/    /'
 
-            git reset --hard origin/master
+            git reset --hard "$TARGET_REVISION"
 
             cd /opt/framecast/app/framecast-app
 
@@ -96,6 +112,9 @@ jobs:
               docker compose -f docker-compose.prod.yml ps
               exit 1
             fi
+
+            # ops/create_deploy_preflight.py (drain + persistent-storage check) is run by hand
+            # until Create's pause controls and durable planning are switched on in production.
 
             # Self-heal before deploying. When Docker recreates a container it
             # first renames the old one to `<short-id>_<name>`, then creates the

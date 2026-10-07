@@ -63,7 +63,7 @@ class CreateController extends Controller
         $paths = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('artifact_path', 'id');
         $revisions->each(function ($revision) use ($paths, $expires) {
             $path = $paths[$revision->id] ?? null;
-            $revision->preview_url = $path && Storage::disk('local')->exists($path) ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', $expires, ['revisionId' => $revision->id]) : null;
+            $revision->preview_url = $path && app(\App\Services\Create\CreateStorage::class)->exists($path) ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', $expires, ['revisionId' => $revision->id]) : null;
         });
         $bundles = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('bundle_json', 'id');
         $revisions->each(function($revision)use($bundles){$revision->variables=\App\Services\Create\CompositionVariables::declarations(json_decode($bundles[$revision->id] ?? '{}', true)['index.html'] ?? null);});
@@ -227,6 +227,10 @@ class CreateController extends Controller
     {
         $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'skip_questions' => 'sometimes|boolean', 'async' => 'sometimes|boolean']);
         $user = $r->user(); $skip = $r->boolean('skip_questions');
+        if (config('create.durable_planning')) {
+            $job = app(\App\Services\Create\PlanningJobService::class)->submit($user, $id, $input['expected_version'], $input['idempotency_key'], $skip);
+            return response()->json(['data' => $job], in_array($job['state'], ['queued', 'running'], true) ? 202 : 200);
+        }
         if (! $r->boolean('async')) return response()->json(['data' => app(\App\Services\Create\PlanService::class)->propose($user, $id, $input['expected_version'], $input['idempotency_key'], $skip)], 201);
         // Planning takes minutes, longer than a proxy (Cloudflare: 100 s) keeps a request open: the request answers at once
         // and planning finishes after the response is sent; plan-activity reports when it is done (or why it failed).
@@ -235,6 +239,7 @@ class CreateController extends Controller
         $key = 'create:plan-job:'.$id;
         $job = \Illuminate\Support\Facades\Cache::get($key);
         if ($job && ($job['key'] ?? null) === $input['idempotency_key']) return response()->json(['data' => $job], $job['state'] === 'running' ? 202 : 200);
+        app(\App\Services\Create\AdmissionControl::class)->assertOpen();
         $job = ['key' => $input['idempotency_key'], 'state' => 'running', 'started_at' => now()->toIso8601String()];
         \Illuminate\Support\Facades\Cache::put($key, $job, now()->addMinutes(30));
         // Runs once the response has been sent (PHP-FPM finishes the request first, then the app's terminating step).
@@ -257,7 +262,11 @@ class CreateController extends Controller
     {
         $this->service->authorize($r->user(), false);
         $this->service->conversation($r->user(), $id);
-        return response()->json(['data' => \App\Services\Create\PlanActivity::live($id), 'job' => \Illuminate\Support\Facades\Cache::get('create:plan-job:'.$id)]);
+        $input = $r->validate(['key' => 'sometimes|string|max:128']);
+        $job = config('create.durable_planning')
+            ? app(\App\Services\Create\PlanningJobService::class)->latest($id, $input['key'] ?? null)
+            : \Illuminate\Support\Facades\Cache::get('create:plan-job:'.$id);
+        return response()->json(['data' => \App\Services\Create\PlanActivity::live($id), 'job' => $job]);
     }
 
     public function selectPlan(Request $r, string $id, string $planId)
@@ -373,9 +382,9 @@ class CreateController extends Controller
         $revision = DB::table('composition_revisions')->where('id', $revisionId)->firstOrFail();
         $workspace = DB::table('create_conversations')->where('id', $revision->conversation_id)->value('workspace_id');
         abort_unless($workspace && \App\Models\Workspace::whereKey($workspace)->where('status', 'active')->exists(), 404);
-        abort_unless($revision->artifact_path && Storage::disk('local')->exists($revision->artifact_path), 404);
+        abort_unless($revision->artifact_path && app(\App\Services\Create\CreateStorage::class)->exists($revision->artifact_path), 404);
         $ext = pathinfo($revision->artifact_path, PATHINFO_EXTENSION);
-        return response()->file(Storage::disk('local')->path($revision->artifact_path), ['Content-Type' => match ($ext) { 'png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp', default => 'video/mp4' }, 'Cache-Control' => 'private, max-age=600']);
+        return response()->file(app(\App\Services\Create\CreateStorage::class)->path($revision->artifact_path), ['Content-Type' => match ($ext) { 'png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp', default => 'video/mp4' }, 'Cache-Control' => 'private, max-age=600']);
     }
 
     public function artifact(Request $r, string $id, string $revisionId)
@@ -383,7 +392,7 @@ class CreateController extends Controller
         $this->service->conversation($r->user(), $id);
         $revision = DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $revisionId)->firstOrFail();
         abort_unless($revision->artifact_path, 404, 'This version has no video.');
-        abort_unless(Storage::disk('local')->exists($revision->artifact_path), 410, 'The video file for this version is no longer stored on this server. Its summary, checks and cost are kept; rebuild from it to get a new file.');
-        return response()->file(Storage::disk('local')->path($revision->artifact_path), ['Content-Type' => match(pathinfo($revision->artifact_path,PATHINFO_EXTENSION)) {'png'=>'image/png','jpg'=>'image/jpeg','webp'=>'image/webp',default=>'video/mp4'}, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+        abort_unless(app(\App\Services\Create\CreateStorage::class)->exists($revision->artifact_path), 410, 'The video file for this version is no longer stored on this server. Its summary, checks and cost are kept; rebuild from it to get a new file.');
+        return response()->file(app(\App\Services\Create\CreateStorage::class)->path($revision->artifact_path), ['Content-Type' => match(pathinfo($revision->artifact_path,PATHINFO_EXTENSION)) {'png'=>'image/png','jpg'=>'image/jpeg','webp'=>'image/webp',default=>'video/mp4'}, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 }

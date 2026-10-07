@@ -31,7 +31,7 @@ class PlannerReferenceInspector
             try {
                 $f = $snapshot[0];
                 if ($f['bytes'] > 100 * 1024 * 1024) throw new \RuntimeException('Reference exceeds inspection limit.');
-                File::copy($disk->path($f['storage_path']), $this->directory.'/inputs/reference/'.$f['name']);
+                File::copy(app(\App\Services\Create\CreateStorage::class)->path($f['storage_path']), $this->directory.'/inputs/reference/'.$f['name']);
                 $this->files[$id] = array_diff_key($f, array_flip(['storage_path', 'transcript', 'reference'])) + ['path' => 'reference/'.$f['name']];
             } finally { app(InputSnapshotService::class)->discard($snapshot); }
             File::put($this->directory.'/inputs/manifest.json', json_encode(array_values($this->files), JSON_THROW_ON_ERROR));

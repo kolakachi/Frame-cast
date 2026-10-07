@@ -21,6 +21,7 @@ import { conversationTimeline, acceptConversationResponse } from '../lib/createC
 import { VOICE_DESCRIPTIONS, voiceHeadline } from '../lib/voices.js'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 import { useWorkspaceStore } from '../stores/workspace'
+import { registerReloadGuard } from '../lib/deploymentRecovery.js'
 
 const auth = useAuthStore(), route = useRoute(), router = useRouter()
 const available = ref(false), loaded = ref(false), busy = ref(false), error = ref(''), conflict = ref(false)
@@ -272,34 +273,62 @@ function watchPlanning(target) {
     } catch {}
   }, 1500)
 }
-async function waitForPlan(target, key) {
+function checkPlanningResult(job) {
+  if (job?.state === 'failed' && job.key === planKey) planKey = null
+  if (['failed', 'needs_attention'].includes(job?.state)) throw Object.assign(new Error(job.error || 'Planning did not finish.'), { response: { status: job.status, data: { message: job.error } } })
+  return job
+}
+async function waitForPlan(target, key, ticket = epoch) {
   for (let i = 0; i < 480; i++) {
     await new Promise(resolve => setTimeout(resolve, 2500))
+    if (id.value !== target || ticket !== epoch) return null
     let job = null
-    try { job = (await api.get(`${base(target)}/plan-activity`)).data.job } catch { continue }
-    if (!job || job.key !== key || job.state === 'running') continue
-    if (job.state === 'failed') throw Object.assign(new Error(job.error || 'Planning did not finish. Nothing was charged; try again.'), { response: { status: job.status, data: { message: job.error } } })
-    return job
+    try { job = (await api.get(`${base(target)}/plan-activity`, { params: { key } })).data.job } catch { continue }
+    if (id.value !== target || ticket !== epoch) return null
+    if (!job || job.key !== key || ['queued', 'running'].includes(job.state)) continue
+    return checkPlanningResult(job)
   }
   throw new Error('Planning is taking longer than usual. Your brief is saved; check back in a minute.')
 }
+// Reopening a tab observes the persisted request; it never submits another paid plan.
+async function resumePlanning() {
+  const target = id.value, ticket = epoch
+  if (!target || planning.value) return
+  let job
+  try { job = (await api.get(`${base(target)}/plan-activity`)).data.job } catch { return }
+  if (id.value !== target || ticket !== epoch || planning.value || !job) return
+  try {
+    checkPlanningResult(job)
+    if (!['queued', 'running'].includes(job.state)) return
+    planning.value = true; planKey = job.key; watchPlanning(target)
+    await waitForPlan(target, job.key)
+    if (id.value === target && ticket === epoch) { planKey = null; await refresh() }
+  } catch (e) {
+    if (id.value === target && ticket === epoch) error.value = message(e)
+  } finally {
+    if (id.value === target && ticket === epoch) { planning.value = false; clearInterval(planPoll) }
+  }
+}
 async function makePlan(skipQuestions = false) {
   if (!id.value || planning.value) return
+  const target = id.value, ticket = epoch
   planning.value = true
-  watchPlanning(id.value)
+  watchPlanning(target)
   try {
     await guarded(async () => {
       planKey ||= crypto.randomUUID()
-      // Planning runs after the request is answered (it takes minutes, longer than a proxy keeps a request open):
-      // wait for its outcome, shown live meanwhile, then load the plan or the question it asked.
-      const started = (await api.post(`${base()}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey, async: true, ...(skipQuestions === true ? { skip_questions: true } : {}) })).data.data
-      if (started?.state === 'running') await waitForPlan(id.value, planKey)
+      // Planning is accepted separately from its completion. Observe this request's saved outcome.
+      const started = (await api.post(`${base(target)}/plans`, { expected_version: conversation.value.version, idempotency_key: planKey, async: true, ...(skipQuestions === true ? { skip_questions: true } : {}) })).data.data
+      if (ticket !== epoch || id.value !== target) return
+      checkPlanningResult(started)
+      if (['queued', 'running'].includes(started?.state)) await waitForPlan(target, planKey, ticket)
+      if (ticket !== epoch || id.value !== target) return
       planKey = null; quote.value = null; await refresh()
       await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     })
-    // A long planning request can lose its connection after the server has saved the plan: look before reporting a failure.
-    if (error.value) { await refresh().catch(() => {}); if (currentPlan.value) { error.value = ''; planKey = null } }
-  } finally { planning.value = false; clearInterval(planPoll) }
+    // Keep the error visible: an older plan does not prove that this request succeeded.
+    if (error.value && ticket === epoch) await refresh().catch(() => {})
+  } finally { if (ticket === epoch) { planning.value = false; clearInterval(planPoll) } }
 }
 async function savePlanEdits(p) {
   const d = draftFor(p)
@@ -461,7 +490,7 @@ async function blobMessage(e) {
 }
 const base = value => `/create/conversations/${value || id.value}`
 const draftKey = value => `create.draft.${auth.user?.id}.${auth.user?.workspace_id}.${value || 'new'}`
-function persistDraft(value, text) { try { text ? sessionStorage.setItem(draftKey(value),text) : sessionStorage.removeItem(draftKey(value)) } catch {} }
+function persistDraft(value, text) { try { text ? sessionStorage.setItem(draftKey(value),text) : sessionStorage.removeItem(draftKey(value)); return (sessionStorage.getItem(draftKey(value)) || '') === text } catch { return false } }
 function readDraft(value) { try { return sessionStorage.getItem(draftKey(value)) || '' } catch { return '' } }
 async function guarded(fn) {
   if (busy.value) return
@@ -756,7 +785,7 @@ async function compare() {
   catch(e) { const text = await blobMessage(e); if(ticket === compareEpoch) error.value = text }
 }
 function example(item) { if(!id.value) outputKind.value = item.kind; prompt.value = item.prompt; nextTick(()=>composer.value?.focus()) }
-watch(prompt, value => persistDraft(id.value,value))
+watch(prompt, value => persistDraft(id.value,value), { flush: 'sync' })
 watch([search,archivedHistory], () => {clearTimeout(searchTimer); searchTimer = setTimeout(loadHistory,250)})
 watch(showHistory, open => {if(open) loadHistory()})
 // The end of the list coming into view loads the next page.
@@ -772,7 +801,8 @@ watch(id, async (value, old) => {
   prompt.value = readDraft(value)
   // ensureConversation transfers pending local files into the newly created chat.
   if(old) uploads.value.forEach(removeUpload)
-  await loadArtifact(); try {await refresh()} catch(e) {error.value = message(e)}
+  planning.value = false; planKey = null; clearInterval(planPoll)
+  await loadArtifact(); try {await refresh(); void resumePlanning()} catch(e) {error.value = message(e)}
 })
 watch(() => auth.user?.workspace_id, () => window.location.assign('/create'))
 onMounted(async () => {
@@ -783,6 +813,7 @@ onMounted(async () => {
   try {capabilities.value = (await api.get('/create/capabilities')).data.data; available.value = true; await loadHistory(); await refresh()}
   catch(e) {if(e.response?.status !== 404) error.value = message(e)}
   finally {loaded.value = true}
+  if (available.value) void resumePlanning()
   timer = setInterval(async () => {clock.value = Date.now(); if(active.value && active.value.status !== 'needs_attention' && !locked.value) {try {await refresh()} catch(e) {error.value = message(e)}}},2000)
 })
 // The plan card (create-ui chat mockup): what will be made as pills, Preview to change it, and one Approve that
@@ -1151,7 +1182,15 @@ const spendTotal = computed(() => spendRows.value.reduce((n, r) => n + r.cr, 0))
 const outOfCredits = run => /^Paused: this step used the credits/.test(run?.error || '')
 // A vendor's failure, in the words the app chose (VendorAlerts::userMessage): busy, declined, or on our side.
 const vendorIssue = run => { const e = run?.error || ''; return /is busy right now/.test(e) ? 'the model is busy right now.' : /temporarily unavailable on our side/.test(e) ? 'a service is temporarily unavailable on our side.' : /declined part of this request/.test(e) ? 'part of it was declined under the model\'s content rules.' : '' }
-onBeforeUnmount(() => {historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
+const removeReloadGuard = registerReloadGuard(() => {
+  if (locked.value || planning.value || stepBusy.value || approvingPlan.value || linkBusy.value || askUploading.value || approvalSending.value || pendingText.value) return 'Wait for the current request to finish before reloading.'
+  if (uploads.value.length) return 'Upload or remove the selected files before reloading. Local file selections cannot be restored.'
+  if (plans.value.some(planDirty)) return 'Save your plan changes before reloading.'
+  if (details.value || planDrawerId.value || stepDrawer.value || versionOpen.value || pronOpen.value || styleSave.value || linkOpen.value || approvalOpen.value || leversOpen.value || noteText.value) return 'Save or copy your edits and close the editing panels before reloading.'
+  if (!persistDraft(id.value, prompt.value)) return 'This browser could not save your message draft. Copy it before refreshing manually.'
+  return ''
+})
+onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
 <template>

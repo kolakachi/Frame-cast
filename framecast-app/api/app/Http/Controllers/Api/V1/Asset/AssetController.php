@@ -363,7 +363,7 @@ class AssetController extends Controller
         $storageService = app(StorageService::class);
         $rawStorageUrl  = (string) $asset->storage_url;
         if ($storageService->isCreatePrivate($rawStorageUrl)) {
-            abort_unless(app()->environment(['local','testing']) && config('create.enabled')
+            abort_unless(config('create.enabled')
                 && \App\Services\Create\ConversationService::workspaceAllowed((int) $asset->workspace_id)
                 && $asset->status !== 'archived' && $asset->workspace?->status === 'active', 404);
         }

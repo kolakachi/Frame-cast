@@ -119,11 +119,11 @@ class PlannerReferenceInspectionTest extends TestCase
     public function test_real_host_inspection_pages_are_cached_and_temporary_media_is_removed(): void
     {
         Storage::fake('local'); $disk = Storage::disk('local');
-        $disk->makeDirectory('fixtures'); $path = $disk->path('fixtures/ref.mp4');
+        $disk->makeDirectory('create/inputs/fixtures'); $path = $disk->path('create/inputs/fixtures/ref.mp4');
         (new Process(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=160x90:rate=12', '-t', '2', '-pix_fmt', 'yuv420p', $path]))->setTimeout(20)->mustRun();
         $snapshot = \Mockery::mock(InputSnapshotService::class);
         $snapshot->shouldReceive('capture')->once()->with(7, \Mockery::on(fn ($a) => $a[0]->asset_id === 21 && $a[0]->purpose === 'reference'))
-            ->andReturn([['asset_id' => 21, 'purpose' => 'reference', 'name' => 'ref.mp4', 'sha256' => hash_file('sha256', $path), 'bytes' => filesize($path), 'mime_type' => 'video/mp4', 'asset_type' => 'video', 'storage_path' => 'fixtures/ref.mp4']]);
+            ->andReturn([['asset_id' => 21, 'purpose' => 'reference', 'name' => 'ref.mp4', 'sha256' => hash_file('sha256', $path), 'bytes' => filesize($path), 'mime_type' => 'video/mp4', 'asset_type' => 'video', 'storage_path' => 'create/inputs/fixtures/ref.mp4']]);
         $snapshot->shouldReceive('discard')->once(); $this->app->instance(InputSnapshotService::class, $snapshot);
         $inspector = new PlannerReferenceInspector();
         try {

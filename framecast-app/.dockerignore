@@ -1,0 +1,8 @@
+# The production web image installs dependencies from yarn.lock. Never copy
+# host-native bindings or local configuration over that clean installation.
+**/node_modules
+**/.env
+**/.env.*
+**/.DS_Store
+web/dist
+web/.dist-*

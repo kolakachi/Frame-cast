@@ -3,6 +3,19 @@
 return [
     // Local integration only. A production rollout needs its own acceptance gate.
     'enabled' => (bool) env('CREATE_ENABLED', false),
+    // Require host/instance/slot identity only after API migration and worker rollout.
+    'worker_ownership_required' => (bool) env('CREATE_WORKER_OWNERSHIP_REQUIRED', false),
+    // Enable on every API/planning process only after the runtime-control migration.
+    'runtime_controls_enabled' => (bool) env('CREATE_RUNTIME_CONTROLS_ENABLED', false),
+    // Enable only after migration + dedicated planning worker + shared/private Create storage are ready.
+    'durable_planning' => (bool) env('CREATE_DURABLE_PLANNING', false),
+    // Separate from the public/MinIO-compatible b2 alias. Existing files keep their catalogued disk.
+    'storage_disk' => env('CREATE_STORAGE_DISK', 'local'),
+    'disk_min_free_bytes' => (int) env('CREATE_DISK_MIN_FREE_BYTES', 2147483648),
+    'disk_min_free_ratio' => (float) env('CREATE_DISK_MIN_FREE_RATIO', .05),
+    'disk_working_bytes' => (int) env('CREATE_DISK_WORKING_BYTES', 1073741824),
+    'cache_retention_hours' => (int) env('CREATE_CACHE_RETENTION_HOURS', 24),
+    'local_maintenance_enabled' => (bool) env('CREATE_LOCAL_MAINTENANCE_ENABLED', false),
     'workspaces' => array_filter(array_map('intval', explode(',', (string) env('CREATE_WORKSPACES', '')))),
     // Who may see and use Create (owner, 2026-10-06): accounts on these email domains, plus these addresses.
     'allowed_domains' => array_values(array_filter(array_map(fn ($d) => strtolower(trim($d)), explode(',', (string) env('CREATE_ALLOWED_DOMAINS', 'wyvstudio.com'))))),

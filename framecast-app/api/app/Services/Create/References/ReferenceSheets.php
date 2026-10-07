@@ -24,7 +24,7 @@ class ReferenceSheets
         app(\App\Services\Create\InputSnapshotService::class)->verify($references);
         $images = [];
         foreach ($references as $f) {
-            $input = Storage::disk('local')->path($f['storage_path']);
+            $input = app(\App\Services\Create\CreateStorage::class)->path($f['storage_path']);
             $times = [null];
             if ($f['asset_type'] === 'video') {
                 $probe = Process::timeout(15)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $input]);
@@ -52,7 +52,7 @@ class ReferenceSheets
         $bytes = app(StorageService::class)->get((string) $asset->storage_url);
         if (! is_string($bytes) || $bytes === '') return null;
         $path = 'create/references/'.$asset->id.'/'.hash('sha256', $bytes).'/sheet.jpg';
-        if (Storage::disk('local')->exists($path)) return $path;
+        if (app(\App\Services\Create\CreateStorage::class)->exists($path)) return $path;
         $dir = sys_get_temp_dir().'/ref-sheet-'.\Illuminate\Support\Str::uuid();
         @mkdir($dir, 0700, true);
         try {
@@ -62,7 +62,7 @@ class ReferenceSheets
             $fps = self::FRAMES / $duration;
             $r = Process::timeout(90)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $dir.'/in.mp4', '-vf', "fps={$fps},scale=320:-2,tile=5x4", '-frames:v', '1', '-q:v', '5', $dir.'/sheet.jpg']);
             if (! $r->successful() || ! is_file($dir.'/sheet.jpg')) return null;
-            Storage::disk('local')->put($path, file_get_contents($dir.'/sheet.jpg'));
+            app(\App\Services\Create\CreateStorage::class)->put($path, file_get_contents($dir.'/sheet.jpg'));
             return $path;
         } finally {
             foreach (glob($dir.'/*') ?: [] as $f) @unlink($f);
@@ -82,7 +82,7 @@ class ReferenceSheets
         foreach ($cuts as $cut) foreach ([-.12, 0, .12] as $offset) $times[] = round(max(0, min($duration - .04, (float) $cut + $offset)), 3);
         if ($duration <= .04) return null;
         $path = 'create/references/'.$asset->id.'/'.hash('sha256', $bytes.json_encode($times)).'/transitions.jpg';
-        if (Storage::disk('local')->exists($path)) return ['path' => $path, 'times' => $times];
+        if (app(\App\Services\Create\CreateStorage::class)->exists($path)) return ['path' => $path, 'times' => $times];
         $dir = sys_get_temp_dir().'/ref-cuts-'.\Illuminate\Support\Str::uuid();
         mkdir($dir, 0700, true);
         try {
@@ -94,7 +94,7 @@ class ReferenceSheets
             }
             $r = Process::timeout(20)->run(['ffmpeg', '-v', 'error', '-y', '-i', $dir.'/%02d.jpg', '-vf', 'tile=3x'.count($cuts), '-frames:v', '1', '-q:v', '4', $dir.'/sheet.jpg']);
             if (! $r->successful() || ! is_file($dir.'/sheet.jpg')) return null;
-            Storage::disk('local')->put($path, file_get_contents($dir.'/sheet.jpg'));
+            app(\App\Services\Create\CreateStorage::class)->put($path, file_get_contents($dir.'/sheet.jpg'));
             return ['path' => $path, 'times' => $times];
         } finally {
             foreach (glob($dir.'/*') ?: [] as $f) @unlink($f);

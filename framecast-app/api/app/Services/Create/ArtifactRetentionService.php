@@ -4,7 +4,7 @@ namespace App\Services\Create;
 
 use Illuminate\Support\Facades\{DB, Storage};
 
-/** Local private artifacts only. Unknown runs and all saved revisions retain bytes. */
+/** Private Create artifacts. Unknown runs and all saved revisions retain bytes. */
 class ArtifactRetentionService
 {
     public function sweep(): int
@@ -20,7 +20,7 @@ class ArtifactRetentionService
         foreach (DB::table('composition_revisions')->select('artifact_path')->cursor() as $revision) $keep[$revision->artifact_path] = true;
         // A worker may have uploaded a result but not yet committed its callback.
         $activeRuns = DB::table('composition_runs')->whereIn('status', ConversationService::ACTIVE)->pluck('id')->all();
-        $disk = Storage::disk('local'); $count = 0;
+        $disk = app(\App\Services\Create\CreateStorage::class); $count = 0;
         foreach (['create/inputs', 'create/previews'] as $prefix) {
             foreach ($disk->allFiles($prefix) as $path) {
                 if (isset($keep[$path]) || $disk->lastModified($path) >= now()->subDay()->timestamp) continue;

@@ -153,7 +153,7 @@ class ReferenceStudy
         $duration = (float) ($study['duration_seconds'] ?? 0);
         $moments = array_values(array_filter((array) $study['moments'], fn ($m) => isset($m['id'])));
         if (! $moments || $duration <= 0) return null;
-        $font = collect(['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/lato/Lato-Medium.ttf'])->first(fn ($f) => is_file($f));
+        $font = collect(['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/lato/Lato-Medium.ttf', '/System/Library/Fonts/Monaco.ttf'])->first(fn ($f) => is_file($f));
         $content = []; $sheets = 0;
         foreach (array_chunk($moments, 6) as $k => $chunk) {
             foreach (glob($work.'/l-*.jpg') ?: [] as $f) @unlink($f);
@@ -363,7 +363,7 @@ class ReferenceStudy
      */
     private function sheets(string $file, array $samples, string $sha, string $work, ?array $speech = null, string $name = 'sheet'): array
     {
-        $font = collect(['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/lato/Lato-Medium.ttf'])->first(fn ($f) => is_file($f));
+        $font = collect(['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/lato/Lato-Medium.ttf', '/System/Library/Fonts/Monaco.ttf'])->first(fn ($f) => is_file($f));
         $out = [];
         foreach (array_chunk($samples, self::PER_SHEET) as $k => $times) {
             foreach (glob($work.'/c-*.jpg') ?: [] as $f) @unlink($f);
@@ -382,7 +382,7 @@ class ReferenceStudy
             $r = Process::timeout(60)->run(['ffmpeg', '-v', 'error', '-y', '-framerate', '1', '-i', $work.'/c-%02d.jpg', '-vf', "tile=5x{$rows}:padding=2:color=black", '-frames:v', '1', '-q:v', '4', $work.'/sheet.jpg']);
             if (! $r->successful() || ! is_file($work.'/sheet.jpg')) continue;
             $path = 'create/reference-studies/'.$sha.'/'.$name.'-'.($k + 1).'.jpg';
-            Storage::disk('local')->put($path, (string) file_get_contents($work.'/sheet.jpg'));
+            app(\App\Services\Create\CreateStorage::class)->put($path, (string) file_get_contents($work.'/sheet.jpg'));
             $out[] = ['path' => $path, 'times' => $times, 'labels' => $labels, 'labelled' => (bool) $font];
         }
         return $out;
@@ -614,7 +614,7 @@ class ReferenceStudy
         foreach ($study['sheets'] as $k => $sheet) {
             $path = $sheet['path']; $times = $sheet['times'];
             $tasks[$k] = static function () use ($cheap, $factsPrompt, $path, $times) {
-                $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($path);
+                $bytes = app(\App\Services\Create\CreateStorage::class)->get($path);
                 if (! is_string($bytes) || $bytes === '') return null;
                 return ReferenceStudy::askModel($cheap, [['type' => 'text', 'text' => $factsPrompt.' The cells are at seconds '.json_encode($times).'.'], ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]]], false);
             };
@@ -641,7 +641,7 @@ class ReferenceStudy
             $step = max(1, (int) ceil(count($frames) / 20));
             $pick = array_values(array_filter($frames, fn ($i) => $i % $step === 0, ARRAY_FILTER_USE_KEY));
             $sheet = $this->sheets($file, $pick, $sha, $work, $study['speech'] ?? null, 'motion-'.($k + 1))[0] ?? null;
-            $bytes = $sheet ? Storage::disk('local')->get($sheet['path']) : null;
+            $bytes = $sheet ? app(\App\Services\Create\CreateStorage::class)->get($sheet['path']) : null;
             if (! is_string($bytes) || $bytes === '') continue;
             $motion[] = $sheet['path'];
             $content[] = ['type' => 'text', 'text' => 'Motion '.$w['start'].' to '.$w['end'].' s, consecutive frames left to right then down, each labelled with its time.'];
@@ -649,7 +649,7 @@ class ReferenceStudy
         }
         // The opening frames too, so the look and layout are seen first-hand, not only through the facts.
         if ($first = $study['sheets'][0]['path'] ?? null) {
-            $bytes = Storage::disk('local')->get($first);
+            $bytes = app(\App\Services\Create\CreateStorage::class)->get($first);
             if (is_string($bytes) && $bytes !== '') { $content[] = ['type' => 'text', 'text' => 'The first sheet of the video, for its look and layout.']; $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]]; }
         }
         $content[] = ['type' => 'text', 'text' => $this->readingPrompt($study, $every, true)];
@@ -717,7 +717,7 @@ class ReferenceStudy
         $every = in_array($study['coverage_mode'] ?? 'standard', ['high', 'maximum', 'every_look'], true);
         // The API reads at most 100 images in one request; every_look sends them all up to that limit.
         foreach (array_slice($study['sheets'], 0, $every ? 90 : 4) as $i => $sheet) {
-            $bytes = Storage::disk('local')->get($sheet['path']);
+            $bytes = app(\App\Services\Create\CreateStorage::class)->get($sheet['path']);
             if (! is_string($bytes) || $bytes === '') continue;
             $content[] = ['type' => 'text', 'text' => 'Sheet '.($i + 1).': cells left to right, then down, at seconds '.json_encode($sheet['times']).(! empty($sheet['labelled']) ? '. Under each frame: its time and the words being spoken then.' : '')];
             $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)]];
@@ -747,7 +747,7 @@ class ReferenceStudy
                 $step = max(1, (int) ceil(count($frames) / 20));
                 $pick = array_values(array_filter($frames, fn ($i) => $i % $step === 0, ARRAY_FILTER_USE_KEY));
                 $sheet = $this->sheets($file, $pick, (string) $sha, (string) $work, $study['speech'] ?? null, 'closeup-'.($k + 1))[0] ?? null;
-                $bytes = $sheet ? Storage::disk('local')->get($sheet['path']) : null;
+                $bytes = $sheet ? app(\App\Services\Create\CreateStorage::class)->get($sheet['path']) : null;
                 if (! is_string($bytes) || $bytes === '') continue;
                 $closeups[] = $sheet['path'];
                 $second[] = ['type' => 'text', 'text' => 'Close-up of '.$q['start'].' to '.$q['end'].' s, consecutive frames left to right then down, each labelled with its time and the words being spoken. Your question: '.$q['question']];

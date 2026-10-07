@@ -19,6 +19,7 @@ class QuarantineCreateRun extends Command
         }
         DB::transaction(function () {
             $run = DB::table('composition_runs')->where('id', $this->argument('run'))->lockForUpdate()->firstOrFail();
+            app(\App\Services\Create\WorkerOwnership::class)->requireStopped($run);
             abort_unless($run->status === 'needs_attention' && \App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id), 409);
             DB::table('composition_runs')->where('id', $run->id)->update(['worker_stopped_at' => now(), 'lease_hash' => null,
                 'lease_expires_at' => null, 'stage' => 'Worker stopped; external work needs reconciliation', 'updated_at' => now()]);

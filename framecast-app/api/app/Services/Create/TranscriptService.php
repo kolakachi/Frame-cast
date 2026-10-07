@@ -19,7 +19,7 @@ class TranscriptService
         abort_unless(str_starts_with($file['mime_type'], 'video/') || str_starts_with($file['mime_type'], 'audio/'), 422, 'Only audio or video has speech to transcribe.');
         abort_if(($file['duration_seconds'] ?? 0) > config('create.transcript_max_seconds'), 422, 'Transcripts cover clips up to 10 minutes.');
         // A silent video (a screen recording with no sound track) has nothing to transcribe: say so, not a server error.
-        $path = Storage::disk('local')->path($file['storage_path']);
+        $path = app(\App\Services\Create\CreateStorage::class)->path($file['storage_path']);
         if (str_starts_with($file['mime_type'], 'video/')) {
             $streams = \Illuminate\Support\Facades\Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', $path]);
             abort_if($streams->successful() && trim($streams->output()) === '', 422, 'This video has no sound track, so there is no speech to transcribe.');

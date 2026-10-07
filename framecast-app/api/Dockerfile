@@ -31,16 +31,29 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp, pinned: fetches a public post a Create user pastes as a style
-# reference. Standalone binary, no Python needed. Sites change often; bump the
-# version when fetches start failing.
+# reference. Standalone binary, no Python needed. Update the version AND both
+# hashes from the release's SHA2-256SUMS together. Bound the entire download,
+# not just each retry: five 300-second attempts can look like a hang.
 ARG TARGETARCH
 ARG YTDLP_VERSION=2026.08.19
 RUN set -eux; \
+    test "$YTDLP_VERSION" = 2026.08.19; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-    case "$arch" in amd64) bin=yt-dlp_linux ;; arm64) bin=yt-dlp_linux_aarch64 ;; *) echo "unsupported arch $arch"; exit 1 ;; esac; \
-    curl -fsSL --retry 4 --retry-all-errors --connect-timeout 20 --max-time 300 -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${bin}"; \
+    case "$arch" in \
+        amd64) bin=yt-dlp_linux; sha=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a ;; \
+        arm64) bin=yt-dlp_linux_aarch64; sha=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc ;; \
+        *) echo "unsupported arch $arch"; exit 1 ;; \
+    esac; \
+    echo "Downloading yt-dlp ${YTDLP_VERSION} (${arch}); total deadline 180 seconds"; \
+    timeout --kill-after=5s 180s curl -fL --retry 2 --retry-delay 2 \
+        --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 20 \
+        -o /usr/local/bin/yt-dlp \
+        "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${bin}" \
+        || { echo "yt-dlp download failed or timed out; check build-network access to GitHub release assets" >&2; exit 1; }; \
+    echo "$sha  /usr/local/bin/yt-dlp" | sha256sum -c -; \
     chmod 0755 /usr/local/bin/yt-dlp; \
-    /usr/local/bin/yt-dlp --version
+    installed_version="$(timeout --kill-after=5s 20s /usr/local/bin/yt-dlp --version)"; \
+    test "$installed_version" = "$YTDLP_VERSION"
 
 # ── Tier 2: Liberation fonts (metric-compatible open alternatives for Arial,
 #    Times New Roman, Courier New) — available in Debian repos, no EULA download

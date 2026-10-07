@@ -40,7 +40,7 @@ class PlanService
         return count(preg_split('/\s+/u', trim($last), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
     }
 
-    public function propose(User $user, string $id, int $version, string $key, bool $skipQuestions = false): array
+    public function propose(User $user, string $id, int $version, string $key, bool $skipQuestions = false, ?string $executionToken = null): array
     {
         $this->conversations->authorize($user, true);
         $c = $this->conversations->conversation($user, $id);
@@ -50,10 +50,17 @@ class PlanService
             abort_unless(hash_equals($old->request_hash, $hash), 409, 'This request key already belongs to a different plan.');
             return $this->present($old, $c);
         }
+        // A queue job admitted before drain must be allowed to finish. Never trust a caller-supplied boolean.
+        if ($executionToken !== null) {
+            abort_unless(DB::table('create_planning_jobs')->where('conversation_id', $id)->where('idempotency_key', $key)
+                ->where('execution_token', $executionToken)->where('state', 'running')->where('user_id', $user->id)
+                ->where('workspace_id', $user->workspace_id)->where('expected_version', $version)->exists(), 409, 'Planning execution is no longer current.');
+        } else app(AdmissionControl::class)->assertOpen();
         abort_if($c->archived_at, 409, 'Restore this conversation before planning.');
         abort_unless((int) $c->version === $version, 409, 'Conversation changed. Refresh before planning.');
         $briefs = DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderBy('sequence')->get(['content', 'sequence']);
         abort_if($briefs->isEmpty(), 422, 'Add a brief first.');
+        app(DiskSpace::class)->admission();
         $today = DB::table('create_plans')->join('create_conversations', 'create_conversations.id', '=', 'create_plans.conversation_id')
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
         abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
@@ -589,7 +596,7 @@ class PlanService
             if (! $asset) continue;
             // The user's own video is seen too (a sheet of its frames): the plan never places footage it has not looked at.
             if (($f['purpose'] ?? '') === 'source' && $asset->asset_type === 'video') {
-                try { if ($path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset)) $out[] = ['label' => 'Your video "'.$asset->title.'" (asset '.$asset->id.', it goes in the video): '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($path))]; } catch (\Throwable) {}
+                try { if ($path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset)) $out[] = ['label' => 'Your video "'.$asset->title.'" (asset '.$asset->id.', it goes in the video): '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) app(\App\Services\Create\CreateStorage::class)->get($path))]; } catch (\Throwable) {}
                 continue;
             }
             if (($f['purpose'] ?? '') !== 'reference') continue;
@@ -599,13 +606,13 @@ class PlanService
                     // The whole-reference study: frames inside every shot and close-ups where the picture changes.
                     // Maximum effort shows the planner more of the reference (up to six sheets).
                     foreach (array_slice($study['sheets'], 0, in_array($study['coverage_mode'] ?? '', ['maximum', 'every_look'], true) ? 6 : 3) as $k => $sheet) {
-                        $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($sheet['path']);
+                        $bytes = app(\App\Services\Create\CreateStorage::class)->get($sheet['path']);
                         if (is_string($bytes) && $bytes !== '') $out[] = ['label' => 'Reference video "'.$asset->title.'" study sheet '.($k + 1).' of '.count($study['sheets']).': cells left to right, then down, at seconds '.json_encode($sheet['times']), 'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)];
                     }
                 } elseif ($asset->asset_type === 'video') {
                     $path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset);
-                    if ($path) $out[] = ['label' => 'Reference video "'.$asset->title.'": '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($path))];
-                    if ($detail = app(\App\Services\Create\References\ReferenceSheets::class)->transitionsFor($asset)) $transitions[] = ['label' => 'Cut windows for reference '.$asset->id.'; each row is before/at/after, seconds '.json_encode($detail['times']).'. No audio observed.', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) \Illuminate\Support\Facades\Storage::disk('local')->get($detail['path']))];
+                    if ($path) $out[] = ['label' => 'Reference video "'.$asset->title.'": '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) app(\App\Services\Create\CreateStorage::class)->get($path))];
+                    if ($detail = app(\App\Services\Create\References\ReferenceSheets::class)->transitionsFor($asset)) $transitions[] = ['label' => 'Cut windows for reference '.$asset->id.'; each row is before/at/after, seconds '.json_encode($detail['times']).'. No audio observed.', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) app(\App\Services\Create\CreateStorage::class)->get($detail['path']))];
                 } elseif ($asset->asset_type === 'image' && in_array($asset->mime_type, ['image/png', 'image/jpeg', 'image/webp'], true)) {
                     $bytes = app(\App\Services\Media\StorageService::class)->get((string) $asset->storage_url);
                     if (is_string($bytes) && $bytes !== '' && strlen($bytes) <= 1_000_000) $out[] = ['label' => 'Reference image '.$asset->id.': '.$asset->title, 'media_type' => $asset->mime_type, 'data' => base64_encode($bytes)];

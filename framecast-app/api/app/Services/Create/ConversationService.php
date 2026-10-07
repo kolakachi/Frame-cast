@@ -142,6 +142,7 @@ class ConversationService
     public function quote(User $user, string $id, int $version, ?string $buildStage = null, ?array $assume = null): ApiQuote
     {
         $this->authorize($user, true);
+        app(AdmissionControl::class)->assertOpen();
         abort_unless($buildStage === null || in_array($buildStage, ['character', 'storyboard', 'full_video'], true), 422, 'Choose the character, storyboard or full video.');
         // Never present a fixture as AI output or silently enable an unpriced provider.
         abort_unless(config('create.mode') === 'fixture' || (config('create.mode') === 'agent' && PilotPolicy::enabled()), 503, 'Paid local generation is not enabled.');
@@ -392,6 +393,7 @@ class ConversationService
                     abort_unless(hash_equals($old->request_hash, $hash), 409, 'Request key already used for another approval.');
                     return $old;
                 }
+                app(AdmissionControl::class)->assertOpen(true);
                 abort_if($c->archived_at, 409, 'Conversation is archived.');
                 $quote = ApiQuote::where('workspace_id', $user->workspace_id)->whereKey($quoteId)->lockForUpdate()->firstOrFail();
                 $p = $quote->payload_json;

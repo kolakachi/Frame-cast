@@ -20,6 +20,7 @@ class ReconciliationService
             $workspace = Workspace::findOrFail($unlocked->workspace_id);
             Workspace::whereIn('id', array_unique([$workspace->id, $workspace->creditRootId()]))->orderBy('id')->lockForUpdate()->get();
             $run = DB::table('composition_runs')->where('id', $runId)->lockForUpdate()->firstOrFail();
+            app(WorkerOwnership::class)->requireStopped($run);
             abort_unless(in_array($run->status, ['needs_attention', 'failed'], true)
                 && (\App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id)), 409);
             $op = DB::table('api_operations')->where('id', $run->operation_id)->lockForUpdate()->firstOrFail();
@@ -64,6 +65,7 @@ class ReconciliationService
             $workspace = Workspace::findOrFail($unlocked->workspace_id);
             Workspace::whereIn('id',array_unique([$workspace->id,$workspace->parent_workspace_id ?: $workspace->id]))->orderBy('id')->lockForUpdate()->get();
             $run = DB::table('composition_runs')->where('id',$unlocked->id)->lockForUpdate()->firstOrFail();
+            app(WorkerOwnership::class)->requireStopped($run);
             $attempt = DB::table('composition_attempts')->where('id',$receipt->attemptId)->lockForUpdate()->firstOrFail();
             $old = DB::table('composition_reconciliations')->where('attempt_id',$attempt->id)->first();
             if ($old) { abort_unless(hash_equals($old->receipt_hash,$hash),409,'A different reconciliation is already recorded.');return ['replayed'=>true,'charged_credits'=>(int)$attempt->charged_credits]; }
@@ -106,6 +108,7 @@ class ReconciliationService
             $workspace = Workspace::findOrFail($unlocked->workspace_id);
             Workspace::whereIn('id', array_unique([$workspace->id, $workspace->creditRootId()]))->orderBy('id')->lockForUpdate()->get();
             $run = DB::table('composition_runs')->where('id',$runId)->lockForUpdate()->firstOrFail();
+            app(WorkerOwnership::class)->requireStopped($run);
             abort_unless($run->status === 'needs_attention', 409, 'Only a held run can be closed.');
             abort_unless(\App\Services\Create\ConversationService::workspaceAllowed((int) $run->workspace_id), 403);
             abort_if(AttemptService::unresolved($run->id), 409, 'Some calls are still unresolved; reconcile them with a verified receipt.');

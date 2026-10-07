@@ -92,6 +92,20 @@ return [
             'report' => false,
         ],
 
+        // Dedicated private bucket; deliberately no fallback to the public media bucket or MinIO alias.
+        'create_private' => [
+            'driver' => 's3',
+            'key' => env('CREATE_B2_KEY_ID'),
+            'secret' => env('CREATE_B2_APP_KEY'),
+            'region' => env('CREATE_B2_REGION'),
+            'bucket' => env('CREATE_B2_BUCKET'),
+            'endpoint' => env('CREATE_B2_ENDPOINT'),
+            'use_path_style_endpoint' => false,
+            'visibility' => 'private',
+            'throw' => true,
+            'http' => ['timeout' => 180, 'connect_timeout' => 15],
+        ],
+
         // Legacy alias — kept so any remaining direct disk('b2') calls still resolve to MinIO.
         'b2' => [
             'driver' => 's3',

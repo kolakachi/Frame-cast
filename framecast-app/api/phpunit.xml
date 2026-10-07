@@ -24,7 +24,23 @@
         <env name="DEVELOPER_OPERATION_ACCOUNTING" value="false" force="true"/>
         <env name="CREATE_AGENT_PROVIDER" value="replicate" force="true"/>
         <env name="CREATE_PLANNER" value="offline" force="true"/>
+        <env name="CREATE_DISK_MIN_FREE_BYTES" value="0" force="true"/>
+        <env name="CREATE_DISK_MIN_FREE_RATIO" value="0" force="true"/>
+        <env name="CREATE_DISK_WORKING_BYTES" value="0" force="true"/>
+        <env name="CREATE_WORKER_OWNERSHIP_REQUIRED" value="false" force="true"/>
+        <env name="CREATE_RUNTIME_CONTROLS_ENABLED" value="false" force="true"/>
+        <env name="CREATE_LOCAL_MAINTENANCE_ENABLED" value="false" force="true"/>
+        <server name="CREATE_DISK_MIN_FREE_BYTES" value="0" force="true"/>
+        <server name="CREATE_DISK_MIN_FREE_RATIO" value="0" force="true"/>
+        <server name="CREATE_DISK_WORKING_BYTES" value="0" force="true"/>
+        <server name="CREATE_WORKER_OWNERSHIP_REQUIRED" value="false" force="true"/>
+        <server name="CREATE_RUNTIME_CONTROLS_ENABLED" value="false" force="true"/>
+        <server name="CREATE_LOCAL_MAINTENANCE_ENABLED" value="false" force="true"/>
+        <env name="CREATE_STORAGE_DISK" value="local" force="true"/>
+        <server name="CREATE_STORAGE_DISK" value="local" force="true"/>
         <env name="CREATE_MODE" value="fixture" force="true"/>
+        <env name="CREATE_DURABLE_PLANNING" value="false" force="true"/>
+        <server name="CREATE_DURABLE_PLANNING" value="false" force="true"/>
         <env name="CREATE_PAID_EXECUTION_ENABLED" value="false" force="true"/>
         <env name="CREATE_PILOT_BUDGET_ID" value="" force="true"/>
         <env name="CREATE_PILOT_BUDGET_MICROUSD" value="0" force="true"/>

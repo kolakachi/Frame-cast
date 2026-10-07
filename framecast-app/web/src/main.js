@@ -5,6 +5,7 @@ import { createApp } from 'vue'
 import * as Sentry from '@sentry/vue'
 import App from './App.vue'
 import router from './router'
+import { installDeploymentRecovery } from './services/deploymentRecovery.js'
 import api, { configureApiClient, setApiAccessToken } from './services/api'
 import { disconnectEcho, initEcho } from './services/echo'
 import { useAuthStore } from './stores/auth'
@@ -175,5 +176,6 @@ watch(
   { immediate: true }
 )
 
+installDeploymentRecovery(router)
 app.use(router)
 app.mount('#app')

@@ -26,6 +26,15 @@ test('a file already staged is not downloaded again',async()=>{
  assert.equal(n,0);
 });
 
+test('missing saved media stops before later purchases and reports only safe diagnostics',async()=>{
+ const dir=await mkdtemp(tmpdir()+'/pm-'),manifest=[];let purchases=0;
+ await assert.rejects(buyPlanMedia({items,directory:dir,manifest,
+  produce:async()=>{purchases++;return {status:'succeeded',file,reused:true};},
+  download:async()=>({ok:false,status:404,text:async()=>{throw Error('must not read response body');}})}),
+  /Plan media download failed \(asset 7, HTTP 404\).*no regeneration was attempted/);
+ assert.equal(purchases,1);assert.deepEqual(manifest,[]);
+});
+
 test('a pose sheet stages every pose file with its label',async()=>{
  const dir=await mkdtemp(tmpdir()+'/pm-'),manifest=[];
  const mk=(id,body)=>{const b=Buffer.from(body),h=createHash('sha256').update(b).digest('hex');return {f:{asset_id:id,sha256:h,bytes:b.length,name:`asset-${id}-${h}.png`,purpose:'source',asset_type:'image',mime_type:'image/png'},b};};

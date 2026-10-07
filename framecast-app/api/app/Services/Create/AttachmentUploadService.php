@@ -6,7 +6,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\{DB, Storage};
 use Illuminate\Support\Str;
 
-/** Private local intake only. Uploading never dispatches transcription or generation. */
+/** Private Create intake. Uploading never dispatches transcription or generation. */
 class AttachmentUploadService
 {
     public const TYPES = ['image/png'=>['image','png'], 'image/jpeg'=>['image','jpg'], 'image/webp'=>['image','webp'],
@@ -16,6 +16,8 @@ class AttachmentUploadService
     {
         $service = app(ConversationService::class);
         $service->authorize($user, true);
+        app(AdmissionControl::class)->assertOpen();
+        app(DiskSpace::class)->admission();
         $path = $file->getRealPath(); $size = (int) $file->getSize(); $rig = null;
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
         // An SVG (a character drawn in layers for the rig) is cleaned before it is stored, and checked against the rig contract.
@@ -60,7 +62,7 @@ class AttachmentUploadService
                 $suffix = $user->workspace_id.'/'.Str::uuid().'/'.$hash.'.'.$type[1];
                 $written = 'create/uploads/'.$suffix;
                 $stream = fopen($path,'rb');
-                try { abort_unless(Storage::disk('local')->put($written,$stream,['visibility'=>'private']),503,'Upload storage is unavailable.'); }
+                try { abort_unless(app(\App\Services\Create\CreateStorage::class)->put($written,$stream,['visibility'=>'private']),503,'Upload storage is unavailable.'); }
                 finally { if(is_resource($stream)) fclose($stream); }
                 $asset = Asset::create(['workspace_id'=>$user->workspace_id,'created_by_user_id'=>$user->id,
                     'title'=>mb_substr(basename($file->getClientOriginalName()),0,255),'asset_type'=>$type[0],
@@ -70,6 +72,6 @@ class AttachmentUploadService
                 $service->attach($user,$conversationId,$asset->id,$purpose,$version);
                 return $asset;
             });
-        } catch (\Throwable $e) { if($written) Storage::disk('local')->delete($written); throw $e; }
+        } catch (\Throwable $e) { if($written) app(\App\Services\Create\CreateStorage::class)->delete($written); throw $e; }
     }
 }

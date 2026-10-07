@@ -57,6 +57,29 @@ services:
       redis:
         condition: service_healthy
 
+  # Opt in after running the planning-journal migration; uses the API's existing local storage volume.
+  worker-create-planning:
+    profiles: [create-planning]
+    init: true
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=create-planning --tries=1 --timeout=1200 --sleep=2
+    stop_grace_period: 22m
+    env_file:
+      - ./api/.env
+    environment:
+      REDIS_QUEUE_RETRY_AFTER: 2400
+      REVERB_HOST: reverb
+    working_dir: /var/www/html
+    restart: unless-stopped
+    volumes:
+      - api_storage:/var/www/html/storage/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   worker-generation:
     init: true  # see note at top of file
     build:

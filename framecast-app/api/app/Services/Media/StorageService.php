@@ -109,7 +109,7 @@ class StorageService
      */
     public function readStream(string $storageUrl): mixed
     {
-        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->readStream($this->createPath($storageUrl)); }
+        if ($this->isCreatePrivate($storageUrl)) { return app(\App\Services\Create\CreateStorage::class)->readStream($this->createPath($storageUrl)); }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -131,7 +131,7 @@ class StorageService
      */
     public function size(string $storageUrl): ?int
     {
-        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->exists($this->createPath($storageUrl)) ? Storage::disk('local')->size($this->createPath($storageUrl)) : null; }
+        if ($this->isCreatePrivate($storageUrl)) { return app(\App\Services\Create\CreateStorage::class)->exists($this->createPath($storageUrl)) ? app(\App\Services\Create\CreateStorage::class)->size($this->createPath($storageUrl)) : null; }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -152,7 +152,7 @@ class StorageService
      */
     public function get(string $storageUrl): ?string
     {
-        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->get($this->createPath($storageUrl)); }
+        if ($this->isCreatePrivate($storageUrl)) { return app(\App\Services\Create\CreateStorage::class)->get($this->createPath($storageUrl)); }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {
@@ -171,7 +171,7 @@ class StorageService
      */
     public function exists(string $storageUrl): bool
     {
-        if ($this->isCreatePrivate($storageUrl)) { return Storage::disk('local')->exists($this->createPath($storageUrl)); }
+        if ($this->isCreatePrivate($storageUrl)) { return app(\App\Services\Create\CreateStorage::class)->exists($this->createPath($storageUrl)); }
         $path = $this->extractPath($storageUrl);
 
         if ($path === null) {

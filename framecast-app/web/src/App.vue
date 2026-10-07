@@ -5,6 +5,7 @@ import { useSidebarStore } from './stores/sidebar'
 import LimitModal from './components/LimitModal.vue'
 import CookieNotice from './components/CookieNotice.vue'
 import CrispChat from './components/CrispChat.vue'
+import DeploymentNotice from './components/DeploymentNotice.vue'
 
 const router = useRouter()
 const limitStore = useLimitStore()
@@ -116,6 +117,7 @@ function handleUpgrade() {
 <template>
   <div :class="{ 'sb-collapsed': sidebarStore.collapsed }">
     <RouterView />
+    <DeploymentNotice />
 
     <!-- Rageclick prompt: bottom-right, dismissible, never modal. -->
     <div v-if="ragePromptOpen" class="rage-card">

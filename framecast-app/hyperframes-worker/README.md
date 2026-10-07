@@ -153,3 +153,60 @@ cap without explicit approval. The current $5 test budget has paused new calls.
 using ffmpeg/ffprobe. It verifies only artifacts present and explicitly reports
 that scope; it does not mean the benchmark matrix or creative acceptance passed.
 See the E1 verification document for failed cases and the user's creative review.
+
+
+### Disk admission (Create customer-readiness L5/L14)
+
+The app worker checks free space **before claiming a job** and again before each sandbox command. It checks
+`artifacts` and the OS temporary directory, plus explicitly configured mounts. When blocked it leaves work queued,
+logs a `create.worker_disk_capacity` state change, and checks again after 30 seconds. `--once` exits 75 when blocked.
+Existing receipts and drafts are retained. These are point-in-time checks, not disk reservations or filesystem quotas.
+
+Host environment defaults:
+
+```sh
+CREATE_WORKER_MIN_FREE_BYTES=8589934592
+CREATE_WORKER_MIN_FREE_RATIO=0.10
+CREATE_WORKER_EXTRA_DISK_PATHS='["/var/lib/docker"]'
+```
+
+The required headroom is the larger of the byte floor and percentage of each filesystem. The extra-path list is
+empty by default: set it to the actual Docker data filesystem and any separate media volume before production use.
+Configured extra paths must exist; a missing path or failed disk probe blocks claiming. On Docker Desktop the daemon's
+filesystem is inside its VM: a host path is not proof of free space there. Verify that separately for local testing.
+On Oracle, inspect Docker's actual data root and filesystem mounts; do not assume the volume and filesystem sizes match.
+
+Start with one heavy render slot. The 8 GiB/10% defaults are conservative starting values, not a measured capacity
+promise. Input downloads, generated intermediates, Docker images/logs, and tmpfs memory still need monitoring and
+limits. No worker run directory, interrupted draft, provider receipt or budget journal is deleted by this gate.
+Worker retention needs authoritative recovery/backup proof before it can remove those files.
+
+
+## Graceful shutdown (Create customer-readiness L13)
+
+`SIGTERM` drains the coordinator: it accepts no further claims and finishes an already claimed run, including its
+heartbeats and settlement. A claim accepted during the signal race is still owned and reported. `SIGINT` requests
+the existing immediate-stop path; uncertain provider work remains subject to reconciliation. Repeated SIGTERM
+never escalates into cancellation. Both signals wake an idle poll promptly.
+
+Use the app's shared `create:drain pause` before a coordinated deployment. The rollout switch and migration must
+be enabled consistently across API/planning processes; worker authentication and `CREATE_ENABLED` remain active
+while work drains. A systemd service that signals all children or imposes a short kill timeout defeats this
+behavior. See [the drain runbook](../docs/product/create-drain-runbook.md) for the required service policy and host
+checks. These changes have not been deployed or tested against the Oracle service manager.
+
+
+## Worker identity and interrupted runs (L12)
+
+After the API's worker-assignment migration is deployed, set `CREATE_WORKER_ID` to a unique stable host label and
+optionally `CREATE_WORKER_SLOT=render-1`. The coordinator generates a fresh instance UUID per process and includes
+it in claims. It refuses a mismatched/missing assignment response when identity is configured. The local
+`started.json` saves the assignment and coordinator PID, never the lease token.
+
+An unset worker ID retains legacy claims during staged rollout. After every worker is updated, the API can set
+`CREATE_WORKER_OWNERSHIP_REQUIRED=true`. That switch defaults off. These labels support diagnosis; they are not
+hardware attestation or extra execution slots. Do not restart with a new label to bypass an interrupted run.
+
+Stop evidence and recovery actions are documented in [the worker recovery runbook](../docs/product/create-worker-recovery-runbook.md).
+No journal is automatically replayed or pruned on restart. Unconfirmed lost work still blocks claims until its
+original execution is independently verified stopped and the stop is recorded.

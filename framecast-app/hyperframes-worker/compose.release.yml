@@ -1,0 +1,23 @@
+# The release manifest supplies an immutable LOCAL image ID after startup verification.
+# No build or image pull occurs while a customer run is executing.
+name: wyv-hyperframes-proof
+services:
+  smoke:
+    image: ${CREATE_SANDBOX_IMAGE:?Start the worker with a verified RELEASE.json}
+    pull_policy: never
+    init: true
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 4g
+    pids_limit: 2048
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=4294967296,mode=1777
+    volumes:
+      - ./artifacts:/output
+      - sandbox-lock:/sandbox-lock
+volumes:
+  sandbox-lock:

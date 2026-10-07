@@ -109,8 +109,10 @@ Ideas only from OpenMontage (AGPL v3): nothing copied, clean-room.
 
 ## Open: infra
 
-- The API image rebuild hangs on the yt-dlp download in buildkit; the local containers carry copied-in changes and
-  lose them if recreated. horizon and reverb run old images.
+- API image build: local ARM64 rebuild passed on 2026-10-06 after bounding and checksum-verifying the yt-dlp download.
+  An intermittent GitHub connect timeout was reproduced; the retry passed. Production AMD64 verification and rollout
+  remain open. Local containers still carry copied-in changes and lose them if recreated; horizon and reverb need
+  rebuilt images. See `create-production-plan.md` for evidence and the separate Docker build-history crash.
 
 Vendor errors and admin alerts: `create-vendor-errors-todo.md`.
 

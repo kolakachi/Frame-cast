@@ -59,7 +59,7 @@ class ReplicateGateway
         $urls = [];
         foreach ($files as $f) {
             abort_unless($f['asset_type'] === 'image' && $f['bytes'] <= 10 * 1024 * 1024, 422);
-            $urls[] = $this->upload(Storage::disk('local')->get($f['storage_path']), $f['mime_type']);
+            $urls[] = $this->upload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']);
         }
         $body = $input['media_input'];
         if ($model === 'wan-video/wan-2.5-i2v') $body['image'] = $urls[0];
