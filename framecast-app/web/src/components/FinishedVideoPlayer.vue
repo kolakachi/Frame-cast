@@ -25,7 +25,8 @@ async function toggle() {
 }
 function seek(event) { if (video.value && duration.value) video.value.currentTime = Number(event.target.value) }
 function setVolume(event) { if(video.value) {video.value.volume = Number(event.target.value); video.value.muted = video.value.volume === 0} }
-defineExpose({pause: () => video.value?.pause()})
+// The page reads the paused frame and time for "Change this moment" (ChangeDrawer).
+defineExpose({pause: () => video.value?.pause(), video, current, playing})
 function toggleMute() { if (video.value) video.value.muted = !video.value.muted }
 async function fullscreen() {
   try {
@@ -39,7 +40,7 @@ async function fullscreen() {
 <template>
   <div ref="shell" class="finished-player">
     <div class="player-screen">
-      <video ref="video" :src="src" playsinline preload="metadata" aria-label="Finished video"
+      <video ref="video" :src="src" crossorigin="anonymous" playsinline preload="metadata" aria-label="Finished video"
         @click="toggle" @loadedmetadata="sync" @durationchange="sync" @timeupdate="sync"
         @play="playing = true" @pause="playing = false" @ended="playing = false"
         @volumechange="muted = video.muted; volume = video.volume" @error="error = 'This video could not be loaded. Refresh the page or download it.'" />

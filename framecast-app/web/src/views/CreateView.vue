@@ -15,6 +15,7 @@ import ComposerTray from '../components/create/ComposerTray.vue'
 import TurnActivity from '../components/create/TurnActivity.vue'
 import PlanningLive from '../components/create/PlanningLive.vue'
 import SideDrawer from '../components/create/SideDrawer.vue'
+import ChangeDrawer from '../components/create/ChangeDrawer.vue'
 import PlanGroup from '../components/create/PlanGroup.vue'
 import PlanNote from '../components/create/PlanNote.vue'
 import { conversationTimeline, acceptConversationResponse } from '../lib/createConversation.js'
@@ -31,7 +32,7 @@ const data = ref(null), prompt = ref(''), quote = ref(null), selectedRevision = 
 const library = ref([]), librarySearch = ref(''), libraryPage = ref(1), libraryLastPage = ref(1)
 const rename = ref(''), uploads = ref([])
 const fileInput = ref(null), composer = ref(null), end = ref(null)
-const player = ref(null)
+const player = ref(null), changeDrawer = ref(null), changeOpen = ref(false)
 const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), artifactGone = ref(''), historyLoading = ref(false), dragging = ref(false)
 const clock = ref(Date.now()), providerApproved = ref(false), variantCount = ref(1)
 const settingsDraft = ref({aspect_ratio:'9:16',duration_seconds:15,frame_rate:24,language:'en',audio:'original',captions:'off',no_captions:false,caption_text:'',approved_facts:[],reference_effort:'',reference_match:''})
@@ -772,6 +773,20 @@ async function upload(u, fromSend = false) {
   } catch(e) { u.state = 'failed'; u.error = message(e); if(e.response?.status === 409) { conflict.value = true; await refresh().catch(()=>{}) } return false }
   finally { uploadRunning = false }
 }
+// "Change…" (S9): the drawer lists the parts; pausing the player and tapping "Change this moment" adds that frame.
+const canChange = computed(() => !!media.value && !outputMeta.value.look && !imageOutput.value && paid.value && canWrite.value && !isOldRevision.value && !conversation.value?.archived_at)
+const clockTime = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`
+async function changeMoment() {
+  const video = player.value?.video
+  if (!video) return
+  changeOpen.value = true
+  await nextTick(); await changeDrawer.value?.addMoment(video)
+}
+async function changePlanned() {
+  changeOpen.value = false; quote.value = null
+  await refresh(); await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  await resumePlanning()
+}
 async function restore() { await guarded(async () => { await api.post(`${base()}/revisions/${currentRevision.value.id}/restore`,{expected_version:conversation.value.version}); selectedRevision.value = null; quote.value = null; await refresh() }) }
 async function updateConversation(archived) {
   await guarded(async () => {
@@ -1382,7 +1397,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
                   <StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
-                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /></div>
+                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /><button v-if="canChange && player && !player.playing && player.current > 0" type="button" class="moment-btn" @click="changeMoment">Change this moment · {{ clockTime(player.current) }}</button></div>
                   <p v-if="artifactGone && !artifactLoading" class="muted">{{ artifactGone }}</p>
                   <button v-if="!media && !artifactLoading && !artifactGone" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
                 </div>
@@ -1398,6 +1413,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                     <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
                     <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
                     <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
+                    <button v-if="canChange" type="button" class="btn btn--outline" :disabled="locked" @click="changeOpen = true">Change…</button>
                     <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
                     <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
                     <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
@@ -1409,7 +1425,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                     <button type="button" class="btn btn--ghost" @click="versionOpen = true">Details</button>
                   </div>
                   <p v-if="shareNote" class="result-hint result-share" role="status">{{ shareNote }}</p>
-                  <p v-if="!outputMeta.look && !isOldRevision && canWrite" class="result-hint">Want something different? Describe the change below, like “slower cuts” or “bigger captions”.</p>
+                  <p v-if="!outputMeta.look && !isOldRevision && canWrite" class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below, like “slower cuts” or “bigger captions”.</p>
                 </div>
               </div>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
@@ -1674,6 +1690,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
       </CreateDialog>
       <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
+      <ChangeDrawer ref="changeDrawer" :open="changeOpen" :conversation-id="id || ''" :revision="currentRevision ? { id: currentRevision.id, number: currentRevision.number } : null" :version="conversation?.version || 0" :src="media" @close="changeOpen = false" @updated="d => { data = d }" @planned="changePlanned" />
       <SideDrawer :open="showHistory" title="Recent conversations" meta="Newest first" @close="showHistory = false">
         <div class="history-body">
         <div class="drawer-top"><input v-model="search" type="search" class="input" aria-label="Search conversations" placeholder="Search titles, briefs or file names…" /></div>
@@ -2151,6 +2168,8 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .result__meta b{font-weight:700}.result__meta .status{margin-left:auto}
 .result__actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px 14px}
 .player-wrap{position:relative}
+.moment-btn{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:2;white-space:nowrap;border:1px solid #fff6;background:#000b;color:#fff;border-radius:999px;padding:6px 12px;font:600 12px/1.2 inherit;cursor:pointer}
+.moment-btn:hover{background:#000d;border-color:#ff6b35}
 .safe-zones{position:absolute;inset:14% 6% 35%;border:1px dashed #fff9;pointer-events:none;box-shadow:0 0 0 1px #0005}
 .player-wrap .safe-zones:after{content:"Keep essential content inside";position:absolute;top:4px;left:4px;font-size:10px;color:#fff;text-shadow:0 1px 2px #000}
 .created-image{display:block;max-width:100%;max-height:60vh;object-fit:contain;border-radius:10px}
