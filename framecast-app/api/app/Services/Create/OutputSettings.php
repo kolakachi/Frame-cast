@@ -4,6 +4,8 @@ class OutputSettings
 {
     public static function rules(): array { return [
         'aspect_ratio'=>'sometimes|in:9:16,16:9,1:1,4:5','duration_seconds'=>'sometimes|integer|min:5|max:30',
+        // The settings read from the brief's own words, so Details can say which values came from it.
+        'from_brief'=>'sometimes|array|max:8','from_brief.*'=>'string|in:aspect_ratio,duration_seconds,language,audio,captions,no_captions,reference_match',
         'language'=>'sometimes|string|in:en,fr,es,de,pt,it,nl,ar,hi,ja,ko,zh',
         'audio'=>'sometimes|in:original,silent','captions'=>'sometimes|in:off,provided',
         // The user asked for no words on screen; "off" alone only means no caption text was supplied.

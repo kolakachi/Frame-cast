@@ -101,7 +101,8 @@ class ConversationService
             $inferred = BriefSettings::infer($input['content'], $settings, $referenceVideo);
             $replies = [];
             if ($inferred['changes'] !== []) {
-                $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'], isset($inferred['changes']['duration_seconds']) ? ['duration_chosen' => true] : [])));
+                $fromBrief = array_values(array_unique(array_merge((array) ($settings['from_brief'] ?? []), array_intersect(array_keys($inferred['changes']), ['aspect_ratio', 'duration_seconds', 'language', 'audio', 'captions', 'no_captions', 'reference_match']))));
+                $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'], ['from_brief' => $fromBrief], isset($inferred['changes']['duration_seconds']) ? ['duration_chosen' => true] : [])));
                 $replies[] = BriefSettings::describe($inferred['changes']);
             }
             array_push($replies, ...$inferred['questions']);

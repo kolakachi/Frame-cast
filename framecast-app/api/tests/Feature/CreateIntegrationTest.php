@@ -2801,6 +2801,18 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(["Hi, I'm Ada.", 'I bake sourdough every morning.'], $p['narration']);
     }
 
+    public function test_settings_read_from_the_brief_are_marked_so_details_can_say_so(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Make a square 20 second video in French.', 'expected_version' => 0, 'idempotency_key' => 'fb-1']);
+        $s = json_decode($this->conversations->conversation($this->owner, $c->id)->settings_json, true);
+        $this->assertEqualsCanonicalizing(['aspect_ratio', 'duration_seconds', 'language'], $s['from_brief']);
+        // Details saves the list back without the values the user changed there; an unknown key is refused.
+        $s2 = \App\Services\Create\OutputSettings::normalize(array_merge(array_diff_key($s, ['from_brief' => 1]), ['aspect_ratio' => '9:16', 'from_brief' => ['duration_seconds', 'language']]));
+        $this->assertSame(['duration_seconds', 'language'], $s2['from_brief']);
+        $this->assertThrows(fn () => \App\Services\Create\OutputSettings::normalize(['from_brief' => ['style_pack']]), \Illuminate\Validation\ValidationException::class);
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);

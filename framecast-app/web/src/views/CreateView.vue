@@ -88,7 +88,12 @@ async function approveLook() {
 function changeLook() { prompt.value = 'Keep the look, but change '; nextTick(() => composer.value?.focus()) }
 async function editResult() {if(imageOutput.value && !currentRevision.value.output_asset_id){await saveOutput();if(!currentRevision.value.output_asset_id)return}prompt.value = imageOutput.value ? 'Keep this image, but change ' : 'Keep this video, but change '; nextTick(()=>composer.value?.focus())}
 async function animateResult(){await guarded(async()=>{const rev=currentRevision.value;if(!rev.output_asset_id)throw Error('Save the image to Assets first.');const c=(await api.post('/create/conversations',{output_kind:'video',video_mode:'animate_image',duration_seconds:5,aspect_ratio:outputMeta.value.settings.aspect_ratio,audio:'silent',origin_conversation_id:id.value,origin_revision_id:rev.id})).data.data;await api.post(`/create/conversations/${c.id}/attachments`,{asset_id:rev.output_asset_id,purpose:'source',reuse_confirmed:true,expected_version:0});await router.push({name:'create',params:{conversationId:c.id}});await refresh();prompt.value='Animate this image with gentle motion. Keep the objects and composition consistent.';nextTick(()=>composer.value?.focus())})}
-async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,reference_effort:settingsDraft.value.reference_effort||null,reference_match:settingsDraft.value.reference_match||null,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
+// A value the user changes here is theirs now, no longer "from your brief".
+function briefKeysKept() { let saved = {}; try { saved = JSON.parse(conversation.value?.settings_json || '{}') } catch { saved = {} }
+  return (saved.from_brief || []).filter(k => JSON.stringify(settingsDraft.value[k] ?? null) === JSON.stringify(saved[k] ?? null)) }
+const fromBrief = key => { try { return (JSON.parse(conversation.value?.settings_json || '{}').from_brief || []).includes(key) } catch { return false } }
+const hasReferenceVideo = computed(() => (data.value?.attachments || []).some(a => a.purpose === 'reference' && a.asset_type === 'video'))
+async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,from_brief:briefKeysKept(),reference_effort:settingsDraft.value.reference_effort||null,reference_match:settingsDraft.value.reference_match||null,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
 function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON.parse(conversation.value?.settings_json||'{}')};settingsDraft.value.reference_effort||='';settingsDraft.value.reference_match||='';factsText.value=(settingsDraft.value.approved_facts||[]).join('\n')}catch{}details.value=true}
 
 const workspaceStore = useWorkspaceStore()
@@ -1545,15 +1550,31 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
               <p>{{ outputSummary }}</p>
               <p v-if="!paid" class="muted">{{ kind === 'image' ? 'Image generation is not enabled in this local preview. Your image brief and references are saved.' : 'The local sample is 15 seconds, portrait, 1080p. Other settings apply once generation is enabled.' }}</p>
               <details v-if="paid" class="panel-edit"><summary>Change output</summary>
-                <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" />
-                <label v-if="kind === 'video'" class="field-label">Length in seconds<input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="input" /></label>
-                <UiSelect v-if="kind === 'video'" v-model="settingsDraft.reference_effort" label="How closely to study reference videos" :options="[{value:'',label:'Automatic'},{value:'standard',label:'Standard · quick'},{value:'high',label:'High · every clear change'},{value:'maximum',label:'Maximum · every frame that differs (slower)'}]" />
-                <UiSelect v-if="kind === 'video'" v-model="settingsDraft.reference_match" label="Match the reference video" :options="[{value:'',label:'From my brief (I\'ll ask if unclear)'},{value:'exact',label:'Exactly · same timing, layout and moves, my brand and content'},{value:'similar',label:'Similar · its format, look and pacing, my own story and shots'},{value:'inspired',label:'Inspired · just the idea, my own execution'}]" />
-                <UiSelect v-if="kind === 'video'" v-model="settingsDraft.frame_rate" label="Frame rate" :options="[{value:24,label:'24 fps · film'},{value:30,label:'30 fps'},{value:60,label:'60 fps · smoothest UI motion (the final render takes about 2.5 times as long)'}]" />
-                <label v-if="kind === 'video'" class="field-label field-label--check"><input v-model="settingsDraft.motion_blur" type="checkbox" /> Motion blur on the final video <small class="muted">(smoother fast motion; the final render takes about twice as long)</small></label>
-                <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" />
-                <template v-if="kind === 'video'"><UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /><UiSelect v-model="captionMode" label="Captions" :options="[{value:'auto',label:'Automatic (follows your reference)'},{value:'none',label:'None'},{value:'provided',label:'My exact text'}]" /><textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input" placeholder="Paste the exact words." /></template>
-                <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply</button>
+                <div class="out-grid">
+                  <div class="out-field"><span class="out-label">Format <i v-if="fromBrief('aspect_ratio')" class="out-tag">from your brief</i></span>
+                    <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" /></div>
+                  <label v-if="kind === 'video'" class="out-field"><span class="out-label">Length <i v-if="fromBrief('duration_seconds')" class="out-tag">from your brief</i></span>
+                    <span class="out-length"><input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="input" aria-label="Length in seconds" /><span class="muted">seconds</span></span></label>
+                  <div v-if="kind === 'video'" class="out-field"><span class="out-label">Frame rate</span>
+                    <UiSelect v-model="settingsDraft.frame_rate" label="Frame rate" :options="[{value:24,label:'24 fps · film'},{value:30,label:'30 fps'},{value:60,label:'60 fps · smoothest UI motion (the final render takes about 2.5 times as long)'}]" /></div>
+                  <div class="out-field"><span class="out-label">Language <i v-if="fromBrief('language')" class="out-tag">from your brief</i></span>
+                    <UiSelect v-model="settingsDraft.language" label="Language" :options="[{value:'en',label:'English'},{value:'fr',label:'French'},{value:'es',label:'Spanish'},{value:'de',label:'German'},{value:'pt',label:'Portuguese'}]" /></div>
+                  <template v-if="kind === 'video'">
+                    <div class="out-field"><span class="out-label">Audio <i v-if="fromBrief('audio')" class="out-tag">from your brief</i></span>
+                      <UiSelect v-model="settingsDraft.audio" label="Audio" :options="[{value:'original',label:'Keep supplied audio'},{value:'silent',label:'Silent'}]" /></div>
+                    <div class="out-field"><span class="out-label">Captions <i v-if="fromBrief('captions') || fromBrief('no_captions')" class="out-tag">from your brief</i></span>
+                      <UiSelect v-model="captionMode" label="Captions" :options="[{value:'auto',label:hasReferenceVideo ? 'Automatic (follows your reference)' : 'Automatic'},{value:'none',label:'None'},{value:'provided',label:'My exact text'}]" /></div>
+                    <textarea v-if="settingsDraft.captions === 'provided'" v-model="settingsDraft.caption_text" class="input out-wide" placeholder="Paste the exact words." aria-label="Caption text" />
+                    <template v-if="hasReferenceVideo">
+                      <div class="out-field out-wide"><span class="out-label">Match the reference video <i v-if="fromBrief('reference_match')" class="out-tag">from your brief</i></span>
+                        <UiSelect v-model="settingsDraft.reference_match" label="Match the reference video" :options="[{value:'',label:'From my brief (I\'ll ask if unclear)'},{value:'exact',label:'Exactly · same timing, layout and moves, my brand and content'},{value:'similar',label:'Similar · its format, look and pacing, my own story and shots'},{value:'inspired',label:'Inspired · just the idea, my own execution'}]" /></div>
+                      <div class="out-field out-wide"><span class="out-label">How closely to study it</span>
+                        <UiSelect v-model="settingsDraft.reference_effort" label="How closely to study reference videos" :options="[{value:'',label:'Automatic'},{value:'standard',label:'Standard · quick'},{value:'high',label:'High · every clear change'},{value:'maximum',label:'Maximum · every frame that differs (slower)'}]" /></div>
+                    </template>
+                    <label class="out-check out-wide"><input v-model="settingsDraft.motion_blur" type="checkbox" /><span><b>Motion blur on the final video</b><small class="muted">Smoother fast motion; the final render takes about twice as long.</small></span></label>
+                  </template>
+                </div>
+                <div class="out-actions"><button type="button" class="btn btn--primary btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply</button></div>
               </details>
             </section>
             <section v-if="paid">
@@ -2263,6 +2284,17 @@ label.tray-note{white-space:normal}
 .pd-check{display:flex;align-items:center;gap:8px;font-size:13px}.pd-check small{color:#8e8e8e}
 .pd-choice-group{display:flex;flex-direction:column;gap:6px}
 .pd-q{font-size:12px;color:#8e8e8e}
+.out-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 10px;margin-top:12px}
+.out-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.out-wide{grid-column:1 / -1}
+.out-label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-2,#b7bcc6)}
+.out-tag{font-style:normal;font-weight:500;font-size:10px;color:var(--accent,#ff6b35);border:1px solid var(--accent-line,#ff6b3566);border-radius:999px;padding:0 6px}
+.out-length{display:flex;align-items:center;gap:8px}.out-length .input{width:84px}
+.out-check{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line-3);border-radius:10px;cursor:pointer}
+.out-check input{margin-top:3px}
+.out-check span{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.out-check small{font-size:12px}
+.out-actions{display:flex;justify-content:flex-end;margin-top:12px}
 .dir-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;margin:0 0 6px;padding:6px 6px 6px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);font-size:13px}
 .dir-strip__more{margin-left:auto;color:var(--text-3,#8f95a1);font-size:12px}
 .ways-intro{margin:6px 0 10px;color:var(--text-2,#b7bcc6)}
