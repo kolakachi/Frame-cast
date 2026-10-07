@@ -40,7 +40,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 
 | # | Format | Brief | Also proves | Run | Result |
 |---|---|---|---|---|---|
-| 1 | Motion graphics | WyvStudio launch promo, 20 s 9:16, kinetic type: "Branded short-form video without a shoot" | FS5, I7 | `2e8fa486` | 25 min · 734 cr (est. 245, 3×) · delivery check BLOCKED: 2 blank moments, wordmark on screen 0.8 s · on brand; "finished video" phone and plan card nearly empty · repair rounds did not converge |
+| 1 | Motion graphics | WyvStudio launch promo, 20 s 9:16, kinetic type: "Branded short-form video without a shoot" | FS5, I7 | `2e8fa486` | 25 min · 734 cr (est. 245, 3×) · **owner: likes it** · checks flagged 2 blank moments and the wordmark on screen 0.8 s (a pro would notice); "finished video" phone and plan card nearly empty |
 | 2 | Motion graphics | How WyvStudio works (brief → plan → video), 30 s 16:9 for the landing hero, Thorough | BG1, CR1 | | |
 | 3 | Motion graphics | DTC product ad for a skincare serum, 15 s 9:16, product stills generated | AB4 | | |
 | 4 | Motion graphics | SaaS feature launch with numbers (odometer, gauge), 1:1 | FS5 | `8bba2c00` | 7.4 min · 245 cr · all checks pass · weak first second (empty card) · owner verdict pending |
