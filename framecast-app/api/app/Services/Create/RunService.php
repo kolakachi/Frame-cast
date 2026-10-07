@@ -323,6 +323,8 @@ class RunService
             $run = $this->leased($id, $token);
             abort_unless(in_array($run->status, ['running', 'cancel_requested'], true) && now()->lessThan($run->lease_expires_at), 409, 'Lease is no longer current.');
             app(WorkerOwnership::class)->seen($id);
+            // A worker busy building is alive too: its heartbeat counts, not only a request for new work.
+            CreateHealth::workerSeen();
             // Replayed events cannot regress the visible stage.
             DB::table('composition_runs')->where('id', $id)->update([
                 'sequence' => max($sequence, $run->sequence), 'stage' => $sequence > $run->sequence ? $stage : $run->stage,

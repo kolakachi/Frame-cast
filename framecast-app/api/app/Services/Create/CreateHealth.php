@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class CreateHealth
 {
-    /** A worker slot claims every few seconds; silence this long means no worker is taking builds. */
+    /** A worker slot claims every few seconds, and a busy one sends a heartbeat every 20 s; silence this long from both
+     *  means no worker is there. */
     public const WORKER_SILENT_SECONDS = 300;
 
     public static function workerSeen(): void
@@ -45,7 +46,7 @@ class CreateHealth
         if (config('create.enabled') && config('create.mode') === 'agent') {
             $seen = (int) Cache::get('create:worker-seen', 0);
             if (now()->timestamp - $seen > self::WORKER_SILENT_SECONDS) $out['worker'] = ['title' => 'No Create build worker is checking in',
-                'text' => 'No worker has asked for a build '.($seen ? 'since '.date('H:i', $seen).' UTC' : 'recently').'. Builds will queue. `ssh framecast-create` and `systemctl status wyv-create-worker`.'];
+                'text' => 'No worker has asked for a build or reported progress '.($seen ? 'since '.date('H:i', $seen).' UTC' : 'recently').'. Builds will queue. `ssh framecast-create` and `systemctl status wyv-create-worker`.'];
         }
 
         $stranded = DB::table('composition_runs')->where('status', 'needs_attention')->whereNull('worker_stopped_at')->get(['id']);

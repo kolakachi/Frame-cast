@@ -2605,6 +2605,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([], array_values(array_intersect(['queue', 'worker'], array_keys($health->check()))));
         \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class, fn ($m) => $m->title === 'Recovered: Create queue is healthy again');
         \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class, fn ($m) => $m->title === 'Recovered: Create worker is healthy again');
+        // A worker busy building (no claims, only heartbeats) is not reported missing (production 2026-10-07: three
+        // slots building at once set off a false alarm).
+        \Illuminate\Support\Facades\Cache::forget('create:worker-seen');
+        config(['create.mode' => 'fixture']); [, , $busyRun] = $this->admitted(); $busyClaim = $this->runs->claim(); config(['create.mode' => 'agent']);
+        \Illuminate\Support\Facades\Cache::forget('create:worker-seen');
+        $this->runs->heartbeat($busyRun->id, $busyClaim['lease_token'], 1, 'Building');
+        $this->assertArrayNotHasKey('worker', $health->problems());
+        DB::table('composition_runs')->where('id', $busyRun->id)->update(['status' => 'failed']);
     }
 
     public function test_another_workspace_cannot_reach_create_conversations_videos_files_or_worker_inputs(): void
