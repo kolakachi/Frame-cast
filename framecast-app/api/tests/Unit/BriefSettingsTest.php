@@ -74,4 +74,13 @@ class BriefSettingsTest extends TestCase
         $this->assertSame(['audio' => 'silent'], BriefSettings::infer('Make it a silent video with captions only.', $settings)['changes']);
         $this->assertSame(['audio' => 'silent'], BriefSettings::infer('No audio please.', $settings)['changes']);
     }
+
+    public function test_a_square_shape_is_not_the_format(): void
+    {
+        foreach (['Our logo is attached (a white W on an orange rounded square).', 'Use square icons for the three steps.', 'Put the price on a square badge.', 'The mark sits inside a square.'] as $brief) {
+            $this->assertArrayNotHasKey('aspect_ratio', BriefSettings::infer($brief, $this->video)['changes'], $brief);
+        }
+        $this->assertSame('1:1', BriefSettings::infer('A 20-second square video for our feed.', $this->video)['changes']['aspect_ratio']);
+        $this->assertSame('1:1', BriefSettings::infer('Deliver it on a square format, with our square logo.', $this->video)['changes']['aspect_ratio']);
+    }
 }

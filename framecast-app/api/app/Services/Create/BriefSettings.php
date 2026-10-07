@@ -34,7 +34,11 @@ class BriefSettings
 
         // A format is set only when the message names exactly one. Several ("label the tiles 9:16, 1:1, 4:5 and
         // 16:9") are content, not a request to change the video's shape.
-        $named = array_values(array_unique(array_filter(array_map(fn ($pattern) => preg_match($pattern, $text) ? self::RATIOS[$pattern] : null, array_keys(self::RATIOS)))));
+        // "Square" describing a shape ("a white W on an orange rounded square", "square icons") is not the format.
+        $shapes = preg_replace('/\b(?:(?:rounded|round|colou?red|orange|white|black|red|blue|green|yellow|purple|pink|gr[ae]y|small|little|tiny|soft) )+squares?\b'
+            .'|\bsquares? (?:logo|icon|badge|button|tile|card|corner|box|shape|grid|pattern|dot|bracket|sticker|block|mark)s?\b'
+            .'|\b(?:on|inside) (?:a|an|the) (?:\w+ )?squares?\b(?! (?:video|format|post|version|ratio|crop))/u', ' ', $text);
+        $named = array_values(array_unique(array_filter(array_map(fn ($pattern) => preg_match($pattern, $shapes) ? self::RATIOS[$pattern] : null, array_keys(self::RATIOS)))));
         if (count($named) === 1 && ($settings['aspect_ratio'] ?? null) !== $named[0]) $changes['aspect_ratio'] = $named[0];
 
         // A length is the video's only when it is not about a part of it ("a closing card of about 4 seconds",
