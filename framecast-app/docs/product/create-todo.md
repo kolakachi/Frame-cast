@@ -47,7 +47,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | 5 | UGC | A creator's testimonial for WyvStudio, talking to camera, 20 s 9:16 | spoken brand name | | |
 | 6 | UGC | Unboxing ad for the serum: hook, problem, solution | RF1 | | |
 | 7 | UGC | Split-screen reaction ad | E2 (generated presenter) | | |
-| 8 | Footage edit | The WyvStudio demo recording cut into a 30 s promo with captions and zooms | E1 | | |
+| 8 | Footage edit | The WyvStudio demo recording cut into a 30 s promo with captions and zooms | E1 | `fd8bca53` | 31 min · 668 cr (est. 860) · all checks pass · clear step story from the real recording, zooms, captions, logo end card · app text small in 9:16 crops, two panels clipped at the left edge · the source recording shows an old brief "(pronounced weev-studio)" |
 | 9 | Footage + own audio | The VSL's own voiceover over a new edit of the product | FS8 | | |
 | 10 | From scratch | "3 hooks that stop the scroll", a teaching video for marketers, WyvStudio end card | FS3, S11 | | |
 
