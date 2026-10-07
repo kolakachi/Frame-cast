@@ -6,7 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The failure ledger (docs/product/create-verify-and-teach-scope.md, 1e): every Create run that failed or was held,
+ * The failure ledger (docs/product/archive/create/create-verify-and-teach-scope.md, 1e): every Create run that failed or was held,
  * with the stage it stopped in, its cause as the trace recorded it, the credits it spent and whether a later run of
  * the same creation got a video. Counted weekly in the progress tracker.
  */

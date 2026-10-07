@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\{Http, Log, Storage};
 
 /**
- * The provider contract check (docs/product/create-verify-and-teach-scope.md, 1c): every model Create sends work to
+ * The provider contract check (docs/product/archive/create/create-verify-and-teach-scope.md, 1c): every model Create sends work to
  * publishes its input schema on Replicate. This compares that schema with what our code sends (parameter names, the
  * values we rely on, the inputs the model requires) and reports any difference before a user's run meets it. Free:
  * it only reads model pages. Rules a schema does not state (Omni's "start frame or references, not both") are covered

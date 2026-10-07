@@ -5,7 +5,7 @@ use App\Mail\VendorAlertMail;
 use Illuminate\Support\Facades\{Cache, DB, Http, Log, Mail};
 
 /**
- * What happens when a vendor fails (docs/product/create-vendor-errors-todo.md). Every classified failure is kept in
+ * What happens when a vendor fails (docs/product/archive/create/create-vendor-errors-todo.md). Every classified failure is kept in
  * vendor_incidents for the daily summary. A refusal is also a moderation event. Our own account running dry or
  * misconfigured (vendor_credit, vendor_config) alerts the super admins and ADMIN_ALERT_EMAILS at once (at most once
  * an hour per vendor and kind, and once more when it recovers), and holds new work that needs that vendor for a few

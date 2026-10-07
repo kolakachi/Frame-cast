@@ -138,7 +138,7 @@ No model keys or network are provided to this container. The future online
 provider coordinator must remain outside it. `ReplicateProvider` is disabled by
 default; importing it never reads credentials or starts a prediction.
 
-See `../docs/product/hyperframes-e1-verification.md` for verified schemas,
+See `../docs/product/archive/create/hyperframes-e1-verification.md` for verified schemas,
 implemented constraints and the outstanding real-model acceptance gates.
 
 

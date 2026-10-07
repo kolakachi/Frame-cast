@@ -1,6 +1,6 @@
 # Hyperframes integration — implementation specification
 
-> **UX update (September 28):** Use the [conversation-first experience](hyperframes-agent-experience.md) and [agent mockup](create-ui/agent.html) as the primary interaction design. Earlier separate wizard screens are supporting state references. Accounting, isolation and revision guarantees below remain required.
+> **UX update (September 28):** Use the [conversation-first experience](archive/create/hyperframes-agent-experience.md) and [agent mockup](create-ui/agent.html) as the primary interaction design. Earlier separate wizard screens are supporting state references. Accounting, isolation and revision guarantees below remain required.
 
 Status: proposed implementation contract; not implemented or deployed.
 Date: 28 September 2026.
@@ -11,7 +11,7 @@ This document supersedes the cookbook where its cost, architecture, scope or
 platform assumptions differ. Named new services, routes, tables, tools and flags
 below are proposed additions, not claims about current capabilities. Product
 limits are initial engineering defaults; public pricing requires the measured
-cost gate in §10. E0 local render evidence is recorded in [local verification](hyperframes-local-verification.md); production and agent gates remain open.
+cost gate in §10. E0 local render evidence is recorded in [local verification](archive/create/hyperframes-local-verification.md); production and agent gates remain open.
 
 ## 1. Outcome and first release
 
@@ -456,7 +456,7 @@ edit, a scoped asset denial and an accounted run with unused reservation release
 
 ## 13. Implementation sequence and checklist
 
-The [implementation TODO](hyperframes-implementation-todo.md) is the authoritative execution tracker. Its expanded E0–E6 phases supersede the abbreviated sequence below; these older headings are an architectural summary, not a separate completion record. The latest UI reference is [Create](create-ui/agent-new.html).
+Open work is tracked in [the Create todo](create-todo.md); the old [implementation TODO](archive/create/hyperframes-implementation-todo.md) is history. Its expanded E0–E6 phases supersede the abbreviated sequence below; these older headings are an architectural summary, not a separate completion record. The latest UI reference is [Create](create-ui/agent-new.html).
 
 ### E0 — prove the upstream integration
 - [ ] Pin an available Hyperframes release and skill/runtime/dependency manifest.

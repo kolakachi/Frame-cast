@@ -1,4 +1,4 @@
-// The media gauntlet (docs/product/create-verify-and-teach-scope.md, 1a): real-world, messy footage through the same
+// The media gauntlet (docs/product/archive/create/create-verify-and-teach-scope.md, 1a): real-world, messy footage through the same
 // render path production uses (agent/live-tool.mjs render), with nothing paid. Every fault found on 2026-10-05 has a
 // stand-in here: a 5-minute silent 60 fps screen recording with keyframes 4.3 s apart, a provider clip with one
 // keyframe, the builder's own sparse cuts, odd containers and sizes, six clips playing at once, a zoomed clip, captions,

@@ -1,6 +1,6 @@
 # Create bench: briefs, coverage and acceptance rules
 
-Started 2026-10-05 (G1 and M3 in `create-generated-video-todo.md`). Every change to Create's generated video is judged
+Started 2026-10-05 (G1 and M3 in `archive/create/create-generated-video-todo.md`). Every change to Create's generated video is judged
 on this bench. Each run is measured with `php artisan create:bench-report {conversation}`, plus the owner's scores.
 Runs use the test account only (kolakachi@gmail.com, workspace 1).
 

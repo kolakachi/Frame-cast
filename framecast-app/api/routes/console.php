@@ -105,7 +105,7 @@ Schedule::command('create:check-leases')->everyMinute()->withoutOverlapping()
 Schedule::command('create:recover-planning')->everyMinute()->withoutOverlapping()
     ->when(fn () => (bool) config('create.enabled') && (bool) config('create.durable_planning'));
 
-// Create's provider contracts (docs/product/create-verify-and-teach-scope.md, 1c): free, reads model schemas only.
+// Create's provider contracts (docs/product/archive/create/create-verify-and-teach-scope.md, 1c): free, reads model schemas only.
 Schedule::command('create:provider-contracts')->dailyAt('06:10')->name('create-provider-contracts')->withoutOverlapping();
 // Vendor failures of the last day (refusals, busy, our own credit or key), to the alert list; quiet days send nothing.
 Schedule::command('create:vendor-digest')->dailyAt('09:05')->name('create-vendor-digest')->withoutOverlapping();
