@@ -11,6 +11,8 @@ return [
     'durable_planning' => (bool) env('CREATE_DURABLE_PLANNING', false),
     // Plans one workspace may have running at once across the planning workers (worker-create-planning replicas).
     'planning_per_workspace' => (int) env('CREATE_PLANNING_PER_WORKSPACE', 2),
+    // Email when the estimated Anthropic balance (create:model-balance) falls below this many dollars.
+    'model_balance_warn_usd' => (float) env('CREATE_MODEL_BALANCE_WARN_USD', 40),
     // Separate from the public/MinIO-compatible b2 alias. Existing files keep their catalogued disk.
     'storage_disk' => env('CREATE_STORAGE_DISK', 'local'),
     'disk_min_free_bytes' => (int) env('CREATE_DISK_MIN_FREE_BYTES', 2147483648),

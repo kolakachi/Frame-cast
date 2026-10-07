@@ -4879,4 +4879,21 @@ class CreateIntegrationTest extends TestCase
         $this->artisan('create:drain', ['action' => 'quiet', '--timeout' => 0])->assertSuccessful();
         $this->assertTrue($this->drainControl()->paused(), 'quiet never resumes');
     }
+
+    public function test_a_low_anthropic_balance_is_warned_before_it_runs_dry(): void
+    {
+        (require database_path('migrations/2026_10_07_210000_create_vendor_balances.php'))->up();
+        $this->assertArrayNotHasKey('balance', app(\App\Services\Create\CreateHealth::class)->problems(), 'nothing recorded: no guess');
+        $this->artisan('create:model-balance', ['usd' => '50'])->expectsOutputToContain('About $50.00 left')->assertSuccessful();
+        $runId = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_attempts')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'run_id' => $runId, 'operation_id' => 'op1', 'attempt_key' => 'a1', 'request_hash' => str_repeat('c', 64),
+            'kind' => 'agent', 'provider' => 'anthropic', 'model' => 'm', 'status' => 'succeeded', 'credit_limit' => 1000, 'cost_limit_microusd' => 1, 'cost_microusd' => 20_000_000, 'charged_credits' => 0, 'created_at' => now()->addSecond(), 'updated_at' => now()]);
+        $e = \App\Services\Vendors\ModelBalance::estimate();
+        $this->assertSame([22.0, 28.0], [$e['spent'], $e['left']], '$20 measured plus the margin for unmetered calls');
+        $p = app(\App\Services\Create\CreateHealth::class)->problems();
+        $this->assertSame('Our Anthropic balance is low', $p['balance']['title']);
+        $this->assertStringContainsString('About $28.00 is left of the $50.00', $p['balance']['text']);
+        $this->artisan('create:model-balance', ['usd' => '300'])->assertSuccessful();
+        $this->assertArrayNotHasKey('balance', app(\App\Services\Create\CreateHealth::class)->problems(), 'a top-up recorded clears it');
+    }
 }

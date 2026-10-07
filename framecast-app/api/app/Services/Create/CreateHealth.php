@@ -60,6 +60,10 @@ class CreateHealth
         if ($holds->isNotEmpty()) $out['holds'] = ['title' => 'Credit holds left open',
             'text' => $holds->count().' operation(s) have held credits for over 3 hours: '.collect($holds)->pluck('id')->take(10)->implode(', ').'. Reconcile them; never release by age alone.'];
 
+        // Our model account, before it runs dry (Anthropic has no balance API: see ModelBalance).
+        if (($b = \App\Services\Vendors\ModelBalance::estimate()) && $b['left'] < (float) config('create.model_balance_warn_usd', 40)) $out['balance'] = ['title' => 'Our Anthropic balance is low',
+            'text' => sprintf('About $%.2f is left of the $%.2f recorded on %s (about $%.2f spent since). At zero every Create plan and build stops. Top up at https://console.anthropic.com/settings/billing (or turn on auto-reload), then run `php artisan create:model-balance NEW_BALANCE`.', max(0, $b['left']), $b['balance'], substr($b['set_at'], 0, 10), $b['spent'])];
+
         $disk = app(DiskSpace::class);
         $bytes = (int) config('create.disk_working_bytes', 1073741824);
         foreach (['storage' => Storage::disk('local')->path(''), 'scratch' => sys_get_temp_dir()] as $name => $path) {
@@ -78,7 +82,7 @@ class CreateHealth
             Cache::put('create-health-open:'.$id, true, now()->addDays(2));
             if (Cache::add('create-health-alert:'.$id, true, now()->addHour())) $this->send('Action needed: '.$p['title'], $p['text']);
         }
-        foreach (['planning', 'queue', 'worker', 'stranded', 'holds', 'disk'] as $id) {
+        foreach (['planning', 'queue', 'worker', 'stranded', 'holds', 'balance', 'disk'] as $id) {
             if (isset($now[$id]) || ! Cache::pull('create-health-open:'.$id)) continue;
             Cache::forget('create-health-alert:'.$id);
             $this->send('Recovered: Create '.$id.' is healthy again', 'The earlier "'.$id.'" problem has cleared.');
