@@ -22,12 +22,16 @@ export function requiredMoves(plan){
  * Findings for required moves the composition never calls. sources: every composition file except the kit's own.
  * ran: the moves that actually ran when the page built its timeline ([{move}], from the render); when given, a move
  * whose code is present but never runs (an unused function) is a finding too.
+ * base: on an edit, the source of the version being edited. A move it never called is not the edit's to add (GTM-1
+ * re-voice: a voice-only change re-planned the beats with a wipe the version never had, and the build added it).
  */
-export function moveFindings({plan,sources,ran=null,requireRuntime=false}){
- const code=String(sources||'').replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
+export function moveFindings({plan,sources,ran=null,requireRuntime=false,base=null}){
+ const strip=s=>String(s||'').replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
+ const code=strip(sources),baseCode=base==null?null:strip(base);
  const out=[];
  for(const [move,labels] of requiredMoves(plan)){
   const fn=RECIPES[move];
+  if(baseCode!==null&&!new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(baseCode))continue;
   if(new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(code)){
    if(!Array.isArray(ran)){
     if(requireRuntime)out.push({code:'reference_move_unverified',status:'unverified',severity:'error',move,time:null,message:`Execution evidence for WM.${fn} is unavailable. The planned move has not been verified.`,fixHint:'Restore runtime motion evidence and check the final render again.'});

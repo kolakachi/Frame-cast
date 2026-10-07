@@ -22,7 +22,7 @@ export const CURRENT_TEXT_BYTES=20000;
 export const KEPT_FRAME_TURNS=4;
 
 // One owner per local run. Production locking/leases belong to E2.
-export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,initialTranscripts={},requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
+export async function runAgent({stateFile,context,baseSources=null,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,initialTranscripts={},requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
   const cap={calls:12,repairs:2,runs:24,inspections:8,resultBytes:16000,usesPerTurn:8,criticCalls:0,elapsedMs:180000,contextBytes:200000,maxOutputTokens:8192,totalOutputTokenAllowance:98304,budgetUsd:0,...limits};
   if (![cap.calls,cap.repairs,cap.elapsedMs,cap.contextBytes,cap.maxOutputTokens,cap.totalOutputTokenAllowance,cap.budgetUsd].every(Number.isFinite) || cap.calls<1 || cap.repairs<0 || cap.budgetUsd<0) throw Error('Invalid limits');
   const identity=digest(JSON.stringify({context,skills,cap,provider:provider.id,requireVisualReview}));
@@ -82,7 +82,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   };
   // The exact-layout measurement opens its own browser, so it runs once on the finished version (a note for the
   // user), not on every preview; it still runs on each check when findings are set to block finishing.
-  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources()})),
+  const softFindings=async list=>[...ownStage(list),...(context.lookOnly||!context.plan?[]:moveFindings({plan:context.plan,sources:await compositionSources(),base:baseSources})),
    ...(context.lookOnly||!context.plan?[]:repeatFindings({plan:context.plan,html:await compositionSources(),settings:context.settings||{}})),...(context.findingsBlockFinish===true?await exactLayout():[])];
   const stopNow=async()=>{
     if(!stopRequested())return false;

@@ -44,3 +44,19 @@ test('review P2: a move whose code is present but never runs is a finding when t
  assert.equal(f.length,1);assert.equal(f[0].code,'reference_move_not_run');
  assert.equal(moveFindings({plan,sources:dead,ran:[{move:'iris',calls:1}]}).length,0);
 });
+test('an edit is not asked to add a move the version it edits never had, but may not drop one it had',()=>{
+ const edit={scenes:[{label:'Lockup',transition_out:{move:'wipe'}},{label:'Hook',transition_out:{move:'iris'}}]};
+ const base='<script>WM.iris(tl,"#a",1);</script>';
+ assert.deepEqual(moveFindings({plan:edit,sources:base,base}),[],'a voice-only change keeps the version as it was');
+ const dropped=moveFindings({plan:edit,sources:'<script></script>',base});
+ assert.equal(dropped.length,1);assert.match(dropped[0].message,/WM\.iris/,'removing a move the version had is still sent back');
+ assert.match(moveFindings({plan:edit,sources:base}).map(f=>f.message).join(),/WM\.wipe/,'a new build still builds every planned move');
+});
+test('only an edit has a base: not a new build, a resumed build or the motion pass over an approved look',async()=>{
+ const {editBaseSources}=await import('../composition-agent.mjs');
+ const base_bundle={'index.html':'<b>WM.iris(tl)</b>','main.js':'WM.wipe(tl)','gsap.min.js':'x','wyv-motion.js':'WM.wipe=1','m.mp3':'bin'};
+ assert.equal(editBaseSources({base_bundle}),'<b>WM.iris(tl)</b>\nWM.wipe(tl)');
+ assert.equal(editBaseSources({}),null);
+ assert.equal(editBaseSources({base_bundle,from_look:true}),null);
+ assert.equal(editBaseSources({base_bundle,resume:{files:{}}}),null);
+});
