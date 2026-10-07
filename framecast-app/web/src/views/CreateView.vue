@@ -1242,7 +1242,9 @@ async function setEffort(v) {
 // A price: the likely cost; the ceiling ("never more than") only where it differs.
 // The ceiling shown is the real hold (q.ceiling; while testing without limits, what a real hold would be).
 const ceilingOf = q => q.ceiling ?? q.credits_max
-const priceText = q => q.estimate && q.estimate < ceilingOf(q) ? `about ${q.estimate.toLocaleString()} cr` : `${(q.estimate || ceilingOf(q)).toLocaleString()} cr`
+// The likely spread of real builds of this kind ("about 200–400 cr"), else the single estimate.
+const rangeOf = q => Array.isArray(q.estimate_range) && q.estimate_range[0] < q.estimate_range[1] && q.estimate_range[1] < ceilingOf(q) ? q.estimate_range : null
+const priceText = q => rangeOf(q) ? `about ${rangeOf(q)[0].toLocaleString()}–${rangeOf(q)[1].toLocaleString()} cr` : q.estimate && q.estimate < ceilingOf(q) ? `about ${q.estimate.toLocaleString()} cr` : `${(q.estimate || ceilingOf(q)).toLocaleString()} cr`
 const ceilingText = q => q.estimate && q.estimate < ceilingOf(q) ? `never more than ${ceilingOf(q).toLocaleString()}` : 'exact'
 // The bill, stage by stage: each plan's charge, then each step and the video at what they spent.
 const spendRows = computed(() => {

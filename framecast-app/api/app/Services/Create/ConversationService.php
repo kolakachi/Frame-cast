@@ -357,6 +357,8 @@ class ConversationService
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),
                     // The likely cost of this stage: images and media at their prices, the build agent from real runs.
                     'estimate'=>$mediaEstimate + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agent(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : 0),
+                    // The likely spread (the middle half of real builds of this kind), shown as "about X–Y".
+                    'estimate_range'=>$paid && ! $step && isset($policy['agent']) ? array_map(fn ($c) => $mediaEstimate + $c, CostEstimate::agentRange(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind)) : null,
                     // What a real (not unlimited-test) hold would be, for "never more than" while testing without limits.
                     'shown_ceiling'=>$realMediaCeiling + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agentCeiling(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : 0),
                     'effort'=>CostEstimate::effort($settings),

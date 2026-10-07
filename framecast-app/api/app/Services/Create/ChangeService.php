@@ -52,14 +52,14 @@ class ChangeService
         }
         $sound = collect($input['plan_media'] ?? [])->whereIn('kind', ['music', 'voiceover', 'cloned_voiceover'])->pluck('kind')->unique()->values()->all();
         $settings = (array) ($input['settings'] ?? []);
-        $rebuild = CostEstimate::agent(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), array_filter(['type' => $plan['video_type'] ?? null, 'task' => 'edit']));
+        $rebuild = CostEstimate::agentRange(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), array_filter(['type' => $plan['video_type'] ?? null, 'task' => 'edit']));
         return [
             'revision' => ['id' => $rev->id, 'number' => (int) $rev->number],
             'parts' => $parts,
             'words' => array_values(array_map('strval', (array) ($plan['narration'] ?? []))),
             'sound' => ['music' => in_array('music', $sound, true), 'voice' => (string) ($plan['voice'] ?? ''), 'voiceover' => (bool) array_intersect(['voiceover', 'cloned_voiceover'], $sound),
                 'music_credits' => CapabilityCatalogue::musicCredits((int) ($settings['duration_seconds'] ?? 15))],
-            'estimate' => ['planning' => $this->typicalPlanning((int) $c->workspace_id), 'rebuild' => [$rebuild, 2 * $rebuild]],
+            'estimate' => ['planning' => $this->typicalPlanning((int) $c->workspace_id), 'rebuild' => $rebuild],
         ];
     }
 

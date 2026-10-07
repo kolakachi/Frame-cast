@@ -47,9 +47,22 @@ class CostEstimate
     /** What kind of build a plan is: its video type and whether it makes a new video or changes one. */
     public static function kindOf(?array $plan): array
     {
-        $json = ! empty($plan['plan_id']) ? DB::table('create_plans')->where('id', $plan['plan_id'])->value('plan_json') : null;
-        $p = json_decode((string) $json, true) ?: [];
-        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $p['planner_task'] ?? null]);
+        $row = ! empty($plan['plan_id']) ? DB::table('create_plans')->where('id', $plan['plan_id'])->first(['plan_json', 'conversation_id', 'created_at']) : null;
+        $p = json_decode((string) ($row->plan_json ?? ''), true) ?: [];
+        $task = $p['planner_task'] ?? null;
+        // A plan amended before any video exists builds a whole new video: it is "creative" for the estimate, whatever
+        // the planner called the amendment (GTM-1: a brand reply made a first build look like a small edit, 245 vs 734).
+        if ($task === 'edit' && $row && ! DB::table('composition_revisions')->where('conversation_id', $row->conversation_id)->where('created_at', '<', $row->created_at)->exists()) $task = 'creative';
+        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $task]);
+    }
+
+    /** The likely spread of the build agent's credits: the middle half of real runs of this kind (or around the formula). */
+    public static function agentRange(string $effort, int $seconds, array $kind = []): array
+    {
+        $spent = self::learnedSpread($effort, $seconds, $kind);
+        if ($spent) return [$spent[intdiv(count($spent), 4)], $spent[min(count($spent) - 1, intdiv(3 * count($spent), 4))]];
+        $mid = self::agent($effort, $seconds, $kind);
+        return [(int) round($mid * 0.8), (int) round($mid * 1.8)];
     }
 
     /** Half the plan's real cost (owner, 2026-10-06: no cap). $credits is its real cost in credits. */
@@ -73,12 +86,19 @@ class CostEstimate
      */
     private static function learned(string $effort, int $seconds, array $kind = []): ?int
     {
+        $spent = self::learnedSpread($effort, $seconds, $kind);
+        return $spent ? (int) $spent[intdiv(count($spent), 2)] : null;
+    }
+
+    /** @return int[] the agent credits of up to 30 real runs of this kind, sorted ([] when fewer than 3) */
+    private static function learnedSpread(string $effort, int $seconds, array $kind = []): array
+    {
         $runs = DB::table('composition_runs')->where('status', 'preview_ready')->where('input_json->build_stage', 'full_video')
             ->where('created_at', '>=', now()->subDays(60))->orderByDesc('created_at')->limit(300)->get(['id', 'input_json'])
             ->map(fn ($r) => ['id' => $r->id, 'input' => json_decode((string) $r->input_json, true) ?: []])
             ->filter(fn ($r) => self::effort($r['input']['settings'] ?? []) === $effort && abs((int) ($r['input']['settings']['duration_seconds'] ?? 15) - $seconds) <= 5)
             ->take(60)->values();
-        if ($runs->count() < 3) return null;
+        if ($runs->count() < 3) return [];
         $plans = DB::table('create_plans')->whereIn('id', $runs->pluck('input.plan.plan_id')->filter()->unique()->all())->pluck('plan_json', 'id')
             ->map(fn ($j) => json_decode((string) $j, true) ?: []);
         $runs = $runs->map(fn ($r) => $r + ['type' => $plans[$r['input']['plan']['plan_id'] ?? '']['video_type'] ?? null, 'task' => $plans[$r['input']['plan']['plan_id'] ?? '']['planner_task'] ?? null,
@@ -86,8 +106,8 @@ class CostEstimate
         foreach ([array_intersect_key($kind, ['type' => 1, 'task' => 1]), array_intersect_key($kind, ['type' => 1]), []] as $want) {
             if (count($want) !== count(array_filter($want))) continue;
             $spent = $runs->filter(fn ($r) => ! array_diff_assoc($want, array_intersect_key($r, $want)))->take(30)->pluck('credits')->sort()->values();
-            if ($spent->count() >= 3) return (int) $spent[intdiv($spent->count(), 2)];
+            if ($spent->count() >= 3) return $spent->all();
         }
-        return null;
+        return [];
     }
 }

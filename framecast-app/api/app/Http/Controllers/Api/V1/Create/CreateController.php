@@ -335,7 +335,7 @@ class CreateController extends Controller
             'assume'=>'sometimes|array','assume.character_approval'=>'sometimes|string|regex:/^[a-f0-9]{64}$/','assume.storyboard_approval'=>'sometimes|string|regex:/^[a-f0-9]{64}$/']);
         $variants=app(\App\Services\Create\VariantService::class);
         $q=isset($input['retry_run_id']) ? $variants->retryQuote($r->user(),$id,$input['retry_run_id'],$input['expected_version']) : $variants->quote($r->user(),$id,$input['expected_version'],$input['variant_count']??1,$input['build_stage']??null,$input['assume']??null);
-        return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'estimate' => $q->payload_json['estimate'] ?? null,
+        return response()->json(['data' => ['id' => $q->id, 'credits_max' => $q->credits_max, 'estimate' => $q->payload_json['estimate'] ?? null, 'estimate_range' => $q->payload_json['estimate_range'] ?? null,
             // "Never more than": the real hold; while testing without limits, what a real hold would be.
             'ceiling' => \App\Services\Create\PilotPolicy::unlimited() && isset($q->payload_json['shown_ceiling']) ? min((int) $q->credits_max, max((int) $q->payload_json['shown_ceiling'], (int) ($q->payload_json['estimate'] ?? 0))) : $q->credits_max, 'effort' => $q->payload_json['effort'] ?? null, 'expires_at' => $q->expires_at,
             'credit_availability' => $this->service->creditAvailability($r->user()),

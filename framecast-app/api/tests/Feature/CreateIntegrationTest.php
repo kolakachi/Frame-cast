@@ -2410,6 +2410,7 @@ class CreateIntegrationTest extends TestCase
         // Until enough real runs exist, the curve fitted to the measured runs: about 290 for 15 s, 800 for 30 s at Standard.
         $this->assertSame([289, 795, 116, 1511], [$e::agent('standard', 15), $e::agent('standard', 30), $e::agent('quick', 15), $e::agent('thorough', 30)]);
         $this->assertSame([1445, 3975, 1000], [$e::agentCeiling('standard', 15), $e::agentCeiling('standard', 30), $e::agentCeiling('quick', 15)], 'five times the estimate, never under 1,000');
+        $this->assertSame([231, 520], $e::agentRange('standard', 15), 'without real runs, a spread around the curve');
         $this->assertSame([30, 75, 100, 145], [$e::planningCharge(60), $e::planningCharge(150), $e::planningCharge(200), $e::planningCharge(290)], 'half the real cost, with no cap');
         // Effort sets the build: Quick has no reviewer and 24 calls; every effort has a credit budget, not a call count.
         $quick = \App\Services\Create\PilotPolicy::class;
@@ -2489,6 +2490,7 @@ class CreateIntegrationTest extends TestCase
         $seed('motion_graphics', 'edit', 200);
         $this->assertSame(120, $e::agent('standard', 15, ['type' => 'footage_motion', 'task' => 'edit']));
         $this->assertSame(500, $e::agent('standard', 15, ['type' => 'motion_graphics', 'task' => 'creative']));
+        $this->assertSame([400, 600], $e::agentRange('standard', 15, ['type' => 'motion_graphics', 'task' => 'creative']), 'the middle half of real builds');
         $this->assertSame(500, $e::agent('standard', 15, ['type' => 'motion_graphics', 'task' => 'edit']), 'two of a kind is too few: the same type decides');
         $this->assertSame(200, $e::agent('standard', 15, ['type' => 'ugc_motion']), 'an unseen type: every similar run');
         $this->assertSame(795, $e::agent('standard', 30, ['type' => 'motion_graphics']), 'no runs of a similar length: the curve');
@@ -4785,7 +4787,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['Want brighter-looking skin?', 'Meet Dewbloom Glow.'], $parts['words']);
         $this->assertTrue($parts['sound']['music']); $this->assertTrue($parts['sound']['voiceover']); $this->assertSame('Aoede', $parts['sound']['voice']);
         [$low, $high] = $parts['estimate']['rebuild'];
-        $this->assertGreaterThan(0, $low); $this->assertSame(2 * $low, $high);
+        $this->assertGreaterThan(0, $low); $this->assertGreaterThan($low, $high);
     }
 
     public function test_the_change_drawer_sends_one_change_with_the_frame_and_plans_it_as_an_edit(): void
@@ -4825,5 +4827,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['Slower drop', 'Bigger label', 'Warmer light'], $s['ideas']);
         Http::assertSent(fn ($r) => str_contains(json_encode($r->data()), '\"label\":\"Bottle\"') && $r['model'] === \App\Services\Create\AttachmentRoles::MODEL);
         $this->assertGreaterThanOrEqual(0, $s['charged']);
+    }
+
+    public function test_a_plan_amended_before_any_video_is_estimated_as_a_new_build(): void
+    {
+        [$c, , $run] = $this->admitted();
+        $planId = (string) \Illuminate\Support\Str::uuid();
+        DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $c->id, 'message_id' => (string) \Illuminate\Support\Str::uuid(), 'brief_sequence' => 1, 'idempotency_key' => 'k'.$planId,
+            'request_hash' => 'h', 'provider' => 'test', 'plan_json' => json_encode(['planner_task' => 'edit', 'video_type' => 'promo']), 'usage_json' => '{}', 'status' => 'proposed', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(['type' => 'promo', 'task' => 'creative'], \App\Services\Create\CostEstimate::kindOf(['plan_id' => $planId]), 'no video yet: a whole build');
     }
 }
