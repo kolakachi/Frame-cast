@@ -524,7 +524,8 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       state.reservedUsd+=reservation;state.calls++;state.pending={kind:'provider',call:state.calls};await save();
       const reviewImage=state.reviewImage;
       const callStarted=Date.now();
-      progress(state.revision?'Thinking about the next change':'Designing the first draft');
+      // Said once per version, not before every call: in between, the line keeps the step actually under way.
+      if(state.announced!==state.revision){state.announced=state.revision;progress(state.revision?'Thinking about the next change':'Designing the first draft');}
       if(toolMode){
         compactTurns();
         const history=turns();
