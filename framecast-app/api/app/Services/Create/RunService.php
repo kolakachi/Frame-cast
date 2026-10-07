@@ -16,12 +16,18 @@ class RunService
         app(DiskSpace::class)->admission();
         return DB::transaction(function () use ($identity) {
             if (app(AdmissionControl::class)->paused(true)) return null;
-            // One local render host. Serialize claim decisions without holding locks during rendering.
+            // Claim decisions are serialized; no lock is held while a build runs.
             if (DB::connection()->getDriverName() === 'pgsql') DB::select('select pg_advisory_xact_lock(783429)');
             $this->expireLocked();
-            if (DB::table('composition_runs')->whereIn('status', ['running', 'cancel_requested'])->exists()
-                || DB::table('composition_runs')->where('status', 'needs_attention')->whereNull('worker_stopped_at')->exists()) return null;
-            $query = DB::table('composition_runs')->where('status', 'queued')->when(config('create.workspaces'), fn ($q, $ws) => $q->whereIn('workspace_id', $ws))->whereNotExists(fn ($q) => $q->selectRaw('1')->from('composition_runs as held')->whereColumn('held.conversation_id', 'composition_runs.conversation_id')->where('held.status', 'needs_attention'))->orderBy('created_at');
+            // Builds at once (CREATE_MAX_RUNNING): running, stopping, and any whose worker has not confirmed it stopped
+            // each hold a slot. Each workspace gets at most CREATE_MAX_RUNNING_PER_WORKSPACE of them, so one customer
+            // never fills every slot; the oldest waiting build of another workspace goes next.
+            $busy = fn () => DB::table('composition_runs')->where(fn ($q) => $q->whereIn('status', ['running', 'cancel_requested'])
+                ->orWhere(fn ($q) => $q->where('status', 'needs_attention')->whereNull('worker_stopped_at')));
+            if ($busy()->count() >= max(1, (int) config('create.max_running', 1))) return null;
+            $full = $busy()->select('workspace_id')->groupBy('workspace_id')
+                ->havingRaw('count(*) >= ?', [max(1, (int) config('create.max_running_per_workspace', 1))])->pluck('workspace_id')->all();
+            $query = DB::table('composition_runs')->where('status', 'queued')->when($full, fn ($q) => $q->whereNotIn('workspace_id', $full))->when(config('create.workspaces'), fn ($q, $ws) => $q->whereIn('workspace_id', $ws))->whereNotExists(fn ($q) => $q->selectRaw('1')->from('composition_runs as held')->whereColumn('held.conversation_id', 'composition_runs.conversation_id')->where('held.status', 'needs_attention'))->orderBy('created_at');
             $run = $query->lockForUpdate()->first();
             if (! $run) return null;
             $token = Str::random(64);

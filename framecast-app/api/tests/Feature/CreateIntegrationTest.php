@@ -2552,6 +2552,34 @@ class CreateIntegrationTest extends TestCase
         $this->assertLessThan($full['credits'], $again['execution_policy']['agent']['credits']);
     }
 
+    public function test_builds_run_at_once_up_to_the_limit_and_one_workspace_never_takes_every_slot(): void
+    {
+        $c = $this->brief();
+        $other = Workspace::create(['name' => 'Other', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active']);
+        config(['create.workspaces' => []]);
+        $queue = function (int $workspace, int $age) use ($c) {
+            $id = (string) \Illuminate\Support\Str::uuid();
+            DB::table('composition_runs')->insert(['id' => $id, 'conversation_id' => $c->id, 'workspace_id' => $workspace, 'quote_id' => substr(md5($id), 0, 32), 'idempotency_key' => 'q'.$id,
+                'request_hash' => str_repeat('a', 64), 'input_json' => json_encode(['mode' => 'fixture']), 'status' => 'queued', 'created_at' => now()->subMinutes($age), 'updated_at' => now()]);
+            return $id;
+        };
+        $a1 = $queue($this->workspace->id, 30); $a2 = $queue($this->workspace->id, 20); $b1 = $queue($other->id, 10);
+        // One at a time (the default): the oldest runs, nothing else starts beside it.
+        $this->assertSame($a1, $this->runs->claim()['id']);
+        $this->assertNull($this->runs->claim());
+        // Two at once, one per workspace: the other workspace's build goes next, not the first workspace's second.
+        config(['create.max_running' => 2, 'create.max_running_per_workspace' => 1]);
+        $this->assertSame($b1, $this->runs->claim()['id']);
+        $this->assertNull($this->runs->claim(), 'both slots are taken');
+        // A build whose worker has not confirmed it stopped still holds its slot.
+        DB::table('composition_runs')->where('id', $b1)->update(['status' => 'needs_attention', 'lease_hash' => null, 'worker_stopped_at' => null]);
+        $this->assertNull($this->runs->claim());
+        DB::table('composition_runs')->where('id', $b1)->update(['worker_stopped_at' => now(), 'status' => 'failed']);
+        $this->assertNull($this->runs->claim(), 'a slot is free, but the first workspace is at its own limit');
+        config(['create.max_running_per_workspace' => 2]);
+        $this->assertSame($a2, $this->runs->claim()['id']);
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);

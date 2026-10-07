@@ -87,6 +87,10 @@ return [
     'ytdlp_path' => env('CREATE_YTDLP_PATH', 'yt-dlp'),
     'chromium_path' => env('CREATE_CHROMIUM_PATH', 'chromium'),
     'lease_seconds' => 90,
+    // Builds that may run at once across all workspaces, and per workspace. Builds mostly wait on model calls; renders
+    // still take the worker's one sandbox slot in turn. Raise only after a measured load test on the worker host.
+    'max_running' => (int) env('CREATE_MAX_RUNNING', 1),
+    'max_running_per_workspace' => (int) env('CREATE_MAX_RUNNING_PER_WORKSPACE', 1),
     // Local upload storage per workspace (bytes); a heavy test workspace can be given more with this variable.
     'input_workspace_bytes' => (int) env('CREATE_INPUT_WORKSPACE_BYTES', 1024 * 1024 * 1024),
     'input_file_bytes' => 100 * 1024 * 1024,
