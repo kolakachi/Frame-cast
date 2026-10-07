@@ -56,11 +56,18 @@ function toggle() {
     }
     const r = root.value?.getBoundingClientRect()
     if (r) {
-      const width = Math.min(Math.max(r.width, 160), window.innerWidth - 16)
-      const left = props.align === 'left' ? Math.min(r.left, window.innerWidth - width - 8) : Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
-      const room = dropUp.value ? r.top - 14 : window.innerHeight - r.bottom - 14
-      menuStyle.value = { left: left + 'px', minWidth: width + 'px', maxWidth: Math.max(width, Math.min(360, window.innerWidth - 16)) + 'px',
-        maxHeight: Math.max(120, Math.min(260, room)) + 'px', ...(dropUp.value ? { bottom: (window.innerHeight - r.top + 6) + 'px' } : { top: (r.bottom + 6) + 'px' }) }
+      // The menu stays inside the panel it sits in (a drawer, a dialog), not just the screen: it lines up with whichever
+      // side of its button fits, never crosses the panel's edges, and is never wider than the panel.
+      const panel = root.value.closest('dialog, aside, [role="dialog"]')?.getBoundingClientRect()
+      const lo = Math.max(8, (panel?.left ?? 0) + 8), hi = Math.min(window.innerWidth - 8, (panel?.right ?? window.innerWidth) - 8)
+      const room = Math.max(160, hi - lo)
+      const width = Math.min(Math.max(r.width, 160), room)
+      const maxWidth = Math.min(360, room)
+      const preferLeft = props.align === 'left' || r.right - width < lo
+      const left = Math.max(lo, Math.min(preferLeft ? r.left : r.right - width, hi - width))
+      const rows = dropUp.value ? r.top - 14 : window.innerHeight - r.bottom - 14
+      menuStyle.value = { left: left + 'px', minWidth: width + 'px', maxWidth: Math.max(width, Math.min(maxWidth, hi - left)) + 'px',
+        maxHeight: Math.max(120, Math.min(260, rows)) + 'px', ...(dropUp.value ? { bottom: (window.innerHeight - r.top + 6) + 'px' } : { top: (r.bottom + 6) + 'px' }) }
     }
     if (closeOpen && closeOpen !== close) closeOpen()
     closeOpen = close
