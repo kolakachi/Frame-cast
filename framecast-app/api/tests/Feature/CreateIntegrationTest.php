@@ -292,19 +292,18 @@ class CreateIntegrationTest extends TestCase
             && $r['system'][0]['cache_control']['type'] === 'ephemeral' && $r->hasHeader('x-api-key', 'test-key'));
     }
 
-    public function test_planning_is_limited_per_day_and_failures_cost_nothing(): void
+    public function test_planning_has_no_daily_cap_and_failures_cost_nothing(): void
     {
         $c = $this->brief(); $plans = app(\App\Services\Create\PlanService::class);
-        config(['create.plan_daily_limit' => 1]);
         $plans->propose($this->owner, $c->id, 1, 'one');
-        $this->rejected(429, fn () => $plans->propose($this->owner, $c->id, 2, 'two'));
-        config(['create.plan_daily_limit' => 40, 'create.mode' => 'agent', 'create.planner' => 'replicate', 'services.replicate.api_token' => 't']);
+        $plans->propose($this->owner, $c->id, 2, 'two');
+        config(['create.mode' => 'agent', 'create.planner' => 'replicate', 'services.replicate.api_token' => 't']);
         Http::fake(['api.replicate.com/*' => Http::response(['error' => 'down'], 500)]);
-        $this->rejected(502, fn () => $plans->propose($this->owner, $c->id, 2, 'three'));
-        $this->assertSame(1, DB::table('create_plans')->count());
+        $this->rejected(502, fn () => $plans->propose($this->owner, $c->id, 3, 'three'));
+        $this->assertSame(2, DB::table('create_plans')->count(), 'two plans in a day: no cap; the failed third costs nothing');
         $viewer = User::create(['email' => 'viewer@example.test', 'name' => 'V', 'role' => 'viewer', 'status' => 'active']);
         $viewer->forceFill(['workspace_id' => $this->workspace->id])->save();
-        $this->rejected(403, fn () => $plans->propose($viewer, $c->id, 2, 'four'));
+        $this->rejected(403, fn () => $plans->propose($viewer, $c->id, 3, 'four'));
     }
 
     public function test_free_edit_rerenders_variables_without_a_model_call_or_credits(): void

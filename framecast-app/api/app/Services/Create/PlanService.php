@@ -72,9 +72,7 @@ class PlanService
         $briefs = DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderBy('sequence')->get(['content', 'sequence']);
         abort_if($briefs->isEmpty(), 422, 'Add a brief first.');
         app(DiskSpace::class)->admission();
-        $today = DB::table('create_plans')->join('create_conversations', 'create_conversations.id', '=', 'create_plans.conversation_id')
-            ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
-        abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
+        // No daily cap: planning is billed and needs the balance to cover it (owner, 2026-10-06; removed 2026-10-08).
         if ($executionToken === null) $this->assertCanPayPlanning($user);
 
         // What planning does is recorded step by step: shown live while it runs, then saved with the plan.

@@ -55,7 +55,6 @@ return [
     // How a reference video is read (todo G2): 'opus' sends every sheet to the creative model; 'split' has the check
     // model write per-frame facts and the creative model read them plus the motion frames. Default until the A/B decides.
     'study_mode' => env('CREATE_STUDY_MODE', 'opus'),
-    'plan_daily_limit' => (int) env('CREATE_PLAN_DAILY_LIMIT', 40),
     // Planning is billed at half its cost, never free: a plan starts only when the balance covers a typical charge
     // (about 28 credits without a reference, 50 to 60 with a reference study).
     'planning_min_credits' => (int) env('CREATE_PLANNING_MIN_CREDITS', 60),
