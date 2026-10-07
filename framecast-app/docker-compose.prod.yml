@@ -161,6 +161,31 @@ services:
       redis:
         condition: service_healthy
 
+  # Create planning (CREATE_DURABLE_PLANNING): plans run here, outside PHP-FPM, so a request or a deploy never loses one.
+  worker-create-planning:
+    init: true  # see note at top of file
+    build:
+      context: ./api
+    command: php artisan queue:work redis --queue=create-planning --tries=1 --timeout=1200 --sleep=2
+    # A plan takes minutes; a deploy waits for the one in hand instead of cutting it off.
+    stop_grace_period: 22m
+    env_file:
+      - ./api/.env
+    volumes:
+      - api_private:/var/www/html/storage/app/private
+    environment:
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+      REDIS_QUEUE_RETRY_AFTER: 2400
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   scheduler:
     init: true  # see note at top of file
     build:
