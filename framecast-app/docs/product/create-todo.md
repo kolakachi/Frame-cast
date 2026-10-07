@@ -49,7 +49,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | 7 | UGC | Split-screen reaction ad | E2 (generated presenter) | | |
 | 8 | Footage edit | The WyvStudio demo recording cut into a 30 s promo with captions and zooms | E1 | `fd8bca53` | 31 min · 668 cr (est. 860) · all checks pass · clear step story from the real recording, zooms, captions, logo end card · app text small in 9:16 crops, two panels clipped at the left edge · the source recording shows an old brief "(pronounced weev-studio)" |
 | 9 | Footage + own audio | The VSL's own voiceover over a new edit of the product | FS8 | | |
-| 10 | From scratch | "3 hooks that stop the scroll", a teaching video for marketers, WyvStudio end card | FS3, S11 | | |
+| 10 | From scratch | "3 hooks that stop the scroll", a teaching video for marketers, WyvStudio end card | FS3, S11 | `5fd8e691` | 22 min · 578 cr · strong design and opening (big 3 + title at 0 s) · BLOCKED on reading time, mostly for text inside an example post (a prop, not meant to be read: the check is too strict there) · Hook 02 phone cut at the left edge, Hook 03 opens on a nearly empty orange frame |
 
 ## 1. Build next (no owner input needed)
 
@@ -58,7 +58,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | S9 | "Change…" from the video: "Change this moment" on the paused player (frame + one prompt + "✦ Suggest a change", billed like planning) and a short list of the video's parts with one Change button each (use my file free · make a new one, priced · describe it), music and voice, edit the words, one total with a breakdown; sent as one change, planned as an edit (`03be75cb`, `4b203d66`) | ready | deploy, then owner browser check | mockup `create-ui/change-from-video.html` |
 | S10 | Pause and ask inside a step (at most 2 questions), resume without re-approval | open | build | archive: steps-asking-plan |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count, opening hero | partly | build | archive: from-scratch-plan |
-| I7 | Tune the overlap and lopsided checks: they have not caught a real case yet ("SHOOT" under a line, crammed endings) | open | tune on the next builds | `cd5bb2cc` |
+| I7 | Tune the layout and reading checks on real videos: overlap and lopsided have not caught a real case yet; reading time blocks on text inside props (an example post's caption, GTM-1 #10) — props should be marked and excused | open | tune (launch must-have) | `cd5bb2cc`, GTM-1 |
 | D7 | Pick the best seconds of a clip that is longer than its slot | partly | build | archive: generated-video-progress D7 |
 | 0.4 | An image in flight when the worker dies is lost (generated video is already recovered) | partly | build | archive: generated-video-progress 0.4 |
 | I5 | A brief refused by the 24-requirement limit on a re-plan | open | look at | archive: verify-and-teach-scope step 4 |
