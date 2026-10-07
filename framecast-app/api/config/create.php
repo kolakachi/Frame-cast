@@ -78,7 +78,12 @@ return [
     'vendor_hold_minutes' => (int) env('CREATE_VENDOR_HOLD_MINUTES', 10),
     'anthropic_rates' => ['input' => 4, 'output' => 20, 'cache_write' => 5, 'cache_read' => 0.2],
     // The smaller models planning uses besides the planner (questions, file roles), in micro-dollars a token.
-    'model_rates' => ['claude-sonnet-5' => ['input' => 3, 'output' => 15, 'cache_write' => 3.75, 'cache_read' => 0.3], 'claude-haiku-4-5-20251001' => ['input' => 1, 'output' => 5, 'cache_write' => 1.25, 'cache_read' => 0.1]],
+    // Builder models a super admin may try on one conversation (settings.model_test), to compare speed and quality
+    // without changing the model for everyone.
+    'test_models' => ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
+    // Haiku 5.5 costs more for a prompt over 100,000 tokens ('long', from 'long_above' input tokens).
+    'model_rates' => ['claude-haiku-5-5' => ['input' => 0.1, 'output' => 0.5, 'cache_write' => 0.125, 'cache_read' => 0.01, 'long_above' => 100000, 'long' => ['input' => 0.5, 'output' => 2.5, 'cache_write' => 0.625, 'cache_read' => 0.05]],
+        'claude-sonnet-5-5' => ['input' => 2, 'output' => 10, 'cache_write' => 2.5, 'cache_read' => 0.1], 'claude-sonnet-5' => ['input' => 3, 'output' => 15, 'cache_write' => 3.75, 'cache_read' => 0.3], 'claude-haiku-4-5-20251001' => ['input' => 1, 'output' => 5, 'cache_write' => 1.25, 'cache_read' => 0.1]],
     // Word-timed transcripts of supplied speech (free; OpenAI Whisper cost is about $0.006 a minute).
     'transcript_daily_limit' => (int) env('CREATE_TRANSCRIPT_DAILY_LIMIT', 30),
     'transcript_max_seconds' => 600,

@@ -149,6 +149,21 @@ class ConversationService
     }
 
     /** $assume: approvals the user is about to give (their tokens), to price the step they start; such a quote only shows a price. */
+    /**
+     * A super admin's model test: settings.model_test {model, effort} builds this conversation with another listed model
+     * (owner, 2026-10-08: Haiku 5.5 on xhigh against Opus 5.5). Anyone else, or an unlisted model, keeps the policy.
+     */
+    public static function modelTest(array $policy, ?array $settings, User $user): array
+    {
+        $t = $settings['model_test'] ?? null;
+        if (! is_array($t) || ! isset($policy['agent']) || ($policy['agent']['provider'] ?? '') !== 'anthropic' || ! in_array($user->role, ['super_admin', 'platform_admin'], true)) return $policy;
+        if (! in_array($t['model'] ?? null, (array) config('create.test_models'), true)) return $policy;
+        $policy['agent']['model'] = $t['model'];
+        if (in_array($t['effort'] ?? null, ['low', 'medium', 'high', 'xhigh', 'max'], true)) $policy['agent']['effort'] = $t['effort'];
+        $policy['agent']['model_test'] = true;
+        return $policy;
+    }
+
     public function quote(User $user, string $id, int $version, ?string $buildStage = null, ?array $assume = null): ApiQuote
     {
         $this->authorize($user, true);
@@ -201,6 +216,7 @@ class ConversationService
                 $settings=json_decode($c->settings_json,true);
                 $paid=config('create.mode')==='agent';
                 $policy=$paid ? PilotPolicy::execution($settings) : ['agent'=>['provider'=>'offline','model'=>'offline-contract-v1','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>6],'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+                $policy=self::modelTest($policy,$settings,$user);
                 if($paid && ($settings['output_kind']??'video')==='image') {
                     abort_if(count(array_filter($files,fn($f)=>$f['asset_type']!=='image'))>0,422,'Image generation accepts images only. Start a video brief to use footage or audio.');
                     abort_if(count(array_filter($files,fn($f)=>$f['bytes']>10*1024*1024))>0,422,'Image generation accepts source images up to 10 MB.');

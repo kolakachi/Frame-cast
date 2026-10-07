@@ -4954,4 +4954,18 @@ class CreateIntegrationTest extends TestCase
         $this->assertTrue($photo['shot_context']['has_avatar']);
     }
 
+    public function test_a_super_admin_can_build_one_conversation_with_another_model_at_its_own_prices(): void
+    {
+        $policy = ['agent' => ['provider' => 'anthropic', 'model' => 'claude-opus-5-5', 'effort' => 'medium'], 'render' => ['provider' => 'offline']];
+        $test = ['model_test' => ['model' => 'claude-haiku-5-5', 'effort' => 'xhigh']];
+        $admin = new User(['role' => 'super_admin']); $owner = new User(['role' => 'owner']);
+        $tried = \App\Services\Create\ConversationService::modelTest($policy, $test, $admin);
+        $this->assertSame(['claude-haiku-5-5', 'xhigh', true], [$tried['agent']['model'], $tried['agent']['effort'], $tried['agent']['model_test']]);
+        $this->assertSame($policy, \App\Services\Create\ConversationService::modelTest($policy, $test, $owner), 'only a super admin');
+        $this->assertSame($policy, \App\Services\Create\ConversationService::modelTest($policy, ['model_test' => ['model' => 'gpt-9']], $admin), 'only a listed model');
+        $this->assertSame($policy, \App\Services\Create\ConversationService::modelTest($policy, [], $admin));
+        $haiku = \App\Services\Create\AnthropicGateway::rates('claude-haiku-5-5');
+        $this->assertSame([0.1, 0.5, 100000], [$haiku['input'], $haiku['output'], $haiku['long_above']]);
+        $this->assertSame(config('create.anthropic_rates'), \App\Services\Create\AnthropicGateway::rates('claude-opus-5-5'), 'the build tariff otherwise');
+    }
 }

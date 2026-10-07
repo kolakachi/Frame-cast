@@ -122,7 +122,7 @@ class AnthropicGateway
             $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
             abort(502, 'The model call did not complete. The run needs a recovery check; nothing is repeated automatically.');
         }
-        $journal->save($attemptId, ['status' => $response->status(), 'headers' => ['request-id' => $response->header('request-id')], 'body' => $response->body(), 'rates' => config('create.anthropic_rates')]);
+        $journal->save($attemptId, ['status' => $response->status(), 'headers' => ['request-id' => $response->header('request-id')], 'body' => $response->body(), 'rates' => self::rates((string) $attempt->model)]);
         if (! $response->successful()) {
             if ($response->status() >= 500 && $response->status() !== 529) {
                 $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
@@ -149,7 +149,8 @@ class AnthropicGateway
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D', $id), 502, 'The model response had no usable id.');
         $u = $response->json('usage', []);
         [$in, $out, $write, $read] = array_map(fn ($k) => (int) ($u[$k] ?? 0), ['input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens']);
-        $r = $saved['rates'] ?? config('create.anthropic_rates');
+        $r = $saved['rates'] ?? self::rates((string) $attempt->model);
+        if (isset($r['long_above']) && $in + $write + $read > (int) $r['long_above']) $r = $r['long'];
         $cost = (int) ceil($in * $r['input'] + $out * $r['output'] + $write * $r['cache_write'] + $read * $r['cache_read']);
         if ($attempt->status === 'started') $attempts->bindPrediction($runId, $lease, $attemptId, $id);
         if ($cost > (int) $attempt->cost_limit_microusd) {
@@ -167,5 +168,11 @@ class AnthropicGateway
         if ($response->json('stop_reason') === 'refusal') \App\Services\Vendors\VendorAlerts::record('anthropic', 'content_refused', 'The build model declined the request (stop_reason refusal).', ['run_id' => $runId]);
         return ['text' => $text, 'content' => $blocks, 'message_id' => $id, 'stop_reason' => (string) $response->json('stop_reason'), 'cost_microusd' => $cost, 'charged_credits' => $settled['charged_credits'],
             'usage' => ['input_tokens' => $in, 'output_tokens' => $out, 'cache_write_tokens' => $write, 'cache_read_tokens' => $read], 'status' => 'succeeded'];
+    }
+
+    /** A build model's prices in micro-dollars a token: its own when listed (create.model_rates), else the build tariff. */
+    public static function rates(string $model): array
+    {
+        return config('create.model_rates.'.$model) ?? config('create.anthropic_rates');
     }
 }
