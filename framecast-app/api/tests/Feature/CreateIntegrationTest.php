@@ -2790,6 +2790,9 @@ class CreateIntegrationTest extends TestCase
         $reading = collect($sent)->first(fn ($d) => str_contains(json_encode($d), 'decide its role'));
         $this->assertStringContainsString("heard: \\\"Hi, I'm Ada", json_encode($reading));
         $this->assertStringContainsString('no words heard', json_encode($reading));
+        // A transcriber inventing a line over a 24 s instrumental (production 2026-10-07) is not someone speaking.
+        $this->assertStringStartsWith(', almost no words heard', \App\Services\Create\AttachmentRoles::heardNote('Guruji, I bow to you.', 24));
+        $this->assertStringStartsWith(', heard:', \App\Services\Create\AttachmentRoles::heardNote("Hi, I'm Ada. I bake sourdough every morning.", 9));
         $this->assertSame(['voice', 'music'], [json_decode(DB::table('create_attachments')->where('asset_id', $voice->id)->value('notes_json'), true)['kind'], json_decode(DB::table('create_attachments')->where('asset_id', $song->id)->value('notes_json'), true)['kind']]);
         // Their recording says the script and their track is the bed: nothing is bought for either.
         $kinds = array_column($p['media'], 'kind');

@@ -86,7 +86,7 @@ class AttachmentRoles
             // A sound file is listened to (once, cached on the file): words mean a voice; none means music or a sound.
             $heard = $a->asset_type === 'audio' ? $this->hear($a) : null;
             $content[] = ['type' => 'text', 'text' => 'File id '.$a->id.': "'.$a->title.'", '.$a->asset_type.($a->duration_seconds ? ', '.round((float) $a->duration_seconds).' s' : '')
-                .($heard === null ? '' : ($heard === '' ? ', no words heard' : ', heard: "'.mb_substr($heard, 0, 400).'"'))];
+                .self::heardNote($heard, (float) ($a->duration_seconds ?? 0))];
             if ($image = $this->look($a)) $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $image[0], 'data' => base64_encode($image[1])]];
         }
         if ($current) {
@@ -163,6 +163,17 @@ class AttachmentRoles
             $a->forceFill(['metadata_json' => array_merge($a->metadata_json ?? [], ['create_transcript' => $record])] + ((string) $a->transcript_text === '' ? ['transcript_text' => $record['text']] : []))->save();
             return trim($record['text']);
         } catch (\Throwable) { return null; }
+    }
+
+    /** What was heard, as the reading is told it. A transcriber invents a line or two over music, so a few words across a
+     *  long file read as "almost no words", not as someone speaking. */
+    public static function heardNote(?string $heard, float $seconds): string
+    {
+        if ($heard === null) return '';
+        $words = str_word_count($heard);
+        if ($words === 0) return ', no words heard';
+        if ($seconds >= 8 && $words / $seconds < 0.5) return ', almost no words heard (likely lyrics or noise): "'.mb_substr($heard, 0, 120).'"';
+        return ', heard: "'.mb_substr($heard, 0, 400).'"';
     }
 
     /** The first question a file's reading left open and that has not been asked yet: [asset_id, question, options] or null. */
