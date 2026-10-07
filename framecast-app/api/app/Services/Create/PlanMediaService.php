@@ -32,6 +32,11 @@ class PlanMediaService
         $cacheIndex = (int) ($item['plan_item_index'] ?? $index);
         $context = $this->context($run, $input);
         $context['task_requirements'] = $item['requirements'] ?? [];
+        // Narration that drives a presenter's mouth is voiced to fit them (see PlanMediaExecutor::voice); decided before the
+        // fingerprint, so a voiceover made in the wrong voice is not reused.
+        if ($item['kind'] === 'voiceover' && ($context['voice'] ?? null) !== 'clone' && ($gender = app(PlanMediaExecutor::class)->lipSyncedPresenterGender($context))
+            && \App\Services\Generation\TTS\GeminiVoices::gender(\App\Services\Generation\TTS\GeminiVoices::resolve($context['voice'] ?? null)) !== $gender)
+            $context['voice'] = \App\Services\Generation\TTS\GeminiVoices::defaultForGender($gender);
         // Legacy quotes keep their pre-approved lip-sync route and price.
         if (in_array($item['kind'], ['talking_shot', 'talking_take'], true)) $context['talking_route'] = isset($item['speech_mode'])
             ? $item : ['speech_mode' => 'legacy_lipsync', 'seconds' => $item['kind'] === 'talking_take' ? 15 : 4];

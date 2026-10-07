@@ -310,7 +310,7 @@ class ConversationService
                 }
                 foreach ($planMedia as &$mediaItem) {
                     if (in_array($mediaItem['kind'], ['talking_shot', 'talking_take'], true)) continue;
-                    $context = ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null, 'aspect_ratio' => $settings['aspect_ratio'], 'character_style' => $plan['character_style'] ?? '', 'source_files' => $files];
+                    $context = ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null, 'aspect_ratio' => $settings['aspect_ratio'], 'character_style' => $plan['character_style'] ?? '', 'source_files' => $files, 'workspace_id' => (int) $user->workspace_id];
                     if ($mediaItem['kind'] === 'voiceover' && collect($planMedia)->contains(fn ($m) => $m['kind'] === 'talking_shot' && ($m['speech_mode'] ?? '') === 'native')) $context['narration'] = array_slice($context['narration'], 1);
                     // Panels drawn from a cast that already exists: only the changed ones are drawn, so only those are quoted.
                     if ($mediaItem['kind'] === 'storyboard' && ($cast = Storyboard::cast($plan['plan_id']))) {

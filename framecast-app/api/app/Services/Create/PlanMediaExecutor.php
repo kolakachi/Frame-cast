@@ -121,6 +121,10 @@ class PlanMediaExecutor
         $text = self::pronounce($text, (int) $ctx['workspace_id']);
         $opts = ['provider' => 'gemini'];
         $voice = \App\Services\Generation\TTS\GeminiVoices::resolve($ctx['voice'] ?? null);
+        // Narration that drives a presenter's mouth must sound like that person (GTM-1 #5: a young man lip-synced to a
+        // female voice). The presenter's gender is read from their approved picture; a mismatched voice is swapped.
+        if ($kind === 'voiceover' && ($ctx['voice'] ?? null) !== 'clone' && ($gender = $this->lipSyncedPresenterGender($ctx))
+            && \App\Services\Generation\TTS\GeminiVoices::gender($voice) !== $gender) $voice = \App\Services\Generation\TTS\GeminiVoices::defaultForGender($gender);
         if ($kind === 'cloned_voiceover' || ($ctx['voice'] ?? null) === 'clone') {
             $profile = VoiceProfile::where('workspace_id', $ctx['workspace_id'])->where('is_cloned', true)->latest('id')->first();
             $sample = $profile?->source_asset_id ? Asset::find($profile->source_asset_id) : null;
@@ -137,7 +141,35 @@ class PlanMediaExecutor
             if (! Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $path, $wav])->successful()) throw new RuntimeException('The narration could not be converted.');
             [$path, $mime] = [$wav, 'audio/x-wav'];
         }
-        return ['path' => $path, 'mime' => $mime, 'title' => 'Narration · '.Str::limit($text, 60, '…'), 'provider_id' => 'tts-'.Str::uuid()];
+        return ['path' => $path, 'mime' => $mime, 'title' => 'Narration · '.Str::limit($text, 60, '…'), 'provider_id' => 'tts-'.Str::uuid(), 'voice' => $voice];
+    }
+
+    /** 'Male' or 'Female' for the presenter a lip-synced take shows, read from their approved picture; null otherwise. */
+    public function lipSyncedPresenterGender(array $ctx): ?string
+    {
+        $planId = (string) ($ctx['plan_id'] ?? '');
+        if ($planId === '' || (string) config('services.anthropic.key') === '') return null;
+        return \Illuminate\Support\Facades\Cache::remember('create:presenter-gender:'.$planId, now()->addDay(), function () use ($planId) {
+            $plan = json_decode((string) \Illuminate\Support\Facades\DB::table('create_plans')->where('id', $planId)->value('plan_json'), true) ?: [];
+            if (! collect(PlanService::selectedMedia($plan + ['plan_id' => $planId]))->contains(fn ($m) => ($m['kind'] ?? '') === 'ugc_take' && ($m['speech_mode'] ?? '') === 'cloned_lipsync')) return null;
+            $row = \Illuminate\Support\Facades\DB::table('create_plan_media')->where('plan_id', $planId)->where('kind', 'reference_sheet')->where('status', 'succeeded')->first()
+                ?? \Illuminate\Support\Facades\DB::table('create_plan_media')->where('conversation_id', \Illuminate\Support\Facades\DB::table('create_plans')->where('id', $planId)->value('conversation_id'))->where('kind', 'reference_sheet')->where('status', 'succeeded')->orderByDesc('created_at')->first();
+            $file = json_decode((string) ($row->record_json ?? ''), true)['file'] ?? null;
+            $bytes = $file ? rescue(fn () => app(\App\Services\Create\CreateStorage::class)->get((string) ($file['storage_path'] ?? '')), null, false) : null;
+            if (! is_string($bytes) || $bytes === '') return null;
+            // Small enough for the model: a 768 px JPEG.
+            $in = tempnam(sys_get_temp_dir(), 'pg'); $out = $in.'.jpg'; file_put_contents($in, $bytes);
+            $ok = Process::timeout(30)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $in, '-vf', 'scale=768:-2', '-frames:v', '1', $out])->successful();
+            $jpeg = $ok ? (string) file_get_contents($out) : ''; @unlink($in); @unlink($out);
+            if ($jpeg === '') return null;
+            $r = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(30)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => AttachmentRoles::MODEL, 'max_tokens' => 5, 'messages' => [['role' => 'user', 'content' => [
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($jpeg)]],
+                    ['type' => 'text', 'text' => 'This is the presenter who will speak in a video. Which voice fits them? Reply with one word: male, female or unclear.']]]]]);
+            if (! $r->successful()) { \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status()); return null; }
+            $word = mb_strtolower(trim((string) collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('')));
+            return str_starts_with($word, 'male') ? 'Male' : (str_starts_with($word, 'female') ? 'Female' : null);
+        });
     }
 
     /** An original instrumental bed from ElevenLabs Music, one second longer than the video. */

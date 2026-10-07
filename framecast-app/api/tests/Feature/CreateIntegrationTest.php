@@ -4942,4 +4942,25 @@ class CreateIntegrationTest extends TestCase
         $photo = $plans->normalize($raw, ['files' => [['purpose' => 'source', 'asset_id' => 10, 'asset_type' => 'image', 'title' => 'me.jpg', 'notes' => ['kind' => 'photo']]]], $this->workspace->id);
         $this->assertTrue($photo['shot_context']['has_avatar']);
     }
+
+    public function test_narration_that_drives_a_presenter_takes_a_voice_of_their_gender(): void
+    {
+        [$c] = $this->changeableVersion();
+        config(['services.anthropic.key' => 'k']);
+        $planId = (string) \Illuminate\Support\Str::uuid();
+        $plan = ['narration' => ['I type it into WyvStudio.'], 'spoken_names' => [['written' => 'WyvStudio', 'spoken' => 'weave studio']], 'shot_context' => ['has_avatar' => false],
+            'selections' => ['narration' => ['I type it into WyvStudio.'], 'voice' => 'Leda'],
+            'media' => [['kind' => 'reference_sheet', 'description' => 'Young creator', 'subjects' => [['name' => 'Creator', 'looks' => 'young creator']]], ['kind' => 'ugc_take', 'description' => 'Says it', 'lines' => ['I type it into WyvStudio.'], 'presenter' => 'sheet']]];
+        DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $c->id, 'message_id' => (string) \Illuminate\Support\Str::uuid(), 'brief_sequence' => 1, 'idempotency_key' => 'k'.$planId,
+            'request_hash' => 'h', 'provider' => 'test', 'plan_json' => json_encode($plan), 'usage_json' => '{}', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()]);
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1kAAAAASUVORK5CYII=');
+        \Illuminate\Support\Facades\Storage::disk('local')->put('create/inputs/1/p.png', $png);
+        DB::table('create_plan_media')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c->id, 'plan_id' => $planId, 'item_index' => 0, 'kind' => 'reference_sheet', 'description_hash' => 'x', 'status' => 'succeeded',
+            'record_json' => json_encode(['file' => ['storage_path' => 'create/inputs/1/p.png', 'mime_type' => 'image/png']]), 'created_at' => now(), 'updated_at' => now()]);
+        Http::fake(['https://api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'male']]])]);
+        $gender = (new \ReflectionMethod(\App\Services\Create\PlanMediaExecutor::class, 'lipSyncedPresenterGender'))->invoke(app(\App\Services\Create\PlanMediaExecutor::class), ['plan_id' => $planId]);
+        $this->assertSame('Male', $gender);
+        $this->assertSame('Female', \App\Services\Generation\TTS\GeminiVoices::gender('Leda'), 'the planned voice would not fit him');
+        $this->assertSame('Male', \App\Services\Generation\TTS\GeminiVoices::gender(\App\Services\Generation\TTS\GeminiVoices::defaultForGender($gender)));
+    }
 }

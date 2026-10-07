@@ -43,6 +43,13 @@ class CharacterApproval
         if ($usesSource && ($identity = self::sourceIdentity($context))) $contract .= '|source-v1:'.json_encode($identity);
         // Pictures do not depend on the script: a sheet, panels or a silent shot survive a narration or voice change.
         $script = in_array($item['kind'], ['reference_sheet', 'storyboard', 'generated_shot'], true) ? [null, null] : [$context['narration'], $context['voice']];
+        // How the script is said is part of a voice: a saved pronunciation that changes a line re-makes what speaks it
+        // (GTM-1: voiceovers said "wiv studio" after the brand became "weave studio"). Lines with no saved name keep
+        // their old fingerprint, so nothing else is bought again.
+        if (in_array($item['kind'], ['voiceover', 'cloned_voiceover'], true) && $script[0] !== null && ! empty($context['workspace_id'])) {
+            $spoken = array_map(fn ($l) => PlanMediaExecutor::pronounce((string) $l, (int) $context['workspace_id']), (array) $script[0]);
+            if ($spoken !== array_map('strval', (array) $script[0])) $script[] = ['spoken' => $spoken];
+        }
         return hash('sha256', $contract.$item['kind'].'|'.$item['description'].(! empty($item['requirements']) ? '|requirements:'.json_encode($item['requirements']) : '').'|'.json_encode([
             $context['talking_route'] ?? null, ...$script, $context['aspect_ratio'], $context['character_style'],
         ]));
