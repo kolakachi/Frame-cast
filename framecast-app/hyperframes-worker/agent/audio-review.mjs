@@ -29,6 +29,28 @@ const lev=(a,b)=>{const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1
 // Recognisers misspell coined words and names; a near spelling of a long word counts as heard.
 export const close=(a,b)=>a===b||(a.length>=4&&b.length>=4&&lev(a,b)<=1)||(a.length>=5&&b.length>=5&&(a.startsWith(b)||b.startsWith(a)));
 
+/**
+ * Saved pronunciations held to what the voice actually said (GTM-1 #5: "WyvStudio" was heard as "Wyve Studio" and the
+ * words check, lenient with coined names, let it pass). names: [{written, spoken}]. Each is pass (the spoken form is
+ * heard), fail (something else is heard where it belongs: says what) or unverified (the transcriber wrote the brand
+ * name back, or it cannot be placed): never a pass on a guess.
+ */
+export function saidAs(names=[],words=[]){
+ const heardWords=(words||[]).flatMap(w=>tokens(w.text).map(t=>({t,start:+w.start})));
+ const same=(a,b)=>a===b||(Math.min(a.length,b.length)>=4&&lev(a,b)<=1);
+ const runAt=(want,i)=>want.every((t,k)=>heardWords[i+k]&&same(heardWords[i+k].t,t));
+ return (names||[]).filter(n=>n&&n.written&&n.spoken).map(n=>{
+  const want=tokens(n.spoken),written=tokens(n.written),joined=want.join('');
+  if(!want.length)return {...n,status:'unverified'};
+  for(let i=0;i<heardWords.length;i++)if(runAt(want,i)||same(heardWords[i].t,joined))return {...n,status:'pass',time:+heardWords[i].start.toFixed(2)};
+  if(heardWords.some((h,i)=>written.every((t,k)=>heardWords[i+k]?.t===t)||h.t===written.join('')))return {...n,status:'unverified',note:'the transcript writes the name, not how it was said'};
+  // The last word of the spoken form ("studio") anchors where the name was said; what came before it is what was said.
+  if(want.length>1){const i=heardWords.findIndex(h=>h.t===want.at(-1));
+   if(i>0){const said=heardWords.slice(Math.max(0,i-want.length+1),i+1).map(h=>h.t).join(' ');return {...n,status:'fail',heard:said,time:+heardWords[Math.max(0,i-want.length+1)].start.toFixed(2)};}}
+  return {...n,status:'unverified',note:'not heard where it belongs'};
+ });
+}
+
 /** The script against the words heard, in order: coverage, missing passages, extra words and when each line begins. */
 export function alignScript(lines,words){
  const script=lines.flatMap((l,line)=>tokens(l).map(t=>({t,line})));
@@ -102,6 +124,7 @@ export function problems(a){
  if(a.mix.voice_over_music_db!==null&&a.mix.voice_over_music_db<RULES.voiceOverMusicDb)out.push('The music may be too loud under the voice.');
  if(a.mix.dead_air.length)out.push(`The sound drops to silence at ${a.mix.dead_air[0].at.toFixed(1)} s for ${a.mix.dead_air[0].seconds} s.`);
  if(a.mix.abrupt_end)out.push('The sound stops abruptly at the end.');
+ for(const n of (a.names||[]).filter(n=>n.status==='fail'))out.push(`${n.written} is said as "${n.heard}"${Number.isFinite(n.time)?` at ${n.time} s`:''}, not "${n.spoken}".`);
  return out;
 }
 
@@ -117,6 +140,11 @@ export function heardChecks(requirements,a){
    if(cues.length)parts.push(off.length?[false,`${off.length} of ${cues.length} spoken cues are off by more than ${TOLERANCE} s`]:[true,`${cues.length} spoken cues land within ${TOLERANCE} s of their words`]);}
   if(/music/i.test(t))parts.push(!a.mix.music?[false,'No music bed heard under the voice']:a.mix.voice_over_music_db!==null&&a.mix.voice_over_music_db<RULES.voiceOverMusicDb?[false,`Voice only ${a.mix.voice_over_music_db} dB above the music`]:[true,`Music heard${a.mix.voice_over_music_db!==null?`, voice ${a.mix.voice_over_music_db} dB above it`:''}`]);
   if(/audio|sound|voice/i.test(t)&&!/music/i.test(t)){const bad=a.mix.abrupt_end?'The sound stops abruptly at the end':a.mix.dead_air.length?'Silence in the middle':null;parts.push(bad?[false,bad]:[true,'Sound runs through to a clean ending']);}
+  // A pronunciation requirement is judged by ear against the saved pronunciation, never by sight.
+  if(/said as|pronounc|says? .* as /i.test(t))for(const n of (a.names||[]).filter(n=>t.toLowerCase().includes(String(n.written).toLowerCase())||t.toLowerCase().includes(String(n.spoken).toLowerCase()))){
+   if(n.status==='pass')parts.push([true,`${n.written} heard as "${n.spoken}"`]);
+   else if(n.status==='fail')parts.push([false,`${n.written} is said as "${n.heard}", not "${n.spoken}"`]);
+  }
   if(!parts.length)continue;
   const fails=parts.filter(p=>!p[0]);
   out.push({id:r.id,text:r.text,version:r.version??1,status:fails.length?'unmet':'fulfilled',evidence:(fails.length?fails:parts).map(p=>p[1]).join('; ').slice(0,400),source:'audio_review'});
@@ -155,9 +183,9 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
   // No passage missing and most of the script heard: a transcriber that skipped a few scattered words, not lost narration.
   const narration_ok=narration?narration.coverage>=RULES.heardCoverage&&!narration.missing.length:null;
   const mix=mixFindings(await levelWindows(wav,ffmpeg),words,duration);
-  const a={narration,narration_ok,sync:cueSync(html,words),mix,duration};
+  const a={narration,narration_ok,sync:cueSync(html,words),mix,duration,names:saidAs(heardFile?.script?.names||[],words)};
   const found=problems(a);
   return {words,duration,summary:{ok:!found.length,heard_words:words.length,...(narration?{script_coverage:narration.coverage,missing:narration.missing,line_starts:narration.lineStarts}:{}),
-   sync:(a.sync||[]).slice(0,12),mix,problems:found},checks:heardChecks(requirements,a)};
+   sync:(a.sync||[]).slice(0,12),mix,names:a.names,problems:found},checks:heardChecks(requirements,a)};
  }finally{await rm(dir,{recursive:true,force:true});}
 }

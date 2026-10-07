@@ -63,7 +63,8 @@ class TranscriptService
             'words' => array_slice($result['words'] ?? [], 0, 3000), 'segments' => array_slice($result['segments'] ?? [], 0, 600)];
         $lines = array_values(array_filter(array_map('strval', (array) data_get(json_decode($run->input_json, true), 'plan.narration', []))));
         return $this->present($record, false) + ['seconds' => round($seconds, 2), 'script' => ['written' => $lines,
-            'spoken' => array_map(fn ($l) => PlanMediaExecutor::pronounce($l, (int) $run->workspace_id), $lines)]];
+            'spoken' => array_map(fn ($l) => PlanMediaExecutor::pronounce($l, (int) $run->workspace_id), $lines),
+            'names' => PlanMediaExecutor::pronunciationsIn(implode("\n", $lines), (int) $run->workspace_id)]];
     }
 
     private function present(array $r, bool $cached): array

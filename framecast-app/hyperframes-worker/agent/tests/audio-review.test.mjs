@@ -92,3 +92,14 @@ test('numbers, percents and web addresses match however the script or the transc
  const b=alignScript(['This month, get twenty-five percent off.'],'This month get 25% off'.split(' ').map((w,i)=>({text:w,start:i*0.3,end:i*0.3+0.2})));
  assert.deepEqual(b.missing,[]);assert.equal(b.coverage,1);
 });
+test('a saved pronunciation is held to what is heard: the right sound passes, a different one fails with what was said, a written-back name is unverified',async()=>{
+ const {saidAs}=await import('../audio-review.mjs');
+ const w=(text,start)=>({text,start,end:start+0.3});
+ const names=[{written:'WyvStudio',spoken:'weave studio'}];
+ assert.equal(saidAs(names,[w('Now',1),w('I',1.2),w('type',1.4),w('into',1.6),w('Weave',1.8),w('Studio.',2.1)])[0].status,'pass');
+ assert.equal(saidAs(names,[w('into',1.6),w('WeaveStudio',1.8)])[0].status,'pass','joined in one word');
+ const bad=saidAs(names,[w('into',1.6),w('Wyve',1.8),w('Studio,',2.1)])[0];
+ assert.deepEqual([bad.status,bad.heard,bad.time],['fail','wyve studio',1.8]);
+ assert.equal(saidAs(names,[w('into',1.6),w('WyvStudio',1.8)])[0].status,'unverified','the transcriber wrote the brand back');
+ assert.equal(saidAs([{written:'Ledgerly',spoken:'ledger-lee'}],[w('Try',1),w('ledger',1.2),w('lee',1.5),w('free',1.8)])[0].status,'pass');
+});

@@ -152,3 +152,15 @@ test('a look that could not run says why (a vendor outage is not a quiet skip)',
  assert.equal(c.status,'unverified');assert.match(c.message,/checking model is unavailable on our side/);
  assert.equal(v.status,'unverified');
 });
+test('a name said wrongly blocks delivery, by ear; a pronunciation requirement is never settled by sight',()=>{
+ const plan={agreement:{required:['WyvStudio said as "weave studio"']}};
+ const look={status:'checked',required:[{id:'r1',status:'unclear',note:'audio cannot be verified from frames'}]};
+ const wrong=finalVerdict({plan,look,audio:{script_coverage:1,missing:[],names:[{written:'WyvStudio',spoken:'weave studio',status:'fail',heard:'wyve studio',time:1.8}]}});
+ assert.equal(wrong.status,'blocked');
+ const said=wrong.checks.find(c=>c.id==='said');
+ assert.deepEqual([said.status,said.blocking,said.message],['fail',true,'WyvStudio is said as "wyve studio" at 1.8 s, not "weave studio".']);
+ assert.equal(wrong.checks.find(c=>c.id==='required').status,'fail');
+ const right=finalVerdict({plan,look,audio:{script_coverage:1,missing:[],names:[{written:'WyvStudio',spoken:'weave studio',status:'pass',time:1.8}]}});
+ assert.equal(right.checks.find(c=>c.id==='required').status,'pass');
+ assert.equal(right.checks.find(c=>c.id==='said').status,'pass');
+});

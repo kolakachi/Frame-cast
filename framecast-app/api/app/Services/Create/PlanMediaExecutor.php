@@ -844,6 +844,15 @@ class PlanMediaExecutor
         return $out;
     }
 
+    /** The workspace's pronunciations that the text uses: [{written, spoken}] (the listening check holds the voice to them). */
+    public static function pronunciationsIn(string $text, int $workspaceId): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('create_pronunciations')) return [];
+        return \Illuminate\Support\Facades\DB::table('create_pronunciations')->where('workspace_id', $workspaceId)->get(['written', 'spoken'])
+            ->filter(fn ($p) => preg_match('/(?<![\p{L}\p{N}])'.preg_quote($p->written, '/').'(?![\p{L}\p{N}])/iu', $text))
+            ->map(fn ($p) => ['written' => $p->written, 'spoken' => $p->spoken])->values()->all();
+    }
+
     /** Apply the workspace's pronunciations to spoken text only (whole words, any case). */
     public static function pronounce(string $text, int $workspaceId): string
     {

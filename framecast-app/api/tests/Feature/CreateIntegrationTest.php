@@ -4738,6 +4738,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('wiv studio', DB::table('create_pronunciations')->where('workspace_id', $this->workspace->id)->where('written', 'WyvStudio')->value('spoken'));
         $this->assertTrue(DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'assistant')->where('content', 'like', 'Every voice will say WyvStudio as “wiv studio”%')->exists());
         $this->assertSame('Try wiv studio today', \App\Services\Create\PlanMediaExecutor::pronounce('Try WyvStudio today', $this->workspace->id));
+        $this->assertSame([['written' => 'WyvStudio', 'spoken' => 'wiv studio']], \App\Services\Create\PlanMediaExecutor::pronunciationsIn("Hello.\nTry WyvStudio today", $this->workspace->id), 'the listening check holds the voice to it');
+        $this->assertSame([], \App\Services\Create\PlanMediaExecutor::pronunciationsIn('No names here', $this->workspace->id));
     }
 
     public function test_one_workspace_runs_at_most_two_plans_at_once_and_its_next_plan_waits_its_turn(): void

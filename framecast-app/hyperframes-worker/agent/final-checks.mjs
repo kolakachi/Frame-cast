@@ -66,6 +66,12 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
    else{const ok=coverage>=0.9&&!missing.length;
     add('words','Every approved word is spoken',ok?'pass':'fail',true,ok?'':'Missing from the narration: "'+(missing[0]??'some words')+'".');}}
  }
+ // Names with a saved pronunciation, by ear (GTM-1 #5 said "Wyve Studio" for "weave studio").
+ const names=audio?.names||[];
+ const wrong=names.filter(n=>n.status==='fail');
+ if(wrong.length)add('said','Names are said as saved','fail',true,wrong.map(n=>`${n.written} is said as "${n.heard}"${Number.isFinite(n.time)?' at '+n.time+' s':''}, not "${n.spoken}"`).join('; ')+'.',wrong.map(n=>n.time).filter(Number.isFinite));
+ else if(names.length&&names.some(n=>n.status!=='pass'))add('said','Names are said as saved','unverified',false,names.filter(n=>n.status!=='pass').map(n=>`${n.written} could not be confirmed as "${n.spoken}"`).join('; ')+'. Give it a listen.');
+ else if(names.length)add('said','Names are said as saved','pass',true,'');
  // The agreement's required items, by sight (spoken items are settled by listening).
  const required=plan.agreement?.required||[];
  if(required.length){
@@ -79,6 +85,9 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
    const exact=answers.filter(x=>!x.id&&key(item)&&key(x.item)===key(item));
    const matches=byId.length?byId:required.filter(x=>key(x)===key(item)).length===1?exact:[];
    const r=matches.length===1?matches[0]:{status:'unclear'};
+   // How a name is said is settled by the saved pronunciation check above, never by sight.
+   const said=/said as|pronounc/i.test(item)?names.find(n=>key(item).includes(key(n.written))):null;
+   if(said){add('required','Must appear: '+item,said.status==='pass'?'pass':said.status==='fail'?'fail':'unverified',true,said.status==='pass'?'':said.status==='fail'?`Heard "${said.heard}", not "${said.spoken}".`:'Could not be confirmed by ear. Give it a listen.',Number.isFinite(said.time)?[said.time]:[]);continue;}
    // Sound (a voiceover, music) is settled by listening, not by sight: the look cannot hear it.
    const voice=/\b(voice ?-?over|voice|narrat\w*|spoken|narrator)\b/i.test(item),music=/\b(music|soundtrack|score|jingle)\b/i.test(item);
    if((voice||music)&&r.status!=='present'&&r.status!=='missing'){
