@@ -22,7 +22,7 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
   - Eases: `WM.ease.snappy` (UI), `WM.ease.default` (cards, camera), `WM.ease.heavy` (big type), `WM.ease.playful` (characters).
   - `WM.cursor(tl,'#cursor',[{x,y,at},{x,y,at,click:true}])`, `WM.press(tl,'#btn',at,{glow:'rgba(255,107,53,.8)'})`, `WM.type(tl,'#field',text,at,16)`, `WM.toggle(tl,'#track','#knob',at,{distance:58,on:'#FF6B35'})`, `WM.count(tl,'#num',0,1200,at,1.4,fmt)` (approved numbers only).
   - `WM.morph(tl,'#shape',[{at,width,height,borderRadius,backgroundColor},...])`: one shape through states.
-  - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; signature moves `WM.giantWipe`, `WM.stamp`, `WM.field`; hide the old scene after. Details: read kit/motion-kit.md.
+  - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; signature moves `WM.giantWipe`, `WM.stamp`, `WM.field`; camera, rhythm and readouts `WM.pushIn`, `WM.pullBack`, `WM.dutch`, `WM.coldOpen`, `WM.textMask`, `WM.rampFreeze`, `WM.hiddenCut`, `WM.odometer`, `WM.gauge`, `WM.streak` (each with an energy: match the beat's); hide the old scene after. Details: read kit/motion-kit.md.
   - For an explicitly animated illustrated character, optional kit techniques include: `WM.ease.playful` on every pose change, a transition recipe between beats, and press or cursor on any UI it points at.
 - Before hand-building a named visual (device frame, captions, CTA, counter, chart, chat UI, transition, texture, mascot), search the registry with the catalog action and wire the item (kit/registry.md).
 

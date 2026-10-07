@@ -4,7 +4,8 @@
 // api/app/Services/Create/MotionMoves.php; "custom" asks for no recipe.
 export const RECIPES={words:'words',write_on:'writeOn',iris:'iris',toss:'toss',pop:'pop',device:'device',through:'through',fly:'fly',
  stamp:'stamp',type:'type',count:'count',cursor:'cursor',press:'press',morph:'morph',whip:'whip',wipe:'wipe',push:'push',giant_wipe:'giantWipe',field:'field',
- camera:'camera',flood:'flood',rise:'rise',edges:'edges'};
+ camera:'camera',flood:'flood',rise:'rise',edges:'edges',
+ push_in:'pushIn',pull_back:'pullBack',dutch:'dutch',cold_open:'coldOpen',text_mask:'textMask',ramp_freeze:'rampFreeze',hidden_cut:'hiddenCut',odometer:'odometer',gauge:'gauge',streak:'streak'};
 
 /** Each required move with what it reproduces: Map(move -> [labels]). */
 export function requiredMoves(plan){

@@ -32,6 +32,19 @@ Hide the outgoing scene once the transition is done (`tl.set('#a', {autoAlpha: 0
 - `WM.stamp(tl, '#stamp', at, {rotation: -8})`: a badge (a bordered word such as "Handled.") slams in, overshoots and settles. Use once, on the payoff.
 - `WM.field(tl, '#stage', '#FF6B35', at)`: the background cuts to a new colour on a hit. Flip fields on key beats; keep text contrast when you do.
 
+## Camera, rhythm and readouts (energy · length)
+Match a beat's moves to its energy (the plan's playbook gives each beat low, mid or high). Vary the moves; keep the motion voice's timing.
+- `WM.pushIn(tl, '#scene', at, {scale: 1.08, duration: 2.5, focus: {x: .5, y: .45}})` (low · 2-4 s): a slow push that keeps a held beat tense. At most twice a video.
+- `WM.pullBack(tl, '#scene', at, {from: 1.8, focus: {x, y}})` (mid · .9 s): open tight on a detail, pull out to the whole.
+- `WM.dutch(tl, '#scene', at, {angle: -7})` (mid · .7 s): the scene enters tilted and rolls level.
+- `WM.coldOpen(tl, ['#s1', '#s2', '#s3'], at, {each: .3})` (high · ~1.3 s): hard cuts through very short shots, then a beat of black (dark stage) before the title.
+- `WM.textMask(tl, '#word', at, {image: 'url(product.jpg)', from: '0% 50%', to: '100% 50%', duration: 2})` (mid · 1.5-3 s): a big heavy word is a window onto a picture or gradient moving behind it.
+- `WM.rampFreeze(tl, '#hero', at, {from: {x: -900, y: 0}})` (high · .6 s): shoots in, brakes hard, freezes with a flash. The launch hit.
+- `WM.hiddenCut(tl, '#blocker', '#a', '#b', at, {dir: 'right', duration: .7})` (high · .7 s): an object sweeps across and the scene changes behind it. The blocker covers the full frame height mid-sweep.
+- `WM.odometer(tl, '#num', '12,480', at, {duration: .9})` (mid · ~1 s): digits roll into place. Approved numbers only.
+- `WM.gauge(tl, '#ring', 87, at, {duration: 1.2})` (mid · 1.2 s): an SVG ring (stroke) or a bar sweeps to an approved value.
+- `WM.streak(tl, '#streaks', at, {color: 'rgba(255,255,255,.85)'})` (high · .35 s): speed lines tear across a cut. `#streaks` is a full-frame div above the scenes.
+
 ## Reference moves
 When the plan names a move (plan.reference_systems[].move, reference_decisions[].move), build that element with the recipe below; the check sends back a named move the composition never calls. kit/reference-moves.html is a worked 15-second example using all of them on one timeline. Elements start hidden (visibility:hidden); each move makes them visible itself.
 - `words` → `WM.words(tl, '#h .w', [1.1, 1.3, 1.45])`: a headline builds word by word; one time per word span, from narrationTiming.

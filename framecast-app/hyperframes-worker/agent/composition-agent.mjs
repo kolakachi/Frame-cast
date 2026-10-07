@@ -49,7 +49,8 @@ export function trimInstruction(text,flags){
 export async function pinnedKits(guidanceDirectory,plan){
  const kits=[];
  if(plan?.mascot3d||plan?.props3d?.length)kits.push(['kit/three.md','three-kit.md']);
- if((plan?.reference_decisions||[]).some(d=>d?.move)||(plan?.reference_systems||[]).some(x=>x?.move))kits.push(['kit/motion-kit.md','motion-kit.md']);
+ // From scratch the kit is the vocabulary (camera, rhythm and readout moves with their energy), so it is pinned too.
+ if((plan?.reference_decisions||[]).some(d=>d?.move)||(plan?.reference_systems||[]).some(x=>x?.move)||typeof plan?.scratch_guide==='string')kits.push(['kit/motion-kit.md','motion-kit.md']);
  let out='';
  for(const [name,file] of kits)try{out+='\n\n# '+name+' (pinned; do not read it again)\n'+await readFile(guidanceDirectory+'/../'+file,'utf8');}catch{/* readable on demand */}
  if(out)out+='\n\nThe worked examples (kit/three-example.html, kit/reference-moves.html) are long: read one only when something you built does not work.';

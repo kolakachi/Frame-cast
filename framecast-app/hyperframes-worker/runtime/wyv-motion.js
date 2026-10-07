@@ -417,6 +417,112 @@
       if (opts.bump !== false) tl.fromTo(target, { scale: 1 }, { scale: 1.06, duration: 0.12, ease: 'power2.out', yoyo: true, repeat: 1, immediateRender: false }, at + d - 0.04);
       return tl;
     },
+
+    /* ---- Camera, rhythm and readouts (from-scratch vocabulary). Energy: low, mid or high; each says when to use it. ---- */
+
+    /* pushIn (low, 2-4 s): a slow push into a held scene so a still beat keeps tension. el: the scene's full-frame
+       wrapper. opts: scale (1.08), duration (2.5), focus {x, y} 0..1 (.5, .45). At most twice a video. */
+    pushIn: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var f = opts.focus || { x: 0.5, y: 0.45 };
+      tl.set(el, { transformOrigin: (f.x * 100) + '% ' + (f.y * 100) + '%' }, at)
+        .fromTo(el, { scale: 1 }, { scale: opts.scale || 1.08, duration: opts.duration || 2.5, ease: 'sine.inOut', immediateRender: false }, at);
+      return tl;
+    },
+    /* pullBack (mid, about .9 s): open tight on a detail, then pull out to reveal the whole. opts: from (1.8),
+       focus {x, y} 0..1 of the detail, duration (.9). */
+    pullBack: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var f = opts.focus || { x: 0.5, y: 0.5 };
+      tl.set(el, { transformOrigin: (f.x * 100) + '% ' + (f.y * 100) + '%' }, at)
+        .fromTo(el, { scale: opts.from || 1.8 }, { scale: 1, duration: opts.duration || 0.9, ease: ease.heavy, immediateRender: true }, at);
+      return tl;
+    },
+    /* dutch (mid, about .7 s): the scene enters tilted and slightly large, then rolls level. opts: angle (-7). */
+    dutch: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      tl.fromTo(el, { rotation: opts.angle == null ? -7 : opts.angle, scale: 1.12, transformOrigin: '50% 50%' }, { rotation: 0, scale: 1, duration: opts.duration || 0.7, ease: ease['default'], immediateRender: true }, at);
+      return tl;
+    },
+    /* coldOpen (high, 1-1.5 s): three or more very short shots cut hard, then a beat of black before the title.
+       els: the shots (full-frame, hidden before), in order. opts: each (.3 s), black (.4 s; the stage shows through,
+       so give the stage a dark background). */
+    coldOpen: function (tl, els, at, opts) {
+      opts = opts || {}; var each = opts.each || 0.3, list = all(els);
+      list.forEach(function (el, i) { tl.set(el, { autoAlpha: 1 }, at + i * each).set(el, { autoAlpha: 0 }, at + (i + 1) * each); });
+      return tl;
+    },
+    /* textMask (mid, 1.5-3 s): the word is a window onto a picture or colour moving behind it. el: the word, with
+       opts.image a CSS background (url(...) or a gradient). opts: from ('0% 50%'), to ('100% 50%'), size ('220% auto'),
+       duration (2). Keep the word large and heavy so the picture reads through it. */
+    textMask: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var style = { backgroundSize: opts.size || '220% auto', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', WebkitTextFillColor: 'transparent' };
+      if (opts.image) style.backgroundImage = opts.image;
+      tl.set(el, style, 0)
+        .fromTo(el, { backgroundPosition: opts.from || '0% 50%' }, { backgroundPosition: opts.to || '100% 50%', duration: opts.duration || 2, ease: 'sine.inOut', immediateRender: true }, at);
+      return tl;
+    },
+    /* rampFreeze (high, about .6 s): an element shoots in, brakes hard and freezes with a flash: the hit of a
+       launch. opts: from {x, y} offset in px ({x: -900, y: 0}), flash (true). */
+    rampFreeze: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var from = opts.from || { x: -900, y: 0 };
+      tl.set(el, { x: from.x, y: from.y, autoAlpha: 1 }, at)
+        .to(el, { keyframes: [{ x: from.x * 0.25, y: from.y * 0.25, duration: 0.12, ease: 'none' }, { x: 0, y: 0, duration: 0.45, ease: 'expo.out' }] }, at);
+      if (opts.flash !== false) tl.fromTo(el, { filter: 'brightness(2.2)' }, { filter: 'brightness(1)', duration: 0.25, ease: 'power2.out', immediateRender: false }, at + 0.14);
+      return tl;
+    },
+    /* hiddenCut (high, about .7 s): an object (a bar, a product, a shape) sweeps across the frame and the scene changes
+       behind it while it covers the frame. blocker: positioned above the scenes, at least as tall as the frame and
+       wider than it at mid-sweep. opts: dir ('right'), duration (.7). */
+    hiddenCut: function (tl, blocker, a, b, at, opts) {
+      blocker = $(blocker); opts = opts || {}; var d = opts.duration || 0.7, s = opts.dir === 'left' ? -1 : 1;
+      tl.set(blocker, { autoAlpha: 1, xPercent: -130 * s }, at)
+        .to(blocker, { xPercent: 130 * s, duration: d, ease: 'power2.inOut' }, at)
+        .set($(a), { autoAlpha: 0 }, at + d / 2).set($(b), { autoAlpha: 1 }, at + d / 2)
+        .set(blocker, { autoAlpha: 0 }, at + d);
+      return tl;
+    },
+    /* odometer (mid, about 1 s): the digits of an approved number roll up into place, one column each, the last
+       digit landing last. el: the number's element (its text is replaced). opts: duration (.9), stagger (.06). */
+    odometer: function (tl, el, value, at, opts) {
+      el = $(el); opts = opts || {}; var chars = String(value).split(''), cols = [];
+      el.textContent = '';
+      chars.forEach(function (c) {
+        var col = document.createElement('span'); col.style.display = 'inline-block'; col.style.overflow = 'hidden'; col.style.height = '1em'; col.style.lineHeight = '1em'; col.style.verticalAlign = 'top';
+        if (!/[0-9]/.test(c)) { col.textContent = c; el.appendChild(col); return; }
+        var strip = document.createElement('span'); strip.style.display = 'block';
+        for (var k = 0; k <= 9; k++) { var d = document.createElement('span'); d.style.display = 'block'; d.style.height = '1em'; d.textContent = String(k); strip.appendChild(d); }
+        col.appendChild(strip); el.appendChild(col); cols.push({ strip: strip, digit: Number(c) });
+      });
+      cols.forEach(function (c, i) {
+        tl.fromTo(c.strip, { yPercent: 0 }, { yPercent: -10 * c.digit, duration: opts.duration || 0.9, ease: 'power3.out', immediateRender: true }, at + i * (opts.stagger == null ? 0.06 : opts.stagger));
+      });
+      return tl;
+    },
+    /* gauge (mid, about 1.2 s): a ring or bar sweeps to an approved value. el: an SVG circle or path with a stroke
+       (a ring), or any block (a bar, filled from the left). value 0..100. opts: duration (1.2). */
+    gauge: function (tl, el, value, at, opts) {
+      el = $(el); opts = opts || {}; var p = Math.max(0, Math.min(100, value)) / 100, d = opts.duration || 1.2;
+      if (el.getTotalLength) {
+        var len = el.getTotalLength();
+        tl.set(el, { strokeDasharray: len }, 0).fromTo(el, { strokeDashoffset: len }, { strokeDashoffset: len * (1 - p), duration: d, ease: 'power3.out', immediateRender: true }, at);
+      } else tl.fromTo(el, { scaleX: 0, transformOrigin: '0 50%' }, { scaleX: p, duration: d, ease: 'power3.out', immediateRender: true }, at);
+      return tl;
+    },
+    /* streak (high, about .35 s): speed lines tear across the frame over a cut. el: a full-frame div above the
+       scenes (it is filled with lines). opts: color ('rgba(255,255,255,.85)'), lines (14), dir ('right'). */
+    streak: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var n = opts.lines || 14, s = opts.dir === 'left' ? -1 : 1, lines = [];
+      el.style.overflow = 'hidden';
+      for (var i = 0; i < n; i++) {
+        var l = document.createElement('div'), y = (i * 37 + 11) % 100, h = 2 + (i * 7) % 9, w = 30 + (i * 23) % 50;
+        l.style.cssText = 'position:absolute;left:0;top:' + y + '%;height:' + h + 'px;width:' + w + '%;border-radius:' + h + 'px;background:' + (opts.color || 'rgba(255,255,255,0.85)');
+        el.appendChild(l); lines.push(l);
+      }
+      tl.set(el, { autoAlpha: 1 }, at - 0.18);
+      lines.forEach(function (l, i) { tl.fromTo(l, { xPercent: -260 * s }, { xPercent: 340 * s, duration: 0.32, ease: 'power2.in', immediateRender: true }, at - 0.18 + (i % 5) * 0.015); });
+      tl.set(el, { autoAlpha: 0 }, at + 0.22);
+      return tl;
+    },
   };
 
   // Elements and geometry. Positions come from layout (offsets), not from the
@@ -464,8 +570,17 @@
     count: function (a) { return [['blip', a[4] + (a[5] || 0)]]; },
     cursor: function (a) { return (a[2] || []).filter(function (p) { return p.click; }).map(function (p) { return ['click', p.at]; }); },
     morph: function (a) { return (a[2] || []).slice(1).map(function (s) { return ['slide', s.at + 0.2]; }); },
+    pullBack: function (a) { return [['slide', a[2] + 0.15]]; },
+    dutch: function (a) { return [['swish', a[2] + 0.1]]; },
+    coldOpen: function (a) { var n = all(a[1]).length, e = o(a, 3).each || 0.3, out = []; for (var i = 1; i <= n; i++) out.push(['tick', a[2] + i * e]); return out; },
+    rampFreeze: function (a) { return [['thud', a[2] + 0.14]]; },
+    hiddenCut: function (a) { return [['whoosh', a[4] + (o(a, 5).duration || 0.7) / 2]]; },
+    odometer: function (a) { return [['blip', a[3] + (o(a, 4).duration || 0.9)]]; },
+    gauge: function (a) { return [['blip', a[3] + (o(a, 4).duration || 1.2)]]; },
+    streak: function (a) { return [['whoosh-fast', a[2]]]; },
   };
-  var OPTS = { device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1 };
+  var OPTS = { device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
+    pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {
     var fn = WM[name];
