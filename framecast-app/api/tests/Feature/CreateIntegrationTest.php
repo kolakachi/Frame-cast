@@ -4722,4 +4722,19 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(1,DB::table('vendor_incidents')->where('vendor','anthropic')->where('kind','vendor_credit')->count());
         \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class,fn($m)=>$m->kind==='vendor_credit');
     }
+
+    public function test_a_pronunciation_in_the_brief_is_kept_for_every_voice(): void
+    {
+        $map = \App\Services\Ugc\PronunciationMap::class;
+        $this->assertSame(['WyvStudio' => 'wiv studio'], $map::fromBrief('A 20 s promo for WyvStudio. Say WyvStudio as "wiv studio", and say it like a friend would.'));
+        $this->assertSame(['WyvStudio' => 'wiv studio'], $map::fromBrief('WyvStudio (pronounced wiv studio) makes ads without a shoot.'));
+        $this->assertSame(['Nguyen' => 'win'], $map::fromBrief('Our founder Nguyen is pronounced win.'));
+        $this->assertSame([], $map::fromBrief('Say it as a question, and say hello as you walk in. Make it pronounced and bold.'));
+
+        $c = $this->conversations->create($this->owner, []);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for WyvStudio. Say WyvStudio as "wiv studio".', 'expected_version' => (int) $c->version, 'idempotency_key' => 'brief']);
+        $this->assertSame('wiv studio', DB::table('create_pronunciations')->where('workspace_id', $this->workspace->id)->where('written', 'WyvStudio')->value('spoken'));
+        $this->assertTrue(DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'assistant')->where('content', 'like', 'Every voice will say WyvStudio as “wiv studio”%')->exists());
+        $this->assertSame('Try wiv studio today', \App\Services\Create\PlanMediaExecutor::pronounce('Try WyvStudio today', $this->workspace->id));
+    }
 }

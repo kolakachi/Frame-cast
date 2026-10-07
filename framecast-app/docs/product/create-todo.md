@@ -20,18 +20,36 @@ and a 09:05 digest; planning billed at half cost (needs 60 credits); no spend ca
 
 ## Go-to-market gate
 
-Sections 1 and 2 make Create safe to run; they do not prove it is good enough or that it pays. We go to market when
-all of these hold (agreed 2026-10-07):
+Sections 1 and 2 make Create safe to run; they do not prove it is good enough or that it pays. Fast path, agreed
+2026-10-07: everything below runs in parallel, about a week.
 
-1. **Launch must-haves done:** G-REC, G-DEP, L16, G-FAIR, S9, I7 (section 1) and BG1, FS8 proven (section 2).
-   AB3, I2, D7, 0.4 and HF-BILL are not launch-blocking.
-2. **Acceptance round (GTM-1):** about 10 realistic customer briefs across motion graphics, UGC and footage edits
-   (~2,500 credits, instead of the full 7,000-credit bench).
-3. **Pass marks, set before the round:** at least 7 of 10 the owner would publish after at most one change; none
-   lost or charged twice; median time under 20 min; model cost per accepted video comfortably below what it is
-   charged.
-4. **Pricing and limits (O11)** set from those numbers.
-5. **Then** open to ws 28 and ws 27 (O9), watch their first week, and widen in stages.
+1. **GTM-1 acceptance round now** (10 briefs, below). It also proves section 2 (BG1 on a Thorough brief, FS8 with
+   own audio, I7 and FS5 on the motion-graphics briefs). The outputs are candidates for the landing page.
+2. **Drills alongside** (G-REC, G-DEP, L16, G-FAIR), about 1–2 days, no new features.
+3. **S9 cut down for launch:** "Change…" reopens the plan; the full step-by-step version waits for customer demand.
+4. **Off the launch path** (stay in the todo): AB3, I2, D7, 0.4, HF-BILL, S10.
+5. **Open to ws 28 and ws 27 as the round finishes** (O9). The full gate applies to wider marketing only.
+6. **Pass marks for wider marketing:** at least 7 of 10 the owner would publish after at most one change; none lost
+   or charged twice; median time under 20 min; model cost per accepted video comfortably below the charge; then
+   pricing and limits (O11) from the numbers.
+
+**Every brief states pronunciations** (WyvStudio = "wiv studio"); since 2026-10-07 a brief that says "say X as Y"
+or "X (pronounced Y)" saves it for the workspace and every voice uses it.
+
+### GTM-1 briefs (production, ws 1, about 2,500 credits)
+
+| # | Format | Brief | Also proves | Run | Result |
+|---|---|---|---|---|---|
+| 1 | Motion graphics | WyvStudio launch promo, 20 s 9:16, kinetic type: "Branded short-form video without a shoot" | FS5, I7 | | |
+| 2 | Motion graphics | How WyvStudio works (brief → plan → video), 30 s 16:9 for the landing hero, Thorough | BG1, CR1 | | |
+| 3 | Motion graphics | DTC product ad for a skincare serum, 15 s 9:16, product stills generated | AB4 | | |
+| 4 | Motion graphics | SaaS feature launch with numbers (odometer, gauge), 1:1 | FS5 | | |
+| 5 | UGC | A creator's testimonial for WyvStudio, talking to camera, 20 s 9:16 | spoken brand name | | |
+| 6 | UGC | Unboxing ad for the serum: hook, problem, solution | RF1 | | |
+| 7 | UGC | Split-screen reaction ad | E2 (generated presenter) | | |
+| 8 | Footage edit | The WyvStudio demo recording cut into a 30 s promo with captions and zooms | E1 | | |
+| 9 | Footage + own audio | The VSL's own voiceover over a new edit of the product | FS8 | | |
+| 10 | From scratch | "3 hooks that stop the scroll", a teaching video for marketers, WyvStudio end card | FS3, S11 | | |
 
 ## 1. Build next (no owner input needed)
 

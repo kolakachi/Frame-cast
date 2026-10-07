@@ -76,6 +76,34 @@ class PronunciationMap
         return $map === [] ? $spoken : self::apply($spoken, $map);
     }
 
+    /**
+     * Pronunciations stated in a brief's own words ("say WyvStudio as 'wiv studio'", "WyvStudio is pronounced wiv
+     * studio", "WyvStudio (pronounced wiv studio)"). Stricter than parse(): the name must start with a capital or be
+     * quoted, and the spoken form ends at punctuation and is at most five words, so ordinary sentences never match.
+     *
+     * @return array<string, string> name => spoken form
+     */
+    public static function fromBrief(string $text): array
+    {
+        $name = '(?:["“\'‘]([^"”\'’]{1,60})["”\'’]|(\p{Lu}[\p{L}\p{N}.&\'-]*(?:\s+\p{Lu}[\p{L}\p{N}.&\'-]*){0,2}))';
+        $said = '(?:["“\'‘]([^"”\'’]{1,80})["”\'’]|((?:[\p{L}\p{N}\'-]+)(?:\s+[\p{L}\p{N}\'-]+){0,4}))';
+        $map = [];
+        $patterns = [
+            '/\b(?i:say|pronounce)\s+'.$name.'\s+as\s+(?:in\s+)?'.$said.'/u',
+            '/'.$name.'\s*(?:,|\(|\bis\b)?\s*(?:is\s+)?pronounced\s+(?i:as\s+|like\s+)?'.$said.'/u',
+        ];
+        foreach ($patterns as $re) {
+            preg_match_all($re, $text, $all, PREG_SET_ORDER);
+            foreach ($all as $m) {
+                $written = ($m[1] ?? '') !== '' ? $m[1] : ($m[2] ?? '');
+                $spoken = ($m[3] ?? '') !== '' ? $m[3] : ($m[4] ?? '');
+                if (mb_strtolower(trim($written)) === mb_strtolower(trim($spoken))) continue;
+                self::add($map, $written, $spoken);
+            }
+        }
+        return $map;
+    }
+
     private static function add(array &$map, string $name, string $said): void
     {
         $name = trim($name, " \t\"'“”‘’.");

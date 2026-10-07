@@ -105,6 +105,15 @@ class ConversationService
                 $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'], ['from_brief' => $fromBrief], isset($inferred['changes']['duration_seconds']) ? ['duration_chosen' => true] : [])));
                 $replies[] = BriefSettings::describe($inferred['changes']);
             }
+            // A name's pronunciation stated in the brief is kept for the workspace, so every voice says it that way.
+            if ($said = \App\Services\Ugc\PronunciationMap::fromBrief($input['content'])) {
+                $said = array_slice($said, 0, 10, true);
+                foreach ($said as $written => $spoken) {
+                    if (DB::table('create_pronunciations')->where('workspace_id', $user->workspace_id)->count() >= 30 && ! DB::table('create_pronunciations')->where('workspace_id', $user->workspace_id)->where('written', $written)->exists()) { unset($said[$written]); continue; }
+                    DB::table('create_pronunciations')->updateOrInsert(['workspace_id' => $user->workspace_id, 'written' => $written], ['spoken' => $spoken, 'created_at' => now(), 'updated_at' => now()]);
+                }
+                if ($said) $replies[] = 'Every voice will say '.collect($said)->map(fn ($s, $w) => $w.' as “'.$s.'”')->implode(', ').'. Saved for this workspace.';
+            }
             array_push($replies, ...$inferred['questions']);
             foreach ($replies as $i => $reply) {
                 $version++;
