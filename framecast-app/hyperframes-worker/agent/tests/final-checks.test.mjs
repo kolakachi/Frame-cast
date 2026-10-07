@@ -121,3 +121,13 @@ test('words on screen too briefly to read block delivery and go back to the buil
  assert.match(repairBrief(fix),/at 7\.2 s, Every word on screen can be read .*0\.8 s/);
  assert.equal(finalVerdict({plan:{},look:{status:'checked'},reading:[]}).status,'passed');
 });
+
+test('a few scattered words the transcriber could not make out are a note, not lost narration', () => {
+ // Production 2026-10-07: "Approve the plan" was spoken but not transcribed; 83% heard, no passage missing.
+ const doubt=finalVerdict({plan:{},look:null,audio:{script_coverage:0.833,missing:[]},expectsSpeech:true});
+ const w=doubt.checks.find(c=>c.id==='words');
+ assert.equal(w.status,'unverified');assert.equal(w.blocking,false);assert.notEqual(doubt.status,'blocked');
+ // Too little heard, or a whole passage missing, still blocks.
+ assert.equal(finalVerdict({plan:{},look:null,audio:{script_coverage:0.6,missing:[]},expectsSpeech:true}).checks.find(c=>c.id==='words').status,'fail');
+ assert.equal(finalVerdict({plan:{},look:null,audio:{script_coverage:0.85,missing:['approve the plan']},expectsSpeech:true}).status,'blocked');
+});

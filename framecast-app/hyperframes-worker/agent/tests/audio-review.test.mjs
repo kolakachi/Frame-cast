@@ -76,3 +76,10 @@ test('the written or the spoken form of the script, whichever the voice matches 
  const spoken=alignScript(['Try Wiv Studio dot com today'],words),written=alignScript(['Try wyvstudio.com today'],words);
  assert.ok(written.coverage>spoken.coverage);
 });
+
+test('every unheard stretch is a hole to listen to again, while only long runs count as missing', () => {
+ const w=(t,s)=>({text:t,start:s,end:s+0.3});
+ const a=alignScript(['Describe it.','Approve the plan.','Get the video.'],[w('Describe',0),w('it',0.4),w('the',2.1),w('Get',4),w('the',4.4),w('video',4.8)]);
+ assert.deepEqual(a.missing,[]);assert.deepEqual(a.gaps,[]);
+ assert.ok(a.holes.length>=1,JSON.stringify(a));assert.ok(a.coverage<0.9);
+});

@@ -60,8 +60,11 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
  // Approved words (narration or a take) in the delivered audio.
  if(expectsSpeech){
   if(!audio)add('words','Every approved word is spoken','unverified',true,'The final audio could not be listened to.');
-  else{const ok=(audio.script_coverage??0)>=0.9&&!(audio.missing||[]).length;
-   add('words','Every approved word is spoken',ok?'pass':'fail',true,ok?'':'Missing from the narration: "'+((audio.missing||[])[0]??'some words')+'".');}
+  else{const coverage=audio.script_coverage??0,missing=audio.missing||[];
+   // Every passage heard but a few scattered words not made out: the transcriber's doubt, not lost narration.
+   if(!missing.length&&coverage<0.9&&coverage>=0.75)add('words','Every approved word is spoken','unverified',false,`Every passage was heard; a few single words (${Math.round((1-coverage)*100)}%) could not be made out. Give it a listen.`);
+   else{const ok=coverage>=0.9&&!missing.length;
+    add('words','Every approved word is spoken',ok?'pass':'fail',true,ok?'':'Missing from the narration: "'+(missing[0]??'some words')+'".');}}
  }
  // The agreement's required items, by sight (spoken items are settled by listening).
  const required=plan.agreement?.required||[];

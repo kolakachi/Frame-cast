@@ -10,7 +10,7 @@ import {attributesById,phraseStart,TOLERANCE} from './timing-check.mjs';
 import {heard} from './requirement-review.mjs';
 const run=promisify(execFile);
 
-export const RULES={coverage:.9,missingRun:3,extra:.25,voiceOverMusicDb:6,quietDb:-55,musicDb:-50,deadAir:1.5,abruptDb:-35};
+export const RULES={coverage:.9,heardCoverage:.75,missingRun:3,extra:.25,voiceOverMusicDb:6,quietDb:-55,musicDb:-50,deadAir:1.5,abruptDb:-35};
 const norm=s=>String(s??'').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s']/gu,' ').replace(/'/g,'').trim();
 export const tokens=text=>norm(text).split(/\s+/).filter(Boolean);
 const lev=(a,b)=>{const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;
@@ -33,12 +33,14 @@ export function alignScript(lines,words){
  const matched=match.filter(x=>x!==null).length;
  const lineStarts=lines.map((_,line)=>{const i=script.findIndex((s,k)=>s.line===line&&match[k]!==null);return i<0?null:+heardWords[match[i]].start.toFixed(2);});
  // Where each missing passage should be: from the last heard word before it to the next heard word after it.
- const gaps=[];
+ // Holes are every unheard stretch, however short: listened to again when too little of the script was heard.
+ const gaps=[],holes=[];
  for(let i=0;i<n;i++){if(match[i]!==null)continue;let j=i;while(j<n&&match[j]===null)j++;
-  if(j-i>=RULES.missingRun){const before=match.slice(0,i).filter(x=>x!==null).at(-1),after=match.slice(j).find(x=>x!==null);
-   gaps.push({from:before===undefined?0:+heardWords[before].end.toFixed(2),to:after===undefined?null:+heardWords[after].start.toFixed(2)});}
+  const before=match.slice(0,i).filter(x=>x!==null).at(-1),after=match.slice(j).find(x=>x!==null);
+  const span={from:before===undefined?0:+heardWords[before].end.toFixed(2),to:after===undefined?null:+heardWords[after].start.toFixed(2)};
+  if(j-i>=RULES.missingRun)gaps.push(span);holes.push(span);
   i=j;}
- return {words:n,heard:m,matched,coverage:n?+(matched/n).toFixed(3):null,missing:missing.slice(0,6),extra:Math.max(0,m-matched),lineStarts,gaps:gaps.slice(0,3)};
+ return {words:n,heard:m,matched,coverage:n?+(matched/n).toFixed(3):null,missing:missing.slice(0,6),extra:Math.max(0,m-matched),lineStarts,gaps:gaps.slice(0,3),holes:holes.slice(0,4)};
 }
 
 /** Text tied to spoken words (data-spoken) against when those words are actually heard in the export. */
@@ -127,7 +129,8 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
   let narration=forms.length?align():null;
   // A transcriber can drop a short phrase after a pause; a passage that seems missing is listened to again on its own
   // (its window cut out) before it is called missing.
-  for(const gap of (narration?.gaps||[]).slice(0,2)){
+  const windows=narration?.gaps?.length?narration.gaps.slice(0,2):(narration?.coverage??1)<RULES.coverage?(narration?.holes||[]).slice(0,4):[];
+  for(const gap of windows){
    const from=Math.max(0,gap.from-0.3),to=Math.min(duration,(gap.to??duration)+0.3);
    if(to-from<0.4)continue;
    const part=path.join(dir,'part-'+from.toFixed(2)+'.wav');
@@ -138,7 +141,8 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
     if(extra.length){words=[...words,...extra].sort((a,b)=>a.start-b.start);narration=align();}
    }catch{/* the first hearing stands */}
   }
-  const narration_ok=narration?narration.coverage>=RULES.coverage&&!narration.missing.length:null;
+  // No passage missing and most of the script heard: a transcriber that skipped a few scattered words, not lost narration.
+  const narration_ok=narration?narration.coverage>=RULES.heardCoverage&&!narration.missing.length:null;
   const mix=mixFindings(await levelWindows(wav,ffmpeg),words,duration);
   const a={narration,narration_ok,sync:cueSync(html,words),mix,duration};
   const found=problems(a);
