@@ -89,26 +89,33 @@ reference study retries a busy model, says when it is partial, and asks before a
 | AB3 | WyvBear and GSAP plugins staged into the builder | open | — | build | todo: art |
 | AB4 | Brand logo and cutout proven in a real build; the builder must now search the art library when the brief asks for icons | partly | — | a run that uses art | todo: art |
 
-## From scratch (proposed)
+## From scratch
 
 Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your videos).
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| FS1 | Three direction cards before the plan | proposed | owner's approval | scope | todo: from scratch |
-| FS2 | Format playbooks | proposed | owner's approval | scope | todo: from scratch |
-| FS3 | Slideshow check: mostly still text cards are sent back to the builder once | ready | sandbox image rebuild | rebuild, then a real run | todo: from scratch |
-| FS4 | Exemplar library | blocked | 15–25 videos from the owner | collect | todo: from scratch |
+| FS1 | Direction cards: five ways to make it (the planned one + four), in a drawer that opens by itself; Preview on the plan card; "More ways" (3 new, billed like planning); picking or mixing re-plans; locks on plan approval | done 2026-10-07 | — | owner browser check | `a2330e19`, `53575d83`, `616ad7d3` |
+| FS2 | Format playbooks (10) and motion voices (6); concept with alternatives; the builder pins them | done 2026-10-07 | — | — | `ab4678cd` |
+| FS3 | Slideshow and finishing checks: slideshow, edge margin, overlapping words, lopsided frame (sandbox image rebuilt 2026-10-07). Still to add: constant-speed motion, a technique repeated, full-frame hit count, opening hero | partly | — | build the remaining signals | `cd5bb2cc`, from-scratch plan |
+| FS4 | Exemplar library | blocked | 15–25 videos from the owner | collect | from-scratch plan |
+| FS5 | 14 new moves (push in, pull back, dutch, cold open, text mask, ramp freeze, hidden cut, odometer, gauge, streak, smash, split, stack, parallax), 37 in all, each with energy and length | done | — | prove in a build (none used one yet) | `0abef9cb`, `3cda32fb` |
+| FS6 | Create works out what each file is for, asks one question when unclear (answer cards), places every file in a beat; .mov accepted; SVG logos as pictures | done (live test with a logo) | — | — | `6f8c6163` |
+| FS7 | A screenshot of the current video is read as "change this moment" | done (tests) | — | try live | `6f8c6163` |
+| FS8 | The user's own audio: voice = narration word for word (no voiceover bought), music = the bed (no music bought), sounds placed; mishearings corrected, invented lyrics ignored | done (planning proven live) | — | a paid build with own audio (~250 credits) | `ea37fb0e`, `1fc8a865` |
+| FS9 | Details: labelled output form, "from your brief" tags, reference controls only with a reference; mid-creation rules (locked while building, plan out of date on change, format locked once pictures exist, next-version note) | done | — | owner browser check | `87d12831`, `2905b2dc` |
 
 ## Infra and release
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| I1 | API image rebuild hangs on the yt-dlp download | local ARM64 verified | production AMD64 build | bounded download + checksum patch; rollout separate (containers carry copied-in changes) | production plan: build diagnostics |
+| I1 | API image rebuild hung on the yt-dlp download | done | — | — | bounded, checksum-verified download deployed in `c335dcd7` |
 | I2 | horizon and reverb run old images | open | I1 | rebuild | todo: infra |
-| I3 | Create on production: live for the team; L1 to L10 left (B2 files, worker concurrency, auto worker deploy, stale-page reload) | partly | see `create-go-live.md` | L1 | `create-go-live.md` |
-| I4 | Paid canary after the deploy: plan passed; build 1 failed (per-call hold), fix `304200b9` deployed | partly | owner: credits in ws 1 (L1) | re-run | `create-go-live.md` |
+| I3 | Create on production: live for the team; remaining go-live items tracked in `create-go-live.md` (L3, L7, L8, L9, L16) | partly | see go-live | — | `create-go-live.md` |
+| I4 | Paid canary after each deploy | done | — | keep running after deploys | `create-go-live.md` L1 |
 | I5 | Brief refused by the 24-requirement limit on a re-plan | open | — | look at | verify-and-teach step 4 |
+| I6 | A test of a migrated video with expiring signed links failed once in a full run and passed on re-run (timing-sensitive) | open | — | make it deterministic | 2026-10-07 |
+| I7 | The overlap and lopsided checks have not yet caught anything on a real video ("SHOOT" under a line, crammed endings) | open | — | tune on the next builds | `cd5bb2cc` |
 | R1 | Local acceptance on the bench (8 of 9) | blocked | bench | run | progress: rollout |
 | R2 | Limited audience with an off switch | open | R1 | build switch | progress: rollout |
 
@@ -120,8 +127,10 @@ Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your vi
 | O2 | A UGC reference video | bench B9 |
 | O3 | A product photo (stock candle is the fallback) | bench B8 |
 | O4 | Baseline budget cap: 7,000 credits? | B2, B3, G1, F1, H1, R1 |
-| O6 | From scratch: approve FS1 and FS2; send 15–25 exemplar videos | FS1, FS2, FS4 |
-| O7 | Credits for the canary re-run: release the stale 368 hold or top up ws 1; planning on an empty balance (L2) | I4 |
+| O6 | From scratch: send 15–25 exemplar videos | FS4 |
+| O7 | Done 2026-10-07: stale 368 hold released, 2,000 credits granted to ws 1 | — |
+| O8 | A real-browser check: page recovery after a deploy (L3), the directions drawer, Details | L3, FS1, FS9 |
+| O9 | Go to open Create to the two real customers (ws 28, ws 27) | L8 |
 
 ## Older docs: open lines that are no longer live
 

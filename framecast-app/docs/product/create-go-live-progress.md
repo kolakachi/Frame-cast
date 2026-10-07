@@ -6,17 +6,17 @@ This tracker separates implementation from deployment and customer verification.
 | Work | Status | Evidence / next step |
 |---|---|---|
 | Readiness audit and release gates | Done | Repository review at `304200b9`; L1–L16 recorded in the go-live checklist. |
-| L11 durable planning | First implementation complete; rollout pending | Database request journal, atomic admission, dedicated queue job, cache-independent status, queued-request recovery, interrupted-request reporting and browser reconnection implemented. Flag stays off until worker/storage/deployment checks pass. See validation and limitations below. |
-| L4 private B2 storage and migration | Implemented locally; rollout pending | Dedicated private disk, per-file storage catalog, verified copy migration, API/worker readers and writers connected. Real bucket, migration/restore drill and cleanup remain release gates. |
-| L5/L14 disk capacity and cleanup | First implementation complete; host validation / worker retention pending | API/worker capacity checks, dry-run maintenance, active-use locks, aged-cache cleanup and verified local-copy reclamation implemented. Actual mounts, quotas, worker journals, tombstone/orphan cleanup and alert delivery remain open. |
-| L12 build recovery and queue isolation | Ownership and operator recovery implemented locally; automated fencing/host drill pending | Assignment-bound stop records, lease revocation, guarded receipt recovery and atomic saved-output recovery added. Unconfirmed workers still block globally; restart collection, hardware fencing and deployed verification remain open. |
-| L13 drain and shutdown | First implementation complete; rollout/host drill pending | Shared database pause, admission checks, active callback continuity, worker SIGTERM drain and operator runbook implemented. Legacy HTTP activity and service-manager stop policy require separate verification. |
-| L2/L15 billing policy and alerts | Pending; one historical hold reconciled | Owner-approved recovery of project 227's stale reservation verified live on 2026-10-07; no other holds remained. Planning allowance, full billing-path verification and actionable alerts remain open. No overall cap is added without changing the owner's decision. |
-| L3 stale-browser recovery | Implemented locally; deployed browser/CDN drill pending | Explicit reload notice, guarded Create composer recovery, no automatic reload or POST replay. Offline browser smoke passed, including selected files and denied storage. Other forms still require saving/copying edits. |
-| L6/L10 repeatable deployment | Web build repaired; worker deployment still pending | Clean lockfile web build passes; Docker contexts exclude host dependencies, and web CI checks added. Worker/API/image revision compatibility, drain-safe rollout/rollback and bounded yt-dlp patch deployment remain open. |
-| L16 privacy and restore | Pending | Cross-workspace tests, private B2, isolated database/object restore, secret handling. |
-| L1 production canary and acceptance | Pending | Separate paid approval/budget; verify full workflow, audio, motion, revisions and final charges. |
-| L7 measured capacity | Pending | Start with one heavy sandbox slot; load-test before raising concurrency. |
+| L11 durable planning | Live 2026-10-07 | `CREATE_DURABLE_PLANNING=true`; `worker-create-planning` service in production; plans verified at 56 s to 2.5 min; recovery runs each minute. Restart drill and PostgreSQL contention test still open. |
+| L4 private B2 storage and migration | Live 2026-10-07 | Private bucket `wyv-create-private`; 6 files migrated and verified (bucket, catalog, app reads); `CREATE_STORAGE_DISK=create_private`; local originals removed; hourly cache cleanup on. |
+| L5/L14 disk capacity and cleanup | Live 2026-10-07 | Production disk 91% → 33% after image/cache cleanup; disk admission active on API and worker (8 GB floor on the worker); local maintenance enabled. |
+| L12 build recovery and queue isolation | Live 2026-10-07 | `CREATE_WORKER_OWNERSHIP_REQUIRED=true`; three slots identify as `framecast-create` / `render-1..3`; an unconfirmed worker holds one slot instead of blocking all. Hardware fencing drill still open. |
+| L13 drain and shutdown | Live 2026-10-07 | `CREATE_RUNTIME_CONTROLS_ENABLED=true`; pause/resume drill passed (503 while paused); worker units stop by drain (SIGTERM to the coordinator, `KillMode=mixed`, no stop timeout); `ops/deploy_create_worker.sh` drains before updating. |
+| L2/L15 billing policy and alerts | Live 2026-10-07 | Planning is paid (top-up below 60 credits, never waived); `create:health` alerts every 5 minutes. An end-to-end alert email (V9) is still to be proven. |
+| L3 stale-browser recovery | Deployed; owner browser check pending | Live since `c335dcd7`; index.html not cached. |
+| L6/L10 repeatable deployment | Done 2026-10-07 | Web CI checks run before deploy (the preflight step stays manual); `ops/deploy_create_worker.sh` updates the worker and rebuilds the sandbox when its code changes. |
+| L16 privacy and restore | Partly | Cross-workspace tests pass; private bucket verified; public database backups found and moved private. Restore drill and secret review open. |
+| L1 production canary and acceptance | Done 2026-10-07 | Several paid builds delivered on production (see `create-go-live.md` L1); a canary runs after each deploy. |
+| L7 measured capacity | 3-way test running 2026-10-07 | Limit 3 (one per workspace); single-build baseline: CPU ≥ 35% idle, ≥ 3.4 GB free; 2-way passed after the render retry fix. |
 | L8 two-customer pilot | Blocked by release gates | Named workspaces/emails only, then expand from observed results. |
 
 ## Working rules

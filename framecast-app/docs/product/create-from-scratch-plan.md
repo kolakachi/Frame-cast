@@ -1,6 +1,6 @@
 # From scratch: plan
 
-Drafted 2026-10-06. Nothing here is built. Covers FS1 to FS4 on the pending sheet. Ideas only from OpenMontage
+Drafted 2026-10-06. Slices 1 to 4 built and live on 2026-10-07 (see Build slices). Covers FS1 to FS4 on the pending sheet. Ideas only from OpenMontage
 (AGPL v3), lemo-opuscar (MIT) and video-shotcraft (Apache-2.0): nothing is copied. **Decide** marks the owner's choices.
 
 ## Scope (owner, 2026-10-07)
@@ -54,14 +54,19 @@ fit HyperFrames; its sound files have unclear licences, so none are taken):
 
 ## Build slices (started 2026-10-07)
 
-1. **Done (`ab4678cd`):** concept with two alternatives kept, ten format playbooks (beats with share, energy, holds;
-   must/avoid; what suits; structures, openings, endings), motion voices; the plan carries them and the builder pins
-   them. No new screens.
-2. **FS5 move cards:** about 10 new moves from the list above, each a card with an energy header, in the motion kit.
-3. **FS1 direction cards:** show the concept and its two alternatives before the plan when the brief has no concept
-   (text cards, skippable; picking one re-plans that direction).
-4. **FS3 signals:** linear motion, repeated lead technique, full-frame hit count, opening hero action, holds.
-5. **FS4 exemplars:** when the owner's videos arrive.
+1. **Done (`ab4678cd`):** concept with alternatives, ten format playbooks, six motion voices; the plan carries them and
+   the builder pins them.
+2. **Done (`0abef9cb`, `3cda32fb`):** fourteen new moves (camera tension, trailer rhythm, masks, readouts, object cuts,
+   smash, split, stack, parallax), 37 in all, each with an energy and length; from-scratch builds pin the motion kit.
+3. **Done (`a2330e19`, `53575d83`, `616ad7d3`):** direction cards. Five ways in a drawer that opens by itself (Preview
+   button on the plan card), each made with the user's files (uses), "More ways" (three new, billed like planning),
+   picking or mixing re-plans, the direction locks when the plan is approved; each stage's drawer opens when ready.
+4. **Done (`6f8c6163`, `ea37fb0e`, `1fc8a865`):** the user's own material. Create works out what each file is for and
+   asks when unclear; a screenshot of the current video means that moment; the user's voice is the narration and
+   their music the bed.
+5. **Partly:** FS3 signals. Slideshow, edge margin, overlapping words and lopsided frames are checked; constant-speed
+   motion, a repeated lead technique, full-frame hit count and the opening hero are still to add.
+6. **Waiting:** FS4 exemplars (the owner's videos).
 
 ## The problem
 
