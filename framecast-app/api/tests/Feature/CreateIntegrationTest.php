@@ -2766,6 +2766,38 @@ class CreateIntegrationTest extends TestCase
         $this->actingAs($this->owner)->postJson('/api/v1/create/conversations/'.$c->id.'/plans/'.$planId.'/directions')->assertOk()->assertJsonPath('data.directions.0.name', 'Brew Clock');
     }
 
+    public function test_the_users_own_voice_is_the_narration_and_their_track_the_music_so_neither_is_bought(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $said = ['sha256' => 'x', 'text' => "Hi, I'm Ada. I bake sourdough every morning.", 'words' => [], 'segments' => []];
+        $voice = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'audio', 'status' => 'ready', 'storage_url' => 'minio://me.mp3', 'title' => 'me.mp3', 'mime_type' => 'audio/mpeg', 'duration_seconds' => 9, 'transcript_text' => $said['text'], 'metadata_json' => ['create_transcript' => $said]]);
+        $song = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'audio', 'status' => 'ready', 'storage_url' => 'minio://song.mp3', 'title' => 'song.mp3', 'mime_type' => 'audio/mpeg', 'duration_seconds' => 120, 'metadata_json' => ['create_transcript' => ['sha256' => 'y', 'text' => '', 'words' => [], 'segments' => []]]]);
+        $this->conversations->attach($this->owner, $c->id, $voice->id, 'auto', 0);
+        $this->conversations->attach($this->owner, $c->id, $song->id, 'auto', 1);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'An ad for my bakery with my voice and my song.', 'expected_version' => 2, 'idempotency_key' => 'b1']);
+        config(['create.mode' => 'agent', 'create.planner' => 'anthropic', 'services.anthropic.key' => 'k']);
+        $sent = [];
+        $plan = ['summary' => 'A warm bakery ad', 'narration' => ["Hi, I'm Ada.", 'I bake sourdough every morning.'], 'voice' => 'Kore',
+            'scenes' => [['label' => 'Ada', 'start' => 0, 'end' => 15, 'idea' => 'Bread']], 'media' => [['kind' => 'voiceover', 'description' => 'x'], ['kind' => 'music', 'description' => 'warm']]];
+        Http::fake(['api.anthropic.com/*' => function ($r) use (&$sent, $plan, $voice, $song) {
+            $sent[] = $r->data(); $body = json_encode($r->data());
+            if (str_contains($body, 'creative planner')) $text = json_encode($plan);
+            elseif (str_contains($body, 'decide its role')) $text = json_encode(['files' => [(string) $voice->id => ['role' => 'source', 'kind' => 'voice', 'use' => 'narration'], (string) $song->id => ['role' => 'source', 'kind' => 'music', 'use' => 'background music']]]);
+            else $text = '{"question": null}';
+            return Http::response(['id' => 'm'.count($sent), 'content' => [['type' => 'text', 'text' => $text]], 'usage' => ['input_tokens' => 100, 'output_tokens' => 10]]); }]);
+        $p = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'p1', true)['plan'];
+        // The reading heard the recording's words, and none in the track.
+        $reading = collect($sent)->first(fn ($d) => str_contains(json_encode($d), 'decide its role'));
+        $this->assertStringContainsString("heard: \\\"Hi, I'm Ada", json_encode($reading));
+        $this->assertStringContainsString('no words heard', json_encode($reading));
+        $this->assertSame(['voice', 'music'], [json_decode(DB::table('create_attachments')->where('asset_id', $voice->id)->value('notes_json'), true)['kind'], json_decode(DB::table('create_attachments')->where('asset_id', $song->id)->value('notes_json'), true)['kind']]);
+        // Their recording says the script and their track is the bed: nothing is bought for either.
+        $kinds = array_column($p['media'], 'kind');
+        $this->assertNotContains('voiceover', $kinds);
+        $this->assertNotContains('music', $kinds);
+        $this->assertSame(["Hi, I'm Ada.", 'I bake sourdough every morning.'], $p['narration']);
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);

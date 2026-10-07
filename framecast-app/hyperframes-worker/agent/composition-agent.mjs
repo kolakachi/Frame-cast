@@ -58,6 +58,14 @@ export async function pinnedKits(guidanceDirectory,plan){
  if(typeof plan?.scratch_guide==='string')out+=plan.scratch_guide.slice(0,6000);
  return out;
 }
+/** The user's own voice recording and music track, added as the narration and the bed when the plan bought neither. */
+export function withOwnAudio(planMedia=[],manifest=[]){
+ const own=kind=>(manifest||[]).find(f=>f.purpose==='source'&&f.asset_type==='audio'&&f.kind===kind&&f.name);
+ let out=planMedia;
+ if(own('voice')&&!out.some(m=>['voiceover','cloned_voiceover','ugc_take'].includes(m.kind)&&m.status==='succeeded'&&m.file))out=[...out,{kind:'voiceover',status:'succeeded',file:own('voice').name,own:true}];
+ if(own('music')&&!out.some(m=>m.kind==='music'&&m.status==='succeeded'&&m.file))out=[...out,{kind:'music',status:'succeeded',file:own('music').name,own:true}];
+ return out;
+}
 export async function executeCompositionAgent({directory,input,manifest,planMedia=[],callPrefix='agent',provider,begin,settle,bindPrediction,receipt,invoke,transcribe,buy,guidanceDirectory,signal,stopRequested=()=>false,onProgress,onTrace}) {
  const assets=[];
  for(const file of manifest){
@@ -77,6 +85,10 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  }
  // Bought music gets a beat grid up front, so cuts and pops can land on the beat.
  let musicBeats=null;
+ // The user's own sound: their voice recording is the narration and their track the music bed, exactly where bought
+ // ones would be (beat timing, beat grid, ducking, fade, checks), unless the plan bought its own. Their voice is never
+ // sped up or re-spaced.
+ planMedia=withOwnAudio(planMedia,manifest);
  const music=planMedia.find(m=>m.kind==='music'&&m.status==='succeeded'&&m.file);
  if(music&&invoke)try{const r=await invoke('media',{op:'beats',input:music.file,signal});if(r?.ok&&r.beats)musicBeats={file:music.file,...r.beats};}catch{/* the build works without it */}
  // Kept beside the run so it is clear afterwards whether the agent had a grid.
@@ -120,7 +132,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   const step=(r,op,params)=>{made.push({path:r.output,sha256:r.sha256,derivedFrom:file,operation:op,params,sourceMap:r.source_map??null});
    const mapped=mapThrough(words.map(([text,start,end])=>({text,start,end})),[{operation:op,params,sourceMap:r.source_map??null}]);
    file=r.output;words=mapped.map(w=>[w.text,w.start,w.end]);};
-  if(narrationTiming.take){/* a take is never sped up or re-spaced: its picture and words are one */}
+  if(narrationTiming.take||voice?.own){/* a take, or the user's own recording, is never sped up or re-spaced */}
   else if(last>room+0.05){const params={factor:+Math.min(1.25,last/room).toFixed(3)};step(await media('speed',file,params),'speed',params);}
   else if(narrationTiming.suggestion?.insert?.length){const params={insert:narrationTiming.suggestion.insert};step(await media('space',file,params),'space',params);}
   if(file!==spoken.file){

@@ -672,6 +672,8 @@ class PlanService
             return $asset ? ['asset_id' => (int) $asset->id, 'title' => (string) $asset->title, 'asset_type' => $asset->asset_type, 'purpose' => $a->purpose,
                 'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json,
                 'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null,
+                // What a sound or video file says, so the user's own recording can be the narration word for word.
+                ...(in_array($asset->asset_type, ['audio', 'video'], true) && $a->purpose === 'source' && ($t = trim((string) $asset->transcript_text)) !== '' ? ['speech' => mb_substr($t, 0, 1500)] : []),
                 // What the file is and what the user wants from it (and, for a frame of their current video, its time).
                 ...(($n = json_decode((string) ($a->notes_json ?? ''), true)) ? ['notes' => array_intersect_key($n, array_flip(['kind', 'use', 'time']))] : []),
                 // An SVG is checked against the rig contract when uploaded; only a character (or a rig-ready file) is a
@@ -821,8 +823,12 @@ class PlanService
             $voice = $ctx['previous_plan']['approved_voice'] ?? $voice;
             $callouts = $ctx['previous_plan']['approved_copy'] ?? $callouts;
         }
-        // A script needs a voice to say it: make sure the plan buys one.
-        if ($narration && ! collect($media)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true))) {
+        // The user's own voice recording is the narration and their own music the bed: nothing is bought to replace them.
+        $own = fn (string $kind) => collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['notes']['kind'] ?? '') === $kind);
+        $ownVoice = $own('voice'); $ownMusic = $own('music');
+        $media = collect($media)->reject(fn ($m) => ($ownVoice && in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)) || ($ownMusic && $m['kind'] === 'music'))->values()->all();
+        // A script needs a voice to say it: make sure the plan buys one (unless the user's own recording says it).
+        if ($narration && ! $ownVoice && ! collect($media)->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true))) {
             $kind = $voice === 'clone' && $known->has('cloned_voiceover') ? 'cloned_voiceover' : 'voiceover';
             if ($known->has($kind)) $media[] = ['kind' => $kind, 'description' => 'Narration of the approved script', 'credits' => (int) $known[$kind]['credits']];
         }

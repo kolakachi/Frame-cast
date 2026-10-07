@@ -84,6 +84,8 @@ class InputSnapshotService
                         'sha256' => $hash, 'bytes' => $bytes, 'mime_type' => $mime, 'asset_type' => $asset->asset_type,
                         'storage_path' => $path, 'duration_seconds' => $asset->duration_seconds,
                         'transcript' => mb_substr((string) $asset->transcript_text, 0, 20000),
+                        // What the file is (voice, music, sound, logo...) and what the user wants from it, read when the brief was sent.
+                        ...(($n = json_decode((string) ($attachment->notes_json ?? ''), true)) ? array_filter(['kind' => $n['kind'] ?? null, 'use' => $n['use'] ?? null]) : []),
                         ...(is_array(data_get($asset->metadata_json, 'rig')) ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),
                         // A character's talking face: the resting head with eye and mouth patches (other attached assets) laid over it.
                         ...(is_array(data_get($asset->metadata_json, 'face_kit')) ? ['face_kit' => data_get($asset->metadata_json, 'face_kit')] : []),

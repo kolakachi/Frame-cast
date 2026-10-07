@@ -22,7 +22,7 @@ class AttachmentRoles
     public const MODEL = 'claude-haiku-4-5-20251001';
     public const ASK_PREFIX = 'role:';
     public const FILE_PREFIX = 'file:';
-    public const KINDS = ['logo', 'product_photo', 'photo', 'screenshot', 'illustration', 'character', 'clip_speech', 'clip', 'audio', 'other'];
+    public const KINDS = ['logo', 'product_photo', 'photo', 'screenshot', 'illustration', 'character', 'clip_speech', 'clip', 'voice', 'music', 'sound', 'audio', 'other'];
 
     /**
      * Settles every 'auto' attachment it can. Returns ['roles' => asset_id => purpose (settled now), 'unsure' => [asset_id, ...]].
@@ -83,7 +83,10 @@ class AttachmentRoles
         if (! $assets || config('create.mode') === 'fixture' || (string) config('services.anthropic.key') === '') return null;
         $content = [];
         foreach (array_slice($assets, 0, 6) as $a) {
-            $content[] = ['type' => 'text', 'text' => 'File id '.$a->id.': "'.$a->title.'", '.$a->asset_type.($a->duration_seconds ? ', '.round((float) $a->duration_seconds).' s' : '')];
+            // A sound file is listened to (once, cached on the file): words mean a voice; none means music or a sound.
+            $heard = $a->asset_type === 'audio' ? $this->hear($a) : null;
+            $content[] = ['type' => 'text', 'text' => 'File id '.$a->id.': "'.$a->title.'", '.$a->asset_type.($a->duration_seconds ? ', '.round((float) $a->duration_seconds).' s' : '')
+                .($heard === null ? '' : ($heard === '' ? ', no words heard' : ', heard: "'.mb_substr($heard, 0, 400).'"'))];
             if ($image = $this->look($a)) $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $image[0], 'data' => base64_encode($image[1])]];
         }
         if ($current) {
@@ -96,6 +99,7 @@ class AttachmentRoles
             .($current ? "\"current\": a picture of the user's own current video (shown above): a screenshot of one of its frames, possibly with a phone or browser around it. They are pointing at that moment to change it. Give its time in seconds.\n" : '')
             ."\"unsure\": what they wrote and what the file shows do not settle it, and guessing wrong would matter. Prefer unsure over a guess.\n"
             ."A finished ad or post for a different brand or product than the user's is a reference unless they say to use it.\n"
+            ."A sound file: voice when it is someone speaking (their narration or voiceover), music when it is a track, sound when it is a short effect (a few seconds or less).\n"
             ."Also say what each file is (kind: ".implode(', ', self::KINDS)."), what the user wants from it in a few words from what they wrote (use; empty when they did not say), and only when its use is genuinely open and it matters (where a logo goes, which moment a clip fills, what to change on a current frame), one short question (ask, under 14 words) with 2 to 4 short suggested answers (options). Infer whatever you can; never ask what the prompt or the file already settles.\n"
             .'Reply with JSON only: {"files": {"<id>": {"role": "source" | "reference"'.($current ? ' | "current"' : '').' | "unsure", "kind": string, "use": string, "time": number | null, "ask": string | null, "options": [string]}}}'
             ."\n\nWhat the user wrote:\n".mb_substr($briefs, 0, 6000)];
@@ -138,6 +142,26 @@ class AttachmentRoles
             $bytes = $r->successful() && is_file($dir.'/sheet.jpg') ? (string) file_get_contents($dir.'/sheet.jpg') : null;
             @unlink($dir.'/sheet.jpg'); @rmdir($dir);
             return $bytes ?: null;
+        } catch (\Throwable) { return null; }
+    }
+
+    /** What a sound file says: its transcript ('' when nothing is said), transcribed once and kept on the file in the form
+     *  the build reads, so it is never transcribed twice. Null when it cannot be heard (the reading goes on without it). */
+    private function hear(Asset $a): ?string
+    {
+        $cached = data_get($a->metadata_json, 'create_transcript');
+        if (is_array($cached) && isset($cached['text'])) return (string) $cached['text'];
+        try {
+            $bytes = app(StorageService::class)->get((string) $a->storage_url);
+            if (! is_string($bytes) || $bytes === '' || strlen($bytes) > 60_000_000) return null;
+            $tmp = tempnam(sys_get_temp_dir(), 'hear').(str_contains((string) $a->mime_type, 'wav') ? '.wav' : '.mp3');
+            file_put_contents($tmp, $bytes);
+            try { $r = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($tmp, (string) $a->mime_type); } finally { @unlink($tmp); }
+            if (($r['provider_key'] ?? '') === 'local_fallback') return null;
+            $record = ['sha256' => hash('sha256', $bytes), 'provider' => $r['provider_key'] ?? null, 'model' => $r['model'] ?? null, 'text' => mb_substr((string) ($r['transcript'] ?? ''), 0, 20000),
+                'words' => array_slice((array) ($r['words'] ?? []), 0, 3000), 'segments' => array_slice((array) ($r['segments'] ?? []), 0, 600), 'created_at' => now()->toIso8601String()];
+            $a->forceFill(['metadata_json' => array_merge($a->metadata_json ?? [], ['create_transcript' => $record])] + ((string) $a->transcript_text === '' ? ['transcript_text' => $record['text']] : []))->save();
+            return trim($record['text']);
         } catch (\Throwable) { return null; }
     }
 
