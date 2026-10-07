@@ -92,6 +92,18 @@ async function animateResult(){await guarded(async()=>{const rev=currentRevision
 function briefKeysKept() { let saved = {}; try { saved = JSON.parse(conversation.value?.settings_json || '{}') } catch { saved = {} }
   return (saved.from_brief || []).filter(k => JSON.stringify(settingsDraft.value[k] ?? null) === JSON.stringify(saved[k] ?? null)) }
 const fromBrief = key => { try { return (JSON.parse(conversation.value?.settings_json || '{}').from_brief || []).includes(key) } catch { return false } }
+// What applying Details would do now: a change to a setting the plan was made for needs a new plan; after a video,
+// changes apply to the next version; the format is fixed once the plan's pictures are made.
+const PLAN_SETTINGS = ['aspect_ratio', 'duration_seconds', 'language', 'audio', 'captions', 'no_captions', 'caption_text', 'reference_match']
+const formatLocked = computed(() => !!data.value?.settings_locks?.format)
+const settingsImpact = computed(() => {
+  let saved = {}; try { saved = JSON.parse(conversation.value?.settings_json || '{}') } catch { saved = {} }
+  const changed = PLAN_SETTINGS.some(k => JSON.stringify(settingsDraft.value[k] ?? null) !== JSON.stringify(saved[k] ?? null))
+  const last = plans.value.at?.(-1)
+  if (changed && last && isLivePlan(last) && !last.built) return 'replan'
+  if (last?.built || (data.value?.revisions || []).length) return 'next'
+  return null
+})
 const hasReferenceVideo = computed(() => (data.value?.attachments || []).some(a => a.purpose === 'reference' && a.asset_type === 'video'))
 async function saveSettings() {await guarded(async()=>{await api.patch(base(),{expected_version:conversation.value.version,settings:{...settingsDraft.value,from_brief:briefKeysKept(),reference_effort:settingsDraft.value.reference_effort||null,reference_match:settingsDraft.value.reference_match||null,approved_facts:factsText.value.split('\n').map(s=>s.trim()).filter(Boolean)}});quote.value=null;await refresh()})}
 function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON.parse(conversation.value?.settings_json||'{}')};settingsDraft.value.reference_effort||='';settingsDraft.value.reference_match||='';factsText.value=(settingsDraft.value.approved_facts||[]).join('\n')}catch{}details.value=true}
@@ -1288,7 +1300,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                   <template v-else>
                     <p v-if="planByMessage[m.id].status === 'proposed'" class="plan-lead">{{ planByMessage[m.id].plan.summary }}</p>
                     <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.creative_intent?.reason" class="plan-approach" label="Creative approach" :text="planByMessage[m.id].plan.creative_intent.reason" />
-                    <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
+                    <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief or details changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
                     <p v-if="isLivePlan(planByMessage[m.id]) && planByMessage[m.id].plan.assumptions?.length" class="plan-assumed"><b>Assumed:</b> {{ planByMessage[m.id].plan.assumptions.join(' · ') }}. Tell me if any is wrong.</p>
                     <div v-if="waysFor(planByMessage[m.id]).length > 1" class="dir-strip">
@@ -1552,7 +1564,8 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
               <details v-if="paid" class="panel-edit"><summary>Change output</summary>
                 <div class="out-grid">
                   <div class="out-field"><span class="out-label">Format <i v-if="fromBrief('aspect_ratio')" class="out-tag">from your brief</i></span>
-                    <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" /></div>
+                    <UiSelect v-model="settingsDraft.aspect_ratio" label="Format" :disabled="formatLocked" :options="[{value:'9:16',label:'Portrait · 9:16'},{value:'16:9',label:'Landscape · 16:9'},{value:'1:1',label:'Square'},{value:'4:5',label:'Feed · 4:5'}]" />
+                    <small v-if="formatLocked" class="muted out-hint">Set by the pictures already made for this plan. Start a new version to change it.</small></div>
                   <label v-if="kind === 'video'" class="out-field"><span class="out-label">Length <i v-if="fromBrief('duration_seconds')" class="out-tag">from your brief</i></span>
                     <span class="out-length"><input v-model.number="settingsDraft.duration_seconds" type="number" min="5" max="30" class="input" aria-label="Length in seconds" /><span class="muted">seconds</span></span></label>
                   <div v-if="kind === 'video'" class="out-field"><span class="out-label">Frame rate</span>
@@ -1574,7 +1587,12 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                     <label class="out-check out-wide"><input v-model="settingsDraft.motion_blur" type="checkbox" /><span><b>Motion blur on the final video</b><small class="muted">Smoother fast motion; the final render takes about twice as long.</small></span></label>
                   </template>
                 </div>
-                <div class="out-actions"><button type="button" class="btn btn--primary btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply</button></div>
+                <div class="out-actions">
+                  <small v-if="active" class="muted out-hint">Locked while your video is being made.</small>
+                  <small v-else-if="settingsImpact === 'replan'" class="out-hint out-hint--warn">This changes what the plan was made for: it will need a new plan (about 30 credits).</small>
+                  <small v-else-if="settingsImpact === 'next'" class="muted out-hint">Applies to your next version.</small>
+                  <button type="button" class="btn btn--primary btn--sm" :disabled="locked || !!active || !canWrite" @click="saveSettings">Apply</button>
+                </div>
               </details>
             </section>
             <section v-if="paid">
@@ -2294,7 +2312,10 @@ label.tray-note{white-space:normal}
 .out-check input{margin-top:3px}
 .out-check span{display:flex;flex-direction:column;gap:2px;font-size:13px}
 .out-check small{font-size:12px}
-.out-actions{display:flex;justify-content:flex-end;margin-top:12px}
+.out-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:12px}
+.out-hint{font-size:12px;line-height:1.4}
+.out-actions .out-hint{margin-right:auto}
+.out-hint--warn{color:var(--warn,#f0b429)}
 .dir-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;margin:0 0 6px;padding:6px 6px 6px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);font-size:13px}
 .dir-strip__more{margin-left:auto;color:var(--text-3,#8f95a1);font-size:12px}
 .ways-intro{margin:6px 0 10px;color:var(--text-2,#b7bcc6)}

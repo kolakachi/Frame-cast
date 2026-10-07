@@ -258,6 +258,8 @@ class PlanService
         $parts = ['planner' => array_sum(array_map(fn ($call) => CostEstimate::callCredits((array) $call), (array) ($result['usage']['calls'] ?? [])))]
             + array_map(fn ($micro) => (int) ceil($micro / 4000), PlanningCosts::take($id));
         $planningCredits = array_sum($parts);
+        // The settings this plan was made for: changing one of them in Details makes the plan out of date.
+        $plan['settings_basis'] = self::settingsBasis(json_decode((string) $c->settings_json, true) ?: []);
         $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'parts' => $parts, 'charge' => CostEstimate::planningCharge($planningCredits), 'charged' => 0, 'waived' => false];
         if ($plan['planning_charge']['charge'] > 0) $activity->item('Planning · '.$plan['planning_charge']['charge'].' credits (half price)');
         $plan['activity'] = $activity->finish();
@@ -455,10 +457,33 @@ class PlanService
             + (($guide = FormatPlaybooks::guide($p)) !== '' ? ['scratch_guide' => $guide] : []);
     }
 
+    /** The settings a plan depends on (its shape, words and sound); frame rate and motion blur only change the render. */
+    public const PLAN_SETTINGS = ['aspect_ratio', 'duration_seconds', 'language', 'audio', 'captions', 'no_captions', 'caption_text', 'reference_match'];
+
+    public static function settingsBasis(array $settings): array
+    {
+        $basis = [];
+        foreach (self::PLAN_SETTINGS as $k) $basis[$k] = $settings[$k] ?? null;
+        return $basis;
+    }
+
+    /** Out of date: the brief changed after the plan, or a setting it was made for changed in Details. */
     public function stale(object $plan, object $c): bool
     {
         $last = DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'user')->max('sequence');
-        return (int) $last !== (int) $plan->brief_sequence;
+        if ((int) $last !== (int) $plan->brief_sequence) return true;
+        $basis = json_decode((string) $plan->plan_json, true)['settings_basis'] ?? null;
+        return is_array($basis) && $basis !== self::settingsBasis(json_decode((string) $c->settings_json, true) ?: []);
+    }
+
+    /** The format cannot change once the current plan has bought pictures or clips: they are drawn for it. */
+    public static function formatLocked(string $conversationId): bool
+    {
+        // The current plan: not superseded by a newer one and not built yet.
+        foreach (DB::table('create_plans')->where('conversation_id', $conversationId)->where('status', '!=', 'superseded')->pluck('id') as $planId) {
+            if (! self::built($planId) && DB::table('create_plan_media')->where('plan_id', $planId)->where('status', 'succeeded')->exists()) return true;
+        }
+        return false;
     }
 
     public function present(object $row, object $c): array

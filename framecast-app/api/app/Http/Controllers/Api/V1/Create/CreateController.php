@@ -71,6 +71,8 @@ class CreateController extends Controller
         return response()->json(['data' => [
             'conversation' => $c,
             'credit_availability' => $this->service->creditAvailability($r->user()),
+            // What Details may change now: the format is fixed once the current plan has bought pictures or clips.
+            'settings_locks' => ['format' => \App\Services\Create\PlanService::formatLocked($id)],
             // A question asked before planning is marked, so the conversation can offer to skip it.
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at', 'idempotency_key'])
                 ->map(fn ($m) => ['id' => $m->id, 'role' => $m->role, 'content' => $m->content, 'created_at' => $m->created_at,
@@ -105,6 +107,7 @@ class CreateController extends Controller
             if(isset($input['settings'])) {
                 abort_if($c->archived_at || DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists(),409,'Wait for the current creation before changing settings.');
                 $settings=\App\Services\Create\OutputSettings::normalize(array_merge(json_decode($c->settings_json,true),$input['settings'],isset($input['settings']['duration_seconds'])?['duration_chosen'=>true]:[]));
+                abort_if(($settings['aspect_ratio'] ?? null) !== (json_decode($c->settings_json,true)['aspect_ratio'] ?? null) && \App\Services\Create\PlanService::formatLocked($id),409,'The format is set by the pictures already made for this plan. Start a new version to change it.');
                 abort_if(!empty($settings['style_id']) && !DB::table('create_styles')->where('workspace_id',$r->user()->workspace_id)->where('id',$settings['style_id'])->exists(),422,'That style no longer exists.');
                 abort_unless($settings['output_kind']===(json_decode($c->settings_json,true)['output_kind']??'video'),422,'Start a new conversation for a different output type.');
                 $changes['settings_json']=json_encode($settings);

@@ -2813,6 +2813,30 @@ class CreateIntegrationTest extends TestCase
         $this->assertThrows(fn () => \App\Services\Create\OutputSettings::normalize(['from_brief' => ['style_pack']]), \Illuminate\Validation\ValidationException::class);
     }
 
+    public function test_details_changes_make_the_plan_out_of_date_and_the_format_locks_once_its_pictures_exist(): void
+    {
+        $c = $this->brief();
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $p = $plans->propose($this->owner, $c->id, $version(), 'lock-1');
+        $row = fn () => DB::table('create_plans')->where('id', $p['id'])->first();
+        $this->assertFalse($plans->stale($row(), $this->conversations->conversation($this->owner, $c->id)));
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $patch = fn ($settings) => $this->actingAs($this->owner)->patchJson('/api/v1/create/conversations/'.$c->id, ['expected_version' => $version(), 'settings' => $settings]);
+        // Frame rate only changes the render: the plan stands.
+        $patch(['frame_rate' => 30])->assertOk();
+        $this->assertFalse($plans->stale($row(), $this->conversations->conversation($this->owner, $c->id)));
+        // Length is what the plan was timed for: it is out of date.
+        $patch(['duration_seconds' => 20])->assertOk();
+        $this->assertTrue($plans->stale($row(), $this->conversations->conversation($this->owner, $c->id)));
+        // Pictures made for the current plan fix its format.
+        $fresh = $plans->propose($this->owner, $c->id, $version(), 'lock-2');
+        DB::table('create_plan_media')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c->id, 'plan_id' => $fresh['id'], 'item_index' => 0, 'kind' => 'reference_sheet', 'description_hash' => str_repeat('a', 64), 'status' => 'succeeded', 'created_at' => now(), 'updated_at' => now()]);
+        $this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->assertJsonPath('data.settings_locks.format', true);
+        $patch(['aspect_ratio' => '16:9'])->assertStatus(409);
+        $patch(['duration_seconds' => 15])->assertOk();
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);
