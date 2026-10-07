@@ -55,7 +55,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 
 | ID | Item | Status | Next | Detail |
 |---|---|---|---|---|
-| S9 | "Change…" from the video: the parts the video is made of (pictures and clips, logo, footage, words, voice, music, look), each with what you can do and its price; "Change this moment" on the paused player; a cost footer; edits planned as one change, unchanged parts reused | open | owner OK on `create-ui/change-from-video.html`, then build | archive: steps-asking-plan |
+| S9 | "Change…" from the video, simple by default: "Change this moment" on the paused player = the frame + one prompt box + "✦ Suggest a change" (AI drafts an editable change from the frame) + quick ideas; a short list of parts with one Change button each (use my file free · make a new one, priced · describe it); one total, breakdown on demand; edits planned as one change, unchanged parts reused | open | owner OK on `create-ui/change-from-video.html`, then build | archive: steps-asking-plan |
 | S10 | Pause and ask inside a step (at most 2 questions), resume without re-approval | open | build | archive: steps-asking-plan |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count, opening hero | partly | build | archive: from-scratch-plan |
 | I7 | Tune the overlap and lopsided checks: they have not caught a real case yet ("SHOOT" under a line, crammed endings) | open | tune on the next builds | `cd5bb2cc` |

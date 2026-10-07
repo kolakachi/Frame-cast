@@ -105,6 +105,23 @@ html,body{overflow-x:hidden}
 .cost .total{border-top:1px solid var(--line-2);padding-top:4px;margin-top:2px;color:var(--text);font-weight:600}
 .cost .note{color:var(--text-3);font-size:11.5px}
 .pdw-foot .btn{white-space:nowrap}
+.simple{display:flex;flex-direction:column;gap:8px}
+.mbox{display:grid;grid-template-columns:64px 1fr;gap:10px;padding:10px;border:1px solid var(--accent-line);border-radius:12px;background:var(--bg-3);box-shadow:0 0 0 1px var(--accent-line) inset}
+.mbox .thumb{width:64px;height:84px}
+.mbox textarea{width:100%;border:1px solid var(--line-3);border-radius:8px;background:var(--bg-2);color:var(--text);padding:8px 9px;font:13px var(--sans);resize:none}
+.ideas{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.idea{border:1px dashed var(--line-3);border-radius:999px;padding:3px 10px;background:transparent;color:var(--text-2);font:12px var(--sans);cursor:pointer}
+.idea--ai{border-style:solid;border-color:var(--accent-line);color:var(--accent)}
+.prow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
+.prow .thumb{width:40px;height:52px;flex:none}
+.prow .thumb--sq{height:40px}
+.prow__name{font-size:13px;font-weight:600;flex:1;min-width:0}
+.prow__name small{display:block;font-weight:400;color:var(--text-3);font-size:11.5px}
+.prow--on{border-color:var(--accent-line)}
+.linkish{background:none;border:0;color:var(--text-2);font:12.5px var(--sans);text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:0;align-self:flex-start}
+.total-line{display:flex;align-items:baseline;gap:8px;font-size:13px}
+.total-line b{font-size:14px}
+
 .msub{margin-top:8px;display:flex;flex-direction:column;gap:6px}
 .mrow{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:start;font-size:12px}
 .mrow > span:first-child{font:10px var(--mono);letter-spacing:.06em;color:var(--text-3);padding-top:5px}
@@ -157,7 +174,7 @@ html,body{overflow-x:hidden}
   <div class="agent-content">
     <section class="conversation" aria-label="Conversation">
       <div class="messages">
-        <p class="mock-note"><b>Change…</b> (next to Download) opens the drawer listing <b>the parts this video is made of</b>: its pictures and clips, logo, footage, words, voice, music and look, each with what you can do and <b>its price on the button</b>. <b>Change this moment</b> appears on the player whenever it is paused: it grabs that frame and its time and adds it to the drawer, with what is said there, the sounds near it and the music there, for anything that is not a single part (layout, text, motion, a line, a sound). Music, voiceover and sound effects as a whole are a <b>Sound</b> group: changing a whole track re-times the video. Every edit is collected in the drawer; <b>Plan the change</b> sends them as one change. The plan card then shows the price of only what changes, and unchanged parts are reused. Nothing is charged until that plan is approved; opening the drawer and swapping in your own files are free.</p>
+        <p class="mock-note"><b>Simple by default.</b> Pause the video and tap <b>Change this moment</b>: one prompt box for that frame, with <b>✦ Suggest a change</b> (Create looks at the frame and drafts a change you can edit) and a few quick ideas. <b>Change…</b> opens the same drawer without a moment. Parts are a short list with one <b>Change</b> button each. One total at the bottom; <b>What’s in this</b> shows the breakdown. Nothing is charged until the plan is approved.</p>
         <div class="assistant-message">
           <span class="speaker">WyvStudio <time>3:12 PM</time></span>
           <div class="result-card">
@@ -187,97 +204,53 @@ html,body{overflow-x:hidden}
 <aside class="pdw" role="dialog" aria-label="Change this video">
   <header class="pdw-head"><div><h2>Change this video</h2><span class="pdw-meta">Version 1 · your edits become version 2</span></div><button class="pdw-x" aria-label="Close">✕</button></header>
   <div class="pdw-body">
-    <p class="intro">Pick what to change. Everything you leave alone is reused as it is.</p>
-
-    <div class="group"><h3>THIS MOMENT</h3>
-      <div class="moment">
+    <div class="group"><h3>THIS MOMENT · 0:09</h3>
+      <div class="mbox">
         <div class="thumb" style="background:radial-gradient(circle at 50% 42%,#f6c98f 0 12%,#e8a25a 13% 20%,#3a2416 45%,#140c08 80%)"></div>
-        <div><div class="part__name">0:09 <small>Dropper close-up</small></div>
-          <div class="change"><textarea rows="2">Make the drop golden and slower, and keep the bottle label readable.</textarea></div>
-          <div class="msub">
-            <div class="mrow"><span>SAID HERE</span><input value="Here's the dropper."></div>
-            <div class="mrow"><span>SOUNDS</span><div><span class="snd">drip <small>0:09.1</small><button aria-label="Remove">✕</button></span><span class="snd">soft whoosh <small>0:08.6</small><button aria-label="Remove">✕</button></span><span class="snd snd--add">+ add a sound here</span></div></div>
-            <div class="mrow"><span>MUSIC HERE</span><div class="acts"><button class="act act--on">Keep</button><button class="act">Quieter here</button><button class="act">Cut out here</button><button class="act">Hit on this beat</button></div></div>
-          </div>
-          <span class="more">Editing the line re-voices only this line (3 cr). Sounds and music here change the mix, not the track.</span></div>
+        <div>
+          <textarea rows="3" placeholder="What should be different here?">Make the drop golden and slower, and keep the label readable.</textarea>
+          <div class="ideas"><button class="idea idea--ai">✦ Suggest a change</button><button class="idea">Slow this down</button><button class="idea">Bigger text</button><button class="idea">Quieter music here</button></div>
+        </div>
       </div>
     </div>
 
-    <div class="group"><h3>PICTURES AND CLIPS <span>4</span></h3>
-      <div class="part part--on">
+    <div class="group"><h3>OR CHANGE A PART</h3>
+      <div class="prow prow--on">
         <div class="thumb" style="background:linear-gradient(160deg,#fbe7d6,#e9b48f 55%,#c9875c)"></div>
-        <div><div class="part__name">Serum bottle <small>GENERATED PICTURE · 0:04–0:20</small></div>
-          <div class="part__what">Used in 3 moments, cut out over the scene.</div>
-          <div class="acts"><button class="act act--on">Replace with my file <b>free</b></button><button class="act">Make a new one <b>43 cr</b></button><button class="act">Describe…</button></div>
-          <div class="file"><i></i><span><b>bottle-front.png</b> replaces the generated bottle in all 3 moments</span></div></div>
+        <div class="prow__name">Serum bottle<small>Using your bottle-front.png</small></div>
+        <button class="act act--on">Swapped</button>
       </div>
-      <div class="part">
+      <div class="prow">
         <div class="thumb" style="background:linear-gradient(170deg,#d9b49a,#7d5642 60%,#3b261b)"></div>
-        <div><div class="part__name">Creator at the counter <small>TALKING CLIP · 0:00–0:08</small></div>
-          <div class="part__what">She speaks the hook and opens the box. A clip can be remade or swapped, not edited inside.</div>
-          <div class="acts"><button class="act">Replace with my clip <b>free</b></button><button class="act">Remake <b>264 cr</b></button><button class="act">Describe…</button></div></div>
+        <div class="prow__name">Creator at the counter<small>0:00–0:08</small></div>
+        <button class="act">Change</button>
       </div>
-      <div class="part">
+      <div class="prow">
         <div class="thumb" style="background:radial-gradient(circle at 50% 40%,#f6c98f 0 10%,#a8693d 30%,#2a1a10 75%)"></div>
-        <div><div class="part__name">Dropper close-up <small>GENERATED SHOT · 0:08–0:11</small></div>
-          <div class="part__what">Remade from your note on this moment.</div>
-          <div class="acts"><button class="act">Replace with my clip <b>free</b></button><button class="act act--on">Remake <b>165 cr</b></button><button class="act">Describe…</button></div></div>
+        <div class="prow__name">Dropper close-up<small>0:08–0:11</small></div>
+        <button class="act">Change</button>
       </div>
-      <div class="part">
+      <div class="prow">
         <div class="thumb" style="background:linear-gradient(160deg,#f5d2b8,#c88e6a 60%,#7a4c33)"></div>
-        <div><div class="part__name">Glowing skin <small>GENERATED SHOT · 0:15–0:17</small></div>
-          <div class="acts"><button class="act">Replace with my clip <b>free</b></button><button class="act">Remake <b>165 cr</b></button><button class="act">Describe…</button></div></div>
+        <div class="prow__name">Glowing skin<small>0:15–0:17</small></div>
+        <button class="act">Change</button>
       </div>
+      <div class="prow">
+        <div class="thumb thumb--sq" style="background:#fff3ea;display:grid;place-items:center;color:#c98b62;font:700 13px var(--sans)">db</div>
+        <div class="prow__name">Logo<small>End card</small></div>
+        <button class="act">Change</button>
+      </div>
+      <div class="prow">
+        <div class="thumb thumb--sq" style="background:var(--bg-2);display:grid;place-items:center;color:var(--text-3);font-size:16px">♪</div>
+        <div class="prow__name">Music and voice<small>Airy pop · Aoede, warm</small></div>
+        <button class="act">Change</button>
+      </div>
+      <button class="linkish">Edit the words</button>
     </div>
-
-    <div class="group"><h3>LOGO</h3>
-      <div class="part">
-        <div class="thumb thumb--sq" style="background:#fff3ea;display:grid;place-items:center;color:#c98b62;font:700 15px var(--sans)">db</div>
-        <div><div class="part__name">dewbloom-logo.svg <small>END CARD</small></div>
-          <div class="acts"><button class="act">Replace with a new file <b>free</b></button></div></div>
-      </div>
-    </div>
-
-    <div class="group"><h3>WORDS <span>6 LINES</span></h3>
-      <div class="lines">
-        <div><span>0:00</span><input value="I finally found a vitamin C serum that doesn't sting."></div>
-        <div><span>0:04</span><input value="Let's open it up. Dewbloom Glow Serum."></div>
-      </div>
-      <span class="more">4 more lines · new spoken words are re-voiced (3 cr); a talking clip with new words is remade</span>
-    </div>
-
-    <div class="group"><h3>SOUND · WHOLE VIDEO</h3>
-      <div class="track">
-        <div class="part__name">Music <small>AIRY MINIMAL POP · WHOLE VIDEO</small></div>
-        <div class="acts"><button class="act act--on">Keep</button><button class="act">New track <b>34 cr</b></button><button class="act">Upload mine <b>free</b></button><button class="act">No music</button></div>
-        <div class="acts"><button class="act">Under the voice</button><button class="act act--on">Softer</button><button class="act">Louder</button></div>
-      </div>
-      <div class="track">
-        <div class="part__name">Voiceover <small>AOEDE · WARM · 6 LINES</small></div>
-        <div class="acts"><button class="act act--on">Keep Aoede</button><button class="act">Another voice <b>3 cr</b></button><button class="act">Slower</button><button class="act">Faster</button></div>
-        <div class="acts"><button class="act">Says Dewbloom as “dew bloom”</button></div>
-      </div>
-      <div class="track">
-        <div class="part__name">Sound effects <small>9 IN THE VIDEO</small></div>
-        <div class="acts"><button class="act act--on">As they are</button><button class="act">Fewer</button><button class="act">More</button><button class="act">None</button></div>
-      </div>
-      <div class="warn">A new voice, a faster or slower read, or a new music track changes timing everywhere: the video is re-timed to it, so the full rebuild applies. Levels and removing a sound only change the mix.</div>
-      <span class="more">The creator’s voice is part of her talking clip: new words there mean remaking the clip (264 cr). Your own uploaded voice or music can be swapped, trimmed or kept, not re-voiced.</span>
-    </div>
-
-    <div class="group"><h3>LOOK</h3>
-      <div class="acts"><button class="act">Colours and fonts <b>free</b></button></div>
-    </div>
+    <p class="mock-note" style="margin-top:4px"><b>Change</b> on a part opens one small choice: <b>Use my file</b> (free) · <b>Make a new one</b> (price on the button) · <b>Describe it</b>. Music and voice: keep · new · use mine · none. Anything else goes in a prompt box; Create works out the rest.</p>
   </div>
   <footer class="pdw-foot">
-    <div class="cost">
-      <div><span>Planning the change</span><span>about 30</span></div>
-      <div><span>Your bottle photo</span><span>free</span></div>
-      <div><span>Remake the dropper close-up</span><span>165</span></div>
-      <div><span>Rebuilding the video around the changes</span><span>120–200</span></div>
-      <div class="total"><span>About 315–395 credits</span><span>you have 1,240</span></div>
-      <span class="note">Only planning is charged now. The rest is shown on the plan and reserved when you approve it; unused credits come back.</span>
-    </div>
+    <div class="total-line"><b>About 315–395 credits</b><span style="flex:1"></span><button class="linkish">What's in this</button></div><span class="muted" style="font-size:12px;margin-top:-4px">Nothing is charged until you approve the plan.</span>
     <div class="row"><span style="flex:1"></span><button type="button" class="btn btn--ghost btn--sm">Clear</button><button type="button" class="btn btn--primary btn--sm">Plan the change</button></div>
   </footer>
 </aside>
