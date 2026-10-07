@@ -4868,4 +4868,15 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($plan['narration'], $plan['selections']['narration']);
         $this->assertSame([['written' => 'WyvStudio', 'spoken' => 'weave studio']], $plan['spoken_names']);
     }
+
+    public function test_a_deploy_waits_only_for_running_builds_and_plans_not_work_already_needing_attention(): void
+    {
+        [, , $run] = $this->admitted(); $this->runs->claim();
+        config(['create.durable_planning' => true]);
+        $this->drainControl()->setPaused(true, 'deploy');
+        $this->artisan('create:drain', ['action' => 'quiet', '--timeout' => 0])->assertFailed();
+        DB::table('composition_runs')->where('id', $run->id)->update(['status' => 'needs_attention']);
+        $this->artisan('create:drain', ['action' => 'quiet', '--timeout' => 0])->assertSuccessful();
+        $this->assertTrue($this->drainControl()->paused(), 'quiet never resumes');
+    }
 }

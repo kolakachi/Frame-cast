@@ -39,7 +39,7 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           # docker build + migrate can run several minutes; default 10m is tight.
-          command_timeout: 30m
+          command_timeout: 100m
           # Fail the job if any command fails.
           script_stop: true
           script: |
@@ -113,8 +113,32 @@ jobs:
               exit 1
             fi
 
-            # ops/create_deploy_preflight.py (drain + persistent-storage check) is run by hand
-            # until Create's pause controls and durable planning are switched on in production.
+            # Create builds keep their lease through the API: restarting it mid-build strands the build
+            # (2026-10-07, run ba707cdc). So: build the new images while Create keeps working, then pause
+            # Create (new work waits in the queue), let running builds and plans finish, restart, resume.
+            # The commands run from the NEW image (docker compose run), so a new drain action works on
+            # the deploy that introduces it. If builds are still running after an hour the deploy stops
+            # here, leaving the old containers serving; resume always runs on the way out.
+            echo '==> Building images while Create keeps working...'
+            docker compose -f docker-compose.prod.yml build
+            CREATE_PAUSED=0
+            create_cmd() { docker compose -f docker-compose.prod.yml run --rm --no-deps -T api php artisan create:drain "$@"; }
+            resume_create() {
+              if [ "$CREATE_PAUSED" = "1" ]; then
+                if create_cmd resume >/dev/null 2>&1; then echo '==> Create resumed'; else echo '!!! Create could not be resumed: run `php artisan create:drain resume` on the box'; fi
+              fi
+            }
+            trap resume_create EXIT
+            if create_cmd pause --reason="deploy ${TARGET_REVISION:0:8}" >/dev/null 2>&1; then
+              CREATE_PAUSED=1
+              echo '==> Create paused: waiting for running builds and plans to finish (up to 60 min)...'
+              if ! create_cmd quiet --timeout=1800 && ! create_cmd quiet --timeout=1800; then
+                echo '!!! Create builds are still running after 60 min: not restarting. Re-run this deploy later.'
+                exit 1
+              fi
+            else
+              echo '    Create pause unavailable: continuing without it'
+            fi
 
             # Self-heal before deploying. When Docker recreates a container it
             # first renames the old one to `<short-id>_<name>`, then creates the
