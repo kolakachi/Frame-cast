@@ -417,7 +417,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
       // Open pacing errors on this draft (stillness, small text, empty frames, reading time, blank frames) are sent back once:
       // fix them, or finish again with a summary that says why each one is intentional.
       // Reading time is always sent back (words nobody can read are a fault, not a note); the rest only when asked.
-      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'&&(context.findingsBlockFinish===true||['reading_time','slideshow'].includes(f.code))):[];
+      const open=state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity==='error'&&(context.findingsBlockFinish===true||['reading_time','slideshow','edge_margin','text_overlap'].includes(f.code))):[];
       const key=state.revision+':'+open.map(f=>f.code+'@'+f.time).join(',');
       // The brief asks for icons or 3D objects and the library was never looked at: sent back once (search it and use
       // what fits, or say why none does), never forced.

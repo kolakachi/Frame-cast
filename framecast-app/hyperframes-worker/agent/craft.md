@@ -13,7 +13,8 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - For fast social titles, aim for at most 8 words at once. Educational slides, captions and UI labels can need more; preserve requested content and allow enough reading time.
 - Each headline-sized text block stays fully on screen for its length at about 17 characters a second, plus 1 s, and never less than 1 s. The check measures this (reading_time).
 - One accent per line at most (colour, italic serif or weight), on the word that carries the meaning.
-- Keep text out of the bottom caption zone and at least 6% from every edge.
+- Keep text out of the bottom caption zone and at least 6% from the sides and 4% from the top (65 px and 77 px at 1080×1920). Size display type to fit inside those margins: measure, then shrink, tighten or break the line; never let a word touch or get cut by the frame edge. A word that is meant to bleed off the frame (a giant-type wipe) carries `data-bleed` and runs well past the edge, not a few pixels. The check measures this on words at rest (edge_margin).
+- Finishing: blocks of words never lie over each other (text_overlap); give each its own space with consistent gaps (about one line height between blocks). Display type line height about 0.95 to 1.1. Pills and buttons have padding of at least half the type size vertically and the full type size horizontally. Centre a held group optically, a little above the middle; never leave the bottom half empty behind a headline crammed at the top (lopsided).
 
 ## Motion
 - Motion cards and kits are optional for animated scenes. Apply their techniques when requested; simple cuts, fades, stable footage and intentional still slides do not fail review for being simple.

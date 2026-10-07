@@ -23,7 +23,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Short-form reading speed: about 17 characters a second plus a second to find the words.
-export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15,cards:0.6,change:0.25};
+export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15,cards:0.6,change:0.25,side:0.06,top:0.04,rest:0.5,overlap:0.25,offCentre:0.18,lopsided:1.5};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
 // transform: an optional edit of index.html as served (the sound pass serves it without its audio).
@@ -68,13 +68,20 @@ function sample(minFont,smallFont){
   if(el.closest('[data-hold]'))held=true;
   const scale=el.offsetHeight?r.height/el.offsetHeight:1,size=own?parseFloat(getComputedStyle(el).fontSize)*scale:0;
   if(own&&inside&&size<smallFont&&(own.split(' ').length>=4||own.length>=20))small.push({id:key(el),text:own.slice(0,60),size:Math.round(size)});
-  things.push({...item,w:r.width,h:r.height,media,text:!!own,sig:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height),Math.round(o*20),own.slice(0,40)].join(','),live,bg});
-  if(own&&inside&&parseFloat(getComputedStyle(el).fontSize)>=minFont)texts.push({...item,text:(el.innerText||own).replace(/\s+/g,' ').trim()});
+  // The words' own box (a heading's element box spans the full width even when its words do not).
+  let words=null;if(own){const rg=document.createRange();rg.selectNodeContents(el);const b=rg.getBoundingClientRect();if(b.width>=2&&b.height>=2)words={x:b.left,y:b.top,w:b.width,h:b.height};}
+  things.push({...item,w:r.width,h:r.height,media,text:!!own,words,label:own.slice(0,30),bleed:!!el.closest('[data-bleed]'),sig:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height),Math.round(o*20),own.slice(0,40)].join(','),live,bg});
+  if(own&&inside&&parseFloat(getComputedStyle(el).fontSize)>=minFont)texts.push({...item,text:(el.innerText||own).replace(/\s+/g,' ').trim(),words});
  }
  // An accent word inside a headline is part of that headline, not a block of its own.
  const top=texts.filter(x=>!texts.some(y=>y!==x&&y.el.contains(x.el)));
+ // Separate blocks of words lying over each other (not an accent inside its headline).
+ const overlaps=[];
+ for(let i=0;i<top.length;i++)for(let j=i+1;j<top.length;j++){const a=top[i].words,b=top[j].words;if(!a||!b||top[i].el.contains(top[j].el)||top[j].el.contains(top[i].el))continue;
+  const ix=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x)),iy=Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+  const share=ix*iy/Math.max(1,Math.min(a.w*a.h,b.w*b.h));if(share>0)overlaps.push({pair:top[i].id+'-'+top[j].id,share,labels:[top[i].text.slice(0,24),top[j].text.slice(0,24)]});}
  const strip=({el,...x})=>x;
- return {texts:top.map(strip),things:things.map(strip),small,held,W,H};
+ return {texts:top.map(strip),things:things.map(strip),small,held,W,H,overlaps};
 }
 
 export async function readsCheck({root,width,height,duration,browserPath=process.env.HYPERFRAMES_BROWSER_PATH,rules=RULES}){
@@ -194,5 +201,45 @@ export function visualFindings(frames,duration,rules=RULES){
    message:`About ${Math.round(cards.length/frames.length*100)}% of the video is text on a plain background that barely moves: it reads as a slideshow of cards.`,
    fixHint:'Give the beats a picture or motion: a product shot, a 3D object or icon from the art library, a UI panel, words building on the voice, a camera push, or one element that carries from beat to beat.'});
  }
+ out.push(...spacing(frames,rules));
+ return out;
+}
+
+/** Finishing touches, measured on words at rest (an entrance or exit passing an edge is motion, not layout):
+ *  words within the side or top margin or cut by the frame edge, blocks of words lying over each other, and a held
+ *  frame whose content sits far off-centre. A word meant to bleed off the frame carries data-bleed. */
+export function spacing(frames,rules=RULES){
+ const out=[],near=new Map(),over=new Map(),still=new Map(),pairs=new Map();let lop=null,lopRun=0;
+ const W=frames[0]?.W||1080,H=frames[0]?.H||1920,side=Math.round(W*rules.side),top=Math.round(H*rules.top);
+ for(const f of frames){
+  const seen=new Set();
+  for(const x of f.things||[]){
+   if(!x.text||!x.words||x.bleed||x.bg)continue;seen.add(x.id);
+   const box=[x.words.x,x.words.y,x.words.w,x.words.h].map(Math.round).join(','),prev=still.get(x.id);
+   const run=prev&&prev.box===box?prev.run+rules.step:rules.step;still.set(x.id,{box,run});
+   const margin=Math.round(Math.min(x.words.x,W-(x.words.x+x.words.w),x.words.y));
+   if(run>=rules.rest-1e-9&&(x.words.x<side||x.words.x+x.words.w>W-side||x.words.y<top)&&!near.has(x.id))near.set(x.id,{label:x.label,t:f.t,margin});
+  }
+  for(const id of [...still.keys()])if(!seen.has(id))still.delete(id);
+  const live=new Set();
+  for(const o of f.overlaps||[]){if(o.share<rules.overlap)continue;live.add(o.pair);const run=(pairs.get(o.pair)||0)+rules.step;pairs.set(o.pair,run);if(run>=rules.rest-1e-9&&!over.has(o.pair))over.set(o.pair,{labels:o.labels,t:f.t});}
+  for(const k of [...pairs.keys()])if(!live.has(k))pairs.delete(k);
+  // Held content far from the centre: the union of what is on screen (words by their own box).
+  const boxes=(f.things||[]).filter(x=>!x.bg&&(x.media||x.words)).map(x=>x.words||x);
+  if(boxes.length){const y0=Math.min(...boxes.map(b=>b.y)),y1=Math.max(...boxes.map(b=>b.y+b.h));const c=(y0+y1)/2/H;
+   const off=(y1-y0)<H*0.5&&Math.abs(c-0.47)>rules.offCentre;
+   if(off){lopRun+=rules.step;if(lopRun>=rules.lopsided-1e-9&&!lop)lop={t:+(f.t-lopRun+rules.step).toFixed(1),where:c<0.5?'top':'bottom'};}else lopRun=0;}
+ }
+ const items=[...near.values()];
+ if(items.length)out.push({code:'edge_margin',severity:'error',time:items[0].t,
+  message:`Words sit against the frame edge (keep at least ${side} px at the sides and ${top} px at the top): ${items.slice(0,4).map(x=>`"${x.label}" ${Math.max(0,x.margin)} px at ${x.t.toFixed(1)} s`).join('; ')}${items.length>4?` and ${items.length-4} more`:''}.`,
+  fixHint:'Fit the words inside the margins (smaller size, tighter tracking or a line break), or mark a deliberate full-bleed word with data-bleed.'});
+ const pairsOut=[...over.values()];
+ if(pairsOut.length)out.push({code:'text_overlap',severity:'error',time:pairsOut[0].t,
+  message:`Words lie over other words: ${pairsOut.slice(0,3).map(p=>`"${p.labels[0]}" over "${p.labels[1]}" at ${p.t.toFixed(1)} s`).join('; ')}.`,
+  fixHint:'Give each block its own space (spacing, line height, or move one), unless the overlap is the design and both stay readable.'});
+ if(lop)out.push({code:'lopsided',severity:'warning',time:lop.t,
+  message:`From ${lop.t.toFixed(1)} s the content is held in the ${lop.where} of the frame with the rest empty.`,
+  fixHint:'Centre the group optically (a little above the middle), scale it up, or give the empty part a job.'});
  return out;
 }
