@@ -28,7 +28,8 @@ export class PilotBudget {
  async reserve(model,usd,{unlimited=false}={}){
   // The most one call of each model may be approved for (the app's policy sets each call's ceiling: the build at
   // $1.20, its reviewer at $0.30, since 2026-10-06); anything above, or an unknown model, is refused.
-  const most={'anthropic/claude-4.5-sonnet':.3,'claude-opus-5-5':1.2,'google/nano-banana':.1,'wan-video/wan-2.5-i2v':.6}[model];
+  // Haiku 5.5 and Sonnet 5.5 are the builder models a super admin may test on one conversation (settings.model_test).
+  const most={'anthropic/claude-4.5-sonnet':.3,'claude-opus-5-5':1.2,'claude-haiku-5-5':1.2,'claude-sonnet-5-5':1.2,'google/nano-banana':.1,'wan-video/wan-2.5-i2v':.6}[model];
   if(!most||!Number.isFinite(usd)||usd<=0||usd>(unlimited?5:most)+1e-9)throw Error('Unpriced pilot call');
   return this.ledger.update(ledger=>{
    const sum=ledger.calls.reduce((total,c)=>total+c.reservedUsd,0);

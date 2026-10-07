@@ -45,6 +45,7 @@ test('a call is priced up to its model\'s most: the build at $1.20 and its revie
   for(const usd of [1.2,.6,.3,.1])assert.ok(await b.reserve('claude-opus-5-5',usd));
   await assert.rejects(b.reserve('claude-opus-5-5',1.21),/Unpriced pilot call/);
   await assert.rejects(b.reserve('some-other-model',.1),/Unpriced pilot call/);
+  for(const model of ['claude-haiku-5-5','claude-sonnet-5-5'])assert.ok(await b.reserve(model,1.2),model+': a builder model a super admin may test');
   assert.ok(await b.reserve('claude-opus-5-5',2,{unlimited:true}),'unlimited testing allows up to $5');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
