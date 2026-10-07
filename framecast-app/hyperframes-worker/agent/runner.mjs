@@ -18,6 +18,8 @@ import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
 // An edit's result carries the file's whole text up to this size, so the builder never reads back what it just wrote.
 export const CURRENT_TEXT_BYTES=20000;
+// Preview turns whose frames stay in the history before the older ones are dropped together.
+export const KEPT_FRAME_TURNS=4;
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,initialTranscripts={},requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
@@ -474,21 +476,23 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
   const turns=()=>{state.turns??=[{role:'user',content:[...(initialImage&&/^data:image\/(png|jpeg);base64,/.test(initialImage)?[{type:'image',source:{type:'base64',media_type:initialImage.startsWith('data:image/png')?'image/png':'image/jpeg',data:initialImage.split(',')[1]}}]:[]),{type:'text',text:JSON.stringify({context}),cache_control:{type:'ephemeral'}}]}];return state.turns;};
   // Keep the history inside the context budget: only the latest frames stay as an image, old tool results shrink.
   const compactTurns=()=>{
-    const t=turns();let lastImage=-1;
-    t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content)&&b.content.some(x=>x.type==='image'))lastImage=k;});
-    t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
+    const t=turns();let lastImage=-1;const withImages=[];
+    t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content)&&b.content.some(x=>x.type==='image')){lastImage=k;if(withImages.at(-1)!==k)withImages.push(k);}});
+    // Old frames leave in a batch once several have built up, not one by one: changing an earlier turn makes the model
+    // provider re-cache everything after it, and those rebuilds were half of one build's cost (GTM-1 #3).
+    if(withImages.length>KEPT_FRAME_TURNS)t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
     // A file written in an earlier turn is on disk: its text leaves the history (the model reads it back if it needs it).
     // Measured as text: the one kept image is sent as an image, so its base64 does not count against the text budget.
     const over=()=>Buffer.byteLength(JSON.stringify(t,(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes;
     const lastAssistant=t.map(m=>m.role).lastIndexOf('assistant');
-    const shrinkWrites=(m)=>{for(const b of m.content)if(b.type==='tool_use'&&b.input&&typeof b.input==='object'){
+    const shrinkWrites=(m,latest=false)=>{for(const b of m.content)if(b.type==='tool_use'&&b.input&&typeof b.input==='object'){
+      if(latest&&!(b.name==='write'?Buffer.byteLength(String(b.input.content??''))<=CURRENT_TEXT_BYTES:b.name==='patch'))continue;
       if(b.name==='write'&&typeof b.input.content==='string'&&b.input.content.length>200)b.input={path:b.input.path,content:'[written earlier, '+Buffer.byteLength(b.input.content)+' bytes; '+(Buffer.byteLength(b.input.content)<=CURRENT_TEXT_BYTES?'its current text is in your latest edit result for this file':'read the file to see it')+']'};
       if(b.name==='patch'&&(String(b.input.before).length+String(b.input.after).length)>300)b.input={path:b.input.path,before:'[patched earlier]',after:'[patched earlier, '+Buffer.byteLength(String(b.input.after))+' bytes]'};
     }};
-    t.forEach((m,k)=>{if(m.role==='assistant'&&k<lastAssistant)shrinkWrites(m);});
-    // Only the newest text of each file stays: an edit's result carries the whole file, so older copies are superseded.
-    const newest=new Map();
-    t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&typeof b.content==='string'&&b.content.includes('"current":')){try{const r=JSON.parse(b.content);if(r.path&&typeof r.current==='string'){const prev=newest.get(r.path);if(prev){const o=JSON.parse(prev.content);o.current='[superseded: a later edit returned the newer text]';prev.content=JSON.stringify(o);}newest.set(r.path,b);}}catch{/* not an edit result */}}});
+    // The newest turn is shortened too when its edit result carries the file's text: shortening it a call later would
+    // change a turn the provider has already cached, and re-caching everything after it costs on every call.
+    t.forEach((m,k)=>{if(m.role==='assistant'&&k<=lastAssistant)shrinkWrites(m,k===lastAssistant);});
     if(over()&&lastAssistant>0)shrinkWrites(t[lastAssistant]);
     let guard=0;
     while(over()&&guard++<200){

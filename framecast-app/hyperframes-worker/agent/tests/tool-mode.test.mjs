@@ -49,14 +49,17 @@ test('a misused tool is an error result, not a failed run; a turn without tools 
  assert.equal(r[0].is_error,true);assert.match(r[0].content,/requires current host-provided snapshot/);
  assert.equal(state.repairs,2);
 });
-test('old frames leave the history and only the latest image stays',async()=>{
+test('old frames stay until several have built up, then leave together and only the latest image stays',async()=>{
+ const preview=k=>[use('r'+k,'visual_review',{decision:'repair',findings:'x',scores:[{time:1,score:5,problems:['small']}]}),use('p'+k,'patch',{path:'index.html',before:String(k),after:String(k+1)}),use('q'+k,'preview',{times:[1]})];
  const {seen}=await harness([
   [use('a','write',{path:'index.html',content:'<html>1</html>'}),use('b','preview',{times:[1]})],
-  [use('c','visual_review',{decision:'repair',findings:'x',scores:[{time:1,score:5,problems:['small']}]}),use('d','patch',{path:'index.html',before:'1',after:'2'}),use('e','preview',{times:[1]})],
+  preview(1),preview(2),preview(3),preview(4),
   [use('f','visual_review',{decision:'pass',findings:'ok',scores:[{time:1,score:9,problems:[]}]}),use('g','finish',{summary:'Done'})],
- ]);
- const images=seen[2].messages.flatMap(m=>m.content).flatMap(b=>b.type==='tool_result'&&Array.isArray(b.content)?b.content:[]).filter(b=>b.type==='image');
- assert.equal(images.length,1,'exactly one image in the history sent to the model');
+ ],{limits:{calls:8,repairs:4}});
+ const images=k=>seen[k].messages.flatMap(m=>m.content).flatMap(b=>b.type==='tool_result'&&Array.isArray(b.content)?b.content:[]).filter(b=>b.type==='image').length;
+ assert.equal(images(2),2,'two previews: both kept, so the cached history is not rewritten');
+ assert.equal(images(4),4,'four previews: still all kept');
+ assert.equal(images(5),1,'the fifth drops the older ones together; only the latest image stays');
 });
 test('run executes through the host tool: scratch writes do not bump the revision, outputs become protected assets, misuse is an error result',async()=>{
  const calls=[];
@@ -313,15 +316,18 @@ test('an empty text block in a reply never goes back to the model (the API refus
  assert.equal(state.status,'needs_input');
  for(const call of seen.slice(1))for(const m of JSON.parse(call.messages_json??JSON.stringify(call.messages??[])))for(const b of m.content)if(b.type==='text')assert.notEqual(String(b.text).trim(),'','no empty text block: '+JSON.stringify(m));
 });
-test('an edit returns the file as it is now, so the next patch needs no read; only the newest copy stays',async()=>{
+test('an edit returns the file as it is now, so the next patch needs no read; earlier turns are never rewritten',async()=>{
  const {state,seen}=await harness([
-  [use('a','write',{path:'index.html',content:'<html><body>v1</body></html>'})],
+  [use('a','write',{path:'index.html',content:'<html><body>v1</body>'+'x'.repeat(400)+'</html>'})],
   [use('b','patch',{path:'index.html',before:'v1',after:'v2'}),use('c','preview',{times:[1]})],
   [use('d','patch',{path:'index.html',before:'v2',after:'v3'}),use('e','preview',{times:[1]})],
   [use('f','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('g','finish',{summary:'Done'})],
  ],{limits:{calls:6,repairs:2,contextBytes:96000}});
  assert.equal(state.status,'preview_ready',state.reason);
- const results=seen[3].messages.filter(m=>m.role==='user').flatMap(m=>m.content).filter(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.includes('"current"')).map(b=>JSON.parse(b.content));
- assert.deepEqual(results.map(r=>r.current),['[superseded: a later edit returned the newer text]','[superseded: a later edit returned the newer text]','<html><body>v3</body></html>']);
- assert.ok(results.every(r=>r.path==='index.html'));
+ const results=m=>m.messages.filter(x=>x.role==='user').flatMap(x=>x.content).filter(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.includes('"current"')).map(b=>JSON.parse(b.content));
+ assert.deepEqual(results(seen[3]).map(r=>r.current.match(/v\d/)[0]),['v1','v2','v3'],'every edit result keeps its text');
+ // What a later call sends for the earlier turns is exactly what the previous call sent: the cached prefix holds.
+ const earlier=JSON.stringify(seen[2].messages.slice(0,-1)),later=JSON.stringify(seen[3].messages.slice(0,seen[2].messages.length-1));
+ assert.equal(later,earlier,'no earlier turn changes between calls');
+ assert.match(JSON.stringify(seen[1].messages),/\[written earlier/,'a write is short from the first call that sends it');
 });
