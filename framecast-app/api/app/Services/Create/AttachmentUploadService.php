@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 class AttachmentUploadService
 {
     public const TYPES = ['image/png'=>['image','png'], 'image/jpeg'=>['image','jpg'], 'image/webp'=>['image','webp'],
-        'video/mp4'=>['video','mp4'], 'audio/mpeg'=>['audio','mp3'], 'audio/wav'=>['audio','wav'], 'audio/x-wav'=>['audio','wav'], 'image/svg+xml'=>['image','svg']];
+        'video/mp4'=>['video','mp4'], 'video/quicktime'=>['video','mp4'], 'audio/mpeg'=>['audio','mp3'], 'audio/wav'=>['audio','wav'], 'audio/x-wav'=>['audio','wav'], 'image/svg+xml'=>['image','svg']];
 
     public function upload(User $user, string $conversationId, UploadedFile $file, string $purpose, string $key, int $version): Asset
     {
@@ -27,7 +27,14 @@ class AttachmentUploadService
             $path = tempnam(sys_get_temp_dir(), 'rig'); file_put_contents($path, $prepared['svg']); $size = (int) filesize($path); $rig = $prepared['rig'];
         }
         $type = self::TYPES[$mime] ?? null;
-        abort_unless($file->isValid() && $type && $size > 0 && $size <= config('create.input_file_bytes'), 422, 'Use PNG, JPEG, WebP, SVG, MP4, MP3 or WAV, up to 100 MB per file.');
+        abort_unless($file->isValid() && $type && $size > 0 && $size <= config('create.input_file_bytes'), 422, 'Use PNG, JPEG, WebP, SVG, MP4, MOV, MP3 or WAV, up to 100 MB per file.');
+        // A phone's .mov is repackaged as MP4 (streams copied, nothing re-encoded), so everything downstream reads one format.
+        if ($mime === 'video/quicktime') {
+            $mp4 = $path.'.mp4';
+            $r = \Illuminate\Support\Facades\Process::timeout(300)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $path, '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-movflags', '+faststart', $mp4]);
+            abort_unless($r->successful() && is_file($mp4) && filesize($mp4) > 0, 422, 'That .mov file could not be read. Export it as MP4 and try again.');
+            $path = $mp4; $size = (int) filesize($path); $mime = 'video/mp4';
+        }
         abort_unless(in_array($purpose,['source','reference','auto'],true),422);
         // Footage the video will cut from is made renderable once, here (references are only studied). A file whose
         // role is not decided yet is prepared too, so it is ready if the brief puts it in the video.

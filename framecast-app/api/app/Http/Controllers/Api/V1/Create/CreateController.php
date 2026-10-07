@@ -74,7 +74,9 @@ class CreateController extends Controller
             // A question asked before planning is marked, so the conversation can offer to skip it.
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at', 'idempotency_key'])
                 ->map(fn ($m) => ['id' => $m->id, 'role' => $m->role, 'content' => $m->content, 'created_at' => $m->created_at,
-                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|clarify-change|reference-match|role|study|materials):/', (string) $m->idempotency_key) ? 'question' : null]),
+                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|clarify-change|reference-match|role|study|materials|file):/', (string) $m->idempotency_key) ? 'question' : null,
+                    // A question about one of the user's files offers the answers its reading suggested.
+                    ...(preg_match('/^file:(\d+):/', (string) $m->idempotency_key, $f) ? ['options' => (array) (data_get(json_decode((string) DB::table('create_attachments')->where('conversation_id', $id)->where('asset_id', (int) $f[1])->value('notes_json'), true), 'options') ?? [])] : [])]),
             'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
                 $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
                 if (!$asset) return null;

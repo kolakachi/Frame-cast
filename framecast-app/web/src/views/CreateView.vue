@@ -1438,10 +1438,13 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
               <div v-if="pendingQuestion && !error && isMaterialsQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="Your own material">
                 <button type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith('Go without')"><span class="pd-card-label">Go without</span><span class="pd-card-detail">Plan now with illustrative versions; you can add yours later.</span></button>
               </div>
+              <div v-if="pendingQuestion && !error && pendingQuestion.options?.length" class="answer-cards" role="group" aria-label="Suggested answers">
+                <button v-for="o in pendingQuestion.options" :key="o" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o)"><span class="pd-card-label">{{ o }}</span></button>
+              </div>
               <div v-if="pendingQuestion && !error && isMatchQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How closely to follow the reference">
                 <button v-for="o in MATCH_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
               </div>
-              <p v-if="pendingQuestion && !error" class="question-hint">{{ isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) || isStudyQuestion(pendingQuestion) ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
+              <p v-if="pendingQuestion && !error" class="question-hint">{{ isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) || isStudyQuestion(pendingQuestion) || pendingQuestion.options?.length ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
               <template v-else-if="!stalePlan"><p v-if="error" class="muted">Planning didn't finish. Your brief is saved; try planning again.</p><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan()">{{ error ? 'Plan again' : 'Plan it' }}</button></template>
             </div>
             <div ref="end" />
@@ -1563,7 +1566,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
           </div>
         </SideDrawer>
       </div>
-      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
+      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,video/quicktime,.mov,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
       <CreateDialog :open="!!characterReview" title="Approve your character’s look" @close="characterReview=null">
         <template v-if="characterReview">
           <p>This preview becomes the reference for every pose and talking clip. Check the face, proportions, outfit and visual treatment before continuing.</p>

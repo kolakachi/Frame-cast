@@ -47,6 +47,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_10_06_230000_create_create_stored_files.php'))->up();
         (require database_path('migrations/2026_10_07_000000_create_create_runtime_controls.php'))->up();
         (require database_path('migrations/2026_10_07_010000_create_create_worker_assignments.php'))->up();
+        (require database_path('migrations/2026_10_07_120000_add_notes_to_create_attachments.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -2669,6 +2670,69 @@ class CreateIntegrationTest extends TestCase
         // The build gets the guide: beats with energy and holds, the concept and the motion voice.
         $guide = \App\Services\Create\FormatPlaybooks::guide($p);
         foreach (['# Format playbook: Launch or motion promo', 'energy high', '# Concept (approved)', 'back.out(1.8)'] as $part) $this->assertStringContainsString($part, $guide);
+    }
+
+    public function test_a_file_whose_use_is_open_is_asked_about_with_suggested_answers_and_every_file_is_placed_or_noted(): void
+    {
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $logo = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready', 'storage_url' => 'minio://logo.png', 'title' => 'logo.png', 'mime_type' => 'image/png']);
+        $this->conversations->attach($this->owner, $c->id, $logo->id, 'auto', 0);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'An ad for my bakery, Crumb & Co. Here is my logo.', 'expected_version' => 1, 'idempotency_key' => 'b1']);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['content' => [['type' => 'text', 'text' => json_encode(['files' => [(string) $logo->id => ['role' => 'source', 'kind' => 'logo', 'use' => '', 'time' => null, 'ask' => 'Where should your logo go?', 'options' => ['Opening', 'End card', 'Both']]]])]]])
+            ->push(['content' => [['type' => 'text', 'text' => '{"question": null}']]])]);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $asked = $plans->propose($this->owner, $c->id, $version(), 'p1');
+        $this->assertSame(['file', 'Where should your logo go?'], [$asked['needs_answer'], $asked['question']]);
+        $this->assertSame('source', DB::table('create_attachments')->where('asset_id', $logo->id)->value('purpose'));
+        $this->assertSame('logo', json_decode(DB::table('create_attachments')->where('asset_id', $logo->id)->value('notes_json'), true)['kind']);
+        // The page gets the suggested answers with the question.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $last = collect($this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->json('data.messages'))->last();
+        $this->assertSame(['question', ['Opening', 'End card', 'Both']], [$last['kind'], $last['options']]);
+        // The answer is a message the planner reads; the question is not asked again.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'End card', 'expected_version' => $version(), 'idempotency_key' => 'b2']);
+        config(['create.mode' => 'fixture']);
+        $p = $plans->propose($this->owner, $c->id, $version(), 'p2');
+        $this->assertArrayHasKey('plan', $p);
+        // A file the plan did not place is listed, so nothing the user gave disappears silently.
+        $this->assertContains('logo.png', array_merge($p['plan']['unplaced'] ?? [], array_column($p['plan']['reused'] ?? [], 'title')));
+    }
+
+    public function test_a_screenshot_of_the_current_video_is_read_as_that_moment(): void
+    {
+        $c = $this->brief();
+        // A current version with a real (tiny) video, so its frames can be shown next to the screenshot.
+        $tmp = tempnam(sys_get_temp_dir(), 'cur').'.mp4';
+        $made = \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=orange:s=90x160:d=3', '-pix_fmt', 'yuv420p', $tmp]);
+        if (! $made->successful()) $this->markTestSkipped('ffmpeg is not available here');
+        $path = 'create/previews/test/current.mp4';
+        app(\App\Services\Create\CreateStorage::class)->put($path, file_get_contents($tmp));
+        $rev = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_revisions')->insert(['id' => $rev, 'conversation_id' => $c->id, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'number' => 1, 'parent_revision_id' => null,
+            'bundle_json' => '{}', 'bundle_hash' => str_repeat('c', 64), 'artifact_path' => $path, 'artifact_hash' => str_repeat('d', 64), 'summary' => 'v1', 'created_at' => now()]);
+        DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $rev]);
+        $shot = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready', 'storage_url' => 'minio://shot.png', 'title' => 'IMG_2231.png', 'mime_type' => 'image/png']);
+        $v = (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $this->conversations->attach($this->owner, $c->id, $shot->id, 'auto', $v);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'make this text bigger', 'expected_version' => $v + 1, 'idempotency_key' => 'shot-1']);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        $sent = [];
+        Http::fake(['api.anthropic.com/*' => function ($r) use (&$sent, $shot) { $sent[] = $r->data();
+            return Http::response(['content' => [['type' => 'text', 'text' => json_encode(['files' => [(string) $shot->id => ['role' => 'current', 'kind' => 'screenshot', 'use' => 'make the text bigger', 'time' => 1.5]]])]]]); }]);
+        $c = $this->conversations->conversation($this->owner, $c->id);
+        $roles = app(\App\Services\Create\AttachmentRoles::class)->resolve($this->owner, $c);
+        $this->assertSame('current', $roles['roles'][$shot->id]);
+        $this->assertSame(1.5, json_decode(DB::table('create_attachments')->where('asset_id', $shot->id)->value('notes_json'), true)['time']);
+        $this->assertStringContainsString("CURRENT video", json_encode($sent[0]['messages']), 'the current video was shown beside the screenshot');
+        // Without a current video, "current" is not an option and such a reply is not taken.
+        $c2 = $this->brief(); $other = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready', 'storage_url' => 'minio://x.png', 'title' => 'x.png', 'mime_type' => 'image/png']);
+        $this->conversations->attach($this->owner, $c2->id, $other->id, 'auto', (int) $this->conversations->conversation($this->owner, $c2->id)->version);
+        Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => json_encode(['files' => [(string) $other->id => ['role' => 'current', 'time' => 2]]])]]])]);
+        $r2 = app(\App\Services\Create\AttachmentRoles::class)->resolve($this->owner, $this->conversations->conversation($this->owner, $c2->id));
+        $this->assertNotSame('current', $r2['roles'][$other->id] ?? null);
     }
 
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void

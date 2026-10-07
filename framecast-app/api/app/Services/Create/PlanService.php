@@ -97,12 +97,27 @@ class PlanService
             $activity->abandon();
             return ['needs_answer' => 'role', 'question' => $question, 'asset_id' => $assetId];
         }
+        // A file whose use the prompt left genuinely open (where the logo goes, what to change on a frame of their
+        // video): one question at a time, with the suggested answers the reading proposed. The answer is a message the
+        // planner reads; skipping plans on the best guess.
+        if (! $skipQuestions && ($open = AttachmentRoles::pendingAsk($id))) {
+            [$assetId, $question] = $open;
+            $next = (int) $c->version + 1;
+            DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => $question,
+                'idempotency_key' => AttachmentRoles::FILE_PREFIX.$assetId.':'.$key, 'request_hash' => hash('sha256', $question), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+            $activity->abandon();
+            return ['needs_answer' => 'file', 'question' => $question, 'asset_id' => $assetId];
+        }
         // Every file's role, every time, so the plan's activity always says what is used and what is followed.
         $placed = DB::table('create_attachments')->join('assets', 'assets.id', '=', 'create_attachments.asset_id')->where('create_attachments.conversation_id', $id)
-            ->whereIn('create_attachments.purpose', ['source', 'reference'])->orderBy('create_attachments.id')->get(['assets.title', 'create_attachments.purpose']);
+            ->whereIn('create_attachments.purpose', ['source', 'reference', 'current'])->orderBy('create_attachments.id')->get(['assets.title', 'create_attachments.purpose', 'create_attachments.notes_json']);
         if ($placed->isNotEmpty()) {
             $activity->step('Sorted your files');
-            foreach ($placed as $f) $activity->item(($f->title ?: 'A file').($f->purpose === 'source' ? ' goes in the video' : ' is the reference to follow'));
+            foreach ($placed as $f) {
+                $t = data_get(json_decode((string) $f->notes_json, true), 'time');
+                $activity->item(($f->title ?: 'A file').match ($f->purpose) { 'source' => ' goes in the video', 'current' => ' shows your video'.(is_numeric($t) ? ' at about '.$t.' s' : '').': changing that moment', default => ' is the reference to follow' });
+            }
         }
         // With a reference video, how closely to follow it is decided before planning: from Details, from the
         // brief, or by asking (a copy and an inspiration plan differently, so the planner does not guess).
@@ -608,6 +623,13 @@ class PlanService
             if (count($out) >= 9) continue;
             $asset = Asset::where('workspace_id', $user->workspace_id)->find($f['asset_id']);
             if (! $asset) continue;
+            // A picture of the user's current video: the moment they are pointing at.
+            if (($f['purpose'] ?? '') === 'current' && $asset->asset_type === 'image') {
+                try { $bytes = app(\App\Services\Media\StorageService::class)->get((string) $asset->storage_url);
+                    if (is_string($bytes) && $bytes !== '' && strlen($bytes) <= 1_500_000) $out[] = ['label' => 'The user\'s screenshot of their CURRENT video'.(isset($f['notes']['time']) ? ' at about '.$f['notes']['time'].' s' : '').' (asset '.$asset->id.'): the moment their message is about', 'media_type' => $asset->mime_type, 'data' => base64_encode($bytes)];
+                } catch (\Throwable) {}
+                continue;
+            }
             // The user's own video is seen too (a sheet of its frames): the plan never places footage it has not looked at.
             if (($f['purpose'] ?? '') === 'source' && $asset->asset_type === 'video') {
                 try { if ($path = app(\App\Services\Create\References\ReferenceSheets::class)->pathFor($asset)) $out[] = ['label' => 'Your video "'.$asset->title.'" (asset '.$asset->id.', it goes in the video): '.\App\Services\Create\References\ReferenceSheets::FRAMES.' frames in order, left to right then down', 'media_type' => 'image/jpeg', 'data' => base64_encode((string) app(\App\Services\Create\CreateStorage::class)->get($path))]; } catch (\Throwable) {}
@@ -650,7 +672,11 @@ class PlanService
             return $asset ? ['asset_id' => (int) $asset->id, 'title' => (string) $asset->title, 'asset_type' => $asset->asset_type, 'purpose' => $a->purpose,
                 'duration_seconds' => $asset->duration_seconds, 'dimensions' => $asset->dimensions_json,
                 'reference' => $a->purpose === 'reference' ? self::referenceBrief($asset) : null,
-                ...(is_array(data_get($asset->metadata_json, 'rig')) ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),
+                // What the file is and what the user wants from it (and, for a frame of their current video, its time).
+                ...(($n = json_decode((string) ($a->notes_json ?? ''), true)) ? ['notes' => array_intersect_key($n, array_flip(['kind', 'use', 'time']))] : []),
+                // An SVG is checked against the rig contract when uploaded; only a character (or a rig-ready file) is a
+                // rig. A logo or icon SVG is just a crisp picture, so its missing layers are not reported.
+                ...(is_array(data_get($asset->metadata_json, 'rig')) && (data_get($asset->metadata_json, 'rig.ready') === true || data_get(json_decode((string) ($a->notes_json ?? ''), true), 'kind') === 'character') ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),
                 ...(is_array(data_get($asset->metadata_json, 'face_kit')) ? ['face_kit' => ['expressions' => array_values(array_map(fn ($p) => (string) ($p['name'] ?? ''), (array) data_get($asset->metadata_json, 'face_kit.patches', [])))]] : [])] : null;
         })->filter()->values()->all();
         return [
@@ -716,8 +742,10 @@ class PlanService
         // The brand library's items can be used without being attached first; the plan attaches what it uses.
         $brand = collect($ctx['brand_library'] ?? [])->keyBy('asset_id')->reject(fn ($b, $id) => collect($ctx['files'])->contains('asset_id', $id));
         $reused = collect((array) ($raw['reused'] ?? []))->filter(fn ($r) => is_array($r) && ($sources->has((int) ($r['asset_id'] ?? 0)) || $brand->has((int) ($r['asset_id'] ?? 0))))
-            ->map(fn ($r) => ['asset_id' => (int) $r['asset_id'], 'title' => ($sources[(int) $r['asset_id']] ?? $brand[(int) $r['asset_id']])['title'], 'use' => $str($r['use'] ?? '', 120)]
+            ->map(fn ($r) => ['asset_id' => (int) $r['asset_id'], 'title' => ($sources[(int) $r['asset_id']] ?? $brand[(int) $r['asset_id']])['title'], 'use' => $str($r['use'] ?? '', 120)] + (($b = $str($r['beat'] ?? '', 40)) !== '' ? ['beat' => $b] : [])
                 + ($brand->has((int) $r['asset_id']) ? ['from_brand' => $brand[(int) $r['asset_id']]['role']] : []))->unique('asset_id')->values()->all();
+        // Every file the user gave for the video is placed in a beat, or the plan says why not.
+        $unplaced = $sources->reject(fn ($f, $id) => collect($reused)->contains('asset_id', $id))->map(fn ($f) => (string) $f['title'])->values()->all();
         $scenes = $image ? [] : collect((array) ($raw['scenes'] ?? []))->filter(fn ($s) => is_array($s))->map(fn ($s) => [
             'requirement_ids' => $s['requirement_ids'] ?? [], 'label' => $str($s['label'] ?? '', 40), 'start' => round(max(0, min($duration, (float) ($s['start'] ?? 0))), 1),
             'end' => round(max(0, min($duration, (float) ($s['end'] ?? 0))), 1), 'idea' => $str($s['idea'] ?? '', 160),
@@ -806,7 +834,7 @@ class PlanService
             unset($option);
         }
         unset($decision);
-        $plan = ['requirements_schema' => RequirementContract::VERSION, 'requirement_history' => $contract['requirement_history'], 'direction_notes' => $contract['direction_notes'], 'reference_evidence' => $contract['reference_evidence'], 'creative_intent' => $intent, 'character_performance' => CharacterPerformance::normalize($raw['character_performance'] ?? [], [...$ctx, '_requirement_contract' => $contract]), 'reference_observations' => $observations, 'colour_treatment' => $colour, 'summary' => $summary, 'reused' => $reused, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
+        $plan = ['requirements_schema' => RequirementContract::VERSION, 'requirement_history' => $contract['requirement_history'], 'direction_notes' => $contract['direction_notes'], 'reference_evidence' => $contract['reference_evidence'], 'creative_intent' => $intent, 'character_performance' => CharacterPerformance::normalize($raw['character_performance'] ?? [], [...$ctx, '_requirement_contract' => $contract]), 'reference_observations' => $observations, 'colour_treatment' => $colour, 'summary' => $summary, 'reused' => $reused, 'unplaced' => $unplaced, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
             // What the planner assumed rather than knew, shown on the plan card so the user can correct it.
             'assumptions' => array_values(array_slice(array_filter(array_map(fn ($a) => is_string($a) ? $str($a, 120) : '', (array) ($raw['assumptions'] ?? []))), 0, 4)), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
