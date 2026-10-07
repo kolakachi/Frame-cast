@@ -829,23 +829,17 @@ const waysPlanId = ref(null), mixText = ref(''), moreWaysBusy = ref(false)
 const waysPlan = computed(() => plans.value.find(p => p.id === waysPlanId.value) || null)
 function waysFor(p) { const c = p?.plan?.concept; return c?.idea ? [c, ...(c.alternatives || []), ...(c.more || [])] : [] }
 function openWays(p) { waysPlanId.value = p.id }
-async function pickWay(n, d) { waysPlanId.value = null; prompt.value = `Make it direction ${n}: ${d.name}`; await send() }
-async function planMix() { const t = mixText.value.trim(); if (!t) return; waysPlanId.value = null; mixText.value = ''; prompt.value = `Directions: ${t}`; await send() }
+// A direction locks when its plan is approved (the plan freezes); after that another way is a new plan for a new version.
+const wayLocked = p => !!p && (p.status !== 'proposed' || !!p.built)
+const pickedFrom = ref(null)
+async function pickWay(n, d) { const from = waysPlanId.value; waysPlanId.value = null; pickedFrom.value = from; prompt.value = `Make it direction ${n}: ${d.name}`; await send() }
+async function planMix() { const t = mixText.value.trim(); if (!t) return; pickedFrom.value = waysPlanId.value; waysPlanId.value = null; mixText.value = ''; prompt.value = `Directions: ${t}`; await send() }
 async function moreWays(p) {
   if (moreWaysBusy.value) return
   moreWaysBusy.value = true
   try { await guarded(async () => { await api.post(`${base()}/plans/${p.id}/directions`, {}); await refresh() }) } finally { moreWaysBusy.value = false }
 }
-const WAYS_SEEN = 'create:ways-seen'
-watch(() => plans.value.at?.(-1)?.id, () => {
-  const p = plans.value.at?.(-1)
-  if (!p || p.status !== 'proposed' || !isLivePlan(p) || p.plan?.concept?.given || waysFor(p).length < 2) return
-  let seen = []
-  try { seen = JSON.parse(localStorage.getItem(WAYS_SEEN) || '[]') } catch { seen = [] }
-  if (seen.includes(p.id)) return
-  try { localStorage.setItem(WAYS_SEEN, JSON.stringify([...seen.slice(-50), p.id])) } catch { /* storage refused: it still opens once now */ }
-  waysPlanId.value = p.id
-})
+
 const isLivePlan = p => p.status === 'proposed' && !p.stale && !p.plan.free_edit
 const planEditable = p => isLivePlan(p) && !p.approved && canWrite.value && !active.value
 function planPills(p) {
@@ -963,6 +957,28 @@ const stepPlan = computed(() => stepDrawer.value ? plans.value.find(p => p.id ==
 const characterStep = p => p.character_preview?.kind === 'reference_sheet' ? p.character_preview : null
 const storyboardStep = p => characterStep(p)?.approved ? p.storyboard_preview || null : null
 const stepEditable = p => isLivePlan(p) && !p.built && canWrite.value && !active.value
+// Each stage's drawer opens by itself when that stage is ready for the user, once per plan and stage in this browser,
+// and never over another open drawer: the storyboard or the character to approve, the new plan after a direction was
+// picked, or the directions of a first from-scratch plan.
+const AUTO_SEEN = 'create:drawers-seen'
+const anyDrawerOpen = () => !!(waysPlanId.value || planDrawerId.value || stepDrawer.value || details.value || versionOpen.value)
+const autoOpen = computed(() => {
+  const p = plans.value.at?.(-1)
+  if (!p || p.stale || active.value || !canWrite.value) return null
+  if (p.status === 'proposed' && storyboardStep(p) && !storyboardStep(p).approved && storyboardStep(p).images?.length) return { key: p.id + ':storyboard', open: () => openStep(p, 'storyboard') }
+  if (p.status === 'proposed' && characterStep(p) && !characterStep(p).approved && characterStep(p).images?.length) return { key: p.id + ':character', open: () => openStep(p, 'character') }
+  if (isLivePlan(p) && pickedFrom.value && pickedFrom.value !== p.id) return { key: p.id + ':plan', open: () => { pickedFrom.value = null; openPlan(p) } }
+  if (isLivePlan(p) && !p.plan?.concept?.given && waysFor(p).length > 1) return { key: p.id + ':ways', open: () => openWays(p) }
+  return null
+})
+watch(() => autoOpen.value?.key, key => {
+  if (!key || anyDrawerOpen()) return
+  let seen = []
+  try { seen = JSON.parse(localStorage.getItem(AUTO_SEEN) || '[]') } catch { seen = [] }
+  if (seen.includes(key)) return
+  try { localStorage.setItem(AUTO_SEEN, JSON.stringify([...seen.slice(-80), key])) } catch { /* storage refused: it still opens once now */ }
+  autoOpen.value.open()
+})
 function openStep(p, step) {
   stepDrawer.value = { planId: p.id, step }
   if (step === 'character') subjectAt.value = 0
@@ -1273,6 +1289,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                     <button v-if="waysFor(planByMessage[m.id]).length > 1" type="button" class="dir-strip" @click="openWays(planByMessage[m.id])">
                       <span class="muted">Direction</span> <b>{{ planByMessage[m.id].plan.concept.name }}</b>
                       <span v-if="FORMAT_LABEL[planByMessage[m.id].plan.concept.format]" class="muted">· {{ FORMAT_LABEL[planByMessage[m.id].plan.concept.format] }}</span>
+                      <span v-if="wayLocked(planByMessage[m.id])" class="muted">· locked</span>
                       <span class="dir-strip__more">{{ waysFor(planByMessage[m.id]).length - 1 }} other ways</span>
                     </button>
                     <div :class="['plan-card', { 'is-old': !isLivePlan(planByMessage[m.id]) }]">
@@ -1674,12 +1691,12 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
           <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="linkBusy" @click="closeLink">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="linkBusy || !linkUrl.trim()">{{ linkBusy ? 'Studying…' : 'Add reference' }}</button></div>
         </form>
       </CreateDialog>
-      <SideDrawer :open="!!waysPlan" title="Ways to make it" :meta="waysPlan ? waysFor(waysPlan).length + ' directions from your brief · picking one re-plans' : ''" @close="waysPlanId = null">
+      <SideDrawer :open="!!waysPlan" title="Ways to make it" :meta="waysPlan ? waysFor(waysPlan).length + ' directions from your brief · ' + (wayLocked(waysPlan) ? 'locked when the plan was approved' : 'picking one re-plans') : ''" @close="waysPlanId = null">
         <template v-if="waysPlan">
           <p class="ways-intro">I planned the first. Each is a different idea, opening and look for the same brief<template v-if="(waysPlan.plan.reused || []).length">, made with your files</template>.</p>
           <div v-for="(d, i) in waysFor(waysPlan)" :key="i + d.name" :class="['way', { 'way--on': i === 0 }]">
             <div class="way__top"><span class="way__n">{{ i + 1 }}</span><b class="way__name">{{ d.name }}</b>
-              <span v-if="i === 0" class="way__badge way__badge--on">PLANNED</span><span v-else-if="FORMAT_LABEL[d.format]" class="way__badge">{{ FORMAT_LABEL[d.format].toUpperCase() }}</span></div>
+              <span v-if="i === 0" class="way__badge way__badge--on">{{ wayLocked(waysPlan) ? 'LOCKED' : 'PLANNED' }}</span><span v-else-if="FORMAT_LABEL[d.format]" class="way__badge">{{ FORMAT_LABEL[d.format].toUpperCase() }}</span></div>
             <p class="way__idea">{{ d.idea }}</p>
             <div v-if="d.hook || d.opening" class="way__row"><span>OPENS</span><span>{{ d.hook || d.opening }}</span></div>
             <div v-if="d.look" class="way__row"><span>LOOK</span><span><span v-if="d.swatches?.length" class="way__sw"><i v-for="h in d.swatches" :key="h" :style="{ background: h }"></i></span>{{ d.look }}</span></div>
@@ -1687,16 +1704,16 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
             <div v-if="d.structure" class="way__row"><span>SHAPE</span><span>{{ d.structure }}</span></div>
             <p v-if="i === 0 && d.why" class="way__why">{{ d.why }}</p>
             <div class="way__foot">
-              <span v-if="i === 0" class="muted">This is the plan in the chat</span>
-              <template v-else><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || planning || !canWrite" @click="pickWay(i + 1, d)">Plan this way</button><small class="muted">about 30 credits</small></template>
+              <span v-if="i === 0" class="muted">{{ wayLocked(waysPlan) ? 'Locked when you approved the plan' : 'This is the plan in the chat' }}</span>
+              <template v-else><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || planning || !canWrite || !!active" @click="pickWay(i + 1, d)">{{ wayLocked(waysPlan) ? 'Start a new version this way' : 'Plan this way' }}</button><small class="muted">about 30 credits</small></template>
             </div>
           </div>
           <button v-if="(waysPlan.plan.concept.more || []).length < 9" type="button" class="btn btn--ghost btn--sm ways-more" :disabled="locked || moreWaysBusy || !canWrite" @click="moreWays(waysPlan)">{{ moreWaysBusy ? 'Thinking of more ways…' : 'More ways · 3 new ideas, a few credits' }}</button>
         </template>
         <template #footer>
           <textarea v-model="mixText" class="ways-mix" rows="2" placeholder="Mix them or describe your own: “2, with the look of 5”" aria-label="Mix the directions or describe your own"></textarea>
-          <span class="muted ways-note">Re-plans in that direction · about 30 credits</span>
-          <button type="button" class="btn btn--primary btn--sm" :disabled="!mixText.trim() || locked || planning || !canWrite" @click="planMix">Plan it</button>
+          <span class="muted ways-note">{{ waysPlan && wayLocked(waysPlan) ? 'Starts a new plan for a new version' : 'Re-plans in that direction' }} · about 30 credits</span>
+          <button type="button" class="btn btn--primary btn--sm" :disabled="!mixText.trim() || locked || planning || !canWrite || !!active" @click="planMix">Plan it</button>
         </template>
       </SideDrawer>
       <SideDrawer :open="!!drawerPlan" title="Plan" :meta="drawerPlan ? planPills(drawerPlan).join(' · ') + (isLivePlan(drawerPlan) ? '' : ' · ' + (planStatus(drawerPlan) || 'view only')) : ''" @close="planDrawerId = null">
