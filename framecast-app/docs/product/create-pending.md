@@ -47,7 +47,7 @@ Built 2026-10-06 (uncommitted), all of `create-vendor-errors-todo.md` except the
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| V8 | Reference study and transcription record vendor failures (done); final checks still skip quietly | partly | — | final checks | vendor-errors |
+| V8 | Reference reads, transcription and the final look record vendor failures, alert on our account, and say why a check could not run | done 2026-10-07 | — | — | vendor-errors |
 | V9 | Prove an alert end to end (a real mail arrives) | done 2026-10-07 | — | — | a Create health alert reached the owner |
 
 ## Build guards and caps (2026-10-06)
@@ -59,7 +59,7 @@ reference study retries a busy model, says when it is partial, and asks before a
 
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
-| BG1 | Thorough builds are reviewed before they finish (up to 4 reviewer rounds, stops when two do not improve) | ready | — | prove on a Thorough run; Standard still reserves an unused reviewer | CR1 runs |
+| BG1 | Thorough builds are reviewed before they finish (up to 4 reviewer rounds, stops when two do not improve); only Thorough holds credits for the reviewer (2026-10-07) | ready | — | prove on a Thorough run | CR1 runs |
 
 ## Generated video
 
@@ -114,7 +114,7 @@ Plan: `create-from-scratch-plan.md` (order FS3, FS1, FS2, FS4; FS4 needs your vi
 | I3 | Create on production: live for the team; remaining go-live items tracked in `create-go-live.md` (L3, L7, L8, L9, L16) | partly | see go-live | — | `create-go-live.md` |
 | I4 | Paid canary after each deploy | done | — | keep running after deploys | `create-go-live.md` L1 |
 | I5 | Brief refused by the 24-requirement limit on a re-plan | open | — | look at | verify-and-teach step 4 |
-| I6 | A test of a migrated video with expiring signed links failed once in a full run and passed on re-run (timing-sensitive) | open | — | make it deterministic | 2026-10-07 |
+| I6 | Storage tests failed now and then: test disks sat on the Mac host mount (file locks not honoured, shared by parallel runs). Each run now fakes its disks in its own folder; full suite green on the mount | done 2026-10-07 | — | — | 2026-10-07 |
 | I7 | The overlap and lopsided checks have not yet caught anything on a real video ("SHOOT" under a line, crammed endings) | open | — | tune on the next builds | `cd5bb2cc` |
 | R1 | Local acceptance on the bench (8 of 9) | blocked | bench | run | progress: rollout |
 | R2 | Limited audience with an off switch | open | R1 | build switch | progress: rollout |

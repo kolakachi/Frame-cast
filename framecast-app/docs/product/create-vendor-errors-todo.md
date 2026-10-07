@@ -41,8 +41,10 @@ abuse digest and the credit-ledger alert, nothing about vendors; the Slack log c
   send nothing. (A separate mail from the 09:00 moderation digest.)
 - [x] **Tests:** classifier fixtures; our model account out of credit → one alert, the hold, the recovery note and the
   digest line; the worker does not retry a classified refusal.
-- [ ] Not covered yet: the reference study, final checks and transcription still skip quietly on a vendor failure
-  (no incident, no alert).
+- [x] **Checks and reference reads (2026-10-07, V8):** the reference study and transcription record vendor failures; the
+  final look, `ReferenceAnalyzer` and `PageReferenceService` now do too, and alert when it is our account. A final
+  look that could not run says why in the delivery check ("the checking model is unavailable on our side") instead
+  of a bare "could not be looked at".
 
 **Decided by default (2026-10-06):** the marketer partner is not on the list (add any address to `ADMIN_ALERT_EMAILS`); Slack gets the alerts only when its bot token and channel are set.
 
