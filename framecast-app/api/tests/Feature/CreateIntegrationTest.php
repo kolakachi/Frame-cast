@@ -4737,4 +4737,19 @@ class CreateIntegrationTest extends TestCase
         $this->assertTrue(DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'assistant')->where('content', 'like', 'Every voice will say WyvStudio as “wiv studio”%')->exists());
         $this->assertSame('Try wiv studio today', \App\Services\Create\PlanMediaExecutor::pronounce('Try WyvStudio today', $this->workspace->id));
     }
+
+    public function test_one_workspace_runs_at_most_two_plans_at_once_and_its_next_plan_waits_its_turn(): void
+    {
+        config(['create.durable_planning' => true]);
+        Bus::fake();
+        $row = fn ($state) => ['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => (string) \Illuminate\Support\Str::uuid(), 'workspace_id' => $this->workspace->id, 'user_id' => $this->owner->id,
+            'idempotency_key' => \Illuminate\Support\Str::random(8), 'request_hash' => 'h', 'expected_version' => 1, 'skip_questions' => false, 'state' => $state, 'created_at' => now()->subMinutes(9), 'updated_at' => now()];
+        DB::table('create_planning_jobs')->insert([$row('running'), $row('running')]);
+        DB::table('create_planning_jobs')->insert($waiting = $row('queued'));
+        app(\App\Services\Create\PlanningJobService::class)->execute($waiting['id']);
+        $this->assertSame('queued', DB::table('create_planning_jobs')->where('id', $waiting['id'])->value('state'), 'no model work while two of its plans run');
+        Bus::assertDispatched(\App\Jobs\PlanCreateVideo::class, fn ($j) => $j->planningJobId === $waiting['id'] && $j->delay !== null);
+        // Taking its turn is not reported as stuck planning.
+        $this->assertArrayNotHasKey('planning', app(\App\Services\Create\CreateHealth::class)->problems());
+    }
 }

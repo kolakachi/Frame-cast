@@ -169,6 +169,10 @@ services:
     command: php artisan queue:work redis --queue=create-planning --tries=1 --timeout=1200 --sleep=2
     # A plan takes minutes; a deploy waits for the one in hand instead of cutting it off.
     stop_grace_period: 22m
+    # Three plans at once (each mostly waits on the model); one workspace gets at most two of them
+    # (CREATE_PLANNING_PER_WORKSPACE), so one busy workspace cannot keep the others waiting.
+    deploy:
+      replicas: 3
     env_file:
       - ./api/.env
     volumes:

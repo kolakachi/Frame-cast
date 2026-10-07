@@ -11,6 +11,7 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 /** The database is the request journal; Redis delivery is disposable and may be repeated. Paid work is not. */
 class PlanningJobService
 {
+    public const PER_WORKSPACE = 2;
     public const TIMEOUT = 1200;
     public const UNCERTAIN = 'Planning was interrupted and needs a recovery check before it can run again. Your brief is saved; no automatic retry will spend more credits.';
 
@@ -46,6 +47,13 @@ class PlanningJobService
         return $this->present(DB::table('create_planning_jobs')->where('id', $job->id)->first());
     }
 
+    /** Back in the queue for a moment while the workspace's other plans run (recovery republishes it if Redis is down). */
+    private function later(string $id): void
+    {
+        DB::table('create_planning_jobs')->where('id', $id)->where('state', 'queued')->update(['dispatched_at' => now(), 'updated_at' => now()]);
+        rescue(fn () => Bus::dispatch((new PlanCreateVideo($id))->onConnection('redis')->onQueue('create-planning')->delay(now()->addSeconds(20))), report: false);
+    }
+
     public function dispatch(string $id): void
     {
         if (app(AdmissionControl::class)->paused()) return;
@@ -69,13 +77,18 @@ class PlanningJobService
         try { app(DiskSpace::class)->admission(); }
         catch (DiskCapacityException) { return; } // Still queued; scheduler republishes after capacity returns. No paid work started.
         $token = (string) Str::uuid();
-        $claimed = DB::transaction(function () use ($id, $token) {
+        $workspace = (int) DB::table('create_planning_jobs')->where('id', $id)->value('workspace_id');
+        // Several planning workers share the queue; one workspace runs at most PER_WORKSPACE plans at once, so a
+        // workspace that sends many briefs cannot keep everyone else waiting. Its next plan waits its turn.
+        $claimed = \Illuminate\Support\Facades\Cache::lock('create-planning:ws:'.$workspace, 15)->block(10, fn () => DB::transaction(function () use ($id, $token, $workspace) {
             if (app(AdmissionControl::class)->paused(true)) return 0;
+            if (DB::table('create_planning_jobs')->where('workspace_id', $workspace)->where('state', 'running')->count() >= (int) config('create.planning_per_workspace', self::PER_WORKSPACE)) return -1;
             return DB::table('create_planning_jobs')->where('id', $id)->where('state', 'queued')->update([
                 'state' => 'running', 'execution_token' => $token, 'started_at' => now(),
                 'deadline_at' => now()->addSeconds(self::TIMEOUT + 120), 'updated_at' => now(),
             ]);
-        });
+        }));
+        if ($claimed === -1) { $this->later($id); return; }
         if (! $claimed) return; // A duplicated queue delivery never repeats model calls.
         $job = DB::table('create_planning_jobs')->where('id', $id)->first();
         try {

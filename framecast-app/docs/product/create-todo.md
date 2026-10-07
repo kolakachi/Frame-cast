@@ -25,7 +25,7 @@ Sections 1 and 2 make Create safe to run; they do not prove it is good enough or
 
 1. **GTM-1 acceptance round now** (10 briefs, below). It also proves section 2 (BG1 on a Thorough brief, FS8 with
    own audio, I7 and FS5 on the motion-graphics briefs). The outputs are candidates for the landing page.
-2. **Drills alongside** (G-REC, G-DEP, L16, G-FAIR), about 1–2 days, no new features.
+2. **Drills alongside** (G-REC, G-DEP, L16, G-FAIR) and PLAN-CAP, about 1–2 days, no new features.
 3. **S9 cut down for launch:** "Change…" reopens the plan; the full step-by-step version waits for customer demand.
 4. **Off the launch path** (stay in the todo): AB3, I2, D7, 0.4, HF-BILL, S10.
 5. **Open to ws 28 and ws 27 as the round finishes** (O9). The full gate applies to wider marketing only.
@@ -67,6 +67,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | L16 | Restore drill from the private DB backups (`wyv-create-private/db-backups/`), plus a secrets review | open | run the drill | archive: go-live L16 |
 | G-REC | Recovery drills on production: API restart during planning, worker killed mid-build, duplicate approval, cancel while queued and while running; no double charge, uncertain work stays held | open | run when idle | archive: go-live gates |
 | G-DEP | Rollback drill: record API, web, worker, sandbox and art-pack revisions; roll back without touching active builds | open | run when idle | archive: go-live gates |
+| PLAN-CAP | Planning ran one plan at a time (~2 min each): 12 queued plans waited up to ~25 min and tripped the health alert (GTM-1). Now 3 planning workers, at most 2 plans per workspace; a plan waiting on its own workspace is not alerted | ready | deploy, then watch | GTM-1 |
 | G-FAIR | Several workspaces at once: one busy workspace cannot hog the queue; cancelling frees a slot; waiting users see a useful status | open | test | archive: go-live gates |
 | HF-BILL | Reconcile real provider invoices against our cost records (estimates are not invoices yet) | open | compare a week | archive: hyperframes-implementation-todo |
 | HF-CASES | Hard test briefs: mismatched product photo (no false identity or invented endorsement), long text, missing claims, contradictory ask, footage too short, a new spoken hook | open | add to tests and the bench | archive: hyperframes-implementation-todo |

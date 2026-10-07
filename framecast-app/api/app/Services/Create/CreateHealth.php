@@ -32,7 +32,9 @@ class CreateHealth
         $ids = fn ($rows, string $key = 'id') => collect($rows)->pluck($key)->map(fn ($v) => substr((string) $v, 0, 8))->take(10)->implode(', ');
 
         $planning = DB::table('create_planning_jobs')->where(fn ($q) => $q
-            ->where(fn ($q) => $q->where('state', 'queued')->where('created_at', '<', now()->subMinutes(5)))
+            // A plan waiting behind its own workspace's other plans is taking its turn, not stuck.
+            ->where(fn ($q) => $q->where('state', 'queued')->where('created_at', '<', now()->subMinutes(5))
+                ->whereNotExists(fn ($r) => $r->selectRaw('1')->from('create_planning_jobs as busy')->whereColumn('busy.workspace_id', 'create_planning_jobs.workspace_id')->where('busy.state', 'running')))
             ->orWhere(fn ($q) => $q->where('state', 'running')->where('started_at', '<', now()->subMinutes(25)))
             ->orWhere(fn ($q) => $q->where('state', 'needs_attention')->where('updated_at', '>', now()->subDays(7))))
             ->get(['conversation_id', 'state']);

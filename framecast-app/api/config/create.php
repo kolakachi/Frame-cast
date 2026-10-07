@@ -9,6 +9,8 @@ return [
     'runtime_controls_enabled' => (bool) env('CREATE_RUNTIME_CONTROLS_ENABLED', false),
     // Enable only after migration + dedicated planning worker + shared/private Create storage are ready.
     'durable_planning' => (bool) env('CREATE_DURABLE_PLANNING', false),
+    // Plans one workspace may have running at once across the planning workers (worker-create-planning replicas).
+    'planning_per_workspace' => (int) env('CREATE_PLANNING_PER_WORKSPACE', 2),
     // Separate from the public/MinIO-compatible b2 alias. Existing files keep their catalogued disk.
     'storage_disk' => env('CREATE_STORAGE_DISK', 'local'),
     'disk_min_free_bytes' => (int) env('CREATE_DISK_MIN_FREE_BYTES', 2147483648),
