@@ -4840,4 +4840,16 @@ class CreateIntegrationTest extends TestCase
             'request_hash' => 'h', 'provider' => 'test', 'plan_json' => json_encode(['planner_task' => 'edit', 'video_type' => 'promo']), 'usage_json' => '{}', 'status' => 'proposed', 'created_at' => now(), 'updated_at' => now()]);
         $this->assertSame(['type' => 'promo', 'task' => 'creative'], \App\Services\Create\CostEstimate::kindOf(['plan_id' => $planId]), 'no video yet: a whole build');
     }
+
+    public function test_a_cut_of_the_users_own_video_keeps_their_voice_and_buys_no_voiceover(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $raw = ['summary' => 'A 30 s cut of their video.', 'scenes' => [['label' => 'Cut', 'start' => 0, 'end' => 30, 'idea' => 'Best lines']], 'left_out' => '',
+            'narration' => ['Ever had a great video idea?', 'Now I post every day.']];
+        $video = ['purpose' => 'source', 'asset_id' => 7, 'asset_type' => 'video', 'title' => 'my-video.mp4', 'speech' => 'Hi there. Ever had a great video idea? It took forever. Now I post every day, and it is easy.'];
+        $mine = $plans->normalize($raw, ['files' => [$video]], $this->workspace->id);
+        $this->assertFalse(collect($mine['media'])->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)), 'their own recorded words: nothing bought to say them');
+        $other = $plans->normalize($raw, ['files' => [['speech' => 'Something else entirely is said here.'] + $video]], $this->workspace->id);
+        $this->assertTrue(collect($other['media'])->contains('kind', 'voiceover'), 'a script the video does not say still gets a voice');
+    }
 }
