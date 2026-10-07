@@ -4909,6 +4909,10 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('Warm creator room, the approved woman with curly hair', $sheet['description'], 'the same person: the sheet is reused, nobody new is drawn');
         $new = $plans->normalize($raw, $ctx('Use a different presenter, someone older.'), $this->workspace->id);
         $this->assertSame('Look of the whole video: near-black field, orange accents', collect($new['media'])->firstWhere('kind', 'reference_sheet')['description'], 'asked for someone else: the new sheet');
+        $drawer = $plans->normalize($raw, $ctx("Change version 4 of the video:\n- The presenter is a man but the voice is a woman's. Keep the same presenter.\nKeep everything else as it is."), $this->workspace->id);
+        $this->assertSame('Warm creator room, the approved woman with curly hair', collect($drawer['media'])->firstWhere('kind', 'reference_sheet')['description'], "the Change drawer's heading is not a request for someone new");
+        $drawerNew = $plans->normalize($raw, $ctx("Change version 4 of the video:\n- Use a different presenter.\nKeep everything else as it is."), $this->workspace->id);
+        $this->assertSame('Look of the whole video: near-black field, orange accents', collect($drawerNew['media'])->firstWhere('kind', 'reference_sheet')['description'], 'asked in the drawer: the new sheet');
     }
 
     public function test_a_change_to_part_of_a_talking_take_remakes_the_whole_take_in_one_voice(): void

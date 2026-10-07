@@ -849,9 +849,11 @@ class PlanService
         // and nobody new is drawn (GTM-1 #7: a change about the phone view re-described the sheet and made a new person).
         // Only a message asking for a different person or look of the cast lets the planner's new sheet through.
         $cast = (array) ($ctx['previous_plan']['cast'] ?? []);
-        $lastAsk = (string) (collect($ctx['messages'] ?? [])->where('role', 'user')->last()['content'] ?? '');
-        $newPerson = preg_match('/\b(different|new|another|change|replace|swap|younger|older)\b[^.!?]{0,40}\b(person|people|presenter|creator|character|avatar|face|actor|actress|cast|woman|man|girl|guy|model|host)s?\b/i', $lastAsk)
-            || preg_match('/\b(person|presenter|creator|character|avatar|face|actor|cast|woman|man|host)\b[^.!?]{0,30}\b(look|looks) (different|older|younger)/i', $lastAsk);
+        // The Change drawer's own heading ("Change version 4 of the video:") is not a request; a request is read one line
+        // at a time (GTM-1 #5: the heading's "Change" plus "The presenter is a man…" read as asking for a new person).
+        $lastAsk = preg_replace('/^Change version \d+ of the video:\s*/', '', (string) (collect($ctx['messages'] ?? [])->where('role', 'user')->last()['content'] ?? ''));
+        $newPerson = preg_match('/\b(different|new|another|change|replace|swap|younger|older)\b[^.!?\n]{0,40}\b(person|people|presenter|creator|character|avatar|face|actor|actress|cast|woman|man|girl|guy|model|host)s?\b/i', $lastAsk)
+            || preg_match('/\b(person|presenter|creator|character|avatar|face|actor|cast|woman|man|host)\b[^.!?\n]{0,30}\b(look|looks) (different|older|younger)/i', $lastAsk);
         if ($cast && ! $newPerson && collect($media)->contains('kind', 'reference_sheet')) {
             $kept = false;
             $media = collect($media)->map(function ($m) use ($cast, &$kept) {
