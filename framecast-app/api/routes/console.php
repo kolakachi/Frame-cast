@@ -95,6 +95,10 @@ Schedule::command('create:cleanup')->hourly()->withoutOverlapping()
 Schedule::command('create:maintain-storage --apply --originals --limit=100')->hourly()->withoutOverlapping()
     ->when(fn () => (bool) config('create.local_maintenance_enabled'));
 
+// Stuck planning, long queues, a silent worker, stranded builds, open holds and low disk: emailed within minutes.
+Schedule::command('create:health')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => (bool) config('create.enabled'));
+
 Schedule::command('create:check-leases')->everyMinute()->withoutOverlapping()
     ->when(fn () => (bool) config('create.enabled'));
 

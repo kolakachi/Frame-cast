@@ -1,6 +1,9 @@
 @if ($kind === 'digest')
 <p>Vendor failures in the last 24 hours.</p>
 <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;background:#f6f6f7;padding:12px;border-radius:6px">{{ $text }}</pre>
+@elseif ($kind === 'health')
+<pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;background:#f6f6f7;padding:12px;border-radius:6px">{{ $text }}</pre>
+<p>Checked every 5 minutes. You will get at most one of these an hour per problem, and a short note when it clears.</p>
 @elseif ($kind === 'recovered')
 <p><b>{{ $vendor }}</b> is working again. New work that needs it is no longer held.</p>
 @else

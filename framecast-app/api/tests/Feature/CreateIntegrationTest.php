@@ -2580,6 +2580,62 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($a2, $this->runs->claim()['id']);
     }
 
+    public function test_create_health_alerts_the_team_once_an_hour_per_problem_and_notes_recovery(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        config(['create.enabled' => true, 'create.mode' => 'agent', 'create.admin_alert_emails' => ['ops@example.test']]);
+        $health = app(\App\Services\Create\CreateHealth::class);
+        $c = $this->brief();
+        $id = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_runs')->insert(['id' => $id, 'conversation_id' => $c->id, 'workspace_id' => $this->workspace->id, 'quote_id' => substr(md5($id), 0, 32), 'idempotency_key' => 'h'.$id,
+            'request_hash' => str_repeat('a', 64), 'input_json' => json_encode(['mode' => 'fixture']), 'status' => 'queued', 'created_at' => now()->subMinutes(30), 'updated_at' => now()]);
+        // No worker has checked in, and a build has waited 30 minutes: both reported, with the run's ID.
+        $now = $health->check();
+        $this->assertSame(['queue', 'worker'], array_values(array_intersect(['queue', 'worker'], array_keys($now))));
+        $this->assertStringContainsString(substr($id, 0, 8), $now['queue']['text']);
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class, fn ($m) => str_contains($m->title, 'waiting too long'));
+        $sent = count(\Illuminate\Support\Facades\Mail::queued(\App\Mail\VendorAlertMail::class));
+        // Still wrong five minutes later: no second email within the hour.
+        $health->check();
+        $this->assertSame($sent, count(\Illuminate\Support\Facades\Mail::queued(\App\Mail\VendorAlertMail::class)));
+        // A worker checks in and the build is claimed: both clear, each with a recovery note.
+        \App\Services\Create\CreateHealth::workerSeen();
+        DB::table('composition_runs')->where('id', $id)->update(['status' => 'failed']);
+        $this->assertSame([], array_values(array_intersect(['queue', 'worker'], array_keys($health->check()))));
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class, fn ($m) => $m->title === 'Recovered: Create queue is healthy again');
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class, fn ($m) => $m->title === 'Recovered: Create worker is healthy again');
+    }
+
+    public function test_another_workspace_cannot_reach_create_conversations_videos_files_or_worker_inputs(): void
+    {
+        [$c, , $run] = $this->admitted();
+        $revision = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_revisions')->insert(['id' => $revision, 'conversation_id' => $c->id, 'run_id' => $run->id, 'number' => 1, 'parent_revision_id' => null,
+            'bundle_json' => '{}', 'bundle_hash' => str_repeat('c', 64), 'artifact_path' => 'create/previews/'.$run->id.'/x.mp4', 'artifact_hash' => str_repeat('d', 64), 'summary' => 'v1', 'created_at' => now()]);
+        $mine = Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'status' => 'ready']);
+        $other = Workspace::create(['name' => 'Other', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
+        // The same person, now working in another workspace: everything of the first workspace is out of reach.
+        $intruder = $this->owner; $intruder->forceFill(['workspace_id' => $other->id])->save();
+        config(['create.workspaces' => []]);
+        $theirs = Asset::create(['workspace_id' => $other->id, 'asset_type' => 'image', 'status' => 'ready']);
+        // Through the app: the other workspace's conversation, plan activity, planning and video are not found.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $base = '/api/v1/create/conversations/';
+        $this->actingAs($intruder)->getJson($base.$c->id)->assertNotFound();
+        $this->actingAs($intruder)->getJson($base.$c->id.'/plan-activity')->assertNotFound();
+        $this->actingAs($intruder)->postJson($base.$c->id.'/plans', ['expected_version' => 1, 'idempotency_key' => 'x'])->assertNotFound();
+        $this->actingAs($intruder)->getJson($base.$c->id.'/revisions/'.$revision.'/artifact')->assertNotFound();
+        // Not through their own conversation either, nor by attaching our file to it.
+        $own = $this->conversations->create($intruder, ['duration_seconds' => 15]);
+        $this->actingAs($intruder)->getJson($base.$own->id.'/revisions/'.$revision.'/artifact')->assertNotFound();
+        $this->actingAs($intruder)->postJson($base.$own->id.'/attachments', ['asset_id' => $mine->id, 'purpose' => 'source', 'expected_version' => 0])->assertNotFound();
+        // The worker of our run can fetch only files listed on that run and owned by its workspace.
+        config(['create.worker_token' => str_repeat('a', 64)]);
+        $claim = $this->runs->claim();
+        $this->withToken(str_repeat('a', 64))->postJson('/api/internal/create/runs/'.$run->id.'/inputs/'.$theirs->id, ['lease_token' => $claim['lease_token']])->assertNotFound();
+        $this->withToken(str_repeat('b', 64))->postJson('/api/internal/create/runs/'.$run->id.'/inputs/'.$mine->id, ['lease_token' => $claim['lease_token']])->assertForbidden();
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);

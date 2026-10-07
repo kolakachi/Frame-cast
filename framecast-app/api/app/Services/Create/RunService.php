@@ -12,6 +12,7 @@ class RunService
     public function claim(?array $identity = null): ?array
     {
         app(WorkerOwnership::class)->validate($identity);
+        CreateHealth::workerSeen();
         if (app(AdmissionControl::class)->paused()) return null;
         app(DiskSpace::class)->admission();
         return DB::transaction(function () use ($identity) {
