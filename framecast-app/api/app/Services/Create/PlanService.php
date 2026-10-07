@@ -756,7 +756,13 @@ class PlanService
     /** The cast sheet of the plan behind the version the user has (its head revision), when there is one. */
     private static function deliveredCast(object $c): ?array
     {
-        return self::deliveredMedia($c, 'reference_sheet');
+        // The version's own plan may be a change that left the (already made) sheet out: then the sheet last made in
+        // this conversation is the cast.
+        if ($cast = self::deliveredMedia($c, 'reference_sheet')) return $cast;
+        $made = DB::table('create_plan_media')->where('conversation_id', $c->id)->where('kind', 'reference_sheet')->where('status', 'succeeded')->orderByDesc('created_at')->first(['plan_id', 'item_index']);
+        $json = $made ? DB::table('create_plans')->where('id', $made->plan_id)->value('plan_json') : null;
+        $item = $json ? (array) ((json_decode((string) $json, true)['media'] ?? [])[$made->item_index] ?? []) : [];
+        return ($item['kind'] ?? '') === 'reference_sheet' ? [$item] : null;
     }
 
     /** One kind of media from the plan behind the version the user has (its head revision), when there is any. */
