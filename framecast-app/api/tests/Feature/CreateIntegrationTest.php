@@ -4910,4 +4910,21 @@ class CreateIntegrationTest extends TestCase
         $new = $plans->normalize($raw, $ctx('Use a different presenter, someone older.'), $this->workspace->id);
         $this->assertSame('Look of the whole video: near-black field, orange accents', collect($new['media'])->firstWhere('kind', 'reference_sheet')['description'], 'asked for someone else: the new sheet');
     }
+
+    public function test_a_change_to_part_of_a_talking_take_remakes_the_whole_take_in_one_voice(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $said = ['I used to spend a whole day on one ad.', 'Now I type what I want into WyvStudio,', 'approve the plan, and get a finished video.', 'No shoot, no editor.'];
+        $before = ['kind' => 'ugc_take', 'description' => 'The approved creator in her home office, handheld selfie', 'lines' => $said];
+        $raw = ['summary' => 'Fix the hook.', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'Talk']], 'left_out' => '',
+            'narration' => ['I used to spend a whole day on one ad. WyvStudio fixed that.', ...array_slice($said, 1)],
+            'media' => [['kind' => 'ugc_take', 'description' => 'Regenerate only the opening 4 s with a clean pronunciation', 'lines' => ['I used to spend a whole day on one ad. WyvStudio fixed that.']]]];
+        $plan = $plans->normalize($raw, ['files' => [], 'previous_plan' => ['takes' => [$before]]], $this->workspace->id);
+        $take = collect($plan['media'])->firstWhere('kind', 'ugc_take');
+        $this->assertSame(['I used to spend a whole day on one ad. WyvStudio fixed that.', ...array_slice($said, 1)], $take['lines'], 'every line the take said, as the script now words it');
+        $this->assertStringStartsWith('The approved creator in her home office', $take['description']);
+        $this->assertSame('The talking take is re-made whole, in one voice: its speech is part of the clip', $plan['assumptions'][0]);
+        $whole = $plans->normalize([...$raw, 'media' => [['kind' => 'ugc_take', 'description' => 'Same take', 'lines' => $raw['narration']]]], ['files' => [], 'previous_plan' => ['takes' => [$before]]], $this->workspace->id);
+        $this->assertNotContains('The talking take is re-made whole, in one voice: its speech is part of the clip', $whole['assumptions'], 'already whole: nothing to widen');
+    }
 }

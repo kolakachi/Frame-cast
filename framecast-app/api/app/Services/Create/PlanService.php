@@ -746,6 +746,8 @@ class PlanService
                     'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? [],
                     // The cast sheet the user saw (and may have approved): a re-plan keeps it unless they ask for someone else.
                     'cast' => self::deliveredCast($c) ?? array_values(array_filter((array) (json_decode($prev->plan_json, true)['media'] ?? []), fn ($m) => ($m['kind'] ?? '') === 'reference_sheet')),
+                    // The talking takes the user has: a change to what one says re-makes all of it (its speech is baked in).
+                    'takes' => self::deliveredMedia($c, 'ugc_take') ?? [],
                     // The directions the user was shown, so "plan 3" or "2, with the look of 5" can be read.
                     'concept' => json_decode($prev->plan_json, true)['concept'] ?? null] : null,
         ];
@@ -754,12 +756,18 @@ class PlanService
     /** The cast sheet of the plan behind the version the user has (its head revision), when there is one. */
     private static function deliveredCast(object $c): ?array
     {
+        return self::deliveredMedia($c, 'reference_sheet');
+    }
+
+    /** One kind of media from the plan behind the version the user has (its head revision), when there is any. */
+    private static function deliveredMedia(object $c, string $kind): ?array
+    {
         $runId = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('run_id') : null;
         $planId = $runId ? data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'plan.plan_id') : null;
         $json = $planId ? DB::table('create_plans')->where('id', $planId)->value('plan_json') : null;
         if (! $json) return null;
-        $cast = array_values(array_filter((array) (json_decode((string) $json, true)['media'] ?? []), fn ($m) => ($m['kind'] ?? '') === 'reference_sheet'));
-        return $cast ?: null;
+        $items = array_values(array_filter((array) (json_decode((string) $json, true)['media'] ?? []), fn ($m) => ($m['kind'] ?? '') === $kind));
+        return $items ?: null;
     }
 
     public function normalize(array $raw, array $ctx, int $workspaceId): array
@@ -901,6 +909,33 @@ class PlanService
             $kind = $voice === 'clone' && $known->has('cloned_voiceover') ? 'cloned_voiceover' : 'voiceover';
             if ($known->has($kind)) $media[] = ['kind' => $kind, 'description' => 'Narration of the approved script', 'credits' => (int) $known[$kind]['credits']];
         }
+        // A talking take's speech and lip-sync are baked into the clip: a change to what part of it says is made by
+        // re-making the whole take in one voice, never a slice that leaves the old voice (and the old words) in the rest
+        // (GTM-1 #5: only the 4 s hook was re-made; the next scene still said "Whyvstudio").
+        $wholeTake = false;
+        $flatLine = fn ($l) => mb_strtolower(trim(preg_replace('/\s+/u', ' ', (string) $l)));
+        foreach ((array) ($ctx['previous_plan']['takes'] ?? []) as $before) {
+            $was = array_values(array_filter(array_map('strval', (array) ($before['lines'] ?? []))));
+            if (! $was) continue;
+            $media = collect($media)->map(function ($m) use ($was, $before, $flatLine, $narration, &$wholeTake) {
+                if ($m['kind'] !== 'ugc_take' || empty($m['lines'])) return $m;
+                $now = array_map($flatLine, (array) $m['lines']);
+                $old = array_map($flatLine, $was);
+                // A slice of the delivered take (some of its lines, maybe reworded): the whole take is re-made.
+                $overlap = count(array_intersect($now, $old)) + count(array_filter($now, fn ($l) => ! in_array($l, $old, true) && collect($old)->contains(fn ($o) => similar_text($o, $l) >= 0.6 * max(strlen($o), strlen($l)))));
+                if ($overlap === 0 || count($now) >= count($old)) return $m;
+                // Each line the take said, as the script now words it (the closest current line), so it maps to the script.
+                $lines = array_map(function ($o) use ($narration, $flatLine) {
+                    $best = collect($narration)->sortByDesc(fn ($n) => similar_text($flatLine($o), $flatLine($n)))->first();
+                    return $best !== null && similar_text($flatLine($o), $flatLine($best)) >= 0.5 * max(1, strlen($flatLine($o))) ? $best : null;
+                }, $was);
+                // Only lines still in the script (a line the script no longer has is not said), in script order.
+                $lines = array_values(array_filter($narration, fn ($n) => in_array($n, $lines, true)));
+                if (count($lines) <= count($m['lines'])) return $m;
+                $wholeTake = true;
+                return ['lines' => $lines, 'description' => mb_substr(trim((string) ($before['description'] ?? '')).' Change: '.trim((string) $m['description']), 0, 400)] + $m;
+            })->values()->all();
+        }
         $style = StylePacks::route(is_array($raw['style'] ?? null) ? $raw['style'] : [], $ctx);
         $colour = ColourTreatment::normalize($raw['colour_treatment'] ?? null, $ctx['previous_plan']['colour_treatment'] ?? null);
         $observations = collect((array) ($raw['reference_observations'] ?? []))->filter(fn ($r) => is_array($r) && collect($ctx['files'] ?? [])->contains(fn ($f) => $f['purpose'] === 'reference' && $f['asset_id'] === ($r['asset_id'] ?? null)))->take(4)->map(fn ($r) => ['asset_id' => $r['asset_id'], 'observed' => $str($r['observed'] ?? '', 500), 'preserve' => $str($r['preserve'] ?? '', 400), 'replace' => $str($r['replace'] ?? '', 400), 'uncertain' => $str($r['uncertain'] ?? '', 240), 'evidence_ids' => array_values(array_intersect(array_filter((array) ($r['evidence_ids'] ?? []), 'is_string'), array_column(array_filter($ctx['_reference_evidence'] ?? [], fn ($e) => $e['asset_id'] === $r['asset_id']), 'id'))), 'evidence_status' => 'planner_interpretation_of_samples'])->all();
@@ -914,7 +949,7 @@ class PlanService
         $plan = ['requirements_schema' => RequirementContract::VERSION, 'requirement_history' => $contract['requirement_history'], 'direction_notes' => $contract['direction_notes'], 'reference_evidence' => $contract['reference_evidence'], 'creative_intent' => $intent, 'character_performance' => CharacterPerformance::normalize($raw['character_performance'] ?? [], [...$ctx, '_requirement_contract' => $contract]), 'reference_observations' => $observations, 'colour_treatment' => $colour, 'summary' => $summary, 'reused' => $reused, 'unplaced' => $unplaced, 'scenes' => $scenes, 'callouts' => $callouts, 'decisions' => $decisions, 'narration' => $narration, 'voice' => $voice,
             'kept_as_is' => $kept, 'media' => $media, 'left_out' => $str($raw['left_out'] ?? '', 300),
             // What the planner assumed rather than knew, shown on the plan card so the user can correct it.
-            'assumptions' => array_values(array_slice(array_filter(array_map(fn ($a) => is_string($a) ? $str($a, 120) : '', (array) ($raw['assumptions'] ?? []))), 0, 4)), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
+            'assumptions' => array_values(array_slice(array_merge($wholeTake ? ['The talking take is re-made whole, in one voice: its speech is part of the clip'] : [], array_filter(array_map(fn ($a) => is_string($a) ? $str($a, 120) : '', (array) ($raw['assumptions'] ?? [])))), 0, 4)), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
             // From scratch: the concept (with the two directions not taken), the format playbook and the motion voice.
             ...FormatPlaybooks::normalize($raw, ! collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'reference')),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
