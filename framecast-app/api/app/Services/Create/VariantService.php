@@ -56,6 +56,14 @@ class VariantService
         $p=json_decode($run->input_json,true);app(InputSnapshotService::class)->verify($p['input_files']??[]);
         $p['source_revision_id']=$p['base_revision_id'];$p['base_revision_id']=$c->head_revision_id;$p['version']=$version;$p['retry_of']=$runId;
         abort_unless($p['mode']===config('create.mode'),409);
+        // A run that started on a short balance kept limits shrunk to that balance (room, per-call ceiling, reviewer
+        // rounds). Its retry starts from today's full limits; approving fits them to the balance again.
+        if(($p['credit_limited']??false)&&isset($p['execution_policy']['agent'],$p['settings'])){
+            $fresh=PilotPolicy::execution($p['settings']);
+            $p['execution_policy']['agent']=$fresh['agent'];
+            if(isset($fresh['critic']))$p['execution_policy']['critic']=$fresh['critic'];else unset($p['execution_policy']['critic']);
+            unset($p['credit_limited']);
+        }
         return ApiQuote::create(['id'=>ApiQuote::newId(),'workspace_id'=>$user->workspace_id,'created_by_user_id'=>$user->id,'payload_json'=>$p,
             // The same hold as the approved run: media is held at its approved ceiling, not at its dearest item times its calls.
             'credits_min'=>0,'credits_max'=>array_sum(array_map(fn($v)=>$v['total_credits'] ?? $v['credits']*$v['max_calls'],$p['execution_policy'])),'expires_at'=>now()->addMinutes(10)]);

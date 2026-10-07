@@ -60,6 +60,9 @@ services:
     # :9000 (see nginx/fastcgi-api.conf). Replaces single-threaded artisan serve.
     env_file:
       - ./api/.env
+    # Create's private files (uploads, studies, bought media, results) survive a deploy's container swap.
+    volumes:
+      - api_private:/var/www/html/storage/app/private
     environment:
       REVERB_HOST: reverb
       REVERB_PORT: 8080
@@ -90,6 +93,9 @@ services:
     stop_grace_period: 330s
     env_file:
       - ./api/.env
+    # Create's private files (uploads, studies, bought media, results) survive a deploy's container swap.
+    volumes:
+      - api_private:/var/www/html/storage/app/private
     environment:
       REVERB_HOST: reverb
       REVERB_PORT: 8080
@@ -115,6 +121,9 @@ services:
     stop_grace_period: 120s
     env_file:
       - ./api/.env
+    # Create's private files (uploads, studies, bought media, results) survive a deploy's container swap.
+    volumes:
+      - api_private:/var/www/html/storage/app/private
     environment:
       REVERB_HOST: reverb
       REVERB_PORT: 8080
@@ -136,6 +145,9 @@ services:
     stop_grace_period: 30s
     env_file:
       - ./api/.env
+    # Create's private files (uploads, studies, bought media, results) survive a deploy's container swap.
+    volumes:
+      - api_private:/var/www/html/storage/app/private
     environment:
       REVERB_HOST: reverb
       REVERB_PORT: 8080
@@ -156,6 +168,9 @@ services:
     command: php artisan schedule:work
     env_file:
       - ./api/.env
+    # Create's private files (uploads, studies, bought media, results) survive a deploy's container swap.
+    volumes:
+      - api_private:/var/www/html/storage/app/private
     environment:
       REVERB_HOST: reverb
       REVERB_PORT: 8080
@@ -268,4 +283,5 @@ services:
 
 volumes:
   postgres_data:
+  api_private:
   redis_data:

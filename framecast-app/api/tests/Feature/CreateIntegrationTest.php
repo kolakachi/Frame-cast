@@ -2465,6 +2465,29 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(\App\Services\Create\RunService::OUT_OF_CREDITS, DB::table('composition_runs')->where('id', $run->id)->value('error'));
     }
 
+    public function test_a_retry_of_a_build_started_on_a_short_balance_starts_from_the_full_limits(): void
+    {
+        $this->pilot();
+        config(['create.agent_provider' => 'anthropic', 'services.anthropic.key' => 'k']);
+        $c = $this->brief();
+        $q = $this->conversations->quote($this->owner, $c->id, 1);
+        $full = $q->payload_json['execution_policy']['agent'];
+        $this->workspace->update(['credits_monthly' => (int) $q->payload_json['estimate'] + \App\Services\Create\ConversationService::MIN_CALL_CREDITS + 40]);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'short-1', true);
+        $claim = $this->runs->claim();
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'failed', 'summary' => 'This build stopped before it finished.'], null, null);
+        // The retry asks for the full limits again, not the shrunk ones the failed run kept...
+        $retry = app(\App\Services\Create\VariantService::class)->retryQuote($this->owner, $c->id, $run->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
+        $agent = $retry->payload_json['execution_policy']['agent'];
+        $this->assertSame($full['credits'], $agent['credits']);
+        $this->assertSame($full['total_credits'], $agent['total_credits']);
+        $this->assertArrayNotHasKey('credit_limited', $retry->payload_json);
+        // ...and approving fits them to what is available now.
+        $again = json_decode($this->conversations->approve($this->owner, $c->id, $retry->id, 'short-2', true)->input_json, true);
+        $this->assertTrue($again['credit_limited']);
+        $this->assertLessThan($full['credits'], $again['execution_policy']['agent']['credits']);
+    }
+
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void
     {
         $busy = fn ($e) => \App\Services\Create\PlanMediaExecutor::busy($e);
