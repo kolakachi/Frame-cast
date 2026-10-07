@@ -65,32 +65,46 @@ html,body{overflow-x:hidden}
 .mock-note b{color:var(--text)}
 </style>
 <style>
-/* S9 cut-down: Change… on the finished video. Only new rules. */
-.result-card{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start;border:1px solid var(--line-3);border-radius:14px;background:var(--bg-3);padding:14px}
+/* S9 Change…: the parts of the video, each with its price, and Change this moment. Only new rules. */
+.result-card{display:grid;grid-template-columns:240px 1fr;gap:16px;align-items:start;border:1px solid var(--line-3);border-radius:14px;background:var(--bg-3);padding:14px}
 @media (max-width:760px){.result-card{grid-template-columns:1fr}}
-.vid{aspect-ratio:9/16;border-radius:10px;background:linear-gradient(160deg,#0A0A0F 40%,#2a160c);display:flex;align-items:flex-end;justify-content:center;padding:14px;color:#fff;font:600 15px var(--sans);text-align:center;border:1px solid var(--line-2)}
-.vid b{color:#FF6B35}
+.player{position:relative;aspect-ratio:9/16;border-radius:10px;overflow:hidden;border:1px solid var(--line-2);background:radial-gradient(circle at 50% 42%,#f6c98f 0 9%,#e8a25a 10% 16%,#3a2416 40%,#140c08 75%)}
+.player__bar{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;background:linear-gradient(transparent,#000c);display:flex;align-items:center;gap:8px;color:#fff;font:11px var(--mono)}
+.player__track{flex:1;height:3px;border-radius:2px;background:#fff4;position:relative}.player__track i{position:absolute;left:0;top:0;bottom:0;width:45%;background:var(--accent);border-radius:2px}
+.moment-btn{position:absolute;left:50%;top:14px;transform:translateX(-50%);white-space:nowrap;border:1px solid #fff6;background:#000a;color:#fff;border-radius:999px;padding:6px 12px;font:600 12px var(--sans);cursor:pointer}
 .result-side{display:flex;flex-direction:column;gap:10px;min-width:0}
 .result-pills{display:flex;gap:6px;flex-wrap:wrap}
+.result-actions{display:flex;flex-wrap:wrap;gap:8px}
+.pdw{width:min(480px,100%)}
+@media (max-width:520px){.pdw{left:0;width:auto}.cost div span:last-child{white-space:nowrap}}
+.group{display:flex;flex-direction:column;gap:8px}
+.group h3{margin:6px 0 0;font:11px var(--mono);letter-spacing:.08em;color:var(--text-3);display:flex;gap:8px}
+.group h3 span{margin-left:auto}
+.part{display:grid;grid-template-columns:52px 1fr;gap:10px;padding:10px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
+.part--on{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+.thumb{width:52px;height:68px;border-radius:7px;border:1px solid var(--line-2)}
+.thumb--sq{height:52px}
+.part__name{font-weight:600;font-size:13px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.part__name small{font:10.5px var(--mono);color:var(--text-3);font-weight:400}
+.part__what{font-size:12px;color:var(--text-2);margin:2px 0 6px;line-height:1.4}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.act{border:1px solid var(--line-3);border-radius:999px;padding:3px 9px;background:var(--bg-2);color:var(--text);font:12px var(--sans);cursor:pointer;white-space:nowrap}
+.act b{font-weight:500;color:var(--text-3);margin-left:4px}
+.act--on{border-color:var(--accent-line);color:var(--accent)}
+.change{margin-top:6px;font-size:12px;color:var(--accent);display:flex;gap:6px;align-items:center}
+.change textarea,.part input,.lines input{width:100%;border:1px solid var(--line-3);border-radius:8px;background:var(--bg-2);color:var(--text);padding:6px 8px;font:12.5px var(--sans);resize:none}
+.file{display:flex;gap:8px;align-items:center;font-size:12px;border:1px dashed var(--accent-line);border-radius:8px;padding:6px 8px;color:var(--text);margin-top:6px}
+.file i{width:22px;height:22px;border-radius:5px;background:linear-gradient(135deg,#f3d9c6,#c98b62);display:inline-block}
+.moment{display:grid;grid-template-columns:52px 1fr;gap:10px;padding:10px;border:1px solid var(--accent-line);border-radius:12px;background:var(--bg-3);box-shadow:0 0 0 1px var(--accent-line) inset}
+.lines{display:flex;flex-direction:column;gap:6px}
+.lines div{display:grid;grid-template-columns:36px 1fr;gap:6px;align-items:center}
+.lines span{font:10px var(--mono);color:var(--text-3)}
+.more{font-size:12px;color:var(--text-3)}
+.cost{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-2)}
+.cost div{display:flex;gap:8px}.cost div span:last-child{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text)}
+.cost .total{border-top:1px solid var(--line-2);padding-top:4px;margin-top:2px;color:var(--text);font-weight:600}
+.cost .note{color:var(--text-3);font-size:11.5px}
 .pdw-foot .btn{white-space:nowrap}
-.result-actions{display:flex;flex-wrap:wrap;gap:8px;position:relative}
-.menu{position:absolute;top:40px;left:96px;z-index:5;width:250px;background:var(--bg-2);border:1px solid var(--line-3);border-radius:12px;padding:6px;box-shadow:0 12px 30px #0006}
-.menu button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;border:0;background:transparent;color:var(--text);padding:8px 10px;border-radius:8px;font:13px var(--sans);cursor:pointer}
-.menu button:hover,.menu button.on{background:var(--bg-3)}
-.menu small{color:var(--text-3);font-size:11.5px}
-.menu hr{border:0;border-top:1px solid var(--line-2);margin:4px 0}
-.sec{display:flex;flex-direction:column;gap:8px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
-.sec--on{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
-.sec h3{margin:0;font-size:13px;display:flex;align-items:center;gap:8px}
-.sec h3 small{margin-left:auto;font:10px var(--mono);letter-spacing:.06em;color:var(--text-3)}
-.line{display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:center}
-.line span{font:10px var(--mono);color:var(--text-3)}
-.line input,.sec select,.sec textarea{width:100%;border:1px solid var(--line-3);border-radius:8px;background:var(--bg-2);color:var(--text);padding:7px 9px;font:13px var(--sans)}
-.line input.changed{border-color:var(--accent-line)}
-.keep{font-size:12px;color:var(--text-2);border-left:2px solid var(--line-3);padding-left:8px}
-.reuse{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
-.reuse span{border:1px solid var(--line-3);border-radius:999px;padding:2px 8px;color:var(--text-2)}
-.reuse span.redo{border-color:var(--accent-line);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -125,34 +139,30 @@ html,body{overflow-x:hidden}
 </nav>
 <main class="agent-main">
   <header class="agent-header">
-    <div><div class="crumb">Create · mockup</div><h1>WyvStudio · 20 s launch promo</h1></div>
+    <div><div class="crumb">Create · mockup</div><h1>Dewbloom · 20 s unboxing ad</h1></div>
     <span class="status status--info">PROPOSAL · S9 CHANGE…</span>
   </header>
   <div class="agent-content">
     <section class="conversation" aria-label="Conversation">
       <div class="messages">
-        <p class="mock-note"><b>Change…</b> sits next to Download on the finished video. Its menu names the parts this video has: <b>Words</b>, <b>Voice</b>, <b>Look</b>, and <b>Pictures</b> only when the video has generated people or shots. Picking one opens the plan drawer at that part, filled with what the video uses now. Editing it and pressing <b>Plan the change</b> sends the edits as one change request: the usual plan card comes back with the price of only what changes, and everything else (voice, music, pictures, footage) is reused. <b>Something else</b> just focuses the chat box. Nothing is charged for opening the drawer.</p>
+        <p class="mock-note"><b>Change…</b> (next to Download) opens the drawer listing <b>the parts this video is made of</b>: its pictures and clips, logo, footage, words, voice, music and look, each with what you can do and <b>its price on the button</b>. <b>Change this moment</b> appears on the player whenever it is paused: it grabs that frame and its time and adds it to the drawer, for anything that is not a single part (layout, text, motion). Every edit is collected in the drawer; <b>Plan the change</b> sends them as one change. The plan card then shows the price of only what changes, and unchanged parts are reused. Nothing is charged until that plan is approved; opening the drawer and swapping in your own files are free.</p>
         <div class="assistant-message">
           <span class="speaker">WyvStudio <time>3:12 PM</time></span>
           <div class="result-card">
-            <div class="vid"><span>Branded video,<br><b>without a shoot.</b></span></div>
+            <div class="player">
+              <button type="button" class="moment-btn">Change this moment · 0:09</button>
+              <div class="player__bar"><span>▶</span><span class="player__track"><i></i></span><span>0:09 / 0:20</span></div>
+            </div>
             <div class="result-side">
-              <span class="result-title"><b>One line becomes everything</b></span>
+              <span class="result-title"><b>First-try unboxing</b></span>
               <div class="result-pills"><span class="pill">Version 1</span><span class="pill pill--ok">Current</span></div>
               <div class="result-actions">
                 <button type="button" class="btn btn--primary">Download video</button>
                 <button type="button" class="btn btn--outline" aria-expanded="true">Change…</button>
                 <button type="button" class="btn btn--outline">Copy share link</button>
                 <button type="button" class="btn btn--ghost">Details</button>
-                <div class="menu" role="menu">
-                  <button class="on" role="menuitem">Words<small>Voiceover and on-screen lines</small></button>
-                  <button role="menuitem">Voice<small>Who speaks, and how names are said</small></button>
-                  <button role="menuitem">Look<small>Colours, fonts, logo</small></button>
-                  <hr>
-                  <button role="menuitem">Something else<small>Describe it in the chat</small></button>
-                </div>
               </div>
-              <p class="result-hint" style="margin-top:120px">Want something different? Use Change…, or describe it below, like “slower cuts” or “bigger captions”.</p>
+              <p class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below.</p>
             </div>
           </div>
         </div>
@@ -163,37 +173,75 @@ html,body{overflow-x:hidden}
 </div>
 <div class="scrim" aria-hidden="true"></div>
 <aside class="pdw" role="dialog" aria-label="Change this video">
-  <header class="pdw-head"><div><h2>Change this video</h2><span class="pdw-meta">Version 1 · edits become version 2</span></div><button class="pdw-x" aria-label="Close">✕</button></header>
+  <header class="pdw-head"><div><h2>Change this video</h2><span class="pdw-meta">Version 1 · your edits become version 2</span></div><button class="pdw-x" aria-label="Close">✕</button></header>
   <div class="pdw-body">
-    <p class="intro">Edit what you want different. Everything you leave alone stays as it is.</p>
-    <div class="sec sec--on">
-      <h3>Words <small>6 LINES</small></h3>
-      <div class="line"><span>0:00</span><input value="Branded short-form video, without a shoot."></div>
-      <div class="line"><span>0:03</span><input class="changed" value="Type one line about what you sell."></div>
-      <div class="line"><span>0:06</span><input value="You approve the plan."></div>
-      <div class="line"><span>0:09</span><input value="And you get a finished video, in your brand."></div>
-      <div class="line"><span>0:13</span><input value="Your AI video studio: WyvStudio."></div>
-      <div class="line"><span>0:16</span><input value="Start at wyvstudio.com."></div>
-      <div class="keep">On-screen lines follow the voiceover unless you change them in the chat.</div>
+    <p class="intro">Pick what to change. Everything you leave alone is reused as it is.</p>
+
+    <div class="group"><h3>THIS MOMENT</h3>
+      <div class="moment">
+        <div class="thumb" style="background:radial-gradient(circle at 50% 42%,#f6c98f 0 12%,#e8a25a 13% 20%,#3a2416 45%,#140c08 80%)"></div>
+        <div><div class="part__name">0:09 <small>Dropper close-up</small></div>
+          <div class="change"><textarea rows="2">Make the drop golden and slower, and keep the bottle label readable.</textarea></div></div>
+      </div>
     </div>
-    <div class="sec">
-      <h3>Voice <small>PUCK · UPBEAT</small></h3>
-      <select><option>Puck · upbeat, punchy (current)</option><option>Aoede · bright, breezy</option><option>Iapetus · clear, measured</option></select>
-      <div class="line"><span>SAYS</span><input value="WyvStudio → “wiv studio”"></div>
+
+    <div class="group"><h3>PICTURES AND CLIPS <span>4</span></h3>
+      <div class="part part--on">
+        <div class="thumb" style="background:linear-gradient(160deg,#fbe7d6,#e9b48f 55%,#c9875c)"></div>
+        <div><div class="part__name">Serum bottle <small>GENERATED PICTURE · 0:04–0:20</small></div>
+          <div class="part__what">Used in 3 moments, cut out over the scene.</div>
+          <div class="acts"><button class="act act--on">Replace with my file <b>free</b></button><button class="act">Make a new one <b>43 cr</b></button><button class="act">Describe…</button></div>
+          <div class="file"><i></i><span><b>bottle-front.png</b> replaces the generated bottle in all 3 moments</span></div></div>
+      </div>
+      <div class="part">
+        <div class="thumb" style="background:linear-gradient(170deg,#d9b49a,#7d5642 60%,#3b261b)"></div>
+        <div><div class="part__name">Creator at the counter <small>TALKING CLIP · 0:00–0:08</small></div>
+          <div class="part__what">She speaks the hook and opens the box. A clip can be remade or swapped, not edited inside.</div>
+          <div class="acts"><button class="act">Replace with my clip <b>free</b></button><button class="act">Remake <b>264 cr</b></button><button class="act">Describe…</button></div></div>
+      </div>
+      <div class="part">
+        <div class="thumb" style="background:radial-gradient(circle at 50% 40%,#f6c98f 0 10%,#a8693d 30%,#2a1a10 75%)"></div>
+        <div><div class="part__name">Dropper close-up <small>GENERATED SHOT · 0:08–0:11</small></div>
+          <div class="part__what">Remade from your note on this moment.</div>
+          <div class="acts"><button class="act">Replace with my clip <b>free</b></button><button class="act act--on">Remake <b>165 cr</b></button><button class="act">Describe…</button></div></div>
+      </div>
+      <div class="part">
+        <div class="thumb" style="background:linear-gradient(160deg,#f5d2b8,#c88e6a 60%,#7a4c33)"></div>
+        <div><div class="part__name">Glowing skin <small>GENERATED SHOT · 0:15–0:17</small></div>
+          <div class="acts"><button class="act">Replace with my clip <b>free</b></button><button class="act">Remake <b>165 cr</b></button><button class="act">Describe…</button></div></div>
+      </div>
     </div>
-    <div class="sec">
-      <h3>Look <small>YOUR BRAND</small></h3>
-      <div class="dir__row"><span>COLOURS</span><span><span class="sw"><i style="background:#0A0A0F"></i><i style="background:#FF6B35"></i><i style="background:#ffffff"></i></span>#0A0A0F · #FF6B35 · white</span></div>
-      <div class="dir__row"><span>TYPE</span><span>DM Sans · Space Mono labels</span></div>
+
+    <div class="group"><h3>LOGO</h3>
+      <div class="part">
+        <div class="thumb thumb--sq" style="background:#fff3ea;display:grid;place-items:center;color:#c98b62;font:700 15px var(--sans)">db</div>
+        <div><div class="part__name">dewbloom-logo.svg <small>END CARD</small></div>
+          <div class="acts"><button class="act">Replace with a new file <b>free</b></button></div></div>
+      </div>
     </div>
-    <div class="sec">
-      <h3>What gets redone</h3>
-      <div class="reuse"><span class="redo">Voiceover line 2</span><span>Music · reused</span><span>Logo · reused</span><span>Motion · rebuilt around the new line</span></div>
+
+    <div class="group"><h3>WORDS <span>6 LINES</span></h3>
+      <div class="lines">
+        <div><span>0:00</span><input value="I finally found a vitamin C serum that doesn't sting."></div>
+        <div><span>0:04</span><input value="Let's open it up. Dewbloom Glow Serum."></div>
+      </div>
+      <span class="more">4 more lines · new spoken words are re-voiced (3 cr); a talking clip with new words is remade</span>
+    </div>
+
+    <div class="group"><h3>VOICE, MUSIC AND LOOK</h3>
+      <div class="acts"><button class="act">Voice: Aoede · warm</button><button class="act">Says Dewbloom as “dew bloom”</button><button class="act">Music: keep · new <b>34 cr</b> · upload mine <b>free</b></button><button class="act">Colours and fonts <b>free</b></button></div>
     </div>
   </div>
   <footer class="pdw-foot">
-    <textarea rows="2" placeholder="Anything else? “Make the stamp bigger”"></textarea>
-    <div class="row"><span class="muted" style="font-size:12px">Planning the change · about 30 credits. The plan shows the build price before anything is made.</span><span style="flex:1"></span><button type="button" class="btn btn--primary btn--sm">Plan the change</button></div>
+    <div class="cost">
+      <div><span>Planning the change</span><span>about 30</span></div>
+      <div><span>Your bottle photo</span><span>free</span></div>
+      <div><span>Remake the dropper close-up</span><span>165</span></div>
+      <div><span>Rebuilding the video around the changes</span><span>120–200</span></div>
+      <div class="total"><span>About 315–395 credits</span><span>you have 1,240</span></div>
+      <span class="note">Only planning is charged now. The rest is shown on the plan and reserved when you approve it; unused credits come back.</span>
+    </div>
+    <div class="row"><span style="flex:1"></span><button type="button" class="btn btn--ghost btn--sm">Clear</button><button type="button" class="btn btn--primary btn--sm">Plan the change</button></div>
   </footer>
 </aside>
 </body>
