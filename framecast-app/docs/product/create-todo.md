@@ -48,7 +48,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | 6 | UGC | Unboxing ad for the serum: hook, problem, solution | RF1 | | |
 | 7 | UGC | Split-screen reaction ad | E2 (generated presenter) | | |
 | 8 | Footage edit | The WyvStudio demo recording cut into a 30 s promo with captions and zooms | E1 | `fd8bca53` | 31 min · 668 cr (est. 860) · all checks pass · clear step story from the real recording, zooms, captions, logo end card · app text small in 9:16 crops, two panels clipped at the left edge · the source recording shows an old brief "(pronounced weev-studio)" |
-| 9 | Footage + own audio | The VSL's own voiceover over a new edit of the product | FS8 | | |
+| 9 | Footage + own audio | The VSL's own voiceover over a new edit of the product | FS8 | `60600452` | 22 min · 176 cr · all checks pass · the presenter's own sentences word for word, karaoke captions over matching app screens, logo end card: a clean long-to-short repurpose · app screens dark and small at 16:9 |
 | 10 | From scratch | "3 hooks that stop the scroll", a teaching video for marketers, WyvStudio end card | FS3, S11 | `5fd8e691` | 22 min · 578 cr · strong design and opening (big 3 + title at 0 s) · BLOCKED on reading time, mostly for text inside an example post (a prop, not meant to be read: the check is too strict there) · Hook 02 phone cut at the left edge, Hook 03 opens on a nearly empty orange frame |
 
 ## 1. Build next (no owner input needed)
