@@ -4752,4 +4752,78 @@ class CreateIntegrationTest extends TestCase
         // Taking its turn is not reported as stuck planning.
         $this->assertArrayNotHasKey('planning', app(\App\Services\Create\CreateHealth::class)->problems());
     }
+
+    /** A finished version whose run built a serum ad: a generated bottle picture, a shot, voice and music. */
+    private function changeableVersion(): array
+    {
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $input = json_decode($run->input_json, true);
+        $input['plan']['scenes'] = [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'A drop lands', 'reads' => ['Brighter skin?']], ['label' => 'Bottle', 'start' => 4, 'end' => 12, 'idea' => 'The bottle rises', 'reads' => ['Dewbloom Glow']]];
+        $input['plan']['narration'] = ['Want brighter-looking skin?', 'Meet Dewbloom Glow.'];
+        $input['plan']['voice'] = 'Aoede';
+        $input['plan_media'] = [
+            ['kind' => 'ai_image', 'description' => 'Frosted glass dropper bottle with a peach label', 'beat' => 'Bottle', 'credits' => 43, 'plan_item_index' => 0],
+            ['kind' => 'generated_shot', 'description' => 'Macro of a golden drop forming', 'beat' => 'Hook', 'credits' => 165, 'plan_item_index' => 1],
+            ['kind' => 'voiceover', 'description' => 'Warm read', 'credits' => 3, 'plan_item_index' => 2],
+            ['kind' => 'music', 'description' => 'Airy pop', 'credits' => 34, 'plan_item_index' => 3],
+            ['kind' => 'cutout', 'description' => 'bottle cut out', 'credits' => 2, 'plan_item_index' => 4],
+        ];
+        DB::table('composition_runs')->where('id', $run->id)->update(['input_json' => json_encode($input)]);
+        $bytes = 'offline encoded video fixture'; $hash = hash('sha256', $bytes); $path = 'create/previews/'.$run->id.'/'.$hash.'.mp4';
+        \Illuminate\Support\Facades\Storage::fake('local'); \Illuminate\Support\Facades\Storage::disk('local')->put($path, $bytes);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'Test', 'bundle' => ['index.html' => '<h1>Test</h1>']], $path, $hash);
+        return [$c, DB::table('composition_revisions')->where('run_id', $run->id)->value('id')];
+    }
+
+    public function test_the_change_drawer_lists_the_parts_with_their_prices(): void
+    {
+        [$c, $revision] = $this->changeableVersion();
+        $parts = app(\App\Services\Create\ChangeService::class)->parts($this->owner, $c->id, $revision);
+        $this->assertSame(['Picture · Bottle', 'Shot · Hook'], array_column($parts['parts'], 'name'), 'what is in the picture; voice, music and cut-outs are not parts');
+        $this->assertSame([[4.0, 12.0], [0.0, 4.0]], array_column($parts['parts'], 'times'));
+        $this->assertSame([43, 165], array_column($parts['parts'], 'remake_credits'));
+        $this->assertSame(['Want brighter-looking skin?', 'Meet Dewbloom Glow.'], $parts['words']);
+        $this->assertTrue($parts['sound']['music']); $this->assertTrue($parts['sound']['voiceover']); $this->assertSame('Aoede', $parts['sound']['voice']);
+        [$low, $high] = $parts['estimate']['rebuild'];
+        $this->assertGreaterThan(0, $low); $this->assertSame(2 * $low, $high);
+    }
+
+    public function test_the_change_drawer_sends_one_change_with_the_frame_and_plans_it_as_an_edit(): void
+    {
+        [$c, $revision] = $this->changeableVersion();
+        config(['create.durable_planning' => true]); Bus::fake();
+        $this->workspace->update(['credits_monthly' => 1000]);
+        $version = (int) DB::table('create_conversations')->where('id', $c->id)->value('version');
+        $out = app(\App\Services\Create\ChangeService::class)->change($this->owner, $c->id, $revision, ['expected_version' => $version,
+            'moments' => [['time' => 9.2, 'text' => 'Make the drop golden and slower']],
+            'parts' => [['id' => 'media-1', 'action' => 'remake', 'text' => 'closer'], ['id' => 'media-9', 'action' => 'remake']],
+            'words' => [['index' => 1, 'text' => 'Meet Dewbloom Glow Serum.'], ['index' => 0, 'text' => 'Want brighter-looking skin?']],
+            'music' => 'none', 'voice' => 'another'], [0 => $this->uploadPng('frame.png')]);
+        $text = $out['message']->content;
+        $this->assertStringStartsWith('Change version 1 of the video:', $text);
+        $this->assertStringContainsString('- At 0:09 (the frame is attached): Make the drop golden and slower', $text);
+        $this->assertStringContainsString('- Make a new shot · hook (0:00–0:04): closer.', $text);
+        $this->assertStringContainsString('- Change the line "Meet Dewbloom Glow." to: "Meet Dewbloom Glow Serum."', $text);
+        $this->assertStringNotContainsString('brighter-looking skin?" to', $text, 'an unchanged line is not a change');
+        $this->assertStringContainsString("- Music: none.\n- Voice: a different voice.\nKeep everything else as it is.", $text);
+        $frame = DB::table('create_attachments')->where('conversation_id', $c->id)->where('purpose', 'current')->first();
+        $this->assertSame(['kind' => 'screenshot', 'use' => 'Make the drop golden and slower', 'time' => 9.2], json_decode($frame->notes_json, true));
+        $this->assertSame('queued', $out['planning']['state']);
+        $this->assertSame('edit', \App\Services\Create\PlanService::plannerTask(DB::table('create_conversations')->where('id', $c->id)->first()), 'a long drawer request is still a change');
+        $this->rejected(422, fn () => app(\App\Services\Create\ChangeService::class)->change($this->owner, $c->id, $revision, ['expected_version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'moments' => [['time' => 1, 'text' => ' ']]], []));
+    }
+
+    public function test_suggest_a_change_reads_the_frame_and_is_billed_like_planning(): void
+    {
+        [$c, $revision] = $this->changeableVersion();
+        config(['services.anthropic.key' => 'k', 'create.mode' => 'agent']);
+        $this->workspace->update(['credits_monthly' => 1000]);
+        Http::fake(['https://api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => '{"suggestion": "Hold the bottle label on screen a beat longer so it can be read.", "ideas": ["Slower drop", "Bigger label", "Warmer light", "extra"]}']],
+            'usage' => ['input_tokens' => 1500, 'output_tokens' => 60]])]);
+        $s = app(\App\Services\Create\ChangeService::class)->suggest($this->owner, $c->id, $revision, 6.0, $this->uploadPng('frame.png'));
+        $this->assertSame('Hold the bottle label on screen a beat longer so it can be read.', $s['suggestion']);
+        $this->assertSame(['Slower drop', 'Bigger label', 'Warmer light'], $s['ideas']);
+        Http::assertSent(fn ($r) => str_contains(json_encode($r->data()), '\"label\":\"Bottle\"') && $r['model'] === \App\Services\Create\AttachmentRoles::MODEL);
+        $this->assertGreaterThanOrEqual(0, $s['charged']);
+    }
 }

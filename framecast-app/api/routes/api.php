@@ -263,6 +263,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/revisions/{revisionId}/save-output', [$controller, 'saveOutput']);
             Route::post('/conversations/{id}/revisions/{revisionId}/restore', [$controller, 'restore']);
             Route::post('/conversations/{id}/revisions/{revisionId}/edits', [$controller, 'freeEdit']);
+            Route::get('/conversations/{id}/revisions/{revisionId}/parts', [$controller, 'changeParts']);
+            Route::post('/conversations/{id}/revisions/{revisionId}/suggest', [$controller, 'suggestChange']);
+            Route::post('/conversations/{id}/revisions/{revisionId}/change', [$controller, 'change']);
             Route::post('/conversations/{id}/revisions/{revisionId}/delivery', [\App\Http\Controllers\Api\V1\Create\DeliveryController::class, 'store']);
             Route::get('/conversations/{id}/revisions/{revisionId}/artifact', [$controller, 'artifact']);
             Route::post('/conversations/{id}/revisions/{revisionId}/note', [$controller, 'noteRevision']);

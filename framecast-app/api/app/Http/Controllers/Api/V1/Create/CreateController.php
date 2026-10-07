@@ -234,6 +234,35 @@ class CreateController extends Controller
         return response()->json(['data' => app(\App\Services\Create\DirectionService::class)->more($r->user(), $id, $planId)]);
     }
 
+    /** The Change drawer (S9): the parts this version is made of, with prices. */
+    public function changeParts(Request $r, string $id, string $revisionId)
+    {
+        return response()->json(['data' => app(\App\Services\Create\ChangeService::class)->parts($r->user(), $id, $revisionId)]);
+    }
+
+    /** "Suggest a change" for one moment, from its frame. */
+    public function suggestChange(Request $r, string $id, string $revisionId)
+    {
+        $input = $r->validate(['time' => 'required|numeric|min:0|max:600', 'frame' => 'required|file|mimetypes:image/jpeg,image/png|max:3000']);
+        return response()->json(['data' => app(\App\Services\Create\ChangeService::class)->suggest($r->user(), $id, $revisionId, (float) $input['time'], $r->file('frame'))]);
+    }
+
+    /** The drawer's edits as one change request, then planning (multipart: payload JSON plus frames[i] per moment). */
+    public function change(Request $r, string $id, string $revisionId)
+    {
+        $r->validate(['payload' => 'required|string|max:20000', 'frames' => 'sometimes|array|max:6', 'frames.*' => 'file|mimetypes:image/jpeg,image/png|max:3000']);
+        $payload = json_decode((string) $r->input('payload'), true);
+        $input = validator(is_array($payload) ? $payload : [], [
+            'expected_version' => 'required|integer|min:0',
+            'moments' => 'sometimes|array|max:6', 'moments.*.time' => 'required|numeric|min:0|max:600', 'moments.*.text' => 'nullable|string|max:600',
+            'parts' => 'sometimes|array|max:30', 'parts.*.id' => 'required|string|max:40', 'parts.*.action' => 'required|in:file,remake,describe', 'parts.*.asset_id' => 'nullable|integer', 'parts.*.text' => 'nullable|string|max:600',
+            'words' => 'sometimes|array|max:40', 'words.*.index' => 'required|integer|min:0', 'words.*.text' => 'required|string|max:300',
+            'music' => 'sometimes|in:keep,new,mine,none', 'music_asset_id' => 'nullable|integer', 'voice' => 'sometimes|in:keep,another', 'note' => 'nullable|string|max:1000',
+        ])->validate();
+        $frames = array_filter((array) $r->file('frames', []));
+        return response()->json(['data' => app(\App\Services\Create\ChangeService::class)->change($r->user(), $id, $revisionId, $input, $frames)], 201);
+    }
+
     private function asksTopUpBeforePlanning($user, string $id, string $key): void
     {
         // A repeat of a plan already made (or under way) returns it as before.

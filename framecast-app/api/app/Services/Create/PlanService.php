@@ -35,9 +35,11 @@ class PlanService
      */
     public static function plannerTask(object $c): string
     {
+        $last = DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'user')->orderByDesc('sequence')->first(['content', 'idempotency_key']);
+        // A request from the Change drawer is always a change, however many parts it lists (ChangeService).
+        if (str_starts_with((string) ($last->idempotency_key ?? ''), 'change:')) return 'edit';
         if (! DB::table('create_plans')->where('conversation_id', $c->id)->exists()) return 'creative';
-        $last = (string) DB::table('create_messages')->where('conversation_id', $c->id)->where('role', 'user')->orderByDesc('sequence')->value('content');
-        return count(preg_split('/\s+/u', trim($last), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
+        return count(preg_split('/\s+/u', trim((string) ($last->content ?? '')), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
     }
 
     /** Planning is paid (at half its cost): a balance below a typical charge is asked to top up before planning starts. */
