@@ -1514,7 +1514,7 @@ class CreateIntegrationTest extends TestCase
         $plans->select($this->owner, $c->id, $plan['id'], (int) $this->conversations->conversation($this->owner, $c->id)->version, ['look_first' => true]);
         $q = $this->conversations->quote($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version);
         $this->assertSame([true, false, 100], [$q->payload_json['look_first'], $q->payload_json['from_look'], $q->payload_json['execution_policy']['agent']['max_calls']], 'the look run has the same room; its budget and the no-progress guard stop it');
-        $this->assertSame(1, $q->payload_json['execution_policy']['critic']['max_calls'], 'one critic round on the stills');
+        $this->assertArrayNotHasKey('critic', $q->payload_json['execution_policy'], 'a look run is never reviewed (reviewedBuild), so nothing is held for a reviewer (BG1)');
 
         // The look version is recorded as such; approving it quotes the motion build from it.
         $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'approve-look', true);
@@ -2843,6 +2843,15 @@ class CreateIntegrationTest extends TestCase
         $this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->assertJsonPath('data.settings_locks.format', true);
         $patch(['aspect_ratio' => '16:9'])->assertStatus(409);
         $patch(['duration_seconds' => 15])->assertOk();
+    }
+
+    public function test_only_thorough_builds_hold_credits_for_the_reviewer(): void
+    {
+        config(['create.agent_provider' => 'anthropic', 'services.anthropic.key' => 'k', 'create.mode' => 'agent', 'create.paid_execution_enabled' => true, 'create.pilot_budget_id' => 'e3-test', 'create.pilot_budget_microusd' => 5000000]);
+        $policy = fn ($effort) => \App\Services\Create\PilotPolicy::execution(['effort' => $effort, 'duration_seconds' => 15, 'output_kind' => 'video']);
+        $this->assertArrayNotHasKey('critic', $policy('quick'));
+        $this->assertArrayNotHasKey('critic', $policy('standard'), 'Standard is never reviewed, so it holds nothing for a reviewer');
+        $this->assertSame(4, $policy('thorough')['critic']['max_calls']);
     }
 
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void

@@ -64,8 +64,9 @@ class PilotPolicy
                 'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'level'=>$level,'max_output_tokens'=>32000,'context_bytes'=>600000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
-                // The critic: a separate reviewer of short low-effort calls with the frames and the strip (none at Quick).
-                ...($level==='quick'?[]:['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>'low','cost_limit_microusd'=>300000,'max_calls'=>$level==='thorough'?4:2,'max_output_tokens'=>4096]]),
+                // The critic: a separate reviewer of short low-effort calls with the frames and the strip, on Thorough builds only
+                // (only they are reviewed, so Quick and Standard hold nothing for it).
+                ...($level==='thorough'?['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>'low','cost_limit_microusd'=>300000,'max_calls'=>4,'max_output_tokens'=>4096]]:[]),
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,
