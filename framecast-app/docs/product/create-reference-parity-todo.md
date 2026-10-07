@@ -1,3 +1,5 @@
+> **Current status (2026-10-07):** open items are tracked on [create-pending.md](create-pending.md); this todo is kept for history.
+
 > Harness/workflow update (2026-10-03): W1–W5 implementation and W6 acceptance are tracked in [the current integration progress document](create-agent-integration-progress.md#harness-and-workflow-closeout--2026-10-03). Godmode diagnostics is G1, pending. Historical unknown billing, paid creative acceptance and production release remain open.
 
 > Current routing (2026-10-03): VEED Fabric is the only supported audio-driven lip-sync engine. ByteDance OmniHuman is removed; mentions below describe historical decisions. Native speech uses normal video models (Gemini Omni, Veo, Seedance).

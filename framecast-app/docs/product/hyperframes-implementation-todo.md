@@ -1,3 +1,5 @@
+> **Current status (2026-10-07):** open items are tracked on [create-pending.md](create-pending.md); this todo is kept for history.
+
 > Harness/workflow update (2026-10-03): W1–W5 implementation and W6 acceptance are tracked in [the current integration progress document](create-agent-integration-progress.md#harness-and-workflow-closeout--2026-10-03). Godmode diagnostics is G1, pending. Historical unknown billing, paid creative acceptance and production release remain open.
 
 # Create / Hyperframes — implementation TODO

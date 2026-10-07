@@ -1,3 +1,5 @@
+> **Current status (2026-10-07):** every open Create item is on one sheet, [create-pending.md](create-pending.md); production rollout is in [create-go-live.md](create-go-live.md). This document records work and decisions up to 2026-10-03; its checkboxes are not maintained after that date.
+
 > Current routing (2026-10-03): VEED Fabric is the only supported audio-driven lip-sync engine. ByteDance OmniHuman is removed; mentions below describe historical decisions. Native speech uses normal video models (Gemini Omni, Veo, Seedance).
 
 # Create agent integration and creative quality progress
@@ -246,6 +248,21 @@ First acceptance target: a reference-inspired WyvStudio promo using the motion l
 This is the current tracker for the new integration/quality work. The existing [implementation TODO](hyperframes-implementation-todo.md) and [reference parity TODO](create-reference-parity-todo.md) retain historical evidence; their completion claims still need reconciliation. This document does not close their production, billing or acceptance gates.
 
 Current status: colour/review improvements, upstream guidance, Barty adapter and initial Remotion clip adapter are implemented locally. Offline renders and agent contract tests pass; live model creative acceptance and production gates remain open. Earlier integration runtime images were rebuilt; the latest V1/V2 source changes still need a local API/worker refresh. No paid generation, push or deployment in these integration slices. Historical spending approvals are not a new test budget.
+
+## Since 2026-10-03 (summary)
+
+- **Generated video (2026-10-05):** moved to `create-generated-video-todo.md` / `-progress.md` (bench, cast, storyboard).
+- **Reference following and checks (2026-10-06):** materials asked before planning, the reference study and its sound
+  effects, captions in Details, reading time blocking, listening checks with re-listen, vendor errors and alerts,
+  credits calibrated, caps removed with loop guards kept, the reviewer on Thorough.
+- **Production (2026-10-06/07):** Create live for the team on `framecast-create` (see `create-go-live.md`): durable
+  planning, private B2 storage, drain controls, worker ownership, three build slots, health alerts, paid canaries.
+- **From scratch (2026-10-07):** concept, playbooks and motion voices; 14 new moves; direction cards in a drawer; files
+  understood and placed (questions when unclear); screenshot of the current video as "change this moment"; the user's
+  own voice, music and sounds; finishing checks (margins, overlap); Details form and mid-creation rules. See
+  `create-from-scratch-plan.md`.
+- **P0 V1–V8 below:** V1 (reference study), V3 (character approval step), V6 (final checks on the encoded result) and
+  V7 (bounded repair rounds) were built in later work; V8 acceptance (the bench) is still open in `create-pending.md`.
 
 ## Verified baseline
 

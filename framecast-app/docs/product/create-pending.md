@@ -48,7 +48,7 @@ Built 2026-10-06 (uncommitted), all of `create-vendor-errors-todo.md` except the
 | ID | Item | Status | Waiting on | Next | Source |
 |---|---|---|---|---|---|
 | V8 | Reference study and transcription record vendor failures (done); final checks still skip quietly | partly | — | final checks | vendor-errors |
-| V9 | Prove an alert end to end (a real mail arrives) | ready | — | send a test alert | vendor-errors |
+| V9 | Prove an alert end to end (a real mail arrives) | done 2026-10-07 | — | — | a Create health alert reached the owner |
 
 ## Build guards and caps (2026-10-06)
 
