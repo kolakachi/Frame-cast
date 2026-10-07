@@ -28,6 +28,14 @@ A build costs **$0.40 to $1.90** of Opus, typically 6 to 15 calls, plus its plan
 
 When any limit is reached (calls, time, context, output, repairs, model unavailable), the last draft that passed every check is delivered with a note, so a build never ends empty if a checked draft existed.
 
+## Running the tests
+
+- API: `docker compose run --rm --no-deps -v "$PWD:/app" -w /app/api --entrypoint php api -d memory_limit=1G vendor/bin/phpunit` (from `framecast-app/`).
+- Worker: `ops/test_worker.sh` (all) or `ops/test_worker.sh reads final` (files matching the words). It runs inside the worker
+  image, which has every dependency (`@babel/parser`, Remotion, Chromium, ffmpeg); the host has no worker `node_modules`.
+  The current `agent/` code and `runtime/*.js` are mounted over the image's copies, so rebuild (`REBUILD=1`) only when
+  `package*.json` changes. Plain `node --test` on the host runs everything except the Remotion source test.
+
 ## Run a build from the chat
 
 1. Open http://localhost:5173/create. Pick a style in the composer (WyvStudio styles are built-in packs; your styles are saved ones) or let WyvStudio choose.
