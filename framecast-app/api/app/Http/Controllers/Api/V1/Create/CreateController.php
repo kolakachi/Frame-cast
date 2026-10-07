@@ -223,10 +223,20 @@ class CreateController extends Controller
         return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
     }
 
+    private function asksTopUpBeforePlanning($user, string $id, string $key): void
+    {
+        // A repeat of a plan already made (or under way) returns it as before.
+        if (DB::table('create_plans')->where('conversation_id', $id)->where('idempotency_key', $key)->exists()) return;
+        app(\App\Services\Create\ConversationService::class)->conversation($user, $id);
+        app(\App\Services\Create\PlanService::class)->assertCanPayPlanning($user);
+    }
+
     public function plan(Request $r, string $id)
     {
         $input = $r->validate(['expected_version' => 'required|integer|min:0', 'idempotency_key' => 'required|string|max:128', 'skip_questions' => 'sometimes|boolean', 'async' => 'sometimes|boolean']);
         $user = $r->user(); $skip = $r->boolean('skip_questions');
+        // Asked before anything is queued, so a short balance hears it now rather than from a failed background plan.
+        $this->asksTopUpBeforePlanning($user, $id, $input['idempotency_key']);
         if (config('create.durable_planning')) {
             $job = app(\App\Services\Create\PlanningJobService::class)->submit($user, $id, $input['expected_version'], $input['idempotency_key'], $skip);
             return response()->json(['data' => $job], in_array($job['state'], ['queued', 'running'], true) ? 202 : 200);

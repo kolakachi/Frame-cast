@@ -2419,7 +2419,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([150, 'high', 4], [$t['agent']['max_calls'], $t['agent']['effort'], $t['critic']['max_calls']]);
         $this->assertThrows(fn () => \App\Services\Create\OutputSettings::normalize(['effort' => 'extreme']), \Illuminate\Validation\ValidationException::class);
 
-        // Planning: billed at half its real tokens' cost when the plan arrives, waived when the balance cannot cover it.
+        // Planning: billed at half its real tokens' cost when the plan arrives; subsidized, never free.
         config(['create.planner' => 'anthropic', 'create.mode' => 'agent']);
         $reply = ['summary' => 'A kinetic launch video', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'Title lands']]];
         $plan = fn ($id) => ['id' => $id, 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => ['input_tokens' => 100000, 'output_tokens' => 2000]];
@@ -2433,8 +2433,13 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['cost_credits' => 112, 'parts' => ['planner' => 110, 'questions' => 2], 'charge' => 56, 'charged' => 56, 'waived' => false], $first['plan']['planning_charge']);
         $this->assertSame(44, $this->conversations->creditAvailability($this->owner)['available']);
         $this->conversations->message($this->owner, $c->id, ['content' => 'Bigger title.', 'expected_version' => (int) $this->conversations->conversation($this->owner, $c->id)->version, 'idempotency_key' => 'b2']);
+        // 44 left is below a typical planning charge (60): asked to top up before anything is spent.
+        $this->rejected(402, fn () => $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'pc-2'));
+        $this->workspace->update(['credits_monthly' => (int) $this->workspace->credits_monthly + 20]);
         $second = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'pc-2');
-        $this->assertSame(['charged' => 0, 'waived' => true], array_intersect_key($second['plan']['planning_charge'], array_flip(['charged', 'waived'])), 'a short balance never blocks a plan');
+        $this->assertFalse($second['plan']['planning_charge']['waived']);
+        $this->assertSame(min($second['plan']['planning_charge']['charge'], 64), $second['plan']['planning_charge']['charged'], 'the whole charge, or what is left; never free');
+        $this->assertGreaterThanOrEqual(0, $this->conversations->creditAvailability($this->owner)['available']);
     }
 
     public function test_testing_without_limits_still_shows_a_real_never_more_than(): void

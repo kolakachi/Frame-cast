@@ -40,6 +40,15 @@ class PlanService
         return count(preg_split('/\s+/u', trim($last), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
     }
 
+    /** Planning is paid (at half its cost): a balance below a typical charge is asked to top up before planning starts. */
+    public function assertCanPayPlanning(User $user): void
+    {
+        if (PilotPolicy::unlimited() || config('create.mode') === 'fixture') return;
+        $min = (int) config('create.planning_min_credits', 60);
+        $available = (int) $this->conversations->creditAvailability($user)['available'];
+        abort_if($available < $min, 402, sprintf('Top up to plan: planning usually takes up to %s credits and you have %s available.', number_format($min), number_format(max(0, $available))));
+    }
+
     public function propose(User $user, string $id, int $version, string $key, bool $skipQuestions = false, ?string $executionToken = null): array
     {
         $this->conversations->authorize($user, true);
@@ -64,6 +73,7 @@ class PlanService
         $today = DB::table('create_plans')->join('create_conversations', 'create_conversations.id', '=', 'create_plans.conversation_id')
             ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_plans.created_at', '>=', now()->startOfDay())->count();
         abort_if(! PilotPolicy::unlimited() && $today >= (int) config('create.plan_daily_limit', 40), 429, 'Today\'s planning limit is reached. Plans reset at midnight.');
+        if ($executionToken === null) $this->assertCanPayPlanning($user);
 
         // What planning does is recorded step by step: shown live while it runs, then saved with the plan.
         // While our model account is failing (out of credit, a bad key), planning waits instead of failing.
@@ -252,8 +262,10 @@ class PlanService
             BrandLibrary::attachUsed($id, array_column(array_filter($plan['reused'] ?? [], fn ($r) => ! empty($r['from_brand'])), 'asset_id'), (string) DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderByDesc('sequence')->value('created_at'));
             if (($charge = (int) ($plan['planning_charge']['charge'] ?? 0)) > 0) {
                 $available = $this->conversations->creditAvailability($user)['available'];
-                $paid = $available >= $charge && app(\App\Services\CreditService::class)->deduct((int) $user->workspace_id, $charge, 'create_planning', ['conversation_id' => $id, 'plan_id' => $planId]);
-                $plan['planning_charge'] = [...$plan['planning_charge'], 'charged' => $paid ? $charge : 0, 'waived' => ! $paid];
+                // Subsidized, never free: the whole charge, or what is left when a rare plan costs more than the balance.
+                $take = min($charge, max(0, (int) $available));
+                $paid = $take > 0 && app(\App\Services\CreditService::class)->deduct((int) $user->workspace_id, $take, 'create_planning', ['conversation_id' => $id, 'plan_id' => $planId]);
+                $plan['planning_charge'] = [...$plan['planning_charge'], 'charged' => $paid ? $take : 0, 'waived' => false];
             }
             DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $id, 'message_id' => $messageId, 'brief_sequence' => (int) $briefs->last()->sequence,
                 'idempotency_key' => $key, 'request_hash' => $hash, 'provider' => mb_substr($result['provider'], 0, 120), 'plan_json' => json_encode($plan),
