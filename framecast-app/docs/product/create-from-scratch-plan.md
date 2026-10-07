@@ -1,7 +1,38 @@
 # From scratch: plan
 
 Drafted 2026-10-06. Nothing here is built. Covers FS1 to FS4 on the pending sheet. Ideas only from OpenMontage
-(AGPL v3): nothing is copied. **Decide** marks the owner's choices.
+(AGPL v3) and lemo-opuscar (MIT): nothing is copied. **Decide** marks the owner's choices.
+
+## Scope (owner, 2026-10-07)
+
+From scratch can be **anything**, not only ads in the eight formats below: a motion-graphics promo like the WyvStudio
+launch video built live on 2026-10-07 (kinetic type, orange accents, voiceover, music), an explainer, a product
+story. What decides the result is the **toolset** the builder has to work with. Variety comes from concepts and
+structures (FS1, FS2) *and* from enough tools: the art library (icons, 3D objects), the registry blocks, brand kits,
+device stages, generated images and clips, cutouts, captions, sound. Each new tool should widen what a from-scratch
+video can be, not add another card style.
+
+## Ideas from lemo-opuscar (MIT, studied 2026-10-07)
+
+A library of 43 film styles for Claude Code (long, art-led films; its tooling duplicates ours). Ideas to take, written
+in our own words:
+
+- **Variation space (FS1):** every style lists three structures, three openings and three endings far from its
+  example. Directions are built from different structure × opening × ending combinations, so the three cards really
+  differ. The planner also does this internally when the user skips the cards: three candidate structures, pick one
+  with a reason ("the first idea is usually the cliché"), then a shot list with the **why** of each shot.
+- **Use-case tables (FS2):** "information order | hold per layer | length" for each use (spec walkthrough, setup
+  guide, launch teaser). This is the playbook skeleton.
+- **Slideshow signals (FS3):** at least four different camera moves and real framing changes; one signature shot;
+  transitions made inside the medium, not default fades; one acceleration and one held breath; the subject filling at
+  least a third of the frame at key moments.
+- **Rules apart from the example (FS4):** a style's rules live apart from its one worked example, and a new video
+  must differ from the example in at least four of six dimensions (structure, opening, signature shot, camera path,
+  score shape, ending). The same test can keep a customer's videos from repeating each other.
+- **Concept prompt (FS1):** "find the invisible thing the product does and make it visible."
+- **Style cards:** about 12 of its styles suit brands (dark keynote, glass product, living screencast, hologram HUD,
+  mid-century toon, iso infographic, data viz, Swiss motion, whiteboard, microgame, halftone dossier, game show). Write
+  our own cards from them for the style picker.
 
 ## The problem
 
