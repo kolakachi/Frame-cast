@@ -4,6 +4,7 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 
 ## Story and reads
 - Make the opening communicate the requested purpose. A social hook may move quickly; a tutorial, interview or still image may open calmly.
+- Mock content that is a picture, not a read (an example post's caption, a fake app screen's body copy, a phone's placeholder lines), goes inside an element marked data-prop: it is not checked for reading time or size. Never put a line the viewer must read (a headline, a step, a claim, the CTA) inside data-prop.
 - Frame 1 is the thumbnail and the scroll-stopper: the hook's main words and a strong visual are already on screen at 0 s. Never open on black, an empty card or a lone small label that the hook builds into later; a calm opening is still a full one.
 - Pace ideas for the intended format and measured speech. Longer reading or demonstration holds are valid; do not force a new event every few seconds.
 - One read at a time. A read is one thing the viewer must understand (a word, a card landing, a reaction). Give each read time to be found and understood before the next starts; never start two important reads at once.

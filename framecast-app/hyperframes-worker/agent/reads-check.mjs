@@ -67,11 +67,13 @@ function sample(minFont,smallFont){
   const bg=!own&&!media&&r.width*r.height>=W*H*0.9;
   if(el.closest('[data-hold]'))held=true;
   const scale=el.offsetHeight?r.height/el.offsetHeight:1,size=own?parseFloat(getComputedStyle(el).fontSize)*scale:0;
-  if(own&&inside&&size<smallFont&&(own.split(' ').length>=4||own.length>=20))small.push({id:key(el),text:own.slice(0,60),size:Math.round(size)});
+  // Text inside a prop (an example post, a mock screen's copy) is part of a picture, not a line to read (GTM-1 #10).
+  const prop=!!el.closest('[data-prop]');
+  if(own&&inside&&!prop&&size<smallFont&&(own.split(' ').length>=4||own.length>=20))small.push({id:key(el),text:own.slice(0,60),size:Math.round(size)});
   // The words' own box (a heading's element box spans the full width even when its words do not).
   let words=null;if(own){const rg=document.createRange();rg.selectNodeContents(el);const b=rg.getBoundingClientRect();if(b.width>=2&&b.height>=2)words={x:b.left,y:b.top,w:b.width,h:b.height};}
   things.push({...item,w:r.width,h:r.height,media,text:!!own,words,label:own.slice(0,30),bleed:!!el.closest('[data-bleed]'),sig:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height),Math.round(o*20),own.slice(0,40)].join(','),live,bg});
-  if(own&&inside&&parseFloat(getComputedStyle(el).fontSize)>=minFont)texts.push({...item,text:(el.innerText||own).replace(/\s+/g,' ').trim(),words});
+  if(own&&inside&&!prop&&parseFloat(getComputedStyle(el).fontSize)>=minFont)texts.push({...item,text:(el.innerText||own).replace(/\s+/g,' ').trim(),words});
  }
  // An accent word inside a headline is part of that headline, not a block of its own.
  const top=texts.filter(x=>!texts.some(y=>y!==x&&y.el.contains(x.el)));
