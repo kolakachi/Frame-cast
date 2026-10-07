@@ -1286,12 +1286,13 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                     <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
                     <p v-if="isLivePlan(planByMessage[m.id]) && planByMessage[m.id].plan.assumptions?.length" class="plan-assumed"><b>Assumed:</b> {{ planByMessage[m.id].plan.assumptions.join(' · ') }}. Tell me if any is wrong.</p>
-                    <button v-if="waysFor(planByMessage[m.id]).length > 1" type="button" class="dir-strip" @click="openWays(planByMessage[m.id])">
+                    <div v-if="waysFor(planByMessage[m.id]).length > 1" class="dir-strip">
                       <span class="muted">Direction</span> <b>{{ planByMessage[m.id].plan.concept.name }}</b>
                       <span v-if="FORMAT_LABEL[planByMessage[m.id].plan.concept.format]" class="muted">· {{ FORMAT_LABEL[planByMessage[m.id].plan.concept.format] }}</span>
                       <span v-if="wayLocked(planByMessage[m.id])" class="muted">· locked</span>
                       <span class="dir-strip__more">{{ waysFor(planByMessage[m.id]).length - 1 }} other ways</span>
-                    </button>
+                      <button type="button" class="btn btn--ghost btn--sm" :aria-label="'Preview the ' + waysFor(planByMessage[m.id]).length + ' ways to make it'" @click="openWays(planByMessage[m.id])">Preview</button>
+                    </div>
                     <div :class="['plan-card', { 'is-old': !isLivePlan(planByMessage[m.id]) }]">
                       <div class="plan-pills">
                         <span class="plan-title">Plan</span>
@@ -2262,9 +2263,8 @@ label.tray-note{white-space:normal}
 .pd-check{display:flex;align-items:center;gap:8px;font-size:13px}.pd-check small{color:#8e8e8e}
 .pd-choice-group{display:flex;flex-direction:column;gap:6px}
 .pd-q{font-size:12px;color:#8e8e8e}
-.dir-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;margin:0 0 6px;padding:7px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);font-size:13px;text-align:left;cursor:pointer}
-.dir-strip:hover{border-color:var(--accent-line,#ff6b3566)}
-.dir-strip__more{margin-left:auto;color:var(--accent,#ff6b35);font-size:12px}
+.dir-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;margin:0 0 6px;padding:6px 6px 6px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);font-size:13px}
+.dir-strip__more{margin-left:auto;color:var(--text-3,#8f95a1);font-size:12px}
 .ways-intro{margin:6px 0 10px;color:var(--text-2,#b7bcc6)}
 .way{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
 .way--on{border-color:var(--accent-line,#ff6b3566);box-shadow:0 0 0 1px var(--accent-line,#ff6b3566) inset}
