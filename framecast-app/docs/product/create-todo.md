@@ -43,7 +43,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | 1 | Motion graphics | WyvStudio launch promo, 20 s 9:16, kinetic type: "Branded short-form video without a shoot" | FS5, I7 | | |
 | 2 | Motion graphics | How WyvStudio works (brief → plan → video), 30 s 16:9 for the landing hero, Thorough | BG1, CR1 | | |
 | 3 | Motion graphics | DTC product ad for a skincare serum, 15 s 9:16, product stills generated | AB4 | | |
-| 4 | Motion graphics | SaaS feature launch with numbers (odometer, gauge), 1:1 | FS5 | | |
+| 4 | Motion graphics | SaaS feature launch with numbers (odometer, gauge), 1:1 | FS5 | `8bba2c00` | 7.4 min · 245 cr · all checks pass · weak first second (empty card) · owner verdict pending |
 | 5 | UGC | A creator's testimonial for WyvStudio, talking to camera, 20 s 9:16 | spoken brand name | | |
 | 6 | UGC | Unboxing ad for the serum: hook, problem, solution | RF1 | | |
 | 7 | UGC | Split-screen reaction ad | E2 (generated presenter) | | |
@@ -55,7 +55,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 
 | ID | Item | Status | Next | Detail |
 |---|---|---|---|---|
-| S9 | "Change…" from the video: go back to Plan, Character or Storyboard and redo only the later steps | open | mockup first, then build | archive: steps-asking-plan |
+| S9 | "Change…" from the video, cut down for launch: Words / Voice / Look open the plan drawer filled with what the video uses; edits are planned as one change, unchanged media reused | open | owner OK on `create-ui/change-from-video.html`, then build | archive: steps-asking-plan |
 | S10 | Pause and ask inside a step (at most 2 questions), resume without re-approval | open | build | archive: steps-asking-plan |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count, opening hero | partly | build | archive: from-scratch-plan |
 | I7 | Tune the overlap and lopsided checks: they have not caught a real case yet ("SHOOT" under a line, crammed endings) | open | tune on the next builds | `cd5bb2cc` |

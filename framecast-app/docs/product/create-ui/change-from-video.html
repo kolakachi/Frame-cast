@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change from the video · Create · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+<style>
+/* Direction cards (FS1). Only new rules; everything else is wyv.css and agent.css. */
+.mock-note{border:1px dashed var(--line-3);border-radius:12px;padding:12px 14px;color:var(--text-2);font-size:13px;line-height:1.5;margin:0 0 6px}
+.mock-note b{color:var(--text)}
+.mock-label{font:11px var(--mono);letter-spacing:.08em;color:var(--text-3);margin:18px 0 2px}
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+@media (max-width:860px){.dirs{grid-template-columns:1fr}}
+.dir{display:flex;flex-direction:column;gap:7px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3);text-align:left;color:var(--text);min-width:0}
+.dir--pick{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+.dir__top{display:flex;align-items:center;gap:8px}
+.dir__name{font-weight:600;font-size:14px}
+.dir__badge{margin-left:auto;font:10px var(--mono);letter-spacing:.06em;color:var(--accent);border:1px solid var(--accent-line);border-radius:999px;padding:2px 7px;white-space:nowrap}
+.dir__idea{font-size:13px;line-height:1.45;color:var(--text)}
+.dir__row{display:grid;grid-template-columns:56px 1fr;gap:6px;font-size:12px;line-height:1.4;color:var(--text-2)}
+.dir__row span:first-child{font:10px var(--mono);letter-spacing:.06em;color:var(--text-3);padding-top:2px}
+.swatches{display:inline-flex;gap:4px;vertical-align:middle;margin-right:6px}
+.swatches i{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid var(--line-2)}
+.dir__foot{margin-top:auto;padding-top:6px;display:flex;gap:6px;align-items:center}
+.dir__why{font-size:12px;color:var(--text-2);border-left:2px solid var(--accent-line);padding-left:8px;margin-top:2px}
+.dir-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2);padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.dir-strip b{color:var(--text)}
+.mix{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center;color:var(--text-2);font-size:12px}
+.mix .chip-btn{border:1px solid var(--line-3);border-radius:999px;padding:4px 10px;background:var(--bg-2);color:var(--text-2);font-size:12px;cursor:pointer}
+</style>
+<style>
+/* The drawer: CreateView's SideDrawer (fixed header, scrolling body, footer always in view). */
+html,body{overflow-x:hidden}
+.scrim{position:fixed;inset:0;background:#0008;z-index:30}
+.pdw{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);max-width:100%;z-index:31;display:flex;flex-direction:column;background:var(--bg-2);border-left:1px solid var(--line-3);font-size:13px;line-height:1.5}
+.pdw-head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line-2)}
+.pdw-head h2{margin:0;font-size:15px}
+.pdw-meta{color:var(--text-3);font-size:12px}
+.pdw-x{margin-left:auto;width:28px;height:28px;border-radius:6px;border:0;background:transparent;color:var(--text-3);cursor:pointer;font-size:16px}
+.pdw-body{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 18px;display:flex;flex-direction:column;gap:10px}
+.pdw-foot{display:flex;flex-direction:column;gap:8px;padding:12px 18px;border-top:1px solid var(--line-2);background:var(--bg-2)}
+.pdw-foot textarea{width:100%;resize:none;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);padding:9px 11px;font:13px var(--sans)}
+.pdw-foot .row{display:flex;gap:8px;align-items:center}
+.intro{color:var(--text-2);margin:0}
+.dir{display:flex;flex-direction:column;gap:6px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
+.dir--on{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+.dir__top{display:flex;align-items:center;gap:8px}
+.dir__n{font:11px var(--mono);color:var(--text-3)}
+.dir__name{font-weight:600;font-size:14px}
+.dir__badge{margin-left:auto;font:10px var(--mono);letter-spacing:.06em;border-radius:999px;padding:2px 7px;white-space:nowrap}
+.dir__badge--on{color:var(--accent);border:1px solid var(--accent-line)}
+.dir__badge--fmt{color:var(--text-3);border:1px solid var(--line-3)}
+.dir__idea{font-size:13px;line-height:1.45}
+.dir__row{display:grid;grid-template-columns:52px 1fr;gap:6px;font-size:12px;line-height:1.4;color:var(--text-2)}
+.dir__row span:first-child{font:10px var(--mono);letter-spacing:.06em;color:var(--text-3);padding-top:2px}
+.sw{display:inline-flex;gap:3px;vertical-align:-1px;margin-right:6px}.sw i{width:10px;height:10px;border-radius:3px;display:inline-block;border:1px solid var(--line-2)}
+.dir__foot{display:flex;gap:8px;align-items:center;padding-top:4px}
+.dir__why{font-size:12px;color:var(--text-2);border-left:2px solid var(--accent-line);padding-left:8px}
+.more-ways{align-self:flex-start}
+.dir-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2);padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.dir-strip b{color:var(--text)}
+.mock-note{border:1px dashed var(--line-3);border-radius:12px;padding:12px 14px;color:var(--text-2);font-size:13px;line-height:1.5}
+.mock-note b{color:var(--text)}
+</style>
+<style>
+/* S9 cut-down: Change… on the finished video. Only new rules. */
+.result-card{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start;border:1px solid var(--line-3);border-radius:14px;background:var(--bg-3);padding:14px}
+@media (max-width:760px){.result-card{grid-template-columns:1fr}}
+.vid{aspect-ratio:9/16;border-radius:10px;background:linear-gradient(160deg,#0A0A0F 40%,#2a160c);display:flex;align-items:flex-end;justify-content:center;padding:14px;color:#fff;font:600 15px var(--sans);text-align:center;border:1px solid var(--line-2)}
+.vid b{color:#FF6B35}
+.result-side{display:flex;flex-direction:column;gap:10px;min-width:0}
+.result-pills{display:flex;gap:6px;flex-wrap:wrap}
+.pdw-foot .btn{white-space:nowrap}
+.result-actions{display:flex;flex-wrap:wrap;gap:8px;position:relative}
+.menu{position:absolute;top:40px;left:96px;z-index:5;width:250px;background:var(--bg-2);border:1px solid var(--line-3);border-radius:12px;padding:6px;box-shadow:0 12px 30px #0006}
+.menu button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;border:0;background:transparent;color:var(--text);padding:8px 10px;border-radius:8px;font:13px var(--sans);cursor:pointer}
+.menu button:hover,.menu button.on{background:var(--bg-3)}
+.menu small{color:var(--text-3);font-size:11.5px}
+.menu hr{border:0;border-top:1px solid var(--line-2);margin:4px 0}
+.sec{display:flex;flex-direction:column;gap:8px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
+.sec--on{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+.sec h3{margin:0;font-size:13px;display:flex;align-items:center;gap:8px}
+.sec h3 small{margin-left:auto;font:10px var(--mono);letter-spacing:.06em;color:var(--text-3)}
+.line{display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:center}
+.line span{font:10px var(--mono);color:var(--text-3)}
+.line input,.sec select,.sec textarea{width:100%;border:1px solid var(--line-3);border-radius:8px;background:var(--bg-2);color:var(--text);padding:7px 9px;font:13px var(--sans)}
+.line input.changed{border-color:var(--accent-line)}
+.keep{font-size:12px;color:var(--text-2);border-left:2px solid var(--line-3);padding-left:8px}
+.reuse{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+.reuse span{border:1px solid var(--line-3);border-radius:999px;padding:2px 8px;color:var(--text-2)}
+.reuse span.redo{border-color:var(--accent-line);color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Create<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="all-videos.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="assets.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">Create · mockup</div><h1>WyvStudio · 20 s launch promo</h1></div>
+    <span class="status status--info">PROPOSAL · S9 CHANGE…</span>
+  </header>
+  <div class="agent-content">
+    <section class="conversation" aria-label="Conversation">
+      <div class="messages">
+        <p class="mock-note"><b>Change…</b> sits next to Download on the finished video. Its menu names the parts this video has: <b>Words</b>, <b>Voice</b>, <b>Look</b>, and <b>Pictures</b> only when the video has generated people or shots. Picking one opens the plan drawer at that part, filled with what the video uses now. Editing it and pressing <b>Plan the change</b> sends the edits as one change request: the usual plan card comes back with the price of only what changes, and everything else (voice, music, pictures, footage) is reused. <b>Something else</b> just focuses the chat box. Nothing is charged for opening the drawer.</p>
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>3:12 PM</time></span>
+          <div class="result-card">
+            <div class="vid"><span>Branded video,<br><b>without a shoot.</b></span></div>
+            <div class="result-side">
+              <span class="result-title"><b>One line becomes everything</b></span>
+              <div class="result-pills"><span class="pill">Version 1</span><span class="pill pill--ok">Current</span></div>
+              <div class="result-actions">
+                <button type="button" class="btn btn--primary">Download video</button>
+                <button type="button" class="btn btn--outline" aria-expanded="true">Change…</button>
+                <button type="button" class="btn btn--outline">Copy share link</button>
+                <button type="button" class="btn btn--ghost">Details</button>
+                <div class="menu" role="menu">
+                  <button class="on" role="menuitem">Words<small>Voiceover and on-screen lines</small></button>
+                  <button role="menuitem">Voice<small>Who speaks, and how names are said</small></button>
+                  <button role="menuitem">Look<small>Colours, fonts, logo</small></button>
+                  <hr>
+                  <button role="menuitem">Something else<small>Describe it in the chat</small></button>
+                </div>
+              </div>
+              <p class="result-hint" style="margin-top:120px">Want something different? Use Change…, or describe it below, like “slower cuts” or “bigger captions”.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+<div class="scrim" aria-hidden="true"></div>
+<aside class="pdw" role="dialog" aria-label="Change this video">
+  <header class="pdw-head"><div><h2>Change this video</h2><span class="pdw-meta">Version 1 · edits become version 2</span></div><button class="pdw-x" aria-label="Close">✕</button></header>
+  <div class="pdw-body">
+    <p class="intro">Edit what you want different. Everything you leave alone stays as it is.</p>
+    <div class="sec sec--on">
+      <h3>Words <small>6 LINES</small></h3>
+      <div class="line"><span>0:00</span><input value="Branded short-form video, without a shoot."></div>
+      <div class="line"><span>0:03</span><input class="changed" value="Type one line about what you sell."></div>
+      <div class="line"><span>0:06</span><input value="You approve the plan."></div>
+      <div class="line"><span>0:09</span><input value="And you get a finished video, in your brand."></div>
+      <div class="line"><span>0:13</span><input value="Your AI video studio: WyvStudio."></div>
+      <div class="line"><span>0:16</span><input value="Start at wyvstudio.com."></div>
+      <div class="keep">On-screen lines follow the voiceover unless you change them in the chat.</div>
+    </div>
+    <div class="sec">
+      <h3>Voice <small>PUCK · UPBEAT</small></h3>
+      <select><option>Puck · upbeat, punchy (current)</option><option>Aoede · bright, breezy</option><option>Iapetus · clear, measured</option></select>
+      <div class="line"><span>SAYS</span><input value="WyvStudio → “wiv studio”"></div>
+    </div>
+    <div class="sec">
+      <h3>Look <small>YOUR BRAND</small></h3>
+      <div class="dir__row"><span>COLOURS</span><span><span class="sw"><i style="background:#0A0A0F"></i><i style="background:#FF6B35"></i><i style="background:#ffffff"></i></span>#0A0A0F · #FF6B35 · white</span></div>
+      <div class="dir__row"><span>TYPE</span><span>DM Sans · Space Mono labels</span></div>
+    </div>
+    <div class="sec">
+      <h3>What gets redone</h3>
+      <div class="reuse"><span class="redo">Voiceover line 2</span><span>Music · reused</span><span>Logo · reused</span><span>Motion · rebuilt around the new line</span></div>
+    </div>
+  </div>
+  <footer class="pdw-foot">
+    <textarea rows="2" placeholder="Anything else? “Make the stamp bigger”"></textarea>
+    <div class="row"><span class="muted" style="font-size:12px">Planning the change · about 30 credits. The plan shows the build price before anything is made.</span><span style="flex:1"></span><button type="button" class="btn btn--primary btn--sm">Plan the change</button></div>
+  </footer>
+</aside>
+</body>
+</html>
