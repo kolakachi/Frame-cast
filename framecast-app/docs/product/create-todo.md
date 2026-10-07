@@ -67,6 +67,8 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | L16 | Restore drill from the private DB backups (`wyv-create-private/db-backups/`), plus a secrets review | open | run the drill | archive: go-live L16 |
 | G-REC | Recovery drills on production: API restart during planning, worker killed mid-build, duplicate approval, cancel while queued and while running; no double charge, uncertain work stays held | open | run when idle | archive: go-live gates |
 | G-DEP | Rollback drill: record API, web, worker, sandbox and art-pack revisions; roll back without touching active builds | open | run when idle | archive: go-live gates |
+| ASK-FILE | A product ad with no product photo fell back to a bottle drawn in code (it did ask for the photo). Planner rule now: a generated product image is the fallback, the photo is still asked for (GTM-1 #3) | ready | push, then prove on a product brief | GTM-1 |
+| SQUARE | "A W on an orange rounded square" set the square format | done 2026-10-07 `b2ed950f` | — | GTM-1 |
 | PLAN-CAP | Planning ran one plan at a time (~2 min each): 12 queued plans waited up to ~25 min and tripped the health alert (GTM-1). Now 3 planning workers, at most 2 plans per workspace; a plan waiting on its own workspace is not alerted | ready | deploy, then watch | GTM-1 |
 | G-FAIR | Several workspaces at once: one busy workspace cannot hog the queue; cancelling frees a slot; waiting users see a useful status | open | test | archive: go-live gates |
 | HF-BILL | Reconcile real provider invoices against our cost records (estimates are not invoices yet) | open | compare a week | archive: hyperframes-implementation-todo |
