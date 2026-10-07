@@ -41,8 +41,8 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 | # | Format | Brief | Also proves | Run | Result |
 |---|---|---|---|---|---|
 | 1 | Motion graphics | WyvStudio launch promo, 20 s 9:16, kinetic type: "Branded short-form video without a shoot" | FS5, I7 | `2e8fa486` | 25 min · 734 cr (est. 245, 3×) · **owner: likes it** · checks flagged 2 blank moments and the wordmark on screen 0.8 s (a pro would notice); "finished video" phone and plan card nearly empty |
-| 2 | Motion graphics | How WyvStudio works (brief → plan → video), 30 s 16:9 for the landing hero, Thorough | BG1, CR1 | | |
-| 3 | Motion graphics | DTC product ad for a skincare serum, 15 s 9:16, product stills generated | AB4 | | |
+| 2 | Motion graphics | How WyvStudio works (brief → plan → video), 30 s 16:9 for the landing hero, Thorough | BG1, CR1 | `03cdde00` | Thorough · 23.5 min · 603 cr (est. 1,579) · all checks pass · reviewer ran 3 rounds (61 cr): BG1 proven · clean three-step story; the app window sits small in a lot of black, "The plan" card starts empty |
+| 3 | Motion graphics | DTC product ad for a skincare serum, 15 s 9:16, product stills generated | AB4 | `d725704d` | 15 min · 735 cr (est. 280) · checks pass (18% of single words not made out: listen) · premium look, the generated bottle carries the label · the cache finding (COST) came from this build |
 | 4 | Motion graphics | SaaS feature launch with numbers (odometer, gauge), 1:1 | FS5 | `8bba2c00` | 7.4 min · 245 cr · all checks pass · weak first second (empty card) · owner verdict pending |
 | 5 | UGC | A creator's testimonial for WyvStudio, talking to camera, 20 s 9:16 | spoken brand name | | |
 | 6 | UGC | Unboxing ad for the serum: hook, problem, solution | RF1 | | |
@@ -81,7 +81,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 
 | ID | Item | Next |
 |---|---|---|
-| BG1 | Thorough builds get up to 4 reviewer rounds; only Thorough holds credits for the reviewer | a Thorough run |
+| BG1 | Thorough builds get up to 4 reviewer rounds; only Thorough holds credits for the reviewer — proven on GTM-1 #2 (3 rounds, 61 cr) | done |
 | CR1 | Quick and Thorough cost multipliers (Quick 0.4 confirmed; Thorough ~1.8× from one run) | more Thorough runs |
 | CR2 | Estimates learned per video type and new-vs-change | needs 3 runs of a kind |
 | CR4 | "Never more than" shows a real hold | check in the app |
