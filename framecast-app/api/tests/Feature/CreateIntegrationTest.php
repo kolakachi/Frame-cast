@@ -4816,6 +4816,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertTrue((bool) DB::table('create_planning_jobs')->where('conversation_id', $c->id)->orderByDesc('created_at')->value('skip_questions'), 'a drawer change is specific: planned without a question');
         $this->assertSame('edit', \App\Services\Create\PlanService::plannerTask(DB::table('create_conversations')->where('id', $c->id)->first()), 'a long drawer request is still a change');
         $this->rejected(422, fn () => app(\App\Services\Create\ChangeService::class)->change($this->owner, $c->id, $revision, ['expected_version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'moments' => [['time' => 1, 'text' => ' ']]], []));
+        // The same change sent again after its plan is made is a new request, not "a different message" (GTM-1 #5).
+        $send = fn () => app(\App\Services\Create\ChangeService::class)->change($this->owner, $c->id, $revision, ['expected_version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'), 'note' => 'Keep the same presenter.'], []);
+        DB::table('create_planning_jobs')->where('conversation_id', $c->id)->update(['state' => 'done']);
+        $first = $send()['message'];
+        DB::table('create_planning_jobs')->where('conversation_id', $c->id)->update(['state' => 'done']);
+        $again = $send()['message'];
+        $this->assertNotSame($first->id, $again->id);
+        $this->assertSame($first->content, $again->content);
     }
 
     public function test_suggest_a_change_reads_the_frame_and_is_billed_like_planning(): void

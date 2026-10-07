@@ -176,8 +176,10 @@ class ChangeService
         abort_unless($lines, 422, 'Tell me what to change first.');
 
         $content = 'Change version '.$rev->number." of the video:\n".implode("\n", $lines)."\nKeep everything else as it is.";
-        $key = 'change:'.$rev->id.':'.hash('sha256', $content);
+        // The conversation's version is in the key: a double click is one change, the same change sent again later
+        // (its plan left something out) is a new one (GTM-1 #5 was refused as "a different message").
         $version = (int) DB::table('create_conversations')->where('id', $c->id)->value('version');
+        $key = 'change:'.$rev->id.':'.$version.':'.hash('sha256', $content);
         $message = $conversations->message($user, $c->id, ['content' => $content, 'idempotency_key' => $key, 'expected_version' => $version]);
         // The drawer's change is already specific (it names the moment, the part or the words), so it is planned
         // without a clarifying question (GTM-1: #5 and #9 were asked about the end card and the cut's sentences).
