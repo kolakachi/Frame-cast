@@ -856,10 +856,16 @@ class PlanService
         // A cut of the user's own video speaks their recorded words: when most narration lines are found word for word in
         // a source video's speech, that video is the voice and no voiceover is bought (GTM-1 #9 bought one for a re-cut).
         if (! $ownVoice && $narration) {
-            $flat = fn ($t) => ' '.trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower((string) $t))).' ';
-            $spoken = collect($ctx['files'] ?? [])->filter(fn ($f) => ($f['purpose'] ?? '') === 'source' && ! empty($f['speech']))->map(fn ($f) => $flat($f['speech']))->implode(' ');
-            $found = $spoken !== '' ? collect($narration)->filter(fn ($l) => trim($flat($l)) !== '' && str_contains($spoken, $flat($l)))->count() : 0;
-            $ownVoice = $found > 0 && $found * 2 >= count($narration);
+            $sources = collect($ctx['files'] ?? [])->filter(fn ($f) => ($f['purpose'] ?? '') === 'source');
+            // A clip filed as "its speech is used" is the voice outright.
+            $ownVoice = $sources->contains(fn ($f) => ($f['notes']['kind'] ?? '') === 'clip_speech');
+            if (! $ownVoice) {
+                // Otherwise: most lines' words are in a source's full transcript (names may be spelt differently).
+                $words = fn ($t) => preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower((string) $t), -1, PREG_SPLIT_NO_EMPTY);
+                $heard = array_flip($sources->filter(fn ($f) => ! empty($f['speech']))->flatMap(fn ($f) => $words(\App\Models\Asset::whereKey((int) ($f['asset_id'] ?? 0))->value('transcript_text') ?: $f['speech']))->all());
+                $found = $heard ? collect($narration)->filter(function ($l) use ($words, $heard) { $w = $words($l); return $w && count(array_filter($w, fn ($x) => isset($heard[$x]))) >= 0.8 * count($w); })->count() : 0;
+                $ownVoice = $found > 0 && $found * 2 >= count($narration);
+            }
         }
         $media = collect($media)->reject(fn ($m) => ($ownVoice && in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)) || ($ownMusic && $m['kind'] === 'music'))->values()->all();
         // A script needs a voice to say it: make sure the plan buys one (unless the user's own recording says it).

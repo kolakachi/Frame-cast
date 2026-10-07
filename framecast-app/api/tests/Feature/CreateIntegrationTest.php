@@ -4851,5 +4851,9 @@ class CreateIntegrationTest extends TestCase
         $this->assertFalse(collect($mine['media'])->contains(fn ($m) => in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)), 'their own recorded words: nothing bought to say them');
         $other = $plans->normalize($raw, ['files' => [['speech' => 'Something else entirely is said here.'] + $video]], $this->workspace->id);
         $this->assertTrue(collect($other['media'])->contains('kind', 'voiceover'), 'a script the video does not say still gets a voice');
+        $filed = $plans->normalize($raw, ['files' => [['speech' => 'Something else entirely.', 'notes' => ['kind' => 'clip_speech', 'use' => 'extract voiceover']] + $video]], $this->workspace->id);
+        $this->assertFalse(collect($filed['media'])->contains('kind', 'voiceover'), 'a clip filed as speech to use is the voice');
+        $spelt = $plans->normalize([...$raw, 'narration' => ['Ever had a great video idea?', 'This is WyvStudio, now I post every day.']], ['files' => [['speech' => 'Ever had a great video idea? This is Weave Studio, now I post every day.'] + $video]], $this->workspace->id);
+        $this->assertFalse(collect($spelt['media'])->contains('kind', 'voiceover'), 'a name spelt differently by the transcriber still matches');
     }
 }
