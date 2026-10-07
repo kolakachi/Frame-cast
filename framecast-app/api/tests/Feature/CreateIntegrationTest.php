@@ -4927,4 +4927,19 @@ class CreateIntegrationTest extends TestCase
         $whole = $plans->normalize([...$raw, 'media' => [['kind' => 'ugc_take', 'description' => 'Same take', 'lines' => $raw['narration']]]], ['files' => [], 'previous_plan' => ['takes' => [$before]]], $this->workspace->id);
         $this->assertNotContains('The talking take is re-made whole, in one voice: its speech is part of the clip', $whole['assumptions'], 'already whole: nothing to widen');
     }
+
+    public function test_a_take_change_brings_the_made_person_along_and_a_logo_is_never_the_presenters_photo(): void
+    {
+        $plans = app(\App\Services\Create\PlanService::class);
+        $cast = ['kind' => 'reference_sheet', 'description' => 'Home office, the approved young creator', 'subjects' => [['name' => 'Creator', 'looks' => 'young man']], 'credits' => 70];
+        $logo = ['purpose' => 'source', 'asset_id' => 9, 'asset_type' => 'image', 'title' => 'wyvstudio-logo.svg', 'notes' => ['kind' => 'logo']];
+        $raw = ['summary' => 'Re-make the take.', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'Talk']], 'left_out' => '', 'narration' => ['Now I type what I want.'],
+            'media' => [['kind' => 'ugc_take', 'description' => 'The whole take again', 'lines' => ['Now I type what I want.']]]];
+        $plan = $plans->normalize($raw, ['files' => [$logo], 'previous_plan' => ['cast' => [$cast]], 'messages' => [['role' => 'user', 'content' => 'Say it as weave studio.']]], $this->workspace->id);
+        $this->assertSame(['reference_sheet', 'ugc_take'], array_slice(array_column($plan['media'], 'kind'), 0, 2), 'the made person comes along, reused');
+        $this->assertSame('Home office, the approved young creator', $plan['media'][0]['description']);
+        $this->assertFalse($plan['shot_context']['has_avatar'], 'a logo is not a photo of the presenter');
+        $photo = $plans->normalize($raw, ['files' => [['purpose' => 'source', 'asset_id' => 10, 'asset_type' => 'image', 'title' => 'me.jpg', 'notes' => ['kind' => 'photo']]]], $this->workspace->id);
+        $this->assertTrue($photo['shot_context']['has_avatar']);
+    }
 }

@@ -853,6 +853,10 @@ class PlanService
                 $kept = true;
                 return ['requirement_ids' => $m['requirement_ids'] ?? []] + $cast[0];
             })->values()->all();
+        } elseif ($cast && ! $newPerson && collect($media)->contains(fn ($m) => in_array($m['kind'], ['ugc_take', 'generated_shot'], true))) {
+            // A change that re-makes a take or shot of people already made brings their sheet along (reused, not drawn
+            // again): without it the take looked for the user's photo instead (GTM-1 #5, "none is attached").
+            array_unshift($media, ['requirement_ids' => []] + $cast[0]);
         }
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
@@ -1015,7 +1019,11 @@ class PlanService
         $plan['selections']['look_first'] = $plan['look_first'];
         // Generated video: what its routing depends on, and the cast/world sheet is approved before any clip is bought.
         if (collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ShotRoute::KINDS, true))) {
-            $plan['shot_context'] = ['has_avatar' => collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image'),
+            // The user's own photo of a person: never their logo, a product shot, a screenshot, an illustration or an SVG
+            // (GTM-1 #5: the WyvStudio logo was taken for the presenter's photo and the lip-synced take failed).
+            $plan['shot_context'] = ['has_avatar' => collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'source' && ($f['asset_type'] ?? '') === 'image'
+                && ! in_array($f['notes']['kind'] ?? '', ['logo', 'product_photo', 'screenshot', 'illustration'], true)
+                && ! str_contains(mb_strtolower((string) ($f['mime_type'] ?? '').' '.($f['title'] ?? '')), 'svg') && ! str_contains(mb_strtolower((string) ($f['title'] ?? '')), 'logo')),
                 'aspect_ratio' => $ctx['settings']['aspect_ratio'] ?? '9:16', 'language' => $ctx['settings']['language'] ?? 'en'];
             $plan['selections']['video_tier'] = in_array($ctx['previous_plan']['video_tier'] ?? null, ['standard', 'premium'], true) ? $ctx['previous_plan']['video_tier'] : 'standard';
             if (collect($plan['media'])->contains('kind', 'reference_sheet')) $plan['look_first'] = $plan['selections']['look_first'] = $plan['look_required'] = true;
