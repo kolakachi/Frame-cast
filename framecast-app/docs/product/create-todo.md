@@ -18,6 +18,21 @@ on the owner or another item · `proposed` not yet approved.
 and a 09:05 digest; planning billed at half cost (needs 60 credits); no spend cap (watch the digest and
 `create:failures`).
 
+## Go-to-market gate
+
+Sections 1 and 2 make Create safe to run; they do not prove it is good enough or that it pays. We go to market when
+all of these hold (agreed 2026-10-07):
+
+1. **Launch must-haves done:** G-REC, G-DEP, L16, G-FAIR, S9, I7 (section 1) and BG1, FS8 proven (section 2).
+   AB3, I2, D7, 0.4 and HF-BILL are not launch-blocking.
+2. **Acceptance round (GTM-1):** about 10 realistic customer briefs across motion graphics, UGC and footage edits
+   (~2,500 credits, instead of the full 7,000-credit bench).
+3. **Pass marks, set before the round:** at least 7 of 10 the owner would publish after at most one change; none
+   lost or charged twice; median time under 20 min; model cost per accepted video comfortably below what it is
+   charged.
+4. **Pricing and limits (O11)** set from those numbers.
+5. **Then** open to ws 28 and ws 27 (O9), watch their first week, and widen in stages.
+
 ## 1. Build next (no owner input needed)
 
 | ID | Item | Status | Next | Detail |
