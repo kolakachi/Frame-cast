@@ -2644,7 +2644,7 @@ class CreateIntegrationTest extends TestCase
         $reply = ['summary' => 'A kinetic launch teaser', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'The promise lands']],
             'concept' => ['name' => 'One word becomes it', 'idea' => 'The word "shoot" crosses out and becomes the product', 'hook' => 'A giant SHOOT, struck through', 'look' => 'Black, orange, bold type',
                 'structure' => 'One object transforms through every feature', 'opening' => 'A giant word', 'ending' => 'Logo lockup', 'why' => 'Most specific to the brand',
-                'alternatives' => [['name' => 'Countdown', 'idea' => 'A countdown to the reveal'], ['name' => 'Problem flash', 'idea' => 'Three bad shoots, then the answer'], ['name' => 'Extra', 'idea' => 'Dropped: only two kept']]],
+                'alternatives' => [['name' => 'Countdown', 'idea' => 'A countdown to the reveal'], ['name' => 'Problem flash', 'idea' => 'Three bad shoots, then the answer'], ['name' => 'Extra', 'idea' => 'A third other way']]],
             'playbook' => 'launch_promo', 'motion_voice' => ['id' => 'bold_playful', 'why' => 'A startup launch']];
         Http::fake(['api.anthropic.com/*' => function ($request) use (&$sent, $reply) {
             $sent[] = $request->data();
@@ -2660,7 +2660,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('launch_promo', json_encode($planner['messages']));
         // The plan keeps the concept with two alternatives, the full playbook and the voice's timings.
         $this->assertSame('The word "shoot" crosses out and becomes the product', $p['concept']['idea']);
-        $this->assertCount(2, $p['concept']['alternatives']);
+        $this->assertCount(3, $p['concept']['alternatives'], 'up to four other directions are kept (the drawer shows five)');
         $this->assertSame('launch_promo', $p['playbook']['id']);
         $this->assertNotEmpty($p['playbook']['beats']);
         $this->assertSame('back.out(1.8)', $p['motion_voice']['ease']);
@@ -2733,6 +2733,37 @@ class CreateIntegrationTest extends TestCase
         Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => json_encode(['files' => [(string) $other->id => ['role' => 'current', 'time' => 2]]])]]])]);
         $r2 = app(\App\Services\Create\AttachmentRoles::class)->resolve($this->owner, $this->conversations->conversation($this->owner, $c2->id));
         $this->assertNotSame('current', $r2['roles'][$other->id] ?? null);
+    }
+
+    public function test_a_from_scratch_plan_keeps_five_directions_each_with_the_users_files_and_more_ways_adds_three(): void
+    {
+        $d = fn ($n, $f = 'offer_ad') => ['name' => $n, 'idea' => $n.' idea', 'hook' => 'opens', 'look' => 'warm', 'swatches' => ['#f2e8d8', '#3b2a20', 'red', '#d9682b'], 'format' => $f, 'uses' => 'Your logo on the end card', 'structure' => 's'];
+        $concept = \App\Services\Create\FormatPlaybooks::concept($d('Fourteen Days Fresh') + ['why' => 'shows it', 'alternatives' => [$d('Doorstep Drop', 'brand_story'), $d('Offer First'), $d('Diary', 'testimonial'), $d('Flavour Map', 'explainer'), $d('Sixth')]], true)['concept'];
+        $this->assertCount(4, $concept['alternatives'], 'the planned direction and four others: five in the drawer');
+        $this->assertSame(['#f2e8d8', '#3b2a20', '#d9682b'], $concept['swatches'], 'only real colours');
+        $this->assertSame('Your logo on the end card', $concept['alternatives'][0]['uses']);
+        $this->assertSame('brand_story', $concept['alternatives'][0]['format']);
+        $this->assertArrayNotHasKey('format', \App\Services\Create\FormatPlaybooks::direction(['name' => 'x', 'idea' => 'y', 'format' => 'made_up']));
+        $this->assertTrue(\App\Services\Create\FormatPlaybooks::concept($d('Given') + ['given' => true], true)['concept']['given']);
+        // More ways: three new directions join the plan, a repeat of one shown is dropped, and it is billed like planning.
+        $c = $this->brief();
+        $planId = (string) \Illuminate\Support\Str::uuid();
+        DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $c->id, 'message_id' => (string) \Illuminate\Support\Str::uuid(), 'brief_sequence' => 1, 'idempotency_key' => 'k'.$planId,
+            'request_hash' => str_repeat('a', 64), 'provider' => 'test', 'plan_json' => json_encode(['summary' => 's', 'concept' => $concept]), 'status' => 'proposed', 'created_at' => now(), 'updated_at' => now()]);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.planner_model' => 'claude-sonnet-5']);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['content' => [['type' => 'text', 'text' => json_encode(['directions' => [$d('Doorstep Drop'), $d('Night Shift', 'brand_story'), $d('Map Room', 'explainer'), $d('Pour Over', 'product_demo')]])]], 'usage' => ['input_tokens' => 20000, 'output_tokens' => 1500]])
+            ->push(['content' => [['type' => 'text', 'text' => json_encode(['directions' => [$d('Brew Clock'), $d('Map Room')]])]], 'usage' => ['input_tokens' => 20000, 'output_tokens' => 900]])]);
+        $before = $this->conversations->creditAvailability($this->owner)['available'];
+        $out = app(\App\Services\Create\DirectionService::class)->more($this->owner, $c->id, $planId);
+        $this->assertSame(['Night Shift', 'Map Room'], array_column($out['directions'], 'name'), 'a name already shown is dropped; at most three are taken');
+        $this->assertGreaterThan(0, $out['charged']);
+        $this->assertSame($before - $out['charged'], $this->conversations->creditAvailability($this->owner)['available']);
+        $this->assertCount(2, json_decode(DB::table('create_plans')->where('id', $planId)->value('plan_json'), true)['concept']['more']);
+        // The page asks through its route.
+        // The page asks through its route; only new names are taken.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->owner)->postJson('/api/v1/create/conversations/'.$c->id.'/plans/'.$planId.'/directions')->assertOk()->assertJsonPath('data.directions.0.name', 'Brew Clock');
     }
 
     public function test_a_busy_image_model_is_tried_again_but_a_refused_request_is_not(): void

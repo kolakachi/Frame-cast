@@ -821,6 +821,31 @@ onMounted(async () => {
 const planDrawerId = ref(null), approvingPlan = ref(false), planPrice = ref({})
 const drawerPlan = computed(() => plans.value.find(p => p.id === planDrawerId.value) || null)
 function openPlan(p) { planDrawerId.value = p.id }
+// From scratch: the directions drawer (create-ui/agent-directions.html). The plan's direction first, then the other
+// ways and any "more ways"; picking one or describing a mix re-plans it. It opens by itself the first time a
+// from-scratch plan arrives (not when the brief or the user chose the direction).
+const FORMAT_LABEL = { launch_promo: 'Launch promo', product_demo: 'Product demo', explainer: 'Explainer', ugc_ad: 'UGC ad', testimonial: 'Testimonial', listicle: 'Listicle', before_after: 'Before / after', tutorial: 'Tutorial', brand_story: 'Story', offer_ad: 'Offer ad' }
+const waysPlanId = ref(null), mixText = ref(''), moreWaysBusy = ref(false)
+const waysPlan = computed(() => plans.value.find(p => p.id === waysPlanId.value) || null)
+function waysFor(p) { const c = p?.plan?.concept; return c?.idea ? [c, ...(c.alternatives || []), ...(c.more || [])] : [] }
+function openWays(p) { waysPlanId.value = p.id }
+async function pickWay(n, d) { waysPlanId.value = null; prompt.value = `Make it direction ${n}: ${d.name}`; await send() }
+async function planMix() { const t = mixText.value.trim(); if (!t) return; waysPlanId.value = null; mixText.value = ''; prompt.value = `Directions: ${t}`; await send() }
+async function moreWays(p) {
+  if (moreWaysBusy.value) return
+  moreWaysBusy.value = true
+  try { await guarded(async () => { await api.post(`${base()}/plans/${p.id}/directions`, {}); await refresh() }) } finally { moreWaysBusy.value = false }
+}
+const WAYS_SEEN = 'create:ways-seen'
+watch(() => plans.value.at?.(-1)?.id, () => {
+  const p = plans.value.at?.(-1)
+  if (!p || p.status !== 'proposed' || !isLivePlan(p) || p.plan?.concept?.given || waysFor(p).length < 2) return
+  let seen = []
+  try { seen = JSON.parse(localStorage.getItem(WAYS_SEEN) || '[]') } catch { seen = [] }
+  if (seen.includes(p.id)) return
+  try { localStorage.setItem(WAYS_SEEN, JSON.stringify([...seen.slice(-50), p.id])) } catch { /* storage refused: it still opens once now */ }
+  waysPlanId.value = p.id
+})
 const isLivePlan = p => p.status === 'proposed' && !p.stale && !p.plan.free_edit
 const planEditable = p => isLivePlan(p) && !p.approved && canWrite.value && !active.value
 function planPills(p) {
@@ -1245,6 +1270,11 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                     <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
                     <p v-if="isLivePlan(planByMessage[m.id]) && planByMessage[m.id].plan.assumptions?.length" class="plan-assumed"><b>Assumed:</b> {{ planByMessage[m.id].plan.assumptions.join(' · ') }}. Tell me if any is wrong.</p>
+                    <button v-if="waysFor(planByMessage[m.id]).length > 1" type="button" class="dir-strip" @click="openWays(planByMessage[m.id])">
+                      <span class="muted">Direction</span> <b>{{ planByMessage[m.id].plan.concept.name }}</b>
+                      <span v-if="FORMAT_LABEL[planByMessage[m.id].plan.concept.format]" class="muted">· {{ FORMAT_LABEL[planByMessage[m.id].plan.concept.format] }}</span>
+                      <span class="dir-strip__more">{{ waysFor(planByMessage[m.id]).length - 1 }} other ways</span>
+                    </button>
                     <div :class="['plan-card', { 'is-old': !isLivePlan(planByMessage[m.id]) }]">
                       <div class="plan-pills">
                         <span class="plan-title">Plan</span>
@@ -1644,6 +1674,31 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
           <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="linkBusy" @click="closeLink">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="linkBusy || !linkUrl.trim()">{{ linkBusy ? 'Studying…' : 'Add reference' }}</button></div>
         </form>
       </CreateDialog>
+      <SideDrawer :open="!!waysPlan" title="Ways to make it" :meta="waysPlan ? waysFor(waysPlan).length + ' directions from your brief · picking one re-plans' : ''" @close="waysPlanId = null">
+        <template v-if="waysPlan">
+          <p class="ways-intro">I planned the first. Each is a different idea, opening and look for the same brief<template v-if="(waysPlan.plan.reused || []).length">, made with your files</template>.</p>
+          <div v-for="(d, i) in waysFor(waysPlan)" :key="i + d.name" :class="['way', { 'way--on': i === 0 }]">
+            <div class="way__top"><span class="way__n">{{ i + 1 }}</span><b class="way__name">{{ d.name }}</b>
+              <span v-if="i === 0" class="way__badge way__badge--on">PLANNED</span><span v-else-if="FORMAT_LABEL[d.format]" class="way__badge">{{ FORMAT_LABEL[d.format].toUpperCase() }}</span></div>
+            <p class="way__idea">{{ d.idea }}</p>
+            <div v-if="d.hook || d.opening" class="way__row"><span>OPENS</span><span>{{ d.hook || d.opening }}</span></div>
+            <div v-if="d.look" class="way__row"><span>LOOK</span><span><span v-if="d.swatches?.length" class="way__sw"><i v-for="h in d.swatches" :key="h" :style="{ background: h }"></i></span>{{ d.look }}</span></div>
+            <div v-if="d.uses" class="way__row"><span>USES</span><span>{{ d.uses }}</span></div>
+            <div v-if="d.structure" class="way__row"><span>SHAPE</span><span>{{ d.structure }}</span></div>
+            <p v-if="i === 0 && d.why" class="way__why">{{ d.why }}</p>
+            <div class="way__foot">
+              <span v-if="i === 0" class="muted">This is the plan in the chat</span>
+              <template v-else><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || planning || !canWrite" @click="pickWay(i + 1, d)">Plan this way</button><small class="muted">about 30 credits</small></template>
+            </div>
+          </div>
+          <button v-if="(waysPlan.plan.concept.more || []).length < 9" type="button" class="btn btn--ghost btn--sm ways-more" :disabled="locked || moreWaysBusy || !canWrite" @click="moreWays(waysPlan)">{{ moreWaysBusy ? 'Thinking of more ways…' : 'More ways · 3 new ideas, a few credits' }}</button>
+        </template>
+        <template #footer>
+          <textarea v-model="mixText" class="ways-mix" rows="2" placeholder="Mix them or describe your own: “2, with the look of 5”" aria-label="Mix the directions or describe your own"></textarea>
+          <span class="muted ways-note">Re-plans in that direction · about 30 credits</span>
+          <button type="button" class="btn btn--primary btn--sm" :disabled="!mixText.trim() || locked || planning || !canWrite" @click="planMix">Plan it</button>
+        </template>
+      </SideDrawer>
       <SideDrawer :open="!!drawerPlan" title="Plan" :meta="drawerPlan ? planPills(drawerPlan).join(' · ') + (isLivePlan(drawerPlan) ? '' : ' · ' + (planStatus(drawerPlan) || 'view only')) : ''" @close="planDrawerId = null">
         <template v-if="drawerPlan">
           <PlanGroup v-if="drawerPlan.plan.callouts.length || draftFor(drawerPlan).callouts.length" title="On-screen copy" :summary="draftFor(drawerPlan).callouts.filter(t => t.trim()).length + ' lines'" open>
@@ -2190,6 +2245,26 @@ label.tray-note{white-space:normal}
 .pd-check{display:flex;align-items:center;gap:8px;font-size:13px}.pd-check small{color:#8e8e8e}
 .pd-choice-group{display:flex;flex-direction:column;gap:6px}
 .pd-q{font-size:12px;color:#8e8e8e}
+.dir-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;margin:0 0 6px;padding:7px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);font-size:13px;text-align:left;cursor:pointer}
+.dir-strip:hover{border-color:var(--accent-line,#ff6b3566)}
+.dir-strip__more{margin-left:auto;color:var(--accent,#ff6b35);font-size:12px}
+.ways-intro{margin:6px 0 10px;color:var(--text-2,#b7bcc6)}
+.way{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
+.way--on{border-color:var(--accent-line,#ff6b3566);box-shadow:0 0 0 1px var(--accent-line,#ff6b3566) inset}
+.way__top{display:flex;align-items:center;gap:8px}
+.way__n{font:11px var(--mono,monospace);color:var(--text-3,#8f95a1)}
+.way__name{font-size:14px}
+.way__badge{margin-left:auto;font:10px var(--mono,monospace);letter-spacing:.06em;color:var(--text-3,#8f95a1);border:1px solid var(--line-3);border-radius:999px;padding:2px 7px;white-space:nowrap}
+.way__badge--on{color:var(--accent,#ff6b35);border-color:var(--accent-line,#ff6b3566)}
+.way__idea{margin:0;font-size:13px;line-height:1.45}
+.way__row{display:grid;grid-template-columns:52px 1fr;gap:6px;font-size:12px;line-height:1.4;color:var(--text-2,#b7bcc6)}
+.way__row>span:first-child{font:10px var(--mono,monospace);letter-spacing:.06em;color:var(--text-3,#8f95a1);padding-top:2px}
+.way__sw{display:inline-flex;gap:3px;vertical-align:-1px;margin-right:6px}.way__sw i{width:10px;height:10px;border-radius:3px;display:inline-block;border:1px solid var(--line-2)}
+.way__why{margin:0;font-size:12px;color:var(--text-2,#b7bcc6);border-left:2px solid var(--accent-line,#ff6b3566);padding-left:8px}
+.way__foot{display:flex;align-items:center;gap:8px;padding-top:4px;font-size:12px}
+.ways-more{border-style:dashed}
+.ways-mix{width:100%;resize:none;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);padding:9px 11px;font:inherit}
+.ways-note{font-size:12px;margin-right:auto}
 .pd-card{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);cursor:pointer;transition:border-color .12s,background .12s}
 .pd-card:hover{border-color:var(--text-4)}
 .pd-card.is-on{border-color:var(--accent-line);background:var(--accent-soft)}

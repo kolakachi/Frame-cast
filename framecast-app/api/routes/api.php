@@ -255,6 +255,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/conversations/{id}/plan-activity', [$controller, 'planActivity']);
             Route::patch('/conversations/{id}/plans/{planId}', [$controller, 'selectPlan']);
             Route::post('/conversations/{id}/plans/{planId}/approve-step', [$controller, 'approveStep']);
+            Route::post('/conversations/{id}/plans/{planId}/directions', [$controller, 'moreDirections']);
             Route::post('/conversations/{id}/quotes', [$controller, 'quote']);
             Route::post('/conversations/{id}/runs', [$controller, 'approve']);
             Route::post('/conversations/{id}/runs/{runId}/retry', [$controller, 'retry']);

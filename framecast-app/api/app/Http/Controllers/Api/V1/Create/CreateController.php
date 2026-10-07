@@ -225,6 +225,12 @@ class CreateController extends Controller
         return response()->json(['data' => ['id' => $run->id, 'status' => $run->status]], 202);
     }
 
+    /** "More ways" in the directions drawer: three new directions for this plan's brief. */
+    public function moreDirections(Request $r, string $id, string $planId)
+    {
+        return response()->json(['data' => app(\App\Services\Create\DirectionService::class)->more($r->user(), $id, $planId)]);
+    }
+
     private function asksTopUpBeforePlanning($user, string $id, string $key): void
     {
         // A repeat of a plan already made (or under way) returns it as before.

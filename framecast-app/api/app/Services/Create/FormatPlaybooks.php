@@ -196,13 +196,29 @@ class FormatPlaybooks
         elseif ($id === 'open') $out['playbook'] = ['id' => 'open', 'name' => 'Own structure', 'for' => 'A brief no playbook fits'];
         if (isset(self::MOTION_VOICES[$voice])) $out['motion_voice'] = ['id' => $voice, 'why' => $str($raw['motion_voice']['why'] ?? '', 140)] + self::MOTION_VOICES[$voice];
         $c = is_array($raw['concept'] ?? null) ? $raw['concept'] : [];
-        $one = fn ($d) => is_array($d) ? array_filter(['name' => $str($d['name'] ?? '', 60), 'idea' => $str($d['idea'] ?? '', 160), 'hook' => $str($d['hook'] ?? '', 120),
-            'look' => $str($d['look'] ?? '', 120), 'structure' => $str($d['structure'] ?? '', 120), 'opening' => $str($d['opening'] ?? '', 120), 'ending' => $str($d['ending'] ?? '', 120)]) : [];
-        if ($fromScratch && ($chosen = $one($c)) && isset($chosen['idea'])) {
-            $out['concept'] = $chosen + ['why' => $str($c['why'] ?? '', 160),
-                'alternatives' => array_values(array_filter(array_map($one, array_slice((array) ($c['alternatives'] ?? []), 0, 2)), fn ($a) => isset($a['idea'])))];
-        }
+        $out += self::concept($c, $fromScratch);
         return $out;
+    }
+
+    /** One direction, checked: what it is, how it opens and ends, its look (and three colours), its format and how it
+     *  uses the user's own files. */
+    public static function direction(mixed $d): array
+    {
+        if (! is_array($d)) return [];
+        $str = fn ($v, $n) => is_string($v) ? mb_substr(trim($v), 0, $n) : '';
+        $hex = array_values(array_slice(array_filter((array) ($d['swatches'] ?? []), fn ($h) => is_string($h) && preg_match('/^#[0-9a-f]{6}$/i', $h)), 0, 3));
+        $format = $str($d['format'] ?? '', 40);
+        return array_filter(['name' => $str($d['name'] ?? '', 60), 'idea' => $str($d['idea'] ?? '', 160), 'hook' => $str($d['hook'] ?? '', 120),
+            'look' => $str($d['look'] ?? '', 120), 'structure' => $str($d['structure'] ?? '', 120), 'opening' => $str($d['opening'] ?? '', 120), 'ending' => $str($d['ending'] ?? '', 120),
+            'uses' => $str($d['uses'] ?? '', 200), 'format' => isset(self::PLAYBOOKS[$format]) ? $format : null, 'swatches' => $hex ?: null], fn ($v) => $v !== null && $v !== '');
+    }
+
+    /** The concept with up to four directions not taken (the drawer shows five). "given" when the brief stated it. */
+    public static function concept(array $c, bool $fromScratch): array
+    {
+        if (! $fromScratch || ! ($chosen = self::direction($c)) || ! isset($chosen['idea'])) return [];
+        return ['concept' => $chosen + array_filter(['why' => is_string($c['why'] ?? null) ? mb_substr(trim($c['why']), 0, 160) : '', 'given' => ($c['given'] ?? false) === true]) + [
+            'alternatives' => array_values(array_filter(array_map([self::class, 'direction'], array_slice((array) ($c['alternatives'] ?? []), 0, 4)), fn ($a) => isset($a['idea'])))]];
     }
 
     /** The build's pinned guide for the chosen playbook and motion voice. */

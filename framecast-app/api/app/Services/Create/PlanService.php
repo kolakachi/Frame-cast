@@ -252,8 +252,8 @@ class PlanService
         $activity->relabel($task === 'edit' ? 'Updated the plan' : 'Planned '.$shots.' '.($shots === 1 ? 'shot' : 'shots'));
         // The planner's own short account of what it took from the files and chose.
         foreach (array_slice(array_filter((array) ($result['plan']['highlights'] ?? []), 'is_string'), 0, 3) as $line) $activity->item($line);
-        // Planning is billed at half its real cost (its model calls at the gateway's tariff), never over the cap, and
-        // waived when the balance cannot cover it: nobody is blocked at the first step.
+        // Planning is billed at half its real cost (its model calls at the gateway's tariff), never free: a plan starts
+        // only when the balance covers a typical charge (assertCanPayPlanning).
         // The questions, file sorting and reference study before it count too (PlanningCosts), each part shown.
         $parts = ['planner' => array_sum(array_map(fn ($call) => CostEstimate::callCredits((array) $call), (array) ($result['usage']['calls'] ?? [])))]
             + array_map(fn ($micro) => (int) ceil($micro / 4000), PlanningCosts::take($id));
@@ -714,7 +714,9 @@ class PlanService
                     'colour_treatment' => json_decode($prev->plan_json, true)['colour_treatment'] ?? null,
                     'video_tier' => json_decode($prev->plan_json, true)['selections']['video_tier'] ?? null,
                     'approved_agreement' => json_decode($prev->plan_json, true)['selections']['agreement'] ?? null,
-                    'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? []] : null,
+                    'kept_as_is' => json_decode($prev->plan_json, true)['selections']['kept'] ?? [],
+                    // The directions the user was shown, so "plan 3" or "2, with the look of 5" can be read.
+                    'concept' => json_decode($prev->plan_json, true)['concept'] ?? null] : null,
         ];
     }
 

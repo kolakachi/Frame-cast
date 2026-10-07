@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction cards · Create · WyvStudio</title>
+<link rel="stylesheet" href="wyv.css">
+<link rel="stylesheet" href="agent.css">
+<style>
+/* Direction cards (FS1). Only new rules; everything else is wyv.css and agent.css. */
+.mock-note{border:1px dashed var(--line-3);border-radius:12px;padding:12px 14px;color:var(--text-2);font-size:13px;line-height:1.5;margin:0 0 6px}
+.mock-note b{color:var(--text)}
+.mock-label{font:11px var(--mono);letter-spacing:.08em;color:var(--text-3);margin:18px 0 2px}
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+@media (max-width:860px){.dirs{grid-template-columns:1fr}}
+.dir{display:flex;flex-direction:column;gap:7px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3);text-align:left;color:var(--text);min-width:0}
+.dir--pick{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+.dir__top{display:flex;align-items:center;gap:8px}
+.dir__name{font-weight:600;font-size:14px}
+.dir__badge{margin-left:auto;font:10px var(--mono);letter-spacing:.06em;color:var(--accent);border:1px solid var(--accent-line);border-radius:999px;padding:2px 7px;white-space:nowrap}
+.dir__idea{font-size:13px;line-height:1.45;color:var(--text)}
+.dir__row{display:grid;grid-template-columns:56px 1fr;gap:6px;font-size:12px;line-height:1.4;color:var(--text-2)}
+.dir__row span:first-child{font:10px var(--mono);letter-spacing:.06em;color:var(--text-3);padding-top:2px}
+.swatches{display:inline-flex;gap:4px;vertical-align:middle;margin-right:6px}
+.swatches i{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid var(--line-2)}
+.dir__foot{margin-top:auto;padding-top:6px;display:flex;gap:6px;align-items:center}
+.dir__why{font-size:12px;color:var(--text-2);border-left:2px solid var(--accent-line);padding-left:8px;margin-top:2px}
+.dir-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2);padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.dir-strip b{color:var(--text)}
+.mix{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center;color:var(--text-2);font-size:12px}
+.mix .chip-btn{border:1px solid var(--line-3);border-radius:999px;padding:4px 10px;background:var(--bg-2);color:var(--text-2);font-size:12px;cursor:pointer}
+</style>
+<style>
+/* The drawer: CreateView's SideDrawer (fixed header, scrolling body, footer always in view). */
+html,body{overflow-x:hidden}
+.scrim{position:fixed;inset:0;background:#0008;z-index:30}
+.pdw{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);max-width:100%;z-index:31;display:flex;flex-direction:column;background:var(--bg-2);border-left:1px solid var(--line-3);font-size:13px;line-height:1.5}
+.pdw-head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line-2)}
+.pdw-head h2{margin:0;font-size:15px}
+.pdw-meta{color:var(--text-3);font-size:12px}
+.pdw-x{margin-left:auto;width:28px;height:28px;border-radius:6px;border:0;background:transparent;color:var(--text-3);cursor:pointer;font-size:16px}
+.pdw-body{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 18px;display:flex;flex-direction:column;gap:10px}
+.pdw-foot{display:flex;flex-direction:column;gap:8px;padding:12px 18px;border-top:1px solid var(--line-2);background:var(--bg-2)}
+.pdw-foot textarea{width:100%;resize:none;border:1px solid var(--line-3);border-radius:10px;background:var(--bg-3);color:var(--text);padding:9px 11px;font:13px var(--sans)}
+.pdw-foot .row{display:flex;gap:8px;align-items:center}
+.intro{color:var(--text-2);margin:0}
+.dir{display:flex;flex-direction:column;gap:6px;padding:12px 13px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3)}
+.dir--on{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line) inset}
+.dir__top{display:flex;align-items:center;gap:8px}
+.dir__n{font:11px var(--mono);color:var(--text-3)}
+.dir__name{font-weight:600;font-size:14px}
+.dir__badge{margin-left:auto;font:10px var(--mono);letter-spacing:.06em;border-radius:999px;padding:2px 7px;white-space:nowrap}
+.dir__badge--on{color:var(--accent);border:1px solid var(--accent-line)}
+.dir__badge--fmt{color:var(--text-3);border:1px solid var(--line-3)}
+.dir__idea{font-size:13px;line-height:1.45}
+.dir__row{display:grid;grid-template-columns:52px 1fr;gap:6px;font-size:12px;line-height:1.4;color:var(--text-2)}
+.dir__row span:first-child{font:10px var(--mono);letter-spacing:.06em;color:var(--text-3);padding-top:2px}
+.sw{display:inline-flex;gap:3px;vertical-align:-1px;margin-right:6px}.sw i{width:10px;height:10px;border-radius:3px;display:inline-block;border:1px solid var(--line-2)}
+.dir__foot{display:flex;gap:8px;align-items:center;padding-top:4px}
+.dir__why{font-size:12px;color:var(--text-2);border-left:2px solid var(--accent-line);padding-left:8px}
+.more-ways{align-self:flex-start}
+.dir-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2);padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.dir-strip b{color:var(--text)}
+.mock-note{border:1px dashed var(--line-3);border-radius:12px;padding:12px 14px;color:var(--text-2);font-size:13px;line-height:1.5}
+.mock-note b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="agent-app">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><span class="brand__mark">W</span>WyvStudio</div>
+  <button type="button" class="ws"><span class="avatar">K</span>Kolawole Lawal
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8f95a1" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+
+  <div class="nav-section">WORKSPACE</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3.5 3.5 0 010 7M21 20c0-2.7-1.8-5-4.3-5.7"/></svg>Clients<span class="count">2</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>Channels</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Series</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>UGC Ads</a><a href="#" data-demo="Existing app navigation: From My Footage">From My Footage</a>
+    <a href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15l3-4 2 2 2-3 3 5"/></svg>Create<span class="pill-new">PILOT</span></a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</a>
+    <a href="all-videos.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>All Videos</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Jobs</a>
+  </div>
+
+  <div class="nav-section">LIBRARY</div>
+  <div class="nav">
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Characters</a>
+    <a href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Voices</a>
+    <a href="assets.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Assets</a>
+  </div>
+
+  <div class="sidebar__user"><span class="avatar avatar--lg">K</span><div><b>Kolawole Lawal</b><small>kolakachi@gmail.com</small></div></div>
+</nav>
+<main class="agent-main">
+  <header class="agent-header">
+    <div><div class="crumb">Create · mockup</div><h1>Northside Roasters · 15 s ad</h1></div>
+    <span class="status status--info">PROPOSAL · DIRECTIONS DRAWER</span>
+  </header>
+  <div class="agent-content">
+    <section class="conversation" aria-label="Conversation">
+      <div class="messages">
+        <p class="mock-note"><b>Opens by itself</b> the first time a from-scratch plan arrives (no reference video and no concept in the brief, with or without the user's own files), beside the plan. Closing it keeps the <b>Direction</b> strip on the plan card, which reopens it. <b>Up to 5 directions</b>: the planned one and 4 others, free (they come from planning). <b>More ways</b> asks for 3 new ones (about 3 credits). Picking one re-plans that way (about 30 credits).</p>
+        <div class="user-message"><div class="attachments">
+            <span class="chip"><span class="chip__thumb asset__thumb--image"></span><span><b>northside-logo.svg</b><small>logo</small></span><span class="chip__role">USE</span></span>
+            <span class="chip"><span class="chip__thumb asset__thumb--image"></span><span><b>bag-front.png</b><small>product photo</small></span><span class="chip__role">USE</span></span>
+            <span class="chip"><span class="chip__thumb asset__thumb--video"></span><span><b>roast-floor.mov</b><small>0:22 · b-roll</small></span><span class="chip__role">USE</span></span>
+          </div><p>A 15-second ad for Northside Roasters, a small-batch coffee subscription: fresh beans every two weeks, 25% off your first bag this month. End on northsideroasters.com.</p></div>
+        <div class="assistant-message">
+          <span class="speaker">WyvStudio <time>10:42 AM</time></span>
+          <div class="icard">
+            <div class="dir-strip">Direction <b>Fourteen Days Fresh</b> · offer ad · steady, playful<span style="flex:1"></span><button type="button" class="quiet">4 other ways</button></div>
+            <div class="icard__body">
+              <p class="icard__summary" style="margin:0">A ring of fourteen ticks fills like a clock and delivers a fresh bag: the two-week rhythm made visible. Then 25% off stamps onto the bag, and the wordmark lands with the URL.</p>
+            </div>
+            <div class="icard__foot"><div class="cost-line"><b>Up to 217 credits</b><span>· reserved when you approve</span></div><span class="spacer"></span><button type="button" class="btn btn--primary btn--sm">Approve and make it</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+<div class="scrim" aria-hidden="true"></div>
+<aside class="pdw" role="dialog" aria-label="Ways to make it">
+  <header class="pdw-head"><div><h2>Ways to make it</h2><span class="pdw-meta">5 directions from your brief · picking one re-plans</span></div><button class="pdw-x" aria-label="Close">✕</button></header>
+  <div class="pdw-body">
+    <p class="intro">I planned the first. Each is a different idea, opening and look for the same brief, and every one is made with your logo, bag photo and roast clip.</p>
+    <div class="dir dir--on">
+  <div class="dir__top"><span class="dir__n">1</span><span class="dir__name">Fourteen Days Fresh</span><span class="dir__badge dir__badge--on">PLANNED</span></div>
+  <div class="dir__idea">A ring of fourteen ticks fills like a clock and delivers a fresh bag: the two-week rhythm made visible.</div>
+  <div class="dir__row"><span>OPENS</span><span>Macro beans tumble, pull back to a full pour</span></div>
+  <div class="dir__row"><span>LOOK</span><span><span class="sw"><i style="background:#f2e8d8"></i><i style="background:#3b2a20"></i><i style="background:#d9682b"></i></span>Cream, espresso, roast orange; serif headlines</span></div>
+  <div class="dir__row"><span>USES</span><span>Your roast clip opens · bag photo is the bag the ring delivers · logo on the end card</span></div>
+  <div class="dir__row"><span>SHAPE</span><span>Offer ad · product, benefit made visible, offer, lockup</span></div>
+  <div class="dir__why">Shows the subscription’s real value, freshness on a rhythm, instead of stating it.</div>
+  <div class="dir__foot"><span class="muted" style="font-size:12px">This is the plan in the chat</span></div>
+</div><div class="dir">
+  <div class="dir__top"><span class="dir__n">2</span><span class="dir__name">Doorstep Drop</span><span class="dir__badge dir__badge--fmt">STORY</span></div>
+  <div class="dir__idea">Every cut, a bag lands on the same doormat while the seasons change around it.</div>
+  <div class="dir__row"><span>OPENS</span><span>A bag thuds onto a doormat in silence</span></div>
+  <div class="dir__row"><span>LOOK</span><span><span class="sw"><i style="background:#c9b79c"></i><i style="background:#5b4636"></i><i style="background:#e9e2d6"></i></span>Natural light, warm grade, small serif captions</span></div>
+  <div class="dir__row"><span>USES</span><span>Bag photo cut out and dropped on the mat · roast clip as the window light · logo on the mat at the end</span></div>
+  <div class="dir__row"><span>SHAPE</span><span>Brand story · repetition with change</span></div>
+  
+  <div class="dir__foot"><button type="button" class="btn btn--outline btn--sm">Plan this way</button><small class="muted">about 30 credits</small></div>
+</div><div class="dir">
+  <div class="dir__top"><span class="dir__n">3</span><span class="dir__name">Offer First</span><span class="dir__badge dir__badge--fmt">OFFER AD</span></div>
+  <div class="dir__idea">Lead with the 25% stamp, then earn it with the beans and the delivery.</div>
+  <div class="dir__row"><span>OPENS</span><span>25% OFF stamps onto an orange field</span></div>
+  <div class="dir__row"><span>LOOK</span><span><span class="sw"><i style="background:#e8562a"></i><i style="background:#1b1410"></i><i style="background:#f4ece0"></i></span>Huge type on flat colour, one accent word</span></div>
+  <div class="dir__row"><span>USES</span><span>Bag photo under the 25% stamp · roast clip behind the benefits · logo locked with the offer</span></div>
+  <div class="dir__row"><span>SHAPE</span><span>Offer ad · the offer first, then why</span></div>
+  
+  <div class="dir__foot"><button type="button" class="btn btn--outline btn--sm">Plan this way</button><small class="muted">about 30 credits</small></div>
+</div><div class="dir">
+  <div class="dir__top"><span class="dir__n">4</span><span class="dir__name">Roaster's Diary</span><span class="dir__badge dir__badge--fmt">TESTIMONIAL</span></div>
+  <div class="dir__idea">The roaster’s handwritten notes for this week’s batch, over the roast itself.</div>
+  <div class="dir__row"><span>OPENS</span><span>A pencil writes “Batch 214” on kraft paper</span></div>
+  <div class="dir__row"><span>LOOK</span><span><span class="sw"><i style="background:#e4d3b8"></i><i style="background:#2e2a26"></i><i style="background:#8a5a34"></i></span>Kraft paper, handwriting, close macro footage</span></div>
+  <div class="dir__row"><span>USES</span><span>Roast clip is the whole background · bag photo signs off the diary · logo as the stamp</span></div>
+  <div class="dir__row"><span>SHAPE</span><span>Brand story · a day in the life, one surprise</span></div>
+  
+  <div class="dir__foot"><button type="button" class="btn btn--outline btn--sm">Plan this way</button><small class="muted">about 30 credits</small></div>
+</div><div class="dir">
+  <div class="dir__top"><span class="dir__n">5</span><span class="dir__name">Flavour Map</span><span class="dir__badge dir__badge--fmt">EXPLAINER</span></div>
+  <div class="dir__idea">The beans travel an illustrated map from farm to cup, landing in your bag.</div>
+  <div class="dir__row"><span>OPENS</span><span>A bean drops onto a map and a dotted route begins</span></div>
+  <div class="dir__row"><span>LOOK</span><span><span class="sw"><i style="background:#f6f0e4"></i><i style="background:#2f5d50"></i><i style="background:#d9682b"></i></span>Flat illustration, map lines, one route colour</span></div>
+  <div class="dir__row"><span>USES</span><span>Bag photo where the route ends · roast clip zooms out into the map · logo on the last frame</span></div>
+  <div class="dir__row"><span>SHAPE</span><span>Explainer · zoom from everyday to inside</span></div>
+  
+  <div class="dir__foot"><button type="button" class="btn btn--outline btn--sm">Plan this way</button><small class="muted">about 30 credits</small></div>
+</div>
+    <button type="button" class="btn btn--dashed more-ways">More ways · 3 new ideas, about 3 credits</button>
+  </div>
+  <footer class="pdw-foot">
+    <textarea rows="2" placeholder="Mix them or describe your own: “2, with the look of 5”"></textarea>
+    <div class="row"><span class="muted" style="font-size:12px">Re-plans in that direction · about 30 credits</span><span style="flex:1"></span><button type="button" class="btn btn--primary btn--sm">Plan it</button></div>
+  </footer>
+</aside>
+</body>
+</html>
