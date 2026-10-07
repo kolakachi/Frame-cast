@@ -42,6 +42,10 @@ class MotionMoves
         'odometer' => 'the digits of an approved number roll into place',
         'gauge' => 'a ring or bar sweeps to an approved value',
         'streak' => 'speed lines tear across the frame over a cut',
+        'smash' => 'a hard cut on the hit with a one-frame flash; with the music cut, a smash to silence',
+        'split' => 'two panels slide into halves of the frame with a divider: before and after, two options',
+        'stack' => 'a list builds on the voice: each new item pushes in, earlier ones step up and dim',
+        'parallax' => 'a still photo in layers drifts with depth, like a moving camera',
         'custom' => 'none of these: built by hand from the description',
     ];
 
@@ -54,6 +58,7 @@ class MotionMoves
         'flood' => ['high', 0.9], 'rise' => ['mid', 0.55], 'edges' => ['low', 0.5], 'push_in' => ['low', 2.5], 'pull_back' => ['mid', 0.9],
         'dutch' => ['mid', 0.7], 'cold_open' => ['high', 1.3], 'text_mask' => ['mid', 2.0], 'ramp_freeze' => ['high', 0.6], 'hidden_cut' => ['high', 0.7],
         'odometer' => ['mid', 1.0], 'gauge' => ['mid', 1.2], 'streak' => ['high', 0.35],
+        'smash' => ['high', 0.05], 'split' => ['mid', 0.7], 'stack' => ['mid', 0.4], 'parallax' => ['low', 3.0],
     ];
 
     public static function valid(mixed $move): ?string

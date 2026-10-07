@@ -48,3 +48,16 @@ test('a from-scratch plan pins the motion kit for the builder', async () => {
  const dir=new URL('../guidance/',import.meta.url).pathname.replace(/\/$/,'');
  assert.match(await pinnedKits(dir,{scratch_guide:'\n\n# Format playbook'}),/# kit\/motion-kit\.md \(pinned/);
 });
+
+test('smash, split, stack and parallax: the cut is instant, halves meet, the list steps up, nearer layers move further', () => {
+ const k=kit();const a=k.mk(),b=k.mk();k.WM.smash(k.tl,a,b,4,{});
+ assert.ok(k.calls.some(c=>c[1]===a&&c[2].autoAlpha===0&&c[3]===4)&&k.calls.some(c=>c[1]===b&&c[2].autoAlpha===1&&c[3]===4));
+ const s=kit();s.WM.split(s.tl,s.mk(),s.mk(),1,{});const halves=s.calls.filter(c=>c[0]==='fromTo');
+ assert.equal(halves[0][2].xPercent,-105);assert.equal(halves[1][2].xPercent,105);assert.equal(halves[0][3].xPercent,0);
+ const l=kit();const items=[l.mk(),l.mk(),l.mk()];l.WM.stack(l.tl,items,[1,2,3],{gap:100});
+ assert.ok(l.calls.some(c=>c[0]==='to'&&c[1]===items[0]&&c[2].y===-200&&c[3]===3),'the first item has stepped up two places when the third arrives');
+ const p=kit();const layers=[p.mk(),p.mk()];p.WM.parallax(p.tl,layers,0,{distance:60});
+ const moves=p.calls.filter(c=>c[0]==='fromTo').map(c=>c[3].x-c[2].x);
+ assert.ok(Math.abs(moves[1])>Math.abs(moves[0]),'the front layer moves further');
+ for(const id of ['smash','split','stack','parallax'])assert.equal(RECIPES[id],id);
+});

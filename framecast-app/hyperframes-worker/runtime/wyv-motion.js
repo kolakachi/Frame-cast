@@ -523,6 +523,53 @@
       tl.set(el, { autoAlpha: 0 }, at + 0.22);
       return tl;
     },
+    /* smash (high, a single frame): a hard cut on the hit, with a one-frame white flash. For a smash to silence,
+       also end the music clip at `at` and start a second clip of the same file after the silence (data-start,
+       data-media-start), so the cut lands in sudden quiet. opts: flash (true), color ('#fff'). el: a full-frame flash
+       div above the scenes (optional). */
+    smash: function (tl, a, b, at, opts) {
+      opts = opts || {};
+      tl.set($(a), { autoAlpha: 0 }, at).set($(b), { autoAlpha: 1 }, at);
+      if (opts.flash !== false && opts.el) tl.set($(opts.el), { autoAlpha: 1, backgroundColor: opts.color || '#fff' }, at).set($(opts.el), { autoAlpha: 0 }, at + 1 / 24);
+      return tl;
+    },
+    /* split (mid, about .7 s): two panels slide in from opposite sides into halves of the frame and a divider draws
+       between them: before and after, them and us, two options. a, b: the panels, each sized to its half. opts:
+       dir ('vertical': left and right; 'horizontal': top and bottom), divider (an element drawn along the split). */
+    split: function (tl, a, b, at, opts) {
+      opts = opts || {}; var v = opts.dir !== 'horizontal', k = v ? 'xPercent' : 'yPercent', d = opts.duration || 0.6;
+      var fa = {}, fb = {}, ta = { duration: d, ease: ease['default'], immediateRender: true }, tb = { duration: d, ease: ease['default'], immediateRender: true };
+      fa[k] = -105; fb[k] = 105; ta[k] = 0; tb[k] = 0; fa.autoAlpha = 1; fb.autoAlpha = 1;
+      tl.fromTo($(a), fa, ta, at).fromTo($(b), fb, tb, at + 0.08);
+      if (opts.divider) { var s0 = {}, s1 = { duration: 0.35, ease: ease.snappy, immediateRender: true }; s0[v ? 'scaleY' : 'scaleX'] = 0; s1[v ? 'scaleY' : 'scaleX'] = 1; tl.fromTo($(opts.divider), s0, s1, at + d * 0.6); }
+      return tl;
+    },
+    /* stack (mid, about .4 s an item): list items arrive one at a time; each new one pushes in at the front and the
+       earlier ones step up and dim, so the list builds as it is read. els: the items in order, absolutely placed at
+       the same front slot. times: when each arrives (on the voice), or opts.each (.8 s). opts: gap (px, the item
+       height plus spacing), dim (.45). */
+    stack: function (tl, els, times, opts) {
+      opts = opts || {}; var list = all(els), gap = opts.gap || 140, dim = opts.dim == null ? 0.45 : opts.dim;
+      var at = function (i) { return Array.isArray(times) ? times[i] : (times || 0) + i * (opts.each || 0.8); };
+      list.forEach(function (el, i) {
+        tl.fromTo(el, { y: 80, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.4, ease: ease.snappy, immediateRender: true }, at(i));
+        for (var j = 0; j < i; j++) tl.to(list[j], { y: -gap * (i - j), opacity: dim, duration: 0.4, ease: ease.snappy }, at(i));
+      });
+      return tl;
+    },
+    /* parallax (low, 2-5 s): a still picture split into layers (background, product cutout, foreground) drifts with
+       depth: nearer layers move further, so a photo feels shot on a moving camera. layers: back to front. opts:
+       duration (3), distance (px for the front layer, 60), dir ('left'|'right'|'up'|'down'), scale (1.04). */
+    parallax: function (tl, layers, at, opts) {
+      opts = opts || {}; var list = all(layers), n = list.length, dist = opts.distance || 60, d = opts.duration || 3;
+      var axis = opts.dir === 'up' || opts.dir === 'down' ? 'y' : 'x', sign = opts.dir === 'right' || opts.dir === 'down' ? 1 : -1;
+      list.forEach(function (el, i) {
+        var f = n > 1 ? (i + 1) / n : 1, from = {}, to = { duration: d, ease: 'sine.inOut', immediateRender: true };
+        from[axis] = -sign * dist * f / 2; to[axis] = sign * dist * f / 2; from.scale = opts.scale || 1.04; to.scale = opts.scale || 1.04;
+        tl.fromTo(el, from, to, at);
+      });
+      return tl;
+    },
   };
 
   // Elements and geometry. Positions come from layout (offsets), not from the
@@ -578,9 +625,12 @@
     odometer: function (a) { return [['blip', a[3] + (o(a, 4).duration || 0.9)]]; },
     gauge: function (a) { return [['blip', a[3] + (o(a, 4).duration || 1.2)]]; },
     streak: function (a) { return [['whoosh-fast', a[2]]]; },
+    smash: function (a) { return [['thud', a[3]]]; },
+    split: function (a) { return [['slide', a[3] + 0.3]]; },
+    stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
   var OPTS = { device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
-    pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3 };
+    pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {
     var fn = WM[name];

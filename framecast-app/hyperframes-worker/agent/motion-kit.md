@@ -45,6 +45,11 @@ Match a beat's moves to its energy (the plan's playbook gives each beat low, mid
 - `WM.gauge(tl, '#ring', 87, at, {duration: 1.2})` (mid · 1.2 s): an SVG ring (stroke) or a bar sweeps to an approved value.
 - `WM.streak(tl, '#streaks', at, {color: 'rgba(255,255,255,.85)'})` (high · .35 s): speed lines tear across a cut. `#streaks` is a full-frame div above the scenes.
 
+- `WM.smash(tl, '#a', '#b', at, {el: '#flash'})` (high · one frame): a hard cut on the hit with a one-frame flash. Smash to silence: also end the music clip at `at` and start a second clip of the same file after the gap (`data-start`, `data-media-start`).
+- `WM.split(tl, '#left', '#right', at, {dir: 'vertical', divider: '#line'})` (mid · .7 s): two panels slide into halves and a divider draws: before/after, two options. Each panel is sized to its half.
+- `WM.stack(tl, '.item', [t1, t2, t3], {gap: 140})` (mid · .4 s an item): a list builds on the voice; each new item pushes in at the front, earlier ones step up and dim. Items share one front slot.
+- `WM.parallax(tl, ['#bg', '#product', '#fg'], at, {duration: 3, distance: 60})` (low · 2-5 s): a still photo in layers (back to front) drifts with depth, like a moving camera. Use a product cutout as the middle layer.
+
 ## Reference moves
 When the plan names a move (plan.reference_systems[].move, reference_decisions[].move), build that element with the recipe below; the check sends back a named move the composition never calls. kit/reference-moves.html is a worked 15-second example using all of them on one timeline. Elements start hidden (visibility:hidden); each move makes them visible itself.
 - `words` → `WM.words(tl, '#h .w', [1.1, 1.3, 1.45])`: a headline builds word by word; one time per word span, from narrationTiming.
