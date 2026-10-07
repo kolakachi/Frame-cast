@@ -313,3 +313,15 @@ test('an empty text block in a reply never goes back to the model (the API refus
  assert.equal(state.status,'needs_input');
  for(const call of seen.slice(1))for(const m of JSON.parse(call.messages_json??JSON.stringify(call.messages??[])))for(const b of m.content)if(b.type==='text')assert.notEqual(String(b.text).trim(),'','no empty text block: '+JSON.stringify(m));
 });
+test('an edit returns the file as it is now, so the next patch needs no read; only the newest copy stays',async()=>{
+ const {state,seen}=await harness([
+  [use('a','write',{path:'index.html',content:'<html><body>v1</body></html>'})],
+  [use('b','patch',{path:'index.html',before:'v1',after:'v2'}),use('c','preview',{times:[1]})],
+  [use('d','patch',{path:'index.html',before:'v2',after:'v3'}),use('e','preview',{times:[1]})],
+  [use('f','visual_review',{decision:'pass',findings:'Fine',scores:[{time:1,score:9,problems:[]}]}),use('g','finish',{summary:'Done'})],
+ ],{limits:{calls:6,repairs:2,contextBytes:96000}});
+ assert.equal(state.status,'preview_ready',state.reason);
+ const results=seen[3].messages.filter(m=>m.role==='user').flatMap(m=>m.content).filter(b=>b.type==='tool_result'&&typeof b.content==='string'&&b.content.includes('"current"')).map(b=>JSON.parse(b.content));
+ assert.deepEqual(results.map(r=>r.current),['[superseded: a later edit returned the newer text]','[superseded: a later edit returned the newer text]','<html><body>v3</body></html>']);
+ assert.ok(results.every(r=>r.path==='index.html'));
+});

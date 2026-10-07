@@ -16,6 +16,8 @@ import {numberFindings} from './grounding-check.mjs';
 import {briefGate,assertLockedSource} from './brief-guard.mjs';
 import {promptHistory,primitives} from './prompt-context.mjs';
 import {digest} from './workspace.mjs';
+// An edit's result carries the file's whole text up to this size, so the builder never reads back what it just wrote.
+export const CURRENT_TEXT_BYTES=20000;
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,initialTranscripts={},requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
@@ -267,7 +269,7 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
           throw Object.assign(Error('This is an edit of an existing version. Change it with patch actions (several small patches are fine); write would rebuild the whole file.'),{code:'AUTHORING_REJECTED'});
         if(action.type==='patch') {
           const old=await workspace.read(action.path);
-          if(old.split(action.before).length!==2)throw Object.assign(Error('Patch must match exactly once. Read the current source before retrying.'),{code:'AUTHORING_REJECTED'});
+          if(old.split(action.before).length!==2)throw Object.assign(Error('Patch must match exactly once. Use the file\'s current text from your last edit of it (or read it) before retrying.'),{code:'AUTHORING_REJECTED'});
           text=old.replace(action.before,action.after);
         }
         if(action.path==='index.html')assertLockedSource(context,text);
@@ -276,7 +278,9 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
         text=flight.text;
         await workspace.write(action.path,text);
         if(action.path.startsWith('work/'))result={written:action.path,note:'Scratch file; run it with the run action.'};
-        else {state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision,...(flight.fixed.length?{fixed:flight.fixed}:{}),...(flight.warnings.length?{warnings:flight.warnings}:{})};}
+        else {state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision,...(flight.fixed.length?{fixed:flight.fixed}:{}),...(flight.warnings.length?{warnings:flight.warnings}:{})};
+          // The file as it is now, so the next patch needs no read call (GTM-1: a third of one build's calls were read-backs).
+          if(context.toolMode===true&&Buffer.byteLength(text)<=CURRENT_TEXT_BYTES)Object.assign(result,{path:action.path,current:text});}
       } catch(e) {
         // Only known pre-write authoring rejections are repairable. Filesystem,
         // sandbox and uncertain write failures still stop the run.
@@ -478,10 +482,13 @@ export async function runAgent({stateFile,context,workspace,provider,tools,skill
     const over=()=>Buffer.byteLength(JSON.stringify(t,(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes;
     const lastAssistant=t.map(m=>m.role).lastIndexOf('assistant');
     const shrinkWrites=(m)=>{for(const b of m.content)if(b.type==='tool_use'&&b.input&&typeof b.input==='object'){
-      if(b.name==='write'&&typeof b.input.content==='string'&&b.input.content.length>200)b.input={path:b.input.path,content:'[written earlier, '+Buffer.byteLength(b.input.content)+' bytes; read the file to see it]'};
+      if(b.name==='write'&&typeof b.input.content==='string'&&b.input.content.length>200)b.input={path:b.input.path,content:'[written earlier, '+Buffer.byteLength(b.input.content)+' bytes; '+(Buffer.byteLength(b.input.content)<=CURRENT_TEXT_BYTES?'its current text is in your latest edit result for this file':'read the file to see it')+']'};
       if(b.name==='patch'&&(String(b.input.before).length+String(b.input.after).length)>300)b.input={path:b.input.path,before:'[patched earlier]',after:'[patched earlier, '+Buffer.byteLength(String(b.input.after))+' bytes]'};
     }};
     t.forEach((m,k)=>{if(m.role==='assistant'&&k<lastAssistant)shrinkWrites(m);});
+    // Only the newest text of each file stays: an edit's result carries the whole file, so older copies are superseded.
+    const newest=new Map();
+    t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&typeof b.content==='string'&&b.content.includes('"current":')){try{const r=JSON.parse(b.content);if(r.path&&typeof r.current==='string'){const prev=newest.get(r.path);if(prev){const o=JSON.parse(prev.content);o.current='[superseded: a later edit returned the newer text]';prev.content=JSON.stringify(o);}newest.set(r.path,b);}}catch{/* not an edit result */}}});
     if(over()&&lastAssistant>0)shrinkWrites(t[lastAssistant]);
     let guard=0;
     while(over()&&guard++<200){
