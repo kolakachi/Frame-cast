@@ -69,7 +69,7 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
  // The agreement's required items, by sight (spoken items are settled by listening).
  const required=plan.agreement?.required||[];
  if(required.length){
-  if(look?.status!=='checked')add('required','Everything that must appear is in the video','unverified',true,'The final video could not be looked at.');
+  if(look?.status!=='checked')add('required','Everything that must appear is in the video','unverified',true,'The final video could not be looked at'+(look?.note?': '+String(look.note).slice(0,120):'')+'.');
   else for(const [k,item] of required.entries()){
    // The plan's own items decide, matched by their id (r1, r2…) or exact wording, never by position: an item the
    // look did not answer stays unverified, and an answer about another item never passes it.

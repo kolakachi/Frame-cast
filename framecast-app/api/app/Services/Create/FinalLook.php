@@ -59,6 +59,11 @@ Directed shots (each action should be visible, with its gaze; judge each shot on
         try {
             $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(150)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 3000, 'messages' => [['role' => 'user', 'content' => $content]]]));
+            // A refusal or an outage is a vendor event (recorded, alerted when it is our account), and the look says why.
+            if (! $r->successful()) {
+                $kind = \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status(), ['run_id' => $runId]);
+                return ['status' => 'unverified', 'note' => in_array($kind, \App\Services\Vendors\VendorAlerts::OURS, true) ? 'the checking model is unavailable on our side' : 'the checking model did not answer ('.$r->status().')'];
+            }
             $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
             $a = strpos($text, '{'); $b = strrpos($text, '}');
             $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;

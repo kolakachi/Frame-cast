@@ -144,3 +144,10 @@ test('a required voiceover or music is settled by listening, not by sight', () =
  assert.equal(silent.status,'blocked');
  assert.equal(finalVerdict({plan,look,audio:null,expectsSpeech:true}).checks.find(c=>c.label==='Must appear: Voiceover and music').status,'unverified');
 });
+
+test('a look that could not run says why (a vendor outage is not a quiet skip)', () => {
+ const v=finalVerdict({plan:{agreement:{required:['The logo at the end']}},look:{status:'unverified',note:'the checking model is unavailable on our side'},audio:null,expectsSpeech:false});
+ const c=v.checks.find(x=>x.id==='required');
+ assert.equal(c.status,'unverified');assert.match(c.message,/checking model is unavailable on our side/);
+ assert.equal(v.status,'unverified');
+});

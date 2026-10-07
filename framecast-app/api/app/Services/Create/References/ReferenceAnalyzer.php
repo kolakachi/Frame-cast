@@ -67,7 +67,7 @@ class ReferenceAnalyzer
                 'messages' => [['role' => 'user', 'content' => [
                     ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode(file_get_contents($sheet))]],
                     ['type' => 'text', 'text' => $prompt]]]]]);
-        if (! $r->successful()) return [];
+        if (! $r->successful()) { \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status()); return []; }
         $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
         $json = json_decode(substr($text, (int) strpos($text, '{'), strrpos($text, '}') - (int) strpos($text, '{') + 1), true);
         if (! is_array($json)) return [];

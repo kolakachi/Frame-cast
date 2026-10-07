@@ -4709,4 +4709,17 @@ class CreateIntegrationTest extends TestCase
             $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->files('create/image-jobs/99001'), 'emptied once delivered');
         } finally { \Illuminate\Support\Facades\Storage::disk('local')->deleteDirectory('create/image-jobs/99001'); }
     }
+
+    public function test_a_final_look_that_cannot_reach_our_model_says_why_and_alerts(): void
+    {
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim();
+        config(['services.anthropic.key'=>'test-key','create.admin_alert_emails'=>['ops@example.com']]);
+        \Illuminate\Support\Facades\Mail::fake();
+        $dry=['type'=>'error','error'=>['type'=>'invalid_request_error','message'=>'Your credit balance is too low to access the Anthropic API.']];
+        Http::fake(['https://api.anthropic.com/*'=>Http::response($dry,400)]);
+        $look=app(\App\Services\Create\FinalLook::class)->check($run->id,$claim['lease_token'],[['time'=>1.0,'jpeg'=>'x']]);
+        $this->assertSame(['status'=>'unverified','note'=>'the checking model is unavailable on our side'],$look);
+        $this->assertSame(1,DB::table('vendor_incidents')->where('vendor','anthropic')->where('kind','vendor_credit')->count());
+        \Illuminate\Support\Facades\Mail::assertQueued(\App\Mail\VendorAlertMail::class,fn($m)=>$m->kind==='vendor_credit');
+    }
 }

@@ -99,7 +99,7 @@ class PageReferenceService
                 'messages' => [['role' => 'user', 'content' => [
                     ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode(file_get_contents($jpg))]],
                     ['type' => 'text', 'text' => $prompt]]]]]);
-        if (! $r->successful()) return null;
+        if (! $r->successful()) { \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status()); return null; }
         $raw = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
         $json = json_decode(substr($raw, (int) strpos($raw, '{'), strrpos($raw, '}') - (int) strpos($raw, '{') + 1), true);
         if (! is_array($json)) return null;
