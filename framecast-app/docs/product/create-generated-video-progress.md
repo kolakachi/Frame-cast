@@ -20,13 +20,20 @@ Last updated: 2026-10-06 (afternoon).
 | A. Direction (cast and storyboard) | 8 | 0 | 0 |
 | B. Generation routes | 1 | 1 | 2 |
 | C. Reliability | 6 | 0 | 0 |
-| D. Delivery checks | 6 | 1 | 1 |
+| D. Delivery checks | 8 | 1 | 1 |
 | E. Composition with generated worlds | 1 | 2 | 0 |
 | F. Speed | 1 | 1 | 1 |
 | G. Cost | 2 | 2 | 1 |
 | H. Protect what works | 1 | 1 | 0 |
 | S. Steps, files and credits (2026-10-06) | 7 | 1 | 3 |
 | Rollout gate | 0 | 0 | 2 |
+
+**Update, 2026-10-07:** everything below is committed and live on production (Create runs for the team on the
+`framecast-create` worker; see `create-go-live.md`). Delivery checks were tightened on real production builds: D5 now
+separates lost passages from a transcriber's doubt and matches numbers, percents and web addresses however they are
+written; a required voiceover or music is settled by listening; D8 renders once more when only the page load timed out;
+D9 measures finishing (margins, overlapping words, lopsided frames). Three builds at once passed. Every open item
+across Create is on `create-pending.md`.
 
 **Review, 2026-10-05 evening:** the first fixes (`f3484f9b` to `a71abcb2`) addressed the original
 reproductions, but a second audit found five remaining edge cases. The follow-up changes are **uncommitted local
@@ -177,9 +184,18 @@ Built in `final-checks.mjs` and `FinalLook` (`3d8735cd`).
 - [x] **D4. No unintended lettering:** garbled letters or fake logos in the picture are flagged (advisory); real packaging and overlays are fine.
 - [x] **D5. Audio:**
   - lost approved words block (listening to the export, script coverage at least 90% with no missing passage);
+  - 2026-10-07: a few scattered words the transcriber missed (no passage missing, at least 75% heard) are an advisory
+    "give it a listen", not a block; unheard stretches of any length are listened to again (`fa27e988`); numbers,
+    percents, "&" and web addresses match however they are written or said (`7ee825c6`); a required voiceover or
+    music is decided by listening, not by sight (`fda6c7bd`);
   - mix, dead air and abrupt endings are flagged by the existing listening review;
   - loudness is levelled.
 - [x] **D6. Named moves block:** a reference or signature move the composition never builds blocks delivery. Review fix (`fafb1258`): the code alone no longer counts; the move must actually run when the timeline is built (recorded by the kit, saved by the render). Missing runtime evidence is explicitly unverified at final review, rather than falling back to source-only approval. Equivalent motion from other code is not recognised; whether a transition reads on screen is not yet judged from the frames.
+- [x] **D8. A render that only timed out loading is rendered once more** within the approved renders; a real layout
+  failure still stops (`1e567557`, found when two builds shared the worker).
+- [x] **D9. Finishing:** words held within 6% of the sides or 4% of the top (or cut by the edge) and overlapping blocks
+  of words are sent back once; a lopsided held frame is advisory; a deliberate bleed carries `data-bleed`
+  (`cd5bb2cc`; live after the sandbox image rebuild in `0abef9cb`).
 - [~] **D7. Build hygiene.**
   - Unintended blank frames block (a fade of up to 0.6 s at the start or end is allowed); bought clips must appear; a take must play at least 90%.
   - Best seconds: open (reopened by the review). Routing rounds lengths to what each engine makes (Veo 4, 6 or 8 s; Seedance at least 4 s; Omni at most 10 s), so a clip can be longer than its slot and the builder plays it from the start.
