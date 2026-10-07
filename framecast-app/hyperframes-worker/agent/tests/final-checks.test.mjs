@@ -131,3 +131,16 @@ test('a few scattered words the transcriber could not make out are a note, not l
  assert.equal(finalVerdict({plan:{},look:null,audio:{script_coverage:0.6,missing:[]},expectsSpeech:true}).checks.find(c=>c.id==='words').status,'fail');
  assert.equal(finalVerdict({plan:{},look:null,audio:{script_coverage:0.85,missing:['approve the plan']},expectsSpeech:true}).status,'blocked');
 });
+
+test('a required voiceover or music is settled by listening, not by sight', () => {
+ // Production 2026-10-07: "Voiceover and music" came back unverified ("Cannot verify audio content from visual frames").
+ const plan={agreement:{required:['Voiceover and music','wyvstudio.com on the last frame']}};
+ const look={status:'checked',required:[{id:'r1',status:'unclear',note:'Cannot verify audio content from visual frames alone'},{id:'r2',status:'present',time:14}]};
+ const heard=finalVerdict({plan,look,audio:{script_coverage:1,missing:[],music:true},expectsSpeech:true});
+ assert.equal(heard.checks.find(c=>c.label==='Must appear: Voiceover and music').status,'pass');
+ assert.equal(heard.status,'passed');
+ const silent=finalVerdict({plan,look,audio:{script_coverage:1,missing:[],music:false},expectsSpeech:true});
+ assert.match(silent.checks.find(c=>c.label==='Must appear: Voiceover and music').message,/music/);
+ assert.equal(silent.status,'blocked');
+ assert.equal(finalVerdict({plan,look,audio:null,expectsSpeech:true}).checks.find(c=>c.label==='Must appear: Voiceover and music').status,'unverified');
+});

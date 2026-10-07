@@ -79,6 +79,14 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
    const exact=answers.filter(x=>!x.id&&key(item)&&key(x.item)===key(item));
    const matches=byId.length?byId:required.filter(x=>key(x)===key(item)).length===1?exact:[];
    const r=matches.length===1?matches[0]:{status:'unclear'};
+   // Sound (a voiceover, music) is settled by listening, not by sight: the look cannot hear it.
+   const voice=/\b(voice ?-?over|voice|narrat\w*|spoken|narrator)\b/i.test(item),music=/\b(music|soundtrack|score|jingle)\b/i.test(item);
+   if((voice||music)&&r.status!=='present'&&r.status!=='missing'){
+    const heardVoice=!voice||(audio&&!(audio.missing||[]).length&&(audio.script_coverage??0)>=0.75),heardMusic=!music||audio?.music===true;
+    if(!audio)add('required','Must appear: '+item,'unverified',true,'The final audio could not be listened to.');
+    else add('required','Must appear: '+item,heardVoice&&heardMusic?'pass':'fail',true,heardVoice&&heardMusic?'':'Not heard in the final audio: '+[!heardVoice&&'the voice',!heardMusic&&'music'].filter(Boolean).join(' and ')+'.');
+    continue;
+   }
    if(r.status==='missing')add('required','Must appear: '+item,'fail',true,'Not seen in the final video'+(r.note?' ('+r.note+')':'')+'.');
    else add('required','Must appear: '+item,r.status==='present'?'pass':'unverified',true,r.status==='present'?'':'Could not be confirmed by sight'+(r.note?': '+r.note:'')+'.',r.time!=null?[r.time]:[]);
   }
