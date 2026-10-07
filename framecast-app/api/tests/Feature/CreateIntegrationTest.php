@@ -4856,4 +4856,16 @@ class CreateIntegrationTest extends TestCase
         $spelt = $plans->normalize([...$raw, 'narration' => ['Ever had a great video idea?', 'This is WyvStudio, now I post every day.']], ['files' => [['speech' => 'Ever had a great video idea? This is Weave Studio, now I post every day.'] + $video]], $this->workspace->id);
         $this->assertFalse(collect($spelt['media'])->contains('kind', 'voiceover'), 'a name spelt differently by the transcriber still matches');
     }
+
+    public function test_a_name_respelled_by_the_planner_is_written_as_the_brand_writes_it(): void
+    {
+        DB::table('create_pronunciations')->insert(['workspace_id' => $this->workspace->id, 'written' => 'WyvStudio', 'spoken' => 'weave studio', 'created_at' => now(), 'updated_at' => now()]);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $raw = ['summary' => 'A take.', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'Talk']], 'left_out' => '',
+            'narration' => ['I used to spend a whole day on one ad. Weave Studio fixed that.', 'Now I type it into WyvStudio.']];
+        $plan = $plans->normalize($raw, ['files' => []], $this->workspace->id);
+        $this->assertSame(['I used to spend a whole day on one ad. WyvStudio fixed that.', 'Now I type it into WyvStudio.'], $plan['narration']);
+        $this->assertSame($plan['narration'], $plan['selections']['narration']);
+        $this->assertSame([['written' => 'WyvStudio', 'spoken' => 'weave studio']], $plan['spoken_names']);
+    }
 }

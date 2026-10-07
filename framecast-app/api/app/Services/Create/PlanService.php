@@ -896,6 +896,22 @@ class PlanService
             'look_first' => (bool) ($raw['look_first'] ?? false) && collect($media)->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)
                 || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character')),
             'selections' => ['omitted_performance' => $ctx['previous_plan']['omitted_performance'] ?? [], 'callouts' => $callouts, 'narration' => $narration, 'voice' => $voice, 'style' => $style, 'look_first' => (bool) ($raw['look_first'] ?? false), 'choices' => collect($decisions)->mapWithKeys(fn ($d) => [$d['id'] => $d['options'][0]['id']])->all(), 'kept' => $kept]];
+        // A name is written as written ("WyvStudio"), never as it sounds ("Weave Studio"): the pronunciation is applied to
+        // the voice only. A respelled name would put the wrong spelling on screen and hide the name from the voice routing
+        // (GTM-1 #5's change wrote "Weave Studio fixed that.").
+        $respell = function ($text) use ($workspaceId) {
+            if (! is_string($text) || ! \Illuminate\Support\Facades\Schema::hasTable('create_pronunciations')) return $text;
+            foreach (DB::table('create_pronunciations')->where('workspace_id', $workspaceId)->get(['written', 'spoken']) as $p) {
+                $spoken = preg_split('/\s+/', trim($p->spoken), -1, PREG_SPLIT_NO_EMPTY);
+                if (! $spoken || mb_strtolower(trim($p->spoken)) === mb_strtolower(trim($p->written))) continue;
+                $text = preg_replace('/(?<![\p{L}\p{N}])'.implode('[\s-]*', array_map(fn ($w) => preg_quote($w, '/'), $spoken)).'(?![\p{L}\p{N}])/iu', $p->written, $text) ?? $text;
+            }
+            return $text;
+        };
+        $narration = array_map($respell, (array) $narration);
+        $plan['narration'] = $narration;
+        if (isset($plan['selections']['narration'])) $plan['selections']['narration'] = $narration;
+        if (isset($plan['selections']['callouts'])) $plan['selections']['callouts'] = array_map(fn ($c) => is_array($c) ? array_map($respell, $c) : $respell($c), (array) $plan['selections']['callouts']);
         // Names in the script with a saved pronunciation: a take that speaks them lip-syncs to our narration, which follows
         // the pronunciation; a video model's own voice does not (GTM-1 #5 said "Wyve Studio").
         $plan['spoken_names'] = PlanMediaExecutor::pronunciationsIn(implode("\n", array_map('strval', (array) $narration)), $workspaceId);
