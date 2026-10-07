@@ -375,14 +375,11 @@ class ShotRouteTest extends TestCase
         $this->assertSame(\App\Services\Create\CharacterApproval::sourceIdentity($a), \App\Services\Create\CharacterApproval::sourceIdentity($ctx + ['source_files' => [$source(1, 'a'), $generated]]));
     }
 
-    public function test_a_take_that_says_a_saved_name_lip_syncs_to_the_narration(): void
+    public function test_a_take_that_says_a_saved_name_keeps_its_own_baked_in_voice(): void
     {
         $narration = ['I type what I want into WyvStudio.', 'No shoot, no editor.'];
-        $names = [['written' => 'WyvStudio', 'spoken' => 'weave studio']];
-        $r = ShotRoute::take(['presenter' => 'avatar'], ['narration' => $narration, 'spoken_names' => $names] + $this->ctx);
-        $this->assertSame(['lipsync', 'cloned_lipsync'], [$r['engine'], $r['speech_mode']]);
-        $this->assertSame('Lip-sync to the narration, so WyvStudio is said as saved', $r['engine_label']);
-        $plain = ShotRoute::take(['presenter' => 'avatar'], ['narration' => ['No shoot, no editor.'], 'spoken_names' => $names] + $this->ctx);
-        $this->assertNotSame('lipsync', $plain['engine'], 'a take that never says the name keeps its own voice');
+        $r = ShotRoute::take(['presenter' => 'avatar'], ['narration' => $narration, 'spoken_names' => [['written' => 'WyvStudio', 'spoken' => 'weave studio']]] + $this->ctx);
+        $this->assertNotSame('lipsync', $r['engine'], 'lip-sync is only for a cloned voice; the pronunciation goes in the words');
+        $this->assertSame('lipsync', ShotRoute::take(['presenter' => 'avatar'], ['narration' => $narration, 'voice' => 'clone'] + $this->ctx)['engine']);
     }
 }
