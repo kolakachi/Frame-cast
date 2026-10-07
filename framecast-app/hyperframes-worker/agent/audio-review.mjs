@@ -11,7 +11,18 @@ import {heard} from './requirement-review.mjs';
 const run=promisify(execFile);
 
 export const RULES={coverage:.9,heardCoverage:.75,missingRun:3,extra:.25,voiceOverMusicDb:6,quietDb:-55,musicDb:-50,deadAir:1.5,abruptDb:-35};
-const norm=s=>String(s??'').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s']/gu,' ').replace(/'/g,'').trim();
+// Numbers as they are said: the script may write "25%" where the voice was asked to say "twenty-five percent", and the
+// transcriber writes either. Integers up to the millions become words; % and & become words; a web address's dots and
+// slashes become "dot" and "slash".
+const ONES=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+const TENS=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+const say=n=>{if(n<20)return ONES[n];if(n<100)return TENS[Math.floor(n/10)]+(n%10?' '+ONES[n%10]:'');if(n<1000)return ONES[Math.floor(n/100)]+' hundred'+(n%100?' '+say(n%100):'');
+ if(n<1e6)return say(Math.floor(n/1000))+' thousand'+(n%1000?' '+say(n%1000):'');return say(Math.floor(n/1e6))+' million'+(n%1e6?' '+say(n%1e6):'');};
+export const spoken=s=>String(s??'')
+ .replace(/\b([a-z0-9-]+)\.(com|co|io|ai|app|net|org|shop|store|uk|me)\b/gi,'$1 dot $2').replace(/(\w)\/(\w)/g,'$1 slash $2')
+ .replace(/\$\s?(\d[\d,]*)/g,'$1 dollars').replace(/(\d),(\d{3})\b/g,'$1$2').replace(/%/g,' percent').replace(/&/g,' and ')
+ .replace(/\b\d{1,9}\b/g,d=>say(Number(d)));
+const norm=s=>spoken(s).toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s']/gu,' ').replace(/'/g,'').trim();
 export const tokens=text=>norm(text).split(/\s+/).filter(Boolean);
 const lev=(a,b)=>{const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;
  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length];};

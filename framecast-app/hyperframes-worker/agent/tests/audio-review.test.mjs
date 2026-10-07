@@ -83,3 +83,12 @@ test('every unheard stretch is a hole to listen to again, while only long runs c
  assert.deepEqual(a.missing,[]);assert.deepEqual(a.gaps,[]);
  assert.ok(a.holes.length>=1,JSON.stringify(a));assert.ok(a.coverage<0.9);
 });
+
+test('numbers, percents and web addresses match however the script or the transcriber writes them', () => {
+ // Production 2026-10-07: "25% off" (said "twenty-five percent") was called missing and blocked delivery.
+ const said='This month get twenty five percent off your first bag start at northside roasters dot com'.split(' ').map((w,i)=>({text:w,start:i*0.3,end:i*0.3+0.2}));
+ const a=alignScript(['This month, get 25% off your first bag.','Start at northsideroasters.com.'],said);
+ assert.deepEqual(a.missing,[]);assert.ok(a.coverage>=0.9,String(a.coverage));
+ const b=alignScript(['This month, get twenty-five percent off.'],'This month get 25% off'.split(' ').map((w,i)=>({text:w,start:i*0.3,end:i*0.3+0.2})));
+ assert.deepEqual(b.missing,[]);assert.equal(b.coverage,1);
+});
