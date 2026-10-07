@@ -4,6 +4,9 @@
 // composer pill-menu look so editor dropdowns read as one consistent UI.
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
+// Only one dropdown is open at a time across the page: opening one closes the one that was open.
+let closeOpen = null
+
 const props = defineProps({
   modelValue: { type: [String, Number, Array], default: '' },
   options: { type: Array, default: () => [] }, // [{ value, label }]
@@ -19,6 +22,10 @@ const emit = defineEmits(['update:modelValue'])
 const open = ref(false)
 const dropUp = ref(false)
 const root = ref(null)
+// The open menu is placed against the screen (position: fixed), measured from its button, so a drawer's scrolling body
+// or any overflow-hidden parent cannot clip its options.
+const menuStyle = ref({})
+const close = () => { open.value = false; if (closeOpen === close) closeOpen = null }
 
 const MENU_MAX_H = 280 // keep in sync with .ui-select-menu max-height + margin
 
@@ -47,8 +54,20 @@ function toggle() {
         dropUp.value = below < MENU_MAX_H && rect.top > below
       }
     }
+    const r = root.value?.getBoundingClientRect()
+    if (r) {
+      const width = Math.min(Math.max(r.width, 160), window.innerWidth - 16)
+      const left = props.align === 'left' ? Math.min(r.left, window.innerWidth - width - 8) : Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
+      const room = dropUp.value ? r.top - 14 : window.innerHeight - r.bottom - 14
+      menuStyle.value = { left: left + 'px', minWidth: width + 'px', maxWidth: Math.max(width, Math.min(360, window.innerWidth - 16)) + 'px',
+        maxHeight: Math.max(120, Math.min(260, room)) + 'px', ...(dropUp.value ? { bottom: (window.innerHeight - r.top + 6) + 'px' } : { top: (r.bottom + 6) + 'px' }) }
+    }
+    if (closeOpen && closeOpen !== close) closeOpen()
+    closeOpen = close
+    open.value = true
+    return
   }
-  open.value = !open.value
+  close()
 }
 function selected(value) { return props.multiple ? (props.modelValue || []).some(v => String(v) === String(value)) : String(value) === String(props.modelValue) }
 function pick(value) {
@@ -56,13 +75,15 @@ function pick(value) {
   if (props.multiple) {
     const values = Array.isArray(props.modelValue) ? props.modelValue : []
     emit('update:modelValue', selected(value) ? values.filter(v => String(v) !== String(value)) : [...values, value])
-  } else { emit('update:modelValue', value); open.value = false }
+  } else { emit('update:modelValue', value); close() }
 }
-function onDocClick(e) { if (root.value && !root.value.contains(e.target)) open.value = false }
-function onKey(e) { if (e.key === 'Escape') open.value = false }
+function onDocClick(e) { if (open.value && root.value && !root.value.contains(e.target)) close() }
+function onKey(e) { if (e.key === 'Escape' && open.value) close() }
+// A fixed menu would drift from its button when the page or a drawer scrolls, or the window resizes: it closes instead.
+function onScroll(e) { if (open.value && !(e.target instanceof Node && root.value?.contains(e.target))) close() }
 
-onMounted(() => { document.addEventListener('click', onDocClick); document.addEventListener('keydown', onKey) })
-onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKey) })
+onMounted(() => { document.addEventListener('click', onDocClick); document.addEventListener('keydown', onKey); window.addEventListener('scroll', onScroll, true); window.addEventListener('resize', close) })
+onBeforeUnmount(() => { if (closeOpen === close) closeOpen = null; document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKey); window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', close) })
 </script>
 
 <template>
@@ -71,7 +92,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
       <span class="ui-select-value">{{ selectedLabel }}</span>
       <span class="ui-select-caret">▾</span>
     </button>
-    <div v-if="open && !disabled" :class="['ui-select-menu', align === 'left' ? 'ui-select-menu--left' : '', dropUp ? 'ui-select-menu--up' : '']">
+    <div v-if="open && !disabled" class="ui-select-menu" :style="menuStyle" role="listbox" :aria-label="label">
       <button
         v-for="o in options"
         :key="o.value"
@@ -103,18 +124,16 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .ui-select-trigger.open .ui-select-caret { transform: rotate(180deg); }
 
 .ui-select-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; min-width: 100%;
+  position: fixed; z-index: 1000;
   background: var(--color-bg-panel, #1c1c26); border: 1px solid var(--color-border, #2a2a35);
-  border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); z-index: 50;
-  max-height: 260px; overflow-y: auto;
+  border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-height: 260px; overflow-y: auto; overscroll-behavior: contain;
 }
-.ui-select-menu--left { right: auto; left: 0; }
-.ui-select-menu--up { top: auto; bottom: calc(100% + 6px); }
 .ui-select-option {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   width: 100%; padding: 8px 10px; border: none; background: transparent;
   color: var(--color-text-primary, #e8e8ee); font-size: 12.5px; font-family: inherit;
-  cursor: pointer; border-radius: 6px; text-align: left; white-space: nowrap;
+  cursor: pointer; border-radius: 6px; text-align: left; white-space: normal; line-height: 1.35;
 }
 .ui-select-option:hover { background: var(--color-bg-elevated, #23232e); }
 .ui-select-option.selected { background: rgba(255, 107, 53, 0.08); color: var(--color-accent, #ff6b35); }
