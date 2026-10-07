@@ -45,6 +45,15 @@ test('a small card alone in a big frame is mostly empty; a big headline or a fil
  const e=visualFindings(f,6).filter(x=>x.code==='mostly_empty');
  assert.equal(e.length,1);assert.equal(e[0].time,0);assert.match(e[0].message,/for 3\.0 s/);
 });
+test('a video that opens on an empty or nearly empty frame is a weak opening; one that opens on its hook is not',()=>{
+ const empty=frames(31,t=>({texts:[],small:[],W,H,held:false,things:t<0.5?[bg]:[bg,box(2,60,600,960,300,{sig:String(t)})]}));
+ const weak=visualFindings(empty,3).filter(x=>x.code==='weak_opening');
+ assert.equal(weak.length,1);assert.match(weak[0].message,/opens on an empty frame/);
+ const label=frames(31,t=>({texts:[],small:[],W,H,held:false,things:[bg,t<1?box(1,400,100,280,60,{sig:'l'}):box(2,60,600,960,300,{sig:String(t)})]}));
+ assert.match(visualFindings(label,3).find(x=>x.code==='weak_opening')?.message||'',/nearly empty frame/);
+ const hook=frames(31,t=>({texts:[],small:[],W,H,held:false,things:[bg,box(2,60,600,960,300,{sig:String(t)})]}));
+ assert.equal(visualFindings(hook,3).filter(x=>x.code==='weak_opening').length,0);
+});
 test('text cards that barely change for most of the video are a slideshow; kinetic type that keeps moving and pictured beats are not',()=>{
  // Four cards of 3.75 s each, text on a plain background, each held still.
  const cards=frames(151,t=>({texts:[],small:[],W,H,held:false,things:[bg,box(10+Math.floor(t/3.75),90,700,900,300,{text:true})]}));

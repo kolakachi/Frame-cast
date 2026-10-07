@@ -12,9 +12,9 @@ export async function blankSpans(file,ffmpeg='ffmpeg'){
  return [...stderr.matchAll(/black_start:([\d.]+)\s+black_end:([\d.]+)/g)].map(m=>({start:+Number(m[1]).toFixed(2),end:+Number(m[2]).toFixed(2)}));
 }
 
-/** Blank picture nobody asked for: anything but a short fade at the very start or the very end. */
+/** Blank picture nobody asked for: anything but a fade out at the very end (the opening is the thumbnail: no black). */
 export function unintendedBlanks(spans,duration){
- return spans.filter(s=>!(s.start<=0.05&&s.end<=0.6)&&!(duration&&s.end>=duration-0.05&&s.end-s.start<=0.6));
+ return spans.filter(s=>!(s.start<=0.05&&s.end<=0.2)&&!(duration&&s.end>=duration-0.05&&s.end-s.start<=0.6));
 }
 
 /** Frames spread over the video for the look check, plus extra [{time, label}] (a shot's own frames): [{time, path, label?}]. */

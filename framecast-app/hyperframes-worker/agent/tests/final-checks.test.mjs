@@ -35,8 +35,9 @@ test('a look that could not run leaves required items and identity unverified, n
  assert.deepEqual(v.checks.filter(c=>c.status==='unverified').map(c=>c.id).sort(),['identity','required']);
 });
 
-test('only blank stretches nobody asked for count: not a short fade in or out', async () => {
- assert.deepEqual(unintendedBlanks([{start:0,end:0.4},{start:6,end:7},{start:14.6,end:15}],15),[{start:6,end:7}]);
+test('only blank stretches nobody asked for count: not a short fade out, nor a blink at frame 1; black opening the video does', async () => {
+ assert.deepEqual(unintendedBlanks([{start:0,end:0.15},{start:6,end:7},{start:14.6,end:15}],15),[{start:6,end:7}]);
+ assert.deepEqual(unintendedBlanks([{start:0,end:0.4}],15),[{start:0,end:0.4}],'the opening is the thumbnail');
  const dir=await mkdtemp(tmpdir()+'/blank-'),file=dir+'/v.mp4';
  await run('ffmpeg',['-loglevel','error','-y','-f','lavfi','-i','color=c=white:s=64x64:d=2','-f','lavfi','-i','color=c=black:s=64x64:d=1','-f','lavfi','-i','color=c=white:s=64x64:d=2','-filter_complex','[0][1][2]concat=n=3:v=1','-pix_fmt','yuv420p',file]);
  const spans=await blankSpans(file);

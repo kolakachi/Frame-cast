@@ -23,7 +23,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Short-form reading speed: about 17 characters a second plus a second to find the words.
-export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15,cards:0.6,change:0.25,side:0.06,top:0.04,rest:0.5,overlap:0.25,offCentre:0.18,lopsided:1.5};
+export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15,cards:0.6,change:0.25,side:0.06,top:0.04,rest:0.5,overlap:0.25,offCentre:0.18,lopsided:1.5,opening:0.3};
 const TYPES={'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ttf':'font/ttf','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav'};
 
 // transform: an optional edit of index.html as served (the sound pass serves it without its audio).
@@ -185,6 +185,12 @@ export function visualFindings(frames,duration,rules=RULES){
   for(const x of content)for(let i=Math.max(0,Math.floor(x.x/W*g));i<=Math.min(g-1,Math.floor((x.x+x.w)/W*g));i++)for(let j=Math.max(0,Math.floor(x.y/H*g));j<=Math.min(g-1,Math.floor((x.y+x.h)/H*g));j++)cells.add(i+','+j);
   return cells.size/(g*g)<rules.sparse;
  };
+ // The opening: frame 1 is the thumbnail and the scroll-stopper, so the hook is on screen from the first moment
+ // (GTM-1: one video opened on an empty card, another on black frames).
+ const opening=frames.filter(f=>f.t<=rules.opening);
+ if(opening.length&&opening.every(f=>!f.things.some(x=>!x.bg)||sparse(f)))out.push({code:'weak_opening',severity:'error',time:0,
+  message:`The video opens on ${opening.every(f=>!f.things.some(x=>!x.bg))?'an empty frame':'a nearly empty frame'}: for the first ${rules.opening} s there is nothing to stop the scroll.`,
+  fixHint:'Start on the hook: its main words and a strong visual already on screen at 0 s (build them in from frame 1, not from black or an empty card).'});
  let start=null;
  for(let i=0;i<=frames.length;i++){
   const f=frames[i],on=f&&sparse(f);
