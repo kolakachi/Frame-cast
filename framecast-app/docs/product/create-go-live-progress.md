@@ -16,7 +16,7 @@ This tracker separates implementation from deployment and customer verification.
 | L6/L10 repeatable deployment | Done 2026-10-07 | Web CI checks run before deploy (the preflight step stays manual); `ops/deploy_create_worker.sh` updates the worker and rebuilds the sandbox when its code changes. |
 | L16 privacy and restore | Partly | Cross-workspace tests pass; private bucket verified; public database backups found and moved private. Restore drill and secret review open. |
 | L1 production canary and acceptance | Done 2026-10-07 | Several paid builds delivered on production (see `create-go-live.md` L1); a canary runs after each deploy. |
-| L7 measured capacity | 3-way test running 2026-10-07 | Limit 3 (one per workspace); single-build baseline: CPU ≥ 35% idle, ≥ 3.4 GB free; 2-way passed after the render retry fix. |
+| L7 measured capacity | Done 2026-10-07 | Three builds at once delivered (12, 25 and 28 min); worker ≥ 10% CPU idle, ≥ 2.8 GB free; renders take turns in one sandbox slot. |
 | L8 two-customer pilot | Blocked by release gates | Named workspaces/emails only, then expand from observed results. |
 
 ## Working rules
