@@ -23,7 +23,7 @@ import {executeImage} from './media-provider.mjs';
 import {stageInputs} from './stage-inputs.mjs';
 import {executeCompositionAgent,offlineContractProvider} from './composition-agent.mjs';
 import {findResume,planHash} from './resume.mjs';
-import {renderFailure} from './render-failure.mjs';
+import {renderFailure,renderTransient} from './render-failure.mjs';
 import {accountedCall} from './accounted-call.mjs';
 import {apiOriginAllowed} from './api-origin.mjs';
 import {fileURLToPath} from 'node:url';
@@ -253,6 +253,7 @@ async function execute(run){
   // two repair rounds (todo D), within the calls already approved, never charged (a repair corrects our own work).
   let deliveryChecks=null,audioReview=null,paceReview=null,finalReview=null;const uploaded=new Set();
   let lastFixKey=null;
+  let renderAttempts=0;
   for(let round=0;;round++){
   // Derived media becomes a permanent source before rendering: upload it, give
   // it its stored name, and point the composition at that name, so later
@@ -286,11 +287,20 @@ async function execute(run){
    }
   }
   phase='render';if(!stopSeenAt)stage=paid?'Rendering your video':'Rendering the local sample';
-  await accountedCall({key:'render-'+(round+1),kind:'render',input:{runId:run.id,mode:run.input.mode},
-   begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
+  // One render; a page that only timed out loading (a busy host) is rendered once more, within the approved renders.
+  const renderOnce=suffix=>accountedCall({key:'render-'+(round+1)+suffix,kind:'render',input:{runId:run.id,mode:run.input.mode},
+   begin:async payload=>{const attempt=await request('runs/'+run.id+'/attempts',{...payload,lease_token:run.lease_token});await writeFile(dir+'/render-attempt'+(round?'-'+round:'')+suffix+'.json',JSON.stringify(attempt),{flag:'wx',mode:0o600});return attempt;},
    settle:(attemptId,result)=>request('runs/'+run.id+'/attempts/'+attemptId+'/settle',{...result,lease_token:run.lease_token}),
    execute:async()=>{await runSandbox(docker,['compose','-f',sandboxCompose,'run','--rm','--name',container,'smoke','node','agent/live-tool.mjs',id,'render'],{timeout:Math.max(1800000,180000*renderLoad(run.input.settings)),maxBuffer:2000000});const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));if(report.status==='failed' && report.artifact===null)throw Object.assign(Error(await renderFailure(report,root)),{code:'LOCAL_RENDER_FAILED'});if(report.status!=='ready')throw Error('Render outcome could not be verified');return report;},
    receipt:()=>({status:'succeeded',cost_microusd:0})});
+  renderAttempts++;
+  try{await renderOnce('');}
+  catch(e){
+   const report=e.code==='LOCAL_RENDER_FAILED'?JSON.parse(await readFile(dir+'/render/result.json','utf8').catch(()=>'{}')):{};
+   if(e.code!=='LOCAL_RENDER_FAILED'||renderAttempts>=3||stopping||lost||!await renderTransient(report,root))throw e;
+   await trace({phase:'render',status:'failed',summary:'The render page timed out loading; rendering again',detail:e.message.slice(0,300)});
+   renderAttempts++;await renderOnce('-again');
+  }
   // Delivery checks on the final file: platform safe area, frame edges,
   // contrast and loudness. Reported with the version; loudness is levelled.
   deliveryChecks=null;audioReview=null;paceReview=null;finalReview=null;
@@ -337,7 +347,7 @@ async function execute(run){
     await trace({phase:'review',status:'failed',summary:'Final checks unavailable',detail:String(e.message).slice(0,300)});}
   }
   const fixable=repairable(finalReview,{takeUsed:planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')});
-  if(!paid||!agentArgs||finalReview?.status!=='blocked'||!fixable.length||round>=2||stopping||lost)break;
+  if(!paid||!agentArgs||finalReview?.status!=='blocked'||!fixable.length||round>=2||renderAttempts>=3||stopping||lost)break;
   // A round that ends with exactly the same problems did not help: another would not either.
   const fixKey=JSON.stringify(fixable.map(c=>[c.id,c.label,c.message]));
   if(fixKey===lastFixKey){await trace({phase:'review',status:'failed',summary:'Repair stopped: the same problems remained after a round',detail:fixKey.slice(0,600)});break;}

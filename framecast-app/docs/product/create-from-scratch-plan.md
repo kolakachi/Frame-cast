@@ -1,7 +1,7 @@
 # From scratch: plan
 
 Drafted 2026-10-06. Nothing here is built. Covers FS1 to FS4 on the pending sheet. Ideas only from OpenMontage
-(AGPL v3) and lemo-opuscar (MIT): nothing is copied. **Decide** marks the owner's choices.
+(AGPL v3), lemo-opuscar (MIT) and video-shotcraft (Apache-2.0): nothing is copied. **Decide** marks the owner's choices.
 
 ## Scope (owner, 2026-10-07)
 
@@ -33,6 +33,35 @@ in our own words:
 - **Style cards:** about 12 of its styles suit brands (dark keynote, glass product, living screencast, hologram HUD,
   mid-century toon, iso infographic, data viz, Swiss motion, whiteboard, microgame, halftone dossier, game show). Write
   our own cards from them for the style picker.
+
+## Ideas from video-shotcraft (Apache-2.0, studied 2026-10-07)
+
+A Remotion skill for 30 to 60 s cinematic product promos (157 shot recipe cards). Ideas only (its React code does not
+fit HyperFrames; its sound files have unclear licences, so none are taken):
+
+- **Move cards with an energy header (new FS5, motion vocabulary):** each card says what it is, when to use it, its
+  duration and energy (low, mid, high); the planner scans headers, the builder reads the chosen card. Grammars we lack:
+  tension camera moves (slow push, pull-back, dutch roll to level; at most 2 per video), trailer grammar (cold-open
+  bumper of quick cuts then a black beat; smash cut to silence), text as a mask, speed ramp and freeze, hidden-cut and
+  iris-match transitions, odometer digit rolls and gauge readouts. We write our own GSAP versions.
+- **Energy arc (FS2):** every playbook beat carries an energy and a least hold; breathing beats between features.
+- **Motion voice (FS1, builder):** brand energy × tone sets one set of timings (entrance, easing, overshoot, stagger,
+  holds), so directions differ in movement, not only colour.
+- **More slideshow signals (FS3):** no constant-speed linear motion; any technique leads only once; full-frame hits at
+  most 3 times; the opening hero has a complete action of at least 3 s; key information holds at least 1 s.
+- **Sound:** foley over decorative swooshes; no machine-gun repeats (alternate samples, step volume down); effects
+  re-pinned after any timing change. Check against our sound pass.
+
+## Build slices (started 2026-10-07)
+
+1. **Done (`ab4678cd`):** concept with two alternatives kept, ten format playbooks (beats with share, energy, holds;
+   must/avoid; what suits; structures, openings, endings), motion voices; the plan carries them and the builder pins
+   them. No new screens.
+2. **FS5 move cards:** about 10 new moves from the list above, each a card with an energy header, in the motion kit.
+3. **FS1 direction cards:** show the concept and its two alternatives before the plan when the brief has no concept
+   (text cards, skippable; picking one re-plans that direction).
+4. **FS3 signals:** linear motion, repeated lead technique, full-frame hit count, opening hero action, holds.
+5. **FS4 exemplars:** when the owner's videos arrive.
 
 ## The problem
 
