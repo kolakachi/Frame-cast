@@ -7,7 +7,7 @@ export function reviewStatus(state) {
  const critiqued=state.criticRevision===state.revision&&!!state.critic;
  const reviewed=state.reviewedRevision===state.revision&&critiqued&&state.critic?.verdict==='pass'&&!state.recoveredDraft;
  const checked=state.checkedRevision===state.revision&&state.snapshotRevision===state.revision;
- const notes=[...(state.layoutNotes??[]),...(state.pacing?.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity!=='warning'):[])].map(at).filter(Boolean);
+ const notes=[...(state.layoutNotes??[]),...(state.pacing&&state.pacing.revision===state.revision?(state.pacing.findings||[]).filter(f=>f.severity!=='warning'):[])].map(at).filter(Boolean);
  const findings=[...(critiqued&&state.critic?.verdict==='revise'?state.critic.directives??[]:[]),...(state.layoutAdvisories??[]).map(x=>x.message||x.code),...notes];
  if(state.recoveredDraft)findings.unshift('This is the last version that passed its checks; the build stopped before a later change was finished.');
  const status=reviewed&&!findings.length?'passed':!checked&&!state.recoveredDraft?'incomplete':findings.length?'issues':critiqued&&!reviewed?'issues':'ready';

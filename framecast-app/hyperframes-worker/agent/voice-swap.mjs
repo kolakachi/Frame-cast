@@ -65,5 +65,6 @@ export async function voiceSwap({project,bundle,swap,newVoice,listen,ffmpeg='ffm
  for(const [file,text] of Object.entries(next))await writeFile(project+'/'+file,text,{mode:0o600});
  const sped=segments.filter(s=>s.tempo>1).length;
  return {bundle:next,derived:[{path:name,derivedFrom:newVoice,operation:'space',params:{aligned_to:swap.old_src,lines:segments.length,sped},sha256}],
-  state:{status:'preview_ready',summary:'I replaced the voice and lined each line up with where the old one started, so the picture and its timing are unchanged'+(sped?` (${sped} line${sped>1?'s':''} slightly quicker to fit)`:'')+'.'}};
+  // One revision, checked by the render and the final checks that follow (there is no builder review to report).
+  state:{status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:'I replaced the voice and lined each line up with where the old one started, so the picture and its timing are unchanged'+(sped?` (${sped} line${sped>1?'s':''} slightly quicker to fit)`:'')+'.'}};
 }

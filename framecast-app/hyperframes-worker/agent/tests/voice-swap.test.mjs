@@ -36,3 +36,8 @@ test('a swap fetches the brand fonts the version loads',async()=>{
  assert.deepEqual(familiesIn(bundle,['Inter','DM Sans','Space Mono','Roboto']),['DM Sans','Space Mono']);
  assert.deepEqual(familiesIn({'index.html':'<b></b>'},['DM Sans']),[]);
 });
+test('a swapped version reports as ready for the final checks, not as a crash',async()=>{
+ const {reviewStatus}=await import('../review-status.mjs');
+ assert.deepEqual(reviewStatus({status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:'x'}),{status:'ready',revision:1,findings:[]});
+ assert.equal(reviewStatus({status:'preview_ready'}).status,'ready','no revision fields at all is not a crash either');
+});
