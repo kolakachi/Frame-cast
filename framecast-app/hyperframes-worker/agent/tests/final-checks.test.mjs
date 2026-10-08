@@ -172,3 +172,13 @@ test('what the verdict hears carries the name results from the listening summary
  assert.equal(finalVerdict({plan:{},look:{status:'checked'},audio:a}).checks.find(c=>c.id==='said').status,'fail');
  assert.equal(audioForVerdict(null),null);
 });
+test('"No voiceover" passes when nothing is said and fails when a voice is heard; a voice requirement still needs the voice',async()=>{
+ const {finalVerdict}=await import('../final-checks.mjs');
+ const plan={agreement:{required:['No voiceover; music and effects only','Has a voiceover']}};
+ const look={status:'checked',required:[]};
+ const req=(audio)=>finalVerdict({plan,look,audio}).checks.filter(c=>c.id==='required').map(c=>c.status);
+ assert.deepEqual(req({heard_words:0,music:true,script_coverage:null,missing:[]}),['pass','fail'],'silent voice track with music: no-voiceover passes, a required voiceover fails');
+ assert.deepEqual(req({heard_words:40,music:true,script_coverage:0.95,missing:[]}),['fail','pass'],'a voice heard: no-voiceover fails, a required voiceover passes');
+ const message=finalVerdict({plan:{agreement:{required:['No voiceover; music and effects only']}},look,audio:{heard_words:40,music:true}}).checks.find(c=>c.id==='required').message;
+ assert.match(message,/a voice was heard/);
+});

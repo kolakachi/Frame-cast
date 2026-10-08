@@ -53,7 +53,7 @@ const at=t=>Number.isFinite(t)?'At '+Number(t).toFixed(1)+' s: ':'';
 /** What the final verdict hears from the listening check's summary (names included: GTM-1 found them dropped here). */
 export function audioForVerdict(summary){
  if(!summary)return null;
- return {script_coverage:summary.script_coverage,missing:summary.missing,music:summary.mix?.music===true,names:summary.names||[]};
+ return {script_coverage:summary.script_coverage,missing:summary.missing,music:summary.mix?.music===true,names:summary.names||[],...(Number.isFinite(summary.heard_words)?{heard_words:summary.heard_words}:{})};
 }
 
 /**
@@ -96,10 +96,15 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
    if(said){add('required','Must appear: '+item,said.status==='pass'?'pass':said.status==='fail'?'fail':'unverified',true,said.status==='pass'?'':said.status==='fail'?`Heard "${said.heard}", not "${said.spoken}".`:'Could not be confirmed by ear. Give it a listen.',Number.isFinite(said.time)?[said.time]:[]);continue;}
    // Sound (a voiceover, music) is settled by listening, not by sight: the look cannot hear it.
    const voice=/\b(voice ?-?over|voice|narrat\w*|spoken|narrator)\b/i.test(item),music=/\b(music|soundtrack|score|jingle)\b/i.test(item);
+   // "No voiceover" asks for silence from the voice, not for a voice (the Laban build was blocked, and two repair rounds
+   // spent, on "No voiceover; music and effects only", 2026-10-08).
+   const noVoice=/\b(no|without|zero)\s+(voice ?-?over|voice|narrat\w*|narrator|speech|spoken)/i.test(item),noMusic=/\b(no|without)\s+(music|soundtrack|score)/i.test(item);
    if((voice||music)&&r.status!=='present'&&r.status!=='missing'){
-    const heardVoice=!voice||(audio&&!(audio.missing||[]).length&&(audio.script_coverage??0)>=0.75),heardMusic=!music||audio?.music===true;
+    const heardVoice=noVoice?(audio?.heard_words??Infinity)<=3:!voice||(audio&&!(audio.missing||[]).length&&(audio.script_coverage??0)>=0.75);
+    const heardMusic=noMusic?audio?.music===false:!music||audio?.music===true;
+    const wrong=[!heardVoice&&(noVoice?'a voice was heard':'the voice is missing'),!heardMusic&&(noMusic?'music was heard':'the music is missing')].filter(Boolean);
     if(!audio)add('required','Must appear: '+item,'unverified',true,'The final audio could not be listened to.');
-    else add('required','Must appear: '+item,heardVoice&&heardMusic?'pass':'fail',true,heardVoice&&heardMusic?'':'Not heard in the final audio: '+[!heardVoice&&'the voice',!heardMusic&&'music'].filter(Boolean).join(' and ')+'.');
+    else add('required','Must appear: '+item,wrong.length?'fail':'pass',true,wrong.length?'In the final audio, '+wrong.join(' and ')+'.':'');
     continue;
    }
    if(r.status==='missing')add('required','Must appear: '+item,'fail',true,'Not seen in the final video'+(r.note?' ('+r.note+')':'')+'.');
