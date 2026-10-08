@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 class ReconcileCreateAttempt extends Command
 {
     protected $signature='create:reconcile-attempt {attempt} {--worker-stopped} {--cost-microusd=} {--billing-reference=}';
-    protected $description='Verify an interrupted Replicate prediction and reconcile operator-confirmed billing without regenerating';
+    protected $description='Verify an interrupted Replicate prediction (or settle an interrupted offline render at zero cost) and reconcile billing without regenerating';
     public function handle(ProviderReceiptVerifier $verifier, ReconciliationService $service): int {
         if (!config('create.enabled') || !$this->option('worker-stopped')) {
             $this->error('Local only. Confirm the host worker stopped before reconciliation.'); return self::FAILURE;

@@ -4987,4 +4987,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('Try ledgerly.com free', $say('Try ledgerly.com free'), 'no saved pronunciation: the address is read as written');
         $this->assertSame('hello@wyvstudio.com', $say('hello@wyvstudio.com'), 'an email address is left alone');
     }
+    public function test_an_interrupted_offline_render_settles_at_zero_cost_and_a_paid_call_still_needs_a_receipt(): void
+    {
+        $verifier = app(\App\Services\Create\ProviderReceiptVerifier::class);
+        $render = (object) ['id' => 'att-1', 'provider' => 'offline', 'cost_limit_microusd' => 0, 'credit_limit' => 0, 'prediction_id' => null];
+        $r = $verifier->verify($render, 0, null);
+        $this->assertSame(['status' => 'failed', 'prediction_id' => null, 'cost_microusd' => 0], $r->result());
+        $this->rejected(422, fn () => $verifier->verify($render, 5, null));
+        $this->rejected(409, fn () => $verifier->verify((object) ['id' => 'att-2', 'provider' => 'offline', 'cost_limit_microusd' => 100, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
+        $this->rejected(422, fn () => $verifier->verify((object) ['id' => 'att-3', 'provider' => 'anthropic', 'cost_limit_microusd' => 1, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
+    }
 }

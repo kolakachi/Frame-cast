@@ -40,6 +40,13 @@ class ProviderReceiptVerifier
      */
     public function verify(object $attempt, ?int $cost, ?string $billingReference): VerifiedAttemptReceipt
     {
+        // Our own offline step (a render on the worker) has no provider and no bill: interrupted, it settles as failed at
+        // zero cost. Anything with a cost ceiling is not offline and needs its provider's receipt (G-REC drill, 2026-10-08).
+        if ($attempt->provider === 'offline') {
+            abort_unless((int) $attempt->cost_limit_microusd === 0 && (int) $attempt->credit_limit === 0, 409, 'This offline step has a cost ceiling; it needs a receipt.');
+            abort_unless(($cost ?? 0) === 0, 422, 'An offline step has no provider cost; supply --cost-microusd=0.');
+            return new VerifiedAttemptReceipt($attempt->id, 'failed', null, 0, 'offline step interrupted when its worker stopped; no provider billing');
+        }
         abort_unless($attempt->provider === 'replicate', 422, 'No verified receipt adapter for this provider.');
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D',$attempt->prediction_id ?? ''), 409, 'The prediction ID was not recorded. Locate it before reconciliation.');
         abort_unless($cost !== null && $cost >= 0 && $cost <= $attempt->cost_limit_microusd
