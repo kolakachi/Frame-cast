@@ -8,9 +8,10 @@ function store() {
 }
 
 test('a brief after #brief= is read, decoded, trimmed and capped; anything else is not a brief', () => {
-  assert.equal(readBriefHash('#brief=' + encodeURIComponent('  A 20-second ad for Hearthline.\r\nWarm and tactile.  ')), 'A 20-second ad for Hearthline.\nWarm and tactile.')
-  assert.equal(readBriefHash('#brief=A+couch+ad'), 'A couch ad')
-  assert.equal(readBriefHash('#brief=' + 'x'.repeat(BRIEF_MAX + 50)).length, BRIEF_MAX)
+  assert.deepEqual(readBriefHash('#brief=' + encodeURIComponent('  A 20-second ad for Hearthline.\r\nWarm & tactile.  ')), { text: 'A 20-second ad for Hearthline.\nWarm & tactile.', attach: false })
+  assert.deepEqual(readBriefHash('#brief=A+couch+ad'), { text: 'A couch ad', attach: false })
+  assert.equal(readBriefHash('#brief=' + 'x'.repeat(BRIEF_MAX + 50)).text.length, BRIEF_MAX)
+  assert.deepEqual(readBriefHash('#brief=' + encodeURIComponent('Same pacing, for my shop') + '&attach=1'), { text: 'Same pacing, for my shop', attach: true }, 'a clip to upload is remembered')
   for (const h of ['', '#pricing', '#brief=', '#brief=%E0%A4%A', null, undefined]) assert.equal(readBriefHash(h), null)
 })
 
@@ -18,8 +19,15 @@ test('the saved brief is shown once, then gone', () => {
   const s = store()
   assert.equal(saveBrief('A couch ad', s, 1000), true)
   assert.equal(peekBrief(s, 2000), 'A couch ad', 'peeking keeps it (the register page shows it, Create uses it later)')
-  assert.equal(takeBrief(s, 3000), 'A couch ad')
+  assert.deepEqual(takeBrief(s, 3000), { text: 'A couch ad', attach: false })
   assert.equal(peekBrief(s, 4000), null)
+})
+
+test('a brief saved with a clip to upload keeps that through to Create', () => {
+  const s = store()
+  saveBrief({ text: 'Same pacing, for my shop', attach: true }, s, 0)
+  assert.equal(peekBrief(s, 1), 'Same pacing, for my shop')
+  assert.deepEqual(takeBrief(s, 2), { text: 'Same pacing, for my shop', attach: true })
 })
 
 test('a brief expires after 7 days, and broken or empty values are dropped', () => {

@@ -16,39 +16,48 @@ function clean(text) {
   return t || null
 }
 
-/** The brief in a location hash (`#brief=…`), or null when there is none. */
+/**
+ * The brief in a location hash (`#brief=…`, with `&attach=1` when the visitor means to upload a reference clip,
+ * which cannot travel in a link), or null when there is none.
+ */
 export function readBriefHash(hash) {
   if (typeof hash !== 'string' || !hash.startsWith('#brief=')) return null
-  try { return clean(decodeURIComponent(hash.slice('#brief='.length).replace(/\+/g, ' '))) } catch { return null }
+  const [raw, ...rest] = hash.slice('#brief='.length).split('&')
+  let text
+  try { text = clean(decodeURIComponent(raw.replace(/\+/g, ' '))) } catch { return null }
+  return text ? { text, attach: rest.includes('attach=1') } : null
 }
 
-export function saveBrief(text, store, now = Date.now()) {
-  const s = storage(store), t = clean(text)
+export function saveBrief(brief, store, now = Date.now()) {
+  const s = storage(store), t = clean(typeof brief === 'string' ? brief : brief?.text)
   if (!s || !t) return false
-  try { s.setItem(KEY, JSON.stringify({ text: t, at: now })); return true } catch { return false }
+  try { s.setItem(KEY, JSON.stringify({ text: t, attach: !!brief?.attach, at: now })); return true } catch { return false }
 }
 
-export function peekBrief(store, now = Date.now()) {
+function saved(store, now) {
   const s = storage(store)
   if (!s) return null
   try {
     const saved = JSON.parse(s.getItem(KEY) || 'null')
     if (!saved?.text || !(now - saved.at <= DAYS * 864e5)) { s.removeItem(KEY); return null }
-    return saved.text
+    return { text: saved.text, attach: !!saved.attach }
   } catch {
     try { s.removeItem(KEY) } catch { /* nothing to clear */ }
     return null
   }
 }
 
+/** The saved brief's text, left in place (the register page shows it; Create uses it later). */
+export function peekBrief(store, now = Date.now()) { return saved(store, now)?.text ?? null }
+
 export function clearBrief(store) {
   const s = storage(store)
   try { s?.removeItem(KEY) } catch { /* nothing to clear */ }
 }
 
-/** The brief, removed as it is read: Create shows it once. */
+/** The brief ({ text, attach }), removed as it is read: Create shows it once. */
 export function takeBrief(store, now = Date.now()) {
-  const text = peekBrief(store, now)
+  const brief = saved(store, now)
   clearBrief(store)
-  return text
+  return brief
 }

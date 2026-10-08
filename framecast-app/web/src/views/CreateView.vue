@@ -661,13 +661,14 @@ async function approveClaims(a) {
 }
 // A brief typed on wyvstudio.com (services/pendingBrief.js). A new, empty composer takes it, once; anywhere else it
 // is only offered, so it never replaces a conversation or a draft. Nothing runs until the user sends it.
-const siteBrief = ref(false), waitingBrief = ref(false)
+const siteBrief = ref(false), waitingBrief = ref(false), siteBriefClip = ref(false)
 function offerSiteBrief() {
   waitingBrief.value = false
   if (!available.value || !auth.user || !peekBrief()) return
   if (!id.value && !prompt.value.trim()) {
-    prompt.value = takeBrief() || ''
-    siteBrief.value = !!prompt.value
+    const brief = takeBrief()
+    prompt.value = brief?.text || ''
+    siteBrief.value = !!prompt.value; siteBriefClip.value = !!brief?.attach
     nextTick(() => composer.value?.focus())
   } else waitingBrief.value = true
 }
@@ -675,7 +676,8 @@ function useSiteBrief() {
   waitingBrief.value = false
   // In a conversation: a new creation takes it. In a new one with a draft: the user chose to replace the draft.
   if (id.value) { router.push({ name: 'create' }); return }
-  prompt.value = takeBrief() || prompt.value
+  const brief = takeBrief()
+  if (brief) { prompt.value = brief.text; siteBriefClip.value = brief.attach }
   siteBrief.value = true
   nextTick(() => composer.value?.focus())
 }
@@ -1320,7 +1322,8 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
             <CreateLoading v-if="opening" />
             <div v-else-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
               <h2>{{ siteBrief ? "Here's the brief you wrote." : 'What are we making?' }}</h2>
-              <p v-if="siteBrief">Read it over, change anything you like, attach photos of your products if you have them, then make the plan. You'll see the plan and its price before the video is made.</p>
+              <p v-if="siteBrief && siteBriefClip">Attach the clip you love with + Attach, then make the plan. You'll see the plan and its price before the video is made.</p>
+              <p v-else-if="siteBrief">Read it over, change anything you like, attach photos of your products if you have them, then make the plan. You'll see the plan and its price before the video is made.</p>
               <p v-else>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
               <button v-if="canWrite && !conversation?.archived_at" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>
               <div class="examples"><button v-for="item in examples.filter(item => !conversation || item.kind === kind)" :key="item.title" type="button" class="example" :disabled="!canWrite || !!conversation?.archived_at" @click="example(item)"><b>{{ item.title }}</b>{{ item.copy }}</button></div>
