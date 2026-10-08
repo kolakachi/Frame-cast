@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { peekBrief } from '../services/pendingBrief.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,7 +21,8 @@ async function checkPayment() {
       await auth.refreshUser()
       if (stopped) return
       try { localStorage.removeItem('wyv_pending_plan'); localStorage.removeItem('wyv_pending_confirmation') } catch { /* optional cache */ }
-      await router.replace({ name: auth.isOnboarded ? 'settings' : 'onboarding' })
+      // Bought with a brief from wyvstudio.com: straight to Create, where it is waiting (onboarding offers the same).
+      await router.replace({ name: auth.isOnboarded ? (peekBrief() ? 'create' : 'settings') : 'onboarding' })
       return
     }
   } catch (error) {

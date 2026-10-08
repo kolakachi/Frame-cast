@@ -24,6 +24,7 @@ import { VOICE_DESCRIPTIONS, voiceHeadline } from '../lib/voices.js'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { registerReloadGuard } from '../lib/deploymentRecovery.js'
+import { peekBrief, takeBrief, clearBrief } from '../services/pendingBrief.js'
 
 const auth = useAuthStore(), route = useRoute(), router = useRouter()
 const available = ref(false), loaded = ref(false), busy = ref(false), error = ref(''), conflict = ref(false)
@@ -658,8 +659,32 @@ async function approveClaims(a) {
     claimPicks.value = {}; quote.value = null; markClaimsDone(a); await refresh()
   })
 }
+// A brief typed on wyvstudio.com (services/pendingBrief.js). A new, empty composer takes it, once; anywhere else it
+// is only offered, so it never replaces a conversation or a draft. Nothing runs until the user sends it.
+const siteBrief = ref(false), waitingBrief = ref(false)
+function offerSiteBrief() {
+  waitingBrief.value = false
+  if (!available.value || !auth.user || !peekBrief()) return
+  if (!id.value && !prompt.value.trim()) {
+    prompt.value = takeBrief() || ''
+    siteBrief.value = !!prompt.value
+    nextTick(() => composer.value?.focus())
+  } else waitingBrief.value = true
+}
+function useSiteBrief() {
+  waitingBrief.value = false
+  // In a conversation: a new creation takes it. In a new one with a draft: the user chose to replace the draft.
+  if (id.value) { router.push({ name: 'create' }); return }
+  prompt.value = takeBrief() || prompt.value
+  siteBrief.value = true
+  nextTick(() => composer.value?.focus())
+}
+function dismissSiteBrief() { clearBrief(); waitingBrief.value = false }
+function clearSiteBrief() { prompt.value = ''; siteBrief.value = false; nextTick(() => composer.value?.focus()) }
+
 async function send() {
   if(!prompt.value.trim() || hasUpload.value) return
+  siteBrief.value = false
   const text = prompt.value.trim()
   await guarded(async () => {
     for (const u of [...uploads.value]) {
@@ -834,6 +859,7 @@ watch(id, async (value, old) => {
   characterReview.value = null
   persistDraft(old,prompt.value); epoch++; data.value = null; selectedRevision.value = null; quote.value = null; sendingKey = null; error.value = ''; conflict.value = false; showHistory.value = false; details.value = false; compareOpen.value = false
   prompt.value = readDraft(value)
+  siteBrief.value = false; offerSiteBrief()
   // ensureConversation transfers pending local files into the newly created chat.
   if(old) uploads.value.forEach(removeUpload)
   planning.value = false; planKey = null; clearInterval(planPoll)
@@ -848,7 +874,7 @@ onMounted(async () => {
   try {capabilities.value = (await api.get('/create/capabilities')).data.data; available.value = true; await loadHistory(); await refresh()}
   catch(e) {if(e.response?.status !== 404) error.value = message(e)}
   finally {loaded.value = true}
-  if (available.value) void resumePlanning()
+  if (available.value) { void resumePlanning(); offerSiteBrief() }
   timer = setInterval(async () => {clock.value = Date.now(); if(active.value && active.value.status !== 'needs_attention' && !locked.value) {try {await refresh()} catch(e) {error.value = message(e)}}},2000)
 })
 // The plan card (create-ui chat mockup): what will be made as pills, Preview to change it, and one Approve that
@@ -1293,8 +1319,9 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
           <div class="messages">
             <CreateLoading v-if="opening" />
             <div v-else-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
-              <h2>What are we making?</h2>
-              <p>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
+              <h2>{{ siteBrief ? "Here's the brief you wrote." : 'What are we making?' }}</h2>
+              <p v-if="siteBrief">Read it over, change anything you like, attach photos of your products if you have them, then make the plan. You'll see the plan and its price before the video is made.</p>
+              <p v-else>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
               <button v-if="canWrite && !conversation?.archived_at" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>
               <div class="examples"><button v-for="item in examples.filter(item => !conversation || item.kind === kind)" :key="item.title" type="button" class="example" :disabled="!canWrite || !!conversation?.archived_at" @click="example(item)"><b>{{ item.title }}</b>{{ item.copy }}</button></div>
             </div>
@@ -1550,6 +1577,8 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                   </div></div>
               </div>
             </div>
+            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />From your visit to wyvstudio.com</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
+            <div v-else-if="waitingBrief" class="site-brief" role="status"><span><i aria-hidden="true" />You have a brief from your visit to wyvstudio.com</span><span class="site-brief__actions"><button type="button" class="quiet quiet--sm" @click="useSiteBrief">{{ id ? 'Start a new creation with it' : 'Use it instead of this draft' }}</button><button type="button" class="quiet quiet--sm" @click="dismissSiteBrief">Dismiss</button></span></div>
             <form class="prompt-form" @submit.prevent="send">
               <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" />
               <div v-if="trayItems.length && (trayErrors.length || trayNotes.length)" class="tray-notes">
@@ -1566,10 +1595,11 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                 <button v-if="styles.length" type="button" class="quiet" @click="stylesOpen = true">Manage styles</button>
                 <UiSelect v-if="outputKind === 'video' || conversation" :model-value="currentEffort" label="Effort: how much care, and cost, goes into the video" align="left" drop="up" :disabled="locked" :options="EFFORTS.map(e => ({ value: e.id, label: 'Effort · ' + e.label }))" @update:model-value="setEffort" />
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
-                <button class="send" type="submit" :disabled="locked || !prompt.trim()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
+                <button :class="['send', { 'send--label': siteBrief }]" type="submit" :disabled="locked || !prompt.trim()" :aria-label="siteBrief ? 'Make the plan' : 'Send'"><template v-if="siteBrief">Make the plan</template><svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
             </form>
-            <p class="composer-note">Planning and text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
+            <p v-if="siteBrief" class="composer-note">Nothing runs until you press Make the plan.</p>
+            <p v-else class="composer-note">Planning and text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
           </div>
           <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
         </section>
@@ -2214,6 +2244,11 @@ label.tray-note{white-space:normal}
 .seg button{border:0;background:transparent;color:var(--text-3);font-size:12px;font-weight:600;padding:4px 10px;border-radius:5px}
 .seg button[aria-pressed="true"]{background:var(--line-3);color:var(--text)}
 .send{margin-left:auto;width:36px;height:36px;border:0;border-radius:var(--r-md);background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
+.send.send--label{width:auto;padding:0 14px;font-weight:700;font-size:13px;white-space:nowrap}
+.site-brief{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 4px 8px;font-size:12.5px;color:var(--text-2)}
+.site-brief>span:first-child{display:inline-flex;align-items:center;gap:8px}
+.site-brief i{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 7px}
+.site-brief__actions{display:inline-flex;gap:6px;flex-wrap:wrap}
 .composer-note{font-size:11px;color:var(--text-4);margin:8px 4px 0}
 .empty{margin:auto;max-width:560px;display:flex;flex-direction:column;gap:18px;text-align:center;align-items:center;padding:40px 0}
 .empty h2{margin:0;font-size:28px;font-weight:800;letter-spacing:-.4px}

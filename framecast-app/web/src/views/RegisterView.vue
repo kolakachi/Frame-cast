@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
+import { peekBrief, clearBrief } from "../services/pendingBrief.js";
 
 const authStore = useAuthStore();
 const route = useRoute();
@@ -28,6 +29,10 @@ const PLAN_LABELS = {
   // pricing — the landing offer led nowhere.
   ugc_pass: "UGC Test Pass — $9, 600 credits",
 };
+
+// A brief typed on wyvstudio.com waits in this browser for Create (services/pendingBrief.js).
+const savedBrief = ref(peekBrief() || "");
+function removeBrief() { clearBrief(); savedBrief.value = ""; }
 
 const pendingPlan = ref("");
 const pendingPlanLabel = computed(() => PLAN_LABELS[pendingPlan.value] ?? "");
@@ -112,6 +117,11 @@ async function submit() {
         <div v-if="pendingPlanLabel" class="auth-plan-note">
           You're signing up for <strong>{{ pendingPlanLabel }}</strong>. We'll take
           you to secure checkout as soon as your account is created.
+        </div>
+
+        <div v-if="savedBrief" class="auth-brief-note">
+          <div class="auth-brief-top"><strong>Your brief is saved for after sign-up</strong><button type="button" @click="removeBrief">Remove</button></div>
+          <q>{{ savedBrief }}</q>
         </div>
 
         <div v-if="state === 'error'" class="auth-error">

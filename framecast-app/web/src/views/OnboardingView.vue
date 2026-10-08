@@ -4,6 +4,7 @@ import { voiceHeadline } from "../lib/voices.js";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
+import { peekBrief } from "../services/pendingBrief.js";
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -390,6 +391,14 @@ async function skip() {
   router.replace({ name: "dashboard" });
 }
 
+// Arrived with a brief typed on wyvstudio.com: it is already what they want to make, so offer Weave first.
+const hasSiteBrief = !!peekBrief();
+async function toWeave() {
+  await markOnboarded();
+  clearState();
+  router.replace({ name: "create" });
+}
+
 async function markOnboarded() {
   try {
     await api.patch("/me", { preferences: { onboarded: true } });
@@ -474,6 +483,7 @@ onMounted(async () => {
 <template>
   <div class="ob-shell">
     <button class="ob-skip" type="button" @click="skip">Skip setup</button>
+    <div v-if="hasSiteBrief" class="ob-brief" role="status">Your brief from wyvstudio.com is waiting in Weave. <button type="button" @click="toWeave">Go to Weave →</button></div>
 
     <div class="ob-card">
       <!-- Header -->
@@ -982,6 +992,36 @@ onMounted(async () => {
 }
 .ob-skip:hover {
   color: var(--text-dim);
+}
+
+/* Arrived with a brief from wyvstudio.com: a one-line way straight to Weave, above the wizard. */
+.ob-brief {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 180px));
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 107, 53, 0.35);
+  background: rgba(255, 107, 53, 0.08);
+  font-size: 13px;
+  color: var(--text);
+  text-align: center;
+}
+.ob-brief button {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-left: 6px;
+  color: #ff6b35;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .ob-shell { flex-direction: column; }
+  .ob-brief { position: static; transform: none; width: 100%; margin: 28px 0 14px; }
 }
 
 .ob-card {

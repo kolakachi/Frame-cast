@@ -4,6 +4,7 @@ import { ref, reactive } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import { resumePendingCheckout } from "../composables/resumeCheckout";
+import { peekBrief } from "../services/pendingBrief.js";
 
 const router = useRouter();
 const route = useRoute();
@@ -53,7 +54,8 @@ async function submitPassword() {
       router.push(route.query.redirect);
       return;
     }
-    router.push({ name: "dashboard" });
+    // A brief typed on wyvstudio.com is waiting: open Create, where it fills the composer.
+    router.push({ name: peekBrief() ? "create" : "dashboard" });
   } catch (err) {
     state.value = "error";
     const code = err.response?.data?.error?.code;

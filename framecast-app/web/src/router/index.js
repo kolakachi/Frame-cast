@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { readBriefHash, saveBrief } from '../services/pendingBrief.js'
 import OnboardingView from '../views/OnboardingView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EditorView from '../views/EditorView.vue'
@@ -117,6 +118,14 @@ export function isSafeRedirect(value) {
 
 router.beforeEach(async function (to) {
   const authStore = useAuthStore()
+
+  // A brief typed on wyvstudio.com rides in the hash (#brief=…). Keep it in this browser before any sign-in or
+  // checkout redirect, and take it out of the address bar (services/pendingBrief.js).
+  if (typeof to.hash === 'string' && to.hash.startsWith('#brief=')) {
+    const brief = readBriefHash(to.hash)
+    if (brief) saveBrief(brief)
+    return { path: to.path, query: to.query, hash: '', replace: true }
+  }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     return to.meta.carryRedirect ? { name: 'login', query: { redirect: to.fullPath } } : { name: 'login' }
