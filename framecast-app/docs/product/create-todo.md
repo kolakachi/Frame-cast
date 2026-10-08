@@ -22,7 +22,6 @@ deploys drain Create around the restart.
 
 | ID | Item | Next |
 |---|---|---|
-| FRESH | From-scratch Opus builds: compound interest passed (12 min). Laban: owner says the motion is not as smooth as the sample; my first brief wrongly added a narrator. A reference-led rebuild is running (`6c13d2cd`: the sample attached, followed closely, no voice; the plan took 22 moments and 3 recurring elements, and the study heard 60 sound effects the plan does not buy): it is the motion baseline for LABAN and the RF2 check | owner compares with the sample |
 
 ## 2. Launch must-haves
 

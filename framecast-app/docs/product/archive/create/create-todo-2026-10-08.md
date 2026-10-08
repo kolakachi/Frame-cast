@@ -195,4 +195,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 - QUOTE-SHEET closed: a carried people sheet is priced at 0 on the plan card (`db421363`).
 - I5 closed: the requirement limit is 32 (was 24); 74 plans over 3 days peaked at 20, growing about one per change
   (the change's own new requirement). No refusals since the old limit.
+- FRESH closed: compound interest passed (12 min); the Laban explainer was rebuilt reference-led (`6c13d2cd`, followed
+  closely, no voice) and left as it is. Owner: "exactly" and Thorough would likely have done better; use those for a
+  reference-led motion brief next time.
 
