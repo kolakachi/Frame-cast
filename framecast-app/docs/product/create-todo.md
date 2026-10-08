@@ -22,7 +22,7 @@ deploys drain Create around the restart.
 
 | ID | Item | Next |
 |---|---|---|
-| FRESH | Two from-scratch briefs on Opus 5.5: compound interest passed (12 min, 643 cr); Laban explainer delivered with reading time flagged and "Laban" unverified by ear (17.7 min, 407 cr) | your verdict |
+| FRESH | From-scratch Opus builds: compound interest passed (12 min). Laban: owner says the motion is not as smooth or good as the sample; my brief wrongly added a narrator (the sample has sound effects only). Next: rebuild Laban reference-led (the sample attached, effects only, no voice) as the motion-fidelity test, after the LABAN efforts work | after LABAN |
 
 ## 2. Launch must-haves
 

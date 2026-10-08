@@ -869,12 +869,13 @@ class PlanService
             $media = collect($media)->map(function ($m) use ($cast, &$kept) {
                 if ($m['kind'] !== 'reference_sheet' || $kept) return $m;
                 $kept = true;
-                return ['requirement_ids' => $m['requirement_ids'] ?? []] + $cast[0];
+                // Carried word for word, so it is reused, not drawn again: the plan card prices it at 0 (QUOTE-SHEET).
+                return ['requirement_ids' => $m['requirement_ids'] ?? [], 'credits' => 0, 'carried' => true] + $cast[0];
             })->values()->all();
         } elseif ($cast && ! $newPerson && collect($media)->contains(fn ($m) => in_array($m['kind'], ['ugc_take', 'generated_shot'], true))) {
             // A change that re-makes a take or shot of people already made brings their sheet along (reused, not drawn
             // again): without it the take looked for the user's photo instead (GTM-1 #5, "none is attached").
-            array_unshift($media, ['requirement_ids' => []] + $cast[0]);
+            array_unshift($media, ['requirement_ids' => [], 'credits' => 0, 'carried' => true] + $cast[0]);
         }
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
@@ -1195,7 +1196,8 @@ class PlanService
         foreach ($items as &$shotItem) {
             if (! in_array($shotItem['kind'], ShotRoute::KINDS, true) || $shotItem['kind'] === 'storyboard') continue;
             $shotItem = array_merge($shotItem, match ($shotItem['kind']) {
-                'reference_sheet' => ShotRoute::sheet($shotItem, (array) ($plan['selections']['character_looks'] ?? [])),
+                // A carried sheet is reused, not drawn again: it keeps its subjects but costs nothing (QUOTE-SHEET).
+                'reference_sheet' => (! empty($shotItem['carried']) ? ['credits' => 0] : []) + ShotRoute::sheet($shotItem, (array) ($plan['selections']['character_looks'] ?? [])),
                 'generated_shot' => ShotRoute::shot($shotItem, $shotCtx),
                 'ugc_take' => ShotRoute::take($shotItem, $shotCtx),
             });

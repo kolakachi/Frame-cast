@@ -4918,6 +4918,7 @@ class CreateIntegrationTest extends TestCase
         $kept = $plans->normalize($raw, $ctx('Show the plan turning into a product ad in the phone instead of the creator again.'), $this->workspace->id);
         $sheet = collect($kept['media'])->firstWhere('kind', 'reference_sheet');
         $this->assertSame('Warm creator room, the approved woman with curly hair', $sheet['description'], 'the same person: the sheet is reused, nobody new is drawn');
+        $this->assertSame(0, $sheet['credits'], 'a carried sheet is reused, so the plan card prices it at 0');
         $new = $plans->normalize($raw, $ctx('Use a different presenter, someone older.'), $this->workspace->id);
         $this->assertSame('Look of the whole video: near-black field, orange accents', collect($new['media'])->firstWhere('kind', 'reference_sheet')['description'], 'asked for someone else: the new sheet');
         $drawer = $plans->normalize($raw, $ctx("Change version 4 of the video:\n- The presenter is a man but the voice is a woman's. Keep the same presenter.\nKeep everything else as it is."), $this->workspace->id);
@@ -4953,6 +4954,7 @@ class CreateIntegrationTest extends TestCase
         $plan = $plans->normalize($raw, ['files' => [$logo], 'previous_plan' => ['cast' => [$cast]], 'messages' => [['role' => 'user', 'content' => 'Say it as weave studio.']]], $this->workspace->id);
         $this->assertSame(['reference_sheet', 'ugc_take'], array_slice(array_column($plan['media'], 'kind'), 0, 2), 'the made person comes along, reused');
         $this->assertSame('Home office, the approved young creator', $plan['media'][0]['description']);
+        $this->assertSame(0, collect(\App\Services\Create\PlanService::selectedMedia($plan))->firstWhere('kind', 'reference_sheet')['credits'] ?? null, 'the plan card does not charge the reused sheet');
         $this->assertFalse($plan['shot_context']['has_avatar'], 'a logo is not a photo of the presenter');
         $photo = $plans->normalize($raw, ['files' => [['purpose' => 'source', 'asset_id' => 10, 'asset_type' => 'image', 'title' => 'me.jpg', 'notes' => ['kind' => 'photo']]]], $this->workspace->id);
         $this->assertTrue($photo['shot_context']['has_avatar']);
