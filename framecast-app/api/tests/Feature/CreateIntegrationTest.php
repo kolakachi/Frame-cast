@@ -4968,4 +4968,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([0.1, 0.5, 100000], [$haiku['input'], $haiku['output'], $haiku['long_above']]);
         $this->assertSame(config('create.anthropic_rates'), \App\Services\Create\AnthropicGateway::rates('claude-opus-5-5'), 'the build tariff otherwise');
     }
+    public function test_change_on_a_restored_version_uses_the_build_it_restores(): void
+    {
+        [$c, $revision] = $this->changeableVersion();
+        $changes = app(\App\Services\Create\ChangeService::class);
+        $before = $changes->parts($this->owner, $c->id, $revision);
+        $restored = app(\App\Services\Create\ConversationService::class)->restore($this->owner, $c->id, $revision, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'));
+        $this->assertNull(DB::table('composition_revisions')->where('id', $restored)->value('run_id'), 'a restored version has no build of its own');
+        $this->assertSame(DB::table('composition_revisions')->where('id', $revision)->value('run_id'), \App\Services\Create\ConversationService::revisionRunId($restored));
+        $this->assertSame(array_column($before['parts'], 'id'), array_column($changes->parts($this->owner, $c->id, $restored)['parts'], 'id'), 'the same parts as the version it restores');
+    }
 }

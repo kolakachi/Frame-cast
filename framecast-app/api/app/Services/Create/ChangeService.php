@@ -211,7 +211,7 @@ class ChangeService
         $conversations->authorize($user);
         $c = $conversations->conversation($user, $conversationId);
         $rev = DB::table('composition_revisions')->where('conversation_id', $c->id)->where('id', $revisionId)->firstOrFail();
-        $input = json_decode((string) DB::table('composition_runs')->where('id', $rev->run_id)->value('input_json'), true) ?: [];
+        $input = json_decode((string) DB::table('composition_runs')->where('id', ConversationService::revisionRunId($rev->id))->value('input_json'), true) ?: [];
         return [$c, $rev, $input];
     }
 }

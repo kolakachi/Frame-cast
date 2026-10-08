@@ -766,7 +766,7 @@ class PlanService
     /** One kind of media from the plan behind the version the user has (its head revision), when there is any. */
     private static function deliveredMedia(object $c, string $kind): ?array
     {
-        $runId = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('run_id') : null;
+        $runId = ConversationService::revisionRunId($c->head_revision_id);
         $planId = $runId ? data_get(json_decode((string) DB::table('composition_runs')->where('id', $runId)->value('input_json'), true), 'plan.plan_id') : null;
         $json = $planId ? DB::table('create_plans')->where('id', $planId)->value('plan_json') : null;
         if (! $json) return null;

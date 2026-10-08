@@ -515,6 +515,21 @@ class ConversationService
         }
     }
 
+    /**
+     * The build behind a version. A restored version is a copy with no build of its own, so it is the build of the
+     * version it restores (GTM-1 re-voice: Change… on a restored version found no plan and failed).
+     */
+    public static function revisionRunId(?string $revisionId): ?string
+    {
+        for ($hops = 0; $revisionId && $hops < 20; $hops++) {
+            $rev = DB::table('composition_revisions')->where('id', $revisionId)->first(['run_id', 'restored_from_id']);
+            if (! $rev) return null;
+            if ($rev->run_id) return (string) $rev->run_id;
+            $revisionId = $rev->restored_from_id;
+        }
+        return null;
+    }
+
     public function restore(User $user, string $id, string $revisionId, int $version): string
     {
         $this->authorize($user, true);
