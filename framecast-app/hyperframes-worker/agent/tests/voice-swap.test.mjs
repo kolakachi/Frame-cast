@@ -6,9 +6,9 @@ const run=promisify(execFile);
 
 test('each new line starts where the old one did; the pause after a line gives way first, then a little speed-up',()=>{
  const s=plan({oldStarts:[0.3,2.4,5.0],newStarts:[0.2,2.6,5.4],newEnds:[2.1,5.1,7.6],oldDuration:8,newDuration:8.1});
- assert.deepEqual(s.map(x=>x.at),[0.22,2.32,4.92],'placed at the old line starts');
+ assert.deepEqual(s.map(x=>x.at),[0.22,1.95,4.75],'each cut starts after the previous line, placed so its first heard word lands on the old start');
  assert.deepEqual(s.map(x=>x.to),[2.3,5.3,7.8],'each line ends 0.2 s after its last word, so its pause is not sped up');
- assert.deepEqual(s.map(x=>x.tempo),[1.0381,1.0692,1],'2.18 s into 2.1 s and 2.78 s into 2.6 s: a few percent quicker');
+ assert.deepEqual(s.map(x=>x.tempo),[1.0381,1.0606,1],'a few percent quicker where a line runs long');
 });
 test('a line that cannot fit, a missing line or lines out of order go to the full editor',()=>{
  assert.throws(()=>plan({oldStarts:[0.3,1.0],newStarts:[0.3,2.0],oldDuration:4,newDuration:4}),e=>e.code==='VOICE_SWAP_UNFIT'&&/line 1/.test(e.message));
@@ -41,3 +41,10 @@ test('a swapped version reports as ready for the final checks, not as a crash',a
  assert.deepEqual(reviewStatus({status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:'x'}),{status:'ready',revision:1,findings:[]});
  assert.equal(reviewStatus({status:'preview_ready'}).status,'ready','no revision fields at all is not a crash either');
 });
+test('an opening word the aligner missed is kept: the cut starts after the previous line ends',()=>{
+ // Line 2's first heard word starts at 3.0, but the voice really starts it at 2.6 ("Branded" not matched); line 1 ends at 2.5.
+ const s=plan({oldStarts:[0.3,3.4],newStarts:[0.2,3.0],newEnds:[2.5,5.0],oldDuration:7,newDuration:6});
+ assert.equal(s[1].from,2.55,'cut right after line 1, keeping the missed word');
+ assert.equal(s[1].at,2.95,'placed so its first heard word still lands where the old one did (3.4 - 0.45)');
+});
+

@@ -7,7 +7,7 @@ import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'no
 import {alignScript} from './audio-review.mjs';
 
 const run=promisify(execFile);
-export const RULES={lead:0.08,maxTempo:1.1,tail:0.2};
+export const RULES={lead:0.08,maxTempo:1.1,tail:0.2,gap:0.05};
 
 /** The cut and placement of each new line. starts: when each line begins in the old and new files (seconds). */
 export function plan({oldStarts,newStarts,newEnds=[],oldDuration,newDuration,rules=RULES}){
@@ -18,8 +18,11 @@ export function plan({oldStarts,newStarts,newEnds=[],oldDuration,newDuration,rul
  return oldStarts.map((at,i)=>{
   // A line ends shortly after its last word: the pause after it gives way before any speed-up.
   const next=i+1<n?newStarts[i+1]-rules.lead:newDuration,end=Number.isFinite(newEnds[i])?Math.min(next,newEnds[i]+rules.tail):next;
-  const from=Math.max(0,newStarts[i]-rules.lead),to=Math.max(from,end);
-  const place=Math.max(0,at-rules.lead),slot=(i+1<n?oldStarts[i+1]-rules.lead:oldDuration-rules.tail)-place;
+  // A line's cut starts just after the previous line's last heard word, so an opening word the aligner missed is kept
+  // (brief 2's swap cut "Branded" when "video" was taken as the line's start); the placement moves back with it.
+  const lead=i>0&&Number.isFinite(newEnds[i-1])?Math.max(rules.lead,newStarts[i]-(newEnds[i-1]+rules.gap)):rules.lead;
+  const from=Math.max(0,newStarts[i]-lead),to=Math.max(from,end);
+  const place=Math.max(0,at-lead),slot=(i+1<n?oldStarts[i+1]-rules.lead:oldDuration-rules.tail)-place;
   const length=to-from,tempo=length>slot?length/slot:1;
   if(slot<=0||tempo>rules.maxTempo)throw unfit(`line ${i+1} is ${length.toFixed(2)} s against a ${Math.max(0,slot).toFixed(2)} s slot`);
   return {from:+from.toFixed(3),to:+to.toFixed(3),at:+place.toFixed(3),tempo:+tempo.toFixed(4)};
