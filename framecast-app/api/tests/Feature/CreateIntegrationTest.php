@@ -5016,11 +5016,13 @@ class CreateIntegrationTest extends TestCase
         $bundle = fn (string $extra = '') => json_encode(['index.html' => '<audio src="asset-'.$spaced.'-ab12.wav"></audio><audio src="asset-'.$music.'-cd34.wav"></audio>'.$extra]);
         DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle()]);
         DB::table('create_plan_media')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c->id, 'plan_id' => $basePlan, 'item_index' => 0, 'kind' => 'voiceover', 'description_hash' => str_repeat('a', 64), 'status' => 'succeeded', 'record_json' => json_encode(['file' => ['asset_id' => $voice]]), 'created_at' => now(), 'updated_at' => now()]);
-        $plan = ['plan_id' => 'new-plan', 'planner_task' => 'edit', 'look_first' => false, 'narration' => ['Want brighter skin?', 'Meet Dewbloom Glow!'], 'on_screen_copy' => ['Glow'], 'scenes' => [['label' => 'Hook'], ['label' => 'Bottle']]];
+        $plan = ['plan_id' => 'new-plan', 'planner_task' => 'edit', 'change_touches' => ['voice'], 'look_first' => false, 'narration' => ['Want brighter skin?', 'Meet Dewbloom Glow!'], 'on_screen_copy' => ['Glow'], 'scenes' => [['label' => 'Hook'], ['label' => 'Bottle']]];
         $voiceOnly = [['kind' => 'voiceover', 'credits' => 3]];
         $swap = fn ($p = null, $m = null) => \App\Services\Create\VoiceSwap::plan(DB::table('create_conversations')->where('id', $c->id)->first(), DB::table('composition_revisions')->where('id', $revision)->first(), $p ?? $plan, $m ?? $voiceOnly, ['output_kind' => 'video'], false);
         $this->assertSame(['old_src' => 'asset-'.$spaced.'-ab12.wav', 'old_lines' => ['Want brighter skin?', 'Meet Dewbloom Glow.'], 'new_lines' => ['Want brighter skin?', 'Meet Dewbloom Glow!']], $swap(), 'the spaced copy of the old voice is the narration clip');
-        $this->assertNull($swap([...$plan, 'on_screen_copy' => ['Shine']]), 'words on screen changed: a normal edit');
+        $this->assertNull($swap([...$plan, 'change_touches' => ['voice', 'on_screen_words']]), 'words on screen change too: a normal edit');
+        $this->assertNull($swap([...$plan, 'change_touches' => []]), 'the planner did not say what the change touches: a normal edit');
+        $this->assertNotNull($swap([...$plan, 'on_screen_copy' => ['Only the voiceover is regenerated.']]), 'notes written into the copy field do not block a voice swap');
         $this->assertNull($swap([...$plan, 'narration' => ['One line now.']]), 'a different number of lines: a normal edit');
         $this->assertNull($swap(null, [...$voiceOnly, ['kind' => 'ai_image', 'credits' => 43]]), 'anything besides a voice: a normal edit');
         $this->assertNull($swap([...$plan, 'planner_task' => 'new']), 'not a change: a normal build');
@@ -5053,5 +5055,12 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('needs_attention', DB::table('create_planning_jobs')->where('id', $job['id'])->value('state'), 'stopped beating: caught now, not in 19 minutes');
         $hb::stop(null, $job['id']);
         $this->assertNull($hb::alive($job['id']), 'stopping removes the file');
+    }
+    public function test_a_change_names_the_parts_it_touches_from_a_fixed_list(): void
+    {
+        $raw = ['summary' => 'Re-voice.', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 4, 'idea' => 'Talk']], 'left_out' => '', 'media' => [], 'change_touches' => ['Voice', 'voice', 'the logo', 'on_screen_words']];
+        $plan = app(\App\Services\Create\PlanService::class)->normalize($raw, ['files' => []], $this->workspace->id);
+        $this->assertSame(['voice', 'on_screen_words'], $plan['change_touches']);
+        $this->assertSame([], app(\App\Services\Create\PlanService::class)->normalize([...$raw, 'change_touches' => null], ['files' => []], $this->workspace->id)['change_touches']);
     }
 }

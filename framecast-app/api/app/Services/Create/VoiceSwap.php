@@ -28,11 +28,13 @@ class VoiceSwap
         $baseInput = $baseRun ? json_decode((string) DB::table('composition_runs')->where('id', $baseRun)->value('input_json'), true) : null;
         $basePlan = $baseInput['plan'] ?? null;
         if (! is_array($basePlan) || empty($basePlan['plan_id'])) return null;
-        // The words on screen and the beats stay as they are; only what is said (and how) changes, line for line.
+        // The beats stay as they are; only what is said (and how) changes, line for line.
         $old = array_values(array_map('strval', (array) ($basePlan['narration'] ?? [])));
         $new = array_values(array_map('strval', (array) ($plan['narration'] ?? [])));
         if (! $old || count($old) !== count($new)) return null;
-        if (json_encode($basePlan['on_screen_copy'] ?? []) !== json_encode($plan['on_screen_copy'] ?? [])) return null;
+        // The planner names the parts a change alters; only a change to the voice alone is swapped. (The on-screen copy
+        // field is not used: change plans wrote notes into it, 2026-10-08.)
+        if (($plan['change_touches'] ?? null) !== ['voice']) return null;
         if (array_column((array) ($basePlan['scenes'] ?? []), 'label') !== array_column((array) ($plan['scenes'] ?? []), 'label')) return null;
         // A swap that already failed for this plan (a new line too long for its slot) goes to the builder instead.
         if (DB::table('composition_runs')->where('conversation_id', $c->id)->where('input_json->plan->plan_id', $plan['plan_id'] ?? '')
