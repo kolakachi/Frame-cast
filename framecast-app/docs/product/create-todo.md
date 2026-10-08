@@ -47,15 +47,14 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 
 | ID | Item | Next |
 |---|---|---|
-| CR1 | Thorough costs about 1.8× (one run) | more Thorough runs |
-| CR2 | Estimates learned per video type and new-vs-change | needs 3 runs of a kind |
-| CR4 | "Never more than" shows a real hold | check in the app |
-| S11 | A vague change gets one question; the plan card shows what was assumed | check in the app |
-| RF2 | The reference study hears sound effects and the sound pass follows them | a reference with effects |
-| RF3 | Captions in Details: Automatic, None, My exact text | check in the app |
-| FS5 | 37 motion moves (14 new) | a build that uses a new one |
-| FS7 | A screenshot of the current video is read as "change this moment" | try live |
-| E1 | App screens shown on in-world devices | a run with a screen |
+| CR1 | Thorough costs about 1.8×: only 2 Thorough builds so far | more Thorough runs (the next Thorough briefs count) |
+| CR2 | Estimates learned per video type and change-or-new: most kinds now have 3+ runs (motion graphics 17 new / 15 changes, footage 4); footage changes (1) and UGC changes (2) still thin | close once those have 3 |
+| RF2 | Reference sound effects: the Laban baseline lays the motion kit's sounds under its moves (7 cues by hand plus the moves' own), about half the reference's density (10 per 10 s); its "no voiceover" requirement was wrongly blocked and is fixed (`31c369ba`) | owner listens to the Laban baseline for the effects |
+| E1 | App screens shown on in-world devices: no plan has used one yet | a run with a screen (a product brief showing the app on a phone) |
+| CR4 | "Never more than" shows a real hold | owner, in the app |
+| S11 | A vague change gets one question; the plan card shows what was assumed | owner, in the app |
+| RF3 | Captions in Details: Automatic, None, My exact text | owner, in the app |
+| FS7 | A screenshot of the current video is read as "change this moment" | owner, in the app |
 | E2 | Split-screen UGC | needs O1 |
 
 ## 5. Waiting on the owner

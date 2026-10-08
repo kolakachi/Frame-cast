@@ -203,4 +203,6 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
   "Weave Studio" (two transcribers). Fixed on the way: change plans wrote notes into on-screen copy (the prompt now
   defines it; changes list change_touches), brand fonts in the swap, a review crash, a missed opening word, beat names.
 - PLAN-DEAD closed (`fd4a3803`): drill on production caught a killed planning worker in 140 s (was 22 min).
+- FS5 closed: 7 of the 14 new moves used across 49 delivered versions since 2026-10-05 (smash 5, pull back 4, push in 3,
+  odometer 3, text mask, ramp freeze, stack).
 
