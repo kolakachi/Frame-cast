@@ -127,7 +127,7 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
  if(blanks===null)add('blank','No blank frames','unverified',true,'Blank frames could not be measured.');
  else if(blanks.length)add('blank','No blank frames','fail',true,'The picture goes blank'+(blanks.length>1?' '+blanks.length+' times':'')+'.',blanks.map(b=>b.start));
  // Planned moves the plan named (a reference move, the signature move): blocking.
- for(const m of moves)add('move','Planned move: '+(m.move||m.code||'move'),m.status==='unverified'?'unverified':'fail',true,String(m.message||'A planned move is missing.'),m.time!=null?[m.time]:[]);
+ for(const m of moves)add('move','Planned move: '+(m.move?String(m.move).replace(/_/g,' '):'move'),m.status==='unverified'?'unverified':'fail',true,String(m.message||'A planned move is missing.'),m.time!=null?[m.time]:[]);
  // Words on screen too briefly to read (the delivery check's reading time): blocking, and the build can fix it.
  if(reading?.length)add('reading','Every word on screen can be read','fail',true,reading.map(r=>String(r.message||'')).filter(Boolean).slice(0,3).join(' ')||'Some words are not on screen long enough to read.',reading.map(r=>r.time).filter(t=>t!=null));
  const blocked=checks.some(c=>c.blocking&&c.status==='fail'),unverified=checks.some(c=>c.blocking&&c.status==='unverified');

@@ -28,22 +28,30 @@ export function requiredMoves(plan){
 export function moveFindings({plan,sources,ran=null,requireRuntime=false,base=null}){
  const strip=s=>String(s||'').replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
  const code=strip(sources),baseCode=base==null?null:strip(base);
+ // A page that loads its scripts but not the kit: every WM call throws, and a try/catch fallback hides it (the $100
+ // a month explainer, 2026-10-08: three planned moves in the code, the kit never loaded, plain fades in the render).
+ const kitMissing=/<script\b[^>]*\bsrc=/i.test(code)&&!/<script\b[^>]*\bsrc=["']?(\.\/)?wyv-motion\.js/i.test(code);
  const out=[];
  for(const [move,labels] of requiredMoves(plan)){
   const fn=RECIPES[move];
   if(baseCode!==null&&!new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(baseCode))continue;
   if(new RegExp('\\bWM\\.'+fn+'\\s*\\(').test(code)){
+   if(kitMissing){
+    out.push({code:'reference_move_kit_missing',severity:'error',move,time:null,message:`WM.${fn} is in the code for ${labels.slice(0,3).join(', ')||'a reference element'}, but wyv-motion.js is not loaded, so it never runs.`,
+     fixHint:`Add <script src="wyv-motion.js"></script> after gsap.min.js in index.html, and call WM.${fn}(…) directly: a try/catch fallback hides a move that fails.`});
+    continue;
+   }
    if(!Array.isArray(ran)){
     if(requireRuntime)out.push({code:'reference_move_unverified',status:'unverified',severity:'error',move,time:null,message:`Execution evidence for WM.${fn} is unavailable. The planned move has not been verified.`,fixHint:'Restore runtime motion evidence and check the final render again.'});
     continue;
    }
    if(ran.some(r=>r?.move===fn))continue;
-   out.push({code:'reference_move_not_run',severity:'error',time:null,message:`WM.${fn} is in the code for ${labels.slice(0,3).join(', ')||'a reference element'} but never runs when the timeline is built.`,
+   out.push({code:'reference_move_not_run',severity:'error',move,time:null,message:`WM.${fn} is in the code for ${labels.slice(0,3).join(', ')||'a reference element'} but never runs when the timeline is built.`,
     fixHint:`Call WM.${fn}(…) on the timeline that plays (not inside a function that is never called).`});
    continue;
   }
   const what=labels.slice(0,3).join(', ')||'a reference element';
-  out.push({code:'reference_move_missing',severity:'error',time:null,
+  out.push({code:'reference_move_missing',severity:'error',move,time:null,
    message:`The plan rebuilds ${what} with the reference's ${move} move, but the composition never calls WM.${fn}.`,
    fixHint:`${/wyv-motion\.js/.test(code)?'':'Load wyv-motion.js after gsap.min.js, then '}build it with WM.${fn}(…) as in kit/motion-kit.md and the worked example kit/reference-moves.html; or finish with a summary saying why this move does not fit.`});
  }

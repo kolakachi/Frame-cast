@@ -69,3 +69,19 @@ test('on an edit only the latest request decides whether the art library must be
  assert.equal(artExpected({plan,messages:[...messages,{role:'user',content:'Add a 3D icon of a camera'}],base_bundle:{'index.html':'<b></b>'}},art),true,'an edit that asks for one does');
  assert.equal(artExpected({plan,messages},null),false,'no library, nothing to search');
 });
+
+test('$100 explainer: moves in the code on a page that never loads the kit are sent back before finishing, with the cause',()=>{
+ const plan={scenes:[{label:'Hook',transition_out:{move:'morph'}},{label:'Mechanism',transition_out:{move:'push_in'}}]};
+ const page='<script src="gsap.min.js"></script><script src="main.js"></script>';
+ const js='function safe(fn,fb){try{fn();}catch(e){fb();}}safe(function(){WM.morph(tl,"#b",[]);},function(){});try{WM.pushIn(tl,"#c",3.4);}catch(e){}';
+ const f=moveFindings({plan,sources:page+'\n'+js});
+ assert.deepEqual(f.map(x=>x.code),['reference_move_kit_missing','reference_move_kit_missing']);
+ assert.deepEqual(f.map(x=>x.move),['morph','push_in']);
+ assert.match(f[0].message,/wyv-motion\.js is not loaded/);assert.match(f[0].fixHint,/<script src="wyv-motion\.js"><\/script>/);
+ // After the render the cause is still named, not "never runs".
+ assert.equal(moveFindings({plan,sources:page+'\n'+js,ran:[],requireRuntime:true})[0].code,'reference_move_kit_missing');
+ // Loaded: the code check passes, and the render's evidence decides.
+ const loaded='<script src="gsap.min.js"></script><script src="wyv-motion.js"></script><script src="main.js"></script>\n'+js;
+ assert.deepEqual(moveFindings({plan,sources:loaded}),[]);
+ assert.deepEqual(moveFindings({plan,sources:loaded,ran:[{move:'morph'},{move:'pushIn'}]}),[]);
+});
