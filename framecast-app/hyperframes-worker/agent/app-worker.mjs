@@ -253,6 +253,9 @@ async function execute(run){
   // Render and check, and when the final check blocks on something the build can fix, fix it and do it again: at most
   // two repair rounds (todo D), within the calls already approved, never charged (a repair corrects our own work).
   let deliveryChecks=null,audioReview=null,paceReview=null,finalReview=null;const uploaded=new Set();
+   // Files saved in an earlier round stay known as sources: a later round that edits one again (fade a file the first
+   // round saved) failed with "Derived media has no known source" (GTM-1 brief 1 re-voice, 2026-10-08).
+   const savedIds=new Map();
   let lastFixKey=null;
   let renderAttempts=0;
   for(let round=0;;round++){
@@ -261,7 +264,7 @@ async function execute(run){
   // versions and free edits inherit exactly these bytes.
   if(agentResult?.derived?.some(d=>!uploaded.has(d.path))){
    stage='Saving your edited footage';await beat();
-   const ids=new Map(manifest.map(f=>[f.name,f.asset_id]));
+   const ids=new Map([...manifest.map(f=>[f.name,f.asset_id]),...savedIds]);
    // Only what the finished composition uses: a builder that tried several frame grabs leaves the discarded ones behind.
    const used=Object.values(agentResult.bundle??{}).join('\n');
    // A used file keeps its lineage: the files it was made from are saved too (music ducked, then faded, keeps the
@@ -280,7 +283,7 @@ async function execute(run){
     if(!response.ok)throw Error('Derived media upload failed ('+response.status+')');
     const record=(await response.json()).data;
     if(record.sha256!==d.sha256)throw Error('Derived media hash mismatch');
-    await rename(dir+'/project/'+d.path,dir+'/project/'+record.name);uploaded.add(record.name);ids.set(d.path,record.asset_id);ids.set(record.name,record.asset_id);
+    await rename(dir+'/project/'+d.path,dir+'/project/'+record.name);uploaded.add(record.name);for(const n of [d.path,record.name]){ids.set(n,record.asset_id);savedIds.set(n,record.asset_id);}
     for(const name of (await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n))){
      const text=await readFile(dir+'/project/'+name,'utf8');if(text.includes(d.path))await writeFile(dir+'/project/'+name,text.split(d.path).join(record.name),{mode:0o600});
     }

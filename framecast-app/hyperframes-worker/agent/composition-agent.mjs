@@ -260,7 +260,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
    variantDirection:input.variant_direction??null,approvedFacts:[...(settings.approved_facts??[]),...(input.plan?.on_screen_copy??[])],settings,output:{width:dims[0],height:dims[1],durationSeconds:settings.duration_seconds??15},
    registry:catalog.length?{items:catalog.length,howToUse:'Search with the catalog action before hand-building any named visual; read kit/registry.md once before wiring an item.'}:null,
    // The brief or plan asks for icons, 3D objects or illustrations: the build is expected to look in the library first.
-   artExpected:!!art?.items?.length&&/\b(icons?|3d|emoji|illustrations?|stickers?)\b/i.test(JSON.stringify(input.plan?.scenes??[])+' '+JSON.stringify(input.plan?.callouts??input.plan?.on_screen_copy??[])+' '+(input.messages??[]).filter(m=>m.role==='user').map(m=>m.content).join(' ')),
+   artExpected:artExpected(input,art),
    art:art?.items?.length?{items:art.items.length,howToUse:'For a generic object or icon (coins, a brain, a calendar, a checkmark, a shop), search the art action and use what it finds before drawing or generating one. Brand visuals come from the user\'s files.'}:null,
    cards:{route,pinned:cards.names,onDemand:otherCards.map(n=>'cards/'+n+'.md')},
    runtimeFiles:[{path:'wyv-3d.js',purpose:'3D inside the composition (load after gsap.min.js and three-wyv.js): W3D.mascot draws plan.mascot3d on a canvas (talking on the narration, blinking, winking, turning), W3D.prop draws an object modelled in code (with the product spin), W3D.clock(tl, duration) drives them from the timeline. The default for 3D. Read kit/three.md, worked example kit/three-example.html.'},{path:'three-wyv.js',purpose:'three.js with the mascot and prop builders as one browser script; load before wyv-3d.js.'},{path:'wyv-mascot3d.js',purpose:'Parametric 3D mascot for Remotion clips (import {Mascot3D} from \'./wyv-mascot3d.js\'): a character from plan.mascot3d.spec, rigged by construction (head turn, blink, wink, gaze, mouth on the words, expressions), clay, ordered-dither or toon finish; and Prop3D, shapes and spinAt for 3D objects modelled in code in the same finishes. Read kit/remotion.md, sections 3D characters and 3D props.'},{path:'wyv-mascot.js',purpose:'Character performance on the Hyperframes timeline: WyvMascot.face plays a face kit (an asset with face_kit) as a talking, blinking face with expressions; WyvMascot.attach drives a prepared layered-SVG rig (blinks, gaze, head tilt, four mouths). Not an image-to-rig converter: a face kit comes from an expression sheet. Read kit/mascot.md first. Never substitute the fixture for an approved character.'},{path:'barty-motion.js',purpose:'Optional pinned Barty spring/shape engine. Load with barty-hyperframes.js after GSAP; read kit/barty.md first. One full-frame scene; no standalone render commands.'},{path:'barty-hyperframes.js',purpose:'Barty to Hyperframes timeline bridge; approved colours remain authored inputs.'},{path:'gsap.min.js',purpose:'Local GSAP runtime'},{path:'wyv-motion.js',purpose:'WyvStudio motion kit, load after gsap.min.js: spring eases, cursor, button press, typing, toggle, counter, shape morph and scene transitions (whip, push, wipe, light leak). Read kit/motion-kit.md for the API before using it.'},{path:'font.ttf',purpose:'DejaVu Sans, plain fallback'},
@@ -308,6 +308,16 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
 // a source-preserving edit, checks, snapshots and finish through the real runner.
 /** The source of the version an edit changes, for checks that hold the edit to what was asked; null for a new build, a
  * resumed build of the same plan, or the motion pass over an approved look (which adds the moves). */
+/** The brief asks for icons or 3D objects, so the art library should be searched before finishing. On an edit only the
+ * latest request counts: a voice-only change was sent back to search for icons the version already had (2026-10-08). */
+export function artExpected(input={},art=null){
+ if(!art?.items?.length)return false;
+ const asks=/\b(icons?|3d|emoji|illustrations?|stickers?)\b/i;
+ const users=(input.messages??[]).filter(m=>m.role==='user').map(m=>String(m.content??''));
+ if(editBaseSources(input)!==null)return asks.test(users.at(-1)??'');
+ return asks.test(JSON.stringify(input.plan?.scenes??[])+' '+JSON.stringify(input.plan?.callouts??input.plan?.on_screen_copy??[])+' '+users.join(' '));
+}
+
 export function editBaseSources(input={}){
  if(!input.base_bundle||input.from_look===true||input.resume)return null;
  return Object.entries(input.base_bundle).filter(([n])=>/\.(html|js|css)$/.test(n)&&!/^(gsap|wyv-|barty-)/.test(n)).map(([,t])=>String(t)).join('\n');

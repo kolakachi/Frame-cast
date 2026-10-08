@@ -60,3 +60,12 @@ test('only an edit has a base: not a new build, a resumed build or the motion pa
  assert.equal(editBaseSources({base_bundle,from_look:true}),null);
  assert.equal(editBaseSources({base_bundle,resume:{files:{}}}),null);
 });
+test('on an edit only the latest request decides whether the art library must be searched',async()=>{
+ const {artExpected}=await import('../composition-agent.mjs');
+ const art={items:[{id:1}]},plan={scenes:[{idea:'three icons pop in'}]};
+ const messages=[{role:'user',content:'Promo with icons'},{role:'user',content:'Change version 2 of the video:\n- Re-voice it.'}];
+ assert.equal(artExpected({plan,messages},art),true,'a new build that asks for icons searches');
+ assert.equal(artExpected({plan,messages,base_bundle:{'index.html':'<b></b>'}},art),false,'a voice-only edit is not sent to search');
+ assert.equal(artExpected({plan,messages:[...messages,{role:'user',content:'Add a 3D icon of a camera'}],base_bundle:{'index.html':'<b></b>'}},art),true,'an edit that asks for one does');
+ assert.equal(artExpected({plan,messages},null),false,'no library, nothing to search');
+});
