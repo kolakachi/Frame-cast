@@ -186,4 +186,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
   - G-FAIR: both workspaces built at once, each claimed within a second; clear waiting statuses.
   - G-DEP: a marker commit pushed during a build waited for it (drained), deployed, then was rolled back by revert;
     Create reopened, site 200. Rule: never roll back past a data migration (e.g. `75d08199`) without its down().
+- L16 closed: the 7 social tokens exposed in the briefly public dumps were revoked at Google, TikTok and Meta with
+  `social:revoke-tokens --confirm` (all 7 confirmed; 2 were already invalid), wiped and marked "Reconnect needed".
+  Outside users affected: workspaces 60 and 77 (YouTube); 1 and 19 are ours. No email, by the owner's choice.
 

@@ -27,9 +27,7 @@ deploys drain Create around the restart.
 
 ## 2. Launch must-haves
 
-| ID | Item | Status | Next |
-|---|---|---|---|
-| L16 | Restore drill passed 2026-10-08 (Oct 7 dump, 3 s, 0 errors, row counts match live). Secrets review: social tokens were readable in the briefly public dumps; now encrypted at rest and revoked on disconnect (`75d08199`, live). Still to do: revoke the 7 exposed tokens (`php artisan social:revoke-tokens --confirm` on prod; owner's go needed); users reconnect when they next publish (no email, owner) | partly | run the revoke |
+All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 
 ## 3. Build next
 
