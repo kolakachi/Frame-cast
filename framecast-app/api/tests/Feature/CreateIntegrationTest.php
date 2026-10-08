@@ -5030,9 +5030,12 @@ class CreateIntegrationTest extends TestCase
         $this->assertNull($swap(), 'two clips from the old voice: unclear which to swap');
         DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle()]);
         $failed = (array) DB::table('composition_runs')->where('id', $run)->first();
-        DB::table('composition_runs')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'status' => 'failed', 'idempotency_key' => 'swap-failed', 'operation_id' => 'op_swapfailed', 'quote_id' => 'q_swapfailed', 'sequence' => 99, 'lease_hash' => null,
+        $other = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_runs')->insert(['id' => $other, 'status' => 'failed', 'stage' => 'The layout did not pass render checks.', 'idempotency_key' => 'swap-failed', 'operation_id' => 'op_swapfailed', 'quote_id' => 'q_swapfailed', 'sequence' => 99, 'lease_hash' => null,
             'input_json' => json_encode(['plan' => ['plan_id' => 'new-plan'], 'voice_swap' => ['old_src' => 'x']])] + $failed);
-        $this->assertNull($swap(), 'a swap that already failed for this plan goes to the builder');
+        $this->assertNotNull($swap(), 'a swap that failed for another reason may simply be tried again');
+        DB::table('composition_runs')->where('id', $other)->update(['stage' => 'This change needs the full editor: line 2 is 3.10 s against a 2.40 s slot.']);
+        $this->assertNull($swap(), 'a swap that could not fit a line goes to the builder');
     }
     public function test_a_plan_whose_heartbeat_stopped_is_caught_in_minutes_not_at_the_deadline(): void
     {

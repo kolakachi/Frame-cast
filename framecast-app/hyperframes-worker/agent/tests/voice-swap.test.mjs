@@ -30,3 +30,9 @@ test('ffmpeg builds the aligned voice at exactly the old length',async()=>{
   assert.ok(Math.abs(d-7.5)<0.05,'the timeline keeps its length: '+d);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test('a swap fetches the brand fonts the version loads',async()=>{
+ const {familiesIn}=await import('../brand-fonts.mjs');
+ const bundle={'style.css':"@font-face{src:url(brand-dm-sans-700.ttf)}@font-face{src:url(brand-space-mono-400.ttf)}",'index.html':'<b>brand-dm-sans-400.ttf</b>'};
+ assert.deepEqual(familiesIn(bundle,['Inter','DM Sans','Space Mono','Roboto']),['DM Sans','Space Mono']);
+ assert.deepEqual(familiesIn({'index.html':'<b></b>'},['DM Sans']),[]);
+});

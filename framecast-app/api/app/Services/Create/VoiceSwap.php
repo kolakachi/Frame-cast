@@ -36,9 +36,9 @@ class VoiceSwap
         // field is not used: change plans wrote notes into it, 2026-10-08.)
         if (($plan['change_touches'] ?? null) !== ['voice']) return null;
         if (array_column((array) ($basePlan['scenes'] ?? []), 'label') !== array_column((array) ($plan['scenes'] ?? []), 'label')) return null;
-        // A swap that already failed for this plan (a new line too long for its slot) goes to the builder instead.
+        // A swap that could not fit a line for this plan goes to the builder instead (any other failure may simply retry).
         if (DB::table('composition_runs')->where('conversation_id', $c->id)->where('input_json->plan->plan_id', $plan['plan_id'] ?? '')
-            ->whereNotNull('input_json->voice_swap')->where('status', 'failed')->exists()) return null;
+            ->whereNotNull('input_json->voice_swap')->where('status', 'failed')->where('stage', 'like', '%needs the full editor%')->exists()) return null;
         // The narration clip in the version: the one audio file descended from the voice the base plan bought.
         $voiceAsset = DB::table('create_plan_media')->where('plan_id', $basePlan['plan_id'])->whereIn('kind', self::KINDS)->where('status', 'succeeded')
             ->get(['record_json'])->map(fn ($r) => (int) (json_decode((string) $r->record_json, true)['file']['asset_id'] ?? 0))->filter()->first();

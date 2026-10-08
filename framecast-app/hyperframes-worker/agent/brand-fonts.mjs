@@ -33,7 +33,13 @@ export function namedFamilies(text,brandFonts=[],families=[]){
  return found.filter(f=>!BUNDLED.includes(f)).slice(0,MAX_FAMILIES);
 }
 
-const slug=f=>f.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+export const slug=f=>f.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+
+/** The brand-font families a finished version's files load (brand-<family>-<weight>.ttf), from the known family names. */
+export function familiesIn(bundle,known=[]){
+ const want=new Set();for(const text of Object.values(bundle||{}))for(const m of String(text).matchAll(/brand-([a-z0-9-]+)-\d{3}\.ttf/g))want.add(m[1]);
+ return known.filter(f=>want.has(slug(f)));
+}
 
 /** Downloads each family's regular and bold TTFs into dir: [{path, family, weight, purpose}]. A family that fails is skipped. */
 export async function fetchBrandFonts(families,dir,{fetchImpl=fetch}={}){

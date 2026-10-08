@@ -19,6 +19,7 @@ import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
 import {excuseSpoken} from './reads-check.mjs';
 import {voiceSwap} from './voice-swap.mjs';
+import {familiesIn,googleFamilies,fetchBrandFonts} from './brand-fonts.mjs';
 import {listenToExport} from './audio-review.mjs';
 import {cutTimes,outputPace,paceNotes} from './pace-review.mjs';
 import {executeImage} from './media-provider.mjs';
@@ -201,6 +202,8 @@ async function execute(run){
    const voice=planMedia.find(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.status==='succeeded'&&m.file);
    if(!voice)throw Error((planMedia.find(m=>m.status!=='succeeded')?.error||'The new voice could not be made.').slice(0,300));
    for(const file of manifest)await copyFile(dir+'/inputs/'+file.path,dir+'/project/'+file.name);
+   // The version's brand fonts are not saved files: fetch the ones it loads again (brief 2's swap failed its render on them).
+   try{const families=familiesIn(run.input.base_bundle,await googleFamilies());if(families.length)await fetchBrandFonts(families,dir+'/project');}catch{/* the render check reports a missing font */}
    stage='Lining up the new voice';phase='agent';
    agentResult=await voiceSwap({project:dir+'/project',bundle:run.input.base_bundle,swap:run.input.voice_swap,newVoice:voice.file,listen});
    await trace({phase:'run',status:'succeeded',summary:'Voice swapped without the builder',detail:JSON.stringify(agentResult.derived[0]?.params??{})});
