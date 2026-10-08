@@ -751,6 +751,18 @@ class PlanService
         ];
     }
 
+    /** "Start at wyvstudio.com" becomes "Start at WyvStudio" when WyvStudio has a saved pronunciation. */
+    public static function addressAsName(mixed $line, int $workspaceId): mixed
+    {
+        if (! is_string($line) || ! str_contains($line, '.') || ! \Illuminate\Support\Facades\Schema::hasTable('create_pronunciations')) return $line;
+        foreach (DB::table('create_pronunciations')->where('workspace_id', $workspaceId)->pluck('written') as $written) {
+            $stem = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower((string) $written));
+            if ($stem === '') continue;
+            $line = preg_replace('/(?<![\p{L}\p{N}.\/@])(?:https?:\/\/)?(?:www\.)?'.preg_quote($stem, '/').'\.[a-z]{2,10}(?:\/[^\s]*)?(?![\p{L}\p{N}])/iu', (string) $written, $line) ?? $line;
+        }
+        return $line;
+    }
+
     /** The cast sheet of the plan behind the version the user has (its head revision), when there is one. */
     private static function deliveredCast(object $c): ?array
     {
@@ -982,6 +994,9 @@ class PlanService
             return $text;
         };
         $narration = array_map($respell, (array) $narration);
+        // A web address made from a name with a saved pronunciation is said as the name, and the address stays on
+        // screen: "wyvstudio.com" read as "weave studio dot com" sends a listener to weavestudio.com (owner, 2026-10-08).
+        $narration = array_map(fn ($line) => self::addressAsName($line, $workspaceId), $narration);
         $plan['narration'] = $narration;
         if (isset($plan['selections']['narration'])) $plan['selections']['narration'] = $narration;
         if (isset($plan['selections']['callouts'])) $plan['selections']['callouts'] = array_map(fn ($c) => is_array($c) ? array_map($respell, $c) : $respell($c), (array) $plan['selections']['callouts']);

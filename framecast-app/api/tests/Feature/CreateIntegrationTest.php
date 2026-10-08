@@ -4978,4 +4978,13 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(DB::table('composition_revisions')->where('id', $revision)->value('run_id'), \App\Services\Create\ConversationService::revisionRunId($restored));
         $this->assertSame(array_column($before['parts'], 'id'), array_column($changes->parts($this->owner, $c->id, $restored)['parts'], 'id'), 'the same parts as the version it restores');
     }
+    public function test_a_web_address_of_a_saved_name_is_said_as_the_name(): void
+    {
+        DB::table('create_pronunciations')->insert(['workspace_id' => $this->workspace->id, 'written' => 'WyvStudio', 'spoken' => 'weave studio', 'created_at' => now(), 'updated_at' => now()]);
+        $say = fn ($l) => \App\Services\Create\PlanService::addressAsName($l, $this->workspace->id);
+        $this->assertSame('Start at WyvStudio.', $say('Start at wyvstudio.com.'));
+        $this->assertSame('Go to WyvStudio today', $say('Go to https://www.wyvstudio.com/create today'));
+        $this->assertSame('Try ledgerly.com free', $say('Try ledgerly.com free'), 'no saved pronunciation: the address is read as written');
+        $this->assertSame('hello@wyvstudio.com', $say('hello@wyvstudio.com'), 'an email address is left alone');
+    }
 }
