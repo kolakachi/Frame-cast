@@ -38,9 +38,14 @@ class SocialAccount extends Model
         'platform_meta',
     ];
 
+    protected $hidden = ['access_token', 'refresh_token'];
+
     protected function casts(): array
     {
         return [
+            // Encrypted at rest: database dumps were briefly public (L16, 2026-10-08).
+            'access_token'     => 'encrypted',
+            'refresh_token'    => 'encrypted',
             'scopes'           => 'array',
             'platform_meta'    => 'array',
             'token_expires_at' => 'datetime',

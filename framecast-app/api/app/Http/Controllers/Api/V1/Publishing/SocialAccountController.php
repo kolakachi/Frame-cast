@@ -231,6 +231,14 @@ class SocialAccountController extends Controller
             return $this->error('not_found', 'Account not found.', 404);
         }
 
+        // Disconnecting also revokes the tokens at the platform, so no copy of them keeps working. Best effort: a
+        // platform that is down never stops the user disconnecting.
+        try {
+            $revoked = app(\App\Services\Publishing\SocialTokenRevoker::class)->revoke($account);
+            if (! $revoked['revoked']) \Illuminate\Support\Facades\Log::warning('Social token not revoked on disconnect', ['account' => $account->id, 'platform' => $account->platform] + $revoked);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Social token revoke failed on disconnect', ['account' => $account->id, 'platform' => $account->platform, 'error' => class_basename($e)]);
+        }
         $account->delete();
 
         return response()->json(['data' => ['deleted' => true]]);

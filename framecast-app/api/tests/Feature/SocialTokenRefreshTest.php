@@ -163,4 +163,54 @@ class SocialTokenRefreshTest extends TestCase
         $this->assertSame('active', $ok->fresh()->status);
         $this->assertTrue($ok->fresh()->token_expires_at->isFuture());
     }
+    public function test_tokens_are_encrypted_at_rest_and_never_serialised(): void
+    {
+        $a = $this->account(['access_token' => 'ya29.secret', 'refresh_token' => '1//refresh']);
+        $raw = DB::table('social_accounts')->where('id', $a->id)->first();
+        $this->assertNotSame('ya29.secret', $raw->access_token);
+        $this->assertStringNotContainsString('refresh', (string) $raw->refresh_token);
+        $this->assertSame(['ya29.secret', '1//refresh'], [$a->fresh()->access_token, $a->fresh()->refresh_token]);
+        $this->assertArrayNotHasKey('access_token', $a->toArray());
+        $this->assertArrayNotHasKey('refresh_token', $a->toArray());
+    }
+
+    public function test_the_migration_encrypts_readable_tokens_once(): void
+    {
+        DB::table('social_accounts')->insert(['workspace_id' => 1, 'platform' => 'tiktok', 'access_token' => 'act.plain', 'refresh_token' => null, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $m = require database_path('migrations/2026_10_08_010000_encrypt_social_account_tokens.php');
+        $m->up(); $once = DB::table('social_accounts')->value('access_token'); $m->up();
+        $this->assertSame($once, DB::table('social_accounts')->value('access_token'), 'running it twice changes nothing');
+        $this->assertSame('act.plain', SocialAccount::query()->first()->access_token);
+        $this->assertNull(SocialAccount::query()->first()->refresh_token);
+    }
+
+    public function test_revoking_wipes_only_what_the_platform_confirms(): void
+    {
+        $revoker = app(\App\Services\Publishing\SocialTokenRevoker::class);
+        \Illuminate\Support\Facades\Http::fake([
+            'oauth2.googleapis.com/revoke' => \Illuminate\Support\Facades\Http::sequence()->push([], 200)->push(['error' => 'invalid_token'], 400)->push([], 503),
+            'open.tiktokapis.com/v2/oauth/revoke/' => \Illuminate\Support\Facades\Http::sequence()->push(['error' => ['code' => 'access_token_invalid']], 200)->push(['error' => ['code' => 'ok']], 200),
+            'open.tiktokapis.com/v2/oauth/token/' => \Illuminate\Support\Facades\Http::response(['access_token' => 'act.fresh'], 200),
+            'graph.facebook.com/*' => \Illuminate\Support\Facades\Http::response(['success' => true], 200),
+        ]);
+        foreach ([[ 'youtube', true], ['youtube', true], ['youtube', false], ['tiktok', true], ['instagram', true]] as [$platform, $revoked]) {
+            $a = $this->account(['platform' => $platform]);
+            $r = $revoker->revokeAndWipe($a);
+            $this->assertSame($revoked, $r['revoked'], $platform);
+            $a->refresh();
+            $this->assertSame($revoked ? ['', null, 'expired'] : ['at', 'rt', 'active'], [$a->access_token, $a->refresh_token, $a->status], $platform.': a token the platform did not confirm is kept, so it can still be revoked');
+        }
+        \Illuminate\Support\Facades\Http::assertSent(fn ($req) => str_contains($req->url(), 'oauth/revoke') && $req['token'] === 'act.fresh');
+        \Illuminate\Support\Facades\Http::assertSent(fn ($req) => str_contains($req->url(), '/me/permissions') && $req->method() === 'DELETE' && $req->hasHeader('Authorization', 'Bearer rt') && ! str_contains($req->url(), 'rt'));
+    }
+
+    public function test_the_revoke_command_lists_first_and_revokes_on_confirm(): void
+    {
+        \Illuminate\Support\Facades\Http::fake(['oauth2.googleapis.com/revoke' => \Illuminate\Support\Facades\Http::response([], 200)]);
+        $a = $this->account(['token_expires_at' => now()->addHour()]);
+        $this->artisan('social:revoke-tokens')->expectsOutputToContain('would revoke')->assertSuccessful();
+        $this->assertSame('active', $a->fresh()->status, 'listing changes nothing');
+        $this->artisan('social:revoke-tokens', ['--account' => [$a->id], '--confirm' => true])->expectsOutputToContain('reconnect needed')->assertSuccessful();
+        $this->assertSame(['expired', ''], [$a->fresh()->status, $a->fresh()->access_token]);
+    }
 }
