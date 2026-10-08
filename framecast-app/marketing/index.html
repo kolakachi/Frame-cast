@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=4">
+<link rel="stylesheet" href="/styles.css?v=5">
 </head>
 <body>
 
@@ -404,6 +404,47 @@
     v.addEventListener('pause', function () { box.classList.remove('is-playing'); btn.setAttribute('aria-label', label); });
     v.addEventListener('ended', function () { held = false; v.currentTime = 0; });
   });
+
+  // Light motion: the calendar's days and the shelves' tiles rise in as they come into view; the calendar then posts
+  // Wednesday's video and moves Today on, and each shelf nudges once to show it scrolls. Off for reduced motion.
+  if (!reduce && 'IntersectionObserver' in window) {
+    document.documentElement.classList.add('anim');
+    var groups = [];
+    var week = document.querySelector('.week');
+    if (week) groups.push({ el: week, items: week.querySelectorAll('.day'), step: 70, after: playWeek });
+    document.querySelectorAll('.shelf-row').forEach(function (row) { groups.push({ el: row, items: row.querySelectorAll('.tile'), step: 60, after: function () { nudge(row); } }); });
+    groups.forEach(function (g) { g.items.forEach(function (it, i) { it.classList.add('reveal'); it.style.setProperty('--d', Math.min(i, 6) * g.step + 'ms'); }); });
+    var seen = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var g = groups.filter(function (x) { return x.el === e.target; })[0];
+        seen.unobserve(e.target);
+        g.items.forEach(function (it) { it.classList.add('in'); });
+        setTimeout(g.after, 900);
+      });
+    }, { threshold: 0.2 });
+    groups.forEach(function (g) { seen.observe(g.el); });
+  }
+  function nudge(row) {
+    if (row.scrollWidth <= row.clientWidth + 8 || row.scrollLeft > 0) return;
+    row.scrollBy({ left: 56, behavior: 'smooth' });
+    setTimeout(function () { if (row.scrollLeft <= 60) row.scrollBy({ left: -56, behavior: 'smooth' }); }, 650);
+  }
+  function playWeek() {
+    var days = Array.prototype.slice.call(document.querySelectorAll('.week .day'));
+    var i = days.findIndex(function (d) { return d.querySelector('.status-next'); });
+    if (i < 0) return;
+    var today = function (d) { var old = document.querySelector('.today-pill'); if (old) old.remove(); if (!d) return; var p = document.createElement('span'); p.className = 'today-pill'; p.textContent = 'Today'; d.querySelector('.day-name').firstChild.after(p); };
+    today(days[i]);
+    var chip = days[i].querySelector('.status-next');
+    setTimeout(function () {
+      chip.classList.add('posting'); chip.textContent = 'Posting…';
+      setTimeout(function () {
+        chip.classList.remove('posting', 'status-next'); chip.classList.add('status-done', 'flip'); chip.textContent = 'Posted ✓';
+        setTimeout(function () { today(days[i + 1]); }, 500);
+      }, 1400);
+    }, 700);
+  }
 })();
 </script>
 
