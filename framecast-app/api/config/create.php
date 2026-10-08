@@ -1,6 +1,5 @@
 <?php
 
-// G-DEP rollback drill marker 2026-10-08 (deployed, then reverted).
 return [
     // Local integration only. A production rollout needs its own acceptance gate.
     'enabled' => (bool) env('CREATE_ENABLED', false),
