@@ -5,18 +5,25 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 const props = defineProps({ open: Boolean, title: { type: String, default: '' }, meta: { type: String, default: '' } })
 const emit = defineEmits(['close'])
 const dialog = ref(null)
-let previousFocus
+// Closing slides the panel out first (a closed <dialog> disappears at once); reduced motion closes straight away.
+const closing = ref(false)
+let previousFocus, closeTimer
+const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 watch(() => props.open, async open => {
   await nextTick()
   if (!dialog.value) return
-  if (open && !dialog.value.open) { previousFocus = document.activeElement; dialog.value.showModal() }
-  else if (!open && dialog.value.open) { dialog.value.close(); previousFocus?.focus?.() }
+  clearTimeout(closeTimer)
+  if (open) { closing.value = false; if (!dialog.value.open) { previousFocus = document.activeElement; dialog.value.showModal() } }
+  else if (dialog.value.open) {
+    const done = () => { closing.value = false; if (!props.open && dialog.value?.open) { dialog.value.close(); previousFocus?.focus?.() } }
+    if (reduced()) done(); else { closing.value = true; closeTimer = setTimeout(done, 180) }
+  }
 }, { immediate: true })
-onBeforeUnmount(() => dialog.value?.open && dialog.value.close())
+onBeforeUnmount(() => { clearTimeout(closeTimer); dialog.value?.open && dialog.value.close() })
 </script>
 <template>
-  <dialog ref="dialog" class="plan-drawer" :aria-label="title" @cancel.prevent="emit('close')" @click="e => { if (e.target === dialog) emit('close') }">
-    <div v-if="open" class="pd">
+  <dialog ref="dialog" :class="['plan-drawer', { closing }]" :aria-label="title" @cancel.prevent="emit('close')" @click="e => { if (e.target === dialog) emit('close') }">
+    <div v-if="open || closing" class="pd">
       <header class="pd-head">
         <div class="pd-titles"><h2>{{ title }}</h2><span v-if="meta" class="pd-meta">{{ meta }}</span></div>
         <button type="button" class="pd-x" :aria-label="`Close ${title}`" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
@@ -30,6 +37,15 @@ onBeforeUnmount(() => dialog.value?.open && dialog.value.close())
 /* The drawers' surface and the app's lines (CreateView's .fc-shell tokens), with fallbacks. */
 .plan-drawer{margin:0 0 0 auto;padding:0;border:0;border-left:1px solid var(--line-3,#2c313b);width:min(420px,100vw);height:100dvh;max-height:100dvh;background:var(--surface,#17171f);color:var(--text,#eceef1);overflow:hidden}
 .plan-drawer::backdrop{background:#0008}
+.plan-drawer[open]{animation:pd-in .24s cubic-bezier(.2,.8,.2,1)}
+.plan-drawer[open]::backdrop{animation:pd-fade .24s ease-out}
+.plan-drawer.closing{animation:pd-out .18s ease-in forwards}
+.plan-drawer.closing::backdrop{animation:pd-fade-out .18s ease-in forwards}
+@keyframes pd-in{from{transform:translateX(32px);opacity:0}to{transform:none;opacity:1}}
+@keyframes pd-out{from{transform:none;opacity:1}to{transform:translateX(32px);opacity:0}}
+@keyframes pd-fade{from{opacity:0}to{opacity:1}}
+@keyframes pd-fade-out{from{opacity:1}to{opacity:0}}
+@media (prefers-reduced-motion: reduce){.plan-drawer[open],.plan-drawer[open]::backdrop,.plan-drawer.closing,.plan-drawer.closing::backdrop{animation:none}}
 .pd{display:flex;flex-direction:column;height:100%;font-size:13px;line-height:1.5}
 .pd-head{flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line-2,#262b34)}
 .pd-titles{display:flex;flex-direction:column;gap:2px;min-width:0}

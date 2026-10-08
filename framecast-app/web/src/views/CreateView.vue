@@ -16,6 +16,7 @@ import TurnActivity from '../components/create/TurnActivity.vue'
 import PlanningLive from '../components/create/PlanningLive.vue'
 import SideDrawer from '../components/create/SideDrawer.vue'
 import ChangeDrawer from '../components/create/ChangeDrawer.vue'
+import CreateLoading from '../components/create/CreateLoading.vue'
 import PlanGroup from '../components/create/PlanGroup.vue'
 import PlanNote from '../components/create/PlanNote.vue'
 import { conversationTimeline, acceptConversationResponse } from '../lib/createConversation.js'
@@ -433,6 +434,8 @@ let refreshRequest = 0, refreshApplied = 0
 let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
+// A conversation is being fetched (opening it, or switching to it): show its outline, never the empty "new" screen.
+const opening = computed(() => !!id.value && !data.value && !error.value)
 const conversation = computed(() => data.value?.conversation)
 const revisions = computed(() => data.value?.revisions ?? [])
 const currentRevision = computed(() => revisions.value.find(r => r.id === (selectedRevision.value || conversation.value?.head_revision_id)))
@@ -1282,13 +1285,14 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
           <button v-if="conversation" type="button" class="quiet" :aria-expanded="details" aria-controls="details-panel" @click="togglePanel">Details &amp; versions</button>
         </div>
       </header>
-      <p v-if="!loaded" class="loading">Opening your workspace…</p>
+      <CreateLoading v-if="!loaded" label="Opening your workspace…" />
       <section v-else-if="!available" class="empty"><h2>Create is not enabled here yet.</h2><router-link to="/dashboard">Back to dashboard</router-link></section>
       <div v-else class="agent-content">
         <section class="conversation" aria-label="Conversation" @dragover.prevent="dragging = canWrite" @dragleave.self="dragging = false" @drop.prevent="canWrite && !conversation?.archived_at && chooseFiles($event.dataTransfer.files)">
           <div v-if="dragging" class="drop-overlay">Drop your footage, photos or audio here</div>
           <div class="messages">
-            <div v-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
+            <CreateLoading v-if="opening" />
+            <div v-else-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
               <h2>What are we making?</h2>
               <p>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
               <button v-if="canWrite && !conversation?.archived_at" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>

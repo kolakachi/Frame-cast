@@ -1723,7 +1723,6 @@ onMounted(() => {
       </div>
       <nav class="gm-nav">
         <div class="nav-section-label">Overview</div>
-        <button :class="['nav-item', activeView === 'create-trajectories' ? 'active' : '']" @click="navigate('create-trajectories')">Create trajectories</button>
         <button
           :class="['nav-item', activeView === 'dashboard' ? 'active' : '']"
           @click="navigate('dashboard')"
@@ -1915,6 +1914,15 @@ onMounted(() => {
             />
           </svg>
           Job Failures
+        </button>
+        <button
+          :class="['nav-item', activeView === 'create-trajectories' ? 'active' : '']"
+          @click="navigate('create-trajectories')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 100-4 2 2 0 000 4zm14-10a2 2 0 100-4 2 2 0 000 4zM12 14a2 2 0 100-4 2 2 0 000 4zM6.5 15.5l4-3.5m3 0l4-4" />
+          </svg>
+          Create trajectories
         </button>
         <button
           :class="['nav-item', activeView === 'storage' ? 'active' : '']"
