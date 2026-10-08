@@ -2616,6 +2616,23 @@ class CreateIntegrationTest extends TestCase
         DB::table('composition_runs')->where('id', $busyRun->id)->update(['status' => 'failed']);
     }
 
+    public function test_a_dead_plan_is_reported_while_recent_and_not_once_replaced_or_old(): void
+    {
+        $health = app(\App\Services\Create\CreateHealth::class);
+        $conv = (string) \Illuminate\Support\Str::uuid();
+        $row = fn ($state, $created, $updated) => ['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $conv, 'workspace_id' => $this->workspace->id, 'user_id' => $this->owner->id,
+            'idempotency_key' => \Illuminate\Support\Str::random(8), 'request_hash' => 'h', 'expected_version' => 1, 'skip_questions' => false, 'state' => $state, 'created_at' => $created, 'updated_at' => $updated];
+        DB::table('create_planning_jobs')->insert($dead = $row('needs_attention', now()->subMinutes(20), now()->subMinutes(15)));
+        $this->assertStringContainsString(substr($conv, 0, 8), $health->problems()['planning']['text'] ?? '', 'a plan that just died is reported');
+        // The user asked again: the new request replaces it.
+        DB::table('create_planning_jobs')->insert($row('succeeded', now()->subMinutes(5), now()->subMinutes(2)));
+        $this->assertArrayNotHasKey('planning', $health->problems());
+        // Never replaced, but hours old: reported once already, not again every hour (the PLAN-DEAD drill, 2026-10-08).
+        DB::table('create_planning_jobs')->where('conversation_id', $conv)->where('id', '!=', $dead['id'])->delete();
+        DB::table('create_planning_jobs')->where('id', $dead['id'])->update(['created_at' => now()->subHours(4), 'updated_at' => now()->subHours(3)]);
+        $this->assertArrayNotHasKey('planning', $health->problems());
+    }
+
     public function test_another_workspace_cannot_reach_create_conversations_videos_files_or_worker_inputs(): void
     {
         [$c, , $run] = $this->admitted();

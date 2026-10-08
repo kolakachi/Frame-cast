@@ -36,7 +36,10 @@ class CreateHealth
             ->where(fn ($q) => $q->where('state', 'queued')->where('created_at', '<', now()->subMinutes(5))
                 ->whereNotExists(fn ($r) => $r->selectRaw('1')->from('create_planning_jobs as busy')->whereColumn('busy.workspace_id', 'create_planning_jobs.workspace_id')->where('busy.state', 'running')))
             ->orWhere(fn ($q) => $q->where('state', 'running')->where('started_at', '<', now()->subMinutes(25)))
-            ->orWhere(fn ($q) => $q->where('state', 'needs_attention')->where('updated_at', '>', now()->subDays(7))))
+            // A plan that died mid-way charged nothing and the user can simply ask again (a new request replaces it): it is
+            // reported once, while recent, and not once an hour for a week (the PLAN-DEAD drill job alerted all day, 2026-10-08).
+            ->orWhere(fn ($q) => $q->where('state', 'needs_attention')->where('updated_at', '>', now()->subHours(2))
+                ->whereNotExists(fn ($r) => $r->selectRaw('1')->from('create_planning_jobs as later')->whereColumn('later.conversation_id', 'create_planning_jobs.conversation_id')->whereColumn('later.created_at', '>', 'create_planning_jobs.created_at'))))
             ->get(['conversation_id', 'state']);
         if ($planning->isNotEmpty()) $out['planning'] = ['title' => 'Create planning is stuck',
             'text' => $planning->count().' plan request(s) waiting over 5 min, running over 25 min, or needing attention. Conversations: '.$ids($planning, 'conversation_id').'. Check the worker-create-planning container; `php artisan create:recover-planning`.'];
