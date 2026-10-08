@@ -198,4 +198,9 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 - FRESH closed: compound interest passed (12 min); the Laban explainer was rebuilt reference-led (`6c13d2cd`, followed
   closely, no voice) and left as it is. Owner: "exactly" and Thorough would likely have done better; use those for a
   reference-led motion brief next time.
+- VOICE-ONLY closed (`5ec5d473`, then `7ac760f3`, `7645c883`, `ed11e2de`, `e8cc32bd`, `2b0b3997`): proven on brief 2
+  (Thorough): quoted at 3 credits instead of a 1,514 hold, built in about 3 minutes, only the audio file changed, says
+  "Weave Studio" (two transcribers). Fixed on the way: change plans wrote notes into on-screen copy (the prompt now
+  defines it; changes list change_touches), brand fonts in the swap, a review crash, a missed opening word, beat names.
+- PLAN-DEAD closed (`fd4a3803`): drill on production caught a killed planning worker in 140 s (was 22 min).
 
