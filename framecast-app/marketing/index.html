@@ -653,280 +653,6 @@
             line-height: 1.55
         }
 
-        /* ── USE CASES ── */
-        .uc-stack-container {
-            position: relative;
-            max-width: 900px;
-            margin: 56px auto 0;
-            perspective: 1000px;
-        }
-
-        .uc-stack-cards {
-            position: relative;
-            width: 100%;
-            height: 480px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .uc-stack-card {
-            position: absolute;
-            width: 100%;
-            max-width: 800px;
-            height: 480px;
-            border-radius: 20px;
-            background: linear-gradient(135deg, #2a282f 0%, #1c1a20 100%);
-            display: flex;
-            overflow: hidden;
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease, z-index 0.6s step-end;
-            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
-            transform-origin: center center;
-            opacity: 0;
-            z-index: 0;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .uc-stack-card[data-pos="active"] {
-            transform: translateX(0) scale(1);
-            z-index: 3;
-            opacity: 1;
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease, z-index 0s;
-        }
-
-        .uc-stack-card[data-pos="next1"] {
-            transform: translateX(-40px) scale(0.92);
-            z-index: 2;
-            opacity: 1;
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease, z-index 0s;
-        }
-
-        .uc-stack-card[data-pos="next2"] {
-            transform: translateX(-80px) scale(0.84);
-            z-index: 1;
-            opacity: 1;
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease, z-index 0s;
-        }
-
-        .uc-stack-card[data-pos="hidden"] {
-            transform: translateX(40px) scale(0.9);
-            z-index: 0;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .uc-stack-left {
-            flex: 1;
-            padding: 40px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            position: relative;
-        }
-
-        .uc-stack-header {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 32px;
-        }
-
-        .uc-stack-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            background: rgba(255, 107, 53, 0.1);
-            border: 1px solid rgba(255, 107, 53, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--accent);
-        }
-
-        .uc-stack-icon img {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-
-        .uc-stack-meta {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .uc-stack-title {
-            font-size: 17px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 2px;
-            line-height: 1.2;
-        }
-
-        .uc-stack-tag {
-            font-size: 11px;
-            color: var(--text-faint);
-            letter-spacing: 0.03em;
-        }
-
-        .uc-stack-body {
-            position: relative;
-            padding-left: 10px;
-        }
-
-        .uc-stack-quote-icon {
-            position: absolute;
-            top: -15px;
-            left: -15px;
-            font-size: 80px;
-            color: rgba(255, 255, 255, 0.03);
-            font-family: serif;
-            line-height: 1;
-            z-index: 0;
-        }
-
-        .uc-stack-hook {
-            font-size: 15px;
-            color: var(--text-dim);
-            line-height: 1.6;
-            margin-bottom: 24px;
-            position: relative;
-            z-index: 1;
-            font-style: italic;
-        }
-
-        .uc-stack-bullets {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .uc-stack-bullet {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            font-size: 12.5px;
-            color: var(--text-faint);
-            line-height: 1.4;
-        }
-
-        .uc-stack-bullet svg {
-            color: #22c55e;
-            width: 16px;
-            height: 16px;
-            flex-shrink: 0;
-            margin-top: 1px;
-        }
-
-        .uc-stack-right {
-            flex: 0 0 270px;
-            position: relative;
-            background: #000;
-        }
-
-        .uc-stack-video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .uc-audio-toggle {
-            position: absolute;
-            bottom: 12px;
-            right: 12px;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(10, 10, 15, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 100;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .uc-stack-card[data-pos="active"] .uc-audio-toggle {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .uc-audio-toggle:hover {
-            background: rgba(10, 10, 15, 0.9);
-            transform: scale(1.05);
-            border-color: var(--accent);
-        }
-
-        .uc-audio-toggle svg {
-            display: block;
-        }
-
-        .uc-stack-controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 16px;
-            margin-top: 36px;
-        }
-
-        .uc-stack-btn {
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .uc-stack-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-        }
-
-        .uc-stack-btn.next-btn {
-            background: #fff;
-            color: #000;
-        }
-
-        .uc-stack-btn.next-btn:hover {
-            background: #f0f0f0;
-            border-color: #f0f0f0;
-        }
-
-        .bg-white .uc-stack-btn {
-            background: rgba(0, 0, 0, 0.05);
-            border-color: rgba(0, 0, 0, 0.1);
-            color: #000;
-        }
-
-        .bg-white .uc-stack-btn:hover {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: rgba(0, 0, 0, 0.2);
-            transform: scale(1.05);
-        }
-
-        .bg-white .uc-stack-btn.next-btn {
-            background: #000;
-            color: #fff;
-        }
-
-        .bg-white .uc-stack-btn.next-btn:hover {
-            background: #222;
-            border-color: #222;
-        }
-
         /* ── WHITE THEME FOR CARDS ── */
         .bg-white .uc-stack-card {
             background: #ffffff;
@@ -1794,7 +1520,7 @@
             }
 
             /* Mobile nav: hide the CTAs (sign-in / start-free), keep section
-     anchors so a visitor can jump to How it works + Use cases. The
+     anchors so a visitor can jump to How it works + Weave. The
      hero CTAs cover sign-up; navbar CTAs are redundant + crowd the
      small screen. Features + Pricing get hidden too to keep the row
      uncluttered at narrow widths. */
@@ -3212,9 +2938,9 @@
         </a>
         <div class="nav-links">
             <a href="#how-it-works">How it works</a>
+            <a href="#weave">Weave</a>
             <a href="#features">Features</a>
             <a href="#ugc-showcase">UGC ads</a>
-            <a href="#use-cases">Use cases</a>
             <a href="#pricing">Pricing</a>
         </div>
         <div class="nav-cta">
@@ -3295,6 +3021,113 @@
             </div>
         </div>
     </section>
+
+    <!-- ── WEAVE (Create's marketing name) ── -->
+    <style>
+      /* Weave: WyvStudio's video maker (marketing name for Create). Two ways in, then everything it has made. */
+      #weave { padding: 110px 24px 90px; position: relative; }
+      .wv-head { max-width: 760px; margin: 0 auto 56px; text-align: center; }
+      .wv-eyebrow { display:inline-flex; align-items:center; gap:10px; font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin-bottom:18px; }
+      .wv-eyebrow svg { width:26px; height:14px; display:block; }
+      .wv-new { font-size:10.5px; letter-spacing:.1em; padding:3px 8px; border-radius:999px; background:var(--accent-soft); border:1px solid rgba(255,107,53,.35); }
+      #weave h2, #made-with-weave h2 { font-size:clamp(32px,5vw,52px); line-height:1.05; letter-spacing:-.03em; margin:0 0 18px; font-weight:700; text-wrap:balance; }
+      #weave h2 em { font-style:normal; color:var(--accent); }
+      .wv-sub { font-size:17px; line-height:1.6; color:var(--text-dim); margin:0 auto; max-width:64ch; }
+      .wv-modes { max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+      .wv-mode { display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:32px; align-items:center; padding:28px; border:1px solid var(--border); border-radius:22px; background:var(--surface); }
+      .wv-mode-label { font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); margin-bottom:10px; }
+      .wv-mode h3 { font-size:26px; line-height:1.15; letter-spacing:-.02em; margin:0 0 12px; }
+      .wv-mode p { color:var(--text-dim); font-size:15.5px; line-height:1.6; margin:0 0 18px; }
+      .wv-steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; counter-reset:wv; }
+      .wv-steps li { counter-increment:wv; display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--text); }
+      .wv-steps li::before { content:counter(wv); width:24px; height:24px; flex:0 0 24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--accent); background:var(--accent-soft); }
+      .wv-reel { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+      .wv-feat { margin:0; min-width:0; }
+      .wv-feat figcaption { font-size:12.5px; line-height:1.35; color:var(--text-dim); padding:8px 2px 0; }
+      .wv-v { width:100%; height:auto; aspect-ratio:9/16; object-fit:cover; display:block; background:#141311; border-radius:14px; }
+      .wv-feat .ugcs-media, .wv-card .ugcs-media { border-radius:14px; overflow:hidden; }
+      .wv-feat .ugcs-btn { width:48px; height:48px; } .wv-feat .ugcs-btn svg { width:20px; height:20px; }
+      .wv-note { margin:6px 0 0; font-size:13px; color:var(--text-faint); }
+      .wv-includes { max-width:1120px; margin:28px auto 0; display:flex; flex-wrap:wrap; justify-content:center; gap:8px 10px; padding:0; list-style:none; }
+      .wv-includes li { font-size:13.5px; color:var(--text-dim); padding:8px 14px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); }
+      .wv-cta { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:36px; }
+      .wv-link { display:inline-flex; align-items:center; gap:8px; color:var(--accent); text-decoration:none; font-weight:600; font-size:15px; border:1px solid rgba(255,107,53,.35); background:rgba(255,107,53,.06); padding:12px 22px; border-radius:999px; }
+      .wv-link:hover { background:rgba(255,107,53,.12); }
+      .wv-link:focus-visible, .wv-tab:focus-visible, .ugcs-play:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+      #made-with-weave { padding: 100px 24px; }
+      .wv-tabs { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:0 auto 32px; }
+      .wv-tab { font:inherit; font-size:14px; color:var(--text-dim); background:transparent; border:1px solid var(--border); border-radius:999px; padding:9px 16px; cursor:pointer; }
+      .wv-tab span { color:var(--text-faint); margin-left:4px; font-variant-numeric:tabular-nums; }
+      .wv-tab[aria-pressed="true"] { color:var(--accent); border-color:rgba(255,107,53,.45); background:var(--accent-soft); }
+      .wv-tab[aria-pressed="true"] span { color:inherit; opacity:.75; }
+      .wv-gallery { max-width:1120px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); grid-auto-flow:dense; gap:18px; align-items:start; }
+      .wv-card { margin:0; min-width:0; }
+      .wv-card--wide { grid-column:span 2; }
+      .wv-card--wide .wv-v { aspect-ratio:16/9; }
+      .wv-card--square .wv-v { aspect-ratio:1/1; }
+      .wv-card figcaption { display:flex; flex-direction:column; gap:3px; padding:10px 2px 0; }
+      .wv-cap-title { font-size:14px; font-weight:600; line-height:1.35; color:var(--text); }
+      .wv-cap-meta { font-size:12px; color:var(--text-faint); }
+      .wv-card[hidden] { display:none !important; }
+      .wv-more { display:flex; justify-content:center; margin-top:32px; }
+      @media (max-width: 900px) {
+        .wv-mode { grid-template-columns:1fr; gap:22px; padding:22px; }
+        .wv-reel { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; gap:10px; margin:0 -22px; padding:0 22px 6px; scrollbar-width:none; }
+        .wv-reel::-webkit-scrollbar { display:none; }
+        .wv-feat { flex:0 0 42%; scroll-snap-align:start; }
+      }
+      @media (max-width: 520px) {
+        #weave, #made-with-weave { padding-left:16px; padding-right:16px; }
+        .wv-feat { flex-basis:62%; }
+        .wv-gallery { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+        .wv-cap-title { font-size:13px; }
+      }
+    </style>
+    <section id="weave" aria-labelledby="weave-title">
+      <div class="container">
+        <div class="wv-head">
+          <div class="wv-eyebrow"><svg viewBox="0 0 26 14" fill="none" aria-hidden="true"><path d="M1 4c4 0 4 6 8 6s4-6 8-6 4 6 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M1 10c4 0 4-6 8-6s4 6 8 6 4-6 8-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".45"/></svg>Weave <span class="wv-new">New</span></div>
+          <h2 id="weave-title">Describe it. Or show us <em>one you love.</em></h2>
+          <p class="wv-sub">Weave is WyvStudio's video maker. It plans the video, writes and voices the script, animates it in your brand and checks it before you see it. Start from a sentence, or from a video whose style you want.</p>
+        </div>
+        <div class="wv-modes">
+          <article class="wv-mode">
+            <div>
+              <div class="wv-mode-label">From scratch</div>
+              <h3>Start with a sentence</h3>
+              <p>Say what it's for, who it's for and how long it should run. Weave shows you the plan first (script, voice, music and look) and builds the video once you approve it.</p>
+              <ol class="wv-steps"><li>Describe the video</li><li>Approve the plan</li><li>Get the finished video</li></ol>
+            </div>
+            <div class="wv-reel">
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.jpg" playsinline preload="none" width="720" height="1280" aria-label="Launch promo in bold kinetic type"></video><figcaption>Launch promo in bold kinetic type</figcaption></figure>
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.jpg" playsinline preload="none" width="720" height="1280" aria-label="Dewbloom serum product ad"></video><figcaption>Dewbloom serum product ad</figcaption></figure>
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.jpg" playsinline preload="none" width="720" height="1280" aria-label="3 hooks that stop the scroll"></video><figcaption>3 hooks that stop the scroll</figcaption></figure>
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.jpg" playsinline preload="none" width="720" height="1280" aria-label="Northside Roasters coffee subscription"></video><figcaption>Northside Roasters coffee subscription</figcaption></figure>
+            </div>
+          </article>
+          <article class="wv-mode">
+            <div>
+              <div class="wv-mode-label">From a reference</div>
+              <h3>Start with a video you love</h3>
+              <p>Add a clip whose pacing, type or motion you like. Weave studies how it's made and builds yours in that style, with your brand and your words.</p>
+              <ol class="wv-steps"><li>Add a reference video</li><li>Approve the plan</li><li>Get your version</li></ol>
+              <p class="wv-note">It borrows the style, never the footage, faces or words.</p>
+            </div>
+            <div class="wv-reel">
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.jpg" playsinline preload="none" width="720" height="1280" aria-label="Illustrated story, drawing style kept"></video><figcaption>Illustrated story, drawing style kept</figcaption></figure>
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l60f51590.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l60f51590.jpg" playsinline preload="none" width="720" height="1280" aria-label="Day-in-the-life, same format"></video><figcaption>Day-in-the-life, same format</figcaption></figure>
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.jpg" playsinline preload="none" width="720" height="1280" aria-label="Flat-colour explainer with a chart"></video><figcaption>Flat-colour explainer with a chart</figcaption></figure>
+              <figure class="wv-feat"><video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lc809947b.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lc809947b.jpg" playsinline preload="none" width="720" height="1280" aria-label="Creator explainer, same format"></video><figcaption>Creator explainer, same format</figcaption></figure>
+            </div>
+          </article>
+        </div>
+        <ul class="wv-includes" aria-label="Every Weave video includes">
+          <li>Script and voiceover</li><li>Music and sound</li><li>Your brand colours and fonts</li><li>9:16, 1:1 and 16:9</li><li>Checked before you see it</li><li>Change any part by asking</li>
+        </ul>
+        <div class="wv-cta"><a class="wv-link" href="#made-with-weave">See everything made with Weave →</a></div>
+      </div>
+    </section>
+
 
     <!-- ── THE PROBLEM ── -->
     <section id="problem" class="bg-white" style="padding:150px 24px 100px">
@@ -4079,377 +3912,193 @@
         </div>
     </section>
 
-    <!-- ── USE CASES ── -->
-    <section id="use-cases" class="bg-white" style="padding:100px 24px">
-        <div class="container" style="text-align:center">
-            <div class="section-label">Use cases</div>
-            <h2 class="section-title">Every short video. One platform.</h2>
-            <p class="section-sub" style="margin:0 auto 16px">Ads, stories, episodes, podcast clips, explainers,
-                listings — every short-form format, one pipeline, every aspect ratio in one export.</p>
-            <p style="margin:0 auto 44px"><a href="https://app.wyvstudio.com/sample/fgu2chdqn4nn1rc9xrzp37vaycmhpz4u"
-                    target="_blank" rel="noopener"
-                    style="display:inline-flex;align-items:center;gap:8px;color:var(--accent);text-decoration:none;font-weight:600;font-size:15px;border:1px solid rgba(255,107,53,.35);background:rgba(255,107,53,.06);padding:11px 22px;border-radius:999px">▶
-                    Watch a full sample</a></p>
-
-            <div class="uc-stack-container">
-                <div class="uc-stack-cards" id="ucStackCards">
-                    <!-- Card 1 -->
-                    <div class="uc-stack-card" data-pos="active">
-                        <div class="uc-stack-left">
-                            <div class="uc-stack-header">
-                                <div class="uc-stack-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                                    </svg>
-                                </div>
-                                <div class="uc-stack-meta">
-                                    <div class="uc-stack-title">Product ads built around your offer.</div>
-                                    <div class="uc-stack-tag">30s · DTC ad · Lead use case</div>
-                                </div>
-                            </div>
-                            <div class="uc-stack-body">
-                                <span class="uc-stack-quote-icon">"</span>
-                                <div class="uc-stack-hook">For product and ecommerce brands testing new messages without booking an editor, an actor, or a studio for every idea.</div>
-                                <div class="uc-stack-bullets">
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Test different hooks for the same offer
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Claim swap is a script change, not a reshoot
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        9:16, 1:1, 4:5 — all aspects in one export
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="uc-stack-right">
-                            <video class="uc-stack-video"
-                                src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-1-dtc-supplement.mp4?v=2"
-                                autoplay muted loop playsinline preload="auto"></video>
-                        </div>
-                    </div>
-
-                    <!-- Card 2 -->
-                    <div class="uc-stack-card" data-pos="next1">
-                        <div class="uc-stack-left">
-                            <div class="uc-stack-header">
-                                <div class="uc-stack-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                                        <line x1="12" y1="19" x2="12" y2="23"></line>
-                                        <line x1="8" y1="23" x2="16" y2="23"></line>
-                                    </svg>
-                                </div>
-                                <div class="uc-stack-meta">
-                                    <div class="uc-stack-title">Turn one episode into videos for your offer.</div>
-                                    <div class="uc-stack-tag">Podcast promo · Made in WyvStudio</div>
-                                </div>
-                            </div>
-                            <div class="uc-stack-body">
-                                <span class="uc-stack-quote-icon">"</span>
-                                <div class="uc-stack-hook">For podcasters and coaches turning their best moments into short videos that introduce their expertise and their offer.</div>
-                                <div class="uc-stack-bullets">
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Drop the audio — we transcribe, scene-break, and visualise
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Show-branded title cards and lower-thirds on every promo clip
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Audiograms, captions, platform-ready aspect ratios
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="uc-stack-right">
-                            <video class="uc-stack-video"
-                                src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-2-podcast.mp4"
-                                autoplay muted loop playsinline preload="auto"></video>
-                        </div>
-                    </div>
-
-                    <!-- Card 3 -->
-                    <div class="uc-stack-card" data-pos="next2">
-                        <div class="uc-stack-left">
-                            <div class="uc-stack-header">
-                                <div class="uc-stack-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                                        <line x1="8" y1="21" x2="16" y2="21"></line>
-                                        <line x1="12" y1="17" x2="12" y2="21"></line>
-                                    </svg>
-                                </div>
-                                <div class="uc-stack-meta">
-                                    <div class="uc-stack-title">Build your audience today. Introduce your offer tomorrow.</div>
-                                    <div class="uc-stack-tag">Short story · Made in WyvStudio</div>
-                                </div>
-                            </div>
-                            <div class="uc-stack-body">
-                                <span class="uc-stack-quote-icon">"</span>
-                                <div class="uc-stack-hook">For creators building a following around stories, ideas, and a consistent series — with something to offer that audience.</div>
-                                <div class="uc-stack-bullets">
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Script, scenes, and AI b-roll matched to every beat
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Voice narration in 75+ languages
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Episode-to-episode visual continuity via brand kit
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="uc-stack-right">
-                            <video class="uc-stack-video"
-                                src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-3-story.mp4"
-                                autoplay muted loop playsinline preload="auto"></video>
-                        </div>
-                    </div>
-
-                    <!-- Card 4 -->
-                    <div class="uc-stack-card" data-pos="hidden">
-                        <div class="uc-stack-left">
-                            <div class="uc-stack-header">
-                                <div class="uc-stack-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                                    </svg>
-                                </div>
-                                <div class="uc-stack-meta">
-                                    <div class="uc-stack-title">Turn your expertise into videos for your course.</div>
-                                    <div class="uc-stack-tag">Educational · Explainer</div>
-                                </div>
-                            </div>
-                            <div class="uc-stack-body">
-                                <span class="uc-stack-quote-icon">"</span>
-                                <div class="uc-stack-hook">For course creators and educators whose knowledge is the product — script-to-video for the lessons and ideas in your syllabus.</div>
-                                <div class="uc-stack-bullets">
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Script-to-video for every concept in your syllabus
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Visual b-roll generated to match each scene
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Captions, chapter markers, multi-aspect exports
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="uc-stack-right">
-                            <video class="uc-stack-video"
-                                src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-4-explainer.mp4"
-                                autoplay muted loop playsinline preload="auto"></video>
-                        </div>
-                    </div>
-
-                    <!-- Card 5 -->
-                    <div class="uc-stack-card" data-pos="hidden">
-                        <div class="uc-stack-left">
-                            <div class="uc-stack-header">
-                                <div class="uc-stack-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <path
-                                            d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z">
-                                        </path>
-                                        <rect x="2" y="9" width="4" height="12"></rect>
-                                        <circle cx="4" cy="4" r="2"></circle>
-                                    </svg>
-                                </div>
-                                <div class="uc-stack-meta">
-                                    <div class="uc-stack-title">Show up consistently. Give clients a reason to get in touch.</div>
-                                    <div class="uc-stack-tag">LinkedIn · Personal Brand</div>
-                                </div>
-                            </div>
-                            <div class="uc-stack-body">
-                                <span class="uc-stack-quote-icon">"</span>
-                                <div class="uc-stack-hook">For coaches, consultants, and founders who want to promote their services without setting up a studio in the office.</div>
-                                <div class="uc-stack-bullets">
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Type your take — we script, voice, and visualise it
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Hot takes, frameworks, case studies all in the same pipeline
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        1:1, 9:16, 16:9, 4:5 sized for LinkedIn, IG, TikTok, YT
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="uc-stack-right">
-                            <video class="uc-stack-video"
-                                src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-5-linkedin.mp4"
-                                autoplay muted loop playsinline preload="auto"></video>
-                        </div>
-                    </div>
-
-                    <!-- Card 6 -->
-                    <div class="uc-stack-card" data-pos="hidden">
-                        <div class="uc-stack-left">
-                            <div class="uc-stack-header">
-                                <div class="uc-stack-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                                    </svg>
-                                </div>
-                                <div class="uc-stack-meta">
-                                    <div class="uc-stack-title">Put your listings, services, and offers in front of local buyers.</div>
-                                    <div class="uc-stack-tag">Real Estate · Local Business</div>
-                                </div>
-                            </div>
-                            <div class="uc-stack-body">
-                                <span class="uc-stack-quote-icon">"</span>
-                                <div class="uc-stack-hook">For agents, gyms, and local businesses promoting listings, services, and offers throughout the week.</div>
-                                <div class="uc-stack-bullets">
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Upload photos — we sequence them with branded b-roll and captions
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        Brand kit overlay on every video — colours, fonts, logo
-                                    </div>
-                                    <div class="uc-stack-bullet">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                        </svg>
-                                        One-click multi-platform export for Reels, TikTok, YouTube Shorts
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="uc-stack-right">
-                            <video class="uc-stack-video"
-                                src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/card-6-listing.mp4"
-                                autoplay muted loop playsinline preload="auto"></video>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="uc-stack-controls">
-                    <button class="uc-stack-btn prev-btn" id="ucPrev" aria-label="Previous use case">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 12H5"></path>
-                            <polyline points="12 19 5 12 12 5"></polyline>
-                        </svg>
-                    </button>
-                    <button class="uc-stack-btn next-btn" id="ucNext" aria-label="Next use case">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"></path>
-                            <polyline points="12 5 19 12 12 19"></polyline>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-
+    <!-- ── MADE WITH WEAVE ── -->
+    <section id="made-with-weave" aria-labelledby="mww-title">
+      <div class="container">
+        <div class="wv-head">
+          <div class="wv-eyebrow"><svg viewBox="0 0 26 14" fill="none" aria-hidden="true"><path d="M1 4c4 0 4 6 8 6s4-6 8-6 4 6 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M1 10c4 0 4-6 8-6s4 6 8 6 4-6 8-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".45"/></svg>Made with Weave</div>
+          <h2 id="mww-title">Real videos. No shoot, no editor.</h2>
+          <p class="wv-sub">Product ads, launch teasers, explainers, UGC-style ads and cuts of existing footage, each made in Weave. Filter by how it started.</p>
         </div>
+        <div class="wv-tabs" role="group" aria-label="Filter videos">
+          <button type="button" class="wv-tab" data-f="all" aria-pressed="true">All<span></span></button>
+          <button type="button" class="wv-tab" data-f="scratch" aria-pressed="false">From scratch<span></span></button>
+          <button type="button" class="wv-tab" data-f="reference" aria-pressed="false">From a reference<span></span></button>
+          <button type="button" class="wv-tab" data-f="ugc" aria-pressed="false">UGC ads<span></span></button>
+          <button type="button" class="wv-tab" data-f="footage" aria-pressed="false">Your footage<span></span></button>
+        </div>
+        <div class="wv-gallery" id="wvGallery">
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.jpg" playsinline preload="none" width="720" height="1280" aria-label="Launch promo in bold kinetic type"></video>
+            <figcaption><span class="wv-cap-title">Launch promo in bold kinetic type</span><span class="wv-cap-meta">From scratch · 9:16 · 20 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.jpg" playsinline preload="none" width="720" height="1280" aria-label="Dewbloom serum product ad"></video>
+            <figcaption><span class="wv-cap-title">Dewbloom serum product ad</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.jpg" playsinline preload="none" width="720" height="1280" aria-label="3 hooks that stop the scroll"></video>
+            <figcaption><span class="wv-cap-title">3 hooks that stop the scroll</span><span class="wv-cap-meta">From scratch · 9:16 · 30 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.jpg" playsinline preload="none" width="720" height="1280" aria-label="Northside Roasters coffee subscription"></video>
+            <figcaption><span class="wv-cap-title">Northside Roasters coffee subscription</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card wv-card--square" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l8623176a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l8623176a.jpg" playsinline preload="none" width="720" height="720" aria-label="Ledgerly feature launch"></video>
+            <figcaption><span class="wv-cap-title">Ledgerly feature launch</span><span class="wv-cap-meta">From scratch · 1:1 · 20 s</span></figcaption>
+          </figure>
+          <figure class="wv-card wv-card--wide" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b02.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b02.jpg" playsinline preload="none" width="1280" height="720" aria-label="How it works, for a landing page"></video>
+            <figcaption><span class="wv-cap-title">How it works, for a landing page</span><span class="wv-cap-meta">From scratch · 16:9 · 30 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.jpg" playsinline preload="none" width="720" height="1280" aria-label="Ember &amp; Oak candle offer"></video>
+            <figcaption><span class="wv-cap-title">Ember &amp; Oak candle offer</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l292.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l292.jpg" playsinline preload="none" width="720" height="1280" aria-label="Launch teaser with an orange accent"></video>
+            <figcaption><span class="wv-cap-title">Launch teaser with an orange accent</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l540.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l540.jpg" playsinline preload="none" width="720" height="1280" aria-label="Kinetic launch teaser"></video>
+            <figcaption><span class="wv-cap-title">Kinetic launch teaser</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l1c4.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l1c4.jpg" playsinline preload="none" width="720" height="1280" aria-label="One-line brief to video"></video>
+            <figcaption><span class="wv-cap-title">One-line brief to video</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/led2.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/led2.jpg" playsinline preload="none" width="720" height="1280" aria-label="Three steps to a product ad"></video>
+            <figcaption><span class="wv-cap-title">Three steps to a product ad</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le0c668f6.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le0c668f6.jpg" playsinline preload="none" width="720" height="1280" aria-label="For small shop owners, with 3D icons"></video>
+            <figcaption><span class="wv-cap-title">For small shop owners, with 3D icons</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l1317b615.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l1317b615.jpg" playsinline preload="none" width="720" height="1280" aria-label="Brand promo, Quick"></video>
+            <figcaption><span class="wv-cap-title">Brand promo, Quick</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="scratch">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lbaf5605f.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lbaf5605f.jpg" playsinline preload="none" width="720" height="1280" aria-label="Brand promo, Thorough"></video>
+            <figcaption><span class="wv-cap-title">Brand promo, Thorough</span><span class="wv-cap-meta">From scratch · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.jpg" playsinline preload="none" width="720" height="1280" aria-label="Illustrated story, drawing style kept"></video>
+            <figcaption><span class="wv-cap-title">Illustrated story, drawing style kept</span><span class="wv-cap-meta">From a reference · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l60f51590.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l60f51590.jpg" playsinline preload="none" width="720" height="1280" aria-label="Day-in-the-life, same format"></video>
+            <figcaption><span class="wv-cap-title">Day-in-the-life, same format</span><span class="wv-cap-meta">From a reference · 9:16 · 10 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.jpg" playsinline preload="none" width="720" height="1280" aria-label="Flat-colour explainer with a chart"></video>
+            <figcaption><span class="wv-cap-title">Flat-colour explainer with a chart</span><span class="wv-cap-meta">From a reference · 9:16 · 30 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lc809947b.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lc809947b.jpg" playsinline preload="none" width="720" height="1280" aria-label="Creator explainer, same format"></video>
+            <figcaption><span class="wv-cap-title">Creator explainer, same format</span><span class="wv-cap-meta">From a reference · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.jpg" playsinline preload="none" width="720" height="1280" aria-label="App demo, told as a POV"></video>
+            <figcaption><span class="wv-cap-title">App demo, told as a POV</span><span class="wv-cap-meta">From a reference · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l36b53c6d.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l36b53c6d.jpg" playsinline preload="none" width="720" height="1280" aria-label="Talking-head creator ad"></video>
+            <figcaption><span class="wv-cap-title">Talking-head creator ad</span><span class="wv-cap-meta">From a reference · 9:16 · 30 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf23a856a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf23a856a.jpg" playsinline preload="none" width="720" height="1280" aria-label="Dark product promo, same style"></video>
+            <figcaption><span class="wv-cap-title">Dark product promo, same style</span><span class="wv-cap-meta">From a reference · 9:16 · 30 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="reference">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf7bd88af.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf7bd88af.jpg" playsinline preload="none" width="720" height="1280" aria-label="Your character in a new scene"></video>
+            <figcaption><span class="wv-cap-title">Your character in a new scene</span><span class="wv-cap-meta">From a reference · 9:16 · 5 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.jpg" playsinline preload="none" width="720" height="1280" aria-label="Creator testimonial"></video>
+            <figcaption><span class="wv-cap-title">Creator testimonial</span><span class="wv-cap-meta">UGC ad · 9:16 · 20 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.jpg" playsinline preload="none" width="720" height="1280" aria-label="Unboxing with close-ups"></video>
+            <figcaption><span class="wv-cap-title">Unboxing with close-ups</span><span class="wv-cap-meta">UGC ad · 9:16 · 20 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="ugc">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b07.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b07.jpg" playsinline preload="none" width="720" height="1280" aria-label="Split-screen reaction ad"></video>
+            <figcaption><span class="wv-cap-title">Split-screen reaction ad</span><span class="wv-cap-meta">UGC ad · 9:16 · 15 s</span></figcaption>
+          </figure>
+          <figure class="wv-card" data-tags="footage">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b08.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b08.jpg" playsinline preload="none" width="720" height="1280" aria-label="Screen recording to a 30 s promo"></video>
+            <figcaption><span class="wv-cap-title">Screen recording to a 30 s promo</span><span class="wv-cap-meta">Your footage · 9:16 · 30 s</span></figcaption>
+          </figure>
+          <figure class="wv-card wv-card--wide" data-tags="footage">
+            <video class="wv-v " src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b09.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b09.jpg" playsinline preload="none" width="1280" height="720" aria-label="2-minute video to a 30 s cut"></video>
+            <figcaption><span class="wv-cap-title">2-minute video to a 30 s cut</span><span class="wv-cap-meta">Your footage · 16:9 · 30 s</span></figcaption>
+          </figure>
+        </div>
+        <div class="wv-more"><button type="button" class="wv-link" id="wvMore">Show all videos</button></div>
+      </div>
     </section>
+    <script>
+      (function () {
+        // One player for every Weave video: the same play/pause as the UGC showcase, one sound at a time.
+        var vids = document.querySelectorAll('#weave video, #made-with-weave video');
+        vids.forEach(function (v) {
+          var media = document.createElement('div');
+          media.className = 'ugcs-media';
+          v.parentNode.insertBefore(media, v);
+          media.appendChild(v);
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ugcs-play';
+          btn.setAttribute('aria-label', 'Play ' + (v.getAttribute('aria-label') || 'video'));
+          btn.innerHTML = '<span class="ugcs-btn"><svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><svg class="ic-pause" viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg></span>';
+          media.appendChild(btn);
+          v.controls = false;
+          v.setAttribute('controlsList', 'nodownload noplaybackrate');
+          v.setAttribute('disablePictureInPicture', '');
+          v.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+          btn.addEventListener('click', function () {
+            if (v.paused) {
+              document.querySelectorAll('video').forEach(function (o) { if (o !== v && !o.paused) o.pause(); });
+              v.muted = false;
+              v.play().catch(function () {});
+            } else v.pause();
+          });
+          v.addEventListener('play', function () { media.classList.add('playing'); btn.setAttribute('aria-label', 'Pause'); });
+          v.addEventListener('pause', function () { media.classList.remove('playing'); btn.setAttribute('aria-label', 'Play ' + (v.getAttribute('aria-label') || 'video')); });
+          v.addEventListener('ended', function () { v.currentTime = 0; media.classList.remove('playing'); });
+        });
+        // Filters, with a first screenful under All and the rest behind "Show all".
+        var cards = [].slice.call(document.querySelectorAll('#wvGallery .wv-card'));
+        var tabs = document.querySelectorAll('.wv-tab'), more = document.getElementById('wvMore');
+        var FIRST = 12, filter = 'all', expanded = false;
+        tabs.forEach(function (t) {
+          var f = t.dataset.f, n = f === 'all' ? cards.length : cards.filter(function (c) { return c.dataset.tags.split(' ').indexOf(f) > -1; }).length;
+          t.querySelector('span').textContent = n;
+          t.addEventListener('click', function () {
+            filter = f; expanded = f !== 'all';
+            tabs.forEach(function (o) { o.setAttribute('aria-pressed', String(o === t)); });
+            show();
+          });
+        });
+        more.addEventListener('click', function () { expanded = true; show(); });
+        function show() {
+          var shown = 0;
+          cards.forEach(function (c) {
+            var match = filter === 'all' || c.dataset.tags.split(' ').indexOf(filter) > -1;
+            var visible = match && (expanded || shown < FIRST);
+            if (match) shown++;
+            c.hidden = !visible;
+            if (!visible) { var v = c.querySelector('video'); if (v && !v.paused) v.pause(); }
+          });
+          more.parentNode.hidden = expanded || shown <= FIRST;
+          more.textContent = 'Show all ' + shown + ' videos';
+        }
+        show();
+      })();
+    </script>
 
     <!-- ── PRICING ── -->
     <section id="pricing" style="padding:100px 24px; scroll-margin-top: 88px">
@@ -5004,7 +4653,8 @@
                         <a href="#how-it-works">How it works</a>
                         <a href="#features">Features</a>
                         <a href="#pricing">Pricing</a>
-                        <a href="#use-cases">Use cases</a>
+                        <a href="#weave">Weave</a>
+                        <a href="#made-with-weave">Made with Weave</a>
                     </div>
                     <div class="footer-col">
                         <div class="footer-col-title">Resources</div>
@@ -5054,185 +4704,6 @@
                 if (!isOpen) item.classList.add('open');
             });
         });
-
-        // --- Use Cases Stacked Carousel ---
-        const ucCards = document.querySelectorAll('.uc-stack-card');
-        const nextBtn = document.getElementById('ucNext');
-        const prevBtn = document.getElementById('ucPrev');
-        let ucCurrentIndex = 0;
-        const totalUcCards = ucCards.length;
-        let autoplayInterval;
-        let isUseCasesSectionInViewport = false;
-        let lastActiveIndex = -1;
-
-        function manageUcVideosAudio(activeChanged) {
-            ucCards.forEach((card) => {
-                const video = card.querySelector('.uc-stack-video');
-                if (!video) return;
-
-                const pos = card.getAttribute('data-pos');
-                if (pos === 'active' && isUseCasesSectionInViewport) {
-                    if (activeChanged) {
-                        video.currentTime = 0;
-                    }
-                    video.muted = false;
-                    video.play().catch(() => {
-                        video.muted = true;
-                        video.play().catch(() => { });
-                    });
-                } else {
-                    video.muted = true;
-                }
-            });
-        }
-
-        function updateUcCards() {
-            ucCards.forEach((card, index) => {
-                let diff = index - ucCurrentIndex;
-                if (diff < 0) diff += totalUcCards;
-
-                if (diff === 0) {
-                    card.setAttribute('data-pos', 'active');
-                } else if (diff === 1) {
-                    card.setAttribute('data-pos', 'next1');
-                } else if (diff === 2) {
-                    card.setAttribute('data-pos', 'next2');
-                } else {
-                    card.setAttribute('data-pos', 'hidden');
-                }
-            });
-
-            const activeChanged = (ucCurrentIndex !== lastActiveIndex);
-            lastActiveIndex = ucCurrentIndex;
-            manageUcVideosAudio(activeChanged);
-        }
-
-        function ucNextCard() {
-            ucCurrentIndex = (ucCurrentIndex + 1) % totalUcCards;
-            updateUcCards();
-            resetAutoplay();
-        }
-
-        function ucPrevCard() {
-            ucCurrentIndex = (ucCurrentIndex - 1 + totalUcCards) % totalUcCards;
-            updateUcCards();
-            resetAutoplay();
-        }
-
-        function resetAutoplay() {
-            clearInterval(autoplayInterval);
-            autoplayInterval = setInterval(ucNextCard, 12000); // 12s per card for comfortable reading
-        }
-
-        // Setup audio toggle buttons and card click handlers
-        ucCards.forEach((card, index) => {
-            // Card click behavior to switch to it
-            card.addEventListener('click', () => {
-                const pos = card.getAttribute('data-pos');
-                if (pos === 'next1') {
-                    ucNextCard();
-                } else if (pos === 'next2') {
-                    ucCurrentIndex = (ucCurrentIndex + 2) % totalUcCards;
-                    updateUcCards();
-                    resetAutoplay();
-                }
-            });
-
-            // Dynamic volume button setup
-            const rightContainer = card.querySelector('.uc-stack-right');
-            const video = card.querySelector('.uc-stack-video');
-            if (rightContainer && video) {
-                const toggleBtn = document.createElement('button');
-                toggleBtn.className = 'uc-audio-toggle';
-                toggleBtn.setAttribute('aria-label', 'Toggle sound');
-                toggleBtn.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-mute">
-                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-                        <line x1="22" y1="9" x2="16" y2="15"></line>
-                        <line x1="16" y1="9" x2="22" y2="15"></line>
-                    </svg>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-unmute" style="display:none;">
-                        <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-                    </svg>
-                `;
-                rightContainer.appendChild(toggleBtn);
-
-                const muteIcon = toggleBtn.querySelector('.icon-mute');
-                const unmuteIcon = toggleBtn.querySelector('.icon-unmute');
-
-                video.addEventListener('volumechange', () => {
-                    if (video.muted) {
-                        muteIcon.style.display = 'block';
-                        unmuteIcon.style.display = 'none';
-                    } else {
-                        muteIcon.style.display = 'none';
-                        unmuteIcon.style.display = 'block';
-                    }
-                });
-
-                toggleBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const wasMuted = video.muted;
-
-                    // Mute all other videos
-                    ucCards.forEach(c => {
-                        const v = c.querySelector('.uc-stack-video');
-                        if (v && v !== video) v.muted = true;
-                    });
-
-                    video.muted = !wasMuted;
-                    if (!video.muted) {
-                        video.play().catch(() => { });
-                    }
-                });
-            }
-        });
-
-        // Viewport detection
-        const useCasesSection = document.getElementById('use-cases');
-        if (useCasesSection && 'IntersectionObserver' in window) {
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    isUseCasesSectionInViewport = entry.isIntersecting;
-                    manageUcVideosAudio(false);
-                });
-            }, {
-                threshold: 0.25
-            });
-            observer.observe(useCasesSection);
-        } else {
-            isUseCasesSectionInViewport = true;
-        }
-
-        if (nextBtn && prevBtn && totalUcCards > 0) {
-            nextBtn.addEventListener('click', ucNextCard);
-            prevBtn.addEventListener('click', ucPrevCard);
-
-            // The peeking cards LOOK clickable — offset behind the active one,
-            // fully visible — but had no handler. A real visitor clicked them
-            // eleven times (with a rageclick) and left. Clicking any card now
-            // brings it to the front, and hovering the stack pauses the 12s
-            // autoplay so a card can't be yanked away mid-read.
-            ucCards.forEach((card, index) => {
-                card.style.cursor = 'pointer';
-                card.addEventListener('click', () => {
-                    if (index === ucCurrentIndex) return;
-                    ucCurrentIndex = index;
-                    updateUcCards();
-                    resetAutoplay();
-                });
-            });
-            const ucStackEl = document.getElementById('ucStackCards');
-            if (ucStackEl) {
-                ucStackEl.addEventListener('mouseenter', () => clearInterval(autoplayInterval));
-                ucStackEl.addEventListener('mouseleave', resetAutoplay);
-            }
-            updateUcCards();
-            resetAutoplay();
-        }
-
 
         // --- GSAP Animations ---
         gsap.registerPlugin(ScrollTrigger);
