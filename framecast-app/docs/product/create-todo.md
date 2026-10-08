@@ -4,7 +4,7 @@ Only what is still open. Add new items here and nowhere else; when one is done, 
 commit) in the newest archive file. History, the GTM-1 results and everything finished up to 2026-10-08 are in
 `archive/create/create-todo-2026-10-08.md`.
 
-Last updated: 2026-10-08 (night).
+Last updated: 2026-10-08 (early morning).
 
 **Status:** `open` not started · `partly` some built · `ready` built, needs a real run or a look · `blocked` waiting
 on the owner or another item · `proposed` not yet approved.
@@ -29,10 +29,7 @@ deploys drain Create around the restart.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| G-REC | Drills 2026-10-08 on production: duplicate approval (one run, one hold) PASS; cancel while queued (0 charged, hold released) PASS; cancel while running PASS; worker SIGKILLed mid-render PASS after fixing the gap it found (an interrupted offline render could not be settled; `5361242d`); planning worker killed mid-plan: no double charge, but the job stays "running" until its 22-minute deadline (PLAN-DEAD) | partly | finish the planning drill |
-| G-FAIR | Drill 2026-10-08: workspaces 1 and 19 built at the same time, both claimed within a second; a busy render shows "Waiting for render capacity", a queued build "Queued for your creation"; one build per workspace refuses a second ("Another creation is active") | ready | close (tester access not needed) |
 | L16 | Restore drill passed 2026-10-08 (Oct 7 dump, 3 s, 0 errors, row counts match live). Secrets review: social tokens were readable in the briefly public dumps; now encrypted at rest and revoked on disconnect (`75d08199`, live). Still to do: revoke the 7 exposed tokens (`php artisan social:revoke-tokens --confirm` on prod; owner's go needed); users reconnect when they next publish (no email, owner) | partly | run the revoke |
-| G-DEP | Deploys drain Create around the restart: proven 2026-10-08 with a long build running (the deploy waited, then went out) | partly | a rollback drill |
 
 ## 3. Build next
 

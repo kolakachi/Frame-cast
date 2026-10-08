@@ -176,3 +176,14 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 - BG1 proven (GTM-1 #2); RF1 (GTM-1 #6) and FS8 (GTM-1 #9) proven by published round videos.
 - I7: words on screen while the voice says them are captions, not a reading-time fault (`5170d8bb`; worker deploy pending).
 - L16 restore drill passed; social tokens encrypted at rest, revoke on disconnect, `social:revoke-tokens` (`75d08199`).
+- Launch drills on production, 2026-10-08 (workspace 1, and the team's workspace 19 for fairness):
+  - G-REC: duplicate approval gives one run and one hold; a second build in the same workspace is refused; cancel
+    while queued ("Queued for your creation", then "Cancelled before starting", 0 charged, hold returned); cancel while
+    running (clean, nothing unsettled); worker slot SIGKILLed mid-render: flagged in 90 s, stop recorded with the
+    assignment, the interrupted render settled at zero cost (`5361242d`), charged only the 60 credits of calls made,
+    nothing repeated; planning workers killed mid-plan: found recover-planning skipped for 24 h by a lock left by a
+    restart, and the interrupted plan locking its conversation; fixed (`3c0b0cb6`), the retried plan charged once.
+  - G-FAIR: both workspaces built at once, each claimed within a second; clear waiting statuses.
+  - G-DEP: a marker commit pushed during a build waited for it (drained), deployed, then was rolled back by revert;
+    Create reopened, site 200. Rule: never roll back past a data migration (e.g. `75d08199`) without its down().
+
