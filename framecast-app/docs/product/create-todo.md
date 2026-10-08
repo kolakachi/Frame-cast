@@ -22,7 +22,7 @@ deploys drain Create around the restart.
 
 | ID | Item | Next |
 |---|---|---|
-| FRESH | From-scratch Opus builds: compound interest passed (12 min). Laban: owner says the motion is not as smooth or good as the sample; my brief wrongly added a narrator (the sample has sound effects only). Next: rebuild Laban reference-led (the sample attached, effects only, no voice) as the motion-fidelity test, after the LABAN efforts work | after LABAN |
+| FRESH | From-scratch Opus builds: compound interest passed (12 min). Laban: owner says the motion is not as smooth as the sample; my first brief wrongly added a narrator. A reference-led rebuild is running (`6c13d2cd`: the sample attached, followed closely, no voice; the plan took 22 moments and 3 recurring elements, and the study heard 60 sound effects the plan does not buy): it is the motion baseline for LABAN and the RF2 check | owner compares with the sample |
 
 ## 2. Launch must-haves
 
@@ -33,7 +33,7 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 | ID | Item | Status | Next |
 |---|---|---|---|
 | PLAN-DEAD | A planning worker that dies mid-plan is only noticed at the job deadline (20 min + 2): the user watches "planning" that long; nothing is re-run or double-charged. A heartbeat must cover long local work (ffmpeg reference study) as well as model calls, and an "interrupted" mark must never race a plan that is still finishing; design first | open | design, then build |
-| VOICE-ONLY | A voice-only change still runs the builder (107–133 credits) and holds up to 656: swap the audio and re-time instead | open | plan, then build |
+| VOICE-ONLY | A voice-only change swaps the voice without the builder: quoted at the voice alone (about 3 credits), the new lines placed where the old ones began (pauses trimmed first, then up to 10% quicker), the timeline unchanged; a line that cannot fit goes to the builder next time (`5ec5d473`) | ready | deploy (waiting for an idle moment), then prove on brief 2's pending "weave studio" re-voice |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count (the Laban plan covers the first two) | partly | build |
 | ASK-FILE | No product photo: a generated product image is the fallback, the photo is still asked for | ready | prove on a product brief |
 | D7 | Pick the best seconds of a clip that is longer than its slot | partly | build |
