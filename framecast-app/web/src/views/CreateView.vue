@@ -31,7 +31,8 @@ const available = ref(false), loaded = ref(false), busy = ref(false), error = re
 const capabilities = ref(null), history = ref([]), search = ref(''), historyFilter = ref('all'), archivedHistory = ref(false)
 const showHistory = ref(false), details = ref(false), libraryOpen = ref(false), compareOpen = ref(false)
 const data = ref(null), prompt = ref(''), quote = ref(null), selectedRevision = ref(null), outputKind = ref('video')
-const library = ref([]), librarySearch = ref(''), libraryPage = ref(1), libraryLastPage = ref(1)
+const library = ref([]), librarySearch = ref(''), libraryPage = ref(1), libraryLastPage = ref(1), libraryFilter = ref('all'), libraryCharacters = ref([])
+const LIBRARY_FILTERS = [['all', 'All'], ['video', 'Videos'], ['image', 'Images'], ['audio', 'Audio'], ['characters', 'Characters']]
 const rename = ref(''), uploads = ref([])
 const fileInput = ref(null), composer = ref(null), end = ref(null)
 const player = ref(null), changeDrawer = ref(null), changeOpen = ref(false)
@@ -681,6 +682,17 @@ function useSiteBrief() {
   siteBrief.value = true
   nextTick(() => composer.value?.focus())
 }
+// The composer grows with its text, like Claude's and Codex's: up to about 40% of the window (at most 320 px), then
+// it scrolls inside.
+function fitComposer() {
+  const el = composer.value
+  if (!el) return
+  const max = Math.min(Math.round(window.innerHeight * 0.4), 320)
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, max) + 'px'
+  el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+}
+watch(prompt, () => nextTick(fitComposer))
 function dismissSiteBrief() { clearBrief(); waitingBrief.value = false }
 function clearSiteBrief() { prompt.value = ''; siteBrief.value = false; nextTick(() => composer.value?.focus()) }
 
@@ -763,13 +775,29 @@ async function addLink() {
   } finally { linkBusy.value = false }
 }
 async function showLibrary() {
-  librarySearch.value = ''; libraryPage.value = 1
+  librarySearch.value = ''; libraryPage.value = 1; libraryFilter.value = 'all'
   libraryOpen.value = true; await loadLibrary()
 }
+function filterLibrary(f) { if (libraryFilter.value === f) return; libraryFilter.value = f; libraryPage.value = 1; loadLibrary() }
 async function loadLibrary() {
   const ticket = ++libraryEpoch
-  try { const result = await api.get('/assets',{params:{per_page:24,page:libraryPage.value,q:librarySearch.value || undefined}}); if(ticket !== libraryEpoch) return; library.value = (result.data.data.assets ?? []).filter(a => ['image','video','audio'].includes(a.asset_type) && a.status !== 'archived'); libraryLastPage.value = result.data.meta?.pagination?.last_page || 1 }
+  // Characters are saved people, not files: picking one adds their name to the brief (Create matches a saved
+  // character by name) and attaches their saved photo.
+  if (libraryFilter.value === 'characters') {
+    try { const result = await api.get('/characters', {params:{q:librarySearch.value || undefined}}); if(ticket !== libraryEpoch) return; libraryCharacters.value = result.data.data.characters ?? []; libraryLastPage.value = 1 }
+    catch(e) { if(ticket === libraryEpoch) error.value = message(e) }
+    return
+  }
+  const type = ['video','image','audio'].includes(libraryFilter.value) ? libraryFilter.value : undefined
+  try { const result = await api.get('/assets',{params:{per_page:24,page:libraryPage.value,q:librarySearch.value || undefined,asset_type:type}}); if(ticket !== libraryEpoch) return; library.value = (result.data.data.assets ?? []).filter(a => ['image','video','audio'].includes(a.asset_type) && a.status !== 'archived'); libraryLastPage.value = result.data.meta?.pagination?.last_page || 1 }
   catch(e) { if(ticket === libraryEpoch) error.value = message(e) }
+}
+async function pickCharacter(c) {
+  const name = String(c.name || '').trim()
+  if (name && !prompt.value.toLowerCase().includes(name.toLowerCase())) prompt.value = prompt.value.trim() ? prompt.value.trimEnd() + ' ' + name : name
+  if (c.reference_asset?.id) await attach({ id: c.reference_asset.id })
+  else libraryOpen.value = false
+  nextTick(() => composer.value?.focus())
 }
 async function attach(asset) {
   await guarded(async () => {
@@ -2043,8 +2071,15 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
         </div>
       </CreateDialog>
       <CreateDialog :open="libraryOpen" title="Add from your library" @close="libraryOpen = false">
-        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" placeholder="Find a photo, video or audio file…" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form>
-        <div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div><p v-if="error" class="create-error" role="alert">{{ error }}</p>
+        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" :placeholder="libraryFilter === 'characters' ? 'Find a character…' : 'Find a photo, video or audio file…'" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form>
+        <div class="library-filters" role="group" aria-label="Show"><button v-for="[f, label] in LIBRARY_FILTERS" :key="f" type="button" :aria-pressed="libraryFilter === f" @click="filterLibrary(f)">{{ label }}</button></div>
+        <template v-if="libraryFilter === 'characters'">
+          <div class="library-grid"><button v-for="c in libraryCharacters" :key="c.id" type="button" :disabled="locked" @click="pickCharacter(c)"><img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" /><span v-else class="file-symbol">☺</span><strong>{{ c.name }}</strong><small>character</small></button></div>
+          <p v-if="!libraryCharacters.length" class="muted">No characters yet. Make one on the Characters page, then pick it here.</p>
+          <p v-else class="muted">Picking a character adds their name to your brief and attaches their saved photo.</p>
+        </template>
+        <template v-else>
+<div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div></template><p v-if="error" class="create-error" role="alert">{{ error }}</p>
       </CreateDialog>
       <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
@@ -2240,7 +2275,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .tray-note b{font-weight:600;color:var(--text-2)}
 .tray-note--error{color:var(--danger,#f0857a);white-space:normal}
 label.tray-note{white-space:normal}
-.prompt-form textarea{width:100%;resize:none;max-height:160px;background:none;border:0;color:var(--text);font:inherit;font-size:15px;line-height:1.5;outline:none}
+.prompt-form textarea{width:100%;resize:none;min-height:48px;overflow-y:hidden;background:none;border:0;color:var(--text);font:inherit;font-size:15px;line-height:1.5;outline:none}
 .composer-bottom{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
 .composer-bottom .quiet{border:0;padding:6px 8px;font-size:12px}
 .seg{display:inline-flex;gap:2px;padding:2px;border-radius:7px;border:1px solid var(--line-2);background:var(--bg-4)}
@@ -2305,6 +2340,10 @@ label.tray-note{white-space:normal}
 .create-error button{position:absolute;right:6px;top:6px;border:0;background:transparent;color:inherit;padding:4px 8px}
 .file-symbol{display:grid;place-items:center;width:50px;height:50px;background:var(--bg-4);border-radius:7px;color:var(--text-3);font-size:24px}
 .library-search{display:flex;gap:8px;align-items:center;margin-bottom:15px}
+.library-filters{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 4px}
+.library-filters button{border:1px solid var(--line-3);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;cursor:pointer}
+.library-filters button[aria-pressed="true"]{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.library-filters button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .library-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
 .library-grid button{text-align:left;min-width:0;padding:10px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--bg-3);color:inherit}
 .library-grid img,.library-grid .file-symbol{height:85px;width:100%;object-fit:contain;background:var(--bg-2);border-radius:6px;margin-bottom:8px}
