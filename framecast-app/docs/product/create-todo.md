@@ -4,7 +4,7 @@ Only what is still open. Add new items here and nowhere else; when one is done, 
 commit) in the newest archive file. History, the GTM-1 results and everything finished up to 2026-10-08 are in
 `archive/create/create-todo-2026-10-08.md`.
 
-Last updated: 2026-10-08 (early morning).
+Last updated: 2026-10-08.
 
 **Status:** `open` not started · `partly` some built · `ready` built, needs a real run or a look · `blocked` waiting
 on the owner or another item · `proposed` not yet approved.
@@ -18,16 +18,7 @@ conversation with `settings.model_test`; Haiku 5.5 was tried 2026-10-08 and not 
 cost with no daily cap, 3 planning workers, at most 2 plans per workspace; 3 builds at once, one per workspace;
 deploys drain Create around the restart.
 
-## 1. Running now
-
-| ID | Item | Next |
-|---|---|---|
-
-## 2. Launch must-haves
-
-All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
-
-## 3. Build next
+## 1. Build next
 
 | ID | Item | Status | Next |
 |---|---|---|---|
@@ -43,7 +34,7 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 | HF-CASES | Hard test briefs: mismatched product photo, long text, missing claims, contradictory ask, footage too short, a new spoken hook | open | add to tests and the bench |
 | I2 | Local stack: rebuild reverb (api, queue workers and scheduler rebuilt 2026-10-08) | partly | rebuild |
 
-## 4. Needs a real run or a look
+## 2. Needs a real run or a look
 
 | ID | Item | Next |
 |---|---|---|
@@ -57,7 +48,7 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 | FS7 | A screenshot of the current video is read as "change this moment" | owner, in the app |
 | E2 | Split-screen UGC | needs O1 |
 
-## 5. Waiting on the owner
+## 3. Waiting on the owner
 
 | ID | Item | Unblocks |
 |---|---|---|
@@ -71,10 +62,10 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 | O1 | A consented photo of yourself | E2; bench B6, B7, B9 |
 | O2 | A UGC reference video | bench B9 |
 | O3 | A product photo (stock candle is the fallback) | bench B8 |
-| O4 | Bench budget cap: 7,000 credits? | section 6 |
+| O4 | Bench budget cap: 7,000 credits? | section 4 |
 | O6 | 15–25 exemplar videos | FS4 exemplar library |
 
-## 6. The bench (blocked on O4 and the bench inputs)
+## 4. The bench (blocked on O4 and the bench inputs)
 
 | ID | Item | Status |
 |---|---|---|
@@ -90,7 +81,7 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 | R1 | Local acceptance (8 of 9) | blocked |
 | R2 | Wider audience behind an off switch, then the bench again before widening | open |
 
-## 7. Later (parked; revive with the owner)
+## 5. Later (parked; revive with the owner)
 
 - **Decisions API (DEC):** failed as a taste judge on the 39 library videos (2026-10-07); re-test only on generated
   clips and images, once there are labelled rejects.
