@@ -174,3 +174,5 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
   53 calls, $2.16 vs Opus 7.4 min, $1.00) and not adopted (owner).
 - Worker test: every name the worker code uses is defined (`d1da5513`).
 - BG1 proven (GTM-1 #2); RF1 (GTM-1 #6) and FS8 (GTM-1 #9) proven by published round videos.
+- I7: words on screen while the voice says them are captions, not a reading-time fault (`5170d8bb`; worker deploy pending).
+- L16 restore drill passed; social tokens encrypted at rest, revoke on disconnect, `social:revoke-tokens` (`75d08199`).

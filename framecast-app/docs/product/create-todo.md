@@ -4,7 +4,7 @@ Only what is still open. Add new items here and nowhere else; when one is done, 
 commit) in the newest archive file. History, the GTM-1 results and everything finished up to 2026-10-08 are in
 `archive/create/create-todo-2026-10-08.md`.
 
-Last updated: 2026-10-08.
+Last updated: 2026-10-08 (night).
 
 **Status:** `open` not started · `partly` some built · `ready` built, needs a real run or a look · `blocked` waiting
 on the owner or another item · `proposed` not yet approved.
@@ -22,18 +22,18 @@ deploys drain Create around the restart.
 
 | ID | Item | Next |
 |---|---|---|
-| SAY | "Weave studio" re-voices through the Change drawer, saying the name instead of the web address: `540680bd`, briefs 1, 2 and 10, and the restored originals of `292180c9` and `1c4484f0` | listen to each, update the review page and library |
+| SAY | "Weave studio" re-voices through the Change drawer, saying the name instead of the web address: brief 2 building; briefs 10 and 1 and `540680bd` queued; the restored originals of `292180c9` and `1c4484f0` still to re-send (needs credits) | listen to each, update the review page and library |
+| DEPLOY-W | Deploy the build worker: I7 (`5170d8bb`) and the undefined-name test (`d1da5513`) are committed but the worker still runs `5d013e47` | deploy at a quiet moment (`ops/deploy_create_worker.sh`) |
 | FRESH | Two from-scratch briefs built on Opus 5.5 (Laban explainer 16:9 30 s, compound interest 9:16 20 s): the fresh-slate quality test | your verdict; one look for brand fonts, a strong first frame and the cache cost (FONTS, OPEN-1, COST) |
 
 ## 2. Launch must-haves
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| I7 | The reading-time check blocks on text inside props (an example post's caption, GTM-1 #10): props should be marked and excused | open | build |
-| G-REC | Recovery drills on production: API restart during planning, worker killed mid-build, duplicate approval, cancel while queued and while running; no double charge, uncertain work stays held. Includes: the recovery tool cannot close a run with no worker assignment (a local cancel mid-call left one stuck, 2026-10-08) | open | fix the tool, then run the drills when idle |
+| G-REC | Recovery drills on production: API restart during planning, worker killed mid-build, duplicate approval, cancel while queued and while running; no double charge, uncertain work stays held. A cancel while running was proven 2026-10-08 (the Haiku run `9957be13`: cancelled cleanly, nothing left unsettled) | partly | the other drills when idle |
 | G-FAIR | Several workspaces at once: one busy workspace cannot hog the queue; cancelling frees a slot; waiting users see a useful status. Temporary access for the two testers, revoked after | open | test |
-| L16 | Restore drill from the private DB backups (`wyv-create-private/db-backups/`), plus a secrets review | open | run the drill |
-| G-DEP | Deploys drain Create around the restart (proven 2026-10-07/08) | partly | a rollback drill |
+| L16 | Restore drill passed 2026-10-08 (Oct 7 dump, 3 s, 0 errors, row counts match live). Secrets review: social tokens were readable in the briefly public dumps; now encrypted at rest and revoked on disconnect (`75d08199`, live). Still to do: revoke the 7 exposed tokens (`php artisan social:revoke-tokens --confirm` on prod; owner's go needed); users reconnect when they next publish (no email, owner) | partly | run the revoke |
+| G-DEP | Deploys drain Create around the restart: proven 2026-10-08 with a long build running (the deploy waited, then went out) | partly | a rollback drill |
 
 ## 3. Build next
 
