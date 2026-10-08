@@ -1,0 +1,373 @@
+<title>Laban Efforts for Create</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#ECEEF1;--surface:#F8F9FA;--ink:#15181E;--ink-2:#4A5160;--ink-3:#7C8494;--line:#D5D9E0;--line-2:#C3C8D1;
+  --accent:#E8582A;--accent-soft:#E8582A1F;
+  --punch:#D2402F;--slash:#C2306A;--press:#3150A8;--wring:#7342A6;--dab:#D69A1C;--flick:#8DAA2A;--glide:#2C97A6;--float:#45B07F;
+  --stage:#E2E5EA;--dot:#15181E;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;--sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;--ground:#0F1115;--surface:#171A20;--ink:#E8EAEF;--ink-2:#AEB4C0;--ink-3:#7D8494;--line:#262A33;--line-2:#323743;
+  --accent:#FF7445;--accent-soft:#FF74452A;--stage:#1D2128;--dot:#E8EAEF;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;--ground:#0F1115;--surface:#171A20;--ink:#E8EAEF;--ink-2:#AEB4C0;--ink-3:#7D8494;--line:#262A33;--line-2:#323743;
+  --accent:#FF7445;--accent-soft:#FF74452A;--stage:#1D2128;--dot:#E8EAEF;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 var(--sans);margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:40px 72px;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);font-stretch:112%;text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(34px,6vw,56px);font-weight:800;line-height:1}
+h2{font-size:24px;font-weight:800;line-height:1.15}
+h3{font-size:15px;font-weight:600;font-family:var(--sans);letter-spacing:0}
+p{margin:0;max-width:68ch}
+.eyebrow{font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.lede{font-size:17px;color:var(--ink-2);max-width:62ch}
+.mono{font-family:var(--mono);font-size:12.5px}
+section{display:flex;flex-direction:column;gap:18px}
+.sec-head{display:flex;flex-direction:column;gap:6px}
+.sec-head p{color:var(--ink-2)}
+.hero{display:flex;flex-direction:column;gap:16px;border-bottom:1px solid var(--line);padding-bottom:36px}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{font:500 11px var(--mono);letter-spacing:.06em;border:1px solid var(--line-2);border-radius:999px;padding:3px 9px;color:var(--ink-2);background:var(--surface)}
+.pill--on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+
+/* The three dials */
+.dials{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.dial{background:var(--surface);padding:18px;display:flex;flex-direction:column;gap:10px}
+.dial__ends{display:flex;justify-content:space-between;font:600 13px var(--display);font-stretch:112%;text-transform:uppercase;letter-spacing:.04em}
+.dial__bar{height:2px;background:var(--line-2);position:relative}
+.dial__bar::before,.dial__bar::after{content:"";position:absolute;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--ink)}
+.dial__bar::before{left:0}.dial__bar::after{right:0;background:var(--surface);border:2px solid var(--ink)}
+.dial dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}
+.dial dt{font:500 11px var(--mono);color:var(--ink-3);padding-top:2px}
+.dial dd{margin:0;color:var(--ink-2)}
+
+/* The eight efforts */
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:960px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.grid{grid-template-columns:1fr}}
+.eff{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.eff__stage{position:relative;aspect-ratio:16/10;max-width:100%;background:var(--stage);border-bottom:3px solid var(--c)}
+.eff__stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.eff__word{position:absolute;left:12px;top:8px;font:800 30px var(--display);font-stretch:112%;color:var(--c);opacity:.22;letter-spacing:.02em;text-transform:uppercase;pointer-events:none}
+.eff__body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.eff__name{display:flex;align-items:baseline;gap:8px}
+.eff__name h3{font:800 17px var(--display);font-stretch:112%;color:var(--ink)}
+.eff__trio{font:500 10.5px var(--mono);letter-spacing:.05em;color:var(--ink-3);text-transform:uppercase}
+.eff__use{font-size:13px;color:var(--ink-2);line-height:1.45}
+.eff__params{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:auto 0 0;padding-top:8px;border-top:1px dashed var(--line-2);font:12px var(--mono)}
+.eff__params dt{color:var(--ink-3)}.eff__params dd{margin:0;color:var(--ink)}
+.replay{align-self:flex-start;font:500 12px var(--sans);color:var(--ink-2);background:transparent;border:1px solid var(--line-2);border-radius:8px;padding:5px 10px;cursor:pointer}
+.replay:hover{color:var(--ink);border-color:var(--ink-3)}
+.replay:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Example plan */
+.plan{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.plan__top{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline}
+.plan__top h3{font-size:16px}
+.strip{display:flex;height:34px;border-radius:8px;overflow:hidden;gap:2px}
+.strip div{display:flex;align-items:center;justify-content:center;font:600 11px var(--mono);letter-spacing:.04em;color:#fff;text-transform:uppercase;min-width:0;overflow:hidden;white-space:nowrap}
+.ticks{display:flex;justify-content:space-between;font:11px var(--mono);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.beats{width:100%;border-collapse:collapse;font-size:13px}
+.beats th{font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:6px 10px 6px 0;border-bottom:1px solid var(--line)}
+.beats td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+.beats td:first-child{font-family:var(--mono);font-size:12px;white-space:nowrap;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.beats .eword{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--ink);white-space:nowrap}
+.beats .eword i{width:9px;height:9px;border-radius:50%;background:var(--c);display:inline-block}
+.scroll{overflow-x:auto}
+.json{background:var(--stage);border-radius:10px;padding:12px 14px;font:12px/1.6 var(--mono);color:var(--ink);overflow-x:auto;white-space:pre;margin:0}
+
+/* Flow through Create */
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;counter-reset:step}
+@media (max-width:860px){.flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.flow{grid-template-columns:1fr}}
+.stage-card{border-top:3px solid var(--ink);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+.stage-card .eyebrow{color:var(--ink-2)}
+.stage-card p{font-size:13.5px;color:var(--ink-2)}
+.stage-card code{font:12px var(--mono);color:var(--ink);background:var(--stage);padding:1px 5px;border-radius:4px}
+
+/* Voice x effort */
+.vx{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:760px){.vx{grid-template-columns:1fr}}
+.vx table{width:100%;border-collapse:collapse;font:12.5px var(--mono);font-variant-numeric:tabular-nums}
+.vx th,.vx td{text-align:left;padding:7px 10px 7px 0;border-bottom:1px solid var(--line)}
+.vx th{font-weight:500;color:var(--ink-3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+
+/* Checks, scope, decisions */
+.checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.check{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface);display:flex;flex-direction:column;gap:6px}
+.check .tag{align-self:flex-start;font:500 10.5px var(--mono);letter-spacing:.06em;border-radius:999px;padding:2px 8px;border:1px solid var(--line-2);color:var(--ink-2)}
+.check p{font-size:13.5px;color:var(--ink-2)}
+.scope{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.scope li{list-style:none;display:grid;grid-template-columns:150px 1fr;gap:4px 16px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}
+@media (max-width:560px){.scope li{grid-template-columns:1fr}}
+.scope .where{font:12px var(--mono);color:var(--ink-3);padding-top:2px}
+.scope ul{padding:0;margin:0}
+.decide{display:flex;flex-direction:column;gap:12px}
+.q{border-left:3px solid var(--accent);background:var(--surface);border-radius:0 12px 12px 0;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.q h3{font-size:15px}
+.q p{font-size:14px;color:var(--ink-2)}
+.q .rec{font-size:13.5px;color:var(--ink)}
+.q .rec b{color:var(--accent)}
+.foot{color:var(--ink-3);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (prefers-reduced-motion:reduce){.replay{display:none}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <span class="eyebrow">Create · motion plan · proposed 2026-10-08</span>
+  <h1>Laban efforts</h1>
+  <p class="lede">Give every beat a named motion quality (Punch, Glide, Float…) chosen for what the beat means, and turn each name into exact animation settings. Today a video has one timing for everything; this gives each moment its own character and tells the builder how hard, how fast and along what path things move.</p>
+  <div class="status">
+    <span class="pill pill--on">Proposed, not built</span>
+    <span class="pill">About 1 day to build</span>
+    <span class="pill">No new screens for users</span>
+    <span class="pill">Source: “The 8 types of movement according to Laban Movement Analysis”</span>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">The idea</span>
+    <h2>Three dials, each one an animation setting</h2>
+    <p>Laban described every movement by its effort on three factors. Each factor turns straight into a setting our builder already writes. (A fourth factor, Flow, is how freely a move follows through; it sits out of the eight actions and becomes our settle: precise stop or loose follow-through.)</p>
+  </div>
+  <div class="dials">
+    <div class="dial">
+      <span class="eyebrow">Weight</span>
+      <div class="dial__ends"><span>Light</span><span>Strong</span></div>
+      <div class="dial__bar"></div>
+      <dl><dt>LIGHT</dt><dd>small travel, scale 1.0–1.05, no impact</dd><dt>STRONG</dt><dd>scale 1.15–1.3 with overshoot, an impact (shake 4–8 px, 0.12 s), heavy settle</dd></dl>
+    </div>
+    <div class="dial">
+      <span class="eyebrow">Time</span>
+      <div class="dial__ends"><span>Sustained</span><span>Sudden</span></div>
+      <div class="dial__bar"></div>
+      <dl><dt>SUSTAINED</dt><dd>0.8–1.6 s, sine.inOut / power1.inOut</dd><dt>SUDDEN</dt><dd>0.15–0.3 s, expo.out / power4.out / back.out</dd></dl>
+    </div>
+    <div class="dial">
+      <span class="eyebrow">Space</span>
+      <div class="dial__ends"><span>Indirect</span><span>Direct</span></div>
+      <div class="dial__bar"></div>
+      <dl><dt>INDIRECT</dt><dd>an arc, a hook or a wandering path (GSAP motionPath)</dd><dt>DIRECT</dt><dd>a straight line to the target, no detour</dd></dl>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">The eight actions</span>
+    <h2>Each one, as the builder would play it</h2>
+    <p>Each stage below runs the exact settings in its card. The “use for” line is what the planner reads when it picks an effort for a beat.</p>
+  </div>
+  <div class="grid" id="grid"></div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Example</span>
+    <h2>A plan with efforts: GTM-1 #4, Ledgerly cash-flow dashboard</h2>
+    <p>The same 20-second, 1:1 brief we already built. The planner adds one effort per beat and a short reason; nothing else in the plan changes.</p>
+  </div>
+  <div class="plan">
+    <div class="plan__top"><h3>Ledgerly · new cash-flow dashboard</h3><span class="mono" style="color:var(--ink-3)">20 s · 1:1 · motion voice: steady_serious</span></div>
+    <div>
+      <div class="strip" id="strip"></div>
+      <div class="ticks"><span>0 s</span><span>5</span><span>10</span><span>15</span><span>20 s</span></div>
+    </div>
+    <div class="scroll">
+      <table class="beats">
+        <thead><tr><th>Time</th><th>Beat</th><th>Effort</th><th>Why (written by the planner)</th></tr></thead>
+        <tbody id="beats"></tbody>
+      </table>
+    </div>
+    <pre class="json">"scenes": [
+  { "label": "Hook", "start": 0, "end": 3,
+    "effort": { "id": "punch", "why": "the 2x stat must hit in the first second" } },
+  { "label": "Dashboard", "start": 3, "end": 8,
+    "effort": { "id": "glide", "why": "a calm reveal of the product, nothing jumpy" } },
+  …
+]</pre>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">How it moves through Create</span>
+    <h2>Four places change, none of them on screen</h2>
+  </div>
+  <div class="flow">
+    <div class="stage-card"><span class="eyebrow">Planner</span><h3>Picks an effort per beat</h3><p>The eight presets join the motion voices in the planner's catalogue. Each beat gets <code>effort {id, why}</code>; an unknown id is dropped, never guessed.</p></div>
+    <div class="stage-card"><span class="eyebrow">Builder guidance</span><h3>Gets the settings, not the theory</h3><p>The pinned motion guidance lists each beat's effort with its numbers. A new <code>WM.effort(tl, el, "punch")</code> recipe in wyv-motion.js plays it, so the builder writes one line, not a hand-tuned tween.</p></div>
+    <div class="stage-card"><span class="eyebrow">Motion voice</span><h3>Still sets the tempo</h3><p>The video's voice scales every effort's duration and overshoot, so a calm brand's Punch is still a punch, just a slower one. Effort is the character; voice is the tempo.</p></div>
+    <div class="stage-card"><span class="eyebrow">Checks</span><h3>Advisory notes for the builder</h3><p>Two checks read the timeline that actually ran (we already record which moves ran). Notes for the builder only; users never see them.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Voice × effort</span>
+    <h2>The same effort in two voices</h2>
+    <p>Durations scale by the voice's entrance time against the steady default (0.5 s). Overshoot uses whichever is larger: the effort's or the voice's.</p>
+  </div>
+  <div class="vx">
+    <div class="scroll"><table>
+      <thead><tr><th>Effort</th><th>calm_serious</th><th>bold_playful</th></tr></thead>
+      <tbody>
+        <tr><td>Punch</td><td>0.31 s · scale 1.25</td><td>0.13 s · scale 1.25</td></tr>
+        <tr><td>Glide</td><td>1.54 s · 1.00</td><td>0.66 s · 1.12</td></tr>
+        <tr><td>Float</td><td>2.24 s · 1.00</td><td>0.96 s · 1.12</td></tr>
+        <tr><td>Dab</td><td>0.22 s · 1.05</td><td>0.12 s (floor) · 1.12</td></tr>
+      </tbody>
+    </table></div>
+    <p style="color:var(--ink-2);font-size:14px">A floor of 0.12 s and a ceiling of 2.4 s keep any pairing watchable. Today's rule “nothing moves at constant linear speed” stays; efforts make it concrete, because every preset has an ease that accelerates in and settles.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Checks</span>
+    <h2>What gets measured</h2>
+  </div>
+  <div class="checks">
+    <div class="check"><span class="tag">advisory · effort_repeat</span><h3>Three beats in a row with the same effort</h3><p>Closes part of FS3 (“the same technique repeated”). The planner is told to vary; the check catches a build that flattened them anyway.</p></div>
+    <div class="check"><span class="tag">advisory · effort_mismatch</span><h3>The beat's main move doesn't match its effort</h3><p>A Punch beat whose main entrance takes 0.9 s, or a Glide with a 1.3× overshoot. Read from the recorded timeline (duration, ease, path), so it's measured, not guessed from frames.</p></div>
+    <div class="check"><span class="tag">unchanged · blocking stays as is</span><h3>No new blocking check</h3><p>Efforts improve the motion; they never stop a delivery. The blocking checks (blank frames, reading time, names said as saved, planned moves) stay exactly as they are.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Scope</span>
+    <h2>What would be built</h2>
+  </div>
+  <ul class="scope">
+    <li><span class="where">FormatPlaybooks.php</span><span>The eight presets (weight, time, space, duration, ease, path, scale, impact, use-for) next to MOTION_VOICES, and in the planner's catalogue.</span></li>
+    <li><span class="where">PlanService.php</span><span><code class="mono">scenes[].effort {id, why}</code> in the planner's schema; normalised and passed to the build like motion_voice. A change in the Change drawer keeps every beat's effort unless the change is about that beat.</span></li>
+    <li><span class="where">wyv-motion.js</span><span><code class="mono">WM.effort(tl, el, id, {at, to, voice})</code>: the eight presets in GSAP, scaled by the motion voice; indirect efforts use a generated arc or wave path.</span></li>
+    <li><span class="where">composition-agent.mjs</span><span>Guidance: each beat's effort and its settings, pinned with the motion kit; “build the beat's main move with its effort”.</span></li>
+    <li><span class="where">delivery checks</span><span>effort_repeat and effort_mismatch (advisory), from the recorded moves.</span></li>
+    <li><span class="where">tests + proof</span><span>Unit tests for the presets, normalising and both checks. Then rebuild two GTM-1 briefs (#4 Ledgerly, #10 3 hooks) with efforts, about 500 credits, for your side-by-side verdict against the versions you already judged.</span></li>
+  </ul>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Your call</span>
+    <h2>Three decisions before building</h2>
+  </div>
+  <div class="decide">
+    <div class="q"><h3>1. Do users see the efforts?</h3><p>The plan card could show a plain word per beat (“lands hard”, “glides in”), or keep it internal.</p><p class="rec"><b>Recommend:</b> internal for now. Users already say plans look technical; “make this moment punchier” in the Change drawer would map to an effort behind the scenes.</p></div>
+    <div class="q"><h3>2. Use efforts to direct people in generated takes?</h3><p>Gemini Omni takes could get “gestures with a Press quality: slow, firm, deliberate”.</p><p class="rec"><b>Recommend:</b> not in this slice. Test it separately on one UGC brief once the motion side is proven.</p></div>
+    <div class="q"><h3>3. Add the Laban video to the exemplar library (O6)?</h3><p>It sets the quality bar for from-scratch explainers: one colour per section, a giant ghost word, one abstract object acting out the idea, live sliders.</p><p class="rec"><b>Recommend:</b> yes, and use “a 60 s explainer of the 8 Laban efforts” as a from-scratch test brief once efforts are built.</p></div>
+  </div>
+</section>
+
+<p class="foot">Mockup for the owner's review · docs/product/create-ui/laban-efforts.html · settings are starting values to tune on real builds.</p>
+</div>
+
+<script>
+(function(){
+  // Each effort: Laban factors, the settings the builder would use, and what the planner picks it for.
+  var E=[
+    {id:'punch',name:'Punch',w:'strong',t:'sudden',s:'direct',dur:.22,ease:'expo.out',path:'straight',scale:1.25,impact:'shake 6 px · 0.12 s',use:'A number, a price, the one word the claim hangs on.'},
+    {id:'slash',name:'Slash',w:'strong',t:'sudden',s:'indirect',dur:.3,ease:'power4.out',path:'sweeping arc',scale:1.2,impact:'streak',use:'A scene change that cuts through; before → after.'},
+    {id:'press',name:'Press',w:'strong',t:'sustained',s:'direct',dur:1.2,ease:'power1.inOut',path:'straight',scale:1.15,impact:'squash builds',use:'A heavy claim, a slow stamp, a pain point that weighs.'},
+    {id:'wring',name:'Wring',w:'strong',t:'sustained',s:'indirect',dur:1.4,ease:'sine.inOut',path:'twisting wave',scale:1.15,impact:'squeeze',use:'The problem beat: tension, “the old way”.'},
+    {id:'dab',name:'Dab',w:'light',t:'sudden',s:'direct',dur:.16,ease:'power3.out',path:'short straight taps',scale:1.05,impact:'none',use:'Bullets, UI taps, cursor clicks, ticks landing.'},
+    {id:'flick',name:'Flick',w:'light',t:'sudden',s:'indirect',dur:.28,ease:'back.out(2)',path:'hooked curve',scale:1.05,impact:'none',use:'Tags, stickers, playful pops, a CTA flicked in.'},
+    {id:'glide',name:'Glide',w:'light',t:'sustained',s:'direct',dur:1.1,ease:'sine.inOut',path:'straight',scale:1.0,impact:'none',use:'A premium product reveal, calm UI pans, the logo end card.'},
+    {id:'float',name:'Float',w:'light',t:'sustained',s:'indirect',dur:1.6,ease:'sine.inOut',path:'wandering wave',scale:1.0,impact:'none',use:'Wellness, ambient background, a soft opener.'}
+  ];
+  var css=getComputedStyle(document.documentElement);
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var ease={
+    'expo.out':function(t){return t>=1?1:1-Math.pow(2,-10*t)},
+    'power4.out':function(t){return 1-Math.pow(1-t,5)},
+    'power3.out':function(t){return 1-Math.pow(1-t,4)},
+    'power1.inOut':function(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2},
+    'sine.inOut':function(t){return -(Math.cos(Math.PI*t)-1)/2},
+    'back.out(2)':function(t){var c=2,c3=c+1;return 1+c3*Math.pow(t-1,3)+c*Math.pow(t-1,2)}
+  };
+  // Position along each effort's path at progress p (0..1), in stage units (x 0..1, y 0..1).
+  function at(e,p){
+    var x=.12+.76*p,y=.6;
+    if(e.id==='slash'){x=.12+.76*p;y=.72-.5*Math.sin(Math.PI*p)}
+    if(e.id==='wring'){y=.6+.16*Math.sin(p*Math.PI*5)*(1-p*.6)}
+    if(e.id==='flick'){x=.15+.7*p;y=.66-.3*Math.sin(Math.PI*Math.min(1,p*1.3))+.05*p}
+    if(e.id==='float'){y=.55+.13*Math.sin(p*Math.PI*2.4)-.05*p}
+    if(e.id==='dab'){x=.18+.64*p;y=.6}
+    return [x,y];
+  }
+  var grid=document.getElementById('grid'),stages=[];
+  E.forEach(function(e){
+    var c=css.getPropertyValue('--'+e.id).trim();
+    var el=document.createElement('article');el.className='eff';el.style.setProperty('--c',c);
+    el.innerHTML='<div class="eff__stage"><span class="eff__word">'+e.name+'</span><canvas aria-hidden="true"></canvas></div>'+
+      '<div class="eff__body"><div class="eff__name"><h3>'+e.name+'</h3><span class="eff__trio">'+e.w+' · '+e.t+' · '+e.s+'</span></div>'+
+      '<p class="eff__use">'+e.use+'</p>'+
+      '<dl class="eff__params"><dt>duration</dt><dd>'+e.dur+' s</dd><dt>ease</dt><dd>'+e.ease+'</dd><dt>path</dt><dd>'+e.path+'</dd><dt>scale</dt><dd>'+e.scale.toFixed(2)+'</dd><dt>impact</dt><dd>'+e.impact+'</dd></dl>'+
+      '<button class="replay" type="button" id="replay-'+e.id+'">Replay '+e.name+'</button></div>';
+    grid.appendChild(el);
+    var cv=el.querySelector('canvas'),st={e:e,c:c,cv:cv,t0:performance.now()};
+    el.querySelector('.replay').addEventListener('click',function(){st.t0=performance.now()});
+    stages.push(st);
+  });
+  function draw(now){
+    var dot=css.getPropertyValue('--dot').trim();
+    stages.forEach(function(st){
+      var cv=st.cv,r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+      if(cv.width!==Math.round(r.width*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
+      var g=cv.getContext('2d'),W=cv.width,H=cv.height,e=st.e;
+      g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);
+      var demo=Math.max(e.dur*2.2,.9),hold=1.1,cycle=demo+hold;
+      var el=reduce?cycle:((now-st.t0)/1000)%cycle;
+      var raw=Math.min(1,el/demo),p=ease[e.ease](raw);
+      if(e.id==='dab'){var taps=3,k=Math.min(taps-1,Math.floor(raw*taps)),local=raw*taps-k;p=(k+ease['power3.out'](Math.min(1,local*1.6)))/taps}
+      // Impact shake on strong, sudden arrivals.
+      var shake=0;if((e.id==='punch'||e.id==='slash')&&raw>=.42&&el<demo+.12&&!reduce){shake=Math.sin(el*90)*(e.id==='punch'?6:3)*dpr*Math.max(0,1-(el-demo*.42)/.4)}
+      g.translate(shake,0);
+      // The path, faint, then the trail.
+      g.lineWidth=1.5*dpr;g.strokeStyle=st.c;g.globalAlpha=.25;g.beginPath();
+      for(var i=0;i<=60;i++){var q=at(e,i/60);i?g.lineTo(q[0]*W,q[1]*H):g.moveTo(q[0]*W,q[1]*H)}g.stroke();
+      g.globalAlpha=.85;g.lineWidth=3*dpr;g.beginPath();
+      for(var j=0;j<=40;j++){var pp=p*j/40,qq=at(e,pp);j?g.lineTo(qq[0]*W,qq[1]*H):g.moveTo(qq[0]*W,qq[1]*H)}g.stroke();g.globalAlpha=1;
+      var pos=at(e,Math.max(0,Math.min(1.08,p))),base=(e.w==='strong'?.075:.05)*Math.min(W,H);
+      var sc=1+(e.scale-1)*Math.max(0,1-Math.abs(raw-.55)*2.4);
+      var sx=sc,sy=sc;if(e.id==='press'||e.id==='wring'){sx=1+(e.scale-1)*p;sy=1-(e.scale-1)*.6*p}
+      if(e.id==='float'&&raw>=1){pos[1]+=.012*Math.sin(now/400)}
+      g.fillStyle=dot;g.beginPath();g.ellipse(pos[0]*W,pos[1]*H,base*sx,base*sy,0,0,Math.PI*2);g.fill();
+      g.fillStyle=st.c;g.beginPath();g.arc(pos[0]*W+base*.35,pos[1]*H-base*.3,base*.22,0,Math.PI*2);g.fill();
+      if((e.id==='punch'||e.id==='press')&&raw>.5){var ring=(el-demo*.5)/.6;if(ring<1&&!reduce){g.strokeStyle=st.c;g.globalAlpha=1-ring;g.lineWidth=2*dpr;g.beginPath();g.arc(.88*W,.6*H,base*(1+ring*2.2),0,Math.PI*2);g.stroke();g.globalAlpha=1}}
+      if(e.id==='punch'||e.id==='press'){g.fillStyle=st.c;g.fillRect(.9*W,.38*H,.025*W,.36*H)}
+    });
+    if(!reduce)requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // The example plan.
+  var beats=[
+    {t:'0–3 s',s:0,e:3,label:'Hook: “Invoices paid 2× faster”',id:'punch',why:'the stat must hit in the first second'},
+    {t:'3–8 s',s:3,e:8,label:'Dashboard appears',id:'glide',why:'a calm, premium reveal of the product'},
+    {t:'8–11 s',s:8,e:11,label:'“38% fewer late payments”: counters tick',id:'dab',why:'precise ticks, one per figure'},
+    {t:'11–14 s',s:11,e:14,label:'“4 hours saved every week”',id:'press',why:'the weight of time given back'},
+    {t:'14–15 s',s:14,e:15,label:'Cut to the end card',id:'slash',why:'one decisive transition'},
+    {t:'15–20 s',s:15,e:20,label:'“Try Ledgerly free”',id:'glide',why:'settles the brand; CTA lands with a Dab'}
+  ];
+  var strip=document.getElementById('strip'),tb=document.getElementById('beats');
+  beats.forEach(function(b){
+    var c=css.getPropertyValue('--'+b.id).trim(),name=E.filter(function(x){return x.id===b.id})[0].name;
+    var d=document.createElement('div');d.style.flex=(b.e-b.s);d.style.background=c;d.textContent=(b.e-b.s)>=2?name:'';d.title=b.label+' · '+name;strip.appendChild(d);
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+b.t+'</td><td>'+b.label+'</td><td><span class="eword" style="--c:'+c+'"><i></i>'+name+'</span></td><td>'+b.why+'</td>';
+    tb.appendChild(tr);
+  });
+})();
+</script>
