@@ -96,13 +96,15 @@ Schedule::command('create:maintain-storage --apply --originals --limit=100')->ho
     ->when(fn () => (bool) config('create.local_maintenance_enabled'));
 
 // Stuck planning, long queues, a silent worker, stranded builds, open holds and low disk: emailed within minutes.
-Schedule::command('create:health')->everyFiveMinutes()->withoutOverlapping()
+Schedule::command('create:health')->everyFiveMinutes()->withoutOverlapping(10)
     ->when(fn () => (bool) config('create.enabled'));
 
-Schedule::command('create:check-leases')->everyMinute()->withoutOverlapping()
+Schedule::command('create:check-leases')->everyMinute()->withoutOverlapping(5)
     ->when(fn () => (bool) config('create.enabled'));
 
-Schedule::command('create:recover-planning')->everyMinute()->withoutOverlapping()
+// A lock left by a run cut off in a restart expires in minutes, not the default 24 hours: a deploy at 03:36
+// (2026-10-08) left recover-planning skipped ("Has Mutex"), so an interrupted plan was never flagged (G-REC drill).
+Schedule::command('create:recover-planning')->everyMinute()->withoutOverlapping(5)
     ->when(fn () => (bool) config('create.enabled') && (bool) config('create.durable_planning'));
 
 // Create's provider contracts (docs/product/archive/create/create-verify-and-teach-scope.md, 1c): free, reads model schemas only.

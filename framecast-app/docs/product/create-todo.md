@@ -22,16 +22,15 @@ deploys drain Create around the restart.
 
 | ID | Item | Next |
 |---|---|---|
-| SAY | "Weave studio" re-voices through the Change drawer, saying the name instead of the web address: brief 2 building; briefs 10 and 1 and `540680bd` queued; the restored originals of `292180c9` and `1c4484f0` still to re-send (needs credits) | listen to each, update the review page and library |
-| DEPLOY-W | Deploy the build worker: I7 (`5170d8bb`) and the undefined-name test (`d1da5513`) are committed but the worker still runs `5d013e47` | deploy at a quiet moment (`ops/deploy_create_worker.sh`) |
-| FRESH | Two from-scratch briefs built on Opus 5.5 (Laban explainer 16:9 30 s, compound interest 9:16 20 s): the fresh-slate quality test | your verdict; one look for brand fonts, a strong first frame and the cache cost (FONTS, OPEN-1, COST) |
+| SAY | "Weave studio" re-voices: briefs 1, `540680bd`, `292180c9` and `1c4484f0` done and checked by two transcribers (2026-10-08; an earlier batch said "wiv" because a test brief reset the pronunciation). Brief 10 never says the name. Brief 2 (Thorough) still to build: needs 1,666 credits available to start | build brief 2 when credits allow |
+| FRESH | Two from-scratch briefs on Opus 5.5: compound interest passed (12 min, 643 cr); Laban explainer delivered with reading time flagged and "Laban" unverified by ear (17.7 min, 407 cr) | your verdict |
 
 ## 2. Launch must-haves
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| G-REC | Recovery drills on production: API restart during planning, worker killed mid-build, duplicate approval, cancel while queued and while running; no double charge, uncertain work stays held. A cancel while running was proven 2026-10-08 (the Haiku run `9957be13`: cancelled cleanly, nothing left unsettled) | partly | the other drills when idle |
-| G-FAIR | Several workspaces at once: one busy workspace cannot hog the queue; cancelling frees a slot; waiting users see a useful status. Temporary access for the two testers, revoked after | open | test |
+| G-REC | Drills 2026-10-08 on production: duplicate approval (one run, one hold) PASS; cancel while queued (0 charged, hold released) PASS; cancel while running PASS; worker SIGKILLed mid-render PASS after fixing the gap it found (an interrupted offline render could not be settled; `5361242d`); planning worker killed mid-plan: no double charge, but the job stays "running" until its 22-minute deadline (PLAN-DEAD) | partly | finish the planning drill |
+| G-FAIR | Drill 2026-10-08: workspaces 1 and 19 built at the same time, both claimed within a second; a busy render shows "Waiting for render capacity", a queued build "Queued for your creation"; one build per workspace refuses a second ("Another creation is active") | ready | close (tester access not needed) |
 | L16 | Restore drill passed 2026-10-08 (Oct 7 dump, 3 s, 0 errors, row counts match live). Secrets review: social tokens were readable in the briefly public dumps; now encrypted at rest and revoked on disconnect (`75d08199`, live). Still to do: revoke the 7 exposed tokens (`php artisan social:revoke-tokens --confirm` on prod; owner's go needed); users reconnect when they next publish (no email, owner) | partly | run the revoke |
 | G-DEP | Deploys drain Create around the restart: proven 2026-10-08 with a long build running (the deploy waited, then went out) | partly | a rollback drill |
 
@@ -39,6 +38,7 @@ deploys drain Create around the restart.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
+| PLAN-DEAD | A planning worker that dies mid-plan is only noticed at the job deadline (20 min + 2): the user watches "planning" that long; nothing is re-run or double-charged. A heartbeat must cover long local work (ffmpeg reference study) as well as model calls, and an "interrupted" mark must never race a plan that is still finishing; design first | open | design, then build |
 | VOICE-ONLY | A voice-only change still runs the builder (107–133 credits) and holds up to 656: swap the audio and re-time instead | open | plan, then build |
 | QUOTE-SHEET | The quote shows a reused people sheet at its price (70) though it is charged 0 | open | fix |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count (the Laban plan covers the first two) | partly | build |

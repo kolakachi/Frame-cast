@@ -4005,8 +4005,12 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('needs_attention', $plans->latest($c->id)['state']);
         $plans->execute($job['id']);
         $this->assertSame(0, DB::table('create_plans')->count(), 'uncertain execution is never replayed');
-        $this->rejected(409, fn () => $plans->submit($this->owner, $c->id, 1, 'fresh-key', false));
-        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 2);
+        $this->assertSame('Planning stopped before it finished. Nothing was charged; send your request again to plan.', $plans->latest($c->id)['error'] ?? DB::table('create_planning_jobs')->where('id', $job['id'])->value('error'));
+        // Nothing was saved, so nothing was charged: the user's new request goes ahead (G-REC drill, 2026-10-08).
+        $again = $plans->submit($this->owner, $c->id, 1, 'fresh-key', false);
+        $this->assertSame('queued', $again['state']);
+        $this->assertSame('failed', DB::table('create_planning_jobs')->where('id', $job['id'])->value('state'));
+        Bus::assertDispatchedTimes(\App\Jobs\PlanCreateVideo::class, 3);
     }
 
     public function test_durable_planning_recovers_a_plan_committed_before_the_worker_died(): void

@@ -13,7 +13,10 @@ class PlanningJobService
 {
     public const PER_WORKSPACE = 2;
     public const TIMEOUT = 1200;
-    public const UNCERTAIN = 'Planning was interrupted and needs a recovery check before it can run again. Your brief is saved; no automatic retry will spend more credits.';
+    // A plan is charged in the same transaction that saves it, so an interrupted plan with nothing saved charged
+    // nothing: the user may simply ask again. It is never retried automatically (G-REC drill, 2026-10-08: the old
+    // message locked the conversation until an operator stepped in, and no operator tool existed).
+    public const UNCERTAIN = 'Planning stopped before it finished. Nothing was charged; send your request again to plan.';
 
     public function submit(User $user, string $conversationId, int $version, string $key, bool $skip): array
     {
@@ -33,6 +36,12 @@ class PlanningJobService
             abort_if($conversation->archived_at, 409, 'Restore this conversation before planning.');
             abort_unless((int) $conversation->version === $version, 409, 'Conversation changed. Refresh before planning.');
             $active = DB::table('create_planning_jobs')->where('conversation_id', $conversationId)->whereIn('state', ['queued', 'running', 'needs_attention'])->first();
+            // An interrupted plan that saved nothing (and so charged nothing) gives way to the user's new request.
+            if ($active?->state === 'needs_attention' && ! DB::table('create_plans')->where('conversation_id', $conversationId)->where('idempotency_key', $active->idempotency_key)->exists()) {
+                DB::table('create_planning_jobs')->where('id', $active->id)->where('state', 'needs_attention')
+                    ->update(['state' => 'failed', 'error' => 'Superseded by a new request after an interruption; nothing was charged.', 'updated_at' => now()]);
+                $active = null;
+            }
             abort_if($active, 409, $active?->state === 'needs_attention' ? self::UNCERTAIN : 'A plan is already queued or running for this conversation.');
             $id = (string) Str::uuid();
             DB::table('create_planning_jobs')->insert([

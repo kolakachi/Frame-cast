@@ -213,6 +213,9 @@ jobs:
             echo '==> Running migrations...'
             sleep 5
             docker compose -f docker-compose.prod.yml exec -T api php artisan migrate --force --no-interaction
+            # The restart cut off any scheduled command mid-run, and its "already running" lock would skip that command
+            # for up to 24 hours (create:recover-planning, 2026-10-08). The scheduler was just recreated, so clear them.
+            docker compose -f docker-compose.prod.yml exec -T scheduler php artisan schedule:clear-cache || true
             # Seeders are idempotent (updateOrCreate) but intentionally NOT run
             # on every deploy. Run them by hand when seed data actually changes:
             #   docker compose -f docker-compose.prod.yml exec api php artisan db:seed --class=NicheSeeder --force
