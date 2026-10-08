@@ -294,3 +294,7 @@ textarea.field { resize: vertical; min-height: 92px; }
   .wall-track { animation: none !important; }
   * { transition: none !important; }
 }
+
+/* AppSumo taco ratings on the review soundbites */
+.tacos { display: flex; gap: 2px; font-size: 1.05rem; line-height: 1; margin-bottom: 12px; }
+.tacos .off { filter: grayscale(1); opacity: .3; }
