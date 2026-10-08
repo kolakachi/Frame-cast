@@ -32,7 +32,7 @@ All closed 2026-10-08 (I7, G-REC, G-FAIR, G-DEP, L16); evidence in the archive.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| PLAN-DEAD | A planning worker that dies mid-plan is only noticed at the job deadline (20 min + 2): the user watches "planning" that long; nothing is re-run or double-charged. A heartbeat must cover long local work (ffmpeg reference study) as well as model calls, and an "interrupted" mark must never race a plan that is still finishing; design first | open | design, then build |
+| PLAN-DEAD | A planning worker that dies mid-plan is caught in a minute or two: a forked watcher touches a file every 20 s while the plan's process lives (no shared connections); the recovery treats a stale file as interrupted (`fd4a3803`; real-process check passed) | ready | deploy, then repeat the planning-kill drill |
 | VOICE-ONLY | A voice-only change swaps the voice without the builder: quoted at the voice alone (about 3 credits), the new lines placed where the old ones began (pauses trimmed first, then up to 10% quicker), the timeline unchanged; a line that cannot fit goes to the builder next time (`5ec5d473`) | ready | deploy (waiting for an idle moment), then prove on brief 2's pending "weave studio" re-voice |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count (the Laban plan covers the first two) | partly | build |
 | ASK-FILE | No product photo: a generated product image is the fallback, the photo is still asked for | ready | prove on a product brief |
