@@ -5026,6 +5026,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertNull($swap([...$plan, 'narration' => ['One line now.']]), 'a different number of lines: a normal edit');
         $this->assertNull($swap(null, [...$voiceOnly, ['kind' => 'ai_image', 'credits' => 43]]), 'anything besides a voice: a normal edit');
         $this->assertNull($swap([...$plan, 'planner_task' => 'new']), 'not a change: a normal build');
+        $this->assertNotNull($swap([...$plan, 'scenes' => [['label' => 'Opening'], ['label' => 'Product']]]), 'beats renamed by a re-plan: the version is kept as it is, so still a swap');
         DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle('<audio src="asset-'.$voice.'-ef56.wav"></audio>')]);
         $this->assertNull($swap(), 'two clips from the old voice: unclear which to swap');
         DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle()]);
