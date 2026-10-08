@@ -30,6 +30,9 @@ class PageReferenceService
             return $old;
         }
         $clean = self::publicUrl($url);
+        // A video post on a site we cannot download from is not a page to read: say so instead of capturing its sign-in
+        // wall and caption (an Instagram reel became "claims" from a stranger's caption, 2026-10-08).
+        if ($site = self::videoSite((string) parse_url($clean, PHP_URL_HOST))) abort(422, $site.' links cannot be used yet. Download the video and attach it with + Attach, or paste a link from X, YouTube, TikTok or Instagram.');
         $limit = 'create-reference:'.$user->workspace_id.':'.now()->toDateString();
         abort_if(RateLimiter::tooManyAttempts($limit, (int) config('create.reference_daily_limit')), 429, 'Daily reference limit reached. Try again tomorrow.');
         RateLimiter::hit($limit, 86400);
@@ -60,6 +63,26 @@ class PageReferenceService
     }
 
     /** https only, and every address the host resolves to must be public. */
+    /** Video and social sites whose links cannot be read as pages or downloaded as references: their name, or null. */
+    public static function videoSite(string $host): ?string
+    {
+        $host = strtolower(preg_replace('/^(www\.|m\.)/', '', $host));
+        foreach (['facebook.com' => 'Facebook', 'fb.watch' => 'Facebook', 'threads.net' => 'Threads', 'vimeo.com' => 'Vimeo', 'snapchat.com' => 'Snapchat', 'pinterest.com' => 'Pinterest'] as $site => $name) {
+            if ($host === $site || str_ends_with($host, '.'.$site)) return $name;
+        }
+        return null;
+    }
+
+    /** Sites where the words on a page belong to whoever posted there, not to the user: never facts for their video. */
+    public static function socialHost(string $host): bool
+    {
+        $host = strtolower(preg_replace('/^(www\.|m\.)/', '', $host));
+        foreach (['instagram.com', 'facebook.com', 'tiktok.com', 'twitter.com', 'x.com', 'threads.net', 'linkedin.com', 'youtube.com', 'youtu.be', 'reddit.com', 'pinterest.com'] as $site) {
+            if ($host === $site || str_ends_with($host, '.'.$site)) return true;
+        }
+        return false;
+    }
+
     public static function publicUrl(string $url): string
     {
         $p = parse_url(trim($url));
@@ -104,9 +127,10 @@ class PageReferenceService
         $json = json_decode(substr($raw, (int) strpos($raw, '{'), strrpos($raw, '}') - (int) strpos($raw, '{') + 1), true);
         if (! is_array($json)) return null;
         $s = fn ($v, $n) => mb_substr(trim((string) $v), 0, $n);
-        // A claim survives only if its quote really appears on the page.
+        // A claim survives only if its quote really appears on the page, and only on the user's own kind of page: a
+        // social profile's words are someone's post, never facts for this video.
         $page = self::plain($text);
-        $claims = collect((array) ($json['claims'] ?? []))->filter(fn ($c) => is_array($c) && trim((string) ($c['quote'] ?? '')) !== '' && str_contains($page, self::plain((string) $c['quote'])))
+        $claims = self::socialHost($host) ? [] : collect((array) ($json['claims'] ?? []))->filter(fn ($c) => is_array($c) && trim((string) ($c['quote'] ?? '')) !== '' && str_contains($page, self::plain((string) $c['quote'])))
             ->map(fn ($c) => ['text' => $s($c['text'] ?? $c['quote'], 90), 'quote' => $s($c['quote'], 200)])->filter(fn ($c) => $c['text'] !== '')->unique('text')->take(8)->values()->all();
         $u = $r->json('usage', []);
         return ['notes' => ['summary' => $s($json['summary'] ?? '', 240), 'look' => $s($json['look'] ?? '', 200),

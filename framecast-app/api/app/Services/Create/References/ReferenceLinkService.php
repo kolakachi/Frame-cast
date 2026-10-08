@@ -34,6 +34,12 @@ class ReferenceLinkService
         try {
             $info = $this->probe($clean);
             $file = $this->download($clean, $dir);
+            // Instagram does not report a reel's length: it is measured from the file instead.
+            if (! ((float) ($info['duration'] ?? 0) > 0)) {
+                $info['duration'] = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $file])->output());
+                abort_unless($info['duration'] > 0, 422, 'That post has no recorded video to use.');
+                abort_unless($info['duration'] <= config('create.reference_max_seconds'), 422, 'References can be up to 5 minutes long.');
+            }
             $upload = new UploadedFile($file, Str::limit($platform.' reference', 60, '').'.mp4', 'video/mp4', null, true);
             $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, $upload, 'reference', $key, $version);
             $source = ['platform' => $platform, 'requested_url' => $url, 'url' => $clean, 'title' => Str::limit((string) ($info['title'] ?? ''), 200, '…'),
@@ -59,11 +65,16 @@ class ReferenceLinkService
     public function validate(string $url): array
     {
         $parts = parse_url(trim($url));
-        abort_unless(is_array($parts) && ($parts['scheme'] ?? '') === 'https' && isset($parts['host']) && ! isset($parts['user']) && ! isset($parts['port']), 422, 'Paste a public https link from X, YouTube or TikTok.');
+        abort_unless(is_array($parts) && ($parts['scheme'] ?? '') === 'https' && isset($parts['host']) && ! isset($parts['user']) && ! isset($parts['port']), 422, 'Paste a public https link from X, YouTube, TikTok or Instagram.');
         $host = strtolower($parts['host']);
-        abort_unless(in_array($host, config('create.reference_hosts'), true), 422, 'Links from X, YouTube and TikTok are supported.');
-        $platform = str_contains($host, 'tiktok') ? 'tiktok' : (str_contains($host, 'youtu') ? 'youtube' : 'x');
+        abort_unless(in_array($host, config('create.reference_hosts'), true), 422, 'Links from X, YouTube, TikTok and Instagram are supported.');
+        $platform = str_contains($host, 'tiktok') ? 'tiktok' : (str_contains($host, 'youtu') ? 'youtube' : (str_contains($host, 'instagram') ? 'instagram' : 'x'));
         $path = (string) ($parts['path'] ?? '/');
+        // Instagram: a reel or a video post. A profile or an image-only post has no video to study.
+        if ($platform === 'instagram') {
+            abort_unless(preg_match('~^/(?:reels?|p|tv)/([\w-]{5,40})/?$~', $path, $m), 422, 'That Instagram link is not a post. Paste the link of a reel or a video post.');
+            return [$platform, 'https://www.instagram.com/reel/'.$m[1].'/'];
+        }
         // X edit history pages point at the same post.
         if ($platform === 'x') $path = preg_replace('~/history/?$~', '', $path);
         $query = '';
@@ -84,11 +95,16 @@ class ReferenceLinkService
     private function probe(string $url): array
     {
         $r = Process::timeout(45)->run([...$this->base(), '-J', $url]);
-        abort_unless($r->successful(), 422, 'That post could not be read. Check that it is public and contains a video.');
+        abort_unless($r->successful(), 422, str_contains($url, 'instagram.com')
+            ? 'Instagram did not let us read that reel. Check it is public, or download it and attach the file with + Attach.'
+            : 'That post could not be read. Check that it is public and contains a video.');
         $info = json_decode(trim($r->output()), true);
         abort_unless(is_array($info) && ! ($info['is_live'] ?? false), 422, 'That post has no recorded video to use.');
         $d = (float) ($info['duration'] ?? 0);
-        abort_unless($d > 0 && $d <= config('create.reference_max_seconds'), 422, 'References can be up to 5 minutes long.');
+        // Instagram leaves the length out; it is measured after the download.
+        abort_if($d > config('create.reference_max_seconds'), 422, 'References can be up to 5 minutes long.');
+        abort_unless($d > 0 || ($info['extractor_key'] ?? '') === 'Instagram', 422, 'That post has no recorded video to use.');
+        abort_unless(collect($info['formats'] ?? [])->contains(fn ($f) => ($f['vcodec'] ?? 'none') !== 'none') || ! isset($info['formats']), 422, 'That post has no video to use. Paste a reel or a video post.');
         return $info;
     }
 

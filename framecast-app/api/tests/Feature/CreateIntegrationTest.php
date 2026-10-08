@@ -131,6 +131,29 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([], \App\Services\Create\Planning\PlanPrompt::problems(['scenes' => $scenes, 'narration' => ['Want a video ad that sells?', 'Start creating.']], ['settings' => ['duration_seconds' => 15]]));
     }
 
+    public function test_a_presenter_take_that_is_not_the_script_word_for_word_is_sent_back_at_planning(): void
+    {
+        $script = ['Every child deserves a meal.', 'Yendaa serves 500 a week.', 'Your gift keeps it going.', 'Give today at yendaa.org.'];
+        $match = fn ($lines) => \App\Services\Create\ShotRoute::linesMatchScript($lines, $script);
+        $this->assertTrue($match($script), 'the whole script');
+        $this->assertTrue($match(['Yendaa serves 500 a week.', 'Your gift keeps it going.']), 'one unbroken run');
+        $this->assertTrue($match(['Every child deserves a meal. Yendaa serves 500 a week.']), 'two script lines spoken as one');
+        $this->assertFalse($match(['Every child deserves a meal.', 'Give today at yendaa.org.']), 'the opening and the close are two runs, not one');
+        $this->assertFalse($match(['Hi! Every child deserves a meal.']), 'added words');
+        $this->assertFalse($match(['(smiling) Your gift keeps it going.']), 'a stage direction');
+        $this->assertFalse(\App\Services\Create\ShotRoute::linesMatchScript(['Thank you.'], ['Thank you.', 'Give today.', 'Thank you.']), 'a repeated line is ambiguous');
+        // The planner gets it back once, with what to do (2026-10-08: three plans failed on this at pricing).
+        $plan = ['scenes' => [['label' => 'All', 'start' => 0, 'end' => 15]], 'narration' => $script,
+            'media' => [['kind' => 'ugc_take', 'lines' => ['Every child deserves a meal.', 'Give today at yendaa.org.']]]];
+        $problems = \App\Services\Create\Planning\PlanPrompt::problems($plan, ['settings' => ['duration_seconds' => 15]]);
+        $this->assertNotEmpty(array_filter($problems, fn ($p) => str_contains($p, 'UGC take 1') && str_contains($p, 'make one take per unbroken run')));
+        $plan['media'] = [['kind' => 'ugc_take', 'lines' => ['Every child deserves a meal.']], ['kind' => 'ugc_take', 'lines' => ['Give today at yendaa.org.']]];
+        $this->assertSame([], array_values(array_filter(\App\Services\Create\Planning\PlanPrompt::problems($plan, ['settings' => ['duration_seconds' => 15]]), fn ($p) => str_contains($p, 'UGC take'))));
+        // If it still fails at pricing, the message says what is wrong in plain words.
+        try { \App\Services\Create\ShotRoute::approvedLines(['Hi! Every child deserves a meal.'], $script); $this->fail('accepted'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertStringStartsWith("I couldn't line up what the presenter says with the voiceover script", $e->getMessage()); }
+    }
+
     public function test_copying_exactly_turns_each_kept_moment_into_a_layout_requirement(): void
     {
         $this->assertSame(7.85, \App\Services\Create\References\ReferenceStudy::keyTime(['start' => 7.4, 'end' => 8.1], 15), 'late in the moment, once its elements have arrived');
@@ -971,8 +994,68 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['Branded video without a shoot', 'Ads in minutes'], array_column($a['suggested_claims'], 'text'), 'a claim the page does not make is dropped');
         $this->assertSame(['#0A0A0F', '#FF6B35'], $a['notes']['palette']);
         $brief = \App\Services\Create\PlanService::referenceBrief($asset);
-        $this->assertSame(['Branded video without a shoot', 'Ads in minutes'], $brief['page_claims_not_approved']);
+        $this->assertSame(['Branded video without a shoot', 'Ads in minutes'], $brief['page_facts']);
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $roles = collect($this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->json('data.attachments'))->pluck('link_role', 'asset_id');
+        $this->assertSame('facts', $roles[$asset->id], "the user's own page is shown as facts and look");
         $pages::$resolve = null;
+    }
+
+    public function test_an_instagram_reel_is_a_style_reference_and_its_length_is_measured_from_the_file(): void
+    {
+        $c = $this->brief();
+        $service = app(\App\Services\Create\References\ReferenceLinkService::class);
+        // Reels, video posts and IGTV are accepted and normalised; a profile is not a post (2026-10-08: a reel was read as a page).
+        $this->assertSame(['instagram', 'https://www.instagram.com/reel/DcanBschXbj/'], $service->validate('https://www.instagram.com/reels/DcanBschXbj/'));
+        $this->assertSame(['instagram', 'https://www.instagram.com/reel/DcanBschXbj/'], $service->validate('https://instagram.com/p/DcanBschXbj/'));
+        $this->assertSame(['instagram', 'https://www.instagram.com/reel/AbCdEf12/'], $service->validate('https://www.instagram.com/tv/AbCdEf12'));
+        $this->rejected(422, fn () => $service->validate('https://www.instagram.com/growthwithhardik/'));
+        $this->assertContains('instagram.com', config('create.reference_hosts'), 'the link endpoint routes Instagram to the video reference service');
+
+        $mp4 = file_get_contents(base_path('tests/Fixtures/create/tiny.mp4'));
+        $length = '14.6';
+        \Illuminate\Support\Facades\Process::fake(function ($process) use ($mp4, &$length) {
+            $cmd = $process->command;
+            // Instagram leaves the duration out of the post's details.
+            if ($cmd[0] === 'yt-dlp' && in_array('-J', $cmd, true)) return \Illuminate\Support\Facades\Process::result(json_encode(['title' => 'Video by growthwithhardik', 'uploader' => 'Hardik', 'extractor_key' => 'Instagram', 'is_live' => false,
+                'formats' => [['format_id' => 'v', 'vcodec' => 'avc1', 'ext' => 'mp4', 'height' => 1078]]]));
+            if ($cmd[0] === 'yt-dlp') { $o = $cmd[array_search('-o', $cmd, true) + 1]; file_put_contents(str_replace('%(ext)s', 'mp4', $o), $mp4); return \Illuminate\Support\Facades\Process::result(''); }
+            if ($cmd[0] === 'ffprobe' && in_array('format=duration', $cmd, true)) return \Illuminate\Support\Facades\Process::result($length);
+            if ($cmd[0] === 'ffprobe') return \Illuminate\Support\Facades\Process::result(json_encode(['streams' => [['codec_type' => 'video', 'width' => 720, 'height' => 1280]]]));
+            if ($cmd[0] === 'ffmpeg' && str_contains(implode(' ', $cmd), 'scene')) return \Illuminate\Support\Facades\Process::result('', "frame:1 pts:1 pts_time:2.1\n");
+            if ($cmd[0] === 'ffmpeg') { file_put_contents(end($cmd), 'jpg'); return \Illuminate\Support\Facades\Process::result(''); }
+            return \Illuminate\Support\Facades\Process::result('', 'unexpected', 1);
+        });
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'k', 'create.agent_model' => 'claude-opus-5-5']);
+        Http::fake(['https://api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => '{"summary":"Talking head with bold captions.","look":"Bright, clean","palette":["#FFFFFF"],"type":"none","motion":"quick cuts"}']], 'usage' => ['input_tokens' => 10, 'output_tokens' => 10]])]);
+        $asset = $service->add($this->owner, $c->id, 'https://www.instagram.com/reels/DcanBschXbj/', (int) $this->conversations->conversation($this->owner, $c->id)->version, 'ig-1');
+        $this->assertSame('reference', DB::table('create_attachments')->where('asset_id', $asset->id)->value('purpose'), 'a style reference, never footage');
+        $this->assertSame('Instagram · Hardik', $asset->title);
+        $this->assertEquals(15, $asset->duration_seconds, 'the length is measured from the downloaded file');
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $roles = collect($this->actingAs($this->owner)->getJson('/api/v1/create/conversations/'.$c->id)->assertOk()->json('data.attachments'))->pluck('link_role', 'asset_id');
+        $this->assertSame('style', $roles[$asset->id], 'a reel is shown as a style reference');
+        // Longer than 5 minutes, found only after the download: refused.
+        $length = '900';
+        $this->rejected(422, fn () => $service->add($this->owner, $c->id, 'https://www.instagram.com/reel/LongReel99/', (int) $this->conversations->conversation($this->owner, $c->id)->version, 'ig-2'));
+    }
+
+    public function test_links_to_unsupported_video_sites_are_refused_and_social_pages_give_no_facts(): void
+    {
+        $c = $this->brief();
+        $pages = \App\Services\Create\References\PageReferenceService::class;
+        // Not read as a page: the user is told what to do instead.
+        foreach (['https://www.facebook.com/reel/123456789' => 'Facebook', 'https://fb.watch/abcDEF/' => 'Facebook', 'https://www.threads.net/@a/post/xyz' => 'Threads'] as $url => $site) {
+            try { app($pages)->add($this->owner, $c->id, $url, 1, 'fb-'.md5($url)); $this->fail('accepted '.$url); }
+            catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(422, $e->getStatusCode()); $this->assertStringStartsWith($site.' links cannot be used yet. Download the video', $e->getMessage()); }
+        }
+        $this->assertNull($pages::videoSite('yendaa.org'));
+        // Words on a social profile are someone's post, never facts for this video; a brand's own site is.
+        $this->assertTrue($pages::socialHost('www.instagram.com'));
+        $this->assertTrue($pages::socialHost('m.facebook.com'));
+        $this->assertTrue($pages::socialHost('linkedin.com'));
+        $this->assertFalse($pages::socialHost('yendaa.org'));
+        $this->assertFalse($pages::socialHost('wyvstudio.com'));
     }
 
     public function test_the_plan_drafts_a_sized_narration_script_with_a_voice_and_buys_the_voice(): void
@@ -1196,7 +1279,7 @@ class CreateIntegrationTest extends TestCase
     public function test_plan_lines_not_in_the_users_words_are_marked_as_new_wording(): void
     {
         $ctx = ['messages' => [['role' => 'user', 'content' => 'Making video is slow and hard. WyvStudio fixes it.'], ['role' => 'assistant', 'content' => 'reach buyers']],
-            'approved_facts' => ['One video, 4 formats'], 'files' => [['reference' => ['page_claims_not_approved' => ['Voiced, captioned, ready-to-post videos']]]]];
+            'approved_facts' => ['One video, 4 formats'], 'files' => [['reference' => ['page_facts' => ['Voiced, captioned, ready-to-post videos']]]]];
         $this->assertSame(['One video, 4 formats, reach more buyers'], \App\Services\Create\PlanService::newWording(
             ['VIDEO? SLOW. HARD.', 'One video, 4 formats', 'Voiced, captioned videos', 'One video, 4 formats, reach more buyers'], $ctx), 'only the line with new words is marked; assistant text is not the user\'s words');
     }

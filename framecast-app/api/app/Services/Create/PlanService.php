@@ -515,7 +515,7 @@ class PlanService
         $corpus = implode(' ', [
             ...array_map(fn ($m) => (string) ($m['content'] ?? ''), array_filter($ctx['messages'] ?? [], fn ($m) => ($m['role'] ?? '') === 'user')),
             ...($ctx['approved_facts'] ?? []),
-            ...collect($ctx['files'] ?? [])->flatMap(fn ($f) => $f['reference']['page_claims_not_approved'] ?? [])->all(),
+            ...collect($ctx['files'] ?? [])->flatMap(fn ($f) => $f['reference']['page_facts'] ?? [])->all(),
         ]);
         $known = array_flip($words($corpus));
         $common = array_flip(['a', 'an', 'the', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'your', 'you', 'it', 'is', 'are', 'be', 'that', 'this', 'one', 'no', 'not', 'from', 'into', 'at', 'by', 'we', 'our', 'get', 'make', 'now', 'just', 'all', 'any', 'more', 'how', 'what', 'why', 'two', 'three', 'four', 'five', 'six', 'ready', 'try', 'start', 'today', 'meet', 'say', 'hello', 'got', 'need']);
@@ -533,8 +533,9 @@ class PlanService
         $brief = is_array($a) ? array_filter(['from' => data_get($asset->metadata_json, 'reference_source.platform'), 'duration_seconds' => $a['duration_seconds'] ?? null,
             'cut_candidates_seconds' => array_slice((array) ($a['cuts'] ?? []), 0, 24), 'sampling_limit' => 'Sampled frames and heuristic cuts, not exhaustive motion or audio analysis', 'shots' => $a['shots'] ?? null, 'average_shot_seconds' => $a['average_shot_seconds'] ?? null,
             'speech' => isset($a['transcript']) ? mb_substr((string) $a['transcript'], 0, 600) : null, 'notes' => $a['notes'] ?? null,
-            // From a web page: claims the page makes. Not approved; only approved_facts may go on screen.
-            'page_claims_not_approved' => ! empty($a['suggested_claims']) ? array_column($a['suggested_claims'], 'text') : null], fn ($v) => $v !== null) : [];
+            // From a page the user linked as their own (a social site's words are never kept): its claims are facts the
+            // video may state. Linking the page is the approval; the lines still reach the plan the user approves.
+            'page_facts' => ! empty($a['suggested_claims']) ? array_column($a['suggested_claims'], 'text') : null], fn ($v) => $v !== null) : [];
         if (is_array($study)) $brief['study'] = self::studyBrief((int) $asset->id, $study);
         return $brief ?: null;
     }
@@ -1000,6 +1001,9 @@ class PlanService
         $narration = array_map(fn ($line) => self::addressAsName($line, $workspaceId), $narration);
         $plan['narration'] = $narration;
         if (isset($plan['selections']['narration'])) $plan['selections']['narration'] = $narration;
+        // A presenter's take speaks lines of the script, so it gets the same rewrites, or it no longer matches the script.
+        if (isset($plan['media'])) $plan['media'] = array_map(fn ($m) => is_array($m) && ($m['kind'] ?? '') === 'ugc_take' && ! empty($m['lines'])
+            ? ['lines' => array_map(fn ($l) => self::addressAsName($respell($l), $workspaceId), (array) $m['lines'])] + $m : $m, (array) $plan['media']);
         if (isset($plan['selections']['callouts'])) $plan['selections']['callouts'] = array_map(fn ($c) => is_array($c) ? array_map($respell, $c) : $respell($c), (array) $plan['selections']['callouts']);
         // Names in the script with a saved pronunciation: a take that speaks them lip-syncs to our narration, which follows
         // the pronunciation; a video model's own voice does not (GTM-1 #5 said "Wyve Studio").

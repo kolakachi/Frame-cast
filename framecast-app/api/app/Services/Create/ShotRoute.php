@@ -288,6 +288,19 @@ class ShotRoute
      * Route a UGC take: a presenter speaking the script to camera with native speech, in segments the engine can
      * make (Omni about 10 s, Veo 3.1 8 s), joined into one take. The presenter is the user's avatar or a sheet subject.
      */
+    /** True when a take's lines are the whole script or one unbroken run of its lines, word for word, found once. */
+    public static function linesMatchScript(array $lines, array $script): bool
+    {
+        $clean = fn (array $a) => array_values(array_filter(array_map(fn ($l) => trim((string) $l), $a), fn ($l) => $l !== ''));
+        [$lines, $script] = [$clean($lines), $clean($script)];
+        if (! $lines || ! $script) return true;
+        $text = fn (array $l) => preg_replace('/\s+/u', ' ', trim(implode(' ', $l)));
+        if ($text($lines) === $text($script)) return true;
+        $found = 0;
+        foreach (array_keys($script) as $start) for ($n = 1; $n <= count($script) - $start; $n++) if ($text(array_slice($script, $start, $n)) === $text($lines)) $found++;
+        return $found === 1;
+    }
+
     /** Bind a take to exact positions in the original script, never to similarity with edited words. */
     public static function approvedLines(array $asked, array $approved, ?array $original = null): array
     {
@@ -303,7 +316,7 @@ class ShotRoute
             }
         }
         abort_unless(count($matches) === 1 && count($approved) === count($original), 422,
-            'The presenter script no longer maps to the approved narration. Re-plan this take before creating the video.');
+            "I couldn't line up what the presenter says with the voiceover script: the presenter's lines must be lines of the script, in order and word for word. Plan again, or say which part of the script the presenter speaks (for example, the opening and the close).");
         return array_slice($approved, ...$matches[0]);
     }
 

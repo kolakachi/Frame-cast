@@ -622,44 +622,19 @@ async function ensureConversation() {
   await router.replace({name:'create',params:{conversationId:c.id}}); persistDraft(null,''); await refresh()
   return c.id
 }
-const linkStudying = ref(''), claimPicks = ref({}), pendingText = ref('')
-// Page claims stay offered after the message is sent (a link in a message is captured and sent at once),
-// until they are added to the approved facts or set aside for this conversation.
-const claimsDone = ref({})
-const claimsDoneKey = () => 'create-claims-done:' + (id.value || '')
-function loadClaimsDone() { try { claimsDone.value = JSON.parse(localStorage.getItem(claimsDoneKey()) || '{}') } catch { claimsDone.value = {} } }
-watch(id, loadClaimsDone, { immediate: true })
-function markClaimsDone(a) { claimsDone.value = { ...claimsDone.value, [a.asset_id]: true }; try { localStorage.setItem(claimsDoneKey(), JSON.stringify(claimsDone.value)) } catch {} }
-// A page's claims are settled once any of them is approved or the user chose Not now; both places that list them hide then.
-const approvedFacts = computed(() => { try { return JSON.parse(conversation.value?.settings_json || '{}').approved_facts || [] } catch { return [] } })
-const claimsSettled = a => !!claimsDone.value[a.asset_id] || (a.suggested_claims || []).some(c => approvedFacts.value.includes(c.text))
-const approvedFrom = a => (a.suggested_claims || []).filter(c => approvedFacts.value.includes(c.text)).length
-const openClaims = computed(() => {
-  return (data.value?.attachments || []).filter(a => a.suggested_claims?.length && !claimsSettled(a))
-})
-const VIDEO_HOSTS = ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
+const linkStudying = ref(''), pendingText = ref('')
+// A linked page's claims are not ticked one by one: a page the user links as their own is their facts, and a social
+// site's page gives none (the planner reads them as page_facts; owner, 2026-10-08).
+const VIDEO_HOSTS = ['x.com', 'twitter.com', 'mobile.twitter.com', 'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com', 'instagram.com', 'www.instagram.com']
 const studySteps = computed(() => {
   let host = ''; try { host = new URL(linkStudying.value).hostname.toLowerCase() } catch {}
   return VIDEO_HOSTS.includes(host)
     ? ['Fetching the video', 'Finding the cuts', 'Listening for speech', 'Reading frames', 'Writing style notes']
-    : ['Reading the page', 'Capturing the page', 'Looking at the design', 'Checking claims against the page', 'Writing brand notes']
+    : ['Reading the page', 'Capturing the page', 'Looking at the design', 'Finding facts on the page', 'Writing brand notes']
 })
 // Keep the live thinking row in view as it appears.
 watch([() => linkStudying.value, () => planning.value, () => pendingText.value], async () => { await nextTick(); end.value?.scrollIntoView({ behavior: 'smooth', block: 'end' }) })
 const linkKeys = {}
-async function approveClaims(a) {
-  const picked = (a.suggested_claims || []).filter((c, i) => claimPicks.value[a.asset_id + ':' + i]).map(c => c.text)
-  if (!picked.length) return
-  await guarded(async () => {
-    let current = []; try { current = JSON.parse(conversation.value.settings_json || '{}').approved_facts || [] } catch {}
-    const facts = [...new Set([...current, ...picked])].slice(0, 20)
-    await api.patch(base(), { expected_version: conversation.value.version, settings: { approved_facts: facts } })
-    // An open Details panel holds its own copy of the facts; keep it in step so its Apply doesn't drop these.
-    const typed = factsText.value.split('\n').map(s => s.trim()).filter(Boolean)
-    factsText.value = [...new Set([...typed, ...facts])].slice(0, 20).join('\n'); settingsDraft.value.approved_facts = facts
-    claimPicks.value = {}; quote.value = null; markClaimsDone(a); await refresh()
-  })
-}
 // A brief typed on wyvstudio.com (services/pendingBrief.js). A new, empty composer takes it, once; anywhere else it
 // is only offered, so it never replaces a conversation or a draft. Nothing runs until the user sends it.
 const siteBrief = ref(false), waitingBrief = ref(false), siteBriefClip = ref(false)
@@ -1597,17 +1572,6 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
 
           <div v-if="canWrite && !conversation?.archived_at" class="composer-dock">
             <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; check the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
-            <div v-if="canWrite && openClaims.length" class="attached">
-              <div v-for="a in openClaims" :key="'c' + a.asset_id" class="upload">
-                <img v-if="a.asset_type === 'image' && a.preview_url" :src="a.preview_url" alt="" class="upload__thumb" /><span v-else class="upload__thumb" />
-                <div><b :title="a.title">{{ a.title }}</b>
-                  <div class="claims">
-                    <small class="muted">Claims on this page. Tick the ones that may appear on screen:</small>
-                    <label v-for="(c, i) in a.suggested_claims" :key="i" class="claims__row" :title="'From the page: ' + c.quote"><input v-model="claimPicks[a.asset_id + ':' + i]" type="checkbox" /> {{ c.text }}</label>
-                    <span><button type="button" class="quiet quiet--sm" :disabled="locked" @click="approveClaims(a)">Add to approved facts</button> <button type="button" class="quiet quiet--sm" @click="markClaimsDone(a)">Not now</button></span>
-                  </div></div>
-              </div>
-            </div>
             <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />From your visit to wyvstudio.com</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
             <div v-else-if="waitingBrief" class="site-brief" role="status"><span><i aria-hidden="true" />You have a brief from your visit to wyvstudio.com</span><span class="site-brief__actions"><button type="button" class="quiet quiet--sm" @click="useSiteBrief">{{ id ? 'Start a new creation with it' : 'Use it instead of this draft' }}</button><button type="button" class="quiet quiet--sm" @click="dismissSiteBrief">Dismiss</button></span></div>
             <form class="prompt-form" @submit.prevent="send">

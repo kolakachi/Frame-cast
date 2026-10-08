@@ -85,7 +85,9 @@ class CreateController extends Controller
                 $storage = app(StorageService::class);
                 return ['asset_id'=>$asset->id,'purpose'=>$attachment->purpose,'title'=>$asset->title,'asset_type'=>$asset->asset_type,
                     'attached_at'=>$attachment->created_at,'duration_seconds'=>$asset->duration_seconds,'dimensions'=>$asset->dimensions_json,
-                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),'rig'=>data_get($asset->metadata_json,'rig'),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
+                    'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),
+                    // What a link is used for, shown on its pill: a video post is a style reference; the user's own page gives facts and look; a social page only its look.
+                    'link_role'=>self::linkRole((array) ($asset->metadata_json ?? [])),'rig'=>data_get($asset->metadata_json,'rig'),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
             })->filter()->values(),
             'revisions' => $revisions,
             // held_credits: what a run still holds of its approval (released as it settles), shown beside an active build.
@@ -187,6 +189,17 @@ class CreateController extends Controller
     {
         app(\App\Services\Create\StyleService::class)->delete($r->user(), $styleId);
         return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    /** What a link is used for, shown on its pill: a video post is a style reference, the user's own page gives facts and
+     *  look, a social site's page only its look. Null for anything that is not a link. */
+    private static function linkRole(array $meta): ?string
+    {
+        if ($page = data_get($meta, 'page_source')) {
+            $host = (string) parse_url((string) (data_get($page, 'url') ?: data_get($page, 'requested_url')), PHP_URL_HOST);
+            return \App\Services\Create\References\PageReferenceService::socialHost($host) ? 'look' : 'facts';
+        }
+        return in_array(data_get($meta, 'reference_source.platform'), ['x', 'youtube', 'tiktok', 'instagram'], true) ? 'style' : null;
     }
 
     public function reference(Request $r, string $id)
