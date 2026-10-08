@@ -77,8 +77,8 @@
           <label for="f-url">Paste a TikTok, Reel or YouTube link</label>
           <div class="row">
             <input class="field" id="f-url" name="ref_url" type="url" placeholder="https://www.tiktok.com/@creator/video/…" disabled>
-            <button type="button" class="upload">Upload a clip</button>
           </div>
+          <p class="hint">Have the clip as a file? You'll add it in Weave right after sign-up.</p>
           <label for="f-refbrief">What's your version about?</label>
           <input class="field" id="f-refbrief" name="prompt" maxlength="1500" type="text" placeholder="Same pacing, for my candle shop's autumn offer" disabled>
           <p class="hint">Works best with short social videos, under a minute, built from type, graphics, product shots or one person talking to camera.</p>
@@ -324,7 +324,9 @@
     e.preventDefault();
     var text = brief();
     if (text) {
-      var hash = '#brief=' + encodeURIComponent(text);
+      // No link on the reference tab: they'll upload the clip in Weave, which asks for it (attach=1).
+      var clip = document.getElementById('mode').value === 'reference' && !document.getElementById('f-url').value.trim();
+      var hash = '#brief=' + encodeURIComponent(text) + (clip ? '&attach=1' : '');
       document.querySelectorAll('a[href^="https://app.wyvstudio.com/register"], #brief-open').forEach(function (a) {
         var u = new URL(a.href); u.hash = hash.slice(1); a.href = u.toString();
       });
