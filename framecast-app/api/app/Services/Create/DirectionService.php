@@ -42,8 +42,10 @@ class DirectionService
             .'Reply with JSON only: {"directions": [{"name": string (under 6 words), "idea": string (under 25 words), "hook": string (the first 2 s), "look": string, "swatches": [three #rrggbb], "format": string (a playbook id), "structure": string, "opening": string, "ending": string, "uses": string}]}'
             ."\n\n".json_encode(['messages' => $brief, 'files' => $files, 'format_playbooks' => FormatPlaybooks::catalogue()['playbooks'],
                 'shown' => array_map(fn ($d) => array_intersect_key($d, array_flip(['name', 'idea', 'format'])), $shown)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // Room for the model's own thinking as well as the three directions: at 2000 a longer think cut the JSON off and
+        // More ways failed (2026-10-08: 1,133 thinking tokens of 1,945 used). Only the tokens used are paid for.
         $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(90)
-            ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => 2000, 'messages' => [['role' => 'user', 'content' => $ask]]]);
+            ->post('https://api.anthropic.com/v1/messages', ['model' => $model, 'max_tokens' => 8000, 'messages' => [['role' => 'user', 'content' => $ask]]]);
         if (! $r->successful()) {
             \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status());
             abort(503, 'Could not think of more ways just now. Try again in a moment.');
