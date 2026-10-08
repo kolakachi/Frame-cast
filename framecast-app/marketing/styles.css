@@ -298,3 +298,9 @@ textarea.field { resize: vertical; min-height: 92px; }
 /* AppSumo taco ratings on the review soundbites */
 .tacos { display: flex; gap: 2px; font-size: 1.05rem; line-height: 1; margin-bottom: 12px; }
 .tacos .off { filter: grayscale(1); opacity: .3; }
+
+/* Money-back guarantee, beside the buy buttons */
+.pass-cta { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.guarantee { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 600; color: var(--dim); }
+.guarantee::before { content: "\2713"; color: var(--accent, #ff6b35); font-weight: 700; }
+.guarantee-row { display: flex; justify-content: center; margin: 20px 0 0; font-size: .95rem; }
