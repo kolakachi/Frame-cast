@@ -18,6 +18,7 @@ import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
 import {excuseSpoken} from './reads-check.mjs';
+import {voiceSwap} from './voice-swap.mjs';
 import {listenToExport} from './audio-review.mjs';
 import {cutTimes,outputPace,paceNotes} from './pace-review.mjs';
 import {executeImage} from './media-provider.mjs';
@@ -187,6 +188,23 @@ async function execute(run){
    await finish(run,{status:'step_ready',summary:run.input.step==='character'?'The character is ready for you to check.':'The storyboard is ready for you to check.'});
    console.log(JSON.stringify({run:run.id,status:'step_ready',step:run.input.step}));
    return;
+  }
+  // A voice-only change: buy the new voice, line it up with the old one and swap it in; no builder runs (VOICE-ONLY).
+  if(paid&&run.input.voice_swap&&!run.input.execution_policy?.agent){
+   for(const [name,text] of Object.entries(run.input.base_bundle||{})){if(!/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(name))throw Error('Invalid bundle file');await writeFile(dir+'/project/'+name,text,{mode:0o600});}
+   const download=(assetId,signal)=>fetch(new URL('/api/internal/create/runs/'+run.id+'/inputs/'+assetId,base),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({lease_token:run.lease_token}),signal});
+   if(Array.isArray(run.input.plan_media)&&run.input.plan_media.length){
+    planMedia=await buyPlanMedia({items:run.input.plan_media,directory:dir+'/inputs',manifest,signal:aborter.signal,onStage:s=>{stage=s;},
+     produce:i=>request('runs/'+run.id+'/plan-media/'+i,{lease_token:run.lease_token},false,900000),download});
+    if(lost||cancelled||stopping)throw Error('Stopped while getting plan media');
+   }
+   const voice=planMedia.find(m=>['voiceover','cloned_voiceover'].includes(m.kind)&&m.status==='succeeded'&&m.file);
+   if(!voice)throw Error((planMedia.find(m=>m.status!=='succeeded')?.error||'The new voice could not be made.').slice(0,300));
+   for(const file of manifest)await copyFile(dir+'/inputs/'+file.path,dir+'/project/'+file.name);
+   stage='Lining up the new voice';phase='agent';
+   agentResult=await voiceSwap({project:dir+'/project',bundle:run.input.base_bundle,swap:run.input.voice_swap,newVoice:voice.file,listen});
+   await trace({phase:'run',status:'succeeded',summary:'Voice swapped without the builder',detail:JSON.stringify(agentResult.derived[0]?.params??{})});
+   phase='render';
   }
   if(run.input.execution_policy?.agent){
    // One download for the plan's purchases and the builder's own (the buy tool below uses it too).
@@ -413,6 +431,7 @@ async function execute(run){
   const uncertain=e.code==='ATTEMPT_NEEDS_ATTENTION'||sandboxStopUnconfirmed(e);
   const result={status:stopped&&!uncertain?(cancelled||stopping?'cancelled':'failed'):'needs_attention',summary:uncertain?'This build stopped while a step was in progress. We are checking it before anything runs again; earlier versions are safe.':stopped?'This build stopped before it finished. You are only charged for the work it did, and earlier versions are safe. Try again, or change the brief.':'This build lost contact before it finished. We are checking it before anything runs again; earlier versions are safe.'};
   if(e.code==='SANDBOX_QUEUE_TIMEOUT'&&result.status==='failed')result.summary='The render queue stayed busy too long. Your saved assets are safe. Please try again later.';
+  if(e.code==='VOICE_SWAP_UNFIT'&&result.status==='failed')result.summary=String(e.message).slice(0,400);
   if(e.code==='CREATE_DISK_CAPACITY'&&result.status==='failed')result.summary='This build stopped because the worker ran short of disk space. Existing assets and drafts are retained. Please try again after capacity is restored.';
   await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,diagnostic:e.sandboxDiagnostic??null,...result}),{mode:0o600});
   // If completion may already be accepted, the server rejects a conflicting result.

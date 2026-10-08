@@ -361,6 +361,15 @@ class ConversationService
                         'max_calls' => count($planMedia) + (PilotPolicy::unlimited() ? 100 : 20), 'total_credits' => $mediaCeiling];
                 }
                 if ($step && ! isset($policy['plan_media'])) $policy['plan_media'] = ['provider' => 'wyvstudio', 'model' => 'catalogue-2026-10', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => count($planMedia), 'total_credits' => 0];
+                // A change that only re-voices the narration skips the builder: the voice is bought, lined up with the old
+                // line timings and swapped in, so only the voice is held and charged (VOICE-ONLY).
+                $voiceSwap = $paid ? VoiceSwap::plan($c, $base, $plan, $planMedia ?? [], $settings, (bool) $step) : null;
+                if ($voiceSwap) {
+                    unset($policy['agent'], $policy['critic']);
+                    // No builder to buy anything else: the hold is the voice itself.
+                    if (isset($policy['plan_media'])) $policy['plan_media'] = ['credits' => $mediaEstimate, 'cost_limit_microusd' => $mediaEstimate * 4000, 'max_calls' => count($planMedia), 'total_credits' => $mediaEstimate] + $policy['plan_media'];
+                    $mediaCeiling = $realMediaCeiling = $mediaEstimate;
+                }
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
                     'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->orderBy('asset_id')->get(['asset_id','purpose'])->all(),
                     'execution_policy' => $policy, 'pilot_budget_id'=>$paid ? config('create.pilot_budget_id') : null,
@@ -368,6 +377,7 @@ class ConversationService
                     'base_bundle_hash' => $base?->bundle_hash,
                     'base_review' => $baseMeta['creative_review'] ?? null,
                     'media_input'=>$mediaInput,
+                    'voice_swap'=>$voiceSwap,
                     'plan'=>$plan,
                     'plan_media'=>$planMedia,
                     'style'=>StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id),

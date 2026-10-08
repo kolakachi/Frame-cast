@@ -450,7 +450,7 @@ class PlanService
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
             'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard',
-            'agreement' => $s['agreement'] ?? $p['agreement'] ?? null]
+            'agreement' => $s['agreement'] ?? $p['agreement'] ?? null, 'planner_task' => $p['planner_task'] ?? null]
             // What the build and its checks follow from a reference and the 3D route; without these the builder never sees them.
             + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_sound', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d', 'concept', 'playbook', 'motion_voice']))
             // From scratch: the playbook, concept and motion voice as the build's pinned guide.

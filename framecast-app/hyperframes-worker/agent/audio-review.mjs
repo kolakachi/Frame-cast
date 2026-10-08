@@ -65,6 +65,8 @@ export function alignScript(lines,words){
  for(let i=0;i<n;i++){if(match[i]===null)runText.push(script[i].t);else flush();}flush();
  const matched=match.filter(x=>x!==null).length;
  const lineStarts=lines.map((_,line)=>{const i=script.findIndex((s,k)=>s.line===line&&match[k]!==null);return i<0?null:+heardWords[match[i]].start.toFixed(2);});
+ // Where each line's last heard word ends (a voice swap trims the pause after it before speeding anything up).
+ const lineEnds=lines.map((_,line)=>{const i=script.findLastIndex((s,k)=>s.line===line&&match[k]!==null);return i<0?null:+heardWords[match[i]].end.toFixed(2);});
  // Where each missing passage should be: from the last heard word before it to the next heard word after it.
  // Holes are every unheard stretch, however short: listened to again when too little of the script was heard.
  const gaps=[],holes=[];
@@ -73,7 +75,7 @@ export function alignScript(lines,words){
   const span={from:before===undefined?0:+heardWords[before].end.toFixed(2),to:after===undefined?null:+heardWords[after].start.toFixed(2)};
   if(j-i>=RULES.missingRun)gaps.push(span);holes.push(span);
   i=j;}
- return {words:n,heard:m,matched,coverage:n?+(matched/n).toFixed(3):null,missing:missing.slice(0,6),extra:Math.max(0,m-matched),lineStarts,gaps:gaps.slice(0,3),holes:holes.slice(0,4)};
+ return {words:n,heard:m,matched,coverage:n?+(matched/n).toFixed(3):null,missing:missing.slice(0,6),extra:Math.max(0,m-matched),lineStarts,lineEnds,gaps:gaps.slice(0,3),holes:holes.slice(0,4)};
 }
 
 /** Text tied to spoken words (data-spoken) against when those words are actually heard in the export. */

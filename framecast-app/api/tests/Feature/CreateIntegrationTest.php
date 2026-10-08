@@ -5003,4 +5003,33 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(409, fn () => $verifier->verify((object) ['id' => 'att-2', 'provider' => 'offline', 'cost_limit_microusd' => 100, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
         $this->rejected(422, fn () => $verifier->verify((object) ['id' => 'att-3', 'provider' => 'anthropic', 'cost_limit_microusd' => 1, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
     }
+    public function test_a_change_that_only_re_voices_skips_the_builder_and_anything_more_does_not(): void
+    {
+        [$c, $revision] = $this->changeableVersion();
+        $basePlan = (string) \Illuminate\Support\Str::uuid();
+        $asset = fn (array $meta) => \App\Models\Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'audio', 'title' => 'Voice', 'storage_url' => 'create-upload://x', 'mime_type' => 'audio/wav', 'file_size_bytes' => 10, 'status' => 'active', 'restriction_scope' => 'workspace', 'metadata_json' => $meta])->id;
+        $voice = $asset([]); $spaced = $asset(['derived_from_asset_id' => $voice]); $music = $asset([]);
+        $run = DB::table('composition_revisions')->where('id', $revision)->value('run_id');
+        $input = json_decode(DB::table('composition_runs')->where('id', $run)->value('input_json'), true);
+        $input['plan'] = ['plan_id' => $basePlan, 'narration' => ['Want brighter skin?', 'Meet Dewbloom Glow.'], 'on_screen_copy' => ['Glow'], 'scenes' => [['label' => 'Hook'], ['label' => 'Bottle']]];
+        DB::table('composition_runs')->where('id', $run)->update(['input_json' => json_encode($input)]);
+        $bundle = fn (string $extra = '') => json_encode(['index.html' => '<audio src="asset-'.$spaced.'-ab12.wav"></audio><audio src="asset-'.$music.'-cd34.wav"></audio>'.$extra]);
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle()]);
+        DB::table('create_plan_media')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c->id, 'plan_id' => $basePlan, 'item_index' => 0, 'kind' => 'voiceover', 'description_hash' => str_repeat('a', 64), 'status' => 'succeeded', 'record_json' => json_encode(['file' => ['asset_id' => $voice]]), 'created_at' => now(), 'updated_at' => now()]);
+        $plan = ['plan_id' => 'new-plan', 'planner_task' => 'edit', 'look_first' => false, 'narration' => ['Want brighter skin?', 'Meet Dewbloom Glow!'], 'on_screen_copy' => ['Glow'], 'scenes' => [['label' => 'Hook'], ['label' => 'Bottle']]];
+        $voiceOnly = [['kind' => 'voiceover', 'credits' => 3]];
+        $swap = fn ($p = null, $m = null) => \App\Services\Create\VoiceSwap::plan(DB::table('create_conversations')->where('id', $c->id)->first(), DB::table('composition_revisions')->where('id', $revision)->first(), $p ?? $plan, $m ?? $voiceOnly, ['output_kind' => 'video'], false);
+        $this->assertSame(['old_src' => 'asset-'.$spaced.'-ab12.wav', 'old_lines' => ['Want brighter skin?', 'Meet Dewbloom Glow.'], 'new_lines' => ['Want brighter skin?', 'Meet Dewbloom Glow!']], $swap(), 'the spaced copy of the old voice is the narration clip');
+        $this->assertNull($swap([...$plan, 'on_screen_copy' => ['Shine']]), 'words on screen changed: a normal edit');
+        $this->assertNull($swap([...$plan, 'narration' => ['One line now.']]), 'a different number of lines: a normal edit');
+        $this->assertNull($swap(null, [...$voiceOnly, ['kind' => 'ai_image', 'credits' => 43]]), 'anything besides a voice: a normal edit');
+        $this->assertNull($swap([...$plan, 'planner_task' => 'new']), 'not a change: a normal build');
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle('<audio src="asset-'.$voice.'-ef56.wav"></audio>')]);
+        $this->assertNull($swap(), 'two clips from the old voice: unclear which to swap');
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle()]);
+        $failed = (array) DB::table('composition_runs')->where('id', $run)->first();
+        DB::table('composition_runs')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'status' => 'failed', 'idempotency_key' => 'swap-failed', 'operation_id' => 'op_swapfailed', 'quote_id' => 'q_swapfailed', 'sequence' => 99, 'lease_hash' => null,
+            'input_json' => json_encode(['plan' => ['plan_id' => 'new-plan'], 'voice_swap' => ['old_src' => 'x']])] + $failed);
+        $this->assertNull($swap(), 'a swap that already failed for this plan goes to the builder');
+    }
 }
