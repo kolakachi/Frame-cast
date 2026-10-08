@@ -22,7 +22,6 @@ deploys drain Create around the restart.
 
 | ID | Item | Next |
 |---|---|---|
-| SAY | "Weave studio" re-voices: briefs 1, `540680bd`, `292180c9` and `1c4484f0` done and checked by two transcribers (2026-10-08; an earlier batch said "wiv" because a test brief reset the pronunciation). Brief 10 never says the name. Brief 2 (Thorough) still to build: needs 1,666 credits available to start | build brief 2 when credits allow |
 | FRESH | Two from-scratch briefs on Opus 5.5: compound interest passed (12 min, 643 cr); Laban explainer delivered with reading time flagged and "Laban" unverified by ear (17.7 min, 407 cr) | your verdict |
 
 ## 2. Launch must-haves

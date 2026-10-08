@@ -189,4 +189,7 @@ or "X (pronounced Y)" saves it for the workspace and every voice uses it.
 - L16 closed: the 7 social tokens exposed in the briefly public dumps were revoked at Google, TikTok and Meta with
   `social:revoke-tokens --confirm` (all 7 confirmed; 2 were already invalid), wiped and marked "Reconnect needed".
   Outside users affected: workspaces 60 and 77 (YouTube); 1 and 19 are ours. No email, by the owner's choice.
+- SAY closed: the owner's 4 ticked picks (`292180c9`, `540680bd`, `1c4484f0`, `ed276269`) and brief 1 say "weave studio"
+  (two transcribers each), none reads the address aloud; library updated. `ed276269` was re-voiced in the tester's
+  workspace 2 with temporary access and a temporary plan tier, both removed (155 of his credits). Brief 2 skipped (owner).
 
