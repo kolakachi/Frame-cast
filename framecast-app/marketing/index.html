@@ -55,7 +55,7 @@
       <h1>Turn Any Idea Into a Video That Sells.</h1>
       <p class="lede">Paste a script, drop a product link, or just type an idea. WyvStudio turns it into a voiced, captioned, ready-to-post video for your offer, your product, or an affiliate product.</p>
 
-      <form class="composer" action="https://app.wyvstudio.com/register" method="get">
+      <form class="composer" action="#pricing" id="composer">
         <div class="tabs" role="tablist" aria-label="How do you want to start?">
           <button type="button" class="tab" role="tab" id="t-idea" aria-controls="p-idea" aria-selected="true" data-mode="describe">Type an idea</button>
           <button type="button" class="tab" role="tab" id="t-ref" aria-controls="p-ref" aria-selected="false" data-mode="reference">Show us one you love</button>
@@ -280,6 +280,14 @@
 <script>
 (function () {
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // The prompt box leads to pricing: pick a pack, then make the video in the app.
+  document.getElementById('composer').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var target = document.getElementById('pricing');
+    target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    if (history.replaceState) history.replaceState(null, '', '#pricing');
+  });
 
   // Composer tabs: only the active panel's fields submit
   var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
