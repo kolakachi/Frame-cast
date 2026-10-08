@@ -27,7 +27,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=3">
+<link rel="stylesheet" href="/styles.css?v=4">
 </head>
 <body>
 
@@ -65,7 +65,7 @@
 
         <div class="panel" role="tabpanel" id="p-idea" aria-labelledby="t-idea">
           <label for="f-idea">What's it for, who's it for, and how long?</label>
-          <textarea class="field" id="f-idea" name="prompt" rows="3" placeholder="A 20-second ad for my candle shop's autumn offer. Warm and slow, ending on 20% off."></textarea>
+          <textarea class="field" id="f-idea" name="prompt" maxlength="1500" rows="3" placeholder="A 20-second ad for my candle shop's autumn offer. Warm and slow, ending on 20% off."></textarea>
           <div class="chips">
             <button type="button" class="chip" data-fill="f-idea">Launch promo in bold kinetic type</button>
             <button type="button" class="chip" data-fill="f-idea">Product ad for a skincare serum</button>
@@ -80,13 +80,13 @@
             <button type="button" class="upload">Upload a clip</button>
           </div>
           <label for="f-refbrief">What's your version about?</label>
-          <input class="field" id="f-refbrief" name="prompt" type="text" placeholder="Same pacing, for my candle shop's autumn offer" disabled>
+          <input class="field" id="f-refbrief" name="prompt" maxlength="1500" type="text" placeholder="Same pacing, for my candle shop's autumn offer" disabled>
           <p class="hint">Works best with short social videos, under a minute, built from type, graphics, product shots or one person talking to camera.</p>
         </div>
 
         <div class="panel" role="tabpanel" id="p-ugc" aria-labelledby="t-ugc" hidden>
           <label for="f-ugc">Your product, and who should be talking about it</label>
-          <textarea class="field" id="f-ugc" name="prompt" rows="3" placeholder="A creator unboxing my wireless earbuds, talking to gym-goers who hate cables." disabled></textarea>
+          <textarea class="field" id="f-ugc" name="prompt" maxlength="1500" rows="3" placeholder="A creator unboxing my wireless earbuds, talking to gym-goers who hate cables." disabled></textarea>
           <div class="chips">
             <button type="button" class="chip" data-fill="f-ugc">Creator testimonial</button>
             <button type="button" class="chip" data-fill="f-ugc">Unboxing with close-ups</button>
@@ -96,7 +96,8 @@
 
         <div class="composer-foot">
           <p class="hint"><strong>You approve the plan first.</strong> Script, voice, music and look, before the video is made.</p>
-          <button type="submit" class="btn btn-primary">Make my video</button>
+          <span class="count" id="brief-count" aria-live="polite">0 / 1,500</span>
+          <button type="submit" class="btn btn-primary">Save my brief and see prices</button>
         </div>
       </form>
     </div>
@@ -236,6 +237,11 @@
     <h2>Simple pricing.</h2>
     <p class="lede">Start with the $9 Test Pass. Every pack is a one-time payment, with nothing to cancel.</p>
   </div>
+  <div class="brief-saved" id="brief-saved" role="status" hidden>
+    <span class="tick" aria-hidden="true">&#10003;</span>
+    <p><strong>Your brief is saved.</strong> Pick a pack, and it's waiting for you in Weave after sign-up.
+      <a id="brief-open" href="https://app.wyvstudio.com/create">Already have an account? Open it in Weave &rarr;</a></p>
+  </div>
   <div class="pass">
     <div class="pass-copy">
       <span class="pass-name">Test Pass, start here</span>
@@ -300,9 +306,30 @@
 (function () {
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // The prompt box leads to pricing: pick a pack, then make the video in the app.
+  // The prompt box saves the brief into the links to the app and leads to pricing. The brief rides after # (never
+  // sent to any server); the app keeps it through sign-up and checkout and fills it into Weave.
+  var MAX = 1500, count = document.getElementById('brief-count');
+  function brief() {
+    var mode = document.getElementById('mode').value;
+    var val = function (id) { var f = document.getElementById(id); return f ? f.value.trim() : ''; };
+    var text = mode === 'reference' ? val('f-refbrief') : mode === 'ugc' ? val('f-ugc') : val('f-idea');
+    if (mode === 'reference' && val('f-url')) text = (text ? text + '\n\n' : '') + 'Reference: ' + val('f-url');
+    if (mode === 'ugc' && text) text = 'A UGC ad: ' + text;
+    return text.slice(0, MAX);
+  }
+  function showCount() { var n = brief().length; count.textContent = n.toLocaleString() + ' / 1,500'; }
+  document.querySelector('.composer').addEventListener('input', showCount);
+  document.querySelectorAll('[role="tab"]').forEach(function (t) { t.addEventListener('click', showCount); });
   document.getElementById('composer').addEventListener('submit', function (e) {
     e.preventDefault();
+    var text = brief();
+    if (text) {
+      var hash = '#brief=' + encodeURIComponent(text);
+      document.querySelectorAll('a[href^="https://app.wyvstudio.com/register"], #brief-open').forEach(function (a) {
+        var u = new URL(a.href); u.hash = hash.slice(1); a.href = u.toString();
+      });
+      document.getElementById('brief-saved').hidden = false;
+    }
     var target = document.getElementById('pricing');
     target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     if (history.replaceState) history.replaceState(null, '', '#pricing');
