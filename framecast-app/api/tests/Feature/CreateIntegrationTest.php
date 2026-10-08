@@ -5032,4 +5032,26 @@ class CreateIntegrationTest extends TestCase
             'input_json' => json_encode(['plan' => ['plan_id' => 'new-plan'], 'voice_swap' => ['old_src' => 'x']])] + $failed);
         $this->assertNull($swap(), 'a swap that already failed for this plan goes to the builder');
     }
+    public function test_a_plan_whose_heartbeat_stopped_is_caught_in_minutes_not_at_the_deadline(): void
+    {
+        $c = $this->durablePlanningBrief();
+        $plans = app(\App\Services\Create\PlanningJobService::class);
+        $hb = \App\Services\Create\PlanningHeartbeat::class;
+        $job = $plans->submit($this->owner, $c->id, 1, 'beat', false);
+        $running = fn () => DB::table('create_planning_jobs')->where('id', $job['id'])->update(['state' => 'running', 'execution_token' => (string) \Illuminate\Support\Str::uuid(), 'started_at' => now()->subMinutes(3), 'deadline_at' => now()->addMinutes(19)]);
+        $running();
+        $this->assertNull($hb::alive($job['id']), 'never watched: the deadline rule applies');
+        $plans->recover();
+        $this->assertSame('running', DB::table('create_planning_jobs')->where('id', $job['id'])->value('state'), 'no heartbeat file: left for the deadline');
+        $hb::start($job['id']);
+        $this->assertTrue($hb::alive($job['id']));
+        $plans->recover();
+        $this->assertSame('running', DB::table('create_planning_jobs')->where('id', $job['id'])->value('state'), 'beating: still being made');
+        touch($hb::path($job['id']), time() - 200);
+        $this->assertFalse($hb::alive($job['id']));
+        $plans->recover();
+        $this->assertSame('needs_attention', DB::table('create_planning_jobs')->where('id', $job['id'])->value('state'), 'stopped beating: caught now, not in 19 minutes');
+        $hb::stop(null, $job['id']);
+        $this->assertNull($hb::alive($job['id']), 'stopping removes the file');
+    }
 }

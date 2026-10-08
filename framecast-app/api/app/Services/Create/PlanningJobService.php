@@ -100,6 +100,8 @@ class PlanningJobService
         if ($claimed === -1) { $this->later($id); return; }
         if (! $claimed) return; // A duplicated queue delivery never repeats model calls.
         $job = DB::table('create_planning_jobs')->where('id', $id)->first();
+        // A watcher shows this plan is alive while it waits on a model or ffmpeg, so a dead worker is caught in a minute or two.
+        $beat = PlanningHeartbeat::start($id);
         try {
             $user = User::find($job->user_id);
             abort_unless($user && (int) $user->workspace_id === (int) $job->workspace_id, 403, 'Your workspace access changed.');
@@ -116,6 +118,7 @@ class PlanningJobService
                     'error' => $uncertain ? self::UNCERTAIN : $e->getMessage(), 'finished_at' => now(), 'updated_at' => now(),
                 ]);
         } finally {
+            PlanningHeartbeat::stop($beat, $id);
             // Queue workers are long-lived; never let one customer's activity/cost context leak to the next job.
             app()->forgetInstance(PlanActivity::class);
             PlanningCosts::end();
@@ -153,6 +156,9 @@ class PlanningJobService
         DB::table('create_planning_jobs')->where('state', 'queued')
             ->where(fn ($q) => $q->whereNull('dispatched_at')->orWhere('dispatched_at', '<', now()->subMinutes(5)))
             ->orderBy('sequence')->limit(100)->pluck('id')->each(fn ($id) => $this->dispatch($id));
+        // A plan whose watcher stopped beating has lost its process: caught in a minute or two, not at the deadline.
+        DB::table('create_planning_jobs')->where('state', 'running')->where('started_at', '<', now()->subMinutes(2))
+            ->orderBy('started_at')->limit(100)->pluck('id')->each(fn ($id) => PlanningHeartbeat::alive($id) === false ? $this->interrupted($id) : null);
         // Older unresolved jobs must not starve detection of newly interrupted execution.
         DB::table('create_planning_jobs')->where('state', 'running')->where('deadline_at', '<', now())
             ->orderBy('deadline_at')->limit(100)->pluck('id')->each(fn ($id) => $this->interrupted($id));
