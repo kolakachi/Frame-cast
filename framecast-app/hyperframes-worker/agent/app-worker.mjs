@@ -17,6 +17,7 @@ import {ReplicateGatewayProvider} from './replicate-gateway.mjs';
 import {AnthropicGatewayProvider} from './anthropic-gateway.mjs';
 import {buyPlanMedia,stageFile} from './plan-media.mjs';
 import {levelIfNeeded,summary as deliverySummary} from './delivery-checks.mjs';
+import {excuseSpoken} from './reads-check.mjs';
 import {listenToExport} from './audio-review.mjs';
 import {cutTimes,outputPace,paceNotes} from './pace-review.mjs';
 import {executeImage} from './media-provider.mjs';
@@ -323,6 +324,8 @@ async function execute(run){
      await trace({phase:'review',status:audioReview.summary.ok?'succeeded':'failed',summary:'Listened to the final video',detail:JSON.stringify(audioReview.summary).slice(0,1900)});
     }catch(e){audioReview=null;await trace({phase:'review',status:'failed',summary:'Listening check unavailable',detail:String(e.message).slice(0,300)});}
    }
+   // Words on screen while the voice says them are captions, read along with it: no reading-time finding for them.
+   if(audioReview?.words?.length&&Array.isArray(deliveryChecks?.pacing))deliveryChecks={...deliveryChecks,pacing:excuseSpoken(deliveryChecks.pacing,audioReview.words)};
    // The finished video's rhythm against the reference's: suggestions only.
    if(paid&&run.input.look_first!==true&&plan.reference_pacing)try{
     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));

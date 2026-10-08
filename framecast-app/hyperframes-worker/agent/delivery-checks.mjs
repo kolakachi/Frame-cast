@@ -39,6 +39,6 @@ export async function levelIfNeeded(file,{silent=false,ffmpeg='ffmpeg'}={}){
 export function summary(sandbox,loudness){
  const text=f=>({selector:f.selector,time:f.time??null,message:String(f.message||'').slice(0,200)});
  return {safe_area:(sandbox?.safe_area||[]).map(text),edges:(sandbox?.edges||[]).map(text),contrast:(sandbox?.contrast||[]).map(text),loudness,
-  pacing:(sandbox?.pacing||[]).filter(f=>['reading_time','blank_frames','still_stretch','small_text','mostly_empty','slideshow'].includes(f.code)).map(f=>({code:f.code,...text(f)})),
+  pacing:(sandbox?.pacing||[]).filter(f=>['reading_time','blank_frames','still_stretch','small_text','mostly_empty','slideshow'].includes(f.code)).map(f=>({code:f.code,...text(f),...(f.code==='reading_time'?{text:String(f.text??'').slice(0,200),until:f.until??null,best:f.best??null}:{})})),
   ok:!(sandbox?.safe_area?.length||sandbox?.edges?.length||sandbox?.contrast?.length||(sandbox?.pacing||[]).some(f=>f.severity==='error'))&&!['check_failed'].includes(loudness?.status)};
 }

@@ -21,6 +21,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
+import {tokens,close} from './audio-review.mjs';
 
 // Short-form reading speed: about 17 characters a second plus a second to find the words.
 export const RULES={cps:17,pad:1,min:1,blank:0.3,step:0.1,fps:24,slack:0.15,still:1.5,hold:3,endHold:3,small:0.03,empty:1.5,sparse:0.15,cards:0.6,change:0.25,side:0.06,top:0.04,rest:0.5,overlap:0.25,offCentre:0.18,lopsided:1.5,opening:0.3};
@@ -121,7 +122,7 @@ export function findings(frames,duration,rules=RULES){
   // The last block on screen runs to the end of the video; it only needs to be there.
   const endsVideo=r.last>=duration-rules.step*1.5;
   const need=Math.max(rules.min,r.text.replace(/\s/g,'').length/rules.cps+rules.pad);
-  if(!endsVideo&&r.best+rules.slack<need)out.push({code:'reading_time',severity:'error',time:r.first,
+  if(!endsVideo&&r.best+rules.slack<need)out.push({code:'reading_time',severity:'error',time:r.first,text:r.text,best:+r.best.toFixed(2),until:+(r.last+rules.step).toFixed(2),
    message:`"${r.text.slice(0,60)}" is fully on screen for ${r.best.toFixed(1)} s; it needs ${need.toFixed(1)} s to be read.`,
    fixHint:'Hold it longer, shorten the words, or move the next beat later.'});
  }
@@ -251,3 +252,20 @@ export function spacing(frames,rules=RULES){
   fixHint:'Centre the group optically (a little above the middle), scale it up, or give the empty part a job.'});
  return out;
 }
+
+/**
+ * Reading-time findings for words the voice says while they are on screen are captions, read along with the voice:
+ * they need only be on screen (at least `flash` seconds), not a full reading time (GTM-1 #9: karaoke words "builds",
+ * "script" and "YouTube" were blocked at 0.9 to 1.2 s). words: the export's transcript [{text,start,end}].
+ */
+export function excuseSpoken(findings=[],words=[],{share=.75,margin=.5,flash=.3}={}){
+ if(!words.length)return findings;
+ return findings.filter(f=>{
+  if(f.code!=='reading_time'||typeof f.text!=='string'||!Number.isFinite(f.time)||!Number.isFinite(f.until)||(f.best??0)<flash)return true;
+  const want=tokens(f.text);if(!want.length)return true;
+  const heard=words.filter(w=>w.end>=f.time-margin&&w.start<=f.until+margin).flatMap(w=>tokens(w.text));
+  const said=want.filter(t=>heard.some(h=>close(t,h))).length;
+  return said/want.length<share;
+ });
+}
+

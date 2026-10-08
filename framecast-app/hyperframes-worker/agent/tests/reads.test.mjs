@@ -66,3 +66,11 @@ test('text cards that barely change for most of the video are a slideshow; kinet
  const pictured=frames(151,t=>({texts:[],small:[],W,H,held:false,things:[bg,box(10+Math.floor(t/3.75),90,700,900,300,{text:true}),...(t<10?[box(50,200,1200,600,600,{media:true})]:[])]}));
  assert.equal(visualFindings(pictured,15).filter(x=>x.code==='slideshow').length,0);
 });
+test('words the voice says while they are on screen are captions, not a reading-time fault (GTM-1 #9)',async()=>{
+ const {excuseSpoken}=await import('../reads-check.mjs');
+ const said=[{text:'This',start:7.8,end:8.2},{text:'builds',start:8.3,end:8.8},{text:'the',start:8.8,end:8.9},{text:'script',start:8.9,end:9.4},{text:'for',start:9.4,end:9.6},{text:'YouTube',start:9.6,end:10.2}];
+ const f=(text,time,until,best)=>({code:'reading_time',severity:'error',time,until,best,text,message:'"'+text+'" is fully on screen for '+best+' s'});
+ const kept=excuseSpoken([f('builds',8.3,9.5,1.2),f('script',8.9,10.1,1.2),f('YouTube',9.6,10.5,0.9),f('Save 40% on every order today',8,9,1),f('script',8.9,9.1,0.2),{code:'blank_frames',time:3}],said);
+ assert.deepEqual(kept.map(x=>x.text??x.code),['Save 40% on every order today','script','blank_frames'],'a headline the voice does not say, and a flash, are still sent back');
+ assert.equal(excuseSpoken([f('builds',8.3,9.5,1.2)],[]).length,1,'no transcript: nothing excused');
+});
