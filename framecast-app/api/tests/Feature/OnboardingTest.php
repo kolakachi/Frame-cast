@@ -104,6 +104,15 @@ class OnboardingTest extends TestCase
         $this->actingAs($this->owner)->postJson('/api/v1/onboarding/brand', [])->assertStatus(422)->assertJsonPath('error.message', 'Paste your website or type your brand name.');
     }
 
+    public function test_other_rate_limited_calls_do_not_use_up_the_onboarding_limit(): void
+    {
+        // The build worker's polling and other limited routes once shared one counter per user (2026-10-09: the
+        // onboarding answered "Too Many Attempts." while a local build ran). Each limited route has its own now.
+        for ($i = 0; $i < 40; $i++) \Illuminate\Support\Facades\RateLimiter::hit(sha1((string) $this->owner->id), 60);
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->owner)->postJson('/api/v1/onboarding/brand', ['name' => 'Ember & Oak'])->assertOk();
+    }
+
     public function test_skipping_marks_onboarded_with_no_brief_and_briefs_fit_every_goal(): void
     {
         $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);

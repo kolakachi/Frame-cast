@@ -32,7 +32,7 @@ use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
 // Private local coordinator. Separate credential, no browser/session access.
-Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (): void {
+Route::prefix('internal/create')->middleware('throttle:120,1,create-internal')->group(function (): void {
     Route::post('/claim', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'claim']);
     Route::post('/runs/{id}/stopped', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'stopped']);
     Route::post('/runs/{id}/heartbeat', [\App\Http\Controllers\Api\V1\Create\WorkerController::class, 'heartbeat']);
@@ -57,9 +57,9 @@ Route::prefix('internal/create')->middleware('throttle:120,1')->group(function (
 // dynamic registration. The consent page is the SPA route /oauth/authorize;
 // it calls context/decide with the user's session.
 Route::prefix('v1/oauth')->group(function (): void {
-    Route::post('/register', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'register'])->middleware('throttle:10,1');
-    Route::post('/token', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'token'])->middleware('throttle:60,1');
-    Route::post('/revoke', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'revoke'])->middleware('throttle:60,1');
+    Route::post('/register', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'register'])->middleware('throttle:10,1,oauth-register');
+    Route::post('/token', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'token'])->middleware('throttle:60,1,oauth-token');
+    Route::post('/revoke', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'revoke'])->middleware('throttle:60,1,oauth-revoke');
     Route::middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class])->group(function (): void {
         Route::post('/authorize/context', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'context']);
         Route::post('/authorize/decide', [\App\Http\Controllers\Api\V1\OAuth\OAuthController::class, 'decide']);
@@ -260,7 +260,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/uploads', [$controller, 'upload']);
             Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
             // Documents in Weave (2026-10-09): read in the background; the drawer picks what the video may show.
-            Route::post('/conversations/{id}/documents', [$controller, 'addDocument'])->middleware('throttle:20,1');
+            Route::post('/conversations/{id}/documents', [$controller, 'addDocument'])->middleware('throttle:20,1,create-documents');
             Route::get('/conversations/{id}/documents/{docId}', [$controller, 'document'])->whereUuid('docId');
             Route::post('/conversations/{id}/documents/{docId}/use', [$controller, 'useDocument'])->whereUuid('docId');
             Route::delete('/conversations/{id}/documents/{docId}', [$controller, 'removeDocument'])->whereUuid('docId');
@@ -335,8 +335,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/cruise/undo', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'undo']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         // The Weave onboarding (2026-10-09): the brand from a website (or a typed name), then the answers and a first brief.
-        Route::post('/onboarding/brand', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'brand'])->middleware('throttle:10,1');
-        Route::post('/onboarding', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'finish'])->middleware('throttle:20,1');
+        Route::post('/onboarding/brand', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'brand'])->middleware('throttle:10,1,onboarding-brand');
+        Route::post('/onboarding', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'finish'])->middleware('throttle:20,1,onboarding-finish');
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);
         Route::get('/me/credit-history', [VerificationController::class, 'creditHistory']);
