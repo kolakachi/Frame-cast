@@ -28,15 +28,21 @@ try{
  await pg.goto('file://'+root+'/index.html',{waitUntil:'load'});
  const state=t=>pg.evaluate(t=>{
   window.__timelines.main.seek(t,true);
-  const leaf=id=>gsap.getProperty(document.querySelector(id).parentNode,'rotationY');
+  // The hinge strip of each turning page (its first strip), summed with the rest for the edge.
+  const leaves=[...document.querySelectorAll('#book > div')].filter(b=>b.querySelector(':scope > div > div > div'));
+  const strips=n=>{const out=[];let s=leaves[n]&&leaves[n].firstElementChild;while(s){out.push(Number(gsap.getProperty(s,'rotationY')));s=[...s.children].find(c=>c.style.transformOrigin);}return out;};
+  const leafNo={'#p2':0,'#p4':1};
+  const leaf=id=>Math.round(strips(leafNo[id]).reduce((a,b)=>a+b,0)*100)/100;
+  const bend=id=>{const r=strips(leafNo[id]);return Math.round((r.slice(1).reduce((a,b)=>a+b,0))*100)/100;};
   const a=id=>Number(gsap.getProperty(document.querySelector(id),'autoAlpha'));
-  return {t,leaf1:leaf('#p2'),leaf2:leaf('#p4'),content:gsap.getProperty('#content','scale'),s1:a('#sl1'),s2:a('#sl2'),s3:a('#sl3'),s2x:gsap.getProperty('#sl2','xPercent'),deck:gsap.getProperty('#deckContent','scale'),cues:WM.cueTimes()};
+  return {t,leaf1:leaf('#p2'),leaf2:leaf('#p4'),bend1:bend('#p2'),content:gsap.getProperty('#content','scale'),s1:a('#sl1'),s2:a('#sl2'),s3:a('#sl3'),s2x:gsap.getProperty('#sl2','xPercent'),deck:gsap.getProperty('#deckContent','scale'),cues:WM.cueTimes()};
  },t);
  const log=(...a)=>process.env.TRACE&&console.error(...a);
  const at={};for(const t of [0.5,1.65,2.3,3.5,4.6,5.2,6.0,7.5,7.9,8.6,9.3,10.2,11.5]){log('state',t);at[t]=await state(t);}
  report.states=at;const c=report.checks;
  c.book_closed_at_start=at[0.5].leaf1===0&&at[0.5].leaf2===0;
- c.first_turn_midway=at[1.65].leaf1<-45&&at[1.65].leaf1>-135;
+ c.first_turn_midway=at[1.65].leaf1<-45&&at[1.65].leaf1>-160;
+ c.page_bends=at[1.65].bend1<-15;
  c.first_turn_done=at[2.3].leaf1===-180&&at[2.3].leaf2===0;
  c.focus_in_and_out=at[3.5].content>1.2&&at[5.2].content===1;
  c.second_turn_done=at[6.0].leaf2===-180;

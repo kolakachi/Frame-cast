@@ -358,59 +358,103 @@
 
     /* Documents (pages and slides the user chose to show as they look). Never redraw a page: show the real image.
 
-       book: pages that turn like a book. el is the book: a positioned box; its children .wm-page (each a div holding
-       the page's <img>) are the pages in order. One page at a time (default): the box is one page; each turn lifts
-       the page from its right edge over the spine (its left edge) to show the next. spread: true: the box is an open
-       book two pages wide, page 1 on the left and 2 on the right; each turn carries the right page over to the left,
-       its back being the next page, and shows the page after it on the right. turns: the times of the turns, in
-       order (fewer than the pages is fine). opts: duration (.9), shade (true: the light falls across the turning
-       page), sound (page). The pages are rearranged once, when the timeline is built. */
+       book: pages that turn like paper. el is the book: a positioned box; its children .wm-page (each a div holding
+       the page's <img>) are the pages in order. One page at a time (default): the box is one page and each turn
+       carries it over the spine (its left edge). spread: true: the box is an open book two pages wide, page 1 on the
+       left and 2 on the right; each turn carries the right page over, its back being the next left page, and shows
+       the page after it on the right. A turning page bends (the corner lifts first, the edge leads, it flattens as it
+       lands with the edge trailing), the light moves across it and it casts a shadow on the page beneath.
+       turns: the times of the turns, in order (fewer than the pages is fine). opts: duration (1.1), bend (degrees of
+       curl, 45), strips (18), sound (page). The pages are rebuilt into strips once, when the timeline is
+       built; every frame is a pure function of the time, so seeking is exact. */
     book: function (tl, el, turns, opts) {
       el = $(el); opts = opts || {};
-      var pages = Array.prototype.slice.call(el.querySelectorAll(':scope > .wm-page')), d = opts.duration || 0.9;
+      var pages = Array.prototype.slice.call(el.querySelectorAll(':scope > .wm-page'));
+      var d = opts.duration || 1.1, N = Math.max(4, opts.strips || 18), B = opts.bend == null ? 45 : opts.bend;
       var spread = !!opts.spread, half = spread ? 50 : 100;
-      el.style.perspective = (opts.perspective || 4200) + 'px';
+      var srcOf = function (page) { var img = page && page.querySelector('img'); return img ? img.getAttribute('src') : ''; };
+      el.style.perspective = (opts.perspective || 3600) + 'px';
+      el.style.perspectiveOrigin = (spread ? '50%' : '0%') + ' 40%';
       el.style.transformStyle = 'preserve-3d';
-      var face = function (page, back) {
-        page.style.position = 'absolute'; page.style.inset = '0'; page.style.overflow = 'hidden';
-        page.style.backfaceVisibility = 'hidden'; page.style.webkitBackfaceVisibility = 'hidden';
-        if (back) page.style.transform = 'rotateY(180deg)';
-        var sh = document.createElement('div');
-        sh.className = 'wm-shade';
-        sh.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(' + (back ? '270deg' : '90deg') + ',rgba(0,0,0,.28),rgba(0,0,0,0) 55%,rgba(255,255,255,.12))';
-        page.appendChild(sh);
-        return sh;
-      };
-      var slot = function (left) {
+      var box = function (left, z) {
         var b = document.createElement('div');
-        b.style.cssText = 'position:absolute;top:0;bottom:0;width:' + half + '%;left:' + (left ? 0 : 100 - half) + '%;transform-style:preserve-3d;transform-origin:0% 50%';
-        el.appendChild(b);
-        return b;
+        b.style.cssText = 'position:absolute;top:0;bottom:0;width:' + half + '%;left:' + (left ? 0 : 100 - half) + '%;transform-style:preserve-3d;z-index:' + z;
+        el.appendChild(b); return b;
+      };
+      var flat = function (page, left, z) { var b = box(left, z); page.style.position = 'absolute'; page.style.inset = '0'; page.style.overflow = 'hidden'; b.appendChild(page); return b; };
+      // One turning leaf: a chain of strips hinged to each other, each with a slice of the front and of the back.
+      var leafOf = function (front, back, z) {
+        var holder = box(spread ? false : true, z), chain = [], parent = holder;
+        var fs = srcOf(front), bs = srcOf(back);
+        for (var i = 0; i < N; i++) {
+          var st = document.createElement('div');
+          st.style.cssText = 'position:absolute;top:0;height:100%;width:' + (i === 0 ? 100 / N + '%' : '100%') + ';left:' + (i === 0 ? '0' : '100%') + ';transform-style:preserve-3d;transform-origin:0% 50%';
+          var face = function (src, col, isBack) {
+            var f = document.createElement('div');
+            f.style.cssText = 'position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#fff' + (src ? ' url("' + src + '")' : '') +
+              ';background-size:' + (N * 100) + '% 100%;background-position:' + (col / (N - 1) * 100) + '% 0' +
+              // A hair wider than its strip, so neighbouring strips overlap and no seam shows.
+              ';transform:' + (isBack ? 'rotateY(180deg) ' : '') + 'scaleX(1.03)';
+            var shade = document.createElement('div');
+            shade.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:#000;opacity:0';
+            f.appendChild(shade); st.appendChild(f); return shade;
+          };
+          var sf = face(fs, i, false), sb = back ? face(bs, N - 1 - i, true) : null;
+          parent.appendChild(st); chain.push({ el: st, front: sf, back: sb }); parent = st;
+        }
+        front.style.display = 'none'; if (back) back.style.display = 'none';
+        return { holder: holder, chain: chain };
       };
       var leaves = [], i;
       if (spread) {
-        if (pages[0]) { var l = slot(true); l.style.zIndex = 1; l.appendChild(pages[0]); face(pages[0]); }
-        // Leaf j: front = page 2j+2 (right), back = page 2j+3 (left once turned).
+        if (pages[0]) flat(pages[0], true, 1);
         for (i = 1; i < pages.length; i += 2) {
-          var leaf = slot(false); leaf.style.zIndex = 500 - i;
-          leaf.appendChild(pages[i]); var shF = face(pages[i]), shB = null;
-          if (pages[i + 1]) { leaf.appendChild(pages[i + 1]); shB = face(pages[i + 1], true); }
-          leaves.push({ leaf: leaf, shades: [shF, shB].filter(Boolean) });
+          if (i + 2 < pages.length || pages[i + 1]) leaves.push(leafOf(pages[i], pages[i + 1], 500 - i));
+          else flat(pages[i], false, 500 - i);
+          if (pages[i + 2] && i + 2 === pages.length - 1) { flat(pages[i + 2], false, 1); break; }
         }
       } else {
-        for (i = 0; i < pages.length; i++) {
-          var one = slot(true); one.style.zIndex = 500 - i; one.appendChild(pages[i]);
-          leaves.push({ leaf: one, shades: [face(pages[i])] });
-        }
-        leaves.pop(); // the last page stays
+        for (i = 0; i < pages.length - 1; i++) leaves.push(leafOf(pages[i], null, 500 - i));
+        if (pages.length) flat(pages[pages.length - 1], true, 1);
       }
+      // The shadow a turning page throws on the page beneath it, from the spine outwards.
+      var cast = document.createElement('div');
+      cast.style.cssText = 'position:absolute;top:0;bottom:0;width:' + half + '%;left:' + (spread ? 50 : 0) + '%;pointer-events:none;opacity:0;z-index:450;' +
+        'background:linear-gradient(90deg,rgba(0,0,0,.42),rgba(0,0,0,.12) 35%,rgba(0,0,0,0) 70%)';
+      el.appendChild(cast);
+      var ease = function (t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+      // The page at progress p (0..1): the hinge turns 0 to 180 with a small settle past it; the curl peaks mid-turn
+      // and leads with the outer edge; the corner lifts a little first. Returns each strip's own angle and shading.
+      var pose = function (p, withBack) {
+        var lift = Math.sin(Math.min(1, p / 0.12) * Math.PI / 2), q = Math.max(0, (p - 0.08) / 0.92);
+        var turn = p >= 1 ? 180 : 180 * ease(q);
+        // The free edge leads as the page rises and trails as it falls, so it lands last and never passes the spine.
+        var curl = p <= 0 || p >= 1 ? 0 : Math.sin(2 * Math.PI * q) * B + (1 - Math.min(1, q / 0.2)) * 18 * lift;
+        var rot = [], front = [], back = [], prev = 0;
+        for (var k = 0; k < N; k++) {
+          var cum = p <= 0 ? 0 : Math.min(179.5, Math.max(0, turn + curl * Math.pow(k / (N - 1), 1.6))), own = cum - prev, a = cum * Math.PI / 180;
+          if (p >= 1) { cum = 180; own = k === 0 ? 180 : 0; }
+          prev = cum; rot.push(-own);
+          // Light from the front: a face turning away from the viewer darkens.
+          front.push(p <= 0 || p >= 1 ? 0 : (1 - Math.max(0, Math.cos(a))) * 0.45);
+          back.push(!withBack || p <= 0 || p >= 1 ? 0 : (1 + Math.cos(a)) * 0.35);
+        }
+        return { rot: rot, front: front, back: back, cast: Math.sin(Math.min(1, Math.max(0, p)) * Math.PI) * 0.85 };
+      };
+      // Precomputed keyframes (no callbacks), so any frame seeks exactly.
+      var S = 36;
       (turns || []).slice(0, leaves.length).forEach(function (at, j) {
-        var lf = leaves[j];
-        tl.set(lf.leaf, { zIndex: 600 + j }, at)
-          .fromTo(lf.leaf, { rotationY: 0, z: 0 }, { rotationY: -180, duration: d, ease: 'power2.inOut' }, at)
-          .to(lf.leaf, { z: 14, duration: d / 2, ease: 'sine.out', yoyo: true, repeat: 1 }, at);
-        if (opts.shade !== false) lf.shades.forEach(function (sh) { tl.to(sh, { opacity: 1, duration: d / 2, ease: 'sine.in', yoyo: true, repeat: 1 }, at); });
+        var lf = leaves[j], poses = [];
+        for (var s2 = 0; s2 <= S; s2++) poses.push(pose(s2 / S, true));
+        tl.set(lf.holder, { zIndex: 600 + j }, at);
+        lf.chain.forEach(function (c, k) {
+          tl.to(c.el, { keyframes: poses.slice(1).map(function (ps) { return { rotationY: ps.rot[k], duration: d / S, ease: 'none' }; }) }, at);
+          tl.to(c.front, { keyframes: poses.slice(1).map(function (ps) { return { opacity: ps.front[k], duration: d / S, ease: 'none' }; }) }, at);
+          if (c.back) tl.to(c.back, { keyframes: poses.slice(1).map(function (ps) { return { opacity: ps.back[k], duration: d / S, ease: 'none' }; }) }, at);
+        });
+        tl.to(cast, { keyframes: poses.slice(1).map(function (ps) { return { opacity: ps.cast, duration: d / S, ease: 'none' }; }) }, at);
       });
+      leaves.forEach(function (lf) { lf.chain.forEach(function (c) { gsap.set(c.el, { rotationY: 0, transformOrigin: '0% 50%' }); }); });
       return tl;
     },
 
@@ -700,7 +744,7 @@
     whip: function (a) { return [['whoosh-fast', a[3]]]; },
     giantWipe: function (a) { return [['whoosh-big', a[3] + 0.28]]; },
     camera: function (a) { var d = o(a, 4).duration; return [['slide', a[3] + (d == null ? 0.6 : d) * 0.35]]; },
-    book: function (a) { var d = o(a, 3).duration || 0.9; return (a[2] || []).map(function (t) { return ['page', t + d * 0.3]; }); },
+    book: function (a) { var d = o(a, 3).duration || 1.1; return (a[2] || []).map(function (t) { return ['page', t + d * 0.3]; }); },
     slides: function (a) { var d = o(a, 3).duration || 0.6, k = o(a, 3).transition || 'push'; return (a[2] || []).map(function (t) { return [k === 'fade' ? 'slide' : 'whoosh', t + d * 0.4]; }); },
     pageFocus: function (a) { var d = o(a, 5).duration; return [['slide', a[4] + (d == null ? 0.7 : d) * 0.35]]; },
     fly: function (a) { return [['swish', a[3] + (o(a, 4).duration || 0.6) * 0.5]]; },
