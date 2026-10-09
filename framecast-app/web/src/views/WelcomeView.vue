@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { peekBrief, saveBrief } from '../services/pendingBrief'
+import UiSelect from '../components/UiSelect.vue'
 
 // The Weave onboarding (2026-10-09): three questions, each skippable, then Create opens with a ready first brief.
 // What they make most picks the first video and the examples they see; their website becomes the brand kit; how they
@@ -77,6 +78,7 @@ async function finish(skipped) {
   } catch (e) { error.value = why(e) || 'Something went wrong. Try again.' }
   finally { busy.value = false }
 }
+const industryOptions = computed(() => [{ value: '', label: 'Not sure' }, ...Object.entries(brand.value?.industries || {}).map(([value, label]) => ({ value, label }))])
 const footer = computed(() => ['We use this to set up your videos and suggest what to make next.', 'Your logo, colours and products go into your brand kit. Change them anytime in Settings.', 'This is the last question.'][idx.value] || '')
 </script>
 
@@ -121,9 +123,8 @@ const footer = computed(() => ['We use this to set up your videos and suggest wh
         <div v-if="brand" class="welcome__found">
           <div class="welcome__who"><img v-if="brand.logo_url" :src="brand.logo_url" alt="" /><span v-else class="welcome__mono">{{ (brand.name || '?').slice(0, 1) }}</span><span><b>{{ brand.name }}</b><small v-if="brand.products.length">{{ brand.products.slice(0, 3).join(', ') }}</small><small v-else-if="brand.summary">{{ brand.summary }}</small></span></div>
           <div v-if="brand.palette.length || brand.url" class="welcome__meta">
-            <template v-if="brand.palette.length"><span class="welcome__k">Colours</span><i v-for="c in brand.palette" :key="c" class="welcome__swatch" :style="{ background: c }" /></template>
-            <span class="welcome__fill" />
-            <template v-if="brand.url"><label for="welcome-industry" class="welcome__k">Industry</label><select id="welcome-industry" v-model="industry"><option value="">Not sure</option><option v-for="(name, id) in brand.industries" :key="id" :value="id">{{ name }}</option></select></template>
+            <span v-if="brand.palette.length" class="welcome__pair"><span class="welcome__k">Colours</span><i v-for="c in brand.palette" :key="c" class="welcome__swatch" :style="{ background: c }" /></span>
+            <span v-if="brand.url" class="welcome__pair welcome__pair--end"><span class="welcome__k">Industry</span><UiSelect v-model="industry" label="Industry" align="right" :options="industryOptions" /></span>
           </div>
           <small class="welcome__note">Saved to your brand kit. Change anything later in Settings.</small>
         </div>
@@ -193,8 +194,8 @@ h1 span{display:block;color:var(--text-faint,#8f95a1);font-weight:500}
 .welcome__who small,.welcome__k,.welcome__note{color:var(--text-faint,#8f95a1);font-size:12px}
 .welcome__meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .welcome__swatch{width:22px;height:22px;border-radius:6px;border:1px solid var(--border,#3a3f49)}
-.welcome__fill{flex:1}
-.welcome__meta select{font:13px inherit;font-family:inherit;color:var(--text,#eceef1);background:var(--surface,#191d24);border:1px solid var(--border,#2c313b);border-radius:8px;padding:6px 8px}
+.welcome__pair{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.welcome__pair--end{margin-left:auto}
 .welcome__chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:600px}
 .welcome__chip{font:500 13.5px inherit;font-family:inherit;padding:10px 14px;min-height:40px;border-radius:8px;cursor:pointer;color:var(--text,#eceef1);border:1px solid var(--border,#2c313b);background:var(--surface-2,#14171d)}
 .welcome__chip.on{color:var(--accent,#ff6b35);border-color:var(--accent-border,rgba(255,107,53,.7));background:var(--accent-soft,rgba(255,107,53,.08))}
