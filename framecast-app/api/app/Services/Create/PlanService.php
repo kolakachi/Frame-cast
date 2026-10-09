@@ -813,6 +813,15 @@ class PlanService
         return $items ?: null;
     }
 
+    /**
+     * When a plan item is bought: talking takes and generated shots after what they are made from (sheets, poses,
+     * narration), and a video cutout after the takes and shots it cuts. One rule for saving and for pricing a plan.
+     */
+    public static function buyOrder(string $kind): int
+    {
+        return $kind === 'cutout_video' ? 2 : (in_array($kind, ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0);
+    }
+
     public function normalize(array $raw, array $ctx, int $workspaceId): array
     {
         // Cut long text at a word boundary, never mid-word.
@@ -882,7 +891,7 @@ class PlanService
             // A talking shot or take is made from the poses and the narration, so it is always bought after them;
             // generated shots and takes are made from the approved sheet, so after it.
             // A video cutout cuts the take or shot bought before it, so it comes after all of them.
-            ->sortBy(fn ($m) => $m['kind'] === 'cutout_video' ? 2 : (in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0), SORT_NUMERIC, false)->values()->all();
+            ->sortBy(fn ($m) => self::buyOrder($m['kind']), SORT_NUMERIC, false)->values()->all();
         // A re-plan keeps the people already made: the previous cast sheet is carried over word for word, so it is reused
         // and nobody new is drawn (GTM-1 #7: a change about the phone view re-described the sheet and made a new person).
         // Only a message asking for a different person or look of the cast lets the planner's new sheet through.
@@ -1273,7 +1282,7 @@ class PlanService
                 $m['requirement_ids'] = array_column($m['requirements'], 'id');
             }
             return $m;
-        })->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0)->values()->all();
+        })->sortBy(fn ($m) => self::buyOrder($m['kind']))->values()->all();
     }
 
     /** Media the plan would add on top of building the composition. */

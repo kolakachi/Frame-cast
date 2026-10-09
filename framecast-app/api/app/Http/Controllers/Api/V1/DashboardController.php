@@ -34,7 +34,9 @@ class DashboardController extends Controller
         $industry = DB::table('workspaces')->where('id', $ws)->value('industry');
         if ($industry === null && \Illuminate\Support\Facades\Cache::add('industry-learn:'.$ws, 1, 86400)) \App\Jobs\LearnWorkspaceIndustry::dispatch($ws);
 
-        return response()->json(['data' => ['cloned_voice' => $clonedVoice, 'steps' => $steps, 'done' => count(array_filter($steps)), 'total' => count($steps), 'niche' => $niche, 'industry' => $industry, 'brand_name' => $brandName !== '' ? $brandName : null]]);
+        // What the onboarding said the workspace makes most leads the cards (2026-10-09).
+        $goal = data_get(json_decode((string) (Schema::hasColumn('workspaces', 'onboarding_json') ? DB::table('workspaces')->where('id', $ws)->value('onboarding_json') : ''), true), 'goal');
+        return response()->json(['data' => ['goal' => is_string($goal) ? $goal : null, 'cloned_voice' => $clonedVoice, 'steps' => $steps, 'done' => count(array_filter($steps)), 'total' => count($steps), 'niche' => $niche, 'industry' => $industry, 'brand_name' => $brandName !== '' ? $brandName : null]]);
     }
 
     /** The four studio steps for one workspace, ticked from what it has (also each client's progress on the agency view). */

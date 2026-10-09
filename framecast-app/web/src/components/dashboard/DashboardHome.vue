@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import api from '../../services/api'
 import CardModal from './CardModal.vue'
 import { tune } from './industries.js'
+import { useWorkspaceStore } from '../../stores/workspace'
 
 // The top of the dashboard (2026-10-08 mockup, owner's decisions): a welcome, "Set up your studio" from what the
 // workspace already has, and "What do you want to make?" cards that open Create with a starter brief.
@@ -95,7 +96,12 @@ const CARDS = [
     brief: 'Make a video like this one for [your product]: [paste a TikTok, Reel or YouTube link]' },
 ]
 // Ordered and worded for what the workspace sells (D5).
-const cards = computed(() => tune(CARDS, setup.value?.industry))
+const cards = computed(() => tune(CARDS, setup.value?.industry, setup.value?.goal))
+// "Videos for my clients" at onboarding: point them at the Agency features (or at what Agency adds).
+const workspaceStore = useWorkspaceStore()
+const agencyHint = computed(() => setup.value?.goal === 'agency' && !agencyHintHidden.value)
+const agencyHintHidden = ref((() => { try { return localStorage.getItem('wyv_agency_hint') === 'hidden' } catch { return false } })())
+function hideAgencyHint() { agencyHintHidden.value = true; try { localStorage.setItem('wyv_agency_hint', 'hidden') } catch { /* this session only */ } }
 // A card opens its modal (CardModal): script or Script Writer, options, then Continue starts it in Create.
 const openCard = ref(null)
 function startFrom(card, prefill = null) { openCard.value = { ...card, image: POSTER + card.poster + '.jpg', prefill } }
@@ -169,6 +175,12 @@ function startIdea(i) {
       </div>
     </template>
 
+    <div v-if="agencyHint" class="dh-agency" role="note">
+      <span v-if="workspaceStore.canOwnClients"><b>Making videos for clients?</b> Give each client their own space, approvals and your team's allowances.</span>
+      <span v-else><b>Making videos for clients?</b> The Agency plan adds a space per client, client approvals and your team.</span>
+      <router-link class="dh-agency__go" :to="workspaceStore.canOwnClients ? { name: 'agency', params: { tab: 'clients' } } : { name: 'plans' }">{{ workspaceStore.canOwnClients ? 'Add your first client' : 'See the Agency plan' }}</router-link>
+      <button type="button" class="dh-agency__x" aria-label="Hide this" @click="hideAgencyHint">×</button>
+    </div>
     <div class="dh-hd"><h2>What do you want to make?</h2><small v-if="setup?.niche">Tuned for: {{ setup.niche }}</small></div>
     <div class="dh-cards">
       <button v-for="c in cards" :key="c.key" type="button" class="dh-card" :style="{ '--c': c.colour }" @click="startFrom(c)">
@@ -255,4 +267,9 @@ button.dh-link{background:none;border:0;padding:0;font:inherit;font-size:13px;co
 @media (max-width:1100px){.dh-setup{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.dh-cards,.dh-setup{grid-template-columns:1fr}.dh-card-copy{max-width:72%}}
 @media (prefers-reduced-motion:reduce){.dh-card,.dh-card img{transition:none}.dh-card:hover,.dh-card:hover img{transform:none}}
+.dh-agency{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;margin:0 0 14px;border:1px solid var(--accent-border,rgba(255,107,53,.5));border-radius:10px;background:var(--accent-soft,rgba(255,107,53,.08));font-size:13.5px}
+.dh-agency > span{flex:1 1 280px;min-width:0}
+.dh-agency__go{font-weight:700;color:var(--accent,#ff6b35);text-decoration:none;white-space:nowrap}
+.dh-agency__go:hover{text-decoration:underline}
+.dh-agency__x{border:0;background:none;color:var(--text-faint,#8f95a1);font-size:18px;cursor:pointer;width:32px;height:32px}
 </style>

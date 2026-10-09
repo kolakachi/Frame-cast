@@ -82,8 +82,13 @@ export const EXAMPLES = {
 }
 
 /** The cards in this industry's order, each with its example (null keeps the card's own wording). */
-export function tune(cards, industry) {
+// What the onboarding said they make most (2026-10-09): that card leads, the rest keep the industry's order.
+export const GOAL_CARD = { ads: 'offer_ad', ugc: 'testimonial', explain: 'explainer', launch: 'launch_promo', agency: 'offer_ad' }
+
+export function tune(cards, industry, goal = null) {
   const order = ORDER[industry] || DEFAULT_ORDER
   const examples = EXAMPLES[industry] || {}
-  return [...cards].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)).map(c => ({ ...c, example: examples[c.key] || null }))
+  const lead = GOAL_CARD[goal]
+  const rank = key => key === lead ? -1 : order.indexOf(key)
+  return [...cards].sort((a, b) => rank(a.key) - rank(b.key)).map(c => ({ ...c, example: examples[c.key] || null }))
 }

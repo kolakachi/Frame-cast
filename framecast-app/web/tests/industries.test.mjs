@@ -24,3 +24,10 @@ test('every industry orders all six cards and words every one', () => {
     assert.deepEqual(Object.keys(EXAMPLES[industry]).sort(), [...DEFAULT_ORDER].sort(), industry)
   }
 })
+
+test('the onboarding goal leads the cards; the rest keep the industry order', () => {
+  const cards = DEFAULT_ORDER.map(key => ({ key }))
+  assert.deepEqual(tune(cards, 'beauty', 'explain').map(c => c.key), ['explainer', 'testimonial', 'offer_ad', 'listicle', 'reference', 'launch_promo'])
+  assert.deepEqual(tune(cards, null, 'ugc').map(c => c.key)[0], 'testimonial')
+  assert.deepEqual(tune(cards, 'beauty', 'explore').map(c => c.key), tune(cards, 'beauty').map(c => c.key), 'just exploring changes nothing')
+})
