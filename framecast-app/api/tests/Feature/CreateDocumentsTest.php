@@ -173,7 +173,7 @@ class CreateDocumentsTest extends TestCase
                 ['key' => 'page-2-2', 'mime_type' => 'image/jpeg', 'width' => 40, 'height' => 60, 'base64' => $jpeg]]]);
         }]);
         $version = (int) DB::table('create_conversations')->where('id', $d->conversation_id)->value('version');
-        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, [
+        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, ['pages', 'pictures'], [
             ['kind' => 'picture', 'id' => 'x5', 'part' => 1], ['kind' => 'page', 'number' => 2, 'part' => 2],
             ['kind' => 'page', 'number' => 9, 'part' => 1], ['kind' => 'picture', 'id' => 'x5', 'part' => 1]], $version);
         $this->assertSame([['kind' => 'picture', 'id' => 'x5', 'part' => 1], ['kind' => 'page', 'number' => 2, 'part' => 2]], $asked, 'unknown and repeated picks are dropped');
@@ -183,7 +183,44 @@ class CreateDocumentsTest extends TestCase
         $this->assertSame(['document_picture', 'document_page'], array_column($notes, 'kind'));
         $this->assertSame('From brochure.pdf, picture, page 1', $notes[0]['use']);
         $this->assertSame('From brochure.pdf, page 2 (part 2 of 2)', $notes[1]['use']);
-        $this->assertTrue(DocumentService::brief(DB::table('create_documents')->where('id', $d->id)->first())['chosen']);
+        $brief = DocumentService::brief(DB::table('create_documents')->where('id', $d->id)->first());
+        $this->assertSame([true, ['pages', 'pictures'], 2], [$brief['chosen'], $brief['modes'], $brief['picked']]);
+        $this->assertSame(['pages', 'pictures'], DocumentService::forPlan($d->conversation_id)[0]['use']);
+    }
+
+    public function test_ticks_count_only_for_the_ways_chosen_and_speaker_notes_become_the_script(): void
+    {
+        $d = $this->added('pitch.pptx', "PK\x03\x04deck");
+        $analysis = $this->analysis(['source' => 'pptx', 'pdf_base64' => base64_encode('%PDF-deck'), 'notes' => [['slide' => 1, 'text' => 'Most agencies lose a day a week to reporting.'], ['slide' => 3, 'text' => 'Three months for the price of two.']]]);
+        $plainAnalysis = $this->analysis();
+        Http::fake(['extract:8000/extract/document' => fn ($request) => Http::response(str_contains($request->body(), 'pitch.pptx') ? $analysis : $plainAnalysis)]);
+        app(DocumentService::class)->readNow($d->id);
+        $jpeg = base64_encode($this->jpeg());
+        $asked = null;
+        Http::fake(['extract:8000/extract/document/render' => function ($request) use (&$asked, $jpeg) {
+            foreach ($request->data() as $part) if (($part['name'] ?? '') === 'items') $asked = json_decode($part['contents'], true);
+            return Http::response(['images' => [['key' => 'page-1-1', 'mime_type' => 'image/jpeg', 'width' => 40, 'height' => 60, 'base64' => $jpeg]]]);
+        }]);
+        $version = fn () => (int) DB::table('create_conversations')->where('id', $d->conversation_id)->value('version');
+        // A picture ticked while "Use its pictures" is off is not used.
+        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, ['pages', 'notes'], [['kind' => 'page', 'number' => 1, 'part' => 1], ['kind' => 'picture', 'id' => 'x5', 'part' => 1]], $version());
+        $this->assertSame([['kind' => 'page', 'number' => 1, 'part' => 1]], $asked);
+        $note = json_decode((string) DB::table('create_attachments')->where('conversation_id', $d->conversation_id)->value('notes_json'), true);
+        $this->assertSame('From pitch.pptx, slide 1', $note['use']);
+        $plan = DocumentService::forPlan($d->conversation_id)[0];
+        $this->assertSame(['slides', ['pages', 'notes']], [$plan['kind'], $plan['use']]);
+        $this->assertSame([['slide' => 1, 'notes' => 'Most agencies lose a day a week to reporting.'], ['slide' => 3, 'notes' => 'Three months for the price of two.']], $plan['speaker_notes']);
+
+        // Words only clears the rest; a document must be given a way to be used.
+        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, ['words', 'pages'], [['kind' => 'page', 'number' => 2, 'part' => 1]], $version());
+        $this->assertSame(['words'], DocumentService::forPlan($d->conversation_id)[0]['use']);
+        $this->assertArrayNotHasKey('speaker_notes', DocumentService::forPlan($d->conversation_id)[0]);
+        try { app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, ['notes'], [], $version()); $this->addToAssertionCount(1); }
+        catch (HttpException $e) { $this->fail('notes alone is a choice for a deck with notes'); }
+        $plain = $this->added();
+        app(DocumentService::class)->readNow($plain->id);
+        try { app(DocumentService::class)->useParts($this->owner, $plain->conversation_id, $plain->id, ['notes'], [], (int) DB::table('create_conversations')->where('id', $plain->conversation_id)->value('version')); $this->fail('notes was taken for a file without notes'); }
+        catch (HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
     }
 
     public function test_using_the_words_only_and_another_workspace_cannot_see_it(): void
@@ -192,7 +229,7 @@ class CreateDocumentsTest extends TestCase
         Http::fake(['extract:8000/extract/document' => Http::response($this->analysis())]);
         app(DocumentService::class)->readNow($d->id);
         $version = (int) DB::table('create_conversations')->where('id', $d->conversation_id)->value('version');
-        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, [], $version);
+        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, ['words'], [], $version);
         $this->assertSame(0, DB::table('create_attachments')->where('conversation_id', $d->conversation_id)->count());
         $this->assertTrue(DocumentService::brief(DB::table('create_documents')->where('id', $d->id)->first())['chosen']);
 

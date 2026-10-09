@@ -91,6 +91,19 @@ for i in range(14): pg.draw_rect(fitz.Rect(80 + i * 30, 500 - i * 20, 100 + i * 
 r = document.analyse(pdf_bytes(d), "chart.pdf")
 check(r["text_only"] is False and r["pages"][0]["drawings"] >= 12, "chart page: drawn chart keeps the drawer")
 
+# A deck's speaker notes, by slide (made with LibreOffice from tests/fixtures/notes-deck.fodp).
+deck = open(os.path.join(os.path.dirname(__file__), "fixtures", "notes-deck.pptx"), "rb").read()
+r = document.analyse(deck, "notes-deck.pptx")
+check(r["source"] == "pptx" and r["page_count"] == 3 and [n["slide"] for n in r["notes"]] == [1, 3], "deck: notes read for slides 1 and 3")
+check(r["notes"][1]["text"].endswith("& no card needed.") and "Ask the room" in r["notes"][0]["text"], "deck: notes text kept whole, entities decoded")
+
+# A long document is read to its first MAX_PAGES pages, not refused.
+long = fitz.open()
+for n in range(document.MAX_PAGES + 4):
+    long.new_page(width=595, height=842).insert_text((50, 80), f"Page {n + 1} of the plan", fontsize=14)
+r = document.analyse(pdf_bytes(long), "long.pdf")
+check(r["page_count"] == document.MAX_PAGES and r["pages_total"] == document.MAX_PAGES + 4 and len(r["pages"]) == document.MAX_PAGES, "long: first pages read, total reported")
+
 # 7. Refusals that say what to do.
 for data, name, needle in [(b"hello", "x.txt", "PDF, Word"), (b"hello", "x.docx", "doesn't look like"), (b"%PDF-1.4 broken", "x.pdf", "couldn't read")]:
     try: document.analyse(data, name); raise SystemExit("FAIL: accepted " + name)

@@ -165,7 +165,7 @@ const pendingDocuments = computed(() => {
   return documents.value.filter(d => Date.parse(d.created_at || 0) > last)
 })
 const docAdding = ref([])
-const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : d.text_only ? 'text only' : d.chosen ? (d.picked ? d.picked + ' chosen' : 'words only') : 'choose what to use'
+const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : (d.pages_total > d.page_count ? `first ${d.page_count} of ${d.pages_total} pages · ` : '') + (d.text_only ? 'text only' : !d.chosen ? 'choose how to use it' : (d.modes || []).includes('words') ? 'words only' : [d.picked ? d.picked + ' chosen' : '', (d.modes || []).includes('notes') ? 'notes as script' : ''].filter(Boolean).join(' · ') || 'chosen')
 const docBusy = computed(() => docAdding.value.some(u => !u.error) || documents.value.some(d => d.status === 'reading'))
 const trayItems = computed(() => [
   ...pendingDocuments.value.map(d => ({ key: 'd' + d.id, title: d.title, type: 'document', uploading: d.status === 'reading', sub: docSub(d), error: d.status === 'failed' ? d.error || 'Could not read that document.' : '', open: d.status === 'ready' && !d.text_only, note: d.summary, doc: d })),
@@ -185,7 +185,7 @@ async function addDocument(file) {
   const key = crypto.randomUUID()
   docAdding.value.push({ key, title: file.name, error: file.size > 20 * 1048576 ? 'Use a document up to 20 MB.' : '' })
   if (file.size > 20 * 1048576) return
-  const fail = e => { const u = docAdding.value.find(x => x.key === key); if (u) u.error = message(e) }
+  const fail = e => { const u = docAdding.value.find(x => x.key === key); if (u) u.error = message(e); else error.value = file.name + ': ' + message(e) }
   try {
     const target = await ensureConversation()
     const form = new FormData(); form.append('document', file)
@@ -209,38 +209,78 @@ watch(documents, list => {
   }
   pollDocuments()
 })
-// The drawer: pictures and pages (a tall page or picture in parts, under its page), nothing ticked to start.
-const docOpenId = ref(null), docFull = ref(null), docTab = ref('pictures'), docPicks = ref({}), docSaving = ref(false)
+// The drawer (owner, 2026-10-09): how should Weave use this document? Show its pages (slides) as they look, use its
+// pictures, use a deck's speaker notes as the script, or its words only. Nothing is chosen or ticked to start.
+const docOpenId = ref(null), docFull = ref(null), docModes = ref({}), docPicks = ref({}), docSaving = ref(false)
 const pickKey = p => p.kind === 'picture' ? `picture-${p.id}-${p.part}` : `page-${p.number}-${p.part}`
 async function openDocument(d) {
-  docOpenId.value = d.id; docFull.value = null; docPicks.value = {}
+  docOpenId.value = d.id; docFull.value = null; docPicks.value = {}; docModes.value = {}
   try {
     const full = (await api.get(`${base()}/documents/${d.id}`)).data.data
     if (docOpenId.value !== d.id) return
-    docFull.value = full; docTab.value = full.picture_list.length ? 'pictures' : 'pages'
+    docFull.value = full
+    docModes.value = Object.fromEntries((full.modes || []).map(m => [m, true]))
     docPicks.value = Object.fromEntries((full.picks || []).map(p => [pickKey(p), p]))
   } catch (e) { error.value = message(e); docOpenId.value = null }
 }
-const docGroups = computed(() => {
+const docDeck = computed(() => docFull.value?.source === 'pptx')
+const docUnit = computed(() => docDeck.value ? 'slide' : 'page')
+const tile = (pick, thumb, label) => ({ key: pickKey(pick), pick, thumb, label })
+const docPageGroups = computed(() => (docFull.value?.pages || []).map(pg => {
+  const name = (docDeck.value ? 'Slide ' : 'Page ') + pg.number, what = pg.graphic ? ' · chart or diagram' : ''
+  return { key: 'p' + pg.number, label: pg.parts.length > 1 ? `${name}${what} · a long page, in ${pg.parts.length} parts` : '',
+    tiles: pg.parts.map(x => tile({ kind: 'page', number: pg.number, part: x.part }, x.thumb, pg.parts.length > 1 ? `Part ${x.part}` : name + what)) }
+}))
+const docPictureGroups = computed(() => (docFull.value?.picture_list || []).map(p => ({ key: p.id, label: p.parts.length > 1 ? `Tall picture, ${docUnit.value} ${p.page} · ${p.parts.length} parts` : '',
+  tiles: p.parts.map(x => tile({ kind: 'picture', id: p.id, part: x.part }, x.thumb, p.parts.length > 1 ? `Part ${x.part}` : `${docDeck.value ? 'Slide' : 'Page'} ${p.page}`)) })))
+const docNotesBySlide = computed(() => Object.fromEntries((docFull.value?.notes_list || []).map(n => [n.slide, n.text])))
+const docModeList = computed(() => {
   const f = docFull.value
   if (!f) return []
-  const tile = (pick, thumb, label) => ({ key: pickKey(pick), pick, thumb, label })
-  if (docTab.value === 'pictures') return f.picture_list.map(p => ({ key: p.id, label: p.parts.length > 1 ? `Tall picture, page ${p.page} · ${p.parts.length} parts` : '',
-    tiles: p.parts.map(x => tile({ kind: 'picture', id: p.id, part: x.part }, x.thumb, p.parts.length > 1 ? `Part ${x.part}` : `Page ${p.page}`)) }))
-  return f.pages.map(pg => {
-    const what = pg.graphic ? 'chart or diagram' : ''
-    return { key: 'p' + pg.number, label: pg.parts.length > 1 ? `Page ${pg.number}${what ? ' · ' + what : ''} · ${pg.parts.length} parts` : '',
-      tiles: pg.parts.map(x => tile({ kind: 'page', number: pg.number, part: x.part }, x.thumb, pg.parts.length > 1 ? `Part ${x.part}` : `Page ${pg.number}${what ? ' · ' + what : ''}`)) }
-  })
+  const unit = docUnit.value
+  return [
+    { key: 'pages', title: `Show the ${unit}s as they look`, detail: docDeck.value ? 'A presentation video: each slide on screen while it is talked through.' : 'A walkthrough, as if flipping through it.' },
+    ...(f.notes_list?.length ? [{ key: 'notes', title: 'Use my speaker notes as the script', detail: `What is said over each slide comes from its notes (${f.notes_list.length} ${f.notes_list.length === 1 ? 'slide has' : 'slides have'} notes).` }] : []),
+    ...(f.picture_list.length ? [{ key: 'pictures', title: 'Use its pictures', detail: 'The photos and images inside it, on their own.' }] : []),
+    { key: 'words', title: 'Use its words only', detail: 'Weave writes from it and makes its own visuals. Nothing to tick.' },
+  ]
 })
-const docPicked = computed(() => Object.values(docPicks.value))
+function toggleDocMode(key) {
+  const next = { ...docModes.value, [key]: !docModes.value[key] }
+  if (key === 'words' && next.words) { next.pages = false; next.pictures = false; next.notes = false }
+  if (key !== 'words' && next[key]) next.words = false
+  docModes.value = next
+}
+const pickedOf = kind => Object.values(docPicks.value).filter(p => p.kind === kind)
+const docPicked = computed(() => [...(docModes.value.pages ? pickedOf('page') : []), ...(docModes.value.pictures ? pickedOf('picture') : [])])
 const docRoom = computed(() => 20 - (data.value?.attachments?.length || 0))
+// About one page every 5 seconds of the video.
+const docFit = computed(() => { let d = 15; try { d = JSON.parse(conversation.value?.settings_json || '{}').duration_seconds || 15 } catch {} return { seconds: d, pages: Math.max(2, Math.round(d / 5)) } })
+const docReady = computed(() => {
+  const m = docModes.value
+  if (!Object.values(m).some(Boolean)) return false
+  if (m.pages && !pickedOf('page').length) return false
+  if (m.pictures && !pickedOf('picture').length) return false
+  return docPicked.value.length <= docRoom.value
+})
+const docSummary = computed(() => {
+  const m = docModes.value, f = docFull.value, out = []
+  if (!f) return ''
+  if (!Object.values(m).some(Boolean)) return 'Choose how Weave should use it.'
+  const np = pickedOf('page').length, ni = pickedOf('picture').length
+  if (m.pages) out.push(np ? `${np} ${docUnit.value}${np === 1 ? '' : 's'} shown as they look` : `tick the ${docUnit.value}s to show`)
+  if (m.notes) out.push('script from your notes')
+  if (m.pictures) out.push(ni ? `${ni} picture${ni === 1 ? '' : 's'}` : 'tick the pictures to use')
+  out.push(`words from all ${f.page_count} ${docUnit.value}s`)
+  return docPicked.value.length > docRoom.value ? `This conversation has room for ${Math.max(0, docRoom.value)} more files.` : out.join(' · ')
+})
 function toggleDocPick(t) { const next = { ...docPicks.value }; if (next[t.key]) delete next[t.key]; else next[t.key] = t.pick; docPicks.value = next }
-function setDocPicks(on) { const next = { ...docPicks.value }; for (const g of docGroups.value) for (const t of g.tiles) { if (on) next[t.key] = t.pick; else delete next[t.key] } docPicks.value = next }
-async function useDocument(picks) {
+function setDocPicks(groups, on) { const next = { ...docPicks.value }; for (const g of groups) for (const t of g.tiles) { if (on) next[t.key] = t.pick; else delete next[t.key] } docPicks.value = next }
+async function useDocument() {
   docSaving.value = true
   await guarded(async () => {
-    const r = await api.post(`${base()}/documents/${docOpenId.value}/use`, { picks, expected_version: conversation.value.version })
+    const modes = Object.keys(docModes.value).filter(k => docModes.value[k])
+    const r = await api.post(`${base()}/documents/${docOpenId.value}/use`, { modes, picks: docPicked.value, expected_version: conversation.value.version })
     data.value = r.data.data; quote.value = null; docOpenId.value = null
   })
   docSaving.value = false
@@ -724,8 +764,12 @@ async function useSample(s) {
   usingSample.value = ''
 }
 
-async function ensureConversation() {
-  if(id.value) return id.value
+let creating = null
+function ensureConversation() {
+  if(id.value) return Promise.resolve(id.value)
+  return creating ||= makeConversation().finally(() => { creating = null })
+}
+async function makeConversation() {
   const draft = prompt.value
   const c = (await api.post('/create/conversations',{output_kind:outputKind.value,...(pendingEffort.value !== 'standard' ? { effort: pendingEffort.value } : {}),...(pendingStyleId.value ? Object.fromEntries(Object.entries(styleSettings(pendingStyleId.value)).filter(([,v]) => v)) : {})})).data.data
   persistDraft(c.id,draft); persistDraft(null,'')
@@ -986,7 +1030,8 @@ watch(id, async (value, old) => {
   siteBrief.value = false; offerSiteBrief()
   // ensureConversation transfers pending local files into the newly created chat.
   if(old) uploads.value.forEach(removeUpload)
-  docAdding.value = []; docSeen.clear(); docOpenId.value = null; clearTimeout(docTimer); docTimer = null
+  if(old) docAdding.value = []
+  docSeen.clear(); docOpenId.value = null; clearTimeout(docTimer); docTimer = null
   planning.value = false; planKey = null; clearInterval(planPoll)
   await loadArtifact(); try {await refresh(); void resumePlanning()} catch(e) {error.value = message(e)}
 })
@@ -1709,7 +1754,7 @@ onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('poin
               <label for="create-prompt" class="sr-only">Describe what you want to create or change</label>
               <textarea ref="composer" id="create-prompt" v-model="prompt" rows="2" maxlength="10000" placeholder="Describe what you want to create or change…" @input="sendingKey = null" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send" />
               <div class="composer-bottom">
-                <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV, up to 20 files, 100 MB each and 200 MB total. PDF, Word or PowerPoint up to 20 MB and 50 pages." @click="fileInput.click()">+ Attach</button>
+                <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV, up to 20 files, 100 MB each and 200 MB total. PDF, Word or PowerPoint up to 20 MB (the first 50 pages are read)." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
                 <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
                 <label v-if="styles.length || packs.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Style" @change="chooseStyle($event.target.value)"><option value="">Style: WyvStudio chooses</option><optgroup v-if="packs.length" label="WyvStudio styles"><option v-for="k in packs" :key="k.slug" :value="'pack:' + k.slug">Style: {{ k.name }}</option></optgroup><optgroup v-if="styles.length" label="Your styles"><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></optgroup></select></label>
@@ -1880,33 +1925,61 @@ onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('poin
       <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
       <ChangeDrawer ref="changeDrawer" :open="changeOpen" :conversation-id="id || ''" :revision="currentRevision ? { id: currentRevision.id, number: currentRevision.number } : null" :version="conversation?.version || 0" :src="media" @close="changeOpen = false" @updated="d => { data = d }" @planned="changePlanned" />
-      <SideDrawer :open="!!docOpenId" :title="docFull?.title || 'Document'" :meta="docFull ? docFull.page_count + (docFull.page_count === 1 ? ' page' : ' pages') + ' · ' + docFull.picture_list.length + (docFull.picture_list.length === 1 ? ' picture' : ' pictures') + ' found · tick what Weave may put in the video' : 'Opening…'" @close="docOpenId = null">
+      <SideDrawer :open="!!docOpenId" :title="docFull?.title || 'Document'" :meta="docFull ? (docFull.pages_total > docFull.page_count ? 'First ' + docFull.page_count + ' of ' + docFull.pages_total + ' ' + docUnit + 's' : docFull.page_count + ' ' + docUnit + (docFull.page_count === 1 ? '' : 's')) + ' · ' + docFull.picture_list.length + (docFull.picture_list.length === 1 ? ' picture' : ' pictures') + (docFull.notes_list?.length ? ' · speaker notes on ' + docFull.notes_list.length : '') : 'Opening…'" @close="docOpenId = null">
         <div v-if="docFull" class="doc-pick">
-          <div class="doc-pick__bar">
-            <span class="seg" role="group" aria-label="Show"><button type="button" :aria-pressed="docTab === 'pictures'" :disabled="!docFull.picture_list.length" @click="docTab = 'pictures'">Pictures ({{ docFull.picture_list.length }})</button><button type="button" :aria-pressed="docTab === 'pages'" @click="docTab = 'pages'">Pages ({{ docFull.pages.length }})</button></span>
-            <span class="doc-pick__all"><button type="button" class="quiet quiet--sm" @click="setDocPicks(true)">Select all</button><button type="button" class="quiet quiet--sm" @click="setDocPicks(false)">None</button></span>
-          </div>
-          <p v-if="docTab === 'pages'" class="muted doc-pick__hint">A page is for a chart, a table or a layout drawn in the document. A long page comes in parts.</p>
-          <div class="doc-pick__grid">
-            <template v-for="g in docGroups" :key="g.key">
-              <p v-if="g.label" class="doc-pick__group">{{ g.label }}</p>
-              <button v-for="t in g.tiles" :key="t.key" type="button" :class="['doc-tile', { on: !!docPicks[t.key] }]" :aria-pressed="!!docPicks[t.key]" @click="toggleDocPick(t)">
-                <span class="doc-tile__img"><img :src="'data:image/jpeg;base64,' + t.thumb" alt="" loading="lazy" /><i v-if="docPicks[t.key]" aria-hidden="true">✓</i></span>
-                <span class="doc-tile__label">{{ t.label }}</span>
-              </button>
-            </template>
-          </div>
+          <section class="doc-pick__sec">
+            <h3>How should Weave use this document?</h3>
+            <small class="muted">Pick one or more.</small>
+            <button v-for="m in docModeList" :key="m.key" type="button" :class="['doc-mode', { on: docModes[m.key] }]" :aria-pressed="!!docModes[m.key]" @click="toggleDocMode(m.key)">
+              <span class="doc-mode__box" aria-hidden="true">✓</span>
+              <span class="doc-mode__text"><b>{{ m.title }}</b><span>{{ m.detail }}</span></span>
+              <span v-if="docModes[m.key] && m.key === 'pages'" class="doc-mode__count">{{ pickedOf('page').length }} chosen</span>
+              <span v-else-if="docModes[m.key] && m.key === 'pictures'" class="doc-mode__count">{{ pickedOf('picture').length }} chosen</span>
+            </button>
+          </section>
+          <section v-if="docModes.pages" class="doc-pick__sec">
+            <div class="doc-pick__bar"><h3>{{ docDeck ? 'Slides' : 'Pages' }} to show as they look</h3><span class="doc-pick__all"><button type="button" class="quiet quiet--sm" @click="setDocPicks(docPageGroups, true)">Select all</button><button type="button" class="quiet quiet--sm" @click="setDocPicks(docPageGroups, false)">None</button></span></div>
+            <small class="muted">{{ docDeck ? 'Each slide fills the screen as it looks, with a move or a zoom on the part being talked about.' : 'Shown with their text, charts and layout, turning like a book or on a screen. Weave may zoom in on the part that matters.' }}</small>
+            <div :class="['doc-pick__grid', { 'doc-pick__grid--wide': docDeck }]">
+              <template v-for="g in docPageGroups" :key="g.key">
+                <p v-if="g.label" class="doc-pick__group">{{ g.label }}</p>
+                <button v-for="t in g.tiles" :key="t.key" type="button" :class="['doc-tile', { on: !!docPicks[t.key] }]" :aria-pressed="!!docPicks[t.key]" @click="toggleDocPick(t)">
+                  <span :class="['doc-tile__img', { 'doc-tile__img--slide': docDeck }]"><img :src="'data:image/jpeg;base64,' + t.thumb" alt="" loading="lazy" /><i v-if="docPicks[t.key]" aria-hidden="true">✓</i></span>
+                  <span class="doc-tile__label"><span>{{ t.label }}</span><span v-if="docModes.notes && docNotesBySlide[t.pick.number]" class="doc-tile__notes">notes</span></span>
+                </button>
+              </template>
+            </div>
+            <small v-if="pickedOf('page').length > docFit.pages" class="doc-pick__warn">About {{ docFit.pages }} {{ docUnit }}s fit in a {{ docFit.seconds }}-second video. With more, each is shown briefly.</small>
+          </section>
+          <section v-if="docModes.notes" class="doc-pick__sec">
+            <h3>The script, from your speaker notes</h3>
+            <small class="muted">Said over each slide, tightened to fit the length. You approve it with the plan.</small>
+            <ol class="doc-pick__notes"><li v-for="n in docFull.notes_list.slice(0, 6)" :key="n.slide"><b>Slide {{ n.slide }}</b> · {{ n.text.length > 140 ? n.text.slice(0, 140) + '…' : n.text }}</li></ol>
+          </section>
+          <section v-if="docModes.pictures" class="doc-pick__sec">
+            <div class="doc-pick__bar"><h3>Pictures to use</h3><span class="doc-pick__all"><button type="button" class="quiet quiet--sm" @click="setDocPicks(docPictureGroups, true)">Select all</button><button type="button" class="quiet quiet--sm" @click="setDocPicks(docPictureGroups, false)">None</button></span></div>
+            <small class="muted">Taken out of the document and used on their own, like any photo you upload.</small>
+            <div class="doc-pick__grid">
+              <template v-for="g in docPictureGroups" :key="g.key">
+                <p v-if="g.label" class="doc-pick__group">{{ g.label }}</p>
+                <button v-for="t in g.tiles" :key="t.key" type="button" :class="['doc-tile', { on: !!docPicks[t.key] }]" :aria-pressed="!!docPicks[t.key]" @click="toggleDocPick(t)">
+                  <span class="doc-tile__img"><img :src="'data:image/jpeg;base64,' + t.thumb" alt="" loading="lazy" /><i v-if="docPicks[t.key]" aria-hidden="true">✓</i></span>
+                  <span class="doc-tile__label"><span>{{ t.label }}</span></span>
+                </button>
+              </template>
+            </div>
+          </section>
           <details v-if="docFull.summary || docFull.facts.length" class="doc-pick__read" open>
-            <summary>What Weave read</summary>
+            <summary>What Weave read · from all {{ docFull.page_count }} {{ docUnit }}s</summary>
             <p v-if="docFull.summary">{{ docFull.summary }}</p>
-            <ul v-if="docFull.facts.length"><li v-for="(f, n) in docFull.facts" :key="n">{{ f.text }}<template v-if="f.page"> (page {{ f.page }})</template></li></ul>
-            <small>The script only says what the document says. Nothing to tick.</small>
+            <ul v-if="docFull.facts.length"><li v-for="(f, n) in docFull.facts" :key="n">{{ f.text }}<template v-if="f.page"> ({{ docUnit }} {{ f.page }})</template></li></ul>
+            <small>The words are always read, whatever you pick. The script only says what the document says.</small>
           </details>
         </div>
         <p v-else class="muted">Opening the document…</p>
         <template #footer>
-          <small class="doc-pick__sum">{{ docPicked.length > docRoom ? 'This conversation has room for ' + Math.max(0, docRoom) + ' more files.' : docPicked.length + ' chosen' }}</small>
-          <span class="doc-pick__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="docSaving || !docFull" @click="useDocument([])">Use the text only</button><button type="button" class="btn btn--primary btn--sm" :disabled="docSaving || !docPicked.length || docPicked.length > docRoom" @click="useDocument(docPicked)">{{ docSaving ? 'Adding…' : 'Use ' + docPicked.length + ' in my video' }}</button></span>
+          <small class="doc-pick__sum">{{ docSummary }}</small>
+          <button type="button" class="btn btn--primary btn--sm" :disabled="docSaving || !docFull || !docReady" @click="useDocument">{{ docSaving ? 'Adding…' : 'Use in my video' }}</button>
         </template>
       </SideDrawer>
       <SideDrawer :open="showHistory" title="Recent conversations" meta="Newest first" @close="showHistory = false">
@@ -2697,8 +2770,25 @@ label.tray-note{white-space:normal}
 .pd-upload:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .doc-pick{display:flex;flex-direction:column;gap:12px;padding-top:10px}
 .doc-pick__bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.doc-pick__sec{display:flex;flex-direction:column;gap:8px}
+.doc-pick__sec h3{margin:0;font-size:13px;font-weight:700}
+.doc-pick__sec > small{font-size:12px;line-height:1.45}
+.doc-mode{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--line-3,#2c313b);background:transparent;color:inherit;font:inherit;cursor:pointer;text-align:left}
+.doc-mode.on{border-color:rgba(255,107,53,.6);background:rgba(255,107,53,.08)}
+.doc-mode:focus-visible{outline:2px solid #ff6b35;outline-offset:1px}
+.doc-mode__box{flex:0 0 auto;width:18px;height:18px;margin-top:1px;border-radius:4px;border:1px solid #5d6472;color:transparent;display:grid;place-items:center;font:700 11px system-ui}
+.doc-mode.on .doc-mode__box{background:#ff6b35;border-color:#ff6b35;color:#1a0d06}
+.doc-mode__text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.doc-mode__text b{font-size:13.5px}
+.doc-mode__text span{font-size:12px;color:var(--text-2,#b7bcc6);line-height:1.45}
+.doc-mode__count{flex:0 0 auto;font-size:11.5px;color:#ffa47e;margin-top:2px}
+.doc-pick__grid--wide{grid-template-columns:repeat(2,minmax(0,1fr))}
+.doc-tile__img--slide{aspect-ratio:16/9}
+.doc-tile__notes{color:#ffa47e}
+.doc-pick__warn{color:#ffa47e;font-size:12px}
+.doc-pick__notes{margin:0;padding-left:18px;color:var(--text-2,#b7bcc6);font-size:12.5px;line-height:1.55;display:flex;flex-direction:column;gap:4px}
+.doc-pick__notes b{color:var(--text,#eceef1)}
 .doc-pick__all{display:flex;gap:4px}
-.doc-pick__hint{margin:0;font-size:12px}
 .doc-pick__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .doc-pick__group{grid-column:1/-1;margin:6px 0 0;font-size:12px;color:var(--text-3,#8f95a1)}
 .doc-tile{display:flex;flex-direction:column;gap:4px;padding:3px;border:2px solid transparent;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer;text-align:left}
@@ -2707,13 +2797,13 @@ label.tray-note{white-space:normal}
 .doc-tile__img{position:relative;display:block;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--bg-4,#191d24)}
 .doc-tile__img img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
 .doc-tile__img i{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#ff6b35;color:#1a0d06;font:700 11px system-ui;font-style:normal}
-.doc-tile__label{font-size:11.5px;color:var(--text-2,#b7bcc6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-tile__label{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--text-2,#b7bcc6);overflow:hidden;white-space:nowrap}
+.doc-tile__label > span:first-child{overflow:hidden;text-overflow:ellipsis}
 .doc-pick__read{border:1px solid var(--line-2,#262b34);border-radius:8px;padding:8px 12px;font-size:12.5px}
 .doc-pick__read summary{cursor:pointer;font-weight:600}
 .doc-pick__read p{margin:6px 0 0;color:var(--text-2,#b7bcc6)}
 .doc-pick__read ul{margin:6px 0 0;padding-left:18px;color:var(--text-2,#b7bcc6)}
 .doc-pick__read small{display:block;margin-top:6px;color:var(--text-3,#8f95a1)}
 .doc-pick__sum{flex:1 1 auto;color:var(--text-3,#8f95a1)}
-.doc-pick__actions{display:flex;gap:8px;margin-left:auto}
 .thumb--doc{display:grid;place-items:center;font:700 9px ui-monospace,Menlo,monospace;color:#fff;background:#8a3b3b}
 </style>

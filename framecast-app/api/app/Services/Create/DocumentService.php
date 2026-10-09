@@ -120,17 +120,27 @@ class DocumentService
         } finally { PlanningCosts::end(); }
     }
 
+    /** How a document may be used (the drawer's question; owner, 2026-10-09: nothing chosen until the user picks). */
+    public const MODES = ['pages', 'pictures', 'notes', 'words'];
+
     /**
-     * The ticked pictures and pages become pictures in the conversation (source attachments), each noted with the
-     * document and page it came from. $picks: [{kind: picture, id, part} | {kind: page, number, part}].
+     * The drawer's answer. $modes: pages (shown as they look), pictures (used on their own), notes (a deck's speaker
+     * notes are the script), words (its words only). The ticked pictures and pages become pictures in the conversation
+     * (source attachments), each noted with the document and page it came from: [{kind: picture, id, part} | {kind:
+     * page, number, part}]. The words are read whatever is chosen.
      */
-    public function useParts(User $user, string $conversationId, string $docId, array $picks, int $version): void
+    public function useParts(User $user, string $conversationId, string $docId, array $modes, array $picks, int $version): void
     {
         $service = app(ConversationService::class);
         $service->authorize($user, true);
         $d = $this->document($user, $conversationId, $docId);
         abort_unless($d->status === 'ready', 409, 'That document is still being read.');
         $a = json_decode((string) $d->analysis_json, true) ?: [];
+        $modes = array_values(array_intersect(self::MODES, $modes));
+        if (in_array('words', $modes, true)) $modes = ['words'];
+        if (empty($a['notes'])) $modes = array_values(array_diff($modes, ['notes']));
+        abort_unless($modes, 422, 'Choose how Weave should use this document.');
+        $picks = array_values(array_filter($picks, fn ($p) => ($p['kind'] ?? null) === 'page' ? in_array('pages', $modes, true) : (($p['kind'] ?? null) === 'picture' && in_array('pictures', $modes, true))));
         $valid = collect($picks)->filter(fn ($p) => match ($p['kind'] ?? null) {
             'picture' => collect($a['pictures'] ?? [])->contains(fn ($x) => $x['id'] === ($p['id'] ?? null) && (int) ($p['part'] ?? 1) <= count($x['parts'] ?? [1])),
             'page' => collect($a['pages'] ?? [])->contains(fn ($x) => (int) $x['number'] === (int) ($p['number'] ?? 0) && (int) ($p['part'] ?? 1) <= count($x['parts'] ?? [1])),
@@ -148,20 +158,20 @@ class DocumentService
                 if (! $img) continue;
                 $page = $p['kind'] === 'picture' ? (int) (collect($a['pictures'])->firstWhere('id', $p['id'])['page'] ?? 0) : $p['number'];
                 $of = $p['kind'] === 'picture' ? count(collect($a['pictures'])->firstWhere('id', $p['id'])['parts'] ?? [1]) : count(collect($a['pages'])->firstWhere('number', $p['number'])['parts'] ?? [1]);
-                $label = ($p['kind'] === 'picture' ? 'Picture' : 'Page '.$page).($p['kind'] === 'picture' ? ', page '.$page : '').($of > 1 ? ' (part '.$p['part'].' of '.$of.')' : '');
+                $label = ($p['kind'] === 'picture' ? 'Picture' : ($d->source === 'pptx' ? 'Slide ' : 'Page ').$page).($p['kind'] === 'picture' ? ', page '.$page : '').($of > 1 ? ' (part '.$p['part'].' of '.$of.')' : '');
                 $tmp = tempnam(sys_get_temp_dir(), 'doc');
                 file_put_contents($tmp, base64_decode($img['base64']));
                 try {
                     $file = new UploadedFile($tmp, mb_substr(pathinfo($d->title, PATHINFO_FILENAME), 0, 120).' · '.$label.'.jpg', 'image/jpeg', null, true);
                     $current = (int) DB::table('create_conversations')->where('id', $conversationId)->value('version');
                     $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, $file, 'source', 'doc:'.$d->id.':'.$key, $current);
-                    // A whole page usually carries a chart, a table or a layout; a picture is a photo or an illustration.
+                    // A page or slide is shown as it looks; a picture is used on its own, like an uploaded photo.
                     DB::table('create_attachments')->where('conversation_id', $conversationId)->where('asset_id', $asset->id)->update(['notes_json' => json_encode([
                         'kind' => $p['kind'] === 'page' ? 'document_page' : 'document_picture', 'use' => 'From '.$d->title.', '.lcfirst($label), 'document_id' => $d->id]), 'updated_at' => now()]);
                 } finally { @unlink($tmp); }
             }
         }
-        DB::table('create_documents')->where('id', $d->id)->update(['picks_json' => json_encode($valid), 'updated_at' => now()]);
+        DB::table('create_documents')->where('id', $d->id)->update(['picks_json' => json_encode(['modes' => $modes, 'picks' => $valid]), 'updated_at' => now()]);
     }
 
     public function remove(User $user, string $conversationId, string $docId): void
@@ -188,16 +198,24 @@ class DocumentService
         $facts = json_decode((string) $d->facts_json, true) ?: [];
         // A read that never finished (a worker restarted under it) is shown as failed, so the composer is not held.
         if ($d->status === 'reading' && \Illuminate\Support\Carbon::parse($d->updated_at)->lt(now()->subMinutes(10))) { $d->status = 'failed'; $d->error = 'Reading took too long. Remove it and add it again.'; }
-        return ['id' => $d->id, 'title' => $d->title, 'source' => $d->source, 'status' => $d->status, 'error' => $d->error, 'page_count' => (int) $d->page_count, 'created_at' => $d->created_at,
-            'pictures' => count($a['pictures'] ?? []), 'text_only' => (bool) ($a['text_only'] ?? false), 'chosen' => $d->picks_json !== null,
-            'picked' => count(json_decode((string) $d->picks_json, true) ?: []), 'summary' => $facts['summary'] ?? '', 'facts' => $facts['facts'] ?? []];
+        return ['id' => $d->id, 'title' => $d->title, 'source' => $d->source, 'status' => $d->status, 'error' => $d->error, 'page_count' => (int) $d->page_count, 'pages_total' => (int) ($a['pages_total'] ?? $d->page_count), 'created_at' => $d->created_at,
+            'pictures' => count($a['pictures'] ?? []), 'notes' => count($a['notes'] ?? []), 'text_only' => (bool) ($a['text_only'] ?? false), 'chosen' => $d->picks_json !== null,
+            'modes' => self::choice($d)['modes'], 'picked' => count(self::choice($d)['picks']), 'summary' => $facts['summary'] ?? '', 'facts' => $facts['facts'] ?? []];
+    }
+
+    /** What the user chose in the drawer: {modes, picks} (an older choice was the list of picks alone). */
+    public static function choice(object $d): array
+    {
+        $c = json_decode((string) $d->picks_json, true);
+        if (! is_array($c)) return ['modes' => [], 'picks' => []];
+        return array_is_list($c) ? ['modes' => $c ? ['pages', 'pictures'] : ['words'], 'picks' => $c] : ['modes' => (array) ($c['modes'] ?? []), 'picks' => (array) ($c['picks'] ?? [])];
     }
 
     /** The drawer: every picture and page part with its thumbnail. */
     public static function full(object $d): array
     {
         $a = json_decode((string) $d->analysis_json, true) ?: [];
-        return self::brief($d) + ['picks' => json_decode((string) $d->picks_json, true) ?: [],
+        return self::brief($d) + ['picks' => self::choice($d)['picks'], 'notes_list' => array_values((array) ($a['notes'] ?? [])),
             'pages' => array_map(fn ($p) => ['number' => $p['number'], 'kind' => $p['kind'], 'graphic' => ($p['drawings'] ?? 0) >= 12, 'parts' => $p['parts']], (array) ($a['pages'] ?? [])),
             'picture_list' => array_values((array) ($a['pictures'] ?? []))];
     }
@@ -215,7 +233,12 @@ class DocumentService
         return DB::table('create_documents')->where('conversation_id', $conversationId)->where('status', 'ready')->orderBy('created_at')->get()
             ->map(function ($d) {
                 $f = json_decode((string) $d->facts_json, true) ?: [];
-                return array_filter(['title' => $d->title, 'pages' => (int) $d->page_count, 'summary' => $f['summary'] ?? null,
+                $modes = self::choice($d)['modes'];
+                $notes = (array) (json_decode((string) $d->analysis_json, true)['notes'] ?? []);
+                return array_filter(['title' => $d->title, 'kind' => $d->source === 'pptx' ? 'slides' : 'document', 'pages' => (int) $d->page_count, 'summary' => $f['summary'] ?? null,
+                    // How the user chose to use it: pages (shown as they look), pictures, notes (the script), words.
+                    'use' => $modes ?: null,
+                    'speaker_notes' => in_array('notes', $modes, true) && $notes ? array_map(fn ($n) => ['slide' => (int) $n['slide'], 'notes' => mb_substr((string) $n['text'], 0, 1200)], $notes) : null,
                     'facts' => array_map(fn ($x) => $x['text'].($x['page'] ? ' (page '.$x['page'].')' : ''), $f['facts'] ?? []),
                     'text' => $d->text ? mb_substr((string) $d->text, 0, self::PLAN_TEXT).(mb_strlen((string) $d->text) > self::PLAN_TEXT ? "\n[… the rest is covered by the summary and facts]" : '') : null]);
             })->all();

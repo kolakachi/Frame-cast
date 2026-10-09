@@ -241,12 +241,13 @@ class CreateController extends Controller
         return response()->json(['data' => \App\Services\Create\DocumentService::full(app(\App\Services\Create\DocumentService::class)->document($r->user(), $id, $docId))]);
     }
 
-    /** The drawer's choice: the ticked pictures and pages go in as pictures; an empty list uses the words only. */
+    /** The drawer's choice: how to use the document, and the ticked pictures and pages (they go in as pictures). */
     public function useDocument(Request $r, string $id, string $docId)
     {
-        $input = $r->validate(['picks' => 'present|array|max:20', 'picks.*.kind' => 'required|in:picture,page', 'picks.*.id' => 'nullable|string|max:20',
+        $input = $r->validate(['modes' => 'required|array|min:1|max:4', 'modes.*' => 'in:'.implode(',', \App\Services\Create\DocumentService::MODES),
+            'picks' => 'present|array|max:20', 'picks.*.kind' => 'required|in:picture,page', 'picks.*.id' => 'nullable|string|max:20',
             'picks.*.number' => 'nullable|integer|min:1', 'picks.*.part' => 'nullable|integer|min:1', 'expected_version' => 'required|integer|min:0']);
-        app(\App\Services\Create\DocumentService::class)->useParts($r->user(), $id, $docId, $input['picks'], $input['expected_version']);
+        app(\App\Services\Create\DocumentService::class)->useParts($r->user(), $id, $docId, $input['modes'], $input['picks'], $input['expected_version']);
         return $this->show($r, $id);
     }
 

@@ -19,7 +19,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
+import io
 import os
+import posixpath
+import re
+import logging
+import zipfile
 import shutil
 import subprocess
 import tempfile
@@ -27,6 +33,8 @@ import tempfile
 import fitz  # PyMuPDF
 
 from pdf import SLICE_RATIO, classify
+
+log = logging.getLogger(__name__)
 
 MAX_PAGES = int(os.environ.get("DOC_MAX_PAGES", 50))
 OFFICE_TYPES = {".docx": "Word", ".pptx": "PowerPoint"}
@@ -50,6 +58,46 @@ SAMPLE_WIDTH = 120
 # Pages are rendered for use at this width (px): sharp in a 1080-wide video frame, without huge files.
 PAGE_RENDER_WIDTH = 1600
 PICTURE_MAX_SIDE = 2400
+
+
+def speaker_notes(data: bytes) -> list[dict]:
+    """
+    A deck's speaker notes, by slide as the PDF numbers them: [{"slide": n, "text": ...}] for slides that have notes.
+    Hidden slides are left out of the numbering, as they are left out of the PDF.
+    """
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+        names = set(z.namelist())
+        rels = lambda part: z.read(posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")).decode("utf-8", "replace")
+        target = lambda part, rel: posixpath.normpath(posixpath.join(posixpath.dirname(part), rel))
+        pres = z.read("ppt/presentation.xml").decode("utf-8", "replace")
+        pres_rels = dict(re.findall(r'<Relationship[^>]*?Id="([^"]+)"[^>]*?Target="([^"]+)"', rels("ppt/presentation.xml")))
+        pres_rels.update({i: t for t, i in re.findall(r'<Relationship[^>]*?Target="([^"]+)"[^>]*?Id="([^"]+)"', rels("ppt/presentation.xml"))})
+        out, number = [], 0
+        for rid in re.findall(r'<p:sldId\b[^>]*?r:id="([^"]+)"', pres):
+            slide = target("ppt/presentation.xml", pres_rels.get(rid, ""))
+            if slide not in names:
+                continue
+            if re.search(r'<p:sld\b[^>]*\bshow="(0|false)"', z.read(slide).decode("utf-8", "replace")[:600]):
+                continue
+            number += 1
+            note = next((target(slide, t) for t in re.findall(r'Target="([^"]*notesSlide[^"]*)"', rels(slide))), None) if posixpath.join(posixpath.dirname(slide), "_rels", posixpath.basename(slide) + ".rels") in names else None
+            if not note or note not in names:
+                continue
+            xml = z.read(note).decode("utf-8", "replace")
+            # The notes are the body placeholder's paragraphs; a file without one keeps them in plain text boxes. The
+            # slide picture, its number, header, footer and date are other shapes.
+            shapes = re.findall(r"<p:sp>.*?</p:sp>", xml, re.S)
+            body = [sp for sp in shapes if re.search(r'<p:ph[^>]*type="body"', sp)] or [sp for sp in shapes if not re.search(r'<p:ph[^>]*type="(sldImg|sldNum|hdr|ftr|dt)"', sp)]
+            paras = [" ".join(re.findall(r"<a:t>([^<]*)</a:t>", para)).strip() for sp in body for para in re.findall(r"<a:p>.*?</a:p>", sp, re.S)]
+            text = "\n".join(p for p in paras if p)
+            text = html.unescape(text)
+            if text.strip():
+                out.append({"slide": number, "text": text.strip()[:2000]})
+        return out
+    except Exception as exc:  # noqa: BLE001
+        log.warning("speaker notes unreadable: %s", exc)
+        return []
 
 
 def to_pdf(data: bytes, filename: str) -> tuple[bytes, str]:
@@ -87,15 +135,22 @@ def to_pdf(data: bytes, filename: str) -> tuple[bytes, str]:
 
 
 def _open(pdf: bytes) -> fitz.Document:
+    return _open_counted(pdf)[0]
+
+
+def _open_counted(pdf: bytes) -> tuple[fitz.Document, int]:
+    """The document (its first MAX_PAGES pages) and how many pages it really has."""
     try:
         doc = fitz.open(stream=pdf, filetype="pdf")
     except Exception as exc:  # noqa: BLE001
         raise ValueError("We couldn't read that document. It may be damaged, or saved in a format we can't open.") from exc
     if doc.needs_pass:
         raise ValueError("That document is password-protected. Remove the password and upload it again.")
-    if doc.page_count > MAX_PAGES:
-        raise ValueError(f"That document has {doc.page_count} pages. Weave reads up to {MAX_PAGES}; upload the pages you need.")
-    return doc
+    # A longer document is read to its first MAX_PAGES pages (analyse reports how many it has), not refused.
+    total = doc.page_count
+    if total > MAX_PAGES:
+        doc.select(list(range(MAX_PAGES)))
+    return doc, total
 
 
 def _blank_rows(pix: fitz.Pixmap) -> list[bool]:
@@ -219,7 +274,7 @@ def _pictures(doc: fitz.Document, kinds: dict[int, str]) -> list[dict]:
 
 def analyse(data: bytes, filename: str) -> dict:
     pdf, source = to_pdf(data, filename)
-    doc = _open(pdf)
+    doc, total = _open_counted(pdf)
     pages = classify(doc)
     kinds = {p.number: p.kind for p in pages}
     out_pages = []
@@ -244,10 +299,12 @@ def analyse(data: bytes, filename: str) -> dict:
     # Nothing to pick: no pictures, no scans and no page with a drawn chart or diagram. The words are all it has.
     text_only = not pictures and scanned_units == 0 and all(pg["drawings"] < GRAPHIC_DRAWINGS for pg in out_pages)
     result = {
-        "source": source, "page_count": doc.page_count, "pages": out_pages, "pictures": pictures,
+        "source": source, "page_count": doc.page_count, "pages_total": total, "pages": out_pages, "pictures": pictures,
         "chars": sum(p.chars for p in pages), "scanned_units": scanned_units, "partial": scanned_units > 0, "text_only": text_only,
         # A converted Word or PowerPoint file comes back as the PDF, so later renders read the same pages.
         "pdf_base64": base64.b64encode(pdf).decode("ascii") if source != "pdf" else None,
+        # A deck's speaker notes, by slide: they can be the script.
+        "notes": speaker_notes(data) if source == "pptx" else [],
     }
     doc.close()
     return result
