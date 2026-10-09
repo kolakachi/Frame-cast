@@ -95,6 +95,15 @@ class OnboardingTest extends TestCase
         $this->assertTrue(json_decode(DB::table('users')->where('id', $this->owner->id)->value('preferences_json'), true)['onboarded']);
     }
 
+    public function test_a_typed_brand_name_saves_through_the_route(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $d = $this->actingAs($this->owner)->postJson('/api/v1/onboarding/brand', ['name' => 'Ember & Oak'])->assertOk()->json('data');
+        $this->assertSame('Ember & Oak', $d['name']);
+        $this->assertSame('Ember & Oak', DB::table('brand_kits')->where('workspace_id', $this->workspace->id)->value('name'));
+        $this->actingAs($this->owner)->postJson('/api/v1/onboarding/brand', [])->assertStatus(422)->assertJsonPath('error.message', 'Paste your website or type your brand name.');
+    }
+
     public function test_skipping_marks_onboarded_with_no_brief_and_briefs_fit_every_goal(): void
     {
         $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);

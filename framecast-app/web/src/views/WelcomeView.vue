@@ -42,18 +42,20 @@ onMounted(async () => {
 onBeforeUnmount(() => clearInterval(timer))
 watch([hover, goal], () => { cycle.value = 0 })
 
+// The API's errors are { error: { message } }; the field's own problem comes first when a value was refused.
+const why = e => { const d = e?.response?.data; return Object.values(d?.error?.details || {})[0]?.[0] || d?.error?.message || d?.message || '' }
 async function readSite() {
   if (!site.value.trim() || reading.value) return
   reading.value = true; error.value = ''
   try { brand.value = (await api.post('/onboarding/brand', { url: site.value.trim() }, { timeout: 120000 })).data.data; industry.value = brand.value.industry || '' }
-  catch (e) { error.value = e.response?.data?.message || 'That website could not be read. Type your brand name instead.' }
+  catch (e) { error.value = why(e) || 'That website could not be read. Type your brand name instead.' }
   finally { reading.value = false }
 }
 async function saveName() {
   if (!typed.value.trim()) return
   reading.value = true; error.value = ''
   try { brand.value = (await api.post('/onboarding/brand', { name: typed.value.trim() })).data.data }
-  catch (e) { error.value = e.response?.data?.message || 'That could not be saved.' }
+  catch (e) { error.value = why(e) || 'That could not be saved.' }
   finally { reading.value = false }
 }
 function next() {
@@ -72,7 +74,7 @@ async function finish(skipped) {
     try { localStorage.setItem('wyv_onboarding', JSON.stringify({ style: r.style ? 'pack:' + r.style : '', sample_filter: r.sample_filter || 'all', at: Date.now() })) } catch { /* defaults only */ }
     auth.markOnboarded?.()
     await router.replace({ name: 'create' })
-  } catch (e) { error.value = e.response?.data?.message || 'Something went wrong. Try again.' }
+  } catch (e) { error.value = why(e) || 'Something went wrong. Try again.' }
   finally { busy.value = false }
 }
 const footer = computed(() => ['We use this to set up your videos and suggest what to make next.', 'Your logo, colours and products go into your brand kit. Change them anytime in Settings.', 'This is the last question.'][idx.value] || '')
