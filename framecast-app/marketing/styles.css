@@ -93,6 +93,28 @@ h2 { font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.05; letter-spacing: -0.
 .nav-links > a:not(.btn) { color: var(--text-2); text-decoration: none; }
 .nav-links > a:not(.btn):hover { color: var(--text); }
 .nav-links .btn { min-height: 44px; padding: 0 18px; }
+/* The links sit inline on wide screens; on a phone they fold under the Menu button (2026-10-09 mobile pass). */
+.nav-menu-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; }
+.nav-menu-links > a { color: var(--text-2); text-decoration: none; }
+.nav-menu-links > a:hover { color: var(--text); }
+.nav-menu-btn { display: none; width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line-2); background: transparent; color: var(--text); cursor: pointer; place-items: center; }
+.nav-menu-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nav-menu-btn svg path { transition: transform .2s ease, opacity .2s ease; transform-origin: 12px 12px; }
+.nav-bar.open .nav-menu-btn .nm-a { transform: translateY(5px) rotate(45deg); }
+.nav-bar.open .nav-menu-btn .nm-b { opacity: 0; }
+.nav-bar.open .nav-menu-btn .nm-c { transform: translateY(-5px) rotate(-45deg); }
+@media (max-width: 760px) {
+  .nav { flex-wrap: nowrap; gap: 10px; }
+  .nav-links { flex-wrap: nowrap; gap: 8px; }
+  .nav-links .btn { min-height: 40px; padding: 0 14px; font-size: .9rem; white-space: nowrap; }
+  .nav-menu-btn { display: inline-grid; }
+  .nav-menu-links { display: none; }
+  .nav-bar.open .nav-menu-links { display: flex; flex-direction: column; align-items: stretch; gap: 0; position: absolute; top: 100%; left: 0; right: 0; padding: 8px 24px 16px; background: var(--bg); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); }
+  .nav-bar.open .nav-menu-links > a { padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 1.02rem; color: var(--text); }
+  .nav-bar.open .nav-menu-links > a:last-child { border-bottom: 0; }
+}
+@media (max-width: 400px) { .brand { font-size: 0; gap: 0; } .brand .brand-mark { font-size: 1rem; } }
+@media (prefers-reduced-motion: reduce) { .nav-menu-btn svg path { transition: none; } }
 /* Light or dark (the device's setting until the visitor picks): a pill switch. Dark: a black track, the white knob
    on the left and a moon on the right. Light: a pale track, the dark knob on the right and a sun on the left. */
 .theme-toggle { position: relative; display: inline-flex; align-items: center; justify-content: space-between; width: 64px; height: 34px; padding: 0 9px; border-radius: 999px; border: 0; cursor: pointer; flex: 0 0 auto;
@@ -108,12 +130,13 @@ h2 { font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.05; letter-spacing: -0.
 [data-theme="light"] .tt-knob { transform: translateX(30px); background: radial-gradient(circle at 35% 30%, #4a4a50, #1f1f23 70%); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
 .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .tt-knob, .theme-toggle, .theme-toggle svg { transition: none; } }
-.theme-toggle { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text-2); font: inherit; font-size: .88rem; cursor: pointer; }
 
 /* ===== HERO: copy + composer over a moving wall of real outputs ===== */
 .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
 .hero-inner { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; align-items: center; min-height: 760px; padding-block: 64px; }
-@media (max-width: 960px) { .hero-inner { grid-template-columns: 1fr; min-height: 0; } }
+/* One column below 960 px, capped at the screen: a plain 1fr track grew to fit the moving wall of videos and pushed
+   the headline, the text and the prompt box off a phone's right edge (2026-10-09). */
+@media (max-width: 960px) { .hero-inner { grid-template-columns: minmax(0, 1fr); min-height: 0; } }
 .hero-copy { display: flex; flex-direction: column; gap: 22px; position: relative; z-index: 2; }
 .hero-badge { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-text); font-weight: 600; font-size: .9rem; }
 .hero-badge b { background: var(--accent); color: var(--on-accent); border-radius: 999px; padding: 1px 8px; font-size: .78rem; }
