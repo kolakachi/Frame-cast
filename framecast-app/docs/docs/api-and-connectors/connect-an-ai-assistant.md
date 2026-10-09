@@ -12,10 +12,10 @@ WyvStudio has an MCP server. Once an assistant is connected it can do nearly eve
 
 ## ChatGPT
 
-ChatGPT uses a sign-in flow, so you never handle a key. Until WyvStudio is listed in ChatGPT's app directory, you add it yourself once:
+ChatGPT uses a sign-in flow, so you never handle a key. Until WyvStudio is listed in ChatGPT's app directory, you add it yourself once, in ChatGPT on the web:
 
 1. In ChatGPT open **Settings → Security and login** and turn on **Developer mode**. Custom MCP servers only appear once it's on.
-2. Go to **Settings → Plugins** and click **Create**.
+2. Go to **Settings → Plugins → Browse directory**, click the **Add** button and choose **Add custom MCP server**.
 3. Name it **WyvStudio**, leave **Server URL** selected and enter `https://app.wyvstudio.com/mcp`. Leave authentication as **OAuth** with no client ID or secret — ChatGPT registers itself with WyvStudio.
 4. Tick the trust box and click **Create**, then **Sign in with WyvStudio**. You'll land on WyvStudio, sign in if you need to, pick a workspace, and click **Allow**.
 5. Back in ChatGPT, enable WyvStudio from the tools menu in a chat and ask for a video.
