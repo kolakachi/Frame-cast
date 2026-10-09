@@ -85,9 +85,31 @@
     anchor.dataset.wyvAff = '1';
   }
 
+  // A form that signs up in the app (the hero's prompt box) carries the code as hidden fields.
+  function decorateForm(form) {
+    if (!form || form.dataset.wyvAff === '1') return;
+    var url;
+    try {
+      url = new URL(form.getAttribute('action') || '', window.location.href);
+    } catch (e) {
+      return;
+    }
+    if (url.hostname !== APP_HOST || (form.method || 'get').toLowerCase() !== 'get' || form.elements.aff) return;
+    var add = function (name, value) {
+      var input = document.createElement('input');
+      input.type = 'hidden'; input.name = name; input.value = value;
+      form.appendChild(input);
+    };
+    add('aff', code);
+    if (saved.event_id) add('aff_visit', saved.event_id);
+    form.dataset.wyvAff = '1';
+  }
+
   function decorateAll() {
     var links = document.querySelectorAll('a[href]');
     for (var i = 0; i < links.length; i++) decorate(links[i]);
+    var forms = document.querySelectorAll('form[action]');
+    for (var j = 0; j < forms.length; j++) decorateForm(forms[j]);
   }
 
   if (document.readyState === 'loading') {
