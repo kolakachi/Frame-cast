@@ -61,3 +61,16 @@ test('smash, split, stack and parallax: the cut is instant, halves meet, the lis
  assert.ok(Math.abs(moves[1])>Math.abs(moves[0]),'the front layer moves further');
  for(const id of ['smash','split','stack','parallax'])assert.equal(RECIPES[id],id);
 });
+
+test('specialty kits ride only on the videos that use them; the core kit lists them for reading on demand', async () => {
+ const dir=new URL('../guidance/',import.meta.url).pathname.replace(/\/$/,'');
+ const pins=async(...a)=>[...(await pinnedKits(dir,...a)).matchAll(/# (kit\/[a-z-]+\.md) \(pinned/g)].map(m=>m[1]);
+ assert.deepEqual(await pins({}),[],'a plain plan carries no kit');
+ assert.deepEqual(await pins({scratch_guide:'x'}),['kit/motion-kit.md'],'from scratch: the core kit only');
+ assert.deepEqual(await pins({},[],{slug:'collage-zine'}),['kit/motion-kit.md','kit/collage.md']);
+ assert.deepEqual(await pins({scenes:[{transition_out:{move:'tear'}}]}),['kit/motion-kit.md','kit/collage.md'],'a collage move brings its kit');
+ assert.deepEqual(await pins({},[{kind:'document_page'}]),['kit/motion-kit.md','kit/documents.md']);
+ const core=await pinnedKits(dir,{scratch_guide:'x'});
+ assert.ok(!core.includes('WM.tear(')&&!core.includes('WM.book('),'the core kit no longer carries the specialty kits');
+ assert.ok(core.includes('kit/collage.md')&&core.includes('kit/documents.md'),'but names them so the builder can read one');
+});
