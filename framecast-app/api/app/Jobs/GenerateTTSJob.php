@@ -126,21 +126,30 @@ class GenerateTTSJob implements ShouldQueue
                 continue;
             }
 
-            $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
-                // Engine routing + voice direction. The router falls back to
-                // inferring the engine from the voice id when provider is absent;
-                // voice_prompt is the Gemini delivery direction; clone_audio_url
-                // is the Chatterbox reference sample (zero-shot cloning).
-                'provider'        => $provider,
-                'voice_prompt'    => (string) data_get($scene->voice_settings_json, 'voice_prompt', ''),
-                'clone_audio_url' => $this->cloneAudioUrl((int) $project->workspace_id, $voiceId, $provider),
-                'usage_context' => [
-                    'workspace_id' => $project->workspace_id,
-                    'project_id' => $project->getKey(),
-                    'user_id' => $project->created_by_user_id,
-                    'scene_id' => $scene->getKey(),
-                ],
-            ]);
+            try {
+                $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
+                    // Engine routing + voice direction. The router falls back to
+                    // inferring the engine from the voice id when provider is absent;
+                    // voice_prompt is the Gemini delivery direction; clone_audio_url
+                    // is the Chatterbox reference sample (zero-shot cloning).
+                    'provider'        => $provider,
+                    'voice_prompt'    => (string) data_get($scene->voice_settings_json, 'voice_prompt', ''),
+                    'clone_audio_url' => $this->cloneAudioUrl((int) $project->workspace_id, $voiceId, $provider),
+                    'usage_context' => [
+                        'workspace_id' => $project->workspace_id,
+                        'project_id' => $project->getKey(),
+                        'user_id' => $project->created_by_user_id,
+                        'scene_id' => $scene->getKey(),
+                    ],
+                ]);
+            } catch (\App\Services\Generation\TTS\TtsRefused $refused) {
+                // A refusal is final: the same words are refused again. Failing permanently (not throwing for a retry)
+                // lets an API operation settle for the scenes already voiced and release the rest of its hold; a
+                // throw after a charge fenced the whole operation with its credits held (2026-10-09, op …p0jyh2sc).
+                $e = new \RuntimeException('Scene '.$scene->scene_order.': '.$refused->getMessage(), 0, $refused);
+                if ($this->job) { $this->fail($e); return; }
+                throw $e;
+            }
 
             // Credit cost + COGS follow the engine that actually ran, reported
             // via provider_key (replicate:*chatterbox* = clone, replicate:*gemini*

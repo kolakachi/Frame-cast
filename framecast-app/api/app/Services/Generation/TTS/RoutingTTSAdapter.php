@@ -27,8 +27,22 @@ class RoutingTTSAdapter implements TTSAdapter
 
     public function synthesize(string $text, string $language, string $voiceId, float $speed = 1.0, array $options = []): array
     {
-        return $this->pick($voiceId, $options)
-            ->synthesize($text, $language, $voiceId, $speed, $options);
+        $engine = $this->pick($voiceId, $options);
+        try {
+            return $engine->synthesize($text, $language, $voiceId, $speed, $options);
+        } catch (\Throwable $e) {
+            if (! TtsRefused::matches($e)) throw $e;
+            // Gemini's safety filter flagged an ordinary ad line (E005, 2026-10-09: "…without ever showing your
+            // face?"). The delivery direction is often what trips it, so the line is tried once more without it.
+            if (trim((string) ($options['voice_prompt'] ?? '')) !== '') {
+                try {
+                    return $engine->synthesize($text, $language, $voiceId, $speed, ['voice_prompt' => ''] + $options);
+                } catch (\Throwable $again) {
+                    if (! TtsRefused::matches($again)) throw $again;
+                }
+            }
+            throw new TtsRefused('The voice engine\'s safety filter refused to read this line: "'.mb_substr($text, 0, 160).'". Reword it and try again.', 0, $e);
+        }
     }
 
     private function pick(string $voiceId, array $options): TTSAdapter
