@@ -47,6 +47,28 @@ const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL || ''
 const TOKEN_CACHE_SECONDS = 60
 const API_TIMEOUT_MS = 30_000
 
+// Read by ChatGPT and Claude when they connect (owner, 2026-10-09): Weave is the default way to make a video;
+// Classic tools only when the user asks for Classic. Assistants picked Classic before because nothing said otherwise.
+const INSTRUCTIONS = `WyvStudio makes short branded videos for the user's workspace, spending its credits.
+
+Which tools to use
+- Default: Weave. For any request to make a video, ad, promo, explainer, tutorial, testimonial or a UGC-style ad, use weave_start, then weave_status, then weave_approve. Changes to a Weave video go through weave_reply, never the Classic edit tools.
+- Use the Classic tools (estimate_video, create_video, the get_project/propose_edits/apply_edits editor, export_video, plan_ugc/create_ugc) only when: the user asks for Classic, the composer or a scene-by-scene video; the video is an existing Classic project (a numeric video id); the user wants UGC Ads takes (several actors or hooks to test side by side, or an ad analysed with analyze_ugc_reference); or the video is longer than weave_start allows. If unsure, use Weave.
+- If weave_start is refused because Weave is unavailable to the workspace, say so and offer the Classic way.
+
+Credits
+- Call get_capabilities first for the balance and plan.
+- weave_start plans at once and costs a few credits: say so before calling it. Nothing else is charged until the user approves a price.
+- Always show the price from weave_approve (step 1) and wait for an explicit yes before step 2. Never approve on the user's behalf.
+- When can_afford is false, do not start the build. Offer what if_short lists (quick effort, a shorter video, fewer paid shots via weave_reply) or the top-up link, and let the user choose.
+
+Timing
+- Planning takes a minute or two; building a Weave video usually takes 10 to 20 minutes. Tell the user, and check weave_status every minute or two rather than continuously. Share preview_url and app_url when it is ready.
+
+Publishing
+- publish_video posts Classic exports. For a Weave video, give the user its app_url to publish from WyvStudio, or weave_share for a watch link.
+`
+
 // ── Developer API client ───────────────────────────────────────────────────
 
 async function api(token, method, path, body) {
@@ -206,7 +228,7 @@ const ANIMATE_TIERS = ['quick', 'balanced', 'premium', 'seedance_lite', 'seedanc
 const ASPECT_RATIOS = ['9:16', '1:1', '16:9']
 
 function buildServer(token) {
-  const server = new McpServer({ name: 'wyvstudio', version: VERSION })
+  const server = new McpServer({ name: 'wyvstudio', version: VERSION }, { instructions: INSTRUCTIONS })
 
   server.registerTool(
     'get_capabilities',
@@ -259,8 +281,8 @@ function buildServer(token) {
   server.registerTool(
     'estimate_video',
     {
-      title: 'Estimate a video (free)',
-      description: 'Price a short video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
+      title: 'Classic: estimate a video (free)',
+      description: 'Classic only (see the server instructions; Weave via weave_start is the default). Price a scene-by-scene video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
       inputSchema: z.object({
         source_type: z.enum(SOURCE_TYPES).describe('"prompt": a brief WyvStudio writes a script from. "script": narration used as-is. "url": a web page or article text. "product_description": copy to sell a product. "images": 1–15 library images become the scenes (needs image_asset_ids and a prompt in content).'),
         content: z.string().min(10).max(10000).describe('The prompt, script, URL/article text, or product description.'),
@@ -294,7 +316,7 @@ function buildServer(token) {
   server.registerTool(
     'create_video',
     {
-      title: 'Create a video from a quote',
+      title: 'Classic: create a video from a quote',
       description: 'Starts making the video that estimate_video quoted. SPENDS CREDITS, up to the quote\'s max. Only call after the user has seen the quote and agreed. Returns immediately with a video id and status "generating"; poll get_video_status every 15–30 seconds. Rendering takes a few minutes. The same quote_id cannot start a second video.',
       inputSchema: z.object({
         quote_id: z.string().describe('From estimate_video.'),
@@ -459,8 +481,8 @@ function buildServer(token) {
   server.registerTool(
     'plan_ugc',
     {
-      title: 'Plan a UGC ad (free)',
-      description: 'Turn a script or a brief into a shot plan for a UGC-style ad: shots with kind (on_camera, b_roll, reaction), narration, seconds and visual direction, plus the format it chose. Free. Pass the returned format and segments to estimate_ugc unchanged. Formats: direct_camera (one continuous talking take), demo, story, reaction, text_led; "auto" lets the planner pick. Optionally ask for alternate openings with variants_count.',
+      title: 'Classic UGC Ads: plan an ad (free)',
+      description: 'Classic UGC Ads, for takes to test side by side (several actors or hooks). For a single UGC-style ad use weave_start with format ugc_ad. Turn a script or a brief into a shot plan for a UGC-style ad: shots with kind (on_camera, b_roll, reaction), narration, seconds and visual direction, plus the format it chose. Free. Pass the returned format and segments to estimate_ugc unchanged. Formats: direct_camera (one continuous talking take), demo, story, reaction, text_led; "auto" lets the planner pick. Optionally ask for alternate openings with variants_count.',
       inputSchema: z.object({
         script: z.string().max(1500).optional().describe('The narration, if the user has one.'),
         context: z.string().max(1500).optional().describe('Or a brief: product, audience, angle.'),
@@ -480,7 +502,7 @@ function buildServer(token) {
   server.registerTool(
     'estimate_ugc',
     {
-      title: 'Estimate a UGC ad (free)',
+      title: 'Classic UGC Ads: estimate (free)',
       description: 'Price a plan from plan_ugc and get a quote_id (10 minutes). mode "composed": each shot generated and cut together, with one or more characters from list_characters (needs character_ids unless every shot is b_roll). mode "one_shot": a single continuous AI presenter take from a description or a character. CONSENT: before calling, ask the user to confirm they have the right to use any real person\'s likeness or voice in the ad, and pass consent: true only if they say so. Returns credits, takes used against the monthly allowance, and can_afford.',
       inputSchema: z.object({
         mode: z.enum(['composed', 'one_shot']),
@@ -512,7 +534,7 @@ function buildServer(token) {
   server.registerTool(
     'create_ugc',
     {
-      title: 'Create the quoted UGC ad',
+      title: 'Classic UGC Ads: create the quoted takes',
       description: 'Starts the takes an estimate_ugc quote described. SPENDS CREDITS and uses monthly takes. Only after the user has seen the quote and agreed. Returns one video id per take; poll each with get_video_status and fetch with get_video_result.',
       inputSchema: z.object({
         quote_id: z.string(),
@@ -770,8 +792,8 @@ function buildServer(token) {
   server.registerTool(
     'weave_start',
     {
-      title: 'Start a Weave video',
-      description: "Describe a short branded video and WyvStudio's Weave plans it: concept, scenes, script and voice, in the workspace's brand. Planning starts at once and costs a few credits; nothing else is charged until the user approves a price with weave_approve. Write the brief in the user's words, with the product, offer, audience and any exact lines. Then poll weave_status (planning takes a minute or two). Files: upload with upload_asset and pass their ids. A TikTok, Reel, YouTube or X link in reference_url makes the video in that clip's style; a product page link gives facts and look.",
+      title: 'Make a video (Weave, the default)',
+      description: "The default way to make any video, including UGC-style ads. Describe a short branded video and WyvStudio's Weave plans it: concept, scenes, script and voice, in the workspace's brand. Planning starts at once and costs a few credits; nothing else is charged until the user approves a price with weave_approve. Write the brief in the user's words, with the product, offer, audience and any exact lines. Then poll weave_status (planning takes a minute or two). Files: upload with upload_asset and pass their ids. A TikTok, Reel, YouTube or X link in reference_url makes the video in that clip's style; a product page link gives facts and look.",
       inputSchema: z.object({
         brief: z.string().min(3).max(10000).describe("What the video is, in the user's words."),
         format: z.enum(WEAVE_FORMATS).optional().describe('The kind of video, when the user chose one: offer_ad (product ad), launch_promo (launch teaser), testimonial (spoken to camera), explainer, listicle (tips), product_demo, ugc_ad, before_after, tutorial, brand_story. Leave out to let Weave choose.'),

@@ -5286,6 +5286,8 @@ class CreateIntegrationTest extends TestCase
         $quote = $this->actingAs($this->owner)->postJson($api.'/'.$id.'/quotes')->assertOk()->json('data');
         $this->assertNotEmpty($quote['quote_id']);
         $this->assertSame('the video', $quote['makes']);
+        $this->assertSame($quote['credits_available'] >= $quote['credits_max'], $quote['can_afford']);
+        $this->assertSame($quote['can_afford'] ? null : '/settings?section=usage', $quote['can_afford'] ? null : parse_url($quote['if_short']['top_up_url'], PHP_URL_PATH).'?'.parse_url($quote['if_short']['top_up_url'], PHP_URL_QUERY));
         $this->assertSame(0, DB::table('composition_runs')->where('conversation_id', $id)->count());
         // Step 2: the user's go starts the build.
         $run = $this->actingAs($this->owner)->postJson($api.'/'.$id.'/runs', ['quote_id' => $quote['quote_id']])->assertStatus(202)->json('data');

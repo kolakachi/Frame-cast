@@ -53,6 +53,12 @@ class CapabilitiesController extends DeveloperController
         return response()->json(['data' => [
             'delivery' => ['execution' => 'app_handoff', 'actions' => DeliveryController::ACTIONS, 'external_delivery_via_api' => false, 'preflight' => 'POST /videos/{id}/delivery/handoff', 'requires_in_app_confirmation' => true],
             'app_only' => ['scene_deletion', 'character_deletion', 'voice_profile_deletion', 'preset_creation_and_deletion', 'assistant_undo', 'assistant_conversation_reset', 'assistant_brief_editing', 'assistant_auto_apply_preferences'],
+            // Which way to make a video (owner, 2026-10-09): Weave unless the user asks for Classic.
+            'default_path' => [
+                'video' => 'weave',
+                'weave' => 'weave_start → weave_status → weave_approve (price shown and approved) → weave_status. Any branded short video up to 30 s, including UGC-style ads and edits to a Weave video (weave_reply).',
+                'classic_only_when' => ['the user asks for Classic, the composer or a scene-by-scene video', 'the video is an existing Classic project (a numeric video id)', 'the user wants UGC Ads takes: several actors or hooks to test, or an ad analysed', 'longer than 30 seconds'],
+            ],
             'plan' => $this->credits->planTier($workspaceId),
             'credits' => ['balance' => $this->credits->balance($workspaceId)],
             'limits' => [

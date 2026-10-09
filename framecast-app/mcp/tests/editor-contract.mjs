@@ -57,7 +57,10 @@ try {
     else assert.notEqual(json.result?.isError, true, raw)
     return json.result
   }
-  await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'phase-b-test', version: '1' } })
+  const init = await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'phase-b-test', version: '1' } })
+  // Assistants are told Weave is the default and Classic is only on request (2026-10-09).
+  assert.match(init.instructions ?? '', /Default: Weave/)
+  assert.match(init.instructions ?? '', /can_afford is false/)
   const listed = await rpc('tools/list', {})
   assert(listed.tools.some(t => t.name === 'propose_edits'))
   const clear = { video_id: 1, revision: 'replace-with-current-revision', changes: [{ op: 'update_project', music_asset_id: null, channel_id: null, brand_kit_id: null }] }

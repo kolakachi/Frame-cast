@@ -102,7 +102,13 @@ class WeaveController extends DeveloperController
             'quote_id' => $q->id, 'credits_max' => (int) $q->credits_max, 'credits_estimate' => isset($p['estimate']) ? (int) $p['estimate'] : null,
             'makes' => match ($p['build_stage'] ?? null) { 'character' => 'the look of the people in the video, to approve before the video', 'storyboard' => 'a storyboard, to approve before the video', default => 'the video' },
             'paid_media' => array_map(fn ($m) => ['what' => $m['description'] ?? $m['kind'], 'credits' => (int) ($m['credits'] ?? 0)], $p['plan_media'] ?? []),
-            'credits_available' => (int) ($this->conversations->creditAvailability($user)['available'] ?? 0),
+            'credits_available' => $available = (int) ($this->conversations->creditAvailability($user)['available'] ?? 0),
+            'can_afford' => $available >= (int) $q->credits_max,
+            // Short of credits: the assistant offers a cheaper version or the top-up page, never a failed build.
+            'if_short' => $available >= (int) $q->credits_max ? null : [
+                'cheaper' => ['effort quick instead of standard or thorough', 'a shorter video', 'fewer paid shots (ask Weave with weave_reply to drop AI clips or presenter takes)'],
+                'top_up_url' => rtrim((string) config('app.url'), '/').'/settings?section=usage',
+            ],
             'expires_at' => $q->expires_at,
             'note' => 'Nothing is charged until this quote is approved. The amount is a maximum: only what is used is charged. Approving also agrees to send the brief and approved media to our AI providers.',
         ]]);

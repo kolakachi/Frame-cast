@@ -103,7 +103,7 @@ class DeveloperApiTest extends TestCase
     {
         [$ws] = $this->tenant();
         [$u, $key] = $this->member($ws, 'admin');
-        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.plan', 'creator');
+        $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertOk()->assertJsonPath('data.plan', 'creator')->assertJsonPath('data.default_path.video', 'weave');
 
         DB::table('workspace_memberships')->where('user_id', $u->id)->update(['revoked_at' => now()]);
         $this->withToken($key)->getJson('/api/developer/v1/capabilities')->assertStatus(401);

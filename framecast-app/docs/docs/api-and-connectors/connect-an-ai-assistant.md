@@ -53,23 +53,23 @@ claude mcp add --transport http wyvstudio https://app.wyvstudio.com/mcp \
 
 ## What a conversation looks like
 
-> **You:** Make a 30-second vertical video: three reasons a standing desk pays for itself. Stock footage is fine.
->
-> **Assistant:** That'll be 18–24 credits (6–8 scenes), narrated by Kore. You have 2,053. Go ahead?
->
-> **You:** Yes.
->
-> **Assistant:** Started — video #226. I'll check on it… Done. Here's the download link (valid 12 hours) and the project in WyvStudio.
->
-> **You:** Make the first scene punchier and re-export it.
->
-> **Assistant:** I'll rewrite scene 1 ("stronger hook") and re-record its narration — 3 credits. Apply?
->
-> **You:** Yes.
->
-> **Assistant:** Applied. New export is rendering; here's the link.
+The assistant makes videos with **Weave**, the same planner and builder as Create in the app. It uses the Classic tools only when you ask for Classic, a scene-by-scene edit of an existing Classic video, UGC Ads takes to test side by side, or a video longer than Weave makes.
 
-The assistant always quotes before it spends. WyvStudio enforces that on the server: anything that costs credits can only run against a quote or proposal you were shown, within ten minutes of it, and never for more than it said.
+> **You:** Make a 15-second vertical ad for our Dewbloom vitamin C serum. Warm, for dull skin.
+>
+> **Assistant:** I'll have Weave plan it. Planning costs a few credits; nothing else is charged until you approve a price.
+>
+> **Assistant:** Here's the plan: a close-up open, three quick benefits with the product in hand, and an end card with your offer, narrated by Kore. It will cost at most 140 credits; you have 2,053. Go ahead?
+>
+> **You:** Yes.
+>
+> **Assistant:** Building now. This usually takes 10 to 20 minutes; I'll check back… It's ready. Here's the preview and the link to it in WyvStudio.
+>
+> **You:** Make the logo bigger at the end.
+>
+> **Assistant:** Weave re-planned the end card with a larger logo. That change costs at most 20 credits. Apply?
+
+The assistant always shows the price and waits for your yes. WyvStudio enforces that on the server: anything that costs credits runs only against a price you were shown, and never for more than it said. If your balance is short, the assistant offers a cheaper version (quicker build, shorter video, fewer AI shots) or the link to top up.
 
 ## Things you can ask for
 
