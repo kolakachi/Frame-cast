@@ -1004,6 +1004,14 @@ async function updateConversation(archived) {
     if(archived) { details.value = false; await router.push({name:'create'}) }
   })
 }
+// The player's link is signed and expires: an idle page renews it when playback fails, and on coming back after a while.
+async function renewMedia() { mediaKey = ''; try { await refresh() } catch { /* the player says so */ } await loadArtifact() }
+let hiddenAt = 0
+function onVisibility() {
+  if (document.hidden) { hiddenAt = Date.now(); return }
+  if (hiddenAt && Date.now() - hiddenAt > 15 * 60000 && media.value && !media.value.startsWith('blob:')) renewMedia()
+  hiddenAt = 0
+}
 async function loadArtifact() {
   const revision = currentRevision.value, target = id.value
   const nextKey = revision?.artifact_hash ? `${target}/${revision.id}` : ''
@@ -1050,6 +1058,7 @@ watch(id, async (value, old) => {
 })
 watch(() => auth.user?.workspace_id, () => window.location.assign('/create'))
 onMounted(async () => {
+  document.addEventListener('visibilitychange', onVisibility)
   loadStyles()
   window.addEventListener('keydown', onKey)
   document.addEventListener('pointerdown', closeRefHelp); document.addEventListener('keydown', closeRefHelp)
@@ -1480,7 +1489,7 @@ const removeReloadGuard = registerReloadGuard(() => {
   if (!persistDraft(id.value, prompt.value)) return 'This browser could not save your message draft. Copy it before refreshing manually.'
   return ''
 })
-onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('pointerdown', closeRefHelp);document.removeEventListener('keydown', closeRefHelp);removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
+onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibility);clearTimeout(docTimer);document.removeEventListener('pointerdown', closeRefHelp);document.removeEventListener('keydown', closeRefHelp);removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
 <template>
@@ -1621,7 +1630,7 @@ onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('poin
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
                   <StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
-                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /><button v-if="canChange && player && !player.playing && player.current > 0" type="button" class="moment-btn" @click="changeMoment">Change this moment · {{ clockTime(player.current) }}</button></div>
+                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" @stale="renewMedia" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /><button v-if="canChange && player && !player.playing && player.current > 0" type="button" class="moment-btn" @click="changeMoment">Change this moment · {{ clockTime(player.current) }}</button></div>
                   <p v-if="artifactGone && !artifactLoading" class="muted">{{ artifactGone }}</p>
                   <button v-if="!media && !artifactLoading && !artifactGone" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
                 </div>

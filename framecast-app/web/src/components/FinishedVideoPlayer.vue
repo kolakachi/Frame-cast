@@ -1,7 +1,12 @@
 <script setup>
-import { ref } from 'vue'
+import { getCurrentInstance, ref, watch } from 'vue'
 
-defineProps({ src: { type: String, required: true } })
+const props = defineProps({ src: { type: String, required: true } })
+// A streamed video comes from a signed link that expires (about 30 to 45 minutes). When playback fails and the page
+// can renew the link (it listens for "stale"), the player asks once, then plays from the new link by itself.
+const emit = defineEmits(['stale'])
+const renewable = !!getCurrentInstance()?.vnode.props?.onStale
+let renewing = false, resume = false
 const video = ref(null)
 const shell = ref(null)
 const playing = ref(false)
@@ -20,9 +25,27 @@ async function toggle() {
   if (!video.value.paused) video.value.pause()
   else {
     try { await video.value.play(); error.value = '' }
-    catch { error.value = 'Playback could not start. Try again or download the video.' }
+    catch (e) {
+      // A browser that blocks autoplay says so (NotAllowedError); anything else is usually an expired link.
+      if (e?.name !== 'NotAllowedError' && renew(true)) return
+      error.value = 'Playback could not start. Try again or download the video.'
+    }
   }
 }
+function renew(play) {
+  if (!renewable || renewing) return false
+  renewing = true; resume = play; error.value = ''
+  emit('stale')
+  // No new link within a few seconds: say so instead of waiting silently.
+  setTimeout(() => { if (renewing) { renewing = false; error.value = 'This video could not be loaded. Refresh the page or download it.' } }, 8000)
+  return true
+}
+function failed() { if (!renew(false)) error.value = 'This video could not be loaded. Refresh the page or download it.' }
+watch(() => props.src, () => {
+  if (!renewing) return
+  renewing = false
+  if (resume) video.value?.addEventListener('loadedmetadata', () => { video.value?.play().catch(() => { error.value = 'Playback could not start. Try again or download the video.' }) }, { once: true })
+})
 function seek(event) { if (video.value && duration.value) video.value.currentTime = Number(event.target.value) }
 function setVolume(event) { if(video.value) {video.value.volume = Number(event.target.value); video.value.muted = video.value.volume === 0} }
 // The page reads the paused frame and time for "Change this moment" (ChangeDrawer).
@@ -43,7 +66,7 @@ async function fullscreen() {
       <video ref="video" :src="src" crossorigin="anonymous" playsinline preload="metadata" aria-label="Finished video"
         @click="toggle" @loadedmetadata="sync" @durationchange="sync" @timeupdate="sync"
         @play="playing = true" @pause="playing = false" @ended="playing = false"
-        @volumechange="muted = video.muted; volume = video.volume" @error="error = 'This video could not be loaded. Refresh the page or download it.'" />
+        @volumechange="muted = video.muted; volume = video.volume" @error="failed" />
       <button v-if="!playing && !error" class="player-play-large" type="button" aria-label="Play video" @click="toggle">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="m9 5 11 7-11 7z" /></svg>
       </button>
