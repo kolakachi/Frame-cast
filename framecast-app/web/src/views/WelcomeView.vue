@@ -121,7 +121,7 @@ const footer = computed(() => ['We use this to set up your videos and suggest wh
           <button type="button" class="welcome__link" @click="useName = false; error = ''">I have a website</button>
         </form>
         <div v-if="brand" class="welcome__found">
-          <div class="welcome__who"><img v-if="brand.logo_url" :src="brand.logo_url" alt="" /><span v-else class="welcome__mono">{{ (brand.name || '?').slice(0, 1) }}</span><span><b>{{ brand.name }}</b><small v-if="brand.products.length">{{ brand.products.slice(0, 3).join(', ') }}</small><small v-else-if="brand.summary">{{ brand.summary }}</small></span></div>
+          <div class="welcome__who"><img v-if="brand.logo_url" :src="brand.logo_url" alt="" /><span v-else class="welcome__mono">{{ (brand.name || '?').slice(0, 1) }}</span><span class="welcome__name"><b>{{ brand.name }}</b><small v-if="brand.products.length">{{ brand.products.slice(0, 3).join(', ') }}</small><small v-else-if="brand.summary">{{ brand.summary }}</small></span></div>
           <div v-if="brand.palette.length || brand.url" class="welcome__meta">
             <span v-if="brand.palette.length" class="welcome__pair"><span class="welcome__k">Colours</span><i v-for="c in brand.palette" :key="c" class="welcome__swatch" :style="{ background: c }" /></span>
             <span v-if="brand.url" class="welcome__pair welcome__pair--end"><span class="welcome__k">Industry</span><UiSelect v-model="industry" label="Industry" align="right" :options="industryOptions" /></span>
@@ -189,8 +189,8 @@ h1 span{display:block;color:var(--text-faint,#8f95a1);font-weight:500}
 .welcome__found{width:100%;max-width:520px;box-sizing:border-box;border:1px solid var(--border,#262b34);border-radius:12px;background:var(--surface-2,#14171d);padding:14px 16px;display:flex;flex-direction:column;gap:12px}
 .welcome__who{display:flex;align-items:center;gap:12px}
 .welcome__who img,.welcome__mono{width:44px;height:44px;border-radius:10px;object-fit:contain;background:#fff;flex:0 0 auto}
-.welcome__mono{display:grid;place-items:center;font-weight:700;font-size:20px;color:#1a0d06;background:var(--accent,#ff6b35)}
-.welcome__who > span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.welcome__mono{display:grid;place-items:center;font-weight:700;font-size:20px;line-height:1;color:#1a0d06;background:var(--accent,#ff6b35)}
+.welcome__name{display:flex;flex-direction:column;gap:2px;min-width:0}
 .welcome__who small,.welcome__k,.welcome__note{color:var(--text-faint,#8f95a1);font-size:12px}
 .welcome__meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .welcome__swatch{width:22px;height:22px;border-radius:6px;border:1px solid var(--border,#3a3f49)}
