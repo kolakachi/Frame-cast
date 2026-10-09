@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->trustProxies(at: '*');
+        $middleware->append(\App\Http\Middleware\PublicRootUrl::class);
 
         $middleware->alias([
             'auth.jwt' => \App\Http\Middleware\AuthenticateWithJwt::class,
