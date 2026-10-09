@@ -21,10 +21,16 @@ const CRISP_HIDDEN_ROUTES = new Set([
   'settings',       // Save buttons inline; pagination + load-more chrome
 ])
 
+// On a phone with the app's bottom tab bar the bubble covered the Calendar tab (2026-10-09): there the bubble stays
+// hidden and the bar's Help tab opens the chat; closing it hides the bubble again. Desktop keeps the bubble.
+const phone = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 860px)') : null
+let openedFromHelp = false
+const tabsOnScreen = () => !!phone?.matches && document.body.classList.contains('wyv-tabs')
+
 function syncCrispVisibility(routeName) {
   if (!window.$crisp) return
   try {
-    if (CRISP_HIDDEN_ROUTES.has(String(routeName))) {
+    if (CRISP_HIDDEN_ROUTES.has(String(routeName)) || (tabsOnScreen() && !openedFromHelp)) {
       window.$crisp.push(['do', 'chat:hide'])
     } else {
       window.$crisp.push(['do', 'chat:show'])
@@ -35,7 +41,18 @@ function syncCrispVisibility(routeName) {
 // React to client-side route changes — the SPA never reloads, so we have to
 // flip visibility on every navigation rather than relying on the bubble's
 // own state.
-watch(() => route.name, (next) => syncCrispVisibility(next))
+watch(() => route.name, (next) => setTimeout(() => syncCrispVisibility(next), 0))
+
+function openSupport() {
+  if (!window.$crisp) return
+  openedFromHelp = true
+  try { window.$crisp.push(['do', 'chat:show']); window.$crisp.push(['do', 'chat:open']) } catch {}
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('wyv:open-support', openSupport)
+  window.addEventListener('wyv:tabs-changed', () => syncCrispVisibility(route.name))
+  phone?.addEventListener?.('change', () => syncCrispVisibility(route.name))
+}
 
 onMounted(() => {
   const websiteId = import.meta.env.VITE_CRISP_WEBSITE_ID
@@ -61,6 +78,8 @@ onMounted(() => {
       const u = auth.user
       if (u?.email) window.$crisp.push(['set', 'user:email', [u.email]])
       if (u?.name)  window.$crisp.push(['set', 'user:nickname', [u.name]])
+      // Closing the chat that Help opened puts the bubble away again on a phone.
+      window.$crisp.push(['on', 'chat:closed', () => { openedFromHelp = false; syncCrispVisibility(route.name) }])
 
       // Apply the route-based show/hide once the widget is actually live.
       syncCrispVisibility(route.name)

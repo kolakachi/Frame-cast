@@ -50,10 +50,17 @@ const TABS = [
   { key: "videos",    label: "Videos",   to: "videos" },
   { key: "create",    label: "Create",   action: "create" },
   { key: "calendar",  label: "Calendar", to: "calendar" },
+  // On a phone the chat bubble sat on top of Calendar (2026-10-09): support opens from here instead.
+  { key: "help",      label: "Help",     action: "help" },
 ];
 
 function tabTap(tab) {
   mobileOpen.value = false;
+  if (tab.action === "help") {
+    if (window.$crisp) window.dispatchEvent(new CustomEvent("wyv:open-support"));
+    else window.open("https://docs.wyvstudio.com", "_blank", "noopener");
+    return;
+  }
   if (tab.action === "create") {
     if (createEnabled.value) { router.push({ name: 'create' }); return; }
     // The dashboard owns the wizard; anywhere else, go there and open it.
@@ -174,6 +181,9 @@ onMounted(() => {
   sidebarStore.applyStored();
   document.addEventListener("click", handleOutsideClick);
   mq?.addEventListener("change", onViewport);
+  // Tells the chat widget the phone tab bar is on screen, so its bubble stays out of the bar's way.
+  if (!hideTabs.value) document.body.classList.add("wyv-tabs");
+  window.dispatchEvent(new CustomEvent("wyv:tabs-changed"));
   // Load when we have no workspace OR the loaded one belongs to a different
   // user (e.g. after logging out and back in as someone else) — comparing the
   // id avoids showing the previous account's workspace name/plan.
@@ -184,6 +194,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  document.body.classList.remove("wyv-tabs");
+  window.dispatchEvent(new CustomEvent("wyv:tabs-changed"));
   mq?.removeEventListener("change", onViewport);
   document.removeEventListener("click", handleOutsideClick);
 });
@@ -748,6 +760,7 @@ onBeforeUnmount(() => {
         <template v-if="t.key === 'dashboard'"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></template>
         <template v-else-if="t.key === 'videos'"><path d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></template>
         <template v-else-if="t.key === 'calendar'"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></template>
+        <template v-else-if="t.key === 'help'"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M9.6 9.5a2.5 2.5 0 0 1 4.8.9c0 1.6-2.4 2.1-2.4 3.4M12 16.6h.01" /></template>
         <template v-else><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></template>
       </svg>
       <span class="mshell-tab-l">{{ t.label }}</span>
