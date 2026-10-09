@@ -48,6 +48,16 @@ const SOUNDS={
   const bell=(f,t)=>t<0?0:[[1,1,3.2],[2.76,0.35,6],[5.4,0.12,11],[2,0.2,4.5]].reduce((s,[k,a,d])=>s+a*Math.sin(2*Math.PI*f*k*t)*Math.exp(-t*d),0)*Math.min(1,t/0.003);
   return make(1.5,t=>0.6*bell(1046.5,t)+0.55*bell(1568,t-0.09));
  }},
+ page:{level:0.45,make:()=>{
+  // A page turning: paper air sweeping up as it lifts and over, a dry crackle in the paper, a soft slap as it lands.
+  const r=rng(11),c=rng(12),bp=biquad('band'),hp=biquad('high'),lp=biquad('low');
+  return make(0.6,t=>{
+   const air=bp(r(),sweep([[0,600],[0.28,2800],[0.6,1200]],t),0.8)*swell(t,0.28,1.5,9);
+   const k=c(),crackle=Math.abs(k)>0.93?k:0,tex=hp(crackle,3000,0.7)*swell(t,0.24,1.2,7)*0.9;
+   const slap=t<0.42?0:lp(r(),700,0.7)*Math.exp(-(t-0.42)*45)*1.4;
+   return air+tex+slap;
+  });
+ }},
  keys:{level:0.35,align:'start',make:()=>{
   // A short typing run: irregular keystrokes, the last one heavier (a space or return).
   const r=rng(9),lp=biquad('band'),hits=[];let at=0.005;while(at<1.1){hits.push([at,0.55+0.35*Math.abs(r())]);at+=0.065+0.06*Math.abs(r());}

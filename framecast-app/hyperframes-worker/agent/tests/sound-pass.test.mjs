@@ -13,7 +13,7 @@ function kit(){
 const page=extra=>`<html><body><div id="root" data-composition-id="main" data-duration="10">${extra||''}<div id="a"></div></div></body></html>`;
 
 test('every library sound is on disk with its peak inside the file', () => {
- assert.equal(Object.keys(library).length,12);
+ assert.equal(Object.keys(library).length,13);
  for(const [name,s] of Object.entries(library)){assert.ok(s.peak>=0&&s.peak<s.seconds,name);assert.ok(s.level>0&&s.level<=1,name);}
 });
 

@@ -65,6 +65,12 @@
   "peak": 0.1,
   "level": 0.45
  },
+ "page": {
+  "file": "sfx-page.wav",
+  "seconds": 0.6,
+  "peak": 0.246,
+  "level": 0.45
+ },
  "keys": {
   "file": "sfx-keys.wav",
   "seconds": 1.211,

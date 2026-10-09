@@ -356,6 +356,97 @@
       return tl;
     },
 
+    /* Documents (pages and slides the user chose to show as they look). Never redraw a page: show the real image.
+
+       book: pages that turn like a book. el is the book: a positioned box; its children .wm-page (each a div holding
+       the page's <img>) are the pages in order. One page at a time (default): the box is one page; each turn lifts
+       the page from its right edge over the spine (its left edge) to show the next. spread: true: the box is an open
+       book two pages wide, page 1 on the left and 2 on the right; each turn carries the right page over to the left,
+       its back being the next page, and shows the page after it on the right. turns: the times of the turns, in
+       order (fewer than the pages is fine). opts: duration (.9), shade (true: the light falls across the turning
+       page), sound (page). The pages are rearranged once, when the timeline is built. */
+    book: function (tl, el, turns, opts) {
+      el = $(el); opts = opts || {};
+      var pages = Array.prototype.slice.call(el.querySelectorAll(':scope > .wm-page')), d = opts.duration || 0.9;
+      var spread = !!opts.spread, half = spread ? 50 : 100;
+      el.style.perspective = (opts.perspective || 4200) + 'px';
+      el.style.transformStyle = 'preserve-3d';
+      var face = function (page, back) {
+        page.style.position = 'absolute'; page.style.inset = '0'; page.style.overflow = 'hidden';
+        page.style.backfaceVisibility = 'hidden'; page.style.webkitBackfaceVisibility = 'hidden';
+        if (back) page.style.transform = 'rotateY(180deg)';
+        var sh = document.createElement('div');
+        sh.className = 'wm-shade';
+        sh.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(' + (back ? '270deg' : '90deg') + ',rgba(0,0,0,.28),rgba(0,0,0,0) 55%,rgba(255,255,255,.12))';
+        page.appendChild(sh);
+        return sh;
+      };
+      var slot = function (left) {
+        var b = document.createElement('div');
+        b.style.cssText = 'position:absolute;top:0;bottom:0;width:' + half + '%;left:' + (left ? 0 : 100 - half) + '%;transform-style:preserve-3d;transform-origin:0% 50%';
+        el.appendChild(b);
+        return b;
+      };
+      var leaves = [], i;
+      if (spread) {
+        if (pages[0]) { var l = slot(true); l.style.zIndex = 1; l.appendChild(pages[0]); face(pages[0]); }
+        // Leaf j: front = page 2j+2 (right), back = page 2j+3 (left once turned).
+        for (i = 1; i < pages.length; i += 2) {
+          var leaf = slot(false); leaf.style.zIndex = 500 - i;
+          leaf.appendChild(pages[i]); var shF = face(pages[i]), shB = null;
+          if (pages[i + 1]) { leaf.appendChild(pages[i + 1]); shB = face(pages[i + 1], true); }
+          leaves.push({ leaf: leaf, shades: [shF, shB].filter(Boolean) });
+        }
+      } else {
+        for (i = 0; i < pages.length; i++) {
+          var one = slot(true); one.style.zIndex = 500 - i; one.appendChild(pages[i]);
+          leaves.push({ leaf: one, shades: [face(pages[i])] });
+        }
+        leaves.pop(); // the last page stays
+      }
+      (turns || []).slice(0, leaves.length).forEach(function (at, j) {
+        var lf = leaves[j];
+        tl.set(lf.leaf, { zIndex: 600 + j }, at)
+          .fromTo(lf.leaf, { rotationY: 0, z: 0 }, { rotationY: -180, duration: d, ease: 'power2.inOut' }, at)
+          .to(lf.leaf, { z: 14, duration: d / 2, ease: 'sine.out', yoyo: true, repeat: 1 }, at);
+        if (opts.shade !== false) lf.shades.forEach(function (sh) { tl.to(sh, { opacity: 1, duration: d / 2, ease: 'sine.in', yoyo: true, repeat: 1 }, at); });
+      });
+      return tl;
+    },
+
+    /* slides: a deck's slides, each filling the frame as it looks. el holds the slides (.wm-slide, each a div with its
+       <img>), stacked; at: the time each slide after the first comes in. opts: transition push (default: the next
+       slide pushes the last one left), fade or zoom (the last one recedes as the next lands), duration (.6), sound. */
+    slides: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var list = Array.prototype.slice.call(el.querySelectorAll(':scope > .wm-slide')), d = opts.duration || 0.6, kind = opts.transition || 'push';
+      el.style.overflow = 'hidden';
+      list.forEach(function (sl, k) { sl.style.position = 'absolute'; sl.style.inset = '0'; tl.set(sl, { autoAlpha: k === 0 ? 1 : 0, zIndex: k }, 0); });
+      (at || []).slice(0, list.length - 1).forEach(function (t, k) {
+        var a = list[k], b = list[k + 1];
+        if (kind === 'fade') tl.set(b, { autoAlpha: 0 }, t).to(b, { autoAlpha: 1, duration: d, ease: 'sine.inOut' }, t).set(a, { autoAlpha: 0 }, t + d);
+        else if (kind === 'zoom') tl.fromTo(b, { autoAlpha: 0, scale: 1.06 }, { autoAlpha: 1, scale: 1, duration: d, ease: ease.default }, t).to(a, { scale: 0.94, autoAlpha: 0, duration: d, ease: 'power2.in' }, t);
+        else tl.fromTo(b, { autoAlpha: 1, xPercent: 100 }, { xPercent: 0, duration: d, ease: ease.heavy }, t).to(a, { xPercent: -30, duration: d, ease: ease.heavy }, t).set(a, { autoAlpha: 0, xPercent: 0 }, t + d);
+      });
+      return tl;
+    },
+
+    /* pageFocus: move the camera to a part of a page or slide and back, so the viewer reads what is being said.
+       content is the layer that moves (a full-frame wrapper holding the book or slides); page the page or slide
+       element; box {x, y, w, h} the part, as fractions of the page (look at the page to find it). opts: scale (fit
+       the part to ~80% of the frame, 1.2 to 3), duration (.7), hold (1.5; Infinity stays in until the next move),
+       back (true). */
+    pageFocus: function (tl, content, page, box, at, opts) {
+      content = $(content); page = $(page); opts = opts || {}; box = box || { x: 0, y: 0, w: 1, h: 1 };
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight, r = rect(page, stage);
+      var bw = r.width * box.w, bh = r.height * box.h, cx = r.left + r.width * (box.x + box.w / 2), cy = r.top + r.height * (box.y + box.h / 2);
+      var s = opts.scale || Math.min(3, Math.max(1.2, Math.min(0.8 * W / bw, 0.8 * H / bh)));
+      var x = W / 2 - s * cx, y = H / 2 - s * cy, d = opts.duration == null ? 0.7 : opts.duration, hold = opts.hold == null ? 1.5 : opts.hold;
+      tl.set(content, { transformOrigin: '0 0' }, 0).to(content, { x: x, y: y, scale: s, duration: d, ease: ease.heavy }, at);
+      if (opts.back !== false && isFinite(hold)) tl.to(content, { x: 0, y: 0, scale: 1, duration: d, ease: ease.heavy }, at + d + hold);
+      return tl;
+    },
+
     /* flood: a shape grows from a point to fill the frame in one colour (about .3 s, past the corners), holds a beat,
        then shrinks away into the next scene. el is a full-frame div above the scenes; from is {x, y} in stage px or an
        element whose centre it starts from; to (optional) where it shrinks into. Switch the scene underneath during the
@@ -609,6 +700,9 @@
     whip: function (a) { return [['whoosh-fast', a[3]]]; },
     giantWipe: function (a) { return [['whoosh-big', a[3] + 0.28]]; },
     camera: function (a) { var d = o(a, 4).duration; return [['slide', a[3] + (d == null ? 0.6 : d) * 0.35]]; },
+    book: function (a) { var d = o(a, 3).duration || 0.9; return (a[2] || []).map(function (t) { return ['page', t + d * 0.3]; }); },
+    slides: function (a) { var d = o(a, 3).duration || 0.6, k = o(a, 3).transition || 'push'; return (a[2] || []).map(function (t) { return [k === 'fade' ? 'slide' : 'whoosh', t + d * 0.4]; }); },
+    pageFocus: function (a) { var d = o(a, 5).duration; return [['slide', a[4] + (d == null ? 0.7 : d) * 0.35]]; },
     fly: function (a) { return [['swish', a[3] + (o(a, 4).duration || 0.6) * 0.5]]; },
     layout: function (a) { var d = o(a, 4).duration; return d === 0 ? [] : [['slide', a[2] + (d == null ? 0.55 : d) / 2]]; },
     edges: function (a) { return [['tick', a[2] + 0.05]]; },
@@ -629,7 +723,7 @@
     split: function (a) { return [['slide', a[3] + 0.3]]; },
     stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
-  var OPTS = { device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
+  var OPTS = { book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
     pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {

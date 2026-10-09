@@ -1,0 +1,57 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Documents</title>
+<script src="gsap.min.js"></script><script src="wyv-motion.js"></script>
+<style>
+*{box-sizing:border-box;margin:0}
+body{background:#000}
+#main{width:1920px;height:1080px;position:relative;overflow:hidden;font-family:sans-serif}
+.scene{position:absolute;inset:0;overflow:hidden}
+/* Scene 1: an open book on a desk, its pages turning. */
+#desk{background:radial-gradient(120% 90% at 50% 40%,#5b4a3c,#2a211b)}
+#content{position:absolute;inset:0}
+#book{position:absolute;left:260px;top:70px;width:1400px;height:940px}
+#shadow{position:absolute;left:280px;top:110px;width:1360px;height:920px;border-radius:6px;box-shadow:0 30px 60px rgba(0,0,0,.5)}
+.wm-page img,.wm-slide img{width:100%;height:100%;object-fit:cover;display:block}
+#spine{position:absolute;left:259px;top:70px;width:1402px;height:940px;pointer-events:none;background:linear-gradient(90deg,transparent 47%,rgba(0,0,0,.18) 50%,transparent 53%);z-index:2000}
+/* Scene 2: a deck, full frame. */
+#deckScene{visibility:hidden;background:#111}
+#deckContent{position:absolute;inset:0}
+#deck{position:absolute;inset:0}
+</style></head><body>
+<main id="main" data-composition-id="main" data-width="1920" data-height="1080" data-duration="12">
+ <section class="scene" id="desk">
+  <div id="content">
+   <div id="shadow"></div>
+   <div id="book">
+    <div class="wm-page" id="p1"><img src="page-1.png"></div>
+    <div class="wm-page" id="p2"><img src="page-2.png"></div>
+    <div class="wm-page" id="p3"><img src="page-3.png"></div>
+    <div class="wm-page" id="p4"><img src="page-4.png"></div>
+    <div class="wm-page" id="p5"><img src="page-5.png"></div>
+    <div class="wm-page" id="p6"><img src="page-6.png"></div>
+   </div>
+   <div id="spine"></div>
+  </div>
+ </section>
+ <section class="scene" id="deckScene">
+  <div id="deckContent">
+   <div id="deck">
+    <div class="wm-slide" id="sl1"><img src="slide-1.png"></div>
+    <div class="wm-slide" id="sl2"><img src="slide-2.png"></div>
+    <div class="wm-slide" id="sl3"><img src="slide-3.png"></div>
+   </div>
+  </div>
+ </section>
+<script>
+const tl=gsap.timeline({paused:true});
+// The book: pages 1|2 open; turn to 3|4, push in on page 4's chart, back out, turn to 5|6.
+WM.book(tl,'#book',[1.2,4.6],{spread:true});
+WM.pageFocus(tl,'#content','#p4',{x:.1,y:.42,w:.8,h:.4},2.6,{hold:1});
+tl.set('#desk',{autoAlpha:0},6.5).set('#deckScene',{autoAlpha:1},6.5);
+// The deck: slide 1, push to slide 2, focus its figure, fade to slide 3.
+WM.slides(tl,'#deck',[7.8,10.4],{transition:'push'});
+WM.pageFocus(tl,'#deckContent','#sl2',{x:.55,y:.25,w:.38,h:.5},8.7,{hold:.8});
+tl.to({},{duration:12},0);
+window.__timelines=window.__timelines||{};window.__timelines.main=tl;
+</script>
+</main></body></html>
