@@ -12,6 +12,27 @@ export async function blankSpans(file,ffmpeg='ffmpeg'){
  return [...stderr.matchAll(/black_start:([\d.]+)\s+black_end:([\d.]+)/g)].map(m=>({start:+Number(m[1]).toFixed(2),end:+Number(m[2]).toFixed(2)}));
 }
 
+/**
+ * Single wrong frames: a frame that differs from both neighbours while the frames either side of it match (a
+ * double-printed label, an element that blinks out for one frame, a stray flash). A hard cut never matches, because
+ * the frames either side of it differ. Measured on 96 px greyscale; returns [{time, diff}], one per glitch.
+ * (The method is from howseen-ai/claude-motion-design, MIT.)
+ */
+export async function flashFrames(file,duration,ffmpeg='ffmpeg'){
+ const S=96,N=S*S;
+ const {stdout}=await run(ffmpeg,['-hide_banner','-loglevel','error','-i',file,'-an','-vf',`scale=${S}:${S},format=gray`,'-f','rawvideo','-'],{timeout:180000,maxBuffer:512*1024*1024,encoding:'buffer'});
+ const count=Math.floor(stdout.length/N);if(count<3)return [];
+ const fps=duration>0?count/duration:24;
+ const diff=(i,j)=>{let s=0;for(let k=0,a=i*N,b=j*N;k<N;k++)s+=Math.abs(stdout[a+k]-stdout[b+k]);return s/N;};
+ const step=Array.from({length:count-1},(_,i)=>diff(i,i+1));
+ const out=[];
+ for(let n=1;n<count-1;n++){
+  const m=Math.min(step[n-1],step[n]);
+  if(m>2&&diff(n-1,n+1)<0.35*m&&!(out.length&&n-out.at(-1).frame<=1))out.push({frame:n,time:+(n/fps).toFixed(2),diff:+m.toFixed(1)});
+ }
+ return out.map(({time,diff})=>({time,diff}));
+}
+
 /** Blank picture nobody asked for: anything but a fade out at the very end (the opening is the thumbnail: no black). */
 export function unintendedBlanks(spans,duration){
  return spans.filter(s=>!(s.start<=0.05&&s.end<=0.2)&&!(duration&&s.end>=duration-0.05&&s.end-s.start<=0.6));
@@ -60,7 +81,7 @@ export function audioForVerdict(summary){
  * Combines the measurements into checks. look: the vision verdict ({status:'checked'|'unverified', required, identity,
  * lettering, actions}); audio: the listening summary; moves: missing planned moves; blanks: unintended blank spans.
  */
-export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],expectsSpeech=false,generatedPeople=false}){
+export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],flashes=[],expectsSpeech=false,generatedPeople=false}){
  const checks=[];
  const add=(id,label,status,blocking,message,times=[])=>checks.push({id,label,status,blocking,message,times});
  // Approved words (narration or a take) in the delivered audio.
@@ -126,6 +147,8 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
  // Unintended blank frames: a technical fault; a detector that could not run is unverified, never a pass.
  if(blanks===null)add('blank','No blank frames','unverified',true,'Blank frames could not be measured.');
  else if(blanks.length)add('blank','No blank frames','fail',true,'The picture goes blank'+(blanks.length>1?' '+blanks.length+' times':'')+'.',blanks.map(b=>b.start));
+ // A single wrong frame (a blink, a double print, a stray flash): a technical fault the build can fix.
+ if(flashes?.length)add('flash','No single-frame glitches','fail',true,'One frame differs from the frames either side'+(flashes.length>1?' ('+flashes.length+' times)':'')+': something blinks, doubles or flashes for a single frame.',flashes.map(f=>f.time));
  // Planned moves the plan named (a reference move, the signature move): blocking.
  for(const m of moves)add('move','Planned move: '+(m.move?String(m.move).replace(/_/g,' '):'move'),m.status==='unverified'?'unverified':'fail',true,String(m.message||'A planned move is missing.'),m.time!=null?[m.time]:[]);
  // Words on screen too briefly to read (the delivery check's reading time): blocking, and the build can fix it.
@@ -144,6 +167,7 @@ export function peopleToKeep(plan={},planMedia=[]){
 /** Runs the measurements on the final file and returns the verdict. look(frames) sends frames to the app's vision check. */
 export async function finalChecks({file,duration,plan={},planMedia=[],audioSummary=null,moves=[],reading=[],look,html='',ffmpeg='ffmpeg'}){
  let blanks=null;try{blanks=unintendedBlanks(await blankSpans(file,ffmpeg),duration);}catch{/* reported as unverified */}
+ let flashes=[];try{flashes=await flashFrames(file,duration,ffmpeg);}catch{/* advisory measurement: a failure adds nothing */}
  const generated=planMedia.some(m=>['generated_shot','ugc_take'].includes(m.kind)&&m.status==='succeeded');
  const generatedPeople=generated&&peopleToKeep(plan,planMedia);
  const needsLook=generated||(plan.agreement?.required||[]).length>0;
@@ -154,16 +178,16 @@ export async function finalChecks({file,duration,plan={},planMedia=[],audioSumma
   try{verdict=await look(await Promise.all(frames.map(async f=>({time:f.time,label:f.label,jpeg:await readFile(f.path)}))));}catch(e){verdict={status:'unverified',note:'the check request failed: '+String(e?.message||e).slice(0,100)};}finally{await cleanup();}
  }
  const expectsSpeech=plan.settings_audio!=='silent'&&((plan.narration||[]).length>0||planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'));
- return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,expectsSpeech,generatedPeople});
+ return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,flashes,expectsSpeech,generatedPeople});
 }
 
 /**
- * What the build can fix itself after a blocked final check: a required item not in view, blank frames, a planned
+ * What the build can fix itself after a blocked final check: a required item not in view, blank frames, a single-frame glitch, a planned
  * move left out, words on screen too briefly to read, narration cut short when it is our own narration file. A person who changed, or a take's own words,
  * need a new clip: those go to the user.
  */
 export function repairable(verdict,{takeUsed=false}={}){
- return (verdict?.checks||[]).filter(c=>c.blocking&&c.status==='fail'&&(['required','blank','move','reading'].includes(c.id)||(c.id==='words'&&!takeUsed)));
+ return (verdict?.checks||[]).filter(c=>c.blocking&&c.status==='fail'&&(['required','blank','flash','move','reading'].includes(c.id)||(c.id==='words'&&!takeUsed)));
 }
 
 /** The repair round's brief to the builder: only these, with their times; everything else stays. */

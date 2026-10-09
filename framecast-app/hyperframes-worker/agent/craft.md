@@ -26,6 +26,9 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
   - `WM.morph(tl,'#shape',[{at,width,height,borderRadius,backgroundColor},...])`: one shape through states.
   - Transitions: `WM.whip(tl,'#a','#b',at)`, `WM.push(tl,'#a','#b',at,'left')`, `WM.wipe(tl,'#b',at,'up')`, `WM.leak(tl,'#leak',at)`; signature moves `WM.giantWipe`, `WM.stamp`, `WM.field`; camera, rhythm and readouts `WM.pushIn`, `WM.pullBack`, `WM.dutch`, `WM.coldOpen`, `WM.textMask`, `WM.rampFreeze`, `WM.hiddenCut`, `WM.odometer`, `WM.gauge`, `WM.streak`, `WM.smash`, `WM.split`, `WM.stack`, `WM.parallax` (each with an energy: match the beat's); hide the old scene after. Details: read kit/motion-kit.md.
   - For an explicitly animated illustrated character, optional kit techniques include: `WM.ease.playful` on every pose change, a transition recipe between beats, and press or cursor on any UI it points at.
+- One shape of energy for the whole video: build, peak, breathe, a bigger peak, land. Quiet stretches between peaks are what make the peaks land; never run every beat at full intensity. A move that comes back changes something (direction, speed, scale), never repeats exactly.
+- Ease by material: rigid things (cards, devices, UI) snap and settle with little overshoot; elastic things (characters, stickers, icons) overshoot and bounce; paper drifts and settles slowly; light, smoke and glows ease out long. A move's sound matches its weight: a soft settle never gets a big hit.
+- Everything is still on the last frame before a cut; something still moving at a cut looks cheap.
 - Before hand-building a named visual (device frame, captions, CTA, counter, chart, chat UI, transition, texture, mascot), search the registry with the catalog action and wire the item (kit/registry.md).
 
 ## Character (when there is one)
@@ -65,6 +68,18 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 
 ## The agreement (plan.agreement)
 - It is what the user approved: keep everything in preserve, swap what replace names, reinterpret only what flexible allows. Every required item must be visible or audible in the final video at a clear moment; a required item you cannot deliver is reported with report_limitation, never left out silently.
+
+## Render traps (measured: the preview looks right, the render does not)
+
+- No `mix-blend-mode` on an overlay layer (a vignette, a grade): it blends against nothing and the whole video renders white. Use plain opacity, or put the darkening in the overlay's own alpha.
+- A property written only in a `fromTo`'s from side is not applied when a render worker seeks into the middle, so the element vanishes. Write it in the to side too (`{opacity:1, scale:0}` → `{opacity:1, scale:1}`). A `fromTo` whose start should stay hidden until its cue needs `immediateRender:false`.
+- Two tweens writing the same transform at the same time judder: put scale on an outer wrapper and rotation (or x/y) on an inner one. Leave 0.01 s between back-to-back tweens on one property.
+- A `filter` tween with no numeric start jumps on its first frame: declare `filter: blur(0px)` (or `brightness(1)`) in the CSS first.
+- Swapping one label for another: start the incoming one exactly where the outgoing one ends, never overlapping, or both print at once for a few frames. When two words share letters, hold the shared part and change only the rest.
+- Measure with `offsetLeft`/`offsetTop`/`offsetWidth` (not `getBoundingClientRect`) inside anything the camera scales; and before a push-in, check the scaled edges stay clear of the caption zone: `edge_after = edge + (edge − origin) × (scale − 1)`.
+- Text hidden inside a mask still counts as overlapping: hide it with `autoAlpha:0` on a wrapper that is not a `.clip` until its turn.
+- A Lottie layer with an animated transform renders blank: keep the Lottie still and move its container with GSAP.
+- `main.js` may run before the page's elements exist: build the timeline in a function and call it from the inline script at the end of `index.html`.
 
 ## Before finishing
 - Every requested idea is present; every read has time; intentional holds remain intact. Inspect the full timeline for unintended blank intervals and missing content.

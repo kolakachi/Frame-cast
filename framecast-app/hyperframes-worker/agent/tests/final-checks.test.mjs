@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {mkdtemp} from 'node:fs/promises';import {tmpdir} from 'node:os';
-import {finalVerdict,unintendedBlanks,blankSpans,repairable,repairBrief} from '../final-checks.mjs';
+import {finalVerdict,unintendedBlanks,blankSpans,flashFrames,repairable,repairBrief} from '../final-checks.mjs';
 const run=promisify(execFile);
 const plan={agreement:{required:['Maya lights the candle','Start with the $9 Test Pass']}};
 const look={status:'checked',has_cast:true,required:[{item:'Maya lights the candle',status:'present',time:3.2},{item:'Start with the $9 Test Pass',status:'unclear',time:null,note:'spoken only'}],
@@ -181,4 +181,17 @@ test('"No voiceover" passes when nothing is said and fails when a voice is heard
  assert.deepEqual(req({heard_words:40,music:true,script_coverage:0.95,missing:[]}),['fail','pass'],'a voice heard: no-voiceover fails, a required voiceover passes');
  const message=finalVerdict({plan:{agreement:{required:['No voiceover; music and effects only']}},look,audio:{heard_words:40,music:true}}).checks.find(c=>c.id==='required').message;
  assert.match(message,/a voice was heard/);
+});
+
+test('a single wrong frame is found and blocks (the build fixes it); a hard cut and a fade are not glitches', async () => {
+ const dir=await mkdtemp(tmpdir()+'/flash-');
+ const make=async(name,vf)=>{const f=dir+'/'+name+'.mp4';await run('ffmpeg',['-loglevel','error','-y','-f','lavfi','-i','color=c=0x3366aa:s=96x96:d=2:r=24','-vf',vf,'-pix_fmt','yuv420p',f]);return f;};
+ // Frame 24 (1 s) is white for one frame.
+ const flash=await flashFrames(await make('flash',"drawbox=x=0:y=0:w=96:h=96:color=white:t=fill:enable='eq(n,24)'"),2);
+ assert.equal(flash.length,1,JSON.stringify(flash));assert.ok(Math.abs(flash[0].time-1)<0.1);
+ // A hard cut at 1 s to another colour, and a slow fade, are not glitches.
+ assert.deepEqual(await flashFrames(await make('cut',"drawbox=x=0:y=0:w=96:h=96:color=orange:t=fill:enable='gte(n,24)'"),2),[]);
+ assert.deepEqual(await flashFrames(await make('fade','fade=t=out:st=0.5:d=1'),2),[]);
+ const v=finalVerdict({blanks:[],flashes:flash});
+ assert.equal(v.status,'blocked');assert.deepEqual(repairable(v).map(c=>c.id),['flash']);
 });
