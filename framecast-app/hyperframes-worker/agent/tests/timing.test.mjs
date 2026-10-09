@@ -84,3 +84,11 @@ test('a generated shot\'s ambience must sit low under the voice unless it speaks
  assert.equal(ambienceFindings({rows,html:html('data-volume="0.25"'),planMedia}).length,0);
  assert.equal(ambienceFindings({rows,html:html('muted'),planMedia}).length,0);
 });
+test('a take placed through its video cutout counts as in the video, in full',()=>{
+ const planMedia=[{kind:'ugc_take',status:'succeeded',file:'media/take.mp4',description:'presenter'},{kind:'cutout_video',status:'succeeded',file:'media/cutout.webm',description:'the presenter take'}];
+ const rows=[{src:'media/cutout.webm',start:0,end:20}];
+ assert.deepEqual(clipUsageFindings({planMedia,html:'<video src="media/cutout.webm">',rows,durations:{'media/take.mp4':20}}),[]);
+ assert.equal(clipUsageFindings({planMedia,html:'',rows:[]})[0].code,'bought_media_unused');
+ const short=clipUsageFindings({planMedia,html:'x',rows:[{src:'media/cutout.webm',start:0,end:5}],durations:{'media/take.mp4':20}});
+ assert.equal(short[0].code,'talking_clip_cut_short');
+});

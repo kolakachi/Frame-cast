@@ -1,6 +1,6 @@
 import {mkdir,readdir,copyFile,lstat,writeFile,readFile,unlink} from 'node:fs/promises';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
-import {inspectionReport} from './inspection-report.mjs';
+import {inspectionReport,checkJson} from './inspection-report.mjs';
 import {renderRun} from '../scripts/lib/render-run.mjs';
 const [id,operation,times='1,6,12']=process.argv.slice(2);
 if(!/^[a-z0-9-]+$/.test(id)||!['check','snapshot','render','timeline','media','delivery','run','strip','inspect_reference','detail','layout','compare'].includes(operation))throw Error('Invalid local job');
@@ -86,8 +86,8 @@ if(operation==='delivery'){
  // WCAG AA contrast. Reported to the user; they never block the render.
  const band=({'9:16':'x0=0;y0=.8;x1=1;y1=1','4:5':'x0=0;y0=.86;x1=1;y1=1','1:1':'x0=0;y0=.88;x1=1;y1=1','16:9':'x0=0;y0=.88;x1=1;y1=1'})[settings.aspect_ratio];
  let raw={};
- try{const {stdout}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs','check',root,'--json','--frame-check','severity=error','--caption-zone',band+';severity=error'],{cwd:root,timeout:150000,maxBuffer:16000000});raw=JSON.parse(stdout);}
- catch(e){try{raw=JSON.parse(e.stdout||'{}');}catch{raw={};}}
+ try{const {stdout}=await promisify(execFile)(process.execPath,['/opt/worker/node_modules/hyperframes/bin/hyperframes.mjs','check',root,'--json','--frame-check','severity=error','--caption-zone',band+';severity=error'],{cwd:root,timeout:150000,maxBuffer:16000000});raw=checkJson(stdout);}
+ catch(e){try{raw=checkJson(e.stdout||'{}');}catch{raw={};}}
  const findings=Object.values(raw).flatMap(s=>s?.findings??[]).map(({code,message,selector,time,severity})=>({code,message,selector,time,severity}));
  const pick=re=>findings.filter(f=>re.test(f.code||'')).slice(0,12);
  result={ok:true,band,safe_area:pick(/caption_zone/),edges:pick(/frame|offscreen|overflow|clip/),contrast:pick(/contrast/),pacing:await pacing()};

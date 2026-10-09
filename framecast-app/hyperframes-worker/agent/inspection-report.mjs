@@ -2,8 +2,11 @@
 // Sections whose findings are notes for the user, not failures: the user reviews the result, so only what breaks the
 // video (code that renders differently each time, a page that throws) stops a build.
 export const ADVISORY_SECTIONS=['layout','contrast','motion'];
+// The check prints status lines (e.g. '[hyperframes] media proxy pre-resolve …' when the video holds a clip) before its
+// JSON; the report starts at the first line that opens an object.
+export function checkJson(output){const s=String(output??''),i=s.startsWith('{')?0:s.indexOf('\n{');return JSON.parse(i<0?s:s.slice(i));}
 export function inspectionReport(output, {advisory=ADVISORY_SECTIONS}={}) {
- let raw;try{raw=JSON.parse(output);}catch{return {ok:false,errors:[{message:String(output).slice(0,3000)}]};}
+ let raw;try{raw=checkJson(output);}catch{return {ok:false,errors:[{message:String(output).slice(0,3000)}]};}
  // Notes: the advisory sections' errors, kept short; blocking: everything else.
  const notes=advisory.flatMap(k=>(raw[k]?.findings??[]).filter(f=>f.severity==='error').map(f=>({section:k,code:f.code,message:String(f.message||'').slice(0,160),selector:f.selector}))).slice(0,6);
  if(advisory.length&&raw.ok!==true){

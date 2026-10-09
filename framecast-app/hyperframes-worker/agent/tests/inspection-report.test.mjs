@@ -21,3 +21,9 @@ test('a check that failed, timed out or returned nothing is never a pass',()=>{
  }
  assert.match(inspectionReport(JSON.stringify({ok:false,error:'Page navigation timed out'})).errors[0].message,/navigation timed out/);
 });
+test('a status line printed before the check JSON does not turn a pass into a failure',()=>{
+ const out='[hyperframes] media proxy pre-resolve: 1/1 ready, 0 failed (8927ms)\n'+JSON.stringify({ok:true,lint:{errorCount:0,findings:[]},runtime:{errorCount:0,findings:[]}},null,2)+'\n';
+ const r=inspectionReport(out);
+ assert.equal(r.ok,true);assert.equal(r.errors.length,0);
+ assert.equal(inspectionReport('not json').ok,false);
+});

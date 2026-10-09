@@ -161,18 +161,33 @@ export function audioEdgeFindings({clips,levels={},voices=new Set(),pauses={},tr
 // shot for most of its length. Audio is checked elsewhere. A file the agent reported as unusable
 // (report_limitation naming it) is excused, so a bad purchase is disclosed rather than forced in.
 const VISUAL=['ugc_take','generated_shot','talking_take','talking_shot','animate_image','stock_video','stock_image','ai_image','character_poses','character_variants','brand_kit'];
+// A video cutout stands in for the clip it was cut from (the one its description names, else the latest video
+// before it), so placing the cutout counts as placing that clip.
+const VIDEO=['ugc_take','generated_shot','talking_take','talking_shot','animate_image','stock_video'];
+export function cutoutSources(planMedia=[]){
+ const by={},base=f=>String(f||'').split('/').pop();
+ planMedia.forEach((m,i)=>{
+  if(m.kind!=='cutout_video'||m.status!=='succeeded'||!m.file)return;
+  const earlier=planMedia.slice(0,i).filter(v=>VIDEO.includes(v.kind)&&v.status==='succeeded'&&v.file);
+  const named=rtrimWord(m.description);
+  const src=earlier.find(v=>named&&base(v.file)===base(named))||earlier.at(-1);
+  if(src)(by[src.file]??=[]).push(m.file);
+ });
+ return by;
+}
+const rtrimWord=d=>(String(d||'').trim().split(/\s+/)[0]||'').replace(/[:,.;]+$/,'');
 export function clipUsageFindings({planMedia=[],html='',rows=[],durations={},limitations=[]}){
- const out=[],said=JSON.stringify(limitations||[]);
+ const out=[],said=JSON.stringify(limitations||[]),cut=cutoutSources(planMedia);
  const page=String(html);
  for(const m of planMedia.filter(m=>m.status==='succeeded'&&m.file&&VISUAL.includes(m.kind))){
-  const files=[m.file,...(m.more_files||[])].filter(Boolean);
+  const files=[m.file,...(m.more_files||[]),...(cut[m.file]||[])].filter(Boolean);
   if(files.some(f=>said.includes(f)))continue;
   const used=files.filter(f=>page.includes(f)||rows.some(r=>r.src===f));
   if(!used.length){out.push({code:'bought_media_unused',message:`${m.file} (${m.kind.replace('_',' ')}: ${String(m.description||'').slice(0,60)}) was bought for this video but is not in it.`,
    fixHint:'Place it where the plan put it, or report_limitation naming the file and why it cannot be used.'});continue;}
   if(m.kind==='talking_take'||m.kind==='talking_shot'||m.kind==='ugc_take'){
    const d=durations[m.file];if(!Number.isFinite(d)||d<=0)continue;
-   const shown=rows.filter(r=>r.src===m.file).reduce((n,r)=>n+Math.max(0,r.end-r.start)*(Number(r.playbackRate)||1),0);
+   const shown=rows.filter(r=>r.src===m.file||(cut[m.file]||[]).includes(r.src)).reduce((n,r)=>n+Math.max(0,r.end-r.start)*(Number(r.playbackRate)||1),0);
    const need=m.kind==='talking_shot'?0.8:0.9;
    if(shown<d*need)out.push({code:'talking_clip_cut_short',message:`${m.file} is ${d.toFixed(1)} s of the presenter speaking but only ${shown.toFixed(1)} s of it is in the video.`,
     fixHint:m.kind!=='talking_shot'?'A talking take carries the whole script: give it slots covering its full length (cutaways over it are fine; keep its audio).':'Give the talking shot a slot for most of its length.'});
