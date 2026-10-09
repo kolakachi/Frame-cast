@@ -5,7 +5,7 @@ namespace App\Services\Developer;
 use App\Models\ApiQuote;
 use Illuminate\Support\Facades\DB;
 
-/** Read-only recovery information. Elapsed time never releases a hold. */
+/** Read-only recovery information. Holds follow CreditHolds: a review keeps only what is uncertain, for 24 hours at most. */
 class OperationStatus
 {
     public static function forQuote(ApiQuote $quote): array
@@ -43,13 +43,16 @@ class OperationStatus
             'project_ids' => $kind === 'character_image' ? [] : ($f['project_ids'] ?? ($quote->project_id ? [(int) $quote->project_id] : [])),
             'generation_id' => $kind === 'character_image' ? ($f['generation_id'] ?? null) : null,
             'credits' => $op ? ['authorized_max' => (int) $op->authorized_credits,
-                'spent' => (int) $op->spent_credits, 'reserved' => (int) $op->reserved_credits] : null,
+                'spent' => (int) $op->spent_credits, 'reserved' => (int) $op->reserved_credits,
+                // held, under_review or released; a review gives back what is left by released_by at the latest.
+                'hold' => CreditHolds::state($op),
+                'released_by' => CreditHolds::state($op) === 'released' ? null : \Illuminate\Support\Carbon::parse($op->created_at)->addHours(CreditHolds::REVIEW_HOURS)->toIso8601String()] : null,
             'jobs_pending' => $op ? DB::table('api_operation_jobs')->where('operation_id', $op->id)->whereIn('status', ['pending', 'running', 'released'])->count() : null,
             'retry_after_seconds' => $state === 'running' ? 15 : null,
             'next' => match ($state) {
                 'cancelled' => 'Remaining work is fenced off and its unused reservation released. Completed charges/results are retained. Review them before authorizing new work.',
                 'not_started' => 'The quote has not been consumed. Retry the original request with its original idempotency key; expiry rules still apply.',
-                'needs_attention' => 'Execution needs investigation. Do not submit a replacement paid operation. Reservations have not been released merely because time elapsed. If the user does not want to wait, cancel_operation stops it and releases the unused reservation; what was already made and charged stays.',
+                'needs_attention' => 'Execution needs investigation. Do not submit a replacement paid operation. Only what may still be owed stays held (credits.reserved), and it is released by credits.released_by at the latest. If the user does not want to wait, cancel_operation stops it and releases the unused reservation now; what was already made and charged stays.',
                 'running' => 'Poll this quote again. Do not obtain a replacement quote or change the idempotency key.',
                 default => 'Use the recorded result or replay the original request with the same idempotency key. Poll video/generation status separately for media readiness.',
             },

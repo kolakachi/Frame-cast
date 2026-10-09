@@ -3502,6 +3502,19 @@ class CreateIntegrationTest extends TestCase
         Http::assertSent(fn($r)=>$r->method()==='GET');
     }
 
+    public function test_a_build_under_review_keeps_only_its_unsettled_calls_maximum_held(): void
+    {
+        // CreditHolds (2026-10-10): the rest of the build's hold comes back while the uncertain call is reviewed.
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',str_repeat('a',64));
+        $attempts->settle($run->id,$claim['lease_token'],$a['id'],['status'=>'unknown']);
+        $limit=(int)DB::table('composition_attempts')->where('id',$a['id'])->value('credit_limit');
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['status'=>'needs_attention','reserved_credits'=>$limit+150]);
+        $this->assertSame(150, \App\Services\Developer\CreditHolds::shrink($run->operation_id));
+        $this->assertSame($limit,(int)DB::table('api_operations')->where('id',$run->operation_id)->value('reserved_credits'));
+        $this->assertSame(0, \App\Services\Developer\CreditHolds::shrink($run->operation_id), 'a second pass changes nothing');
+    }
+
     public function test_a_claude_server_error_with_a_request_id_costs_nothing_and_is_waited_out_like_a_busy_model(): void
     {
         // 2026-10-10: a 5xx used to hold the run for an operator though Anthropic bills only completed messages.

@@ -1163,6 +1163,8 @@ class ProjectController extends Controller
         }
 
         $project->delete();
+        // Deleting a video ends its work: any request still holding credits for it gives them back now.
+        \App\Services\Developer\CreditHolds::releaseForProject($projectId, (int) $user->workspace_id);
 
         return response()->json([
             'data' => [

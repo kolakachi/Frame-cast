@@ -1526,6 +1526,58 @@ class DeveloperApiTest extends TestCase
         $this->artisan('api:release-hold', ['operation' => $other, '--admin' => $email, '--evidence' => 'checked it', '--confirm' => true])->assertFailed();
     }
 
+    public function test_held_credits_follow_the_states_review_keeps_only_what_is_uncertain_and_nothing_is_held_past_a_day(): void
+    {
+        // Owner, 2026-10-10: held -> charged -> released; under review holds only the uncertain part; 24 hours at most.
+        $this->enableOperationAccounting();
+        config(['developer.limits.max_active_videos' => 0]);
+        [$ws, , $token] = $this->tenant('creator', 1000);
+        $key = ApiKey::resolve($token);
+        $op = fn (int $max) => DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, $max), $key->id));
+        $job = fn (string $id, string $status) => DB::table('api_operation_jobs')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'operation_id' => $id, 'status' => $status, 'created_at' => now(), 'updated_at' => now()]);
+        $row = fn (string $id) => DB::table('api_operations')->where('id', $id)->first();
+
+        // Under review with every job stopped: nothing is uncertain, so the whole remainder comes back.
+        $fenced = $op(40); $job($fenced, 'failed');
+        DB::table('api_operations')->where('id', $fenced)->update(['status' => 'needs_attention', 'spent_credits' => 6, 'reserved_credits' => 34]);
+        $this->assertSame('under_review', \App\Services\Developer\CreditHolds::state($row($fenced)));
+        // A job that may still run could charge anything left: that one keeps its hold.
+        $live = $op(30); $job($live, 'released');
+        DB::table('api_operations')->where('id', $live)->update(['status' => 'needs_attention']);
+        $this->artisan('credits:settle-holds')->assertSuccessful();
+        $this->assertSame([0, 'released'], [(int) $row($fenced)->reserved_credits, \App\Services\Developer\CreditHolds::state($row($fenced))]);
+        $this->assertSame(6, (int) $row($fenced)->spent_credits, 'what was charged stays charged');
+        $this->assertSame(0, (int) $row($fenced)->capacity_slots, 'a stopped review no longer counts as an active video');
+        $this->assertSame(1, (int) $row($live)->capacity_slots);
+        $this->assertSame(30, (int) $row($live)->reserved_credits);
+
+        // Past a day, nothing stays held: a review keeps its status for the team with nothing held, and an abandoned
+        // running request closes. A recent one, or one with work still running, is left alone.
+        DB::table('api_operations')->where('id', $live)->update(['created_at' => now()->subHours(25)]);
+        $abandoned = $op(20); DB::table('api_operations')->where('id', $abandoned)->update(['created_at' => now()->subHours(25)]);
+        $busy = $op(20); $job($busy, 'running'); DB::table('api_operations')->where('id', $busy)->update(['created_at' => now()->subHours(25)]);
+        $recent = $op(20);
+        $this->artisan('credits:settle-holds')->assertSuccessful();
+        $this->assertSame(['needs_attention', 0], [$row($live)->status, (int) $row($live)->reserved_credits]);
+        $this->assertSame(['failed', 0], [$row($abandoned)->status, (int) $row($abandoned)->reserved_credits]);
+        $this->assertSame(['running', 20], [$row($busy)->status, (int) $row($busy)->reserved_credits]);
+        $this->assertSame(['running', 20], [$row($recent)->status, (int) $row($recent)->reserved_credits]);
+    }
+
+    public function test_deleting_a_video_releases_what_its_requests_still_hold(): void
+    {
+        $this->enableOperationAccounting();
+        [$ws, , $token] = $this->tenant('creator', 1000);
+        $key = ApiKey::resolve($token);
+        $quote = $this->operationQuote($ws, 50);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($quote, $key->id));
+        DB::table('api_quotes')->where('id', $quote->id)->update(['project_id' => 4242]);
+        DB::table('api_operations')->where('id', $id)->update(['status' => 'needs_attention', 'spent_credits' => 6, 'reserved_credits' => 44]);
+        $this->assertSame(44, \App\Services\Developer\CreditHolds::releaseForProject(4242, $ws->id));
+        $this->assertSame(['cancelled', 0, 6], [DB::table('api_operations')->where('id', $id)->value('status'), (int) DB::table('api_operations')->where('id', $id)->value('reserved_credits'), (int) DB::table('api_operations')->where('id', $id)->value('spent_credits')]);
+        $this->assertSame(0, \App\Services\Developer\CreditHolds::releaseForProject(4242, $ws->id + 1), 'another workspace releases nothing');
+    }
+
     public function test_media_upload_validates_bytes_and_is_workspace_scoped(): void
     {
         [$ws, , $key] = $this->tenant();

@@ -144,12 +144,16 @@ class WeaveController extends DeveloperController
     {
         $user = $request->user();
         $c = $this->conversations->conversation($user, $id);
-        $run = DB::table('composition_runs')->where('conversation_id', $id)->orderByDesc('created_at')->first(['id', 'status', 'stage', 'error', 'input_json', 'created_at']);
+        $run = DB::table('composition_runs')->where('conversation_id', $id)->orderByDesc('created_at')->first(['id', 'status', 'stage', 'error', 'input_json', 'created_at', 'operation_id']);
         $plan = DB::table('create_plans')->where('conversation_id', $id)->orderByDesc('created_at')->first();
         $revision = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->first(['id', 'number', 'summary', 'created_at', 'artifact_path']) : null;
         $lastMessage = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->first(['role', 'content', 'idempotency_key', 'created_at']);
         $job = config('create.durable_planning') ? app(\App\Services\Create\PlanningJobService::class)->latest($id, null) : \Illuminate\Support\Facades\Cache::get('create:plan-job:'.$id);
         $base = ['id' => $id, 'title' => $c->title, 'app_url' => rtrim((string) config('app.frontend_url'), '/').'/create/'.$id];
+        // The latest build's credits: spent, still held, and when a hold under review comes back at the latest.
+        $op = $run?->operation_id ? DB::table('api_operations')->where('id', $run->operation_id)->first() : null;
+        if ($op) $base['credits'] = ['spent' => (int) $op->spent_credits, 'held' => (int) $op->reserved_credits, 'hold' => \App\Services\Developer\CreditHolds::state($op),
+            'released_by' => \App\Services\Developer\CreditHolds::state($op) === 'released' ? null : \Illuminate\Support\Carbon::parse($op->created_at)->addHours(\App\Services\Developer\CreditHolds::REVIEW_HOURS)->toIso8601String()];
         $video = $revision ? ['version' => (int) $revision->number, 'summary' => $revision->summary,
             'preview_url' => $revision->artifact_path ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', now()->addMinutes(45), ['revisionId' => $revision->id]) : null] : null;
 
