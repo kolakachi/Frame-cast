@@ -65,3 +65,11 @@ test('generated clips are all started first, then collected together', async () 
  assert.deepEqual(r.map(x=>x.status),['failed','failed','failed'],'results keep the plan order');
  await assert.rejects(buyPlanMedia({items:[items[0]],directory:'/tmp/unused',manifest:[],download:async()=>({}),pollMs:1,maxWaitMs:0,sleep:async()=>{},produce:async()=>({status:'pending'})}),/still rendering/);
 });
+
+test('a video cutout waits for the take it cuts: it runs after every pending clip is collected', async () => {
+ const dir=await mkdtemp(tmpdir()+'/pm-'),order=[];let polls=0;
+ const its=[{kind:'ugc_take',description:'presenter'},{kind:'cutout_video',description:'cut her out'},{kind:'voiceover',description:'narrate'}];
+ const produce=async i=>{order.push(its[i].kind);if(its[i].kind==='ugc_take'&&polls++<2)return {status:'pending'};return {status:'failed',error:'stub',charged_credits:0};};
+ await buyPlanMedia({items:its,directory:dir,manifest:[],produce,download:async()=>ok(),pollMs:1,sleep:async()=>{}});
+ assert.deepEqual(order,['voiceover','ugc_take','ugc_take','ugc_take','cutout_video']);
+});

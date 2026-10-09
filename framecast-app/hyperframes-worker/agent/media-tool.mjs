@@ -111,7 +111,7 @@ export async function screenQuad(file,info,at){
 export async function mediaOp({projectDir,request,nextName}){
  const {op,input,params={}}=request;
  if(!OPS.includes(op))throw Error('Unknown media operation');
- if(typeof input!=='string'||!/^[a-zA-Z0-9_.-]+\.(mp4|mp3|wav|png|jpg|webp)$/.test(input))throw Error('Input must be a media file in this project');
+ if(typeof input!=='string'||!/^[a-zA-Z0-9_.-]+\.(mp4|webm|mp3|wav|png|jpg|webp)$/.test(input))throw Error('Input must be a media file in this project');
  if(!params||typeof params!=='object'||Array.isArray(params))throw Error('Invalid params');
  const file=projectDir+'/'+input;
  const st=await lstat(file).catch(()=>null);if(!st||!st.isFile()||st.isSymbolicLink())throw Error('Input file not found in this project');

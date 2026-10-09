@@ -11,7 +11,7 @@ export async function stageInputs({directory,files=[],baseBundle=null,download,s
     ||!['source','reference'].includes(file.purpose)||!['image','video','audio'].includes(file.asset_type)
     ||!Number.isSafeInteger(file.bytes)||file.bytes<1||file.bytes>100*1024*1024
     ||!/^[a-f0-9]{64}$/.test(file.sha256)
-    ||!new RegExp('^asset-'+file.asset_id+'-'+file.sha256+'\\.(png|jpg|webp|svg|mp4|mp3|wav)$').test(file.name))throw Error('Invalid input manifest');
+    ||!new RegExp('^asset-'+file.asset_id+'-'+file.sha256+'\\.(png|jpg|webp|svg|mp4|webm|mp3|wav)$').test(file.name))throw Error('Invalid input manifest');
   seen.add(file.asset_id);total+=file.bytes;
  }
  if(total>maxBytes)throw Error('Input manifest exceeds byte limit');

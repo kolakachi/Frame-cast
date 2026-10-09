@@ -43,7 +43,7 @@ if(operation==='strip'||operation==='snapshot')for(const file of await readdir(o
  if(/^frame-\d+-at-[0-9.]+s\.png$/.test(file)||/^s-\d+\.png$/.test(file))await unlink(out+'/'+file);
 }
 for(const file of await readdir(source+'/project')){
- if(!/^[a-zA-Z0-9_.-]+\.(html|css|js|png|jpg|webp|svg|ttf|mp4|mp3|wav)$/.test(file)||(await lstat(source+'/project/'+file)).isSymbolicLink())throw Error('Invalid staged file');
+ if(!/^[a-zA-Z0-9_.-]+\.(html|css|js|png|jpg|webp|svg|ttf|mp4|webm|mp3|wav)$/.test(file)||(await lstat(source+'/project/'+file)).isSymbolicLink())throw Error('Invalid staged file');
  await copyFile(source+'/project/'+file,root+'/'+file);
 }
 // Prepared character rigs named by placeholder are placed inline before anything reads the page.

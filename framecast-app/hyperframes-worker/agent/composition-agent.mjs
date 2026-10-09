@@ -101,7 +101,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
   if(families.length)brandFonts=await fetchBrandFonts(families,directory+'/project');
  }catch{/* without them the bundled faces are used, as before */}
  // Fixed runtime assets are protected alongside uploaded source bytes.
- for(const name of (await readdir(directory+'/project')).filter(n=>/\.(svg|png|jpg|webp|mp4|mp3|wav|ttf)$/.test(n))){
+ for(const name of (await readdir(directory+'/project')).filter(n=>/\.(svg|png|jpg|webp|mp4|webm|mp3|wav|ttf)$/.test(n))){
   if(!assets.some(a=>a.path===name))assets.push({path:name,sha256:digest(await readFile(directory+'/project/'+name))});
  }
  // Bought music gets a beat grid up front, so cuts and pops can land on the beat.

@@ -7,7 +7,7 @@ import {mkdir,readdir,lstat,readFile,copyFile,unlink,rm,symlink,realpath} from '
 import path from 'node:path';import {createHash} from 'node:crypto';
 import {checkRunArgs} from './protocol.mjs';
 const exec=promisify(execFile);
-export const OUTPUT_NAME=/^[a-zA-Z0-9_.-]+\.(png|jpg|webp|svg|mp4|mp3|wav)$/;
+export const OUTPUT_NAME=/^[a-zA-Z0-9_.-]+\.(png|jpg|webp|svg|mp4|webm|mp3|wav)$/;
 const sha=async f=>createHash('sha256').update(await readFile(f)).digest('hex');
 const clip=(s,n=6000)=>{s=String(s??'');return s.length>n?s.slice(0,n)+'\n…['+(s.length-n)+' more characters]':s;};
 

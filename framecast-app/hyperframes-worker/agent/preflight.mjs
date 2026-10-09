@@ -34,7 +34,7 @@ export function preflight({path,text,assets=[],audible=[]}){
   if(/<script[^>]+src\s*=\s*["']https?:\/\//i.test(out))warnings.push('A script is loaded from a URL; the sandbox has no network. Use the served files (gsap.min.js, wyv-motion.js, lottie_light.min.js).');
   if(/<link[^>]+href\s*=\s*["']https?:\/\//i.test(out)||/@import\s+url\(["']?https?:/i.test(out))warnings.push('A stylesheet or font is loaded from a URL; use the shipped fonts with @font-face.');
   if(!/window\.__timelines\s*(\[|\.)/.test(out)&&!(/<script\b[^>]*src=["'](?:\.\/)?barty-hyperframes\.js["'][^>]*>/.test(out)&&/WyvBroll\.scene\s*\(/.test(out)))warnings.push('index.html has no inline window.__timelines["<id>"] registration; the check reads only inline scripts for it.');
-  for(const m of out.matchAll(/\b(?:src|href)\s*=\s*["']([a-zA-Z0-9_.-]+\.(?:png|jpg|jpeg|webp|svg|mp4|mp3|wav|ttf))["']/g)){
+  for(const m of out.matchAll(/\b(?:src|href)\s*=\s*["']([a-zA-Z0-9_.-]+\.(?:png|jpg|jpeg|webp|svg|mp4|webm|mp3|wav|ttf))["']/g)){
    const f=m[1];
    if(!assets.includes(f)&&!/^(gsap\.min\.js|wyv-motion\.js|font\.ttf|inter\.ttf|anton\.ttf|bebas-neue\.ttf|playfair\.ttf|space-grotesk\.ttf|caveat\.ttf)$/.test(f))warnings.push(`"${f}" is referenced but is not a file in this project (call assets to list them).`);
   }

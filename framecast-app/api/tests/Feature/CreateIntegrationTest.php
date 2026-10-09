@@ -1826,6 +1826,16 @@ class CreateIntegrationTest extends TestCase
         $this->app->instance(\App\Services\Create\PlanMediaExecutor::class, $cutter);
         $cut = $service->produceAdHoc($run->id, $claim['lease_token'], 'cutout', $name.' the product on its own');
         $this->assertSame(['succeeded', \App\Services\Create\CapabilityCatalogue::CUTOUT_CREDITS], [$cut['status'], $cut['charged_credits']]);
+        // A presenter cut out of a video is a see-through WebM, saved like any bought file (2026-10-09: it was refused as
+        // a file type after Replicate had made it, which left the purchase open and failed the build).
+        $videoCutter = \Mockery::mock(\App\Services\Create\PlanMediaExecutor::class);
+        $videoCutter->shouldReceive('produce')->once()->with('cutout_video', \Mockery::any(), \Mockery::any(), \Mockery::any())->andReturnUsing(function ($k, $d, $ctx, $dir) {
+            \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=32x32:d=0.5:r=8', '-vf', 'format=yuva420p', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', $dir.'/cut.webm'])->throw();
+            return ['path' => $dir.'/cut.webm', 'mime' => 'video/webm', 'title' => 'Cut out · take', 'provider_id' => 'cutout-video-1']; });
+        $this->app->instance(\App\Services\Create\PlanMediaExecutor::class, $videoCutter);
+        $cutVideo = $service->produceAdHoc($run->id, $claim['lease_token'], 'cutout_video', str_repeat('the presenter take, cut out so she stands over the page; ', 6));
+        $this->assertSame(['succeeded', \App\Services\Create\CapabilityCatalogue::CUTOUT_VIDEO_CREDITS], [$cutVideo['status'], $cutVideo['charged_credits']]);
+        $this->assertStringEndsWith('.webm', $cutVideo['file']['name']);
         // A cutout that names nothing the run has, with no image bought before it, is refused before any provider is
         // called: a plain failure the build can correct, never a hold for reconciliation.
         $this->assertThrows(fn () => (new \App\Services\Create\PlanMediaExecutor)->produce('cutout', 'shop-owner-stock: remove the background', ['cutout_files' => [], 'cutout_latest' => null], sys_get_temp_dir()), \InvalidArgumentException::class);

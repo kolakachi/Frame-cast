@@ -1,14 +1,14 @@
 import {createHash} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
 
-const LABEL={stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character preview',character_variants:'poses from your approved character',talking_shot:'the talking shot',reference_sheet:'the cast and world sheet',generated_shot:'a generated shot',ugc_take:'the UGC take',talking_take:'the talking take',brand_kit:'your brand kit'};
+const LABEL={cutout_video:'the presenter',stock_video:'stock footage',stock_image:'a stock photo',ai_image:'an AI image',animate_image:'an animation',voiceover:'narration',cloned_voiceover:'narration in your voice',library_music:'music',music:'music',sfx:'sound effects',character_poses:'the character preview',character_variants:'poses from your approved character',talking_shot:'the talking shot',reference_sheet:'the cast and world sheet',generated_shot:'a generated shot',ugc_take:'the UGC take',talking_take:'the talking take',brand_kit:'your brand kit'};
 
 // Asks the app to buy each approved plan item in order, then stages the
 // returned files as usable source footage. Uncertain paid outcomes stop at the
 // app boundary. Non-paid unavailable stock can be reported to the author.
 // Downloads one bought file into the run's inputs, verified by size and hash, and records it in the manifest.
 export async function stageFile(f,{manifest,directory,download,signal,kind,description,taskId=null,requirementIds=[]}){
- if(!Number.isSafeInteger(f.asset_id)||!/^[a-f0-9]{64}$/.test(f.sha256)||!new RegExp('^asset-'+f.asset_id+'-'+f.sha256+'\\.(png|jpg|webp|mp4|mp3|wav)$').test(f.name))throw Error('Invalid plan media record');
+ if(!Number.isSafeInteger(f.asset_id)||!/^[a-f0-9]{64}$/.test(f.sha256)||!new RegExp('^asset-'+f.asset_id+'-'+f.sha256+'\\.(png|jpg|webp|mp4|webm|mp3|wav)$').test(f.name))throw Error('Invalid plan media record');
  if(!manifest.some(m=>m.asset_id===f.asset_id)){
   const response=await download(f.asset_id,signal);
   // Keep a useful diagnostic without logging response bodies, URLs or credentials.
@@ -44,7 +44,9 @@ export async function buyPlanMedia({items,produce,download,directory,manifest,on
  };
  // Voices first: a lip-synced take is driven by the narration, so it must exist before the take starts.
  const voice=m=>['voiceover','cloned_voiceover'].includes(m?.kind)?0:1;
- for(const i of [...items.keys()].sort((a,b)=>voice(items[a])-voice(items[b])||a-b)){
+ // A video cutout cuts a take or shot that may still be rendering: it runs last, once every pending clip is in.
+ const last=m=>m?.kind==='cutout_video';
+ for(const i of [...items.keys()].filter(i=>!last(items[i])).sort((a,b)=>voice(items[a])-voice(items[b])||a-b)){
   signal?.throwIfAborted();
   onStage((items[i].kind==='generated_shot'||items[i].kind==='ugc_take'?'Starting ':'Getting ')+(LABEL[items[i].kind]||'plan media')+' ('+(i+1)+' of '+items.length+')');
   const r=await produce(i);
@@ -61,6 +63,11 @@ export async function buyPlanMedia({items,produce,download,directory,manifest,on
    const r=await produce(i);
    if(r.status!=='pending'){waiting.delete(i);await settle(i,r);}
   }
+ }
+ for(const i of [...items.keys()].filter(i=>last(items[i]))){
+  signal?.throwIfAborted();
+  onStage('Cutting out '+(LABEL[items[i].kind]||'the presenter')+' ('+(i+1)+' of '+items.length+')');
+  await settle(i,await produce(i));
  }
  return results;
 }

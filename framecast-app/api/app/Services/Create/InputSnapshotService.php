@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 class InputSnapshotService
 {
     private const TYPES = ['image/png' => ['image', 'png'], 'image/jpeg' => ['image', 'jpg'],
-        'image/webp' => ['image', 'webp'], 'video/mp4' => ['video', 'mp4'],
+        'image/webp' => ['image', 'webp'], 'video/mp4' => ['video', 'mp4'], 'video/webm' => ['video', 'webm'],
         'audio/mpeg' => ['audio', 'mp3'], 'audio/x-wav' => ['audio', 'wav'], 'audio/wav' => ['audio', 'wav'], 'image/svg+xml' => ['image', 'svg']];
 
     public function inherited(string $conversationId, ?string $revisionId): array

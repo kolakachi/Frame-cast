@@ -125,9 +125,9 @@ class WorkerController extends Controller
     public function planMediaAdHoc(Request $r, string $id)
     {
         $this->authorizeWorker($r);
-        $input = $r->validate(['lease_token' => 'required|string|size:64', 'kind' => 'required|string|max:40', 'description' => 'required|string|max:200', 'requirement_ids' => 'sometimes|array|max:24', 'requirement_ids.*' => 'string|distinct|max:80']);
+        $input = $r->validate(['lease_token' => 'required|string|size:64', 'kind' => 'required|string|max:40', 'description' => 'required|string|max:1000', 'requirement_ids' => 'sometimes|array|max:24', 'requirement_ids.*' => 'string|distinct|max:80']);
         set_time_limit(900);
-        return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produceAdHoc($id, $input['lease_token'], $input['kind'], $input['description'], $input['requirement_ids'] ?? [])]);
+        return response()->json(['data' => app(\App\Services\Create\PlanMediaService::class)->produceAdHoc($id, $input['lease_token'], $input['kind'], mb_substr($input['description'], 0, 400), $input['requirement_ids'] ?? [])]);
     }
 
     public function transcript(Request $r, string $id)
