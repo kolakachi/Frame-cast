@@ -1659,6 +1659,8 @@ onMounted(() => {
 
 .section-title { font-size: 16px; font-weight: 600; }
 .settings-section-desc { color: #6a6a7c; font-size: 13px; margin-top: 4px; margin-bottom: 22px; }
+.settings-section-desc a { color: var(--color-accent); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.settings-section-desc a:hover { text-decoration: underline; }
 
 .brand-kit-grid {
   display: grid;
