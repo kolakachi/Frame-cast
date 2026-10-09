@@ -103,10 +103,13 @@ class ProjectController extends Controller
             ->pluck('project_id')
             ->all();
 
+        $posters = app(\App\Services\Media\ProjectPosters::class)->forProjects((int) $user->workspace_id, $projects->pluck('id')->map(fn ($id) => (int) $id)->all());
+
         return response()->json([
             'data' => [
                 'projects' => $projects->map(fn (Project $project): array => [
                     ...$this->serializeProject($project),
+                    'poster_url' => $posters[(int) $project->getKey()] ?? null,
                     'scenes_count' => (int) ($project->scenes_count ?? 0),
                     'variants_count' => (int) ($project->variants_count ?? 0),
                     'generation_pending' => $project->status === 'generating'

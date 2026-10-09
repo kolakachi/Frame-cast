@@ -5209,6 +5209,10 @@ class CreateIntegrationTest extends TestCase
         $this->assertStringContainsString('/media/create-posters/'.$rev, $poster);
         $this->get(parse_url($poster, PHP_URL_PATH))->assertForbidden();
         $this->get($poster)->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+
+        // The /videos list shows the same frame on the video's card.
+        DB::table('create_conversations')->where('id', $c->id)->update(['project_id' => 4242]);
+        $this->assertStringContainsString('/media/create-posters/'.$rev, app(\App\Services\Media\ProjectPosters::class)->forProjects($this->workspace->id, [4242])[4242] ?? '');
     }
 
     public function test_what_a_workspace_sells_is_learned_once_from_its_videos(): void

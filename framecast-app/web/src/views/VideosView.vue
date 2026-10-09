@@ -297,6 +297,7 @@ onMounted(async () => {
               @keydown.enter="openProject(project)"
             >
               <div class="project-thumb">
+                <img v-if="project.poster_url" class="project-poster" :src="project.poster_url" alt="" loading="lazy" @error="project.poster_url = null" />
                 <button
                   class="project-delete-btn"
                   type="button"
@@ -308,7 +309,7 @@ onMounted(async () => {
                     <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
                   </svg>
                 </button>
-                <div class="phone-frame">
+                <div v-if="!project.poster_url" class="phone-frame">
                   <div class="phone-line"></div>
                   <div class="phone-line accent"></div>
                   <div class="phone-line"></div>
@@ -448,6 +449,7 @@ onMounted(async () => {
 /* Thumb */
 .project-thumb { height: 154px; position: relative; overflow: hidden; background: linear-gradient(135deg, #141729, #1a223d); }
 .project-thumb::after { content: ""; position: absolute; inset: auto 0 0; height: 50%; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.35)); }
+.project-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
 .phone-frame { width: 62px; height: 112px; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 2px solid rgba(255,255,255,0.14); border-radius: 11px; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 10px; }
 .phone-line { height: 3px; border-radius: 999px; background: rgba(255,255,255,0.12); }
 .phone-line.accent { background: var(--color-accent); opacity: 0.65; }

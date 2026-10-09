@@ -79,31 +79,21 @@ class DashboardController extends Controller
     public function recent(Request $request): JsonResponse
     {
         $ws = (int) $request->user()->workspace_id;
-        $storage = app(\App\Services\Create\CreateStorage::class);
         $weave = DB::table('create_conversations')->join('composition_revisions', 'composition_revisions.id', '=', 'create_conversations.head_revision_id')
             ->where('create_conversations.workspace_id', $ws)->whereNull('create_conversations.archived_at')->where('composition_revisions.artifact_path', 'like', '%.mp4')
             ->orderByDesc('create_conversations.updated_at')->limit(8)
             ->get(['create_conversations.id', 'create_conversations.title', 'create_conversations.settings_json', 'create_conversations.updated_at', 'composition_revisions.id as revision_id'])
-            ->map(function ($c) use ($storage) {
-                $poster = \App\Jobs\MakeCreatePoster::path($c->revision_id);
-                $hasPoster = $storage->exists($poster);
-                // An older version without a frame gets one now, for the next visit.
-                if (! $hasPoster && \Illuminate\Support\Facades\Cache::add('create-poster:'.$c->revision_id, 1, 600)) \App\Jobs\MakeCreatePoster::dispatch($c->revision_id);
+            ->map(function ($c) {
                 $signed = fn (string $route) => \Illuminate\Support\Facades\URL::temporarySignedRoute($route, now()->addHours(2), ['revisionId' => $c->revision_id]);
                 return ['id' => $c->id, 'title' => (string) ($c->title ?: 'Untitled video'), 'updated_at' => \Illuminate\Support\Carbon::parse($c->updated_at)->toIso8601String(),
                     'aspect_ratio' => json_decode((string) $c->settings_json, true)['aspect_ratio'] ?? '9:16',
-                    'poster_url' => $hasPoster ? $signed('media.create.poster') : null, 'video_url' => $signed('media.create.version')];
+                    'poster_url' => \App\Services\Media\ProjectPosters::createPoster($c->revision_id), 'video_url' => $signed('media.create.version')];
             })->values();
 
-        // A classic video's frame: its first scene's picture, or the poster of its first scene's clip.
-        $assets = app(\App\Http\Controllers\Api\V1\Asset\AssetController::class);
-        $classic = [];
-        foreach (DB::table('projects')->where('workspace_id', $ws)->orderByDesc('updated_at')->limit(8)->pluck('id') as $projectId) {
-            $assetId = DB::table('scenes')->where('project_id', $projectId)->whereNotNull('visual_asset_id')->orderBy('scene_order')->value('visual_asset_id');
-            $asset = $assetId ? \App\Models\Asset::query()->where('workspace_id', $ws)->find($assetId) : null;
-            $classic[$projectId] = $asset ? $assets->posterUrl($asset) : null;
-        }
+        // A classic video's frame: its export's, else its first scene's picture.
+        $ids = DB::table('projects')->where('workspace_id', $ws)->orderByDesc('updated_at')->limit(8)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $classic = app(\App\Services\Media\ProjectPosters::class)->forProjects($ws, $ids);
 
-        return response()->json(['data' => ['weave' => $weave, 'classic_posters' => (object) array_filter($classic)]]);
+        return response()->json(['data' => ['weave' => $weave, 'classic_posters' => (object) $classic]]);
     }
 }
