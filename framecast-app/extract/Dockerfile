@@ -4,6 +4,12 @@ FROM python:3.12-slim
 # image small and the build fast.
 WORKDIR /app
 
+# LibreOffice turns Word and PowerPoint files into PDF for Weave (2026-10-09). The -nogui packages and a few
+# common font families keep it as small as it gets while still laying out ordinary documents faithfully.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libreoffice-writer-nogui libreoffice-impress-nogui fonts-dejavu-core fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 

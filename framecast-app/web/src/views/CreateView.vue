@@ -138,7 +138,8 @@ function sizeLabel(a) {
 // before a brief belongs to that brief; anything attached after the latest
 // brief is still waiting in the composer.
 const messageAttachments = computed(() => {
-  const out = {}, list = [...(data.value?.attachments || [])].sort((a, b) => Date.parse(a.attached_at || 0) - Date.parse(b.attached_at || 0))
+  const docs = (data.value?.documents || []).map(d => ({ asset_id: 'd' + d.id, title: d.title, asset_type: 'document', attached_at: d.created_at }))
+  const out = {}, list = [...(data.value?.attachments || []), ...docs].sort((a, b) => Date.parse(a.attached_at || 0) - Date.parse(b.attached_at || 0))
   const briefs = (data.value?.messages || []).filter(m => m.role === 'user')
   for (const a of list) {
     const at = Date.parse(a.attached_at || 0)
@@ -154,7 +155,21 @@ const pendingAttachments = computed(() => {
 })
 // The prompt box's pill row: files already attached for the next message, then files that upload when it is sent.
 const fileKind = type => type.startsWith('image/') ? 'image' : type.startsWith('audio/') ? 'audio' : 'video'
+// Documents in Weave (2026-10-09): a PDF, Word or PowerPoint file is read on the server (its pages, pictures and
+// facts); the drawer then picks the pictures and pages the video may show. Its words always reach the plan.
+const DOC_RE = /\.(pdf|docx|pptx)$/i
+const documents = computed(() => data.value?.documents || [])
+const pendingDocuments = computed(() => {
+  const briefs = (data.value?.messages || []).filter(m => m.role === 'user')
+  const last = briefs.length ? Date.parse(briefs[briefs.length - 1].created_at) : -Infinity
+  return documents.value.filter(d => Date.parse(d.created_at || 0) > last)
+})
+const docAdding = ref([])
+const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : d.text_only ? 'text only' : d.chosen ? (d.picked ? d.picked + ' chosen' : 'words only') : 'choose what to use'
+const docBusy = computed(() => docAdding.value.some(u => !u.error) || documents.value.some(d => d.status === 'reading'))
 const trayItems = computed(() => [
+  ...pendingDocuments.value.map(d => ({ key: 'd' + d.id, title: d.title, type: 'document', uploading: d.status === 'reading', sub: docSub(d), error: d.status === 'failed' ? d.error || 'Could not read that document.' : '', open: d.status === 'ready' && !d.text_only, note: d.summary, doc: d })),
+  ...docAdding.value.map(u => ({ key: u.key, title: u.title, type: 'document', uploading: !u.error, sub: u.error ? '' : 'uploading…', error: u.error, adding: u })),
   ...pendingAttachments.value.map(a => ({ key: 'a' + a.asset_id, title: a.title, type: a.asset_type, url: a.preview_url, link: !!a.source?.requested_url, purpose: a.purpose, note: a.reference?.summary, asset: a })),
   ...uploads.value.map(u => ({ key: u.key, title: u.file.name, type: fileKind(u.file.type), url: u.preview_url, uploading: u.state === 'uploading', progress: u.progress, error: u.error, upload: u })),
 ])
@@ -165,7 +180,71 @@ const trayNotes = computed(() => pendingAttachments.value.flatMap(a => {
   const text = [a.reference?.summary, rig].filter(Boolean).join(' ')
   return text ? [{ asset_id: a.asset_id, title: a.title, text, style: !!a.reference?.summary && canWrite.value }] : []
 }))
-function removeTrayItem(i) { if (i.upload) removeUpload(i.upload); else detach(i.asset) }
+function removeTrayItem(i) { if (i.adding) docAdding.value = docAdding.value.filter(u => u.key !== i.key); else if (i.doc) removeDocument(i.doc); else if (i.upload) removeUpload(i.upload); else detach(i.asset) }
+async function addDocument(file) {
+  const key = crypto.randomUUID()
+  docAdding.value.push({ key, title: file.name, error: file.size > 20 * 1048576 ? 'Use a document up to 20 MB.' : '' })
+  if (file.size > 20 * 1048576) return
+  const fail = e => { const u = docAdding.value.find(x => x.key === key); if (u) u.error = message(e) }
+  try {
+    const target = await ensureConversation()
+    const form = new FormData(); form.append('document', file)
+    const result = await api.post(`${base(target)}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    if (id.value === target) { data.value = result.data.data; quote.value = null }
+    docAdding.value = docAdding.value.filter(x => x.key !== key)
+  } catch (e) { fail(e) }
+}
+async function removeDocument(d) { await guarded(async () => { const r = await api.delete(`${base()}/documents/${d.id}`); data.value = r.data.data; quote.value = null }) }
+// A document being read is checked every 3 s; when it is ready and has pictures or pages to pick, its drawer opens.
+let docTimer = null
+const docSeen = new Map()
+function pollDocuments() {
+  if (docTimer || !documents.value.some(d => d.status === 'reading')) return
+  docTimer = setTimeout(async () => { docTimer = null; try { await refresh() } catch {} pollDocuments() }, 3000)
+}
+watch(documents, list => {
+  for (const d of list) {
+    const before = docSeen.get(d.id); docSeen.set(d.id, d.status)
+    if (before === 'reading' && d.status === 'ready' && !d.text_only && !d.chosen && !docOpenId.value) openDocument(d)
+  }
+  pollDocuments()
+})
+// The drawer: pictures and pages (a tall page or picture in parts, under its page), nothing ticked to start.
+const docOpenId = ref(null), docFull = ref(null), docTab = ref('pictures'), docPicks = ref({}), docSaving = ref(false)
+const pickKey = p => p.kind === 'picture' ? `picture-${p.id}-${p.part}` : `page-${p.number}-${p.part}`
+async function openDocument(d) {
+  docOpenId.value = d.id; docFull.value = null; docPicks.value = {}
+  try {
+    const full = (await api.get(`${base()}/documents/${d.id}`)).data.data
+    if (docOpenId.value !== d.id) return
+    docFull.value = full; docTab.value = full.picture_list.length ? 'pictures' : 'pages'
+    docPicks.value = Object.fromEntries((full.picks || []).map(p => [pickKey(p), p]))
+  } catch (e) { error.value = message(e); docOpenId.value = null }
+}
+const docGroups = computed(() => {
+  const f = docFull.value
+  if (!f) return []
+  const tile = (pick, thumb, label) => ({ key: pickKey(pick), pick, thumb, label })
+  if (docTab.value === 'pictures') return f.picture_list.map(p => ({ key: p.id, label: p.parts.length > 1 ? `Tall picture, page ${p.page} · ${p.parts.length} parts` : '',
+    tiles: p.parts.map(x => tile({ kind: 'picture', id: p.id, part: x.part }, x.thumb, p.parts.length > 1 ? `Part ${x.part}` : `Page ${p.page}`)) }))
+  return f.pages.map(pg => {
+    const what = pg.graphic ? 'chart or diagram' : ''
+    return { key: 'p' + pg.number, label: pg.parts.length > 1 ? `Page ${pg.number}${what ? ' · ' + what : ''} · ${pg.parts.length} parts` : '',
+      tiles: pg.parts.map(x => tile({ kind: 'page', number: pg.number, part: x.part }, x.thumb, pg.parts.length > 1 ? `Part ${x.part}` : `Page ${pg.number}${what ? ' · ' + what : ''}`)) }
+  })
+})
+const docPicked = computed(() => Object.values(docPicks.value))
+const docRoom = computed(() => 20 - (data.value?.attachments?.length || 0))
+function toggleDocPick(t) { const next = { ...docPicks.value }; if (next[t.key]) delete next[t.key]; else next[t.key] = t.pick; docPicks.value = next }
+function setDocPicks(on) { const next = { ...docPicks.value }; for (const g of docGroups.value) for (const t of g.tiles) { if (on) next[t.key] = t.pick; else delete next[t.key] } docPicks.value = next }
+async function useDocument(picks) {
+  docSaving.value = true
+  await guarded(async () => {
+    const r = await api.post(`${base()}/documents/${docOpenId.value}/use`, { picks, expected_version: conversation.value.version })
+    data.value = r.data.data; quote.value = null; docOpenId.value = null
+  })
+  docSaving.value = false
+}
 const headStatus = computed(() => {
   if (!conversation.value) return null
   if (active.value?.status === 'needs_attention') return { cls: 'warn', text: 'NEEDS A CHECK' }
@@ -728,7 +807,7 @@ async function launchFromDashboard() {
 }
 
 async function send() {
-  if(!prompt.value.trim() || hasUpload.value) return
+  if(!prompt.value.trim() || hasUpload.value || docBusy.value) return
   siteBrief.value = false
   const text = prompt.value.trim()
   await guarded(async () => {
@@ -824,6 +903,7 @@ async function detach(asset) { await guarded(async () => { await api.delete(`${b
 function chooseFiles(files) {
   const allowed = capabilities.value?.uploads?.mime_types || ['image/png','image/jpeg','image/webp','image/svg+xml','video/mp4','audio/mpeg','audio/wav','audio/x-wav']
   for(const file of Array.from(files || [])) {
+    if (DOC_RE.test(file.name || '')) { addDocument(file); continue }
     const validation = file.size > (capabilities.value?.uploads?.max_file_bytes || 104857600) ? 'This file is larger than 100 MB.' : !allowed.includes(file.type) ? 'Use PNG, JPEG, WebP, SVG, MP4, MP3 or WAV.' : null
     if(uploads.value.length + (data.value?.attachments?.length || 0) >= 20) { error.value = 'Use at most 20 attachments.'; break }
     uploads.value.push({key:crypto.randomUUID(),file,progress:0,state:'ready',error:validation,preview_url:validation ? '' : URL.createObjectURL(file)})
@@ -906,6 +986,7 @@ watch(id, async (value, old) => {
   siteBrief.value = false; offerSiteBrief()
   // ensureConversation transfers pending local files into the newly created chat.
   if(old) uploads.value.forEach(removeUpload)
+  docAdding.value = []; docSeen.clear(); docOpenId.value = null; clearTimeout(docTimer); docTimer = null
   planning.value = false; planKey = null; clearInterval(planPoll)
   await loadArtifact(); try {await refresh(); void resumePlanning()} catch(e) {error.value = message(e)}
 })
@@ -1341,7 +1422,7 @@ const removeReloadGuard = registerReloadGuard(() => {
   if (!persistDraft(id.value, prompt.value)) return 'This browser could not save your message draft. Copy it before refreshing manually.'
   return ''
 })
-onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp);document.removeEventListener('keydown', closeRefHelp);removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
+onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('pointerdown', closeRefHelp);document.removeEventListener('keydown', closeRefHelp);removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
 <template>
@@ -1620,7 +1701,7 @@ onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp)
             <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />{{ fromCard ? 'A starting point from your dashboard' : 'From your visit to wyvstudio.com' }}</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
             <div v-else-if="waitingBrief" class="site-brief" role="status"><span><i aria-hidden="true" />You have a brief from your visit to wyvstudio.com</span><span class="site-brief__actions"><button type="button" class="quiet quiet--sm" @click="useSiteBrief">{{ id ? 'Start a new creation with it' : 'Use it instead of this draft' }}</button><button type="button" class="quiet quiet--sm" @click="dismissSiteBrief">Dismiss</button></span></div>
             <form class="prompt-form" @submit.prevent="send">
-              <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" />
+              <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" @open="i => openDocument(i.doc)" />
               <div v-if="trayItems.length && (trayErrors.length || trayNotes.length)" class="tray-notes">
                 <p v-for="e in trayErrors" :key="'e' + e.key" class="tray-note tray-note--error">{{ e.title }}: {{ e.error }} <button v-if="e.upload?.state === 'failed'" type="button" class="quiet quiet--sm" :disabled="locked" @click="upload(e.upload)">Retry upload</button></p>
                 <p v-for="n in trayNotes" :key="'n' + n.asset_id" class="tray-note" :title="n.text"><b>{{ n.title }}</b> · {{ n.text }} <button v-if="n.style" type="button" class="quiet quiet--sm" @click="askSaveStyle({asset_id:n.asset_id}, n.title)">Save as style</button></p>
@@ -1628,14 +1709,14 @@ onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp)
               <label for="create-prompt" class="sr-only">Describe what you want to create or change</label>
               <textarea ref="composer" id="create-prompt" v-model="prompt" rows="2" maxlength="10000" placeholder="Describe what you want to create or change…" @input="sendingKey = null" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send" />
               <div class="composer-bottom">
-                <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV. Up to 20 files, 100 MB each and 200 MB total." @click="fileInput.click()">+ Attach</button>
+                <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV, up to 20 files, 100 MB each and 200 MB total. PDF, Word or PowerPoint up to 20 MB and 50 pages." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
                 <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
                 <label v-if="styles.length || packs.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Style" @change="chooseStyle($event.target.value)"><option value="">Style: WyvStudio chooses</option><optgroup v-if="packs.length" label="WyvStudio styles"><option v-for="k in packs" :key="k.slug" :value="'pack:' + k.slug">Style: {{ k.name }}</option></optgroup><optgroup v-if="styles.length" label="Your styles"><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></optgroup></select></label>
                 <button v-if="styles.length" type="button" class="quiet" @click="stylesOpen = true">Manage styles</button>
                 <UiSelect v-if="outputKind === 'video' || conversation" :model-value="currentEffort" label="Effort: how much care, and cost, goes into the video" align="left" drop="up" :disabled="locked" :options="EFFORTS.map(e => ({ value: e.id, label: 'Effort · ' + e.label }))" @update:model-value="setEffort" />
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
-                <button :class="['send', { 'send--label': siteBrief }]" type="submit" :disabled="locked || !prompt.trim()" :aria-label="siteBrief ? 'Make the plan' : 'Send'"><template v-if="siteBrief">Make the plan</template><svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
+                <button :class="['send', { 'send--label': siteBrief }]" type="submit" :disabled="locked || docBusy || !prompt.trim()" :title="docBusy ? 'Wait for your document to finish reading' : undefined" :aria-label="siteBrief ? 'Make the plan' : 'Send'"><template v-if="siteBrief">Make the plan</template><svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg></button>
               </div>
             </form>
             <p v-if="siteBrief" class="composer-note">Nothing runs until you press Make the plan.</p>
@@ -1727,7 +1808,13 @@ onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp)
                 <UiSelect v-if="canWrite && ['image', 'video'].includes(a.asset_type)" :model-value="brandRole(a.asset_id)" label="Keep in your brand library" align="right" :options="[{ value: '', label: 'Not a brand item' }, ...BRAND_ROLES.map(r => ({ value: r.id, label: 'Brand ' + r.label.toLowerCase() }))]" @update:model-value="v => setBrandRole(a.asset_id, v)" />
                 <button v-if="canWrite && !conversation.archived_at" type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${a.title}`" @click="detach(a)">×</button>
               </div>
-              <p v-if="!data?.attachments?.length" class="muted">No files yet.</p>
+              <div v-for="d in documents" :key="'doc' + d.id" class="asset">
+                <span class="asset__thumb thumb--doc" aria-hidden="true">{{ d.source === 'pdf' ? 'PDF' : d.source === 'docx' ? 'DOC' : 'PPT' }}</span>
+                <span><b :title="d.title">{{ d.title }}</b><small>{{ d.status === 'ready' ? d.page_count + (d.page_count === 1 ? ' page' : ' pages') + ' · ' + docSub(d) : d.status === 'reading' ? 'reading…' : d.error || 'could not be read' }}</small></span>
+                <button v-if="canWrite && d.status === 'ready' && !d.text_only && !conversation.archived_at" type="button" class="quiet quiet--sm" :disabled="locked" @click="openDocument(d)">Choose</button>
+                <button v-if="canWrite && !conversation.archived_at" type="button" class="upload__x" :disabled="locked" :aria-label="`Remove ${d.title}`" @click="removeDocument(d)">×</button>
+              </div>
+              <p v-if="!data?.attachments?.length && !documents.length" class="muted">No files yet.</p>
               <button v-if="canWrite && !conversation.archived_at" type="button" class="quiet" :disabled="locked" @click="showLibrary">+ Add from library</button>
             </section>
             <section v-if="spendRows.length">
@@ -1771,7 +1858,7 @@ onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp)
           </div>
         </SideDrawer>
       </div>
-      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,video/quicktime,.mov,audio/mpeg,audio/wav,audio/x-wav" multiple hidden @change="chooseFiles($event.target.files)" />
+      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,video/quicktime,.mov,audio/mpeg,audio/wav,audio/x-wav,application/pdf,.pdf,.docx,.pptx" multiple hidden @change="chooseFiles($event.target.files)" />
       <CreateDialog :open="!!characterReview" title="Approve your character’s look" @close="characterReview=null">
         <template v-if="characterReview">
           <p>This preview becomes the reference for every pose and talking clip. Check the face, proportions, outfit and visual treatment before continuing.</p>
@@ -1793,6 +1880,35 @@ onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp)
       <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
       <ChangeDrawer ref="changeDrawer" :open="changeOpen" :conversation-id="id || ''" :revision="currentRevision ? { id: currentRevision.id, number: currentRevision.number } : null" :version="conversation?.version || 0" :src="media" @close="changeOpen = false" @updated="d => { data = d }" @planned="changePlanned" />
+      <SideDrawer :open="!!docOpenId" :title="docFull?.title || 'Document'" :meta="docFull ? docFull.page_count + (docFull.page_count === 1 ? ' page' : ' pages') + ' · ' + docFull.picture_list.length + (docFull.picture_list.length === 1 ? ' picture' : ' pictures') + ' found · tick what Weave may put in the video' : 'Opening…'" @close="docOpenId = null">
+        <div v-if="docFull" class="doc-pick">
+          <div class="doc-pick__bar">
+            <span class="seg" role="group" aria-label="Show"><button type="button" :aria-pressed="docTab === 'pictures'" :disabled="!docFull.picture_list.length" @click="docTab = 'pictures'">Pictures ({{ docFull.picture_list.length }})</button><button type="button" :aria-pressed="docTab === 'pages'" @click="docTab = 'pages'">Pages ({{ docFull.pages.length }})</button></span>
+            <span class="doc-pick__all"><button type="button" class="quiet quiet--sm" @click="setDocPicks(true)">Select all</button><button type="button" class="quiet quiet--sm" @click="setDocPicks(false)">None</button></span>
+          </div>
+          <p v-if="docTab === 'pages'" class="muted doc-pick__hint">A page is for a chart, a table or a layout drawn in the document. A long page comes in parts.</p>
+          <div class="doc-pick__grid">
+            <template v-for="g in docGroups" :key="g.key">
+              <p v-if="g.label" class="doc-pick__group">{{ g.label }}</p>
+              <button v-for="t in g.tiles" :key="t.key" type="button" :class="['doc-tile', { on: !!docPicks[t.key] }]" :aria-pressed="!!docPicks[t.key]" @click="toggleDocPick(t)">
+                <span class="doc-tile__img"><img :src="'data:image/jpeg;base64,' + t.thumb" alt="" loading="lazy" /><i v-if="docPicks[t.key]" aria-hidden="true">✓</i></span>
+                <span class="doc-tile__label">{{ t.label }}</span>
+              </button>
+            </template>
+          </div>
+          <details v-if="docFull.summary || docFull.facts.length" class="doc-pick__read" open>
+            <summary>What Weave read</summary>
+            <p v-if="docFull.summary">{{ docFull.summary }}</p>
+            <ul v-if="docFull.facts.length"><li v-for="(f, n) in docFull.facts" :key="n">{{ f.text }}<template v-if="f.page"> (page {{ f.page }})</template></li></ul>
+            <small>The script only says what the document says. Nothing to tick.</small>
+          </details>
+        </div>
+        <p v-else class="muted">Opening the document…</p>
+        <template #footer>
+          <small class="doc-pick__sum">{{ docPicked.length > docRoom ? 'This conversation has room for ' + Math.max(0, docRoom) + ' more files.' : docPicked.length + ' chosen' }}</small>
+          <span class="doc-pick__actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="docSaving || !docFull" @click="useDocument([])">Use the text only</button><button type="button" class="btn btn--primary btn--sm" :disabled="docSaving || !docPicked.length || docPicked.length > docRoom" @click="useDocument(docPicked)">{{ docSaving ? 'Adding…' : 'Use ' + docPicked.length + ' in my video' }}</button></span>
+        </template>
+      </SideDrawer>
       <SideDrawer :open="showHistory" title="Recent conversations" meta="Newest first" @close="showHistory = false">
         <div class="history-body">
         <div class="drawer-top"><input v-model="search" type="search" class="input" aria-label="Search conversations" placeholder="Search titles, briefs or file names…" /></div>
@@ -2579,4 +2695,25 @@ label.tray-note{white-space:normal}
 .pd-actions{display:flex;gap:8px;flex-wrap:wrap}
 .pd-upload{cursor:pointer}
 .pd-upload:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.doc-pick{display:flex;flex-direction:column;gap:12px;padding-top:10px}
+.doc-pick__bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.doc-pick__all{display:flex;gap:4px}
+.doc-pick__hint{margin:0;font-size:12px}
+.doc-pick__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.doc-pick__group{grid-column:1/-1;margin:6px 0 0;font-size:12px;color:var(--text-3,#8f95a1)}
+.doc-tile{display:flex;flex-direction:column;gap:4px;padding:3px;border:2px solid transparent;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer;text-align:left}
+.doc-tile.on{border-color:#ff6b35}
+.doc-tile:focus-visible{outline:2px solid #ff6b35;outline-offset:1px}
+.doc-tile__img{position:relative;display:block;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--bg-4,#191d24)}
+.doc-tile__img img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.doc-tile__img i{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#ff6b35;color:#1a0d06;font:700 11px system-ui;font-style:normal}
+.doc-tile__label{font-size:11.5px;color:var(--text-2,#b7bcc6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-pick__read{border:1px solid var(--line-2,#262b34);border-radius:8px;padding:8px 12px;font-size:12.5px}
+.doc-pick__read summary{cursor:pointer;font-weight:600}
+.doc-pick__read p{margin:6px 0 0;color:var(--text-2,#b7bcc6)}
+.doc-pick__read ul{margin:6px 0 0;padding-left:18px;color:var(--text-2,#b7bcc6)}
+.doc-pick__read small{display:block;margin-top:6px;color:var(--text-3,#8f95a1)}
+.doc-pick__sum{flex:1 1 auto;color:var(--text-3,#8f95a1)}
+.doc-pick__actions{display:flex;gap:8px;margin-left:auto}
+.thumb--doc{display:grid;place-items:center;font:700 9px ui-monospace,Menlo,monospace;color:#fff;background:#8a3b3b}
 </style>

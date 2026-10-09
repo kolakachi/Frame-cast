@@ -518,6 +518,7 @@ class PlanService
             ...array_map(fn ($m) => (string) ($m['content'] ?? ''), array_filter($ctx['messages'] ?? [], fn ($m) => ($m['role'] ?? '') === 'user')),
             ...($ctx['approved_facts'] ?? []),
             ...collect($ctx['files'] ?? [])->flatMap(fn ($f) => $f['reference']['page_facts'] ?? [])->all(),
+            ...collect($ctx['documents'] ?? [])->flatMap(fn ($d) => [...($d['facts'] ?? []), (string) ($d['summary'] ?? ''), (string) ($d['text'] ?? '')])->all(),
         ]);
         $known = array_flip($words($corpus));
         $common = array_flip(['a', 'an', 'the', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'your', 'you', 'it', 'is', 'are', 'be', 'that', 'this', 'one', 'no', 'not', 'from', 'into', 'at', 'by', 'we', 'our', 'get', 'make', 'now', 'just', 'all', 'any', 'more', 'how', 'what', 'why', 'two', 'three', 'four', 'five', 'six', 'ready', 'try', 'start', 'today', 'meet', 'say', 'hello', 'got', 'need']);
@@ -720,6 +721,8 @@ class PlanService
             // Voices the narration may use: the catalogue by character, plus the workspace's own clone.
             'voices' => array_merge(array_map(fn ($k) => ['key' => $k, 'character' => \App\Services\Generation\TTS\GeminiVoices::VOICES[$k], 'gender' => \App\Services\Generation\TTS\GeminiVoices::gender($k)], array_keys(\App\Services\Generation\TTS\GeminiVoices::VOICES)),
                 \Illuminate\Support\Facades\Schema::hasTable('voice_profiles') && DB::table('voice_profiles')->where('workspace_id', $user->workspace_id)->where('is_cloned', true)->exists() ? [['key' => 'clone', 'character' => "The workspace's own cloned voice", 'gender' => '']] : []),
+            // The user's documents (PDF, Word, PowerPoint): their words are facts, like approved_facts.
+            'documents' => DocumentService::forPlan($c->id),
             'files' => $files, 'brand_library' => array_map(fn ($b) => array_intersect_key($b, array_flip(['asset_id', 'role', 'title', 'asset_type'])), BrandLibrary::items((int) $user->workspace_id)), 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
             // Pictures for the planner (underscored keys never reach the JSON): frames of each studied reference video, and the page capture.
             '_images' => $this->planImages($user, $files),

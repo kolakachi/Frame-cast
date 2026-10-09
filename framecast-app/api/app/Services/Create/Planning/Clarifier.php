@@ -67,6 +67,9 @@ class Clarifier
         // numbers) is asked for before the plan, not left to a fallback after it.
         $moments = collect($context['files'] ?? [])->flatMap(fn ($f) => (array) data_get($f, 'reference.study.moments', []))
             ->map(fn ($m) => '- '.($m['kind'] ?? 'moment').': '.mb_substr((string) ($m['visual'] ?? $m['purpose'] ?? ''), 0, 110))->take(30)->implode("\n");
+        // A document's facts already answer what it states (the offer, price, audience), so they are never asked again.
+        $docs = collect($context['documents'] ?? [])->map(fn ($d) => '- "'.$d['title'].'": '.mb_substr((string) ($d['summary'] ?? ''), 0, 300)
+            .(! empty($d['facts']) ? ' Facts: '.mb_substr(implode('; ', $d['facts']), 0, 900) : ''))->implode("\n");
         $brand = collect($context['brand_library'] ?? [])->map(fn ($b) => ($b['role'] ?? 'item').': '.($b['title'] ?? ''))->implode(', ');
         $settings = collect($context['settings'] ?? [])->only(['output_kind', 'duration_seconds', 'aspect_ratio', 'reference_match', 'approved_facts'])->toJson();
         $prompt = "You are about to plan a short video for this user. Decide whether you must ask them ONE question first.\n"
@@ -77,7 +80,7 @@ class Clarifier
             ."Ask for all of it in one question that names each item and says they can attach it here or reply \"go without\"; ask for material once only. "
             ."If the user said to go ahead, or you can make a good plan now, ask nothing.\n"
             .'Reply with JSON only: {"question": "one short question, under 25 words (up to 45 when asking for material), plain words" | null}'
-            ."\n\nSettings: ".$settings."\nFiles:\n".($files ?: '(none)')."\nBrand library: ".($brand ?: '(empty)')
+            ."\n\nSettings: ".$settings."\nFiles:\n".($files ?: '(none)').($docs ? "\nDocuments the user added:\n".$docs : '')."\nBrand library: ".($brand ?: '(empty)')
             .($moments ? "\nWhat the reference shows:\n".$moments : '')."\n\nConversation:\n".$messages;
         try {
             $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(30)

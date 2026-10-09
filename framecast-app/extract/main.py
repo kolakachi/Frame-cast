@@ -20,6 +20,8 @@ import sys
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+import document as document_service
+import json
 import pdf as pdf_service
 import url as url_service
 from ssrf import BlockedUrl
@@ -95,6 +97,43 @@ async def extract_pdf(
     )
 
     return result
+
+
+@app.post("/extract/document")
+async def extract_document(file: UploadFile = File(...), filename: str = Form("")) -> dict:
+    """Weave (2026-10-09): a PDF, Word or PowerPoint file read into pages, pictures, parts and text."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="That file was empty.")
+    if len(data) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="That document is too large.")
+    try:
+        result = document_service.analyse(data, filename or file.filename or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        log.exception("document analysis failed")
+        raise HTTPException(status_code=500, detail="Could not read that document.") from exc
+    log.info("document analysed source=%s pages=%s pictures=%s scanned_units=%s", result["source"], result["page_count"], len(result["pictures"]), result["scanned_units"])
+    return result
+
+
+@app.post("/extract/document/render")
+async def render_document(file: UploadFile = File(...), filename: str = Form(""), items: str = Form("[]")) -> dict:
+    """Full-quality images of the parts a user ticked in the Weave drawer."""
+    data = await file.read()
+    try:
+        wanted = json.loads(items)
+        assert isinstance(wanted, list)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail="Choose what to use first.") from exc
+    try:
+        return {"images": document_service.render(data, filename or file.filename or "", wanted)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        log.exception("document render failed")
+        raise HTTPException(status_code=500, detail="Could not draw those pages.") from exc
 
 
 def _shutdown(signum, _frame):  # noqa: ANN001

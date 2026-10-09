@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\{DB, Schema, Storage};
 /** Logical Create paths stay stable. A catalog pins the authoritative disk, key and digest per file. */
 class CreateStorage
 {
-    public const PREFIXES = ['uploads', 'inputs', 'previews', 'references', 'reference-studies', 'image-jobs', 'posters'];
+    public const PREFIXES = ['uploads', 'inputs', 'previews', 'references', 'reference-studies', 'image-jobs', 'posters', 'documents'];
     private ?bool $hasCatalog = null;
 
     public function __construct(private PrivateBucketGuard $privacy) {}

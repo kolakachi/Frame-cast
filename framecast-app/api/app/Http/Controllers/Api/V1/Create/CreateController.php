@@ -96,6 +96,8 @@ class CreateController extends Controller
                     // What a link is used for, shown on its pill: a video post is a style reference; the user's own page gives facts and look; a social page only its look.
                     'link_role'=>self::linkRole((array) ($asset->metadata_json ?? [])),'rig'=>data_get($asset->metadata_json,'rig'),'preview_url'=>$asset->status!=='archived' && $asset->storage_url && $storage->isManagedUrl($asset->storage_url) ? $storage->url($asset->storage_url) : null];
             })->filter()->values(),
+            // Documents in Weave: PDF, Word and PowerPoint files read for this conversation (the drawer loads each in full).
+            'documents' => \App\Services\Create\DocumentService::forConversation($id),
             'revisions' => $revisions,
             // held_credits: what a run still holds of its approval (released as it settles), shown beside an active build.
             'runs' => DB::table('composition_runs')->leftJoin('api_operations', 'api_operations.id', '=', 'composition_runs.operation_id')
@@ -225,6 +227,33 @@ class CreateController extends Controller
     {
         $this->service->authorize($r->user(), false);
         return response()->json(['data' => \App\Services\Create\SampleLibrary::catalogue()]);
+    }
+
+    public function addDocument(Request $r, string $id)
+    {
+        $r->validate(['document' => 'required|file|max:20480']);
+        app(\App\Services\Create\DocumentService::class)->add($r->user(), $id, $r->file('document'));
+        return $this->show($r, $id);
+    }
+
+    public function document(Request $r, string $id, string $docId)
+    {
+        return response()->json(['data' => \App\Services\Create\DocumentService::full(app(\App\Services\Create\DocumentService::class)->document($r->user(), $id, $docId))]);
+    }
+
+    /** The drawer's choice: the ticked pictures and pages go in as pictures; an empty list uses the words only. */
+    public function useDocument(Request $r, string $id, string $docId)
+    {
+        $input = $r->validate(['picks' => 'present|array|max:20', 'picks.*.kind' => 'required|in:picture,page', 'picks.*.id' => 'nullable|string|max:20',
+            'picks.*.number' => 'nullable|integer|min:1', 'picks.*.part' => 'nullable|integer|min:1', 'expected_version' => 'required|integer|min:0']);
+        app(\App\Services\Create\DocumentService::class)->useParts($r->user(), $id, $docId, $input['picks'], $input['expected_version']);
+        return $this->show($r, $id);
+    }
+
+    public function removeDocument(Request $r, string $id, string $docId)
+    {
+        app(\App\Services\Create\DocumentService::class)->remove($r->user(), $id, $docId);
+        return $this->show($r, $id);
     }
 
     public function useSample(Request $r, string $id)

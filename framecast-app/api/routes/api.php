@@ -259,6 +259,11 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/messages', [$controller, 'message']);
             Route::post('/conversations/{id}/uploads', [$controller, 'upload']);
             Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
+            // Documents in Weave (2026-10-09): read in the background; the drawer picks what the video may show.
+            Route::post('/conversations/{id}/documents', [$controller, 'addDocument'])->middleware('throttle:20,1');
+            Route::get('/conversations/{id}/documents/{docId}', [$controller, 'document'])->whereUuid('docId');
+            Route::post('/conversations/{id}/documents/{docId}/use', [$controller, 'useDocument'])->whereUuid('docId');
+            Route::delete('/conversations/{id}/documents/{docId}', [$controller, 'removeDocument'])->whereUuid('docId');
             Route::post('/conversations/{id}/references', [$controller, 'reference']);
             // C2: our example videos on the empty screen; "Make one like this" attaches one as the style reference.
             Route::get('/samples', [$controller, 'samples']);
