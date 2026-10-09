@@ -748,6 +748,13 @@ async function deleteStyle(s) { await guarded(async () => { await api.delete(`/c
 // C2 (owner picked "box first, one strip below", 2026-10-09): a new video's empty screen centres the box and shows
 // our example videos under it. "Make one like this" attaches the example as the style reference and starts the brief.
 const samples = ref([]), sampleFilter = ref('all'), hoveredSample = ref(''), usingSample = ref('')
+// The onboarding's answers (2026-10-09): the examples shown first match what the workspace makes most, and the first
+// video starts in the style the answers point to (once, for the next new conversation).
+try {
+  const o = JSON.parse(localStorage.getItem('wyv_onboarding') || 'null')
+  if (o?.sample_filter) sampleFilter.value = o.sample_filter
+  if (o?.style) { pendingStyleId.value = o.style; localStorage.setItem('wyv_onboarding', JSON.stringify({ ...o, style: '' })) }
+} catch { /* defaults */ }
 // The marketer's ask (2026-10-09): a small help icon saying what WyvStudio does with a reference.
 const refHelp = ref(false), refHelpBox = ref(null)
 function closeRefHelp(e) { if (refHelp.value && (e.type === 'keydown' ? e.key === 'Escape' : !refHelpBox.value?.contains(e.target))) refHelp.value = false }
@@ -799,6 +806,7 @@ const linkKeys = {}
 const siteBrief = ref(false), waitingBrief = ref(false), siteBriefClip = ref(false), siteBriefFrom = ref(null)
 // A dashboard card's starter brief (from=card:<type>) has parts in [brackets] for the user to fill in.
 const fromCard = computed(() => String(siteBriefFrom.value || '').startsWith('card:'))
+const fromOnboarding = computed(() => siteBriefFrom.value === 'onboarding')
 function offerSiteBrief() {
   waitingBrief.value = false
   if (!available.value || !auth.user || !peekBrief()) return
@@ -1497,7 +1505,8 @@ onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('poin
           <div class="messages">
             <CreateLoading v-if="opening" />
             <div v-else-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
-              <h2>{{ siteBrief ? (fromCard ? "Here's a starting point." : "Here's the brief you wrote.") : 'What are we making?' }}</h2>
+              <h2>{{ siteBrief ? (fromOnboarding ? 'Your first video is ready to plan.' : fromCard ? "Here's a starting point." : "Here's the brief you wrote.") : 'What are we making?' }}</h2>
+              <p v-if="siteBrief && fromOnboarding">Edit anything, then make the plan. You'll see the plan and its price before the video is made.</p>
               <p v-if="siteBrief && fromCard">Fill in the parts in [brackets] with your own product, offer and audience, then make the plan. You'll see the plan and its price before the video is made.</p>
               <p v-else-if="siteBrief && siteBriefClip">Attach the clip you love with + Attach, then make the plan. You'll see the plan and its price before the video is made.</p>
               <p v-else-if="siteBrief">Read it over, change anything you like, attach photos of your products if you have them, then make the plan. You'll see the plan and its price before the video is made.</p>
@@ -1748,7 +1757,7 @@ onBeforeUnmount(() => {clearTimeout(docTimer);document.removeEventListener('poin
 
           <div v-if="canWrite && !conversation?.archived_at" class="composer-dock">
             <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; check the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
-            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />{{ fromCard ? 'A starting point from your dashboard' : 'From your visit to wyvstudio.com' }}</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
+            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />{{ fromOnboarding ? 'Your first video, from your answers' : fromCard ? 'A starting point from your dashboard' : 'From your visit to wyvstudio.com' }}</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
             <div v-else-if="waitingBrief" class="site-brief" role="status"><span><i aria-hidden="true" />You have a brief from your visit to wyvstudio.com</span><span class="site-brief__actions"><button type="button" class="quiet quiet--sm" @click="useSiteBrief">{{ id ? 'Start a new creation with it' : 'Use it instead of this draft' }}</button><button type="button" class="quiet quiet--sm" @click="dismissSiteBrief">Dismiss</button></span></div>
             <form class="prompt-form" @submit.prevent="send">
               <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" @open="i => openDocument(i.doc)" />

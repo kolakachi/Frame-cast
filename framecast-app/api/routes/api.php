@@ -334,6 +334,9 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/cruise/conversation/{projectId}/reset', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'resetConversation'])->whereNumber('projectId');
         Route::post('/cruise/undo', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'undo']);
         Route::patch('/me', [VerificationController::class, 'updateMe']);
+        // The Weave onboarding (2026-10-09): the brand from a website (or a typed name), then the answers and a first brief.
+        Route::post('/onboarding/brand', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'brand'])->middleware('throttle:10,1');
+        Route::post('/onboarding', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'finish'])->middleware('throttle:20,1');
         Route::get('/me/export', [VerificationController::class, 'exportMe']);
         Route::delete('/me', [VerificationController::class, 'deleteMe']);
         Route::get('/me/credit-history', [VerificationController::class, 'creditHistory']);

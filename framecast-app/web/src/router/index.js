@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { readBriefHash, saveBrief } from '../services/pendingBrief.js'
-import OnboardingView from '../views/OnboardingView.vue'
+// The Weave onboarding (2026-10-09) replaced the Classic first-video wizard (OnboardingView.vue, kept unrouted).
+import WelcomeView from '../views/WelcomeView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EditorView from '../views/EditorView.vue'
 import GenerationProgressView from '../views/GenerationProgressView.vue'
@@ -42,7 +43,7 @@ const routes = [
   { path: '/team', name: 'team', redirect: '/agency/team' },
   { path: '/delivery/:token', name: 'client-delivery', component: () => import('../views/ClientDeliveryView.vue'), meta: { public: true } },
   { path: '/', redirect: '/dashboard' },
-  { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
+  { path: '/onboarding', name: 'onboarding', component: WelcomeView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
   { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
   // OAuth consent for MCP connectors. carryRedirect: a signed-out user is
   // sent to login and then back here with the connector's query intact.

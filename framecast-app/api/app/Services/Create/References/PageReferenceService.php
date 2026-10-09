@@ -95,7 +95,7 @@ class PageReferenceService
         return 'https://'.$host.($p['path'] ?? '/').(isset($p['query']) ? '?'.$p['query'] : '');
     }
 
-    private function screenshot(string $url, string $dir): string
+    public function screenshot(string $url, string $dir): string
     {
         $png = $dir.'/page.png';
         $r = Process::timeout(60)->run([(string) config('create.chromium_path', 'chromium'), '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
