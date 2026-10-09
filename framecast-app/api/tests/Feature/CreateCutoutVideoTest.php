@@ -12,9 +12,9 @@ class CreateCutoutVideoTest extends TestCase
     public function test_a_take_comes_back_see_through_with_its_sound_and_bad_inputs_are_refused_before_any_provider(): void
     {
         $dir = sys_get_temp_dir().'/cutvid-'.uniqid(); mkdir($dir);
-        // A 1 s take with sound, and the mask the model would return: white (kept) on the left half, black on the right.
-        Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=64x64:d=1:r=12', '-f', 'lavfi', '-i', 'sine=d=1', '-shortest', '-pix_fmt', 'yuv420p', $dir.'/take.mp4'])->throw();
-        Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', "color=c=black:s=64x64:d=1:r=12,geq=lum='if(lt(X,32),255,0)':cb=128:cr=128", '-pix_fmt', 'yuv420p', $dir.'/maskfile.mp4'])->throw();
+        // A 1 s portrait take taller than 720 px with sound, and the mask the model would return: white (kept) on the left half, black on the right.
+        Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=96x1440:d=1:r=12', '-f', 'lavfi', '-i', 'sine=d=1', '-shortest', '-pix_fmt', 'yuv420p', $dir.'/take.mp4'])->throw();
+        Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', "color=c=black:s=96x1440:d=1:r=12,geq=lum='if(lt(X,48),255,0)':cb=128:cr=128", '-pix_fmt', 'yuv420p', $dir.'/maskfile.mp4'])->throw();
         config(['services.replicate.api_token' => 't']);
         Http::fake([
             'https://api.replicate.com/v1/files' => Http::response(['urls' => ['get' => 'https://api.replicate.com/v1/files/take']]),
@@ -26,6 +26,7 @@ class CreateCutoutVideoTest extends TestCase
         $probe = Process::run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_name:stream_tags=alpha_mode', '-of', 'compact', $r['path']])->output();
         $this->assertStringContainsString('codec_name=vp9|tag:alpha_mode=1', $probe, 'the video keeps an alpha channel');
         $this->assertStringContainsString('codec_name=opus', $probe, 'the take keeps its sound');
+        $this->assertSame('48x720', trim(Process::run(['ffprobe', '-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', $r['path']])->output()), 'a tall take comes back at most 720 px tall, keeping its shape');
         Http::assertSent(fn ($req) => str_contains($req->url(), 'robust_video_matting') && $req['input']['output_type'] === 'alpha-mask');
         $this->assertSame(CapabilityCatalogue::CUTOUT_VIDEO_CREDITS, collect(CapabilityCatalogue::forWorkspace(0))->firstWhere('kind', 'cutout_video')['credits']);
 

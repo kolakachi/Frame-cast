@@ -77,8 +77,10 @@ class PlanMediaExecutor
         $mask = $this->replicate('arielreplicate/robust_video_matting', ['input_video' => $this->replicateUpload((string) file_get_contents($file['path']), $mime), 'output_type' => 'alpha-mask'], 600);
         $maskPath = $this->fetch($mask, $dir.'/mask.mp4');
         $out = $dir.'/cutout.webm';
+        // At most 720 px tall: the renderer hands each see-through frame to the page as a full PNG, and about 400 MB of
+        // them stalls the capture (a 720x1280 cutout froze at frame ~550 of 720, 2026-10-09); a presenter never needs more.
         $r = \Illuminate\Support\Facades\Process::timeout(600)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $file['path'], '-i', $maskPath,
-            '-filter_complex', '[1:v][0:v]scale2ref[m][v];[m]format=gray[g];[v][g]alphamerge,format=yuva420p[o]', '-map', '[o]', '-map', '0:a?',
+            '-filter_complex', "[1:v][0:v]scale2ref[m][v];[m]format=gray[g];[v][g]alphamerge,scale=-2:'min(720,ih)',format=yuva420p[o]", '-map', '[o]', '-map', '0:a?',
             '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '0', '-crf', '30', '-auto-alt-ref', '0', '-row-mt', '1', '-c:a', 'libopus', '-b:a', '128k', '-shortest', $out]);
         if (! $r->successful() || ! is_file($out) || filesize($out) < 1000) throw new RuntimeException('The cut-out video could not be made: '.mb_substr($r->errorOutput(), 0, 160));
         return ['path' => $out, 'mime' => 'video/webm', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-video-'.Str::uuid(), 'extra' => []];
