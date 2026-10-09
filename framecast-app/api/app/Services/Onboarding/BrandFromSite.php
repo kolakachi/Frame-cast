@@ -50,7 +50,7 @@ class BrandFromSite
         $industry = isset(Industry::LIST[$seen['industry'] ?? '']) ? $seen['industry'] : null;
         $palette = $seen['palette'];
         DB::transaction(function () use ($user, $name, $palette, $logo, $industry, $clean, $seen) {
-            $kit = BrandKit::where('workspace_id', $user->workspace_id)->orderBy('id')->first() ?? new BrandKit(['workspace_id' => $user->workspace_id]);
+            $kit = self::kitFor($user->workspace_id, $name);
             $kit->forceFill(array_filter(['workspace_id' => $user->workspace_id, 'name' => $name, 'primary_color' => $palette[0] ?? null, 'secondary_color' => $palette[1] ?? null,
                 'accent_color' => $palette[2] ?? null, 'logo_asset_id' => $logo?->id], fn ($v) => $v !== null))->save();
             if ($industry) DB::table('workspaces')->where('id', $user->workspace_id)->update(['industry' => $industry, 'industry_source' => 'site']);
@@ -65,10 +65,18 @@ class BrandFromSite
     {
         $name = mb_substr(trim($name), 0, 80);
         abort_if($name === '', 422, 'Type your brand name.');
-        $kit = BrandKit::where('workspace_id', $user->workspace_id)->orderBy('id')->first() ?? new BrandKit(['workspace_id' => $user->workspace_id]);
-        $kit->forceFill(['workspace_id' => $user->workspace_id, 'name' => $name])->save();
+        self::kitFor($user->workspace_id, $name)->forceFill(['workspace_id' => $user->workspace_id, 'name' => $name])->save();
         self::merge($user->workspace_id, ['site' => ['url' => null, 'name' => $name, 'products' => [], 'facts' => [], 'summary' => '', 'read_at' => now()->toIso8601String()]]);
         return ['url' => null, 'name' => $name, 'palette' => [], 'logo_url' => null, 'products' => [], 'summary' => '', 'industry' => null, 'industries' => Industry::LIST];
+    }
+
+    /** The kit to fill: this brand's own kit, an unnamed first kit, or a new one; never another brand's kit. */
+    public static function kitFor(int $workspaceId, string $name): BrandKit
+    {
+        $kits = BrandKit::where('workspace_id', $workspaceId)->orderBy('id')->get();
+        return $kits->first(fn ($k) => mb_strtolower(trim((string) $k->name)) === mb_strtolower(trim($name)))
+            ?? $kits->first(fn ($k) => trim((string) $k->name) === '')
+            ?? new BrandKit(['workspace_id' => $workspaceId]);
     }
 
     public static function merge(int $workspaceId, array $values): array

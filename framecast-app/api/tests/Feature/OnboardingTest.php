@@ -70,6 +70,12 @@ class OnboardingTest extends TestCase
         $this->assertSame(['beauty', 'site'], [DB::table('workspaces')->where('id', $this->workspace->id)->value('industry'), DB::table('workspaces')->where('id', $this->workspace->id)->value('industry_source')]);
         $saved = json_decode(DB::table('workspaces')->where('id', $this->workspace->id)->value('onboarding_json'), true);
         $this->assertSame(['Visible glow in 7 days'], $saved['site']['facts'], 'a fact the page does not state is dropped');
+        // Another brand's kit is never overwritten: a second brand gets its own kit.
+        DB::table('brand_kits')->insert(['workspace_id' => $this->workspace->id, 'name' => 'Northside Roasters', 'primary_color' => '#111111', 'created_at' => now(), 'updated_at' => now()]);
+        app(BrandFromSite::class)->named($this->owner, 'Ember & Oak');
+        $this->assertSame(['Dewbloom', 'Northside Roasters', 'Ember & Oak'], DB::table('brand_kits')->where('workspace_id', $this->workspace->id)->orderBy('id')->pluck('name')->all());
+        app(BrandFromSite::class)->named($this->owner, 'dewbloom');
+        $this->assertSame(3, DB::table('brand_kits')->where('workspace_id', $this->workspace->id)->count(), 'the same brand updates its own kit');
         // A social page is not the brand's own site.
         try { app(BrandFromSite::class)->read($this->owner, 'https://instagram.com/dewbloom'); $this->fail('a social page was read as the brand site'); }
         catch (HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
