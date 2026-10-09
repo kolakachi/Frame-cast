@@ -20,9 +20,11 @@
   --done-wash: #11231c;
   --frame: #000;
   --shadow: 0 30px 60px -30px rgba(0, 0, 0, .8);
+  color-scheme: dark;
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg: #f3f4f6;
   --bg-2: #e9ebef;
   --surface: #ffffff;
@@ -91,6 +93,12 @@ h2 { font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.05; letter-spacing: -0.
 .nav-links > a:not(.btn) { color: var(--text-2); text-decoration: none; }
 .nav-links > a:not(.btn):hover { color: var(--text); }
 .nav-links .btn { min-height: 44px; padding: 0 18px; }
+/* Light or dark (the device's setting until the visitor picks): shows the mode it switches to. */
+.theme-toggle { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); cursor: pointer; transition: color .2s, border-color .2s, transform .3s; }
+.theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+.theme-toggle:active { transform: rotate(-20deg); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[data-theme="dark"] .theme-toggle .i-moon, [data-theme="light"] .theme-toggle .i-sun { display: none; }
 .theme-toggle { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text-2); font: inherit; font-size: .88rem; cursor: pointer; }
 
 /* ===== HERO: copy + composer over a moving wall of real outputs ===== */
