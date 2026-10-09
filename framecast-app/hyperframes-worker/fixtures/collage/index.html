@@ -1,0 +1,57 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Collage</title>
+<script src="gsap.min.js"></script><script src="wyv-motion.js"></script>
+<style>
+@font-face{font-family:Inter;src:url(inter.ttf);font-weight:100 900}
+*{box-sizing:border-box;margin:0}
+body{background:#000}
+#main{width:1080px;height:1080px;position:relative;overflow:hidden;font-family:Inter,sans-serif}
+.scene{position:absolute;inset:0;overflow:hidden;visibility:hidden}
+.layer{position:absolute;inset:0}
+#a{background:#e8261a;visibility:visible}
+#poster{position:absolute;left:150px;top:230px;width:780px;height:560px;object-fit:cover;box-shadow:0 20px 40px rgba(0,0,0,.35)}
+#fast{position:absolute;left:600px;top:700px;padding:14px 26px;background:#14707f;color:#fff;font:900 54px/1 Inter,sans-serif;letter-spacing:-1px}
+#burst{z-index:0}
+#mascot{position:absolute;left:300px;top:280px;width:480px;height:480px;z-index:2}
+#ring{position:absolute;left:640px;top:60px;width:360px;height:360px;color:#fff;z-index:3}
+#conf{z-index:4}
+#c{background:#f6f1e7}
+#deck{position:absolute;left:190px;top:190px;width:700px;height:700px}
+.wm-card{position:absolute;inset:0}
+.wm-card img{width:100%;height:100%;object-fit:cover;box-shadow:0 18px 36px rgba(0,0,0,.3)}
+#d{background:#cfcac0}
+#halftone{position:absolute;left:140px;top:120px;width:800px;height:600px;object-fit:cover}
+#kicks{position:absolute;left:250px;top:760px;padding:10px 34px;background:#e8261a;color:#fff;font:900 120px/1 Inter,sans-serif;letter-spacing:-4px}
+#tear1,#tear2,#tear3{z-index:50}
+</style></head><body>
+<main id="main" data-composition-id="main" data-width="1080" data-height="1080" data-duration="7">
+ <section class="scene" id="a"><img id="poster" src="poster.png"><div id="fast">FAST LANE</div></section>
+ <section class="scene" id="b"><div class="layer" id="burst"></div><img id="mascot" src="mascot.png"><div id="ring"></div><div class="layer" id="conf"></div></section>
+ <section class="scene" id="c"><div id="deck">
+  <div class="wm-card"><img src="card-1.png"></div><div class="wm-card"><img src="card-2.png"></div><div class="wm-card"><img src="card-3.png"></div><div class="wm-card"><img src="card-4.png"></div>
+  <div class="wm-card"><img src="card-5.png"></div><div class="wm-card"><img src="card-6.png"></div><div class="wm-card"><img src="card-7.png"></div><div class="wm-card"><img src="card-8.png"></div>
+ </div></section>
+ <section class="scene" id="d"><img id="halftone" src="poster.png"><div id="kicks">KICKS</div></section>
+ <div class="layer" id="tear1"></div><div class="layer" id="tear2"></div><div class="layer" id="tear3"></div>
+<script>
+const tl=gsap.timeline({paused:true});
+WM.grade('#poster','silver');
+WM.sticker(tl,'#fast',0.7,{rotate:-6});
+const cutB=WM.tear(tl,'#tear1',1.3,{colors:['#e8261a','#f5c518'],strips:2,from:'left',seed:3});
+tl.set('#a',{autoAlpha:0},cutB).set('#b',{autoAlpha:1},cutB);
+WM.sunburst(tl,'#burst',cutB,{colors:['#f39a1e','#1f7a8c','#f6f1e7'],rays:30,duration:2.2});
+WM.sticker(tl,'#mascot',cutB+0.15,{rotate:4,border:10});
+WM.circleText(tl,'#ring',cutB,{text:'MADE TO MOVE · KICKS · ',size:40,spin:90,duration:2.2});
+WM.confetti(tl,'#conf',cutB+0.35,{count:28,from:{x:540,y:520},seed:9});
+const cutC=WM.tear(tl,'#tear2',3.2,{colors:['#14707f'],from:'top',seed:5});
+tl.set('#b',{autoAlpha:0},cutC).set('#c',{autoAlpha:1},cutC);
+['#deck .wm-card:nth-child(3) img','#deck .wm-card:nth-child(6) img'].forEach((s,i)=>WM.grade(s,i?'duotone':'ink',{dark:'#14707f',light:'#ff7eb6'}));
+const endC=WM.cards(tl,'#deck',cutC+0.1,{every:3,fps:24,tilt:5});
+const cutD=WM.tear(tl,'#tear3',Math.max(endC,4.9),{colors:['#f5c518','#e8261a','#14707f'],strips:3,from:'right',seed:8});
+tl.set('#c',{autoAlpha:0},cutD).set('#d',{autoAlpha:1},cutD);
+WM.grade('#halftone','halftone',{size:9});
+WM.sticker(tl,'#kicks',cutD+0.2,{rotate:-3,border:8});
+tl.to({},{duration:7},0);
+window.__timelines=window.__timelines||{};window.__timelines.main=tl;
+</script>
+</main></body></html>

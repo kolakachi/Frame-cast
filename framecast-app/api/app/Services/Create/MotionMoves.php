@@ -46,6 +46,14 @@ class MotionMoves
         'split' => 'two panels slide into halves of the frame with a divider: before and after, two options',
         'stack' => 'a list builds on the voice: each new item pushes in, earlier ones step up and dim',
         'parallax' => 'a still photo in layers drifts with depth, like a moving camera',
+        'tear' => 'torn-paper strips sweep across the frame as the cut (a collage or zine look)',
+        'sticker' => 'a cut-out or label with a white die-cut border slaps on with a tilt',
+        'cards' => 'a rapid montage: pictures flash one after another every few frames, slightly tilted',
+        'confetti' => 'paper pieces burst from a point and fall',
+        'circle_text' => 'a line of text set around a circle, turning (a badge or stamp)',
+        'book' => 'pages turn like a real book',
+        'slides' => 'a deck\'s slides change one after another, each filling the frame',
+        'page_focus' => 'the camera moves into a part of a page or slide and back out',
         'custom' => 'none of these: built by hand from the description',
     ];
 
@@ -59,6 +67,8 @@ class MotionMoves
         'dutch' => ['mid', 0.7], 'cold_open' => ['high', 1.3], 'text_mask' => ['mid', 2.0], 'ramp_freeze' => ['high', 0.6], 'hidden_cut' => ['high', 0.7],
         'odometer' => ['mid', 1.0], 'gauge' => ['mid', 1.2], 'streak' => ['high', 0.35],
         'smash' => ['high', 0.05], 'split' => ['mid', 0.7], 'stack' => ['mid', 0.4], 'parallax' => ['low', 3.0],
+        'tear' => ['high', 0.7], 'sticker' => ['mid', 0.45], 'cards' => ['high', 1.0], 'confetti' => ['high', 1.6], 'circle_text' => ['low', 4.0],
+        'book' => ['mid', 1.1], 'slides' => ['mid', 0.6], 'page_focus' => ['low', 2.9],
     ];
 
     public static function valid(mixed $move): ?string

@@ -23,6 +23,9 @@
   ease.default = ease['default'];
 
   function $(el) { return typeof el === 'string' ? document.querySelector(el) : el; }
+  // Seeded randomness (mulberry32): the same seed gives the same torn edge, tilt or confetti on every render.
+  var gradeCount = 0;
+  function seeded(seed) { var a = (seed | 0) || 1; return function () { a = (a + 0x6D2B79F5) | 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
   var WM = {
     ease: ease,
@@ -458,6 +461,151 @@
       return tl;
     },
 
+    /* Collage (a zine or sticker ad: torn paper, cut-outs, rapid cards). Everything is seeded, so it renders the same.
+
+       tear: torn-paper strips sweep across the frame as the cut. el is an empty full-frame layer above the scenes;
+       switch the scene underneath at the returned time (the frame is covered then). opts: colors (one per strip,
+       default ['#e8261a']), strips (1-3), from ('left', 'right', 'top', 'bottom'), duration (.7), seed. */
+    tear: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var cols = opts.colors || [opts.color || '#e8261a'], n = Math.max(1, Math.min(3, opts.strips || cols.length)), d = opts.duration || 0.7;
+      var from = opts.from || 'left', horiz = from === 'left' || from === 'right', sign = from === 'left' || from === 'top' ? -1 : 1, rnd = seeded(opts.seed || 7);
+      var edge = function (lead) {
+        // A torn edge: many small jags along the strip's leading and trailing sides.
+        var pts = [], k, steps = 26;
+        for (k = 0; k <= steps; k++) pts.push([k / steps * 100, (lead ? 0 : 100) + (rnd() * 3.2 + 0.4) * (lead ? 1 : -1)]);
+        return pts;
+      };
+      el.style.pointerEvents = 'none'; el.style.overflow = 'hidden';
+      var cover = at + d * 0.5;
+      for (var i = 0; i < n; i++) {
+        var strip = document.createElement('div'), fiber = document.createElement('div');
+        var a = edge(true), b = edge(false).reverse();
+        // Moving sideways, the torn edges are the strip's left and right ends; moving up or down, its top and bottom.
+        var poly = a.concat(b).map(function (p) { return horiz ? p[1] + '% ' + p[0] + '%' : p[0] + '% ' + p[1] + '%'; });
+        var size = 100 / n + 8, offset = i * (100 / n) - 4;
+        strip.style.cssText = 'position:absolute;' + (horiz ? 'top:' + offset + '%;height:' + size + '%;left:-10%;width:130%' : 'left:' + offset + '%;width:' + size + '%;top:-10%;height:130%') +
+          ';background:' + cols[i % cols.length] + ';clip-path:polygon(' + poly.join(',') + ');box-shadow:inset 0 0 40px rgba(0,0,0,.12)';
+        // The white paper fibre showing along the torn edge.
+        fiber.style.cssText = strip.style.cssText.replace(/background:[^;]+/, 'background:#f6f1e7');
+        el.appendChild(fiber); el.appendChild(strip);
+        var stagger = i * 0.06, prop = horiz ? 'xPercent' : 'yPercent', far = 140 * sign;
+        [fiber, strip].forEach(function (x) {
+          var start = {}; start[prop] = far;
+          // The fibre is a touch longer, so a white torn edge shows past the colour.
+          if (x === fiber) start[horiz ? 'scaleX' : 'scaleY'] = 1.025;
+          tl.set(x, start, 0)
+            .to(x, (function () { var v = {}; v[prop] = 0; v.duration = d * 0.45; v.ease = 'power3.out'; return v; })(), at + stagger)
+            .to(x, (function () { var v = {}; v[prop] = -far; v.duration = d * 0.45; v.ease = 'power3.in'; return v; })(), cover + 0.08 + stagger);
+        });
+      }
+      return cover;
+    },
+
+    /* sticker: a cut-out (a transparent PNG, or a block of text) gets a white die-cut border and a shadow, and slaps
+       on with a tilt and a small bounce. opts: rotate (final tilt, -6), border (px, 6), from (start scale, .2). The
+       border is a stack of drop-shadows, set once (never tweened). */
+    sticker: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var b = opts.border == null ? 6 : opts.border, r = opts.rotate == null ? -6 : opts.rotate;
+      el.style.filter = ['drop-shadow(' + b + 'px 0 0 #fff)', 'drop-shadow(-' + b + 'px 0 0 #fff)', 'drop-shadow(0 ' + b + 'px 0 #fff)', 'drop-shadow(0 -' + b + 'px 0 #fff)', 'drop-shadow(0 10px 14px rgba(0,0,0,.28))'].join(' ');
+      tl.fromTo(el, { autoAlpha: 0, scale: opts.from || 0.2, rotation: r + 18 }, { autoAlpha: 1, scale: 1, rotation: r, duration: 0.45, ease: ease.playful, immediateRender: false }, at);
+      tl.set(el, { autoAlpha: 0, scale: opts.from || 0.2, rotation: r + 18 }, 0);
+      return tl;
+    },
+
+    /* cards: a rapid montage, each card shown for a few frames, hard cuts, a little tilt and a slam. el holds the
+       cards (.wm-card, stacked). opts: every (frames per card, 2), fps (24), tilt (degrees, 0 for none), seed. */
+    cards: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var list = Array.prototype.slice.call(el.querySelectorAll(':scope > .wm-card')), step = (opts.every || 2) / (opts.fps || 24), rnd = seeded(opts.seed || 11);
+      list.forEach(function (c, k) {
+        var t = at + k * step, tilt = opts.tilt ? (rnd() * 2 - 1) * opts.tilt : 0;
+        tl.set(c, { autoAlpha: 0 }, 0).set(c, { autoAlpha: 1, rotation: tilt, scale: 1.04 }, t).to(c, { scale: 1, duration: step, ease: 'power2.out' }, t);
+        if (k < list.length - 1) tl.set(c, { autoAlpha: 0 }, t + step);
+      });
+      return at + list.length * step;
+    },
+
+    /* grade: a printed look on a picture, set once (not animated): silver (bright greyscale), ink (hard black and
+       white), duotone ({dark, light} colours), halftone (dots; size px). Uses an SVG filter, no blend modes. */
+    grade: function (el, kind, opts) {
+      el = $(el); opts = opts || {};
+      var id = 'wm-grade-' + (++gradeCount) + '-' + kind, ns = 'http://www.w3.org/2000/svg';
+      var hex = function (h) { h = (h || '#000').replace('#', ''); return [0, 2, 4].map(function (i) { return parseInt(h.substr(i, 2), 16) / 255; }); };
+      var grey = '<feColorMatrix type="matrix" values=".3 .59 .11 0 0  .3 .59 .11 0 0  .3 .59 .11 0 0  0 0 0 1 0"/>';
+      var body;
+      if (kind === 'silver') body = grey + '<feComponentTransfer><feFuncR type="linear" slope="1.25" intercept="-.05"/><feFuncG type="linear" slope="1.25" intercept="-.05"/><feFuncB type="linear" slope="1.25" intercept="-.05"/></feComponentTransfer>';
+      else if (kind === 'ink') body = grey + '<feComponentTransfer><feFuncR type="discrete" tableValues="0 0 1 1"/><feFuncG type="discrete" tableValues="0 0 1 1"/><feFuncB type="discrete" tableValues="0 0 1 1"/></feComponentTransfer>';
+      else if (kind === 'duotone') {
+        var a = hex(opts.dark || '#1d2b53'), b = hex(opts.light || '#ff6b35');
+        body = grey + '<feComponentTransfer><feFuncR type="table" tableValues="' + a[0] + ' ' + b[0] + '"/><feFuncG type="table" tableValues="' + a[1] + ' ' + b[1] + '"/><feFuncB type="table" tableValues="' + a[2] + ' ' + b[2] + '"/></feComponentTransfer>';
+      } else if (kind === 'halftone') {
+        // Darkness plus a tiled dot, thresholded: big dots in the shadows, small in the highlights.
+        var sz = opts.size || 8, dot = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + sz + '" height="' + sz + '"><defs><radialGradient id="g"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient></defs><rect width="' + sz + '" height="' + sz + '" fill="url(#g)"/></svg>');
+        body = grey + '<feImage href="' + dot + '" x="0" y="0" width="' + sz + '" height="' + sz + '" result="d"/><feTile in="d" result="t"/><feComposite in="SourceGraphic" in2="t" operator="arithmetic" k1="0" k2="1" k3="1" k4="-.5"/>' +
+          '<feComponentTransfer><feFuncR type="discrete" tableValues="0 1"/><feFuncG type="discrete" tableValues="0 1"/><feFuncB type="discrete" tableValues="0 1"/><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>' +
+          // Only where the picture is: the dot tile would otherwise print over the whole box, even when hidden.
+          '<feColorMatrix type="matrix" values=".33 .33 .33 0 0  .33 .33 .33 0 0  .33 .33 .33 0 0  0 0 0 1 0"/><feComposite in2="SourceAlpha" operator="in"/>';
+      } else return el;
+      var svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('width', '0'); svg.setAttribute('height', '0'); svg.style.position = 'absolute';
+      svg.innerHTML = '<filter id="' + id + '" color-interpolation-filters="sRGB" x="0" y="0" width="100%" height="100%">' + body + '</filter>';
+      document.body.appendChild(svg);
+      el.style.filter = 'url(#' + id + ')';
+      return el;
+    },
+
+    /* sunburst: rays behind a scene, turning slowly. el is a full-frame layer. opts: colors (2 or more), rays (24),
+       spin (degrees over the duration, 20), duration (the scene's length). */
+    sunburst: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var cols = opts.colors || ['#f39a1e', '#1f7a8c'], n = opts.rays || 24, stops = [], k, w = 360 / n;
+      for (k = 0; k < n; k++) stops.push(cols[k % cols.length] + ' ' + (k * w) + 'deg ' + ((k + 1) * w) + 'deg');
+      var disc = document.createElement('div');
+      disc.style.cssText = 'position:absolute;left:50%;top:50%;width:220%;aspect-ratio:1;background:conic-gradient(' + stops.join(',') + ')';
+      el.style.overflow = 'hidden'; el.appendChild(disc);
+      tl.set(disc, { xPercent: -50, yPercent: -50, rotation: 0 }, 0)
+        .to(disc, { rotation: opts.spin == null ? 20 : opts.spin, duration: opts.duration || 3, ease: 'none' }, at);
+      return tl;
+    },
+
+    /* confetti: seeded paper pieces burst from a point and fall. el is a full-frame layer. opts: count (24), colors,
+       from ({x, y} in stage px; default the centre), spread (px, 420), duration (1.6), seed. */
+    confetti: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight, rnd = seeded(opts.seed || 5), d = opts.duration || 1.6;
+      var cols = opts.colors || ['#e8261a', '#f5c518', '#1f7a8c', '#ff7eb6', '#ffffff'], o = opts.from || { x: W / 2, y: H / 2 }, sp = opts.spread || 420;
+      for (var k = 0; k < (opts.count || 24); k++) {
+        var p = document.createElement('div'), w = 10 + rnd() * 14, h = 6 + rnd() * 10;
+        p.style.cssText = 'position:absolute;left:' + (o.x - w / 2) + 'px;top:' + (o.y - h / 2) + 'px;width:' + w + 'px;height:' + h + 'px;background:' + cols[k % cols.length] + ';border-radius:2px;box-shadow:0 2px 3px rgba(0,0,0,.15)';
+        el.appendChild(p);
+        var ang = rnd() * Math.PI * 2, dist = sp * (0.4 + rnd() * 0.6), up = -(180 + rnd() * 260);
+        tl.set(p, { autoAlpha: 0 }, 0).set(p, { autoAlpha: 1 }, at)
+          .fromTo(p, { x: 0, rotation: 0 }, { x: Math.cos(ang) * dist, rotation: (rnd() * 2 - 1) * 720, duration: d, ease: 'power2.out', immediateRender: false }, at)
+          .fromTo(p, { y: 0 }, { keyframes: [{ y: up * 0.9 + Math.sin(ang) * dist * 0.3, duration: d * 0.35, ease: 'power2.out' }, { y: H * 0.6, duration: d * 0.65, ease: 'power2.in' }], immediateRender: false }, at)
+          .to(p, { autoAlpha: 0, duration: 0.2 }, at + d - 0.2);
+      }
+      return tl;
+    },
+
+    /* circleText: a line of text set around a circle (a stamp, a badge, "MADE TO MOVE · "), turning. el is an empty
+       square box; opts: text, size (font px, 34), spin (degrees over duration, 120), duration (4), font. */
+    circleText: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var txt = Array.from(opts.text || 'MADE IN CODE · '), R = el.offsetWidth / 2, fs = opts.size || 34;
+      el.style.position = el.style.position || 'absolute';
+      txt.forEach(function (ch, k) {
+        var sp = document.createElement('span');
+        sp.textContent = ch;
+        sp.style.cssText = 'position:absolute;left:50%;top:0;height:' + R + 'px;transform-origin:0 100%;font-size:' + fs + 'px;line-height:1;font-weight:800;letter-spacing:0;' + (opts.font ? 'font-family:' + opts.font + ';' : '') +
+          'transform:translateX(-' + (fs * 0.3) + 'px) rotate(' + (k / txt.length * 360) + 'deg)';
+        el.appendChild(sp);
+      });
+      tl.fromTo(el, { rotation: 0 }, { rotation: opts.spin == null ? 120 : opts.spin, duration: opts.duration || 4, ease: 'none', immediateRender: false }, at);
+      return tl;
+    },
+
     /* slides: a deck's slides, each filling the frame as it looks. el holds the slides (.wm-slide, each a div with its
        <img>), stacked; at: the time each slide after the first comes in. opts: transition push (default: the next
        slide pushes the last one left), fade or zoom (the last one recedes as the next lands), duration (.6), sound. */
@@ -744,6 +892,10 @@
     whip: function (a) { return [['whoosh-fast', a[3]]]; },
     giantWipe: function (a) { return [['whoosh-big', a[3] + 0.28]]; },
     camera: function (a) { var d = o(a, 4).duration; return [['slide', a[3] + (d == null ? 0.6 : d) * 0.35]]; },
+    tear: function (a) { var d = o(a, 3).duration || 0.7; return [['swish', a[2] + d * 0.25]]; },
+    sticker: function (a) { return [['pop', a[2] + 0.06]]; },
+    cards: function (a) { var n = 0; try { n = $(a[1]).querySelectorAll(':scope > .wm-card').length; } catch (e) {} var st = (o(a, 3).every || 2) / (o(a, 3).fps || 24), out = []; for (var i = 0; i < n; i += Math.max(1, Math.round(0.25 / st))) out.push(['tick', a[2] + i * st]); return out; },
+    confetti: function (a) { return [['pop', a[2] + 0.02]]; },
     book: function (a) { var d = o(a, 3).duration || 1.1; return (a[2] || []).map(function (t) { return ['page', t + d * 0.3]; }); },
     slides: function (a) { var d = o(a, 3).duration || 0.6, k = o(a, 3).transition || 'push'; return (a[2] || []).map(function (t) { return [k === 'fade' ? 'slide' : 'whoosh', t + d * 0.4]; }); },
     pageFocus: function (a) { var d = o(a, 5).duration; return [['slide', a[4] + (d == null ? 0.7 : d) * 0.35]]; },
@@ -767,7 +919,7 @@
     split: function (a) { return [['slide', a[3] + 0.3]]; },
     stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
-  var OPTS = { book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
+  var OPTS = { tear: 3, sticker: 3, cards: 3, confetti: 3, book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
     pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {

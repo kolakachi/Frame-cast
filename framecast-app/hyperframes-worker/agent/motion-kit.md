@@ -64,6 +64,16 @@ When the plan names a move (plan.reference_systems[].move, reference_decisions[]
 - A stamp or bubble that is meant to sit over other text: add `data-layout-allow-overlap data-layout-allow-occlusion` to it.
 - Move ids that are not here (`custom`) are built by hand from the plan's spec.
 
+## Collage (a zine or sticker ad)
+Seeded, so every render is the same. Cut people and products out first (the cutout tool) and print every photo.
+- `const cut = WM.tear(tl, '#tear', at, {colors: ['#e8261a', '#f5c518'], strips: 2, from: 'left'})`: torn-paper strips sweep across as the cut. `#tear` is an empty full-frame layer above the scenes; switch the scene underneath at `cut` (the frame is covered then). from: left, right, top or bottom; 1 to 3 strips.
+- `WM.sticker(tl, '#label', at, {rotate: -6, border: 6})`: a cut-out PNG or a text label gets a white die-cut border and a shadow, and slaps on with a tilt.
+- `const end = WM.cards(tl, '#deck', at, {every: 2, tilt: 5})`: a rapid montage; `#deck` holds stacked `<div class="wm-card"><img …></div>`, each shown for `every` frames (24 fps). Returns when it ends.
+- `WM.grade('#photo', 'halftone', {size: 8})`: a print look on a picture, set once: `silver`, `ink`, `duotone` ({dark, light}) or `halftone`.
+- `WM.sunburst(tl, '#rays', at, {colors: ['#f39a1e', '#1f7a8c', '#f6f1e7'], rays: 30, duration: 2})`: rays turning behind a scene (a full-frame layer under the content).
+- `WM.confetti(tl, '#fx', at, {count: 28, from: {x: 540, y: 520}})`: paper pieces burst and fall (a full-frame layer above the content).
+- `WM.circleText(tl, '#badge', at, {text: 'MADE TO MOVE · ', size: 40, spin: 90, duration: 3})`: text around a circle, turning; `#badge` is an empty square box.
+
 ## Documents: pages and slides as they look
 For assets of kind document_page: the user's own pages or slides, chosen to be shown as they look. Place the image itself (never a rebuilt or restyled version), keep the document's order, and hold each long enough to be recognised (about 3 s or more).
 - `WM.book(tl, '#book', [4.2, 8.6], {spread: false, duration: 0.9})`: pages that turn. `#book` is a positioned box (one page's size; two pages wide with `spread: true`, page 1 on the left), holding one `<div class="wm-page"><img src="page-1.jpg" style="width:100%;height:100%;object-fit:cover"></div>` per page in order. Each time in the list turns one page over the spine, with the light falling across it and a page sound. A portrait page in a 9:16 frame: one page at a time; an open book in 16:9: `spread: true`. Put the book on a surface (a desk, a soft shadow, a little tilt) rather than floating on a flat colour.
@@ -72,7 +82,7 @@ For assets of kind document_page: the user's own pages or slides, chosen to be s
 - A presenter in the corner (a talking take or the 3D mascot) sits above the book or slides, never covering the part in focus.
 
 ## Sound
-Moves bring their own sound: before the render each move's effect from the built-in library is laid under it, its peak on the hit, quieter under the voice, no closer than 0.25 s to another (the stronger hit wins). pop → pop, stamp → thud, press and cursor clicks → click, whip → whoosh-fast, wipe and push → whoosh, giantWipe, flood and through → whoosh-big, toss, iris and fly → swish, device, camera, layout, morph and pageFocus → slide, edges → tick, type → keys, count → blip, book → page (one per turn), slides → whoosh (slide for a fade); words, writeOn, rise and field are silent.
+Moves bring their own sound: before the render each move's effect from the built-in library is laid under it, its peak on the hit, quieter under the voice, no closer than 0.25 s to another (the stronger hit wins). pop → pop, stamp → thud, press and cursor clicks → click, whip → whoosh-fast, wipe and push → whoosh, giantWipe, flood and through → whoosh-big, toss, iris and fly → swish, device, camera, layout, morph and pageFocus → slide, edges → tick, type → keys, count → blip, book → page (one per turn), slides → whoosh (slide for a fade); tear → swish, sticker and confetti → pop, cards → a tick every quarter second; words, writeOn, rise and field are silent.
 - `{sound: false}` in a move's options silences it; `{sound: 'thud'}` swaps its sound (library: whoosh, whoosh-fast, whoosh-big, swish, slide, pop, click, tick, thud, blip, chime, keys, page).
 - `WM.sound(tl, 'chime', at)` adds a sound where there is no move (the logo lands, the offer appears).
 - `data-sounds="off"` on the root composition turns all of it off: when the user asks for no effects, or the reference has none.
