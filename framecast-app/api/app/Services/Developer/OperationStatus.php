@@ -49,7 +49,7 @@ class OperationStatus
             'next' => match ($state) {
                 'cancelled' => 'Remaining work is fenced off and its unused reservation released. Completed charges/results are retained. Review them before authorizing new work.',
                 'not_started' => 'The quote has not been consumed. Retry the original request with its original idempotency key; expiry rules still apply.',
-                'needs_attention' => 'Execution needs investigation. Do not submit a replacement paid operation. Reservations have not been released merely because time elapsed.',
+                'needs_attention' => 'Execution needs investigation. Do not submit a replacement paid operation. Reservations have not been released merely because time elapsed. If the user does not want to wait, cancel_operation stops it and releases the unused reservation; what was already made and charged stays.',
                 'running' => 'Poll this quote again. Do not obtain a replacement quote or change the idempotency key.',
                 default => 'Use the recorded result or replay the original request with the same idempotency key. Poll video/generation status separately for media readiness.',
             },

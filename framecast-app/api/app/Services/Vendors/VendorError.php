@@ -19,9 +19,11 @@ final class VendorError
     public static function classify(string $text, ?int $status = null): string
     {
         $t = mb_strtolower($text);
+        // Our adapters write the HTTP status into the message, "failed to start (402): …".
+        if ($status === null && preg_match('/\((\d{3})\)/', $text, $m)) $status = (int) $m[1];
         if ($status === 402 || preg_match('/credit balance is too low|insufficient[_ ]?(credit|quota|funds|balance)|exceeded your current quota|billing[_ ]?(disabled|not active|hard limit)|billing details|payment required|out of credits?|spend(ing)? limit|account\/billing|add (a )?payment/', $t)) return 'vendor_credit';
         if (in_array($status, [401, 403], true) || preg_match('/invalid[ _-]?(x-)?api[ _-]?key|authentication[_ ]error|permission[_ ]error|unauthenticated|unauthori[sz]ed|api key not valid|invalid (auth(entication)? )?token|incorrect api key|api_key_invalid/', $t)) return 'vendor_config';
-        if (preg_match('/\be00[56]\b|flagged as sensitive|sensitive content|content[_ ]policy|safety (system|filter|policy)|moderation[_ ]blocked|content_filter|\brefusal\b|nsfw|violat(es|ion of) (our|the) (usage|content)/', $t)) return 'content_refused';
+        if (preg_match('/\be00[56]\b|flagged as sensitive|sensitive content|content[_ ]policy|safety (system|filter|policy)|moderation[_ ]blocked|content[_ ]filter|\brefusal\b|declined this (image|segment)|moderation flags|nsfw|violat(es|ion of) (our|the) (usage|content)/', $t)) return 'content_refused';
         if (in_array($status, [429, 503, 529], true) || preg_match('/overloaded|rate[ _-]?limit|too many requests|high demand|currently unavailable|temporarily unavailable|resource[_ ]exhausted|at capacity|server is busy|try again later/', $t)) return 'busy';
         return 'other';
     }

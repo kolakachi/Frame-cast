@@ -124,7 +124,8 @@ class ReplicateVeoAdapter
 
         $id = (string) data_get($response->json(), 'id');
         if (! $response->successful() || $id === '') {
-            throw new \RuntimeException('Veo submit failed: '.mb_substr($response->body(), 0, 200));
+            $why = 'Veo submit failed: '.mb_substr($response->body(), 0, 200);
+            throw \App\Services\Generation\ProviderFailed::rejectedAtStart($response->status()) ? new \App\Services\Generation\ProviderFailed($why) : new \RuntimeException($why);
         }
 
         return $id;
@@ -153,9 +154,9 @@ class ReplicateVeoAdapter
                     'prediction_id' => $predictionId, 'error' => mb_substr($error, 0, 500),
                 ]);
                 if (str_contains($error, 'E006') || str_contains($error, 'E005') || stripos($error, 'sensitive') !== false) {
-                    throw new \RuntimeException('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
+                    throw new \App\Services\Generation\ProviderFailed('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
                 }
-                throw new \RuntimeException('Veo generation failed: '.mb_substr($error, 0, 300));
+                throw new \App\Services\Generation\ProviderFailed('Veo generation failed: '.mb_substr($error, 0, 300));
             }
             sleep(10);
         }

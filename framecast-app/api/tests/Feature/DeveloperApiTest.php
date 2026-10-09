@@ -1477,6 +1477,53 @@ class DeveloperApiTest extends TestCase
         $this->assertSame(['failed'], DB::table('api_operation_jobs')->where('operation_id', $id)->pluck('status')->all());
     }
 
+    public function test_a_job_that_charges_per_delivered_unit_is_retried_after_a_charge_instead_of_fencing(): void
+    {
+        // 2026-10-09: scene 3's voice failed after scenes 1-2 were charged, and the fence held 368 credits overnight.
+        $this->enableOperationAccounting();
+        Bus::swap(new \Illuminate\Bus\Dispatcher(app()));
+        Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        [$ws, , $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        try {
+            \Illuminate\Support\Facades\Queue::connection('sync')->push(new RepeatableScenarioJob($ws->id));
+            $this->fail('expected the job exception to surface');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('probe: after charge', $e->getMessage());
+        }
+        $op = DB::table('api_operations')->where('id', $id)->first();
+        $this->assertSame('running', $op->status, 'not fenced');
+        $this->assertSame(10, (int) $op->spent_credits);
+        \App\Services\Developer\OperationAccounting::close($id);
+        $op = DB::table('api_operations')->where('id', $id)->first();
+        $this->assertSame(['failed', 0, 10], [$op->status, (int) $op->reserved_credits, (int) $op->spent_credits], 'the unused hold goes back');
+    }
+
+    public function test_an_operator_releases_a_fenced_operations_unused_hold_with_evidence(): void
+    {
+        $this->enableOperationAccounting();
+        [$ws, $owner, $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        if (! Schema::hasTable('admin_audit_logs')) (require database_path('migrations/2026_04_23_000001_create_admin_audit_logs_table.php'))->up();
+        DB::table('api_operations')->where('id', $id)->update(['status' => 'needs_attention', 'spent_credits' => 6, 'reserved_credits' => 34]);
+        DB::table('api_operation_jobs')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'operation_id' => $id, 'status' => 'failed', 'created_at' => now(), 'updated_at' => now()]);
+        $email = $owner->email;
+        $this->artisan('api:release-hold', ['operation' => $id, '--admin' => $email])->assertFailed(); // no evidence
+        $this->artisan('api:release-hold', ['operation' => $id, '--admin' => $email, '--evidence' => 'scene 3 refused by Gemini E005'])->assertSuccessful();
+        $this->assertSame(34, (int) DB::table('api_operations')->where('id', $id)->value('reserved_credits'), 'without --confirm it only reports');
+        $this->artisan('api:release-hold', ['operation' => $id, '--admin' => $email, '--evidence' => 'scene 3 refused by Gemini E005', '--confirm' => true])->assertSuccessful();
+        $op = DB::table('api_operations')->where('id', $id)->first();
+        $this->assertSame(['failed', 0, 6], [$op->status, (int) $op->reserved_credits, (int) $op->spent_credits]);
+        $this->assertSame('api_operation.release_hold', DB::table('admin_audit_logs')->where('target_id', $id)->value('action'));
+        // A job that may still run blocks it.
+        $other = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 20), $key->id));
+        DB::table('api_operations')->where('id', $other)->update(['status' => 'needs_attention']);
+        DB::table('api_operation_jobs')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'operation_id' => $other, 'status' => 'running', 'created_at' => now(), 'updated_at' => now()]);
+        $this->artisan('api:release-hold', ['operation' => $other, '--admin' => $email, '--evidence' => 'checked it', '--confirm' => true])->assertFailed();
+    }
+
     public function test_media_upload_validates_bytes_and_is_workspace_scoped(): void
     {
         [$ws, , $key] = $this->tenant();
@@ -1849,6 +1896,11 @@ class OperationAccountingScenarioJob implements \Illuminate\Contracts\Queue\Shou
             throw new \RuntimeException('probe: after charge');
         }
     }
+}
+
+class RepeatableScenarioJob extends OperationAccountingScenarioJob implements \App\Services\Developer\RepeatableAfterCharge
+{
+    public function __construct(int $workspaceId) { parent::__construct($workspaceId, 'throw_after'); }
 }
 
 class OperationAccountingNestedCommand

@@ -124,11 +124,10 @@ class AnthropicGateway
         }
         $journal->save($attemptId, ['status' => $response->status(), 'headers' => ['request-id' => $response->header('request-id')], 'body' => $response->body(), 'rates' => self::rates((string) $attempt->model)]);
         if (! $response->successful()) {
-            if ($response->status() >= 500 && $response->status() !== 529) {
-                $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
-                abort(502, 'Provider outcome is uncertain; the saved response needs reconciliation.');
-            }
-            // Refused requests are not billed. The request id is the receipt; without one, reconcile.
+            // Refused requests and server errors (5xx) are not billed: Anthropic charges for a completed message only.
+            // A 5xx with its request id is a known, unbilled outcome, waited out like a busy model (2026-10-10);
+            // before, every one held the run for an operator, though nothing had been charged.
+            // The request id is the receipt; without one, reconcile.
             $requestId = (string) $response->header('request-id');
             if (! preg_match('/^[a-zA-Z0-9_-]{1,160}$/D', $requestId)) {
                 $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
@@ -141,7 +140,7 @@ class AnthropicGateway
             // Busy still after the retries above is waited out by the worker ("nothing was sent or charged"); anything
             // else carries its kind ([vendor:...]) and is never retried as busy: our account out of credit or a bad key
             // alerts the team and holds new work (VendorAlerts), a refusal is a moderation event, a bad request stops.
-            $kind = \App\Services\Vendors\VendorAlerts::observe('anthropic', $response->body(), $response->status(), ['run_id' => $runId, 'workspace_id' => DB::table('composition_runs')->where('id', $runId)->value('workspace_id')]);
+            $kind = \App\Services\Vendors\VendorAlerts::observe('anthropic', $response->body(), $response->status() >= 500 ? 503 : $response->status(), ['run_id' => $runId, 'workspace_id' => DB::table('composition_runs')->where('id', $runId)->value('workspace_id')]);
             if ($kind === 'busy') abort(503, '[vendor:busy] The model is busy right now; nothing was sent or charged.');
             abort(503, '[vendor:'.$kind.'] '.(in_array($kind, \App\Services\Vendors\VendorAlerts::OURS, true) ? \App\Services\Vendors\VendorAlerts::userMessage('anthropic', $kind) : 'The model refused this call ('.$response->status().'); nothing was charged.'));
         }

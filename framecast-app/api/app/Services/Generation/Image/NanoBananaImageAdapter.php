@@ -68,7 +68,8 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
             ->post($url, $body);
 
         if (! $start->successful()) {
-            throw new RuntimeException("nano-banana failed to start ({$start->status()}): {$start->body()}");
+            $why = "nano-banana failed to start ({$start->status()}): {$start->body()}";
+            throw \App\Services\Generation\ProviderFailed::rejectedAtStart($start->status()) ? new \App\Services\Generation\ProviderFailed($why) : new RuntimeException($why);
         }
 
         $prediction = $start->json();
@@ -94,7 +95,7 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
                 ];
             }
             if (in_array($status, ['failed', 'canceled'], true)) {
-                throw new RuntimeException("nano-banana {$status}: " . ($prediction['error'] ?? 'unknown'));
+                throw new \App\Services\Generation\ProviderFailed("nano-banana {$status}: " . ($prediction['error'] ?? 'unknown'));
             }
             sleep(self::POLL_INTERVAL_SEC);
             $get = Http::withToken($apiToken)->timeout(10)

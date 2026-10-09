@@ -109,7 +109,8 @@ class ReplicateI2VAdapter implements I2VAdapter
                     "Original response: {$body}"
                 );
             }
-            throw new RuntimeException("Replicate i2v ({$tier}) failed to start ({$start->status()}): {$body}");
+            $why = "Replicate i2v ({$tier}) failed to start ({$start->status()}): {$body}";
+            throw \App\Services\Generation\ProviderFailed::rejectedAtStart($start->status()) ? new \App\Services\Generation\ProviderFailed($why) : new RuntimeException($why);
         }
 
         $predictionId = $start->json('id');
@@ -151,7 +152,7 @@ class ReplicateI2VAdapter implements I2VAdapter
                 // Users see animation_last_error verbatim, so translate it and
                 // say the part that matters: they were refunded.
                 if (stripos($err, 'flagged as sensitive') !== false || str_contains($err, '(E005)')) {
-                    throw new RuntimeException(
+                    throw new \App\Services\Generation\ProviderFailed(
                         "This model's content filter declined the image — it is strict, especially with realistic people. "
                         ."You were not charged. Try a different model (Veo 3.1 Fast handles the same images), or a different image."
                     );
@@ -159,9 +160,9 @@ class ReplicateI2VAdapter implements I2VAdapter
                 // E005/E006 are provider content moderation dressed up as
                 // 'invalid input' — proven A/B on the restyle lane. Say so.
                 if (str_contains($err, 'E006') || str_contains($err, 'E005')) {
-                    throw new RuntimeException('The video model declined this image — its moderation flags some content (skin, shower or bathroom settings, weapons) even in tasteful ads. Rephrase the shot direction to a more covered framing and retry; nothing was charged.');
+                    throw new \App\Services\Generation\ProviderFailed('The video model declined this image — its moderation flags some content (skin, shower or bathroom settings, weapons) even in tasteful ads. Rephrase the shot direction to a more covered framing and retry; nothing was charged.');
                 }
-                throw new RuntimeException("Replicate i2v {$status}: {$err}");
+                throw new \App\Services\Generation\ProviderFailed("Replicate i2v {$status}: {$err}");
             }
             // else: starting | processing — keep polling
         }

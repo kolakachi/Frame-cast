@@ -65,7 +65,8 @@ class ReplicateFabricAdapter
             ->post("https://api.replicate.com/v1/models/{$model}/predictions", ['input' => $input]);
 
         if (! $start->successful()) {
-            throw new RuntimeException("Lip-sync submit failed ({$start->status()}): ".mb_substr((string) $start->body(), 0, 300));
+            $why = "Lip-sync submit failed ({$start->status()}): ".mb_substr((string) $start->body(), 0, 300);
+            throw \App\Services\Generation\ProviderFailed::rejectedAtStart($start->status()) ? new \App\Services\Generation\ProviderFailed($why) : new RuntimeException($why);
         }
         $id = (string) $start->json('id');
         if ($id === '') {
@@ -101,7 +102,7 @@ class ReplicateFabricAdapter
                 return $url;
             }
             if (in_array($status, ['failed', 'canceled'], true)) {
-                throw new RuntimeException('Fabric '.$status.': '.mb_substr((string) ($check->json('error') ?? ''), 0, 300));
+                throw new \App\Services\Generation\ProviderFailed('Fabric '.$status.': '.mb_substr((string) ($check->json('error') ?? ''), 0, 300));
             }
             // starting / processing -> keep polling
         }

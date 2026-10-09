@@ -19,7 +19,7 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
-class GenerateTTSJob implements ShouldQueue
+class GenerateTTSJob implements ShouldQueue, \App\Services\Developer\RepeatableAfterCharge
 {
     use Queueable;
     use TracksJobFailure;

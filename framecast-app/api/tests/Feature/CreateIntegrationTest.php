@@ -3502,6 +3502,33 @@ class CreateIntegrationTest extends TestCase
         Http::assertSent(fn($r)=>$r->method()==='GET');
     }
 
+    public function test_a_claude_server_error_with_a_request_id_costs_nothing_and_is_waited_out_like_a_busy_model(): void
+    {
+        // 2026-10-10: a 5xx used to hold the run for an operator though Anthropic bills only completed messages.
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $input=json_decode($run->input_json,true);$input['mode']='agent';
+        $input['execution_policy']['agent']=['provider'=>'anthropic','model'=>'claude-opus-5-5','credits'=>75,'cost_limit_microusd'=>300000,'max_calls'=>3];
+        DB::table('composition_runs')->where('id',$run->id)->update(['input_json'=>json_encode($input)]);
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['authorized_credits'=>225,'reserved_credits'=>225]);
+        config(['create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000,'services.anthropic.key'=>'test-key','create.worker_token'=>str_repeat('a',64)]);
+        $call=['prompt'=>'Build it','system'=>'Rules/1','max_tokens'=>1024,'image'=>null];
+        $hash=hash('sha256',json_encode(['prompt'=>$call['prompt'],'system'=>$call['system'],'maxTokens'=>1024,'image'=>null],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
+        Http::fake(['https://api.anthropic.com/*'=>Http::sequence()
+            ->push(['type'=>'error','error'=>['type'=>'api_error','message'=>'Internal server error']],500,['request-id'=>'req_500a'])
+            ->push(['type'=>'error'],502)]);
+        $gateway=app(\App\Services\Create\AnthropicGateway::class);
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',$hash);
+        try { $gateway->complete($run->id,$claim['lease_token'],$a['id'],$call); $this->fail('A server error was not reported.'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(503,$e->getStatusCode()); $this->assertStringContainsString('[vendor:busy]',$e->getMessage()); }
+        $row=DB::table('composition_attempts')->where('id',$a['id'])->first();
+        $this->assertSame(['failed','req_500a',0],[$row->status,$row->prediction_id,(int)$row->charged_credits]);
+        $this->assertNotSame('needs_attention',DB::table('composition_runs')->where('id',$run->id)->value('status'));
+        // Without a request id there is no receipt: that one is still held for review.
+        $b=$attempts->begin($run->id,$claim['lease_token'],'agent-2','agent',$hash);
+        $this->rejected(502,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
+        $this->assertSame('unknown',DB::table('composition_attempts')->where('id',$b['id'])->value('status'));
+    }
+
     public function test_claude_gateway_makes_the_call_reads_usage_and_settles_once(): void
     {
         [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);

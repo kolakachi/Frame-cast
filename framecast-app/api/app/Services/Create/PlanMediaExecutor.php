@@ -859,13 +859,26 @@ class PlanMediaExecutor
             $res = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/predictions', ['version' => $version, 'input' => $input]);
         }
         $p = $res->json();
+        $name = explode('/', $model)[1];
+        // Replicate puts an API error's message in detail (a 402 for credit, 401 for the key, 422 for bad input), a
+        // failed prediction's in error. A refused request (4xx) made nothing: a known failure, never a credit hold.
+        if (! $res->successful()) {
+            $why = 'The '.$name.' model could not start ('.$res->status().'): '.mb_substr((string) ($p['detail'] ?? $p['error'] ?? $res->body()), 0, 160);
+            throw \App\Services\Generation\ProviderFailed::rejectedAtStart($res->status()) ? new \App\Services\Generation\ProviderFailed($why) : new RuntimeException($why);
+        }
         $deadline = time() + $seconds;
         while (in_array($p['status'] ?? '', ['starting', 'processing'], true) && time() < $deadline) {
             sleep(2);
             // Checking on a job only reads it: a network drop is waited out, never a reason to hold the run.
             $p = NetRetry::run(fn () => $http()->get('https://api.replicate.com/v1/predictions/'.($p['id'] ?? '')), true)->json();
         }
-        if (($p['status'] ?? '') !== 'succeeded') throw new RuntimeException('The '.explode('/', $model)[1].' model did not finish: '.(($p['error'] ?? null) ? mb_substr((string) $p['error'], 0, 120) : ($p['status'] ?? 'no response')).'.');
+        // Past the deadline the job is cancelled rather than left running at our cost; once cancelled, its outcome is known.
+        if (in_array($p['status'] ?? '', ['starting', 'processing'], true) && ($p['id'] ?? '') !== '') {
+            $c = $http()->post('https://api.replicate.com/v1/predictions/'.$p['id'].'/cancel')->json();
+            if (is_array($c) && isset($c['status'])) $p = $c;
+        }
+        if (in_array($p['status'] ?? '', ['failed', 'canceled'], true)) throw new \App\Services\Generation\ProviderFailed('The '.$name.' model did not finish: '.mb_substr((string) ($p['error'] ?? $p['status']), 0, 160).'.');
+        if (($p['status'] ?? '') !== 'succeeded') throw new RuntimeException('The '.$name.' model did not finish: '.(($p['error'] ?? null) ? mb_substr((string) $p['error'], 0, 120) : ($p['status'] ?? 'no response')).'.');
         $out = is_array($p['output'] ?? null) ? ($p['output'][0] ?? null) : ($p['output'] ?? null);
         if (! is_string($out) || ! str_starts_with($out, 'https://')) throw new RuntimeException('The model returned no file.');
         return $out;

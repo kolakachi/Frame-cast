@@ -118,7 +118,8 @@ class GeminiTTSAdapter implements TTSAdapter
                 ->post($url, $body);
 
             if (! $start->successful()) {
-                throw new RuntimeException("gemini-tts failed to start ({$start->status()}): {$start->body()}");
+                $why = "gemini-tts failed to start ({$start->status()}): {$start->body()}";
+                throw \App\Services\Generation\ProviderFailed::rejectedAtStart($start->status()) ? new \App\Services\Generation\ProviderFailed($why) : new RuntimeException($why);
             }
 
             $prediction = $start->json();
@@ -133,7 +134,7 @@ class GeminiTTSAdapter implements TTSAdapter
                     break;
                 }
                 if (in_array($status, ['failed', 'canceled'], true)) {
-                    throw new RuntimeException("gemini-tts {$status}: ".($prediction['error'] ?? 'unknown'));
+                    throw new \App\Services\Generation\ProviderFailed("gemini-tts {$status}: ".($prediction['error'] ?? 'unknown'));
                 }
                 sleep(self::POLL_INTERVAL_SEC);
                 if (! $id) {
@@ -198,7 +199,8 @@ class GeminiTTSAdapter implements TTSAdapter
                 'error_code' => 'gemini_tts_error',
                 'error_message' => $exception->getMessage(),
             ]);
-            throw new RuntimeException('Gemini voice generation failed: '.$exception->getMessage(), previous: $exception);
+            $why = 'Gemini voice generation failed: '.$exception->getMessage();
+            throw $exception instanceof \App\Services\Generation\ProviderFailed ? new \App\Services\Generation\ProviderFailed($why, 0, $exception) : new RuntimeException($why, previous: $exception);
         }
 
         $this->usage->record([
