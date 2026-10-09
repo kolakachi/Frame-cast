@@ -881,7 +881,8 @@ class PlanService
             ->take(14)
             // A talking shot or take is made from the poses and the narration, so it is always bought after them;
             // generated shots and takes are made from the approved sheet, so after it.
-            ->sortBy(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0, SORT_NUMERIC, false)->values()->all();
+            // A video cutout cuts the take or shot bought before it, so it comes after all of them.
+            ->sortBy(fn ($m) => $m['kind'] === 'cutout_video' ? 2 : (in_array($m['kind'], ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0), SORT_NUMERIC, false)->values()->all();
         // A re-plan keeps the people already made: the previous cast sheet is carried over word for word, so it is reused
         // and nobody new is drawn (GTM-1 #7: a change about the phone view re-described the sheet and made a new person).
         // Only a message asking for a different person or look of the cast lets the planner's new sheet through.

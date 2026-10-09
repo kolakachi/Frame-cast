@@ -123,16 +123,17 @@ class BrandFromSite
         }
     }
 
-    /** The site's own icon or logo (a raster image it declares), saved as the brand logo; null when none is usable. */
+    /** The site's own icon or logo (PNG, JPEG, WebP, or SVG drawn to a PNG), saved as the brand logo; null when none is usable. */
     private function logo(User $user, string $url, string $html, string $name): ?Asset
     {
         $found = [];
         foreach ([
             '/<link[^>]+rel=["\'][^"\']*apple-touch-icon[^"\']*["\'][^>]*href=["\']([^"\']+)["\']/i',
             '/<link[^>]+href=["\']([^"\']+)["\'][^>]*rel=["\'][^"\']*apple-touch-icon[^"\']*["\']/i',
-            '/<img[^>]+(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\'][^>]*src=["\']([^"\']+\.(?:png|jpe?g|webp)(?:\?[^"\']*)?)["\']/i',
-            '/<img[^>]+src=["\']([^"\']+\.(?:png|jpe?g|webp)(?:\?[^"\']*)?)["\'][^>]*(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\']/i',
-            '/<link[^>]+rel=["\'][^"\']*icon[^"\']*["\'][^>]*href=["\']([^"\']+\.png(?:\?[^"\']*)?)["\']/i',
+            '/<img[^>]+(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\'][^>]*src=["\']([^"\']+\.(?:png|jpe?g|webp|svg)(?:\?[^"\']*)?)["\']/i',
+            '/<img[^>]+src=["\']([^"\']+\.(?:png|jpe?g|webp|svg)(?:\?[^"\']*)?)["\'][^>]*(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\']/i',
+            '/<link[^>]+rel=["\'][^"\']*icon[^"\']*["\'][^>]*href=["\']([^"\']+\.(?:png|svg)(?:\?[^"\']*)?)["\']/i',
+            '/<link[^>]+href=["\']([^"\']+\.(?:png|svg)(?:\?[^"\']*)?)["\'][^>]*rel=["\'][^"\']*icon[^"\']*["\']/i',
         ] as $re) if (preg_match($re, $html, $m)) $found[] = html_entity_decode($m[1]);
         foreach (array_unique($found) as $src) {
             try {
@@ -140,10 +141,16 @@ class BrandFromSite
                 $abs = PageReferenceService::publicUrl(preg_replace('#^http://#i', 'https://', $abs));
                 $r = Http::timeout(10)->withOptions(['allow_redirects' => ['max' => 2]])->get($abs);
                 $bytes = (string) $r->body();
-                if (! $r->successful() || strlen($bytes) < 400 || strlen($bytes) > 2_000_000) continue;
+                if (! $r->successful() || strlen($bytes) < 60 || strlen($bytes) > 2_000_000) continue;
                 $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
+                // An SVG logo is drawn to a 512 px PNG (many brands only ship SVG).
+                if (in_array($mime, ['image/svg+xml', 'text/xml', 'application/xml', 'text/plain'], true) && preg_match('/<svg[\s>]/i', substr($bytes, 0, 4096))) {
+                    $bytes = $this->drawSvg($bytes);
+                    if ($bytes === null) continue;
+                    $mime = 'image/png';
+                }
                 $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'][$mime] ?? null;
-                if (! $ext) continue;
+                if (! $ext || strlen($bytes) < 400) continue;
                 $size = @getimagesizefromstring($bytes);
                 if ($size && min($size[0], $size[1]) < 48) continue;
                 $path = 'workspace-assets/'.$user->workspace_id.'/'.Str::uuid().'.'.$ext;
@@ -155,6 +162,25 @@ class BrandFromSite
             } catch (\Throwable) { continue; }
         }
         return null;
+    }
+
+    /**
+     * An SVG drawn to a 512 px PNG on a transparent ground by headless Chromium, as an <img> (an SVG shown as an image
+     * runs no script and loads nothing). Null when it cannot be drawn.
+     */
+    private function drawSvg(string $svg): ?string
+    {
+        $dir = sys_get_temp_dir().'/logo-'.Str::uuid();
+        @mkdir($dir, 0700);
+        try {
+            file_put_contents($dir.'/logo.svg', $svg);
+            file_put_contents($dir.'/page.html', '<!doctype html><html><head><style>html,body{margin:0;background:transparent}body{width:512px;height:512px;display:grid;place-items:center}img{max-width:480px;max-height:480px;width:480px;height:480px;object-fit:contain}</style></head><body><img src="logo.svg"></body></html>');
+            $png = $dir.'/logo.png';
+            $r = \Illuminate\Support\Facades\Process::timeout(40)->run([(string) config('create.chromium_path', 'chromium'), '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
+                '--disable-extensions', '--no-first-run', '--default-background-color=00000000', '--window-size=512,512', '--screenshot='.$png, 'file://'.$dir.'/page.html']);
+            return $r->successful() && is_file($png) && filesize($png) > 400 ? (string) file_get_contents($png) : null;
+        } catch (\Throwable) { return null; }
+        finally { foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir); }
     }
 
     private static function titleName(string $html): string

@@ -81,6 +81,28 @@ class OnboardingTest extends TestCase
         catch (HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
     }
 
+    public function test_an_svg_only_logo_is_drawn_to_a_png(): void
+    {
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAKElEQVR4nO3BAQ0AAADCoPdPbQ8HFAAAAAAAAAAAAAAAAAAAAAAA8GaAQAAB8qNG2AAAAABJRU5ErkJggg==').str_repeat("\0", 600);
+        $this->app->instance(\App\Services\Generation\UrlContentExtractor::class, new class extends \App\Services\Generation\UrlContentExtractor {
+            public function extract(string $url): string { return 'Acme tools'; }
+        });
+        // The browser draws the SVG: the fake writes the PNG where the screenshot goes (the page screenshot fails).
+        Process::fake(function ($p) use ($png) {
+            foreach ($p->command as $arg) if (str_starts_with($arg, '--screenshot=') && str_contains(end($p->command), 'page.html')) { file_put_contents(substr($arg, 13), $png); return Process::result(''); }
+            return Process::result('', 'no browser', 1);
+        });
+        config(['services.anthropic.key' => '']);
+        Http::fake([
+            'https://acme.example/favicon.svg' => Http::response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#f60"/></svg>', 200, ['Content-Type' => 'image/svg+xml']),
+            'https://acme.example/*' => Http::response('<html><head><title>Acme</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head></html>'),
+        ]);
+        $r = app(BrandFromSite::class)->read($this->owner, 'acme.example');
+        $this->assertNotNull($r['logo_url']);
+        $logo = DB::table('assets')->where('id', DB::table('brand_kits')->where('workspace_id', $this->workspace->id)->value('logo_asset_id'))->first();
+        $this->assertSame('image/png', $logo->mime_type);
+    }
+
     public function test_finishing_keeps_the_answers_marks_onboarded_and_returns_the_first_brief(): void
     {
         $this->fakeSite();

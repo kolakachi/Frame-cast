@@ -97,6 +97,12 @@ class CreateIntegrationTest extends TestCase
         $p = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'mascot3d' => ['spec' => ['hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange']],
             ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']], (int) $this->workspace->id);
         $this->assertSame(['spec' => ['seed' => 7, 'hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange'], $p['mascot3d']);
+        // A video cutout cuts the take bought before it, so it is bought after every take, however the planner lists it.
+        $cut = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'media' => [['kind' => 'reference_sheet', 'description' => 'Presenter sheet'],
+            ['kind' => 'cutout_video', 'description' => 'The take: cut her out'], ['kind' => 'ugc_take', 'description' => 'The presenter speaks the script'], ['kind' => 'voiceover', 'description' => 'Narration']]],
+            ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']], (int) $this->workspace->id);
+        $this->assertSame('cutout_video', collect($cut['media'])->last()['kind']);
+        $this->assertGreaterThan(collect($cut['media'])->search(fn ($m) => $m['kind'] === 'ugc_take'), collect($cut['media'])->search(fn ($m) => $m['kind'] === 'cutout_video'));
         // Its turnaround is the approval, so a character image is never bought for it; 3D objects are modelled, not bought.
         $q = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '',
             'look_first' => true, 'mascot3d' => ['spec' => ['head' => ['shape' => 'sphere'], 'hair' => ['style' => 'none'], 'finish' => 'dither'], 'why' => 'From the avatar', 'missing' => 'round ears and fur'],
