@@ -90,9 +90,13 @@ final class CreditHolds
     public static function releaseForProject(int $projectId, int $workspaceId): int
     {
         $released = 0;
+        // A video request records its project in project_id; a UGC request, one per take, in payload_json.project_ids.
+        // The workspace's open requests are few, so they are matched here rather than with a JSON query.
         $ops = DB::table('api_operations')->join('api_quotes', 'api_quotes.id', '=', 'api_operations.quote_id')
-            ->where('api_quotes.project_id', $projectId)->where('api_operations.workspace_id', $workspaceId)
-            ->whereIn('api_operations.status', ['running', 'needs_attention'])->get(['api_operations.id', 'api_operations.reserved_credits']);
+            ->where('api_operations.workspace_id', $workspaceId)->whereIn('api_operations.status', ['running', 'needs_attention'])
+            ->get(['api_operations.id', 'api_operations.reserved_credits', 'api_quotes.project_id', 'api_quotes.payload_json'])
+            ->filter(fn ($op) => (int) $op->project_id === $projectId
+                || in_array($projectId, array_map('intval', (array) (json_decode((string) $op->payload_json, true)['project_ids'] ?? [])), true));
         foreach ($ops as $op) {
             if (OperationAccounting::cancel($op->id, $workspaceId)) $released += (int) $op->reserved_credits;
         }

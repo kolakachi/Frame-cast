@@ -1576,6 +1576,12 @@ class DeveloperApiTest extends TestCase
         $this->assertSame(44, \App\Services\Developer\CreditHolds::releaseForProject(4242, $ws->id));
         $this->assertSame(['cancelled', 0, 6], [DB::table('api_operations')->where('id', $id)->value('status'), (int) DB::table('api_operations')->where('id', $id)->value('reserved_credits'), (int) DB::table('api_operations')->where('id', $id)->value('spent_credits')]);
         $this->assertSame(0, \App\Services\Developer\CreditHolds::releaseForProject(4242, $ws->id + 1), 'another workspace releases nothing');
+        // A UGC request lists its takes' projects in the quote's payload.
+        $ugc = $this->operationQuote($ws, 30);
+        $ugcOp = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($ugc, $key->id));
+        DB::table('api_quotes')->where('id', $ugc->id)->update(['payload_json' => json_encode(['__kind' => 'ugc', 'project_ids' => [278, 279]])]);
+        $this->assertSame(30, \App\Services\Developer\CreditHolds::releaseForProject(279, $ws->id));
+        $this->assertSame('cancelled', DB::table('api_operations')->where('id', $ugcOp)->value('status'));
     }
 
     public function test_media_upload_validates_bytes_and_is_workspace_scoped(): void

@@ -153,7 +153,7 @@ class WeaveController extends DeveloperController
         // The latest build's credits: spent, still held, and when a hold under review comes back at the latest.
         $op = $run?->operation_id ? DB::table('api_operations')->where('id', $run->operation_id)->first() : null;
         if ($op) $base['credits'] = ['spent' => (int) $op->spent_credits, 'held' => (int) $op->reserved_credits, 'hold' => \App\Services\Developer\CreditHolds::state($op),
-            'released_by' => \App\Services\Developer\CreditHolds::state($op) === 'released' ? null : \Illuminate\Support\Carbon::parse($op->created_at)->addHours(\App\Services\Developer\CreditHolds::REVIEW_HOURS)->toIso8601String()];
+            'released_by' => \App\Services\Developer\CreditHolds::state($op) === 'under_review' ? \Illuminate\Support\Carbon::parse($op->created_at)->addHours(\App\Services\Developer\CreditHolds::REVIEW_HOURS)->toIso8601String() : null];
         $video = $revision ? ['version' => (int) $revision->number, 'summary' => $revision->summary,
             'preview_url' => $revision->artifact_path ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', now()->addMinutes(45), ['revisionId' => $revision->id]) : null] : null;
 

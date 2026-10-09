@@ -46,7 +46,7 @@ class OperationStatus
                 'spent' => (int) $op->spent_credits, 'reserved' => (int) $op->reserved_credits,
                 // held, under_review or released; a review gives back what is left by released_by at the latest.
                 'hold' => CreditHolds::state($op),
-                'released_by' => CreditHolds::state($op) === 'released' ? null : \Illuminate\Support\Carbon::parse($op->created_at)->addHours(CreditHolds::REVIEW_HOURS)->toIso8601String()] : null,
+                'released_by' => CreditHolds::state($op) === 'under_review' ? \Illuminate\Support\Carbon::parse($op->created_at)->addHours(CreditHolds::REVIEW_HOURS)->toIso8601String() : null] : null,
             'jobs_pending' => $op ? DB::table('api_operation_jobs')->where('operation_id', $op->id)->whereIn('status', ['pending', 'running', 'released'])->count() : null,
             'retry_after_seconds' => $state === 'running' ? 15 : null,
             'next' => match ($state) {
