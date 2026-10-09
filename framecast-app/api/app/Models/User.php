@@ -30,6 +30,9 @@ class User extends Authenticatable
     public const ROLE_CLIENT_EDITOR = 'client_editor';
     public const ROLE_CLIENT_ADMIN = 'client_admin';
 
+    /** An agency's team member: makes videos with the agency's credits, up to a monthly allowance (phase 3). */
+    public const ROLE_COLLABORATOR = 'collaborator';
+
     public const CLIENT_SEATS = [
         self::ROLE_CLIENT_VIEWER => 0,
         self::ROLE_CLIENT_EDITOR => 1,
@@ -49,6 +52,7 @@ class User extends Authenticatable
         'onboarding_last_sent_at',
         'last_seen_at',
         'changelog_seen_at',
+        'monthly_credit_allowance',
     ];
 
     /**

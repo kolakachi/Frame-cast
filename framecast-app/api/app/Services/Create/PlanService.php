@@ -260,6 +260,8 @@ class PlanService
         $planningCredits = array_sum($parts);
         // The settings this plan was made for: changing one of them in Details makes the plan out of date.
         $plan['settings_basis'] = self::settingsBasis(json_decode((string) $c->settings_json, true) ?: []);
+        // C1 and C7 (owner, 2026-10-09): the first plan says what it was made for and asks to keep it, with no extra buttons.
+        $plan['checks'] = $task === 'edit' ? [] : self::firstPlanChecks($c, $plan);
         $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'parts' => $parts, 'charge' => CostEstimate::planningCharge($planningCredits), 'charged' => 0, 'waived' => false];
         if ($plan['planning_charge']['charge'] > 0) $activity->item('Planning · '.$plan['planning_charge']['charge'].' credits (half price)');
         $plan['activity'] = $activity->finish();
@@ -752,6 +754,27 @@ class PlanService
         ];
     }
 
+    /**
+     * The first plan's two questions, asked in words rather than buttons: the length, screen and voice it was made
+     * for, kept or changed by a reply or in Details; and, while the workspace has no saved pronunciations, whether a
+     * name should be said a certain way (a reply in the "X is pronounced …" form is saved for every voice).
+     *
+     * @return list<string>
+     */
+    public static function firstPlanChecks(object $c, array $plan): array
+    {
+        $s = json_decode((string) $c->settings_json, true) ?: [];
+        if (($s['output_kind'] ?? 'video') !== 'video' || DB::table('create_plans')->where('conversation_id', $c->id)->exists()) return [];
+        $screen = ['9:16' => '9:16 for Reels, TikTok and Shorts', '16:9' => '16:9 for YouTube and the web', '1:1' => '1:1 for the feed', '4:5' => '4:5 for the Instagram feed'][$s['aspect_ratio'] ?? '9:16'] ?? (string) ($s['aspect_ratio'] ?? '9:16');
+        $voice = is_string($plan['voice'] ?? null) && $plan['voice'] !== '' ? ($plan['voice'] === 'clone' ? 'your cloned voice' : 'the '.$plan['voice'].' voice') : null;
+        $checks = ['Made for '.(int) ($s['duration_seconds'] ?? 15).' seconds, '.$screen.($voice ? ', in '.$voice : ', with no voiceover').'. Happy with that? Approve the plan to keep it, or tell me what to change (or change it in Details).'];
+        if ($voice && \Illuminate\Support\Facades\Schema::hasTable('create_pronunciations') && ! DB::table('create_pronunciations')->where('workspace_id', $c->workspace_id)->exists()) {
+            $name = trim((string) DB::table('brand_kits')->where('workspace_id', $c->workspace_id)->orderBy('id')->value('name')) ?: 'YourBrand';
+            $checks[] = 'Should any name be said a certain way? Reply like: '.$name.' is pronounced "…", and every voice will say it that way.';
+        }
+        return $checks;
+    }
+
     /** "Start at wyvstudio.com" becomes "Start at WyvStudio" when WyvStudio has a saved pronunciation. */
     public static function addressAsName(mixed $line, int $workspaceId): mixed
     {
@@ -904,6 +927,8 @@ class PlanService
         }, $scenes);
         $voiceKeys = array_column($ctx['voices'] ?? [], 'key');
         $voice = in_array($raw['voice'] ?? null, $voiceKeys, true) ? $raw['voice'] : \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE;
+        // A voice the user chose before planning wins over the planner's pick, when it is one this workspace can use.
+        if (in_array($ctx['settings']['voice'] ?? null, $voiceKeys, true)) $voice = $ctx['settings']['voice'];
         // A timing correction must not rewrite or silently truncate the approved script/voice.
         if (($intent['edit_scope'] ?? '') === 'timing_only') {
             $narration = $silent ? [] : ($ctx['previous_plan']['approved_narration'] ?? $narration);
@@ -975,7 +1000,7 @@ class PlanService
             // What the planner assumed rather than knew, shown on the plan card so the user can correct it.
             'assumptions' => array_values(array_slice(array_merge($wholeTake ? ['The talking take is re-made whole, in one voice: its speech is part of the clip'] : [], array_filter(array_map(fn ($a) => is_string($a) ? $str($a, 120) : '', (array) ($raw['assumptions'] ?? [])))), 0, 4)), 'style' => $style, 'signature_move' => $str($raw['signature_move'] ?? '', 160),
             // From scratch: the concept (with the two directions not taken), the format playbook and the motion voice.
-            ...FormatPlaybooks::normalize($raw, ! collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'reference')),
+            ...FormatPlaybooks::normalize($raw, ! collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'reference'), $ctx['settings']['format'] ?? null),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
             'requirements' => $requirements, 'character_style' => $characterStyle,
             // The user reviews the plan, then the video is built straight away. A separate look stage only when

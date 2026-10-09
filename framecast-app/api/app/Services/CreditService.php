@@ -791,8 +791,10 @@ class CreditService
         $spentBy = $workspaceId;
         $workspaceId = $this->poolId($workspaceId);
 
-        $capped = false;
-        $charged = DB::transaction(function () use (&$workspaceId, $spentBy, $amount, $operation, $context, &$capped): bool {
+        $capped = false; $allowanceHit = false;
+        // The person behind the spend: named by the caller, else the request or job's signed-in person.
+        $person = isset($context['user_id']) ? (int) $context['user_id'] : \App\Services\Agency\Allowance::spenderId();
+        $charged = DB::transaction(function () use (&$workspaceId, $spentBy, $amount, $operation, $context, &$capped, &$allowanceHit, $person): bool {
             $spender = Workspace::find($spentBy);
             if (! $spender) {
                 return false;
@@ -813,6 +815,14 @@ class CreditService
             // slip past a ceiling neither was under.
             if ($this->wouldBreachCap($spentBy, $workspaceId, $amount)) {
                 $capped = true;
+
+                return false;
+            }
+
+            // A collaborator's own charges stop at their allowance. Work approved under an operation was checked
+            // against it when approved (its whole quote reserved), so its parts are never refused halfway.
+            if ($person && ! \App\Services\Developer\OperationAccounting::current() && \App\Services\Agency\Allowance::wouldExceed($person, $amount, true)) {
+                $allowanceHit = true;
 
                 return false;
             }
@@ -842,7 +852,7 @@ class CreditService
                 // Indexed, unlike the metadata copy below, because a per-client
                 // ceiling has to be summed before every charge.
                 'spent_by_workspace_id' => $spentBy !== $workspaceId ? $spentBy : null,
-                'user_id' => isset($context['user_id']) ? (int) $context['user_id'] : null,
+                'user_id' => $person,
                 'project_id' => isset($context['project_id']) ? (int) $context['project_id'] : null,
                 'scene_id' => isset($context['scene_id']) ? (int) $context['scene_id'] : null,
                 'operation' => mb_substr($operation !== '' ? $operation : 'unknown', 0, 64),
@@ -866,6 +876,12 @@ class CreditService
             // Some older handlers ignore deduct()'s false return. An accounted
             // action must never continue/report success after a refused charge.
             throw new \App\Services\Developer\OperationBudgetExceeded;
+        }
+
+        if ($allowanceHit) {
+            Log::info('CreditService: refused by a collaborator allowance', ['user_id' => $person, 'amount' => $amount, 'operation' => $operation]);
+
+            return false;
         }
 
         if ($capped) {
@@ -968,6 +984,8 @@ class CreditService
         rescue(function () use ($workspaceId, $amount, $operation) {
             CreditLedgerEntry::query()->create([
                 'workspace_id'  => $workspaceId,
+                // Back to the person it was spent for, so their month's total nets it off.
+                'user_id'       => \App\Services\Agency\Allowance::spenderId(),
                 'operation'     => mb_substr('refund:'.($operation !== '' ? $operation : 'unspecified'), 0, 64),
                 'credits'       => -$amount, // negative = credit going back INTO the workspace
                 'balance_after' => $this->balance($workspaceId),

@@ -75,14 +75,22 @@ class StorageService
      * Return a public HTTP URL for the given storage URL.
      * For legacy b2:// entries: checks MinIO first, falls back to B2 public URL.
      */
+    /**
+     * The signed link to a private Create file, for an asset already in hand. The same link for five minutes at a
+     * time, so a page that refreshes every few seconds keeps its cached image instead of downloading it again under a
+     * new signature. Every link is valid for 5 to 10 minutes.
+     */
+    public function createPrivateUrl(int $assetId): string
+    {
+        $expires = \Illuminate\Support\Carbon::createFromTimestamp((intdiv(now()->timestamp, 300) + 2) * 300);
+        return \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content',$expires,['assetId'=>$assetId]);
+    }
+
     public function url(string $storageUrl): string
     {
         if ($this->isCreatePrivate($storageUrl)) {
             $asset = \App\Models\Asset::where('storage_url',$storageUrl)->where('status','!=','archived')->firstOrFail();
-            // The same link for five minutes at a time, so a page that refreshes every few seconds keeps its cached
-            // image instead of downloading it again under a new signature. Every link is valid for 5 to 10 minutes.
-            $expires = \Illuminate\Support\Carbon::createFromTimestamp((intdiv(now()->timestamp, 300) + 2) * 300);
-            return \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content',$expires,['assetId'=>$asset->id]);
+            return $this->createPrivateUrl((int) $asset->id);
         }
         $path = $this->extractPath($storageUrl);
 

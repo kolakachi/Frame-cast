@@ -204,7 +204,8 @@ async function archiveChannel() {
   archiveError.value = ''
   try {
     await api.delete(`/channels/${channelId.value}`)
-    router.push({ name: 'channels' })
+    // Channels live in Settings (2026-10-09): back to its Channels tab.
+    router.push({ name: 'settings', query: { section: 'channels' } })
   } catch (err) {
     archiveError.value = err?.response?.data?.error?.message || 'Could not archive channel.'
     archivePending.value = false
@@ -245,10 +246,10 @@ onMounted(loadData)
       <!-- Topbar -->
       <div class="topbar">
         <div class="topbar-left">
-          <button class="back-btn" type="button" @click="router.push({ name: 'channels' })">
+          <button class="back-btn" type="button" aria-label="Back to Settings" @click="router.push({ name: 'settings', query: { section: 'channels' } })">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"></path></svg>
           </button>
-          <span class="bc-ws" @click="router.push({ name: 'channels' })">Channels</span>
+          <span class="bc-ws" @click="router.push({ name: 'settings', query: { section: 'channels' } })">Settings · Channels</span>
           <span class="bc-sep">/</span>
           <span class="bc-page">{{ channel?.name || '…' }}</span>
         </div>

@@ -201,7 +201,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
     <AppSidebar :user="authStore.user" active-page="clients" />
     <div class="main">
       <div class="topbar">
-        <button class="back" @click="router.push({ name: 'clients' })">‹ Clients</button>
+        <button class="back" @click="router.push('/agency/clients')">‹ Clients</button>
         <h1 class="page-title">{{ client?.client_label || client?.name || "Client" }}</h1>
         <span v-if="client" :class="['mode', client.funding_mode === 'funded' ? 'funded' : '']">
           {{ client.funding_mode === "funded" ? "Funded" : "Pooled" }}

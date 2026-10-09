@@ -224,11 +224,12 @@ class ApprovalController extends Controller
             WorkspaceNotification::query()->create([
                 'workspace_id' => $approval->workspace_id,
                 'user_id'      => $approval->requested_by_user_id,
-                'title'        => $validated['decision'] === 'approved' ? 'Post approved' : 'Post rejected',
+                // "Ask for changes" is the rejected decision with a note (phase 3): it reads as changes asked.
+                'title'        => $validated['decision'] === 'approved' ? 'Video approved' : 'Changes asked',
                 'message'      => sprintf(
                     '%s %s your video "%s".%s',
                     $approval->reviewer_name ?? $approval->reviewer_email,
-                    $validated['decision'] === 'approved' ? 'approved' : 'rejected',
+                    $validated['decision'] === 'approved' ? 'approved' : 'asked for changes to',
                     $approval->project?->title ?? 'Project',
                     isset($validated['comment']) && $validated['comment'] !== '' ? ' Note: '.$validated['comment'] : '',
                 ),

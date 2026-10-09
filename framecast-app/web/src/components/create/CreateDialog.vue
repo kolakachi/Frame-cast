@@ -23,7 +23,7 @@ onMounted(() => {query = matchMedia('(min-width: 1280px)');wide.value = query.ma
 onBeforeUnmount(() => {ticket++;query?.removeEventListener('change',resize);dialog.value?.close()})
 </script>
 <template>
-  <dialog ref="dialog" :class="{ drawer, docked }" :aria-label="title" :aria-modal="docked && wide ? undefined : true" @cancel.prevent="emit('close')" @keydown.esc.stop.prevent="emit('close')" @click="e => { if (e.target === dialog) emit('close') }">
+  <dialog ref="dialog" :class="{ drawer, docked }" :aria-label="title" :aria-modal="docked && wide ? undefined : true" @cancel="e => { if (e.target !== dialog) return; e.preventDefault(); emit('close') }" @keydown.esc.stop.prevent="emit('close')" @click="e => { if (e.target === dialog) emit('close') }">
     <header><h2>{{ title }}</h2><button type="button" :aria-label="`Close ${title}`" @click="emit('close')">×</button></header>
     <div v-if="open" class="dialog-body"><slot /></div>
   </dialog>

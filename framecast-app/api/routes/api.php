@@ -119,6 +119,14 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\Guar
     Route::get('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'exports'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/retry-quotes', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retryQuote'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/retry', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retry'])->whereNumber('videoId');
+    // Weave (Create) for assistants (L3, 2026-10-09): start, status, reply, price, approve, share, list.
+    Route::get('/weave/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'index']);
+    Route::post('/weave/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'store']);
+    Route::get('/weave/videos/{id}', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'show'])->whereUuid('id');
+    Route::post('/weave/videos/{id}/messages', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'message'])->whereUuid('id');
+    Route::post('/weave/videos/{id}/quotes', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'quote'])->whereUuid('id');
+    Route::post('/weave/videos/{id}/runs', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'run'])->whereUuid('id');
+    Route::post('/weave/videos/{id}/share', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'share'])->whereUuid('id');
     Route::get('/assistant/tools', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'tools']);
     Route::post('/videos/{videoId}/assistant/plans', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'plan'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/assistant/plans/{planId}/apply', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'apply'])->whereNumber('videoId');
@@ -244,12 +252,17 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/styles/{styleId}', [$controller, 'updateStyle'])->whereUuid('styleId');
             Route::delete('/styles/{styleId}', [$controller, 'deleteStyle'])->whereUuid('styleId');
             Route::post('/conversations', [$controller, 'store']);
+            // Script Writer for the dashboard's card modal (2026-10-09): one draft, free, 20 a day per workspace.
+            Route::post('/script-writer', [$controller, 'scriptWriter']);
             Route::get('/conversations/{id}', [$controller, 'show']);
             Route::patch('/conversations/{id}', [$controller, 'update']);
             Route::post('/conversations/{id}/messages', [$controller, 'message']);
             Route::post('/conversations/{id}/uploads', [$controller, 'upload']);
             Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
             Route::post('/conversations/{id}/references', [$controller, 'reference']);
+            // C2: our example videos on the empty screen; "Make one like this" attaches one as the style reference.
+            Route::get('/samples', [$controller, 'samples']);
+            Route::post('/conversations/{id}/samples', [$controller, 'useSample']);
             Route::delete('/conversations/{id}/attachments/{assetId}', [$controller, 'detach'])->whereNumber('assetId');
             Route::post('/conversations/{id}/plans', [$controller, 'plan']);
             Route::get('/conversations/{id}/plan-activity', [$controller, 'planActivity']);
@@ -273,6 +286,12 @@ Route::prefix('v1')->group(function (): void {
 
         // Client workspaces. An agency works for several clients, each kept
         // apart, all spending the agency's one pool of credits.
+        // An agency's team: collaborators with a monthly allowance and the clients they may work in (phase 3).
+        Route::get('/team', [\App\Http\Controllers\Api\V1\Workspace\TeamController::class, 'index']);
+        Route::post('/team', [\App\Http\Controllers\Api\V1\Workspace\TeamController::class, 'store']);
+        Route::patch('/team/{userId}', [\App\Http\Controllers\Api\V1\Workspace\TeamController::class, 'update'])->whereNumber('userId');
+        Route::post('/team/{userId}/invite', [\App\Http\Controllers\Api\V1\Workspace\TeamController::class, 'resend'])->whereNumber('userId');
+        Route::delete('/team/{userId}', [\App\Http\Controllers\Api\V1\Workspace\TeamController::class, 'destroy'])->whereNumber('userId');
         Route::get('/workspaces/clients', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'index']);
         Route::post('/workspaces/clients', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'store']);
         Route::patch('/workspaces/clients/{id}', [\App\Http\Controllers\Api\V1\Workspace\ClientWorkspaceController::class, 'update'])->whereNumber('id');
@@ -598,6 +617,13 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/projects/{projectId}/restyle-all', \App\Http\Controllers\Api\V1\Project\BulkVisualController::class)->whereNumber('projectId');
         // Re-record every scene's voiceover. Costed preview unless confirm=true.
         Route::post('/projects/{projectId}/rerecord-all', \App\Http\Controllers\Api\V1\Project\BulkVoiceController::class)->whereNumber('projectId');
+
+        // The dashboard's setup steps (2026-10-08).
+        Route::get('/dashboard/setup', [\App\Http\Controllers\Api\V1\DashboardController::class, 'setup']);
+        Route::get('/dashboard/recent', [\App\Http\Controllers\Api\V1\DashboardController::class, 'recent']);
+        Route::get('/dashboard/ideas', [\App\Http\Controllers\Api\V1\DashboardController::class, 'ideas']);
+        Route::get('/dashboard/agency', [\App\Http\Controllers\Api\V1\DashboardController::class, 'agency']);
+        Route::get('/client-home', [\App\Http\Controllers\Api\V1\Workspace\ClientHomeController::class, 'show']);
 
         Route::prefix('/projects')->group(function (): void {
             Route::get('/', [ProjectController::class, 'index']);

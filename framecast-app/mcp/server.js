@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.8.2'
+const VERSION = process.env.MCP_VERSION || '1.9.0'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -757,6 +757,99 @@ function buildServer(token) {
         description: `Finished video (${v.aspect_ratio}, ${v.duration_seconds ?? '?'}s). Link expires ${v.download_expires_at}.`,
       }])
     },
+  )
+
+  // ── Weave (Create): describe a video, see the plan, approve the price, get it made (L3, 2026-10-09) ──────────
+  // The same steps as the app's Weave: a brief starts planning, the plan comes back to show the user, the price is
+  // always shown and approved by the user before anything is made, and changes re-plan. Planning itself costs a few
+  // credits; making the video costs the approved quote at most.
+  const WEAVE_FORMATS = ['offer_ad', 'launch_promo', 'testimonial', 'explainer', 'listicle', 'product_demo', 'ugc_ad', 'before_after', 'tutorial', 'brand_story']
+  const WEAVE_STYLES = ['data-story', 'editorial-frame', 'kinetic-type', 'launch-reel', 'mascot-explainer', 'product-ui']
+  const weaveId = z.string().uuid().describe('The Weave video id from weave_start or weave_list.')
+
+  server.registerTool(
+    'weave_start',
+    {
+      title: 'Start a Weave video',
+      description: "Describe a short branded video and WyvStudio's Weave plans it: concept, scenes, script and voice, in the workspace's brand. Planning starts at once and costs a few credits; nothing else is charged until the user approves a price with weave_approve. Write the brief in the user's words, with the product, offer, audience and any exact lines. Then poll weave_status (planning takes a minute or two). Files: upload with upload_asset and pass their ids. A TikTok, Reel, YouTube or X link in reference_url makes the video in that clip's style; a product page link gives facts and look.",
+      inputSchema: z.object({
+        brief: z.string().min(3).max(10000).describe("What the video is, in the user's words."),
+        format: z.enum(WEAVE_FORMATS).optional().describe('The kind of video, when the user chose one: offer_ad (product ad), launch_promo (launch teaser), testimonial (spoken to camera), explainer, listicle (tips), product_demo, ugc_ad, before_after, tutorial, brand_story. Leave out to let Weave choose.'),
+        aspect_ratio: z.enum(['9:16', '16:9', '1:1', '4:5']).optional().describe('9:16 for Reels, TikTok and Shorts (the default).'),
+        duration_seconds: z.number().int().min(5).max(30).optional().describe('Length in seconds; 15 by default.'),
+        voice: z.string().max(40).optional().describe('A narration voice name (for example Kore, Puck, Charon, Erinome) or "clone" for the workspace\'s own cloned voice. Leave out to let Weave choose.'),
+        style_pack: z.enum(WEAVE_STYLES).optional().describe('A WyvStudio look to follow. Leave out to let Weave choose from the brand.'),
+        effort: z.enum(['quick', 'standard', 'thorough']).optional().describe('How much care goes into the build; standard by default.'),
+        captions: z.boolean().optional().describe('Spoken words on screen; true by default.'),
+        reference_url: z.string().url().max(500).optional().describe('A video post to match the style of, or a page with facts about the product.'),
+        asset_ids: z.array(z.number().int().min(1)).max(10).optional().describe('Library asset ids (from upload_asset or list_library): logos, product photos, clips.'),
+        idempotency_key: z.string().max(100).optional().describe('Repeat the same key to retry safely without starting a second video.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async (input) => call(token, 'POST', '/weave/videos', input, 'weave_start'),
+  )
+
+  server.registerTool(
+    'weave_status',
+    {
+      title: 'Weave video status',
+      description: "Where a Weave video stands, with what to do next. state is one of: planning (check again shortly), question (Weave asks the user something: ask them and send the answer with weave_reply), plan_ready (show the user the plan; get the price with weave_approve), look_ready (show the user the images; approve them with weave_approve and look_token), building (check again in a minute or two), ready (preview_url to watch; preview links last about 45 minutes, so call again for a fresh one), needs_attention (what went wrong and how to continue). app_url opens it in WyvStudio.",
+      inputSchema: z.object({ id: weaveId }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ id }) => call(token, 'GET', `/weave/videos/${encodeURIComponent(id)}`, undefined, 'weave_status'),
+  )
+
+  server.registerTool(
+    'weave_reply',
+    {
+      title: 'Reply to Weave or ask for a change',
+      description: "Send the user's answer to Weave's question, a change to the plan before it is made, or a change to the finished video (\"make the logo bigger\", \"use a calmer voice\"). Weave re-plans, which costs a few credits; the change itself is priced and approved with weave_approve like the first version. Then poll weave_status.",
+      inputSchema: z.object({ id: weaveId, message: z.string().min(1).max(10000).describe("The user's answer or change, in their words."), idempotency_key: z.string().max(100).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ id, ...body }) => call(token, 'POST', `/weave/videos/${encodeURIComponent(id)}/messages`, body, 'weave_reply'),
+  )
+
+  server.registerTool(
+    'weave_approve',
+    {
+      title: 'Price and approve a Weave video',
+      description: "Two steps, always. 1) Without quote_id: returns the price of what the plan will make (credits_max is the most it can cost; only what is used is charged), what it makes, and a quote_id. Nothing is charged. Show the user the price and wait for their explicit yes. 2) Only after the user agrees: call again with that quote_id to start the build, then poll weave_status. Never pass a quote_id the user has not approved. Approving also agrees to send the brief and approved media to WyvStudio's AI providers. When status is look_ready and the user likes the images, pass look_token in step 1.",
+      inputSchema: z.object({
+        id: weaveId,
+        quote_id: z.string().max(32).optional().describe('Only after the user approved this exact price.'),
+        look_token: z.string().regex(/^[a-f0-9]{64}$/).optional().describe('From weave_status when state is look_ready and the user approved the images.'),
+        idempotency_key: z.string().max(100).optional(),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ id, quote_id, look_token, idempotency_key }) => quote_id
+      ? call(token, 'POST', `/weave/videos/${encodeURIComponent(id)}/runs`, { quote_id, ...(idempotency_key ? { idempotency_key } : {}) }, 'weave_approve')
+      : call(token, 'POST', `/weave/videos/${encodeURIComponent(id)}/quotes`, look_token ? { look_token } : {}, 'weave_approve'),
+  )
+
+  server.registerTool(
+    'weave_list',
+    {
+      title: 'List Weave videos',
+      description: "The workspace's newest Weave videos with each one's state, newest first. Use an id with weave_status, weave_reply or weave_share.",
+      inputSchema: z.object({ limit: z.number().int().min(1).max(50).optional() }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ limit }) => call(token, 'GET', `/weave/videos${limit ? `?limit=${limit}` : ''}`, undefined, 'weave_list'),
+  )
+
+  server.registerTool(
+    'weave_share',
+    {
+      title: 'Share a Weave video',
+      description: 'A link anyone can watch the finished video at (saved to the library first). Pass version for an earlier one; enabled false turns the link off.',
+      inputSchema: z.object({ id: weaveId, version: z.number().int().min(1).optional(), enabled: z.boolean().optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ id, ...body }) => call(token, 'POST', `/weave/videos/${encodeURIComponent(id)}/share`, body, 'weave_share'),
   )
 
   return server

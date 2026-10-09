@@ -38,6 +38,11 @@ class OperationAccounting
         if ($key && $key->wouldExceedCap($quote->credits_max)) {
             throw new \DomainException('key_spend_cap_reached');
         }
+        // A collaborator's paid work fits their monthly allowance, counting what their unfinished work still holds.
+        $spender = \App\Services\Agency\Allowance::spenderId();
+        if ($spender && \App\Services\Agency\Allowance::wouldExceed($spender, (int) $quote->credits_max, true)) {
+            throw new \DomainException('allowance_reached');
+        }
         $active = DB::table('api_operations')->where('workspace_id', $workspace->id)->whereIn('status', ['running', 'needs_attention'])->sum('capacity_slots');
         $slots = max(1, (int) data_get($quote->payload_json, 'pricing.takes', 1));
         $limit = (int) config('developer.limits.max_active_videos');
@@ -50,7 +55,7 @@ class OperationAccounting
             'pool_workspace_id' => $poolId, 'api_key_id' => $keyId,
             'capacity_slots' => $slots, 'authorized_credits' => $quote->credits_max, 'reserved_credits' => $quote->credits_max,
             'created_at' => now(), 'updated_at' => now(),
-        ]);
+        ] + (\App\Services\Agency\Allowance::operationsHaveUser() ? ['user_id' => $spender] : []));
         if (! OperationFence::acquire($id)) throw new \DomainException('operation_busy');
         Context::addHidden(self::CONTEXT, $id);
 
@@ -84,7 +89,8 @@ class OperationAccounting
             'reserved_credits' => max(0, $op->reserved_credits - $amount), 'updated_at' => now(),
         ]);
 
-        return ['api_operation_id' => $id, 'api_key_id' => $op->api_key_id];
+        // The person who approved the work is the one it is spent (or refunded) for, whichever job or callback moves it.
+        return ['api_operation_id' => $id, 'api_key_id' => $op->api_key_id] + (! empty($op->user_id) ? ['user_id' => (int) $op->user_id] : []);
     }
 
     /** Refund inside the same pool-locked transaction as balance and ledger. */
@@ -104,7 +110,8 @@ class OperationAccounting
             'updated_at' => now(),
         ]);
 
-        return ['api_operation_id' => $id, 'api_key_id' => $op->api_key_id];
+        // The person who approved the work is the one it is spent (or refunded) for, whichever job or callback moves it.
+        return ['api_operation_id' => $id, 'api_key_id' => $op->api_key_id] + (! empty($op->user_id) ? ['user_id' => (int) $op->user_id] : []);
     }
 
     public static function queued(string $id, string $uuid): void

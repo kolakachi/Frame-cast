@@ -96,6 +96,12 @@ class AuthenticateWithJwt
         if ($user->isClientSeat() && ($deny = $this->denyClientSeat($request, $user, $active))) {
             return $deny;
         }
+        if ($role === User::ROLE_COLLABORATOR && ($deny = $this->denyCollaborator($request))) {
+            return $deny;
+        }
+        // The person behind this request rides into every job it starts, so each spend is put against them
+        // (a collaborator's allowance, and "who used what" for the agency).
+        \Illuminate\Support\Facades\Context::addHidden(\App\Services\Agency\Allowance::CONTEXT, (int) $user->id);
 
         \Illuminate\Support\Facades\DB::table('workspace_memberships')->where('workspace_id', $active)->where('user_id', $user->id)->whereNull('accepted_at')->whereNull('revoked_at')->update(['accepted_at' => now()]);
 
@@ -185,6 +191,22 @@ class AuthenticateWithJwt
         }
 
         return $this->forbiddenForClient($user);
+    }
+
+    /**
+     * A collaborator (an agency's team member, phase 3) makes and changes videos with the agency's credits, in the
+     * agency and the clients it was given, up to the allowance the agency set. Money and people stay the agency
+     * owner's: billing, API keys, the client roster and the team are refused, whatever the method.
+     */
+    private function denyCollaborator(Request $request): ?JsonResponse
+    {
+        foreach (['api/v1/billing/*', 'api/v1/api-keys*', 'api/v1/admin/*', 'api/v1/workspaces/clients*', 'api/v1/workspaces/switch/*', 'api/v1/team*'] as $pattern) {
+            if ($request->is($pattern)) {
+                return response()->json(['error' => ['code' => 'collaborator_forbidden', 'message' => 'Your agency manages this. Ask the agency owner.']], 403);
+            }
+        }
+
+        return null;
     }
 
     private function forbiddenForClient(User $user): JsonResponse

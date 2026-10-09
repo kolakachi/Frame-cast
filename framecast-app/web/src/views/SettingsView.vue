@@ -342,6 +342,10 @@ const activeBrandKit = computed(() =>
 
 // ── Active nav ────────────────────────────────────────────
 const activeSection = ref('brand')
+// Channels are retired (owner, 2026-10-09: 7 channels in 6 workspaces, 11 of 211 videos made on one). A workspace
+// that has some still finds them here and opens each one; no new channels are made, and the tab shows only for them.
+const channelList = ref(null)
+async function loadChannelList() { try { channelList.value = (await api.get('/channels')).data?.data?.channels ?? [] } catch { channelList.value = [] } }
 
 // ── Connected Accounts ────────────────────────────────────
 const socialAccounts    = ref([])
@@ -802,6 +806,8 @@ onMounted(() => {
     if (activeSection.value === 'usage') loadCreditHistory()
     if (activeSection.value === 'api') loadApiKeys()
   }
+  // Whether the Channels tab shows at all; a link to it in a workspace without channels opens Brand Kits instead.
+  loadChannelList().then(() => { if (activeSection.value === 'channels' && !channelList.value?.length) activeSection.value = 'brand' })
   loadSettings()
   loadBillingStatus()
   loadSocialAccounts()
@@ -826,6 +832,7 @@ onMounted(() => {
             <div :class="['settings-tab', activeSection === 'brand'    ? 'active' : '']" @click="activeSection = 'brand'">Brand Kits</div>
             <div :class="['settings-tab', activeSection === 'account'  ? 'active' : '']" @click="activeSection = 'account'">Account</div>
             <div :class="['settings-tab', activeSection === 'accounts' ? 'active' : '']" @click="activeSection = 'accounts'">Connected Accounts</div>
+            <div v-if="channelList?.length" :class="['settings-tab', activeSection === 'channels' ? 'active' : '']" @click="activeSection = 'channels'">Channels</div>
             <div :class="['settings-tab', activeSection === 'api' ? 'active' : '']" @click="activeSection = 'api'; loadApiKeys()">API &amp; Apps</div>
             <div :class="['settings-tab', activeSection === 'usage'    ? 'active' : '']" @click="activeSection = 'usage'; loadCreditHistory()">Usage and Billing</div>
           </div>
@@ -1076,6 +1083,20 @@ onMounted(() => {
           </div>
 
           <!-- Connected Accounts -->
+          <div v-else-if="activeSection === 'channels'">
+            <div class="section-title">Channels</div>
+            <div class="settings-section-desc">Your channels and the defaults they keep: language, platforms, voice, captions and brand kit. Open one to see or change it. New videos take their look from your brand kit and the settings in Create.</div>
+            <p v-if="channelList === null" class="settings-section-desc">Loading…</p>
+            <div v-else-if="!channelList.length" class="settings-section-desc">This workspace has no channels.</div>
+            <div v-else class="channel-rows">
+              <button v-for="c in channelList" :key="c.id" type="button" class="channel-row" @click="router.push({ name: 'channel-detail', params: { channelId: c.id } })">
+                <span class="channel-dot">{{ (c.name || '?').trim()[0].toUpperCase() }}</span>
+                <span class="channel-copy"><b>{{ c.name }}</b><small>{{ (c.platform_targets || []).join(', ') || 'No platforms set' }} · {{ (c.default_language || 'en').toUpperCase() }}{{ c.status && c.status !== 'active' ? ' · ' + c.status : '' }}</small></span>
+                <span class="channel-open">Open →</span>
+              </button>
+            </div>
+          </div>
+
           <div v-else-if="activeSection === 'accounts'">
             <div class="section-title">Connected Accounts</div>
             <div class="settings-section-desc">Connect your social accounts to schedule and publish videos directly from WyvStudio.</div>
@@ -1610,6 +1631,15 @@ onMounted(() => {
 }
 
 .settings-nav { display: grid; gap: 6px; margin-top: 14px; }
+.channel-rows { display: flex; flex-direction: column; border: 1px solid var(--color-border, #23232d); border-radius: 10px; overflow: hidden; }
+.channel-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: transparent; border: 0; border-top: 1px solid var(--color-border, #23232d); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.channel-row:first-child { border-top: 0; }
+.channel-row:hover { background: rgba(255,255,255,.03); }
+.channel-dot { width: 30px; height: 30px; border-radius: 8px; background: #3b5d8c; color: #fff; display: grid; place-items: center; font-weight: 800; flex: 0 0 30px; }
+.channel-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.channel-copy b { font-size: 14px; }
+.channel-copy small { color: var(--color-text-muted, #8f95a1); font-size: 12px; }
+.channel-open { color: var(--color-text-secondary, #a8a9b4); font-size: 12.5px; }
 
 .settings-tab {
   padding: 10px 12px;

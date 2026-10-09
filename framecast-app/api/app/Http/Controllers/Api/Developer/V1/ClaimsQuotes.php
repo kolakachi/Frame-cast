@@ -101,7 +101,7 @@ trait ClaimsQuotes
                 try {
                     OperationAccounting::reserve($quote, $apiKeyId);
                 } catch (\DomainException $e) {
-                    return $this->fail($e->getMessage(), 'This operation exceeds the available credit or operation allowance, including pending work.',
+                    return $this->fail($e->getMessage(), $e->getMessage() === 'allowance_reached' && ($p = \App\Services\Agency\Allowance::spenderId()) ? \App\Services\Agency\Allowance::message($p) : 'This operation exceeds the available credit or operation allowance, including pending work.',
                         $e->getMessage() === 'too_many_active_videos' ? 429 : 402);
                 }
             }

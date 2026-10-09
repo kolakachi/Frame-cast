@@ -41,7 +41,8 @@ function onViewport(e) {
   if (!e.matches) mobileOpen.value = false;   // a drawer left open on resize traps the page
 }
 
-// The five destinations the mockup puts in the bottom bar. Create is the middle
+// The destinations the bottom bar holds (Jobs and Series left the menus, 2026-10-08: status shows on each video;
+// their pages still open from links). Create is the middle
 // one and deliberately not a route — it opens the same wizard the desktop
 // header button does, so there is one way to make a video, not two.
 const TABS = [
@@ -49,7 +50,6 @@ const TABS = [
   { key: "videos",    label: "Videos",   to: "videos" },
   { key: "create",    label: "Create",   action: "create" },
   { key: "calendar",  label: "Calendar", to: "calendar" },
-  { key: "jobs",      label: "Jobs",     to: "jobs" },
 ];
 
 function tabTap(tab) {
@@ -385,7 +385,7 @@ onBeforeUnmount(() => {
     <div class="sidebar-nav">
       <div class="nav-section-label">Workspace</div>
       <button
-        :class="['nav-item', activePage === 'dashboard' ? 'active' : '']"
+        :class="['nav-item', activePage === 'dashboard' || activePage === 'client-home' ? 'active' : '']"
         data-tooltip="Dashboard"
         type="button"
         @click="nav('dashboard')"
@@ -406,101 +406,8 @@ onBeforeUnmount(() => {
         </svg>
         Dashboard
       </button>
-      <!-- Only agencies and enterprise can own client workspaces, so only they
-           are shown the door to them. canOwnClients comes from the server. -->
-      <button
-        v-if="workspaceStore.canOwnClients"
-        :class="['nav-item', activePage === 'clients' || activePage === 'client-detail' ? 'active' : '']"
-        data-tooltip="Clients"
-        type="button"
-        @click="nav('clients')"
-      >
-        <svg
-          class="nav-icon"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"></path>
-          <circle cx="10" cy="7.5" r="3.5"></circle>
-          <path d="M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.4 4.6a3.5 3.5 0 0 1 0 5.8"></path>
-        </svg>
-        Clients
-        <span v-if="(workspaceStore.clients ?? []).length" class="nav-count">{{
-          (workspaceStore.clients ?? []).length
-        }}</span>
-      </button>
-      <button
-        :class="['nav-item', activePage === 'channels' ? 'active' : '']"
-        data-tooltip="Channels"
-        type="button"
-        @click="nav('channels')"
-      >
-        <svg
-          class="nav-icon"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9s10.3-3.9 14.2 0c3.9 3.9 3.9 10.3 0 14.2"
-          ></path>
-          <path d="m7.5 7.5 9 9M7.5 16.5l9-9"></path>
-        </svg>
-        Channels
-        <span v-if="channelCount > 0" class="nav-count">{{
-          channelCount
-        }}</span>
-      </button>
-      <button
-        :class="['nav-item', activePage === 'series' ? 'active' : '']"
-        data-tooltip="Series"
-        type="button"
-        @click="nav('series')"
-      >
-        <svg
-          class="nav-icon"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M2 6h4v4H2zM2 14h4v4H2zM10 6h12M10 10h12M10 14h12M10 18h12"
-          ></path>
-        </svg>
-        Series
-      </button>
-      <button
-        :class="['nav-item', activePage === 'ugc-ads' ? 'active' : '']"
-        data-tooltip="UGC Ads"
-        type="button"
-        @click="nav('ugc-ads')"
-      >
-        <svg
-          class="nav-icon"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M12 3l1.9 4.6 4.9.4-3.7 3.2 1.1 4.8L12 13.6 7.8 16l1.1-4.8L5.2 8l4.9-.4z"
-          ></path>
-        </svg>
-        UGC Ads
-      </button>
-      <!-- Hidden for launch (2026-09-19): UGC is the single pathway; the
+      <!-- Channels moved into Settings › Channels (owner, 2026-10-09). -->
+            <!-- Hidden for launch (2026-09-19): UGC is the single pathway; the
            own-footage door lives inside it. Routes stay for direct links. -->
       <button
         v-if="false"
@@ -564,11 +471,31 @@ onBeforeUnmount(() => {
         </svg>
         All Videos
       </button>
+      <!-- Agency (owner, 2026-10-09): one item; Overview, Clients and Team are tabs inside. Agency plans see it
+           (canOwnClients comes from the server), and collaborators, who see Overview only. -->
       <button
-        :class="['nav-item', activePage === 'jobs' ? 'active' : '']"
-        data-tooltip="Jobs"
+        v-if="workspaceStore.canOwnClients || props.user?.role === 'collaborator'"
+        :class="['nav-item', ['agency', 'clients', 'client-detail', 'team'].includes(activePage) ? 'active' : '']"
+        data-tooltip="Agency"
         type="button"
-        @click="nav('jobs')"
+        @click="router.push({ name: 'agency' })"
+      >
+        <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"></path>
+          <circle cx="10" cy="7.5" r="3.5"></circle>
+          <path d="M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.4 4.6a3.5 3.5 0 0 1 0 5.8"></path>
+        </svg>
+        Agency
+        <span v-if="(workspaceStore.clients ?? []).length" class="nav-count">{{ (workspaceStore.clients ?? []).length }}</span>
+      </button>
+      <!-- Classic (2026-10-08): the earlier ways to make a video, kept for anyone who prefers them. Composer opens
+           the New Video wizard (from scratch, from a brief, one-shot); UGC Ads is the $9 Test Pass's way in. -->
+      <div class="nav-section-label">Classic</div>
+      <button
+        class="nav-item"
+        data-tooltip="Composer"
+        type="button"
+        @click="router.push({ name: 'dashboard', query: { new_video: '1' } })"
       >
         <svg
           class="nav-icon"
@@ -579,13 +506,34 @@ onBeforeUnmount(() => {
           stroke-width="1.8"
           viewBox="0 0 24 24"
         >
-          <circle cx="12" cy="12" r="9"></circle>
-          <polyline points="12 7 12 12 15 15"></polyline>
+          <path d="M4 20h4L19 9l-4-4L4 16v4z"></path>
+          <path d="M13.5 6.5l4 4"></path>
         </svg>
-        Jobs
+        Composer
+      </button>
+      <button
+        :class="['nav-item', activePage === 'ugc-ads' ? 'active' : '']"
+        data-tooltip="UGC Ads"
+        type="button"
+        @click="nav('ugc-ads')"
+      >
+        <svg
+          class="nav-icon"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M12 3l1.9 4.6 4.9.4-3.7 3.2 1.1 4.8L12 13.6 7.8 16l1.1-4.8L5.2 8l4.9-.4z"
+          ></path>
+        </svg>
+        UGC Ads
       </button>
 
-      <div class="nav-section-label">Library</div>
+            <div class="nav-section-label">Library</div>
       <button
         :class="['nav-item', activePage === 'characters' ? 'active' : '']"
         data-tooltip="Characters"
@@ -651,7 +599,7 @@ onBeforeUnmount(() => {
 
       <div class="nav-section-label">Account</div>
       <button
-        :class="['nav-item', activePage === 'settings' ? 'active' : '']"
+        :class="['nav-item', ['settings', 'channels'].includes(activePage) ? 'active' : '']"
         data-tooltip="Settings"
         type="button"
         @click="nav('settings')"

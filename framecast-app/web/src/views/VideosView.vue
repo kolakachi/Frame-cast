@@ -6,7 +6,6 @@ import api from '../services/api'
 import AppSidebar from '../components/AppSidebar.vue'
 import GridSkeleton from '../components/skeletons/GridSkeleton.vue'
 import NotifBell from '../components/NotifBell.vue'
-import NewVideoWizard from '../components/NewVideoWizard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +18,6 @@ const loading = ref(true)
 const error = ref('')
 const deletingProjectIds = ref([])
 const deleteConfirmProject = ref(null)
-const wizardRef = ref(null)
 
 const filterChannelId = ref(route.query.channel_id ? String(route.query.channel_id) : '')
 const filterStatus = ref(route.query.status ? String(route.query.status) : '')
@@ -218,9 +216,6 @@ async function confirmDeleteProject() {
   }
 }
 
-function openNewVideo() {
-  wizardRef.value?.open('prompt', filterChannelId.value || null)
-}
 
 async function logout() {
   await authStore.logout()
@@ -248,10 +243,6 @@ onMounted(async () => {
           </span>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-primary btn-sm" type="button" @click="openNewVideo">
-            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-            New Video
-          </button>
           <span class="total-label">{{ total }} video{{ total !== 1 ? 's' : '' }}</span>
                   <NotifBell />
         </div>
@@ -290,7 +281,7 @@ onMounted(async () => {
               <span v-else>Create your first video.</span>
             </div>
             <div class="empty-actions">
-              <button class="btn btn-primary" type="button" @click="openNewVideo">New Video</button>
+              <router-link v-if="!filterChannelId && !filterStatus" class="btn btn-primary" :to="{ name: 'create' }">Make one in Create</router-link>
               <button v-if="filterChannelId || filterStatus" class="btn btn-ghost" type="button" @click="filterChannelId = ''; filterStatus = ''; applyFilters()">Clear filters</button>
             </div>
           </div>
@@ -392,7 +383,6 @@ onMounted(async () => {
           </div>
         </template>
       </div>
-      <NewVideoWizard ref="wizardRef" :channels="channels" @created="loadProjects" />
 
       <!-- Delete confirm modal -->
       <div v-if="deleteConfirmProject" class="modal-overlay" @click.self="closeDeleteConfirm">

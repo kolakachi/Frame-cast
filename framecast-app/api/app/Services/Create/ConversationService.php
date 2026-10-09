@@ -43,7 +43,7 @@ class ConversationService
     {
         // On wherever CREATE_ENABLED is set; the workspace list narrows it when given, and only allowed people see it.
         abort_unless(config('create.enabled') && self::workspaceAllowed((int) $user->workspace_id) && self::personAllowed($user), 404);
-        abort_if($write && ! in_array($user->role, ['owner', 'admin', 'editor', 'super_admin', 'platform_admin', 'client_admin', 'client_editor'], true), 403);
+        abort_if($write && ! in_array($user->role, ['owner', 'admin', 'editor', 'super_admin', 'platform_admin', 'client_admin', 'client_editor', 'collaborator'], true), 403);
         $workspace = Workspace::findOrFail($user->workspace_id);
         abort_if($workspace->status !== 'active', 403);
     }
@@ -509,6 +509,7 @@ class ConversationService
                     match ($e->getMessage()) {
                         'too_many_active_videos' => abort(429, 'This workspace has reached its simultaneous video limit. Wait for active work to finish or resolve paused work, then try again.'),
                         'operation_busy' => abort(409, 'This operation is busy. Wait a moment, then try again.'),
+                        'allowance_reached' => abort(402, \App\Services\Agency\Allowance::message((int) $user->id)),
                         default => throw $e,
                     };
                 }

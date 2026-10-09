@@ -15,6 +15,7 @@ import ComposerTray from '../components/create/ComposerTray.vue'
 import TurnActivity from '../components/create/TurnActivity.vue'
 import PlanningLive from '../components/create/PlanningLive.vue'
 import SideDrawer from '../components/create/SideDrawer.vue'
+import LibraryPicker from '../components/create/LibraryPicker.vue'
 import ChangeDrawer from '../components/create/ChangeDrawer.vue'
 import CreateLoading from '../components/create/CreateLoading.vue'
 import PlanGroup from '../components/create/PlanGroup.vue'
@@ -25,14 +26,13 @@ import SchedulePostModal from '../components/SchedulePostModal.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { registerReloadGuard } from '../lib/deploymentRecovery.js'
 import { peekBrief, takeBrief, clearBrief } from '../services/pendingBrief.js'
+import { takeLaunch } from '../services/createLaunch.js'
 
 const auth = useAuthStore(), route = useRoute(), router = useRouter()
 const available = ref(false), loaded = ref(false), busy = ref(false), error = ref(''), conflict = ref(false)
 const capabilities = ref(null), history = ref([]), search = ref(''), historyFilter = ref('all'), archivedHistory = ref(false)
 const showHistory = ref(false), details = ref(false), libraryOpen = ref(false), compareOpen = ref(false)
 const data = ref(null), prompt = ref(''), quote = ref(null), selectedRevision = ref(null), outputKind = ref('video')
-const library = ref([]), librarySearch = ref(''), libraryPage = ref(1), libraryLastPage = ref(1), libraryFilter = ref('all'), libraryCharacters = ref([])
-const LIBRARY_FILTERS = [['all', 'All'], ['video', 'Videos'], ['image', 'Images'], ['audio', 'Audio'], ['characters', 'Characters']]
 const rename = ref(''), uploads = ref([])
 const fileInput = ref(null), composer = ref(null), end = ref(null)
 const player = ref(null), changeDrawer = ref(null), changeOpen = ref(false)
@@ -253,8 +253,15 @@ function optionCredits(p) {
 }
 // How the voice says brand names; changes only what is spoken.
 const pronOpen = ref(false), pronRows = ref([])
-async function openPronunciations() {
-  await guarded(async () => { pronRows.value = ((await api.get('/create/pronunciations')).data.data || []).map(r => ({ ...r })); if (!pronRows.value.length) pronRows.value.push({ written: '', spoken: '' }); pronOpen.value = true })
+// prefill: a name to start a row with (the dashboard's "Say your name right" passes the brand's name), unless saved.
+async function openPronunciations(prefill = '') {
+  await guarded(async () => {
+    pronRows.value = ((await api.get('/create/pronunciations')).data.data || []).map(r => ({ ...r }))
+    const name = String(prefill || '').trim().slice(0, 80)
+    if (name && !pronRows.value.some(r => String(r.written || '').toLowerCase() === name.toLowerCase())) pronRows.value.unshift({ written: name, spoken: '' })
+    if (!pronRows.value.length) pronRows.value.push({ written: '', spoken: '' })
+    pronOpen.value = true
+  })
 }
 async function savePronunciations() {
   await guarded(async () => {
@@ -433,7 +440,7 @@ async function applyPlanFreeEdit(values) {
   })
 }
 let refreshRequest = 0, refreshApplied = 0
-let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, libraryEpoch = 0, compareEpoch = 0
+let timer, searchTimer, epoch = 0, mediaEpoch = 0, historyEpoch = 0, compareEpoch = 0
 let mediaKey = '', sendingKey = null, approvalKey = null, uploadRunning = false
 const id = computed(() => route.params.conversationId)
 // A conversation is being fetched (opening it, or switching to it): show its outline, never the empty "new" screen.
@@ -614,6 +621,30 @@ async function confirmSaveStyle() {
 }
 async function renameStyle(s) { const name = (styleEdits.value[s.id] ?? s.name).trim(); if(!name || name === s.name) return; await guarded(async () => { await api.patch(`/create/styles/${s.id}`,{name}); await loadStyles() }) }
 async function deleteStyle(s) { await guarded(async () => { await api.delete(`/create/styles/${s.id}`); if(currentStyleId.value === s.id) { if(conversation.value) await chooseStyle(''); else pendingStyleId.value = '' } await loadStyles() }) }
+// C2 (owner picked "box first, one strip below", 2026-10-09): a new video's empty screen centres the box and shows
+// our example videos under it. "Make one like this" attaches the example as the style reference and starts the brief.
+const samples = ref([]), sampleFilter = ref('all'), hoveredSample = ref(''), usingSample = ref('')
+// The marketer's ask (2026-10-09): a small help icon saying what WyvStudio does with a reference.
+const refHelp = ref(false), refHelpBox = ref(null)
+function closeRefHelp(e) { if (refHelp.value && (e.type === 'keydown' ? e.key === 'Escape' : !refHelpBox.value?.contains(e.target))) refHelp.value = false }
+const SAMPLE_FILTERS = [['all', 'All'], ['ads', 'Ads'], ['launch', 'Launches'], ['explainer', 'Explainers'], ['ugc', 'UGC'], ['footage', 'From footage']]
+const blank = computed(() => loaded.value && available.value && !opening.value && !data.value?.messages?.length && !currentRevision.value && !pendingText.value)
+const showSamples = computed(() => blank.value && kind.value === 'video' && !siteBrief.value && canWrite.value && !conversation.value?.archived_at && samples.value.length > 0)
+const shownSamples = computed(() => samples.value.filter(s => sampleFilter.value === 'all' || s.kind === sampleFilter.value))
+const sampleAdded = s => (data.value?.attachments || []).some(a => a.title === 'Example: ' + s.title)
+async function loadSamples() { try { samples.value = (await api.get('/create/samples')).data.data || [] } catch { samples.value = [] } }
+async function useSample(s) {
+  if (usingSample.value || sampleAdded(s)) return
+  usingSample.value = s.id
+  await guarded(async () => {
+    const target = await ensureConversation()
+    data.value = (await api.post(`${base(target)}/samples`, { sample: s.id, expected_version: conversation.value.version }, { timeout: 150000 })).data.data
+    if (!prompt.value.trim()) prompt.value = 'Make one like this for [your product]: [what it is about, and who it is for].'
+    nextTick(() => composer.value?.focus())
+  })
+  usingSample.value = ''
+}
+
 async function ensureConversation() {
   if(id.value) return id.value
   const draft = prompt.value
@@ -637,14 +668,16 @@ watch([() => linkStudying.value, () => planning.value, () => pendingText.value],
 const linkKeys = {}
 // A brief typed on wyvstudio.com (services/pendingBrief.js). A new, empty composer takes it, once; anywhere else it
 // is only offered, so it never replaces a conversation or a draft. Nothing runs until the user sends it.
-const siteBrief = ref(false), waitingBrief = ref(false), siteBriefClip = ref(false)
+const siteBrief = ref(false), waitingBrief = ref(false), siteBriefClip = ref(false), siteBriefFrom = ref(null)
+// A dashboard card's starter brief (from=card:<type>) has parts in [brackets] for the user to fill in.
+const fromCard = computed(() => String(siteBriefFrom.value || '').startsWith('card:'))
 function offerSiteBrief() {
   waitingBrief.value = false
   if (!available.value || !auth.user || !peekBrief()) return
   if (!id.value && !prompt.value.trim()) {
     const brief = takeBrief()
     prompt.value = brief?.text || ''
-    siteBrief.value = !!prompt.value; siteBriefClip.value = !!brief?.attach
+    siteBrief.value = !!prompt.value; siteBriefClip.value = !!brief?.attach; siteBriefFrom.value = brief?.from || null
     nextTick(() => composer.value?.focus())
   } else waitingBrief.value = true
 }
@@ -653,7 +686,7 @@ function useSiteBrief() {
   // In a conversation: a new creation takes it. In a new one with a draft: the user chose to replace the draft.
   if (id.value) { router.push({ name: 'create' }); return }
   const brief = takeBrief()
-  if (brief) { prompt.value = brief.text; siteBriefClip.value = brief.attach }
+  if (brief) { prompt.value = brief.text; siteBriefClip.value = brief.attach; siteBriefFrom.value = brief.from || null }
   siteBrief.value = true
   nextTick(() => composer.value?.focus())
 }
@@ -670,6 +703,29 @@ function fitComposer() {
 watch(prompt, () => nextTick(fitComposer))
 function dismissSiteBrief() { clearBrief(); waitingBrief.value = false }
 function clearSiteBrief() { prompt.value = ''; siteBrief.value = false; nextTick(() => composer.value?.focus()) }
+
+// A creation set up in the dashboard's card modal: a new conversation with its settings, its files and presenter,
+// and the brief sent at once, so planning starts straight away (owner, 2026-10-09).
+async function launchFromDashboard() {
+  const l = takeLaunch()
+  if (!l || id.value) return
+  let c
+  try { c = (await api.post('/create/conversations', { output_kind: 'video', ...l.settings })).data.data }
+  catch (e) { prompt.value = l.text; error.value = message(e); return }
+  outputKind.value = 'video'
+  // The id watcher fills the composer from the draft, so the brief is saved as this conversation's draft first.
+  persistDraft(c.id, l.text)
+  await router.replace({ name: 'create', params: { conversationId: c.id } })
+  for (let i = 0; i < 60 && conversation.value?.id !== c.id; i++) await new Promise(r => setTimeout(r, 100))
+  prompt.value = l.text
+  if (l.files?.length) chooseFiles(l.files)
+  // The presenter and anything picked from the library are already in the workspace, so they attach by id.
+  for (const assetId of [...new Set([l.presenterAssetId, ...(l.assetIds || [])].filter(Boolean))]) {
+    try { await api.post(`${base(c.id)}/attachments`, { asset_id: assetId, expected_version: conversation.value.version }); await refresh() }
+    catch (e) { error.value = message(e); return }
+  }
+  await send()
+}
 
 async function send() {
   if(!prompt.value.trim() || hasUpload.value) return
@@ -749,24 +805,7 @@ async function addLink() {
     if(e.response?.status === 409) { linkKey = null; await refresh().catch(()=>{}) }
   } finally { linkBusy.value = false }
 }
-async function showLibrary() {
-  librarySearch.value = ''; libraryPage.value = 1; libraryFilter.value = 'all'
-  libraryOpen.value = true; await loadLibrary()
-}
-function filterLibrary(f) { if (libraryFilter.value === f) return; libraryFilter.value = f; libraryPage.value = 1; loadLibrary() }
-async function loadLibrary() {
-  const ticket = ++libraryEpoch
-  // Characters are saved people, not files: picking one adds their name to the brief (Create matches a saved
-  // character by name) and attaches their saved photo.
-  if (libraryFilter.value === 'characters') {
-    try { const result = await api.get('/characters', {params:{q:librarySearch.value || undefined}}); if(ticket !== libraryEpoch) return; libraryCharacters.value = result.data.data.characters ?? []; libraryLastPage.value = 1 }
-    catch(e) { if(ticket === libraryEpoch) error.value = message(e) }
-    return
-  }
-  const type = ['video','image','audio'].includes(libraryFilter.value) ? libraryFilter.value : undefined
-  try { const result = await api.get('/assets',{params:{per_page:24,page:libraryPage.value,q:librarySearch.value || undefined,asset_type:type}}); if(ticket !== libraryEpoch) return; library.value = (result.data.data.assets ?? []).filter(a => ['image','video','audio'].includes(a.asset_type) && a.status !== 'archived'); libraryLastPage.value = result.data.meta?.pagination?.last_page || 1 }
-  catch(e) { if(ticket === libraryEpoch) error.value = message(e) }
-}
+function showLibrary() { libraryOpen.value = true }
 async function pickCharacter(c) {
   const name = String(c.name || '').trim()
   if (name && !prompt.value.toLowerCase().includes(name.toLowerCase())) prompt.value = prompt.value.trim() ? prompt.value.trimEnd() + ' ' + name : name
@@ -874,12 +913,15 @@ watch(() => auth.user?.workspace_id, () => window.location.assign('/create'))
 onMounted(async () => {
   loadStyles()
   window.addEventListener('keydown', onKey)
+  document.addEventListener('pointerdown', closeRefHelp); document.addEventListener('keydown', closeRefHelp)
   if (!workspaceStore.usage && auth.user?.workspace_id) workspaceStore.load(auth.user.workspace_id).catch(() => {})
   prompt.value = readDraft(id.value)
   try {capabilities.value = (await api.get('/create/capabilities')).data.data; available.value = true; await loadHistory(); await refresh()}
   catch(e) {if(e.response?.status !== 404) error.value = message(e)}
   finally {loaded.value = true}
-  if (available.value) { void resumePlanning(); offerSiteBrief() }
+  if (available.value) { void resumePlanning(); offerSiteBrief(); void launchFromDashboard(); void loadSamples() }
+  // The dashboard's "Say your name right" step opens the pronunciations dialog here.
+  if (available.value && route.query.pronunciations === '1') { const name = String(route.query.name || ''); router.replace({ query: { ...route.query, pronunciations: undefined, name: undefined } }); void openPronunciations(name) }
   timer = setInterval(async () => {clock.value = Date.now(); if(active.value && active.value.status !== 'needs_attention' && !locked.value) {try {await refresh()} catch(e) {error.value = message(e)}}},2000)
 })
 // The plan card (create-ui chat mockup): what will be made as pills, Preview to change it, and one Approve that
@@ -1216,7 +1258,7 @@ async function retryRun(run) {
   try { await guarded(async () => { await api.post(`${base()}/runs/${run.id}/retry`, { idempotency_key: crypto.randomUUID() }); await refresh(); await loadHistory() }) }
   finally { retrying.value = false }
 }
-// Which files the plan puts in the video and which it follows; switching one re-plans (planning is free).
+// Which files the plan puts in the video and which it follows; switching one re-plans (which is charged, at half price).
 const planFiles = computed(() => (data.value?.attachments || []).filter(a => ['source', 'reference'].includes(a.purpose)))
 async function switchRole(f) {
   await guarded(async () => {
@@ -1299,7 +1341,7 @@ const removeReloadGuard = registerReloadGuard(() => {
   if (!persistDraft(id.value, prompt.value)) return 'This browser could not save your message draft. Copy it before refreshing manually.'
   return ''
 })
-onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;libraryEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
+onBeforeUnmount(() => {document.removeEventListener('pointerdown', closeRefHelp);document.removeEventListener('keydown', closeRefHelp);removeReloadGuard();historyObserver?.disconnect();window.removeEventListener('keydown', onKey);clearInterval(timer);clearInterval(planPoll);clearTimeout(searchTimer);epoch++;mediaEpoch++;historyEpoch++;compareEpoch++;for(const url of [media.value,compareMedia.value,...uploads.value.map(u=>u.preview_url)]) if(url) URL.revokeObjectURL(url)})
 </script>
 
 <template>
@@ -1319,17 +1361,19 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
       <CreateLoading v-if="!loaded" label="Opening your workspace…" />
       <section v-else-if="!available" class="empty"><h2>Create is not enabled here yet.</h2><router-link to="/dashboard">Back to dashboard</router-link></section>
       <div v-else class="agent-content">
-        <section class="conversation" aria-label="Conversation" @dragover.prevent="dragging = canWrite" @dragleave.self="dragging = false" @drop.prevent="canWrite && !conversation?.archived_at && chooseFiles($event.dataTransfer.files)">
+        <section :class="['conversation', { 'is-blank': showSamples }]" aria-label="Conversation" @dragover.prevent="dragging = canWrite" @dragleave.self="dragging = false" @drop.prevent="canWrite && !conversation?.archived_at && chooseFiles($event.dataTransfer.files)">
           <div v-if="dragging" class="drop-overlay">Drop your footage, photos or audio here</div>
           <div class="messages">
             <CreateLoading v-if="opening" />
             <div v-else-if="!data?.messages?.length && !currentRevision && !pendingText" class="empty">
-              <h2>{{ siteBrief ? "Here's the brief you wrote." : 'What are we making?' }}</h2>
-              <p v-if="siteBrief && siteBriefClip">Attach the clip you love with + Attach, then make the plan. You'll see the plan and its price before the video is made.</p>
+              <h2>{{ siteBrief ? (fromCard ? "Here's a starting point." : "Here's the brief you wrote.") : 'What are we making?' }}</h2>
+              <p v-if="siteBrief && fromCard">Fill in the parts in [brackets] with your own product, offer and audience, then make the plan. You'll see the plan and its price before the video is made.</p>
+              <p v-else-if="siteBrief && siteBriefClip">Attach the clip you love with + Attach, then make the plan. You'll see the plan and its price before the video is made.</p>
               <p v-else-if="siteBrief">Read it over, change anything you like, attach photos of your products if you have them, then make the plan. You'll see the plan and its price before the video is made.</p>
+              <p v-else-if="showSamples">Describe it, paste a link to a video you love, or pick one of ours below. You see the plan and its price before anything is made.</p>
               <p v-else>A video or an image. Describe the result and attach what you have; you see the cost before anything is spent.</p>
-              <button v-if="canWrite && !conversation?.archived_at" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>
-              <div class="examples"><button v-for="item in examples.filter(item => !conversation || item.kind === kind)" :key="item.title" type="button" class="example" :disabled="!canWrite || !!conversation?.archived_at" @click="example(item)"><b>{{ item.title }}</b>{{ item.copy }}</button></div>
+              <button v-if="canWrite && !conversation?.archived_at && !showSamples" type="button" class="dropzone" @click="fileInput.click()">Drop files here, or click to attach footage, photos or audio<small>PNG / JPG / WebP · MP4 · MP3 / WAV · up to 100 MB each</small></button>
+              <div v-if="!showSamples" class="examples"><button v-for="item in examples.filter(item => !conversation || item.kind === kind)" :key="item.title" type="button" class="example" :disabled="!canWrite || !!conversation?.archived_at" @click="example(item)"><b>{{ item.title }}</b>{{ item.copy }}</button></div>
             </div>
             <div v-if="conversation?.archived_at" class="icard"><div class="icard__body"><p>This conversation is archived. Its briefs and versions are preserved.</p></div><div class="icard__foot"><span class="spacer" /><button v-if="canWrite" type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="updateConversation(false)">Restore conversation</button></div></div>
 
@@ -1353,6 +1397,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
                   </div></div>
                   <template v-else>
                     <p v-if="planByMessage[m.id].status === 'proposed'" class="plan-lead">{{ planByMessage[m.id].plan.summary }}</p>
+                    <p v-for="q in (planByMessage[m.id].status === 'proposed' && !planByMessage[m.id].stale ? planByMessage[m.id].plan.checks || [] : [])" :key="q" class="plan-check">{{ q }}</p>
                     <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.creative_intent?.reason" class="plan-approach" label="Creative approach" :text="planByMessage[m.id].plan.creative_intent.reason" />
                     <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief or details changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
@@ -1572,7 +1617,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
 
           <div v-if="canWrite && !conversation?.archived_at" class="composer-dock">
             <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; check the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
-            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />From your visit to wyvstudio.com</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
+            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />{{ fromCard ? 'A starting point from your dashboard' : 'From your visit to wyvstudio.com' }}</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
             <div v-else-if="waitingBrief" class="site-brief" role="status"><span><i aria-hidden="true" />You have a brief from your visit to wyvstudio.com</span><span class="site-brief__actions"><button type="button" class="quiet quiet--sm" @click="useSiteBrief">{{ id ? 'Start a new creation with it' : 'Use it instead of this draft' }}</button><button type="button" class="quiet quiet--sm" @click="dismissSiteBrief">Dismiss</button></span></div>
             <form class="prompt-form" @submit.prevent="send">
               <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" />
@@ -1594,9 +1639,35 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
               </div>
             </form>
             <p v-if="siteBrief" class="composer-note">Nothing runs until you press Make the plan.</p>
-            <p v-else class="composer-note">Planning and text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
+            <p v-else class="composer-note">Planning costs a few credits (half its cost, shown as it plans). Text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
           </div>
           <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
+          <section v-if="showSamples" class="samples" aria-labelledby="samples-title">
+            <div class="samples__head">
+              <div ref="refHelpBox" class="samples__title">
+                <h3 id="samples-title">Or start from a video you love</h3>
+                <button type="button" class="ref-help" :aria-expanded="refHelp" aria-controls="ref-help-panel" aria-label="What WyvStudio does with a reference video" @click="refHelp = !refHelp">?</button>
+                <div v-if="refHelp" id="ref-help-panel" class="ref-help__panel" role="dialog" aria-label="How a reference works">
+                  <b>How a reference works</b>
+                  <p>WyvStudio studies the video: its pacing, cuts, layout, look, motion and sound. Then it makes yours with your product, your words, your brand and your voice. It never reuses the clip itself.</p>
+                  <p><b>Choose how close</b>: <i>exactly</i> (moment for moment), <i>similar</i> (same format, look and pacing, your own story) or <i>inspired</i> (just the idea). Say it in your brief, or set it in Details.</p>
+                  <p>Use your own too: paste a TikTok, Reel, YouTube or X link, or attach a clip. You see the plan and its price before anything is made.</p>
+                </div>
+              </div>
+              <div class="samples__filters" role="group" aria-label="Show"><button v-for="[f, label] in SAMPLE_FILTERS" :key="f" type="button" :aria-pressed="sampleFilter === f" @click="sampleFilter = f">{{ label }}</button></div>
+            </div>
+            <div class="samples__row">
+              <figure v-for="s in shownSamples" :key="s.id" class="sample" @mouseenter="hoveredSample = s.id" @mouseleave="hoveredSample = ''" @focusin="hoveredSample = s.id" @focusout="hoveredSample = ''">
+                <div :class="['sample__frame', 'sample__frame--' + (s.shape || 'portrait')]">
+                  <img :src="s.poster_url" alt="" loading="lazy" decoding="async" fetchpriority="low" width="260" height="462" />
+                  <video v-if="hoveredSample === s.id" :src="s.preview_url || s.video_url" autoplay muted loop playsinline preload="auto" aria-hidden="true" />
+                  <span class="sample__len">{{ s.seconds }}s</span>
+                  <button type="button" :class="['sample__go', { on: sampleAdded(s) || usingSample === s.id }]" :disabled="locked || !!usingSample || sampleAdded(s)" @click="useSample(s)">{{ sampleAdded(s) ? 'Added as your style' : usingSample === s.id ? 'Adding…' : 'Make one like this' }}</button>
+                </div>
+                <figcaption>{{ s.title }}</figcaption>
+              </figure>
+            </div>
+          </section>
         </section>
 
         <div v-if="details" class="panel-scrim" aria-hidden="true" @click="closePanel" />
@@ -1816,7 +1887,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
             <button v-if="planEditable(drawerPlan) && draftFor(drawerPlan).narration.length < 8" type="button" class="pd-add" @click="draftFor(drawerPlan).narration.push('')">+ Add a spoken line</button>
             <div class="pd-row">
               <div class="pd-field"><span>Voice</span><UiSelect v-model="draftFor(drawerPlan).voice" label="Voice for the script" :disabled="!planEditable(drawerPlan)" align="left" :options="voiceOptions(draftFor(drawerPlan).voice).map(v => ({ value: v.key, label: v.label }))" /></div>
-              <button type="button" class="btn btn--ghost btn--sm pd-btn" @click="openPronunciations"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 8v8M4 11v2M16 6v12M20 10v4" /></svg>Pronunciations</button>
+              <button type="button" class="btn btn--ghost btn--sm pd-btn" @click="openPronunciations()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 8v8M4 11v2M16 6v12M20 10v4" /></svg>Pronunciations</button>
             </div>
             <PlanNote label="Presenters" text="Talking presenters speak in their own generated voice unless you choose your cloned voice." />
           </PlanGroup>
@@ -2034,17 +2105,7 @@ onBeforeUnmount(() => {removeReloadGuard();historyObserver?.disconnect();window.
           <div class="link-form__actions"><button type="button" class="btn btn--primary btn--sm" @click="approvalOpen = false">Done</button></div>
         </div>
       </CreateDialog>
-      <CreateDialog :open="libraryOpen" title="Add from your library" @close="libraryOpen = false">
-        <form class="library-search" @submit.prevent="libraryPage = 1; loadLibrary()"><input v-model="librarySearch" class="input" type="search" aria-label="Search library" :placeholder="libraryFilter === 'characters' ? 'Find a character…' : 'Find a photo, video or audio file…'" /><button type="submit" class="btn btn--ghost btn--sm">Search</button></form>
-        <div class="library-filters" role="group" aria-label="Show"><button v-for="[f, label] in LIBRARY_FILTERS" :key="f" type="button" :aria-pressed="libraryFilter === f" @click="filterLibrary(f)">{{ label }}</button></div>
-        <template v-if="libraryFilter === 'characters'">
-          <div class="library-grid"><button v-for="c in libraryCharacters" :key="c.id" type="button" :disabled="locked" @click="pickCharacter(c)"><img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" alt="" /><span v-else class="file-symbol">☺</span><strong>{{ c.name }}</strong><small>character</small></button></div>
-          <p v-if="!libraryCharacters.length" class="muted">No characters yet. Make one on the Characters page, then pick it here.</p>
-          <p v-else class="muted">Picking a character adds their name to your brief and attaches their saved photo.</p>
-        </template>
-        <template v-else>
-<div class="library-grid"><button v-for="a in library" :key="a.id" type="button" :disabled="locked" @click="attach(a)"><img v-if="a.asset_type === 'image' && a.storage_url" :src="a.storage_url" alt="" /><span v-else class="file-symbol">{{ a.asset_type === 'video' ? '▷' : '♫' }}</span><strong>{{ a.title || a.asset_type }}</strong><small>{{ a.asset_type }}</small></button></div><p v-if="!library.length" class="muted">No matching media. Attach files directly in the composer.</p><div class="row-actions"><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage <= 1" @click="libraryPage--; loadLibrary()">Previous</button><span>{{ libraryPage }} / {{ libraryLastPage }}</span><button type="button" class="btn btn--ghost btn--sm" :disabled="libraryPage >= libraryLastPage" @click="libraryPage++; loadLibrary()">Next</button></div></template><p v-if="error" class="create-error" role="alert">{{ error }}</p>
-      </CreateDialog>
+      <LibraryPicker :open="libraryOpen" :disabled="locked" :error="error" empty-text="No matching media. Attach files directly in the composer." @close="libraryOpen = false" @pick="attach" @character="pickCharacter" />
       <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
     </main>
@@ -2111,6 +2172,41 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .row-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .agent-content{display:flex;flex:1;min-height:0;position:relative}
 .conversation{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+/* A new video's empty screen (C2): the box sits under the heading, our examples under it, and the whole column scrolls. */
+.conversation.is-blank{overflow-y:auto;isolation:isolate}
+.conversation.is-blank::before{content:"";position:absolute;inset:-120px -10% auto -10%;height:520px;z-index:-1;pointer-events:none;background:radial-gradient(45% 45% at 50% 40%,rgba(255,107,53,.16),transparent 70%),radial-gradient(35% 35% at 70% 50%,rgba(124,92,255,.1),transparent 70%)}
+.conversation.is-blank .messages{flex:0 0 auto;overflow:visible;padding-top:clamp(24px,8vh,80px);padding-bottom:4px}
+.conversation.is-blank .empty{margin:0 auto;padding:0}
+.conversation.is-blank .empty h2{font-size:clamp(28px,3.4vw,38px);letter-spacing:-.03em}
+.conversation.is-blank .composer-dock{background:none}
+.samples{padding:22px max(24px,calc((100% - 1040px)/2)) 32px;display:flex;flex-direction:column;gap:12px}
+.samples__head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.samples__head h3{margin:0;font-size:16px;font-weight:700}
+.samples__title{position:relative;display:flex;align-items:center;gap:8px}
+.ref-help{width:22px;height:22px;border-radius:50%;border:1px solid var(--line-3);background:transparent;color:var(--text-2);font:700 12px/1 var(--mono);cursor:pointer;display:grid;place-items:center;padding:0}
+.ref-help:hover,.ref-help[aria-expanded="true"]{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+.ref-help:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ref-help__panel{position:absolute;z-index:6;top:calc(100% + 8px);left:0;width:min(380px,calc(100vw - 48px));background:var(--surface);border:1px solid var(--line-3);border-radius:14px;padding:14px 16px;box-shadow:0 24px 60px -20px rgba(0,0,0,.85);display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.5;color:var(--text-2)}
+.ref-help__panel > b{color:var(--text);font-size:14px}
+.ref-help__panel p{margin:0}
+.ref-help__panel p b{color:var(--text)}
+.samples__filters{display:flex;flex-wrap:wrap;gap:6px}
+.samples__filters button{border:1px solid var(--line-3);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;cursor:pointer}
+.samples__filters button[aria-pressed="true"]{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.samples__row{display:grid;grid-auto-flow:column;grid-auto-columns:calc((100% - 72px)/7);gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}
+.sample{margin:0;display:flex;flex-direction:column;gap:6px;scroll-snap-align:start;min-width:0}
+.sample__frame{position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:var(--bg-3);border:1px solid var(--line-2)}
+.sample__frame img,.sample__frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* A landscape or square example is shown whole, not cropped to the tall tile. */
+.sample__frame--landscape img,.sample__frame--landscape video,.sample__frame--square img,.sample__frame--square video{object-fit:contain;background:#000}
+.sample__len{position:absolute;top:8px;right:8px;font:700 10px var(--mono);background:rgba(11,13,17,.7);color:var(--text);border-radius:6px;padding:3px 6px}
+.sample__go{position:absolute;left:8px;right:8px;bottom:8px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);font:inherit;font-size:12px;font-weight:700;padding:8px 6px;cursor:pointer;opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s}
+.sample:hover .sample__go,.sample:focus-within .sample__go,.sample__go.on{opacity:1;transform:none}
+.sample__go:disabled{cursor:default}
+.sample figcaption{font-size:12px;line-height:1.3;color:var(--text-2)}
+@media (max-width:900px){.samples__row{grid-auto-columns:42%}}
+@media (hover:none){.sample__go{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.sample__go{transition:none}}
 .messages{flex:1;overflow:auto;padding:32px max(24px,calc((100% - 760px)/2)) 16px;display:flex;flex-direction:column;gap:28px}
 /* The user's message: the create-ui chat bubble (flat, no border); with files, a pill row sits above the text. */
 .user-message{align-self:flex-end;max-width:75%;min-width:0;background:var(--surface);border-radius:12px;padding:10px 16px;font-size:14px;line-height:1.55;color:#ececec;overflow-wrap:anywhere}
@@ -2303,16 +2399,6 @@ label.tray-note{white-space:normal}
 .create-error p{margin:0}
 .create-error button{position:absolute;right:6px;top:6px;border:0;background:transparent;color:inherit;padding:4px 8px}
 .file-symbol{display:grid;place-items:center;width:50px;height:50px;background:var(--bg-4);border-radius:7px;color:var(--text-3);font-size:24px}
-.library-search{display:flex;gap:8px;align-items:center;margin-bottom:15px}
-.library-filters{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 4px}
-.library-filters button{border:1px solid var(--line-3);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;cursor:pointer}
-.library-filters button[aria-pressed="true"]{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
-.library-filters button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.library-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
-.library-grid button{text-align:left;min-width:0;padding:10px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--bg-3);color:inherit}
-.library-grid img,.library-grid .file-symbol{height:85px;width:100%;object-fit:contain;background:var(--bg-2);border-radius:6px;margin-bottom:8px}
-.library-grid strong{font-size:11px;font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.library-grid small{font-size:10px;color:var(--text-3)}
 .comparison{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .comparison h3{font-size:13px}
 .drop-overlay{position:absolute;inset:16px;z-index:20;display:grid;place-items:center;border:2px dashed var(--accent);border-radius:20px;background:#1c1526ed;pointer-events:none}
@@ -2326,7 +2412,6 @@ label.tray-note{white-space:normal}
   .messages{padding:20px 14px}
   .composer-dock{padding:8px 12px 12px}
   .examples,.comparison,.plan-cols,.levers__grid{grid-template-columns:1fr}
-  .library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .result__meta .status{margin-left:0}
   .panel-scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:24}
   .composer-note{display:none}
@@ -2334,6 +2419,7 @@ label.tray-note{white-space:normal}
 }
 
 /* The plan card and its drawer (create-ui chat mockup). */
+.plan-check{margin:6px 0 0;color:var(--text-2);font-size:13px;line-height:1.5}
 .plan-lead{margin:0;color:#ececec}
 .plan-approach{margin-top:-4px}
 .plan-card{border:1px solid var(--line-3);border-radius:12px;padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--surface)}

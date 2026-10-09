@@ -35,6 +35,10 @@ class AssetController extends Controller
         $validated = $request->validate([
             'q' => ['nullable', 'string'],
             'asset_type' => ['nullable', 'string', 'max:64'],
+            // The library drawer asks for several kinds at once and live files only, so every page is full.
+            'asset_types' => ['nullable', 'array', 'max:6'],
+            'asset_types.*' => ['string', 'max:64'],
+            'live' => ['nullable', 'boolean'],
             'collection_id' => ['nullable', 'integer'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
@@ -55,6 +59,8 @@ class AssetController extends Controller
                 });
             })
             ->when($request->filled('asset_type'), fn ($builder) => $builder->where('asset_type', (string) $request->string('asset_type')))
+            ->when(! empty($validated['asset_types']), fn ($builder) => $builder->whereIn('asset_type', $validated['asset_types']))
+            ->when($request->boolean('live'), fn ($builder) => $builder->where('status', '!=', 'archived'))
             ->when($request->filled('collection_id'), function ($builder) use ($request): void {
                 $collectionId = (int) $request->integer('collection_id');
 
@@ -542,6 +548,14 @@ class AssetController extends Controller
         return trim((string) $safeTitle, '-').'.'.$extension;
     }
 
+    /** A real frame for a video card: an image itself, or a video's poster; never the drawn placeholder card. */
+    public function posterUrl(Asset $asset): ?string
+    {
+        if (! in_array($asset->asset_type, ['image', 'video'], true)) return null;
+        $url = $this->safeThumbnailUrl($asset);
+        return $url && ! str_starts_with($url, 'data:') ? $url : null;
+    }
+
     private function safeThumbnailUrl(Asset $asset): ?string
     {
         // An image is its own thumbnail — always, so legacy rows that still
@@ -593,7 +607,8 @@ class AssetController extends Controller
             return (string) $asset->storage_url;
         }
 
-        if (app(StorageService::class)->isCreatePrivate((string)$asset->storage_url)) return app(StorageService::class)->url($asset->storage_url);
+        // Signed by this asset's own id: looking it up again by its file breaks for an archived copy (2026-10-09).
+        if (app(StorageService::class)->isCreatePrivate((string)$asset->storage_url)) return app(StorageService::class)->createPrivateUrl((int) $asset->getKey());
         return URL::temporarySignedRoute(
             'media.assets.content',
             now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),

@@ -16,6 +16,10 @@ class OutputSettings
         'motion_blur'=>'sometimes|boolean','frame_rate'=>'sometimes|integer|in:24,30,60','reference_effort'=>'sometimes|nullable|in:standard,high,maximum','effort'=>'sometimes|in:quick,standard,thorough','reference_match'=>'sometimes|nullable|in:inspired,similar,exact','media_ceiling_credits'=>'sometimes|nullable|integer|min:0|max:20000',
         // Set when the user picks the length (Details or the brief), so an exact copy does not override it with the reference's.
         'duration_chosen'=>'sometimes|boolean',
+        // A voice the user chose before planning (the dashboard's card modal): a catalogue voice key, or "clone".
+        'voice'=>'sometimes|nullable|string|max:40',
+        // The kind of video the user picked before writing (a dashboard card): a format playbook id the planner starts from.
+        'format'=>'sometimes|nullable|string|max:40',
     ]; }
     public static function normalize(array $input): array {
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');
@@ -24,6 +28,7 @@ class OutputSettings
         if(isset($s['frame_rate']))$s['frame_rate']=(int)$s['frame_rate'];
         abort_if(!empty($s['style_pack']) && !StylePacks::exists($s['style_pack']),422,'That style is not available.');
         abort_if(!empty($s['style_pack']) && !empty($s['style_id']),422,'Choose one style: a WyvStudio style or one of yours.');
+        abort_if(!empty($s['format']) && !isset(FormatPlaybooks::PLAYBOOKS[$s['format']]),422,'That kind of video is not available.');
         abort_if($s['captions']==='provided' && !trim($s['caption_text']??''),422,'Provide the exact caption text first.');
         abort_if(($s['video_mode']??'composition')==='animate_image' && ($s['output_kind']!=='video' || !in_array($s['duration_seconds'],[5,10],true)),422,'Image animation supports 5 or 10 seconds.');
         return $s;

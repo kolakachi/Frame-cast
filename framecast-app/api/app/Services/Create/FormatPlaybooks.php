@@ -185,11 +185,13 @@ class FormatPlaybooks
         ];
     }
 
-    /** The planner's from-scratch choices, checked; the chosen playbook and voice attached in full for the build. */
-    public static function normalize(array $raw, bool $fromScratch): array
+    /** The planner's from-scratch choices, checked; the chosen playbook and voice attached in full for the build. A
+     *  format the user picked up front (settings.format) is used when the planner names none or its own structure. */
+    public static function normalize(array $raw, bool $fromScratch, ?string $picked = null): array
     {
         $str = fn ($v, $n) => is_string($v) ? mb_substr(trim($v), 0, $n) : '';
         $id = $str($raw['playbook'] ?? '', 40);
+        if ($fromScratch && $picked !== null && isset(self::PLAYBOOKS[$picked]) && ! isset(self::PLAYBOOKS[$id])) $id = $picked;
         $voice = $str($raw['motion_voice']['id'] ?? ($raw['motion_voice'] ?? ''), 40);
         $out = [];
         if (isset(self::PLAYBOOKS[$id])) $out['playbook'] = ['id' => $id] + self::PLAYBOOKS[$id];

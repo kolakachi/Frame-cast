@@ -6,6 +6,7 @@ import api from '../services/api'
 import { getEcho } from '../services/echo'
 import AppSidebar from '../components/AppSidebar.vue'
 import DashboardSkeleton from '../components/skeletons/DashboardSkeleton.vue'
+import DashboardHome from '../components/dashboard/DashboardHome.vue'
 import NotifBell from '../components/NotifBell.vue'
 import NewVideoWizard from '../components/NewVideoWizard.vue'
 import DailyStreakModal from '../components/DailyStreakModal.vue'
@@ -274,6 +275,20 @@ function setChannelFilter(channelId) {
   loadProjects()
 }
 
+// Recent videos (D6, 2026-10-09): Weave videos and classic projects in one row, newest first, each with a real frame.
+const recent = ref({ weave: [], classic_posters: {} })
+const hovered = ref('')
+async function loadRecent() { try { recent.value = (await api.get('/dashboard/recent')).data.data } catch { /* the row still shows classic videos */ } }
+const recentItems = computed(() => [
+  ...(recent.value.weave || []).map(w => ({ kind: 'weave', key: 'w' + w.id, at: w.updated_at, weave: w })),
+  ...(currentPage.value === 1 ? projects.value : []).map(p => ({ kind: 'classic', key: 'p' + p.id, at: p.updated_at, project: p })),
+].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 8))
+const posterOf = project => recent.value.classic_posters?.[project.id] || ''
+function ago(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000
+  return s < 3600 ? Math.max(1, Math.round(s / 60)) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago'
+}
+
 async function loadProjects() {
   try {
     const params = { page: currentPage.value, per_page: perPage.value }
@@ -364,7 +379,7 @@ async function loadMe() {
     const response = await api.get('/me')
     mePayload.value    = response.data?.data?.user ?? null
     creditsPayload.value = response.data?.data?.credits ?? null
-    await Promise.all([loadProjects(), loadQueue(), loadChannels(), loadSeriesPreview()])
+    await Promise.all([loadProjects(), loadChannels(), loadRecent()])
     await loadNotifications()
     subscribeWorkspaceNotifications()
     startDashboardPolling()
@@ -508,10 +523,8 @@ onBeforeUnmount(() => {
           <span class="bc-page">Dashboard</span>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-primary btn-sm" type="button" @click="openWizard">
-            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-            New Video
-          </button>
+          <!-- No "+ New Video" here (owner, 2026-10-09): videos start from the cards below or Create; Classic › Composer
+               still opens the old wizard. -->
           <NotifBell />
         </div>
       </div>
@@ -550,108 +563,56 @@ onBeforeUnmount(() => {
           <span>⚠ You're out of credits. Top up or upgrade your plan to keep generating.</span>
           <button class="credit-banner-btn" @click="router.push({ name: 'settings', query: { section: 'billing' } })">Go to billing →</button>
         </div>
-        <div
-          v-else-if="creditsPayload && creditsPayload.plan_monthly_allocation > 0 && (creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) <= 0.2"
-          class="credit-banner credit-banner-warn"
-        >
-          <span>You have {{ creditsPayload.balance }} credits left — about {{ Math.round((creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) * 100) }}% of your monthly allowance.</span>
-          <button class="credit-banner-btn" @click="router.push({ name: 'settings', query: { section: 'billing' } })">Top up →</button>
-        </div>
+        <!-- The "% of your monthly allowance" banner is gone (2026-10-09): it counted this month's plan credits only, so a
+             workspace living on top-ups was told it had 0% left. The welcome's low-credit line counts every credit. -->
         <div
           v-else-if="creditsPayload && creditsPayload.plan_monthly_allocation === 0 && creditsPayload.balance <= 40"
           class="credit-banner credit-banner-warn"
         >
-          <span>You have {{ creditsPayload.balance }} free credits left. Upgrade to a paid plan for monthly credits.</span>
+          <span>You have {{ Number(creditsPayload.balance).toLocaleString() }} free credits left. Upgrade to a paid plan for monthly credits.</span>
           <button class="credit-banner-btn" @click="router.push({ name: 'settings', query: { section: 'billing' } })">See plans →</button>
         </div>
 
-        <!-- Quick actions -->
-        <div class="quick-actions">
-          <button class="quick-action primary" type="button" @click="openWizard">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            New Video
-          </button>
-          <!-- 'Start from Scratch' moved into the wizard itself as a step-0
-               card choice, so it's not a separate quick action anymore.
-               Empty-state hero still has its own version for first-project UX. -->
-          <button class="quick-action" type="button" @click="router.push({ name: 'series-create' })">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-            New Series
-          </button>
-          <button class="quick-action" type="button" @click="router.push({ name: 'channels' })">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            New Channel
-          </button>
-          <button class="quick-action" type="button" @click="router.push({ name: 'asset-library' })">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Upload Asset
-          </button>
-        </div>
+        <!-- The new top of the dashboard (2026-10-08): welcome, setup steps and video-type cards. -->
+        <DashboardHome :user="mePayload" :credits="creditsPayload" />
 
-        <!-- Stats -->
-        <div class="stats-row">
-          <div class="stat-card accent-stat">
-            <div class="stat-label">Videos This Month</div>
-            <div class="stat-value">{{ videosThisMonth }}</div>
-            <div class="stat-change">{{ videosThisMonth > 0 ? 'Pipeline active' : 'Create your first video' }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Active Channels</div>
-            <div class="stat-value">{{ channels.length }}</div>
-            <div class="stat-change">{{ channels.length > 0 ? 'Content lanes set up' : 'Create a channel' }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">In Queue</div>
-            <div class="stat-value">{{ queuedRenders }}</div>
-            <div class="stat-change">{{ queuedRenders > 0 ? 'Generation in progress' : 'Queue is empty' }}</div>
-          </div>
-          <!-- A pooled client workspace reports a null balance: its agency pays,
-               and neither "0" nor the agency's figure would be true of it. -->
-          <div :class="['stat-card', creditsPayload && creditsPayload.balance !== null && creditsPayload.balance <= 0 ? 'stat-card-danger' : creditsPayload && creditsPayload.plan_monthly_allocation > 0 && (creditsPayload.credits_monthly / creditsPayload.plan_monthly_allocation) <= 0.2 ? 'stat-card-warn' : '']">
-            <div class="stat-label">Credits Remaining</div>
-            <div class="stat-value">
-              {{ creditsPayload && creditsPayload.balance !== null ? creditsPayload.balance.toLocaleString() : '—' }}
-            </div>
-            <div class="stat-change">
-              <template v-if="!creditsPayload">Loading…</template>
-              <template v-else-if="creditsPayload.credits_source === 'agency'">Provided by your agency</template>
-              <template v-else-if="creditsPayload.balance <= 0 && creditsPayload.credits_source === 'allocated'">Out of credits — ask your agency for more</template>
-              <template v-else-if="creditsPayload.balance <= 0">No credits — upgrade to continue</template>
-              <template v-else-if="creditsPayload.credits_source === 'allocated'">Allocated by your agency</template>
-              <template v-else-if="creditsPayload.plan_monthly_allocation > 0">of {{ creditsPayload.plan_monthly_allocation.toLocaleString() }} this month</template>
-              <template v-else>Free tier — {{ creditsPayload.balance }} remaining</template>
-            </div>
-          </div>
-          <!-- Daily Streak card — clickable, opens the streak modal. Pulses
-               when there's an unclaimed bonus today. Hidden via SHOW_STREAK. -->
-          <div v-if="SHOW_STREAK" :class="['stat-card', 'streak-card', streakState?.can_claim ? 'streak-pulse' : '']"
-               @click="streakModalOpen = true"
-               role="button"
-               tabindex="0"
-               @keydown.enter="streakModalOpen = true">
-            <div class="stat-label">🔥 Daily Streak</div>
-            <div class="stat-value">{{ streakState ? `Day ${streakState.current_day}` : '—' }}</div>
-            <div class="stat-change">
-              <template v-if="!streakState">Loading…</template>
-              <template v-else-if="streakState.can_claim">Claim {{ streakState.today_prize }} credits →</template>
-              <template v-else>Come back tomorrow</template>
-            </div>
-          </div>
-        </div>
-
-        <!-- Continue editing strip -->
-        <div v-if="totalProjects > 0" class="dash-section">
+        <!-- Recent videos -->
+        <div v-if="recentItems.length" class="dash-section">
           <div class="section-hd">
             <div class="section-hd-left">
-              <div class="eyebrow">In progress</div>
-              <div class="section-title">Continue editing</div>
+              <div class="section-title">Recent videos</div>
             </div>
             <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'videos' })">View all →</button>
           </div>
 
           <div class="continue-strip">
+            <template v-for="item in recentItems" :key="item.key">
             <article
-              v-for="project in projects"
+              v-if="item.kind === 'weave'"
+              class="continue-card"
+              tabindex="0"
+              role="button"
+              @click="router.push({ name: 'create', params: { conversationId: item.weave.id } })"
+              @keydown.enter="router.push({ name: 'create', params: { conversationId: item.weave.id } })"
+              @mouseenter="hovered = item.key"
+              @mouseleave="hovered = ''"
+            >
+              <div class="continue-thumb">
+                <img v-if="item.weave.poster_url" class="continue-poster" :src="item.weave.poster_url" alt="" loading="lazy" />
+                <div v-else class="continue-thumb-inner"><div class="phone-frame"><div class="phone-line"></div><div class="phone-line accent"></div><div class="phone-line"></div></div></div>
+                <video v-if="hovered === item.key" class="continue-poster" :src="item.weave.video_url" autoplay muted loop playsinline aria-hidden="true"></video>
+                <div class="continue-overlay"></div>
+                <span class="continue-badge weave-badge">Weave</span>
+                <span class="aspect-badge">{{ item.weave.aspect_ratio }}</span>
+              </div>
+              <div class="continue-body">
+                <div class="continue-title continue-title--static">{{ item.weave.title }}</div>
+                <div class="continue-meta"><span class="continue-meta-muted">Made in Weave · {{ ago(item.weave.updated_at) }}</span></div>
+              </div>
+            </article>
+            <template v-else>
+            <article
+              v-for="project in [item.project]"
               :key="project.id"
               class="continue-card"
               tabindex="0"
@@ -671,7 +632,8 @@ onBeforeUnmount(() => {
                     <path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path>
                   </svg>
                 </button>
-                <div class="continue-thumb-inner">
+                <img v-if="posterOf(project)" class="continue-poster" :src="posterOf(project)" alt="" loading="lazy" />
+                <div v-else class="continue-thumb-inner">
                   <div class="phone-frame">
                     <div class="phone-line"></div>
                     <div class="phone-line accent"></div>
@@ -713,198 +675,14 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </article>
+            </template>
+            </template>
           </div>
 
         </div>
 
-        <!-- Empty state — only when workspace has no videos at all -->
-        <div v-if="totalProjects === 0" class="empty-hero">
-          <div class="empty-hero-icon">✦</div>
-          <div class="empty-hero-title">Create your first video</div>
-          <div class="empty-hero-text">Generate AI-powered faceless videos from a prompt, script, URL, or audio.</div>
-          <div class="empty-actions">
-            <button class="btn btn-primary" type="button" @click="openWizard">Generate Video</button>
-            <button class="btn btn-ghost" type="button" @click="openWizard('blank')">Start from Scratch</button>
-          </div>
-        </div>
+        <!-- Series and the render queue left the dashboard (2026-10-08): status shows on each video. -->
 
-        <!-- Channels section -->
-        <div class="dash-section">
-          <div class="section-hd">
-            <div class="section-hd-left">
-              <div class="eyebrow">Content lanes</div>
-              <div class="section-title">Channels</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'channels' })">Manage channels →</button>
-          </div>
-
-          <div v-if="channels.length === 0" class="empty-section">
-            <div class="empty-section-text">No channels yet. Channels let you organise videos by topic, brand, or platform.</div>
-            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'channels' })">Create Channel →</button>
-          </div>
-
-          <template v-else>
-            <div v-if="channels.length > 1" class="adaptive-note">
-              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-              <div>You have <strong>{{ channels.length }} channels</strong>. Click a channel to see its videos, series, and brand defaults.</div>
-            </div>
-            <div class="channel-grid">
-              <div
-                v-for="(ch, i) in channels"
-                :key="ch.id"
-                class="channel-card"
-                @click="router.push({ name: 'videos', query: { channel_id: ch.id } })"
-              >
-                <div :class="['channel-cover', `ch-grad-${(ch.id % 5) + 1}`]">
-                  <span class="channel-icon">{{ ch.name?.[0]?.toUpperCase() || '?' }}</span>
-                </div>
-                <div class="channel-body">
-                  <div class="channel-name">{{ ch.name }}</div>
-                  <div v-if="ch.description" class="channel-desc">{{ ch.description }}</div>
-                  <div class="channel-stats">
-                    <div class="ch-stat">
-                      <div class="ch-stat-val">{{ ch.platform_targets?.[0] || 'tiktok' }}</div>
-                      <div class="ch-stat-label">Platform</div>
-                    </div>
-                    <div class="ch-stat">
-                      <div class="ch-stat-val">{{ ch.default_language || 'en' }}</div>
-                      <div class="ch-stat-label">Lang</div>
-                    </div>
-                    <div class="ch-stat">
-                      <div class="ch-stat-val">{{ ch.aspect_ratio || '9:16' }}</div>
-                      <div class="ch-stat-label">Format</div>
-                    </div>
-                  </div>
-                  <div class="channel-footer">
-                    <div class="channel-kit">
-                      <div class="kit-dot" :style="{ background: CH_DOT_COLORS[i % CH_DOT_COLORS.length] }"></div>
-                      {{ ch.brand_kit?.name || 'Default Kit' }}
-                    </div>
-                    <span class="channel-action">Open →</span>
-                  </div>
-                </div>
-              </div>
-              <div class="channel-card-new" @click="router.push({ name: 'channels' })">
-                <div class="channel-new-icon">+</div>
-                <div>New Channel</div>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <!-- Series section -->
-        <div class="dash-section">
-          <div class="section-hd">
-            <div class="section-hd-left">
-              <div class="eyebrow">Repeatable formats</div>
-              <div class="section-title">Series</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'series' })">View all →</button>
-          </div>
-
-          <div v-if="seriesPreview.length === 0" class="empty-section">
-            <div class="empty-section-text">No series yet. Series let you build recurring content formats with shared voice, visuals, and characters.</div>
-            <button class="btn btn-ghost btn-sm" type="button" @click="router.push({ name: 'series-create' })">Create Series →</button>
-          </div>
-
-          <div v-else class="series-grid">
-            <div
-              v-for="(s, i) in seriesPreview"
-              :key="s.id"
-              class="series-card"
-              @click="router.push({ name: 'series-detail', params: { seriesId: s.id } })"
-            >
-              <div class="series-num">{{ String(i + 1).padStart(2, '0') }}</div>
-              <div class="series-info">
-                <div class="series-name">{{ s.name }}</div>
-                <div v-if="channelNameById(s.channel_id)" class="series-channel">{{ channelNameById(s.channel_id) }}</div>
-                <div class="series-meta">
-                  <span class="series-pill">{{ s.episodes_count || 0 }} ep{{ s.episodes_count !== 1 ? 's' : '' }}</span>
-                  <span v-if="s.tone" class="series-pill">{{ s.tone }}</span>
-                  <span v-if="s.duration_target_seconds" class="series-pill">~{{ Math.round(s.duration_target_seconds / 60) }}min</span>
-                </div>
-              </div>
-              <div class="series-actions">
-                <span class="series-eps">ep {{ (s.episodes_count || 0) + 1 }} due</span>
-                <button
-                  class="btn btn-primary btn-sm"
-                  type="button"
-                  @click.stop="router.push({ name: 'series-detail', params: { seriesId: s.id } })"
-                >+ Episode</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Render queue -->
-        <div class="dash-section">
-          <div class="section-hd section-hd-queue">
-            <div class="section-hd-left">
-              <div class="eyebrow">Background work</div>
-              <div class="section-title">Render Queue</div>
-            </div>
-            <div class="projects-toolbar">
-              <label class="page-size-control">
-                <span>Per page</span>
-                <select class="field-input page-size-select" :value="queuePerPage" @change="changeQueuePerPage($event.target.value)">
-                  <option v-for="option in queuePerPageOptions" :key="option" :value="option">{{ option }}</option>
-                </select>
-              </label>
-              <div class="projects-summary">{{ queueFrom }}–{{ queueTo }} of {{ totalQueueRows }}</div>
-            </div>
-          </div>
-          <div class="surface-card queue-wrap">
-            <table v-if="queueRows.length > 0" class="queue-table">
-              <thead>
-                <tr>
-                  <th>Project</th>
-                  <th>Channel</th>
-                  <th>Variants</th>
-                  <th>Status</th>
-                  <th>Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="row in queueRows"
-                  :key="row.id"
-                  class="queue-row"
-                  @click="openProject({ id: row.id, status: row.projectStatus })"
-                >
-                  <td class="queue-primary" data-label="Project">{{ row.project }}</td>
-                  <td class="queue-muted" data-label="Channel">{{ row.channel }}</td>
-                  <td data-label="Variants">{{ row.variants }}</td>
-                  <td data-label="Status"><span :class="`project-status status-${row.status} queue-status`">{{ row.statusLabel }}</span></td>
-                  <td data-label="Progress">
-                    <div class="queue-progress-cell">
-                      <div class="progress-bar">
-                        <div :class="`progress-fill status-${row.status}`" :style="{ width: `${row.progress}%` }"></div>
-                      </div>
-                      <button
-                        v-if="row.projectStatus === 'failed'"
-                        class="queue-delete-btn"
-                        type="button"
-                        :disabled="isDeletingProject(row.id)"
-                        title="Delete failed video"
-                        @click.stop="requestDeleteProject(row.id)"
-                      >
-                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                          <path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path>
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="queue-empty">No jobs in queue.</div>
-            <div v-if="queueLastPage > 1" class="pagination-row queue-pagination-row">
-              <button class="btn btn-ghost btn-sm" type="button" :disabled="queuePage <= 1" @click="goToQueuePage(queuePage - 1)">Previous</button>
-              <div class="pagination-copy">Page {{ queuePage }} of {{ queueLastPage }}</div>
-              <button class="btn btn-ghost btn-sm" type="button" :disabled="queuePage >= queueLastPage" @click="goToQueuePage(queuePage + 1)">Next</button>
-            </div>
-          </div>
-        </div>
 
       </div>
     </div>
@@ -1026,6 +804,10 @@ onBeforeUnmount(() => {
 .new-continue-label { font-size: 12px; font-weight: 600; }
 .continue-thumb { height: 108px; position: relative; overflow: hidden; background: linear-gradient(135deg, #141729, #1a223d); }
 .continue-thumb-inner { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.continue-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.weave-badge { background: rgba(255,107,53,.18); color: #ff9a6c; }
+.continue-title--static { cursor: inherit; }
+.continue-title--static:hover { color: var(--color-text-primary); }
 .continue-overlay { position: absolute; inset: auto 0 0; height: 50%; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.45)); }
 /* bottom-right is the only free corner: delete btn owns top-left (and sits
    above on hover), aspect top-right, status badge bottom-left. */

@@ -34,6 +34,12 @@ Route::get('/media/create-versions/{revisionId}', [\App\Http\Controllers\Api\V1\
     ->middleware('signed')
     ->name('media.create.version');
 
+// A frame of a Create version, for the dashboard's Recent videos (D6).
+Route::get('/media/create-posters/{revisionId}', [\App\Http\Controllers\Api\V1\Create\CreateController::class, 'signedPoster'])
+    ->whereUuid('revisionId')
+    ->middleware('signed')
+    ->name('media.create.poster');
+
 Route::get('/media/assets/{assetId}/thumbnail', [AssetController::class, 'thumbnail'])
     ->whereNumber('assetId')
     ->middleware('signed')

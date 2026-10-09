@@ -51,6 +51,13 @@ class CreateController extends Controller
         return response()->json(['data'=>$this->service->create($r->user(),$settings)],201);
     }
 
+    public function scriptWriter(Request $r)
+    {
+        $this->service->authorize($r->user(), true);
+        $input = $r->validate(['type' => 'required|string|max:40', 'about' => 'required|string|max:2000', 'duration_seconds' => 'sometimes|integer|min:5|max:30']);
+        return response()->json(['data' => app(\App\Services\Create\ScriptWriter::class)->write($r->user(), $input['type'], $input['about'], (int) ($input['duration_seconds'] ?? 15))]);
+    }
+
     public function show(Request $r, string $id)
     {
         $c = $this->service->conversation($r->user(), $id);
@@ -211,6 +218,19 @@ class CreateController extends Controller
         $service = in_array($host, config('create.reference_hosts'), true) ? \App\Services\Create\References\ReferenceLinkService::class
             : (\App\Services\Create\References\MediaLinkService::isMediaFile($input['url']) ? \App\Services\Create\References\MediaLinkService::class : \App\Services\Create\References\PageReferenceService::class);
         app($service)->add($r->user(), $id, $input['url'], $input['expected_version'], $input['idempotency_key']);
+        return $this->show($r, $id);
+    }
+
+    public function samples(Request $r)
+    {
+        $this->service->authorize($r->user(), false);
+        return response()->json(['data' => \App\Services\Create\SampleLibrary::catalogue()]);
+    }
+
+    public function useSample(Request $r, string $id)
+    {
+        $input = $r->validate(['sample' => 'required|string|max:40', 'expected_version' => 'required|integer|min:0']);
+        app(\App\Services\Create\SampleLibrary::class)->attach($r->user(), $id, $input['sample'], $input['expected_version']);
         return $this->show($r, $id);
     }
 
@@ -448,6 +468,17 @@ class CreateController extends Controller
         abort_unless($revision->artifact_path && app(\App\Services\Create\CreateStorage::class)->exists($revision->artifact_path), 404);
         $ext = pathinfo($revision->artifact_path, PATHINFO_EXTENSION);
         return response()->file(app(\App\Services\Create\CreateStorage::class)->path($revision->artifact_path), ['Content-Type' => match ($ext) { 'png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp', default => 'video/mp4' }, 'Cache-Control' => 'private, max-age=600']);
+    }
+
+    public function signedPoster(string $revisionId)
+    {
+        $revision = DB::table('composition_revisions')->where('id', $revisionId)->firstOrFail();
+        $workspace = DB::table('create_conversations')->where('id', $revision->conversation_id)->value('workspace_id');
+        abort_unless($workspace && \App\Models\Workspace::whereKey($workspace)->where('status', 'active')->exists(), 404);
+        $storage = app(\App\Services\Create\CreateStorage::class);
+        $path = \App\Jobs\MakeCreatePoster::path($revisionId);
+        abort_unless($storage->exists($path), 404);
+        return response()->file($storage->path($path), ['Content-Type' => 'image/jpeg', 'Cache-Control' => 'private, max-age=86400']);
     }
 
     public function artifact(Request $r, string $id, string $revisionId)

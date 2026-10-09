@@ -154,6 +154,55 @@ class CreateIntegrationTest extends TestCase
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertStringStartsWith("I couldn't line up what the presenter says with the voiceover script", $e->getMessage()); }
     }
 
+    public function test_the_dashboard_setup_steps_tick_from_what_the_workspace_has(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $get = fn () => $this->actingAs($this->owner)->getJson('/api/v1/dashboard/setup')->assertOk()->json('data');
+        $ws = $this->workspace->id;
+        DB::table('brand_kits')->where('workspace_id', $ws)->delete();
+        DB::table('create_pronunciations')->where('workspace_id', $ws)->delete();
+        $start = $get();
+        $this->assertFalse($start['steps']['brand']);
+        $this->assertFalse($start['steps']['pronunciation']);
+        $this->assertSame(4, $start['total']);
+        // A brand kit with a colour, and a saved pronunciation: both tick.
+        DB::table('brand_kits')->insert(['workspace_id' => $ws, 'name' => 'Main', 'primary_color' => '#FF6B35', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('create_pronunciations')->insert(['workspace_id' => $ws, 'written' => 'WyvStudio', 'spoken' => 'weave studio', 'created_at' => now(), 'updated_at' => now()]);
+        $after = $get();
+        $this->assertTrue($after['steps']['brand']);
+        $this->assertTrue($after['steps']['pronunciation']);
+        $this->assertSame($start['done'] + 2, $after['done']);
+        $this->assertSame('Main', $after['brand_name'], 'the brand kit names the brand the pronunciation step asks about');
+    }
+
+    public function test_script_writer_drafts_to_the_cards_shape_without_inventing_and_has_a_daily_limit(): void
+    {
+        config(['services.anthropic.key' => 'k']);
+        $sent = null;
+        Http::fake(['https://api.anthropic.com/*' => function ($request) use (&$sent) {
+            $sent = $request->data();
+            return Http::response(['content' => [['type' => 'text', 'text' => json_encode(['sections' => [
+                ['label' => 'Hook', 'text' => 'Dull skin by 3 pm?'], ['label' => 'Benefit', 'text' => 'Dewbloom serum brightens without the sting.'], ['label' => 'Offer', 'text' => '[your offer]. Tap to glow.']]])]]]);
+        }]);
+        $writer = app(\App\Services\Create\ScriptWriter::class);
+        $out = $writer->write($this->owner, 'offer_ad', 'Dewbloom vitamin C serum for dull skin', 15);
+        $this->assertSame(['Hook', 'Benefit', 'Offer'], array_column($out['sections'], 'label'));
+        $this->assertGreaterThan(0, $out['words']);
+        $ask = $sent['messages'][0]['content'];
+        $this->assertStringContainsString('about 27 words', $ask, 'sized like the planner: about 2 words a second');
+        $this->assertStringContainsString('Never invent a price', $ask);
+        $this->assertSame(config('create.check_model'), $sent['model'], 'the cheap model');
+        // A kind of video it has no shape for, or nothing to go on: refused before any call.
+        $this->rejected(422, fn () => $writer->write($this->owner, 'mystery', 'something', 15));
+        $this->rejected(422, fn () => $writer->write($this->owner, 'offer_ad', '  ', 15));
+        // 20 a day per workspace.
+        \Illuminate\Support\Facades\RateLimiter::clear('create-script-writer:'.$this->owner->workspace_id.':'.now()->toDateString());
+        for ($i = 0; $i < \App\Services\Create\ScriptWriter::DAILY_LIMIT; $i++) $writer->write($this->owner, 'listicle', 'skin care tips', 30);
+        $this->rejected(429, fn () => $writer->write($this->owner, 'listicle', 'skin care tips', 30));
+        // The voice chosen in the card modal is a setting Create keeps.
+        $this->assertSame('Charon', \App\Services\Create\OutputSettings::normalize(['voice' => 'Charon'])['voice']);
+    }
+
     public function test_copying_exactly_turns_each_kept_moment_into_a_layout_requirement(): void
     {
         $this->assertSame(7.85, \App\Services\Create\References\ReferenceStudy::keyTime(['start' => 7.4, 'end' => 8.1], 15), 'late in the moment, once its elements have arrived');
@@ -5103,6 +5152,252 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(409, fn () => $verifier->verify((object) ['id' => 'att-2', 'provider' => 'offline', 'cost_limit_microusd' => 100, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
         $this->rejected(422, fn () => $verifier->verify((object) ['id' => 'att-3', 'provider' => 'anthropic', 'cost_limit_microusd' => 1, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
     }
+    public function test_a_kind_of_video_picked_up_front_is_the_playbook_the_plan_starts_from(): void
+    {
+        // The dashboard's cards (D4, 2026-10-09): the card's kind of video travels as settings.format.
+        $this->assertSame('listicle', \App\Services\Create\OutputSettings::normalize(['format' => 'listicle'])['format']);
+        try { \App\Services\Create\OutputSettings::normalize(['format' => 'podcast']); $this->fail('An unknown format was accepted.'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
+        $norm = fn (array $raw, bool $scratch, ?string $picked) => \App\Services\Create\FormatPlaybooks::normalize($raw, $scratch, $picked)['playbook']['id'] ?? null;
+        $this->assertSame('offer_ad', $norm([], true, 'offer_ad'), 'No playbook named: the picked one is used.');
+        $this->assertSame('offer_ad', $norm(['playbook' => 'open'], true, 'offer_ad'), 'Its own structure: the picked one is used.');
+        $this->assertSame('explainer', $norm(['playbook' => 'explainer'], true, 'offer_ad'), 'A later message asked for another format.');
+        $this->assertNull($norm([], false, 'offer_ad'), 'A reference video supplies the shape.');
+        $this->assertStringContainsString('settings.format', \App\Services\Create\Planning\PlanPrompt::system());
+    }
+
+    public function test_recent_videos_show_weave_videos_with_a_frame_cut_from_the_finished_video(): void
+    {
+        // D6 (2026-10-09): a Weave video's frame is cut once, then Recent videos signs it and the video for hover.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $c = $this->brief();
+        $tmp = tempnam(sys_get_temp_dir(), 'rec').'.mp4';
+        $made = \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=orange:s=90x160:d=3', '-pix_fmt', 'yuv420p', $tmp]);
+        if (! $made->successful()) $this->markTestSkipped('ffmpeg is not available here');
+        $path = 'create/previews/test/recent.mp4';
+        $storage = app(\App\Services\Create\CreateStorage::class);
+        $storage->put($path, file_get_contents($tmp));
+        $rev = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_revisions')->insert(['id' => $rev, 'conversation_id' => $c->id, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'number' => 1, 'parent_revision_id' => null,
+            'bundle_json' => '{}', 'bundle_hash' => str_repeat('c', 64), 'artifact_path' => $path, 'artifact_hash' => str_repeat('d', 64), 'summary' => 'v1', 'created_at' => now()]);
+        DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $rev, 'title' => 'Serum ad']);
+        $get = fn () => collect($this->actingAs($this->owner)->getJson('/api/v1/dashboard/recent')->assertOk()->json('data.weave'))->firstWhere('id', $c->id);
+        // The first visit asks for the frame; once it is cut, the next visit signs it.
+        $first = $get();
+        $this->assertSame('Serum ad', $first['title']);
+        $this->assertNull($first['poster_url']);
+        $this->assertStringContainsString('/media/create-versions/'.$rev, $first['video_url']);
+        Bus::assertDispatched(\App\Jobs\MakeCreatePoster::class, fn ($job) => $job->revisionId === $rev);
+        (new \App\Jobs\MakeCreatePoster($rev))->handle($storage);
+        $this->assertTrue($storage->exists(\App\Jobs\MakeCreatePoster::path($rev)), 'the poster was cut');
+        $poster = $get()['poster_url'];
+        $this->assertStringContainsString('/media/create-posters/'.$rev, $poster);
+        $this->get(parse_url($poster, PHP_URL_PATH))->assertForbidden();
+        $this->get($poster)->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+    }
+
+    public function test_what_a_workspace_sells_is_learned_once_from_its_videos(): void
+    {
+        // D5 (2026-10-09): unknown, it is learned in the background from the briefs; too little to go on stays unknown.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $ws = $this->workspace->id;
+        DB::table('workspaces')->where('id', $ws)->update(['industry' => null, 'industry_source' => null]);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        \Illuminate\Support\Facades\Http::fake(['api.anthropic.com/*' => \Illuminate\Support\Facades\Http::response(['content' => [['type' => 'text', 'text' => '{"industry": "beauty"}']]])]);
+        $this->assertNull(app(\App\Services\Create\Industry::class)->learn($ws), 'no videos yet: nothing to learn from');
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A 15-second ad for Dewbloom vitamin C serum, for dull skin, 20% off this week. Show the dropper and a glowing face.', 'expected_version' => 0, 'idempotency_key' => 'industry-1']);
+        $this->assertNull($this->actingAs($this->owner)->getJson('/api/v1/dashboard/setup')->assertOk()->json('data.industry'));
+        Bus::assertDispatched(\App\Jobs\LearnWorkspaceIndustry::class, fn ($job) => $job->workspaceId === $ws);
+        (new \App\Jobs\LearnWorkspaceIndustry($ws))->handle(app(\App\Services\Create\Industry::class));
+        $this->assertSame('beauty', DB::table('workspaces')->where('id', $ws)->value('industry'), 'learned by the background job');
+        $this->assertSame('learned', DB::table('workspaces')->where('id', $ws)->value('industry_source'));
+        $this->assertSame('beauty', $this->actingAs($this->owner)->getJson('/api/v1/dashboard/setup')->json('data.industry'));
+    }
+
+    public function test_next_video_ideas_are_written_once_per_new_video_and_never_on_a_visit(): void
+    {
+        // D8 (2026-10-09): none before a first video; then one model call, kept until a new video or a new week.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        $calls = 0;
+        \Illuminate\Support\Facades\Http::fake(['api.anthropic.com/*' => function () use (&$calls) { $calls++; return \Illuminate\Support\Facades\Http::response(['content' => [['type' => 'text', 'text' => json_encode(['ideas' => [
+            ['kind' => 'more', 'format' => 'listicle', 'title' => '3 ways to use Dewbloom serum', 'why' => 'A new angle on your serum ad.', 'brief' => 'Three quick tips for Dewbloom vitamin C serum.'],
+            ['kind' => 'new_format', 'format' => 'explainer', 'title' => 'How vitamin C brightens skin', 'why' => 'You have not made an explainer yet.', 'brief' => 'How Dewbloom serum works, in three steps.'],
+            ['kind' => 'quick', 'format' => 'podcast', 'title' => 'This week only', 'why' => 'An easy post for an empty day.', 'brief' => 'Dewbloom serum, [your offer] this week.'],
+        ]])]]]); }]);
+        $get = fn () => $this->actingAs($this->owner)->getJson('/api/v1/dashboard/ideas')->assertOk()->json('data.ideas');
+        DB::table('projects')->where('workspace_id', $this->workspace->id)->delete();
+        $this->assertSame([], $get(), 'no video yet');
+        $this->assertSame(0, $calls);
+        $c = $this->brief();
+        $rev = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_revisions')->insert(['id' => $rev, 'conversation_id' => $c->id, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'number' => 1, 'parent_revision_id' => null,
+            'bundle_json' => '{}', 'bundle_hash' => str_repeat('c', 64), 'artifact_path' => 'create/previews/test/x.mp4', 'artifact_hash' => str_repeat('d', 64), 'summary' => 'v1', 'created_at' => now()]);
+        DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $rev]);
+        $ideas = $get();
+        $this->assertSame(['more', 'new_format', 'quick'], array_column($ideas, 'kind'));
+        $this->assertSame('offer_ad', $ideas[2]['format'], 'an unknown format falls back to a card that exists');
+        $get(); $get();
+        $this->assertSame(1, $calls, 'visits reuse the ideas');
+    }
+
+    public function test_an_assistant_makes_a_weave_video_through_the_developer_api_and_always_confirms_the_price(): void
+    {
+        // L3 (2026-10-09): start plans at once; the price comes back as a quote and nothing runs until it is approved.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $api = '/api/developer/v1/weave/videos';
+        $start = $this->actingAs($this->owner)->postJson($api, ['brief' => 'A 20-second tips video for Dewbloom vitamin C serum, for dull skin.', 'format' => 'listicle', 'duration_seconds' => 20, 'idempotency_key' => 'mcp-1'])
+            ->assertCreated()->json('data');
+        $id = $start['id'];
+        $settings = json_decode((string) DB::table('create_conversations')->where('id', $id)->value('settings_json'), true);
+        $this->assertSame('listicle', $settings['format']);
+        $this->assertSame(20, $settings['duration_seconds']);
+        $this->assertStringContainsString('Dewbloom', (string) DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->value('content'));
+        // A retry with the same key returns the same video, not a second one.
+        $this->assertSame($id, $this->actingAs($this->owner)->postJson($api, ['brief' => 'A 20-second tips video for Dewbloom vitamin C serum, for dull skin.', 'idempotency_key' => 'mcp-1'])->json('data.id'));
+        $this->assertSame(1, DB::table('create_conversations')->where('workspace_id', $this->workspace->id)->count());
+
+        // Planning ran after the response (fixture planner): the plan is ready to show.
+        $status = $this->actingAs($this->owner)->getJson($api.'/'.$id)->assertOk()->json('data');
+        $this->assertSame('plan_ready', $status['state'], json_encode($status));
+        $this->assertArrayNotHasKey('review', $status['plan'] ?? []);
+
+        // Step 1: the price, and nothing runs.
+        $quote = $this->actingAs($this->owner)->postJson($api.'/'.$id.'/quotes')->assertOk()->json('data');
+        $this->assertNotEmpty($quote['quote_id']);
+        $this->assertSame('the video', $quote['makes']);
+        $this->assertSame(0, DB::table('composition_runs')->where('conversation_id', $id)->count());
+        // Step 2: the user's go starts the build.
+        $run = $this->actingAs($this->owner)->postJson($api.'/'.$id.'/runs', ['quote_id' => $quote['quote_id']])->assertStatus(202)->json('data');
+        $this->assertSame(1, DB::table('composition_runs')->where('conversation_id', $id)->count());
+        $this->assertSame('building', $run['state']);
+        $this->assertContains($id, array_column($this->actingAs($this->owner)->getJson($api)->assertOk()->json('data.videos'), 'id'));
+    }
+
+    public function test_the_first_plan_asks_to_keep_its_settings_and_how_a_name_is_said_in_words(): void
+    {
+        // C1 and C7 (owner, 2026-10-09): no extra buttons; the first plan says what it was made for and asks.
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 20, 'aspect_ratio' => '1:1']);
+        DB::table('brand_kits')->insert(['workspace_id' => $this->workspace->id, 'name' => 'Dewbloom', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('create_pronunciations')->where('workspace_id', $this->workspace->id)->delete();
+        $checks = \App\Services\Create\PlanService::firstPlanChecks($this->conversations->conversation($this->owner, $c->id), ['voice' => 'Kore']);
+        $this->assertSame('Made for 20 seconds, 1:1 for the feed, in the Kore voice. Happy with that? Approve the plan to keep it, or tell me what to change (or change it in Details).', $checks[0]);
+        $this->assertStringContainsString('Dewbloom is pronounced', $checks[1]);
+        // The suggested reply is the form that saves a pronunciation.
+        $this->assertSame(['Dewbloom' => 'dew bloom'], \App\Services\Ugc\PronunciationMap::fromBrief('Dewbloom is pronounced "dew bloom"'));
+        // A saved pronunciation, or a video with no voice, drops the name question.
+        DB::table('create_pronunciations')->insert(['workspace_id' => $this->workspace->id, 'written' => 'Dewbloom', 'spoken' => 'dew bloom', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertCount(1, \App\Services\Create\PlanService::firstPlanChecks($this->conversations->conversation($this->owner, $c->id), ['voice' => 'Kore']));
+        $this->assertStringContainsString('with no voiceover', \App\Services\Create\PlanService::firstPlanChecks($this->conversations->conversation($this->owner, $c->id), [])[0]);
+    }
+
+    public function test_make_one_like_this_attaches_an_example_as_the_style_reference_once_per_workspace(): void
+    {
+        // C2 (2026-10-09): our example videos on the empty screen; the first use copies it in, later uses reuse the copy.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $catalogue = $this->actingAs($this->owner)->getJson('/api/v1/create/samples')->assertOk()->json('data');
+        $this->assertContains('b01', array_column($catalogue, 'id'));
+        $this->assertStringEndsWith('/weave/b01.mp4', $catalogue[0]['video_url']);
+        $this->assertStringEndsWith('/thumbs/b01.webp', $catalogue[0]['poster_url']);
+        $this->assertStringEndsWith('/previews/b01.mp4', $catalogue[0]['preview_url']);
+        $this->assertCount(32, $catalogue);
+        $this->assertStringEndsWith('/ugc/ugc-1.mp4', collect($catalogue)->firstWhere('id', 'ugc-1')['video_url']);
+        $tmp = tempnam(sys_get_temp_dir(), 'smp').'.mp4';
+        $made = \Illuminate\Support\Facades\Process::run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=90x160:d=2', '-pix_fmt', 'yuv420p', $tmp]);
+        if (! $made->successful()) $this->markTestSkipped('ffmpeg is not available here');
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $fetches = 0;
+        Http::fake(['s3.us-east-005.backblazeb2.com/*' => function () use ($tmp, &$fetches) { $fetches++; return Http::response(file_get_contents($tmp), 200, ['Content-Type' => 'video/mp4']); }]);
+        $use = function () {
+            $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+            $show = $this->actingAs($this->owner)->postJson('/api/v1/create/conversations/'.$c->id.'/samples', ['sample' => 'b01', 'expected_version' => (int) $c->version])->assertOk()->json('data');
+            return collect($show['attachments'])->firstWhere('title', 'Example: Launch promo in bold kinetic type');
+        };
+        $first = $use();
+        $this->assertSame('reference', $first['purpose']);
+        $second = $use();
+        $this->assertSame($first['asset_id'], $second['asset_id'], 'the copy is reused');
+        $this->assertSame(1, $fetches);
+        $this->actingAs($this->owner)->postJson('/api/v1/create/conversations/'.$this->conversations->create($this->owner, [])->id.'/samples', ['sample' => 'nope', 'expected_version' => 0])->assertStatus(422);
+    }
+
+    public function test_the_agency_sees_what_needs_it_across_clients_and_a_client_sees_what_waits_for_them(): void
+    {
+        // Phase 3 (2026-10-09): Needs you first (changes asked, client requests, approved to schedule, ready to send,
+        // with the client), a card per client; a collaborator sees only their clients; a client sees what waits on them.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        foreach (['approvals' => function ($t) { $t->id(); foreach (['project_id', 'requested_by_user_id', 'workspace_id', 'export_job_id'] as $c) $t->unsignedBigInteger($c)->nullable();
+                    foreach (['status', 'comment', 'token', 'reviewer_email', 'reviewer_name'] as $c) $t->string($c)->nullable(); $t->timestamp('reviewed_at')->nullable(); $t->timestamp('expires_at')->nullable(); $t->json('metadata_json')->nullable(); $t->timestamps(); },
+                  'client_requests' => function ($t) { $t->id(); foreach (['workspace_id', 'created_by_user_id'] as $c) $t->unsignedBigInteger($c)->nullable(); foreach (['title', 'brief', 'status'] as $c) $t->string($c)->nullable(); $t->timestamps(); },
+                  'scenes' => function ($t) { $t->id(); $t->unsignedBigInteger('project_id'); $t->unsignedBigInteger('visual_asset_id')->nullable(); $t->integer('scene_order')->default(0); $t->timestamps(); },
+                  'workspace_memberships' => function ($t) { $t->id(); $t->unsignedBigInteger('workspace_id'); $t->unsignedBigInteger('user_id'); $t->string('role'); $t->string('delivery_status')->nullable(); $t->timestamp('invited_at')->nullable(); $t->timestamp('accepted_at')->nullable(); $t->timestamp('revoked_at')->nullable(); $t->timestamps(); }] as $table => $make) {
+            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) \Illuminate\Support\Facades\Schema::create($table, $make);
+        }
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('users', 'monthly_credit_allowance')) \Illuminate\Support\Facades\Schema::table('users', fn ($t) => $t->unsignedInteger('monthly_credit_allowance')->nullable());
+        config(['workspaces.client_tiers' => ['creator']]);
+        foreach (['client_label' => 'string', 'monthly_credit_cap' => 'unsignedInteger'] as $col => $type) {
+            if (! \Illuminate\Support\Facades\Schema::hasColumn('workspaces', $col)) \Illuminate\Support\Facades\Schema::table('workspaces', fn ($t) => $t->{$type}($col)->nullable());
+        }
+        $acme = Workspace::create(['name' => 'Acme', 'status' => 'active', 'plan_tier' => 'creator']);
+        $acme->forceFill(['parent_workspace_id' => $this->workspace->id, 'client_label' => 'Acme Candles'])->save();
+        $project = fn (string $title) => DB::table('projects')->insertGetId(['workspace_id' => $acme->id, 'title' => $title, 'created_at' => now(), 'updated_at' => now()]);
+        $approval = fn (int $pid, string $status, array $more = []) => DB::table('approvals')->insert($more + ['project_id' => $pid, 'workspace_id' => $acme->id, 'status' => $status, 'reviewer_name' => 'Ada', 'created_at' => now()->subDays(2), 'updated_at' => now()]);
+        $approval($project('Autumn offer'), 'rejected', ['comment' => 'Make the price bigger in the last scene', 'reviewed_at' => now()]);
+        $approval($project('Serum ad v2'), 'approved', ['reviewed_at' => now()->subHour()]);
+        $approval($project('Gift guide'), 'pending', ['expires_at' => now()->addDays(5)]);
+        DB::table('client_requests')->insert(['workspace_id' => $acme->id, 'created_by_user_id' => $this->owner->id, 'title' => 'Message', 'brief' => 'Can we have a Black Friday one?', 'status' => 'requested', 'created_at' => now(), 'updated_at' => now()]);
+        $c = $this->conversations->create($this->owner, []);
+        $rev = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_revisions')->insert(['id' => $rev, 'conversation_id' => $c->id, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'number' => 1, 'parent_revision_id' => null,
+            'bundle_json' => '{}', 'bundle_hash' => str_repeat('c', 64), 'artifact_path' => 'create/previews/test/x.mp4', 'artifact_hash' => str_repeat('d', 64), 'summary' => 'v1', 'created_at' => now()]);
+        DB::table('create_conversations')->where('id', $c->id)->update(['workspace_id' => $acme->id, 'head_revision_id' => $rev, 'title' => 'Candle launch']);
+
+        $view = $this->actingAs($this->owner)->getJson('/api/v1/dashboard/agency')->assertOk()->json('data');
+        $this->assertSame('owner', $view['role']);
+        $this->assertSame(['changes', 'request', 'schedule', 'review', 'with_client'], array_column($view['needs'], 'kind'));
+        $this->assertStringContainsString('Make the price bigger', $view['needs'][0]['detail']);
+        $this->assertSame('Acme Candles', $view['needs'][0]['client']['name']);
+        $this->assertSame('/create/'.$c->id, $view['needs'][3]['open']['path']);
+        $card = $view['clients'][0];
+        $this->assertSame([1, 1, 1, 1], [$card['changes'], $card['to_schedule'], $card['to_review'], $card['with_client']]);
+        $this->assertSame(4, $card['setup_total']);
+
+        // A collaborator given Acme sees Acme and their allowance, and no one's spend but theirs.
+        $ada = User::create(['email' => 'ada@team.test', 'name' => 'Ada', 'role' => 'collaborator', 'status' => 'active']);
+        $ada->forceFill(['workspace_id' => $this->workspace->id, 'monthly_credit_allowance' => 500])->save();
+        DB::table('workspace_memberships')->insert(['workspace_id' => $acme->id, 'user_id' => $ada->id, 'role' => 'collaborator', 'created_at' => now(), 'updated_at' => now()]);
+        $mine = $this->actingAs($ada)->getJson('/api/v1/dashboard/agency')->assertOk()->json('data');
+        $this->assertSame('collaborator', $mine['role']);
+        $this->assertSame(500, $mine['allowance']['limit']);
+        $this->assertSame(['Acme Candles'], array_column($mine['clients'], 'name'));
+        $this->assertArrayNotHasKey('credits', $mine);
+
+        // The client sees the video waiting on them.
+        $client = User::create(['email' => 'client@acme.test', 'name' => 'Ada Client', 'role' => 'client', 'status' => 'active']);
+        $client->forceFill(['workspace_id' => $acme->id])->save();
+        $home = $this->actingAs($client)->getJson('/api/v1/client-home')->assertOk()->json('data');
+        $this->assertSame('Acme Candles', $home['client_name']);
+        $this->assertSame(['Gift guide'], array_column($home['waiting'], 'title'));
+        $this->assertSame(['changes', 'approved'], array_column($home['recent'], 'decision'));
+    }
+
+    public function test_the_library_lists_by_type_when_an_archived_create_upload_shares_the_page(): void
+    {
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        // An archived Create upload used to be looked up again by its file, among live assets only, and the whole
+        // list failed with "No query results" (2026-10-09).
+        Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'title' => 'old.png', 'storage_url' => 'create-upload://'.$this->workspace->id.'/'.\Illuminate\Support\Str::uuid().'/'.str_repeat('a', 64).'.png', 'status' => 'archived']);
+        Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'image', 'title' => 'new.png', 'storage_url' => 'create-upload://'.$this->workspace->id.'/'.\Illuminate\Support\Str::uuid().'/'.str_repeat('b', 64).'.png', 'status' => 'active']);
+        $assets = $this->actingAs($this->owner)->getJson('/api/v1/assets?asset_type=image&per_page=24')->assertOk()->json('data.assets');
+        $this->assertEqualsCanonicalizing(['old.png', 'new.png'], array_column($assets, 'title'));
+        $this->assertStringContainsString('signature=', $assets[0]['storage_url']);
+        // The drawer's own ask: several kinds, live files only, so a page is never thinned after it arrives.
+        Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'audio', 'title' => 'song.mp3', 'storage_url' => 'https://example.com/song.mp3', 'status' => 'active']);
+        Asset::create(['workspace_id' => $this->workspace->id, 'asset_type' => 'video', 'title' => 'clip.mp4', 'storage_url' => 'https://example.com/clip.mp4', 'status' => 'active']);
+        $live = $this->actingAs($this->owner)->getJson('/api/v1/assets?asset_types[]=image&asset_types[]=video&live=1&per_page=9')->assertOk()->json('data.assets');
+        $this->assertEqualsCanonicalizing(['new.png', 'clip.mp4'], array_column($live, 'title'));
+    }
+
     public function test_a_change_that_only_re_voices_skips_the_builder_and_anything_more_does_not(): void
     {
         [$c, $revision] = $this->changeableVersion();

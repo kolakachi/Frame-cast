@@ -176,7 +176,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         const auth = useAuthStore()
         auth.setSession({ accessToken: data.data.access_token, user: { ...auth.user, workspace_id: data.data.workspace_id, role: data.data.role } })
         setApiAccessToken(data.data.access_token)
-        window.location.assign(/^\/(dashboard|assets|workspace|client-work|ugc-ads|from-my-footage|projects\/\d+\/editor)(\?.*)?$/.test(destination) ? destination : '/dashboard')
+        window.location.assign(/^\/(dashboard|assets|workspace|client-work|client-home|ugc-ads|from-my-footage|projects\/\d+\/editor|create(\/[0-9a-f-]{36})?)(\?.*)?$/.test(destination) ? destination : '/dashboard')
       } catch (e) {
         this.switching = false
         throw e

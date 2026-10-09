@@ -25,13 +25,15 @@ export function readBriefHash(hash) {
   const [raw, ...rest] = hash.slice('#brief='.length).split('&')
   let text
   try { text = clean(decodeURIComponent(raw.replace(/\+/g, ' '))) } catch { return null }
-  return text ? { text, attach: rest.includes('attach=1') } : null
+  // Where it came from: the website (default) or a dashboard card (from=card:<type>).
+  const from = (rest.find(p => p.startsWith('from=')) || '').slice(5).replace(/[^a-z0-9:_-]/gi, '').slice(0, 40) || null
+  return text ? { text, attach: rest.includes('attach=1'), from } : null
 }
 
 export function saveBrief(brief, store, now = Date.now()) {
   const s = storage(store), t = clean(typeof brief === 'string' ? brief : brief?.text)
   if (!s || !t) return false
-  try { s.setItem(KEY, JSON.stringify({ text: t, attach: !!brief?.attach, at: now })); return true } catch { return false }
+  try { s.setItem(KEY, JSON.stringify({ text: t, attach: !!brief?.attach, from: brief?.from || null, at: now })); return true } catch { return false }
 }
 
 function saved(store, now) {
@@ -40,7 +42,7 @@ function saved(store, now) {
   try {
     const saved = JSON.parse(s.getItem(KEY) || 'null')
     if (!saved?.text || !(now - saved.at <= DAYS * 864e5)) { s.removeItem(KEY); return null }
-    return { text: saved.text, attach: !!saved.attach }
+    return { text: saved.text, attach: !!saved.attach, from: saved.from || null }
   } catch {
     try { s.removeItem(KEY) } catch { /* nothing to clear */ }
     return null

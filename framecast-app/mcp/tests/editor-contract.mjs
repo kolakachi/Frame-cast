@@ -112,8 +112,29 @@ try {
   const records = captured.filter(c => c.path.includes('/proposals'))
   assert.deepEqual(records[0].body.changes, clear.changes)
   assert.deepEqual(records[1].body.changes, image.changes)
+  // Weave (L3): every tool reaches its route, and the price is a separate step from the approval.
+  for (const name of ['weave_start', 'weave_status', 'weave_reply', 'weave_approve', 'weave_list', 'weave_share']) assert(listed.tools.some(t => t.name === name), name)
+  const vid = '0ba2d2cd-9a56-479b-8065-6b80c8c1f635'
+  const weaveCalls = [
+    ['weave_start', { brief: 'A tips video for Dewbloom serum', format: 'listicle', duration_seconds: 20, asset_ids: [7] }, 'POST', '/weave/videos'],
+    ['weave_status', { id: vid }, 'GET', `/weave/videos/${vid}`],
+    ['weave_reply', { id: vid, message: 'Make the logo bigger' }, 'POST', `/weave/videos/${vid}/messages`],
+    ['weave_approve', { id: vid }, 'POST', `/weave/videos/${vid}/quotes`],
+    ['weave_approve', { id: vid, quote_id: 'q_weave' }, 'POST', `/weave/videos/${vid}/runs`],
+    ['weave_list', { limit: 5 }, 'GET', '/weave/videos?limit=5'],
+    ['weave_share', { id: vid }, 'POST', `/weave/videos/${vid}/share`],
+  ]
+  for (const [name, args, method, route] of weaveCalls) {
+    await rpc('tools/call', { name, arguments: args })
+    assert.equal(captured.at(-1).path, `/api/developer/v1${route}`, name)
+    assert.equal(captured.at(-1).method, method, name)
+  }
+  assert.deepEqual(captured.find(c => c.path === '/api/developer/v1/weave/videos' && c.method === 'POST').body, weaveCalls[0][1])
+  assert.deepEqual(captured.find(c => c.path === `/api/developer/v1/weave/videos/${vid}/runs`).body, { quote_id: 'q_weave' })
+  assert.deepEqual(captured.find(c => c.path === `/api/developer/v1/weave/videos/${vid}/quotes`).body, {}, 'step 1 asks for the price only')
+  await rpc('tools/call', { name: 'weave_start', arguments: { brief: 'x', format: 'podcast' } }, true)
   await writeFile(path.join(dir, 'editor-payloads.json'), JSON.stringify(records))
-  console.log('PASS real MCP HTTP discovery, editor/media/voice/consent forwarding and >100KB upload body. Schema rejection, API errors, real timeout, operation polling and identical replay passed. Recorded editor-payloads.json for PHP persistence tests.')
+  console.log('PASS real MCP HTTP discovery, Weave tools and the two-step price, editor/media/voice/consent forwarding and >100KB upload body. Schema rejection, API errors, real timeout, operation polling and identical replay passed. Recorded editor-payloads.json for PHP persistence tests.')
 } finally {
   child.kill(); await new Promise(r => child.once('exit', r)); await new Promise(r => backend.close(r))
 }

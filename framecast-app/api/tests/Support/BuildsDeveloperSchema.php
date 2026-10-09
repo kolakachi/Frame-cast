@@ -16,7 +16,7 @@ trait BuildsDeveloperSchema
     {
         Schema::create('workspaces', function (Blueprint $t) {
             $t->id();
-            foreach (['name', 'plan_tier', 'plan_status', 'plan_source', 'funding_mode'] as $c) $t->string($c)->nullable();
+            foreach (['name', 'plan_tier', 'plan_status', 'plan_source', 'funding_mode', 'industry', 'industry_source'] as $c) $t->string($c)->nullable();
             $t->string('status')->default('active');
             $t->unsignedBigInteger('parent_workspace_id')->nullable();
             $t->integer('credits_monthly')->default(0);

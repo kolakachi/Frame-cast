@@ -15,7 +15,6 @@ import PlansView from '../views/PlansView.vue'
 import VariantsView from '../views/VariantsView.vue'
 import AdminView from '../views/AdminView.vue'
 import WorkspaceView from '../views/WorkspaceView.vue'
-import ChannelsView from '../views/ChannelsView.vue'
 import ChannelDetailView from '../views/ChannelDetailView.vue'
 import SeriesView from '../views/SeriesView.vue'
 import UgcAdsView from '../views/UgcAdsView.vue'
@@ -36,6 +35,11 @@ import api from '../services/api'
 const routes = [
   { path: '/create/:conversationId?', name: 'create', component: () => import('../views/CreateView.vue'), meta: { requiresAuth: true } },
   { path: '/client-work', name: 'client-work', component: () => import('../views/ClientWorkView.vue'), meta: { requiresAuth: true } },
+  // Phase 3: a client seat's home (approvals waiting, the week, a message to the agency) and an agency's team.
+  { path: '/client-home', name: 'client-home', component: () => import('../views/ClientHomeView.vue'), meta: { requiresAuth: true } },
+  // Agency (owner, 2026-10-09): one menu item with Overview, Clients and Team as tabs; the old addresses lead there.
+  { path: '/agency/:tab(clients|team)?', name: 'agency', component: () => import('../views/AgencyView.vue'), meta: { requiresAuth: true } },
+  { path: '/team', name: 'team', redirect: '/agency/team' },
   { path: '/delivery/:token', name: 'client-delivery', component: () => import('../views/ClientDeliveryView.vue'), meta: { public: true } },
   { path: '/', redirect: '/dashboard' },
   { path: '/onboarding', name: 'onboarding', component: OnboardingView, meta: { requiresAuth: true, skipOnboardingGuard: true } },
@@ -88,9 +92,10 @@ const routes = [
   { path: '/series/:seriesId', name: 'series-detail', component: SeriesDetailView, meta: { requiresAuth: true } },
   // Agency client management. Its own area rather than a settings tab: a
   // client can have a hundred members, which no accordion can hold.
-  { path: '/clients', name: 'clients', component: () => import('../views/ClientsView.vue'), meta: { requiresAuth: true } },
+  { path: '/clients', name: 'clients', redirect: '/agency/clients' },
   { path: '/clients/:id', name: 'client-detail', component: () => import('../views/ClientDetailView.vue'), meta: { requiresAuth: true } },
-  { path: '/channels', name: 'channels', component: ChannelsView, meta: { requiresAuth: true } },
+  // The Channels list is retired (owner, 2026-10-09); existing channels open from Settings › Channels.
+  { path: '/channels', name: 'channels', redirect: { name: 'settings', query: { section: 'channels' } } },
   { path: '/channels/:channelId', name: 'channel-detail', component: ChannelDetailView, meta: { requiresAuth: true } },
   { path: '/videos', name: 'videos', component: VideosView, meta: { requiresAuth: true } },
   { path: '/calendar', name: 'calendar', component: CalendarView, meta: { requiresAuth: true } },
@@ -157,7 +162,7 @@ router.beforeEach(async function (to) {
     }
   }
 
-  if (["client", "client_editor", "client_admin"].includes(authStore.user?.role) && to.name === "dashboard") return { name: "client-work" };
+  if (["client", "client_editor", "client_admin"].includes(authStore.user?.role) && to.name === "dashboard") return { name: "client-home" };
 
   // Redirect unonboarded users to the wizard (except the wizard itself,
   // auth routes, and public-share/approval pages that anyone — incl.
@@ -165,7 +170,7 @@ router.beforeEach(async function (to) {
   if (
     authStore.isAuthenticated &&
     !authStore.isOnboarded &&
-    !["client", "client_editor", "client_admin"].includes(authStore.user?.role) &&
+    !["client", "client_editor", "client_admin", "collaborator"].includes(authStore.user?.role) &&
     !to.meta.skipOnboardingGuard &&
     !to.meta.guestOnly &&
     !to.meta.public

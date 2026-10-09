@@ -390,6 +390,8 @@ class RunService
                     'conflict' => $conflict, 'created_at' => now(),
                 ]);
                 if (! $conflict) DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $revision, 'version' => $c->version + 1, 'updated_at' => now()]);
+                // The dashboard's Recent videos shows a frame of it.
+                \App\Jobs\MakeCreatePoster::dispatch($revision)->afterCommit();
             }
             // A step that reached the credits set aside for it pauses: everything it finished is kept and Retry
             // continues it after a top-up. The worker's own error says which limit it reached.
