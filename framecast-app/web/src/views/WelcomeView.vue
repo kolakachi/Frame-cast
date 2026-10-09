@@ -11,12 +11,13 @@ import { peekBrief, saveBrief } from '../services/pendingBrief'
 const router = useRouter()
 const auth = useAuthStore()
 
+// Each goal shows its own examples; no example appears under two goals.
 const GOALS = [
   { id: 'ads', icon: 'M4 6h16v12H4zM8 10h8M8 14h5', label: 'Product ads', detail: 'Ads for what you sell, ready for Reels and TikTok', samples: ['b03'] },
   { id: 'ugc', icon: 'M12 12a4 4 0 100-8 4 4 0 000 8zM5 20c1-4 4-6 7-6s6 2 7 6', label: 'UGC-style ads', detail: 'A creator talking about your product', samples: ['b05'] },
   { id: 'explain', icon: 'M5 19V9M10 19V5M15 19v-7M20 19v-4', label: 'Explainers', detail: 'Teach, explain or show how something works', samples: ['s100'] },
   { id: 'launch', icon: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z', label: 'Launches and promos', detail: 'A new product, an offer or an event', samples: ['b01'] },
-  { id: 'agency', icon: 'M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z', label: 'Videos for my clients', detail: 'An agency or freelancer making videos for brands', samples: ['b03', 'l30703d4a', 'le55486c6'] },
+  { id: 'agency', icon: 'M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z', label: 'Videos for my clients', detail: 'An agency or freelancer making videos for brands', samples: ['l30703d4a', 'le55486c6', 'l8623176a'] },
   { id: 'explore', icon: 'M12 3a9 9 0 100 18 9 9 0 000-18zM15 9l-2 4-4 2 2-4z', label: 'Just exploring', detail: 'Show me what it can do', samples: ['l1317b615'] },
 ]
 const SOURCES = [['tiktok', 'TikTok'], ['instagram', 'Instagram'], ['youtube', 'YouTube'], ['x', 'X'], ['facebook', 'Facebook'], ['linkedin', 'LinkedIn'],
