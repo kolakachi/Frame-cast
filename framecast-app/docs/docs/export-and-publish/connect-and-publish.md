@@ -1,16 +1,16 @@
 ---
 sidebar_position: 2
-title: Connect a channel & publish
+title: Connect an account & publish
 description: Link YouTube, TikTok, Instagram, or Facebook and post your video.
 ---
 
-# Connect a channel & publish
+# Connect an account & publish
 
 Publish finished videos straight to your social accounts — no downloading and re-uploading.
 
 ## 1. Connect an account
 
-Go to **Channels** (or Settings → connected accounts) and connect **YouTube**, **TikTok**, **Instagram Reels**, or **Facebook**. You'll approve access on the platform's own login screen.
+Go to **Settings › Connected Accounts** and connect **YouTube**, **TikTok**, **Instagram Reels**, or **Facebook**. You'll approve access on the platform's own login screen.
 
 ![the connected-accounts screen with the four platform options](/img/howto/connect-accounts.png)
 

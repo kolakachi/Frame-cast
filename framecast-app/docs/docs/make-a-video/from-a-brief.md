@@ -10,6 +10,8 @@ description: Tell WyvStudio your topic and it writes the script, breaks it into 
 
 **Time:** ~90 seconds of setup · **Credits:** estimated and shown before you generate.
 
+To start, open **Classic › Composer** in the sidebar and choose **Generate from a brief**.
+
 ## 1. Pick a niche
 
 Each niche pre-configures sensible defaults — visual style, voice tone, captions, and music. Pick the card that fits your content, or choose **Other / Custom** to define your own.

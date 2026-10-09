@@ -21,6 +21,6 @@ Lifecycle actions are on the client's **Overview** tab. Choose the action based 
 
 Before offboarding, complete any needed delivery and review the confirmation. Projects remain available to the agency. Restoring an offboarded client does **not** recreate revoked memberships; invite people again deliberately.
 
-To find an archived client, open **Clients** and enable **Show archived**. Open its detail page to inspect the retained work or restore access.
+To find an archived client, open **Agency › Clients** and enable **Show archived**. Open its detail page to inspect the retained work or restore access.
 
 For a temporary pause, do not offboard merely to stop generation. Use [funding and caps](./funding-and-spending) to control spend, or Pause access to suspend the relationship without revoking all memberships.

@@ -31,10 +31,12 @@ class ConversationService
         return ! $list || in_array($workspaceId, $list, true);
     }
 
-    /** Only the team's accounts (CREATE_ALLOWED_DOMAINS) and named addresses (CREATE_ALLOWED_EMAILS) see Create. */
+    /** Everyone when Create is open to all (CREATE_OPEN_TO_ALL); otherwise only the team's accounts
+     *  (CREATE_ALLOWED_DOMAINS) and named addresses (CREATE_ALLOWED_EMAILS) see Create. */
     public static function personAllowed(User $user): bool
     {
         $email = strtolower(trim((string) $user->email));
+        if ($email !== '' && config('create.open_to_all')) return true;
         return $email !== '' && (in_array($email, (array) config('create.allowed_emails', []), true)
             || in_array(substr(strrchr($email, '@') ?: '', 1), (array) config('create.allowed_domains', []), true));
     }

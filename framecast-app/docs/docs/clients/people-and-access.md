@@ -28,6 +28,26 @@ Use the role dropdown to change permissions. Use the remove **×** control to re
 
 ## What the client sees
 
-Invited client roles land in their client-work area rather than the agency's client-management list. Explain that they should open the invitation, sign in using the invited address and confirm the workspace name. Their available production and editing controls depend on the assigned role.
+Explain that they should open the invitation, sign in using the invited address and confirm the workspace name. Their available production and editing controls depend on the assigned role.
+
+People with a client seat land on a **client home** rather than the agency's client list. It shows:
+
+- **Waiting for your approval** — watch a video, then **Approve** or **Ask for changes**. Asking for changes needs a note saying what to change; the agency sees it as **Changes asked**. See [Review and approve a version](./review-and-approval).
+- **This week** — the client's schedule.
+- **Message** *(your agency's name)* — sends a request to the agency. It shows in the agency's [Needs you](./agency-overview).
+- **Recent decisions** — what they've approved or asked to change.
+
+**Brief & requests** on the client home opens the existing [brief](./the-client-brief) and [requests](./requests-and-delivery) hub.
+
+## Client seats vs. collaborators
+
+| | Client seat | Collaborator |
+|---|---|---|
+| Who | Someone from the client | A freelancer or editor on your agency's team |
+| Invited from | The client's **Access & budget → People** | **Agency › Team** |
+| Works in | That one client workspace | Your agency workspace and the clients you assign |
+| Access | View only, Edit or Admin | Makes and changes videos with the agency's credits, up to a monthly allowance |
+
+See [Team and collaborators](./team-and-collaborators) to invite a collaborator.
 
 If someone cannot get in, check invitation status, their email, role, and whether the client is paused or archived before sending repeated invitations.

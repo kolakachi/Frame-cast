@@ -29,6 +29,10 @@ These accounts are what you pick when you [schedule a post](/the-editor/export-s
 
 ![the Connected Accounts tab](/img/howto/settings-accounts.png)
 
+## Channels
+
+If your workspace already has [channels](/channels/create-a-channel), they're listed under **Settings → Channels**. This tab only appears for workspaces that have channels.
+
 ## Usage & billing
 
 **Settings → Usage and Billing** shows your current plan, credit balance, and usage bars.

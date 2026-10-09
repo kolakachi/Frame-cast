@@ -13,6 +13,7 @@ Branded short-form video without a shoot. These guides walk you through making, 
 
 - **[Create your first video](/getting-started/create-your-first-video)** — one prompt to a finished, captioned short.
 - **[Choose how to start](/getting-started/choose-how-to-start)** — Scratch, Brief, or One-shot.
+- **[The dashboard](/getting-started/the-dashboard)** — where you land after signing in.
 
 ## Explore the guides
 
@@ -23,10 +24,11 @@ Branded short-form video without a shoot. These guides walk you through making, 
 | [Voice](/voice/pick-and-direct-a-voice) | Pick a voice, direct how it sounds, or clone your own |
 | [Characters](/characters/create-a-character) | Reusable AI talent that stays consistent across scenes |
 | [Brand kits](/brand-kits/create-and-apply-brand-kits) | Save colors, fonts, and a default voice, and reuse them |
-| [Channels](/channels/create-a-channel) | Organize videos into lanes with their own defaults |
+| [Channels](/channels/create-a-channel) | Find and edit the channels you already have |
 | [Series](/series/create-a-series) | Run a recurring show with episode memory |
 | [Calendar](/calendar/how-the-calendar-works) | Schedule and track everything you publish |
 | [Workspaces](/workspaces/manage-your-workspace) | Your plan, credits, and connected accounts |
+| [Clients](/clients/agency-overview) | Agency plans: what needs you, your clients, and your team |
 | [Variants & hooks](/variants-and-hooks/generate-hook-variants) | Ranked hook options and alternate ad cuts |
 | [API & AI assistants](/api-and-connectors/connect-an-ai-assistant) | Make videos from ChatGPT, Claude, Cursor or your own code |
 | [Export & publish](/export-and-publish/export-every-aspect-ratio) | Export every aspect ratio at once, then publish |

@@ -6,7 +6,7 @@ description: Scratch, Brief, or One-shot — pick the right starting point.
 
 # Choose how to start
 
-When you click **+ New Video**, you pick one of three starting points. They all land in the same editor — they just differ in how much WyvStudio does up front.
+When you open **Classic › Composer** in the sidebar, you pick one of three starting points. They all land in the same editor — they just differ in how much WyvStudio does up front.
 
 ![the 'How do you want to start?' dialog showing all three cards](/img/howto/new-video-three-cards.png)
 

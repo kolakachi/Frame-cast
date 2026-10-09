@@ -12,9 +12,7 @@ The fastest way to see what WyvStudio does: describe a video in one sentence and
 
 ## 1. Open the New Video dialog
 
-From the dashboard, click **+ New Video** (top right).
-
-![the dashboard with the **+ New Video** button highlighted (top right)](/img/howto/first-video-new-button.png)
+In the sidebar, open **Classic › Composer**. The New Video dialog opens.
 
 ## 2. Choose One-shot
 

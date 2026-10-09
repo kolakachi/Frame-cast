@@ -30,6 +30,101 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-10-09-meet-weave',
+            'date'  => '2026-10-09',
+            'tag'   => 'new',
+            'title' => 'Meet Weave: describe a video, see the plan, get it made',
+            'body'  => 'Open Create in the sidebar and describe the video you want in your own words. Attach '
+                .'product photos, footage or your logo, or paste a link to a TikTok, Reel, YouTube or X video you '
+                .'love. Weave plans it: the idea, the scenes, the script and the voice, in your brand. You see the '
+                .'plan and its price before anything is made; approve it and Weave builds the video. Ask for '
+                .'changes in plain words. New videos show our examples under the box: press Make one like this '
+                .'and Weave follows that video\'s style with your product and your words. Planning costs a few '
+                .'credits; the video costs the price you approved at most, and only what is used is charged.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-start-from-the-dashboard',
+            'date'  => '2026-10-09',
+            'tag'   => 'new',
+            'title' => 'Start a video from the dashboard, with Script Writer',
+            'body'  => 'Pick the kind of video you want on the dashboard (a product ad, a launch teaser, a UGC '
+                .'testimonial, an explainer, quick tips, or one like a video you love) and fill in one short form: '
+                .'the voice (hear each one first, your cloned voice included), the details, length, screen, '
+                .'captions and any photos or logo from your library. Script Writer drafts a voiceover sized to your '
+                .'video from one line about your product, leaving anything it would have to invent in [brackets] '
+                .'for you; it is free, up to 20 a day. Once you have made a video, Next videos for you suggests '
+                .'three more.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-weave-in-assistants',
+            'date'  => '2026-10-09',
+            'tag'   => 'new',
+            'title' => 'Weave in ChatGPT and Claude',
+            'body'  => 'Your AI assistant can now make videos with Weave: ask for one, see the plan, and approve '
+                .'the price. It always shows you the price first and only starts after you agree. It can also '
+                .'answer Weave\'s questions for you, ask for changes and share a link to the finished video.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-agency-and-team',
+            'date'  => '2026-10-09',
+            'tag'   => 'new',
+            'title' => 'Agency: your clients, your team, and what needs you',
+            'body'  => 'Agency plans now have one Agency item in the sidebar with three tabs. Overview lists '
+                .'what is waiting on you across every client: changes a client asked for (with their note), '
+                .'messages from clients, approved videos not yet scheduled, finished videos not yet sent, and '
+                .'videos waiting on the client. One click takes you into that client and opens the video. It also '
+                .'shows this month\'s credits by client and by person. Clients is where your client workspaces '
+                .'live. Team is new: invite collaborators, give each a monthly '
+                .'credit allowance and the clients they can work in, and pause or remove them anytime. '
+                .'Collaborators make videos with your credits; billing, clients and the team stay with you.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-client-home',
+            'date'  => '2026-10-09',
+            'tag'   => 'new',
+            'title' => 'A home for your clients',
+            'body'  => 'Clients you invite now land on their own home page: the videos waiting for their approval, '
+                .'ready to watch, with Approve or Ask for changes (they say what to change, and you see it as '
+                .'Changes asked), their schedule for the week, and a box to message you. Their messages show up '
+                .'in your Agency overview.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-new-dashboard',
+            'date'  => '2026-10-09',
+            'tag'   => 'improved',
+            'title' => 'A new dashboard',
+            'body'  => 'The dashboard starts with a welcome and four steps to set up your studio: your brand, how '
+                .'your brand name is said, your face and voice, and your first video. Nothing is locked, and you '
+                .'can hide the steps anytime. Once you are set up, This week shows your calendar at a glance, with '
+                .'what is posted, scheduled or empty, and Recent videos shows a real frame of each video. The '
+                .'low-credit reminder now only appears when you have about three videos\' worth of credits left.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-tidier-menu',
+            'date'  => '2026-10-09',
+            'tag'   => 'improved',
+            'title' => 'A tidier menu',
+            'body'  => 'Composer and UGC Ads now sit together under Classic in the sidebar; start a new video from '
+                .'Classic › Composer. Jobs and Series have left the menu (their pages still open from links), and '
+                .'your channels now live under Settings › Channels.',
+        ],
+
+        [
+            'slug'  => '2026-10-09-credit-reminder-fix',
+            'date'  => '2026-10-09',
+            'tag'   => 'fixed',
+            'title' => 'The credit reminder counts all your credits',
+            'body'  => 'If most of your credits came from a top-up, the dashboard could say you had about 0% of '
+                .'your monthly allowance left even with plenty of credits. It now counts every credit you have.',
+        ],
+
+        [
             'slug'  => '2026-09-26-ai-assistants',
             'date'  => '2026-09-26',
             'tag'   => 'new',

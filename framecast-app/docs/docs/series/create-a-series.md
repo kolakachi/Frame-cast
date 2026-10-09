@@ -12,6 +12,10 @@ A **series** is a recurring show. Every episode is a normal video, but it automa
 
 From **Series**, click **+ New Series**. The setup runs in five steps.
 
+:::note
+**Series** is no longer in the sidebar menu. The Series page still opens from a direct link.
+:::
+
 ![the New Series wizard on the Basics step](/img/howto/series-create.png)
 
 ### 1. Basics
@@ -63,4 +67,4 @@ Click **Create Series** to finish. You land on the series page, ready to generat
 ## What's next
 
 - [Episodes & memory](/series/episodes-and-memory)
-- [Create a channel](/channels/create-a-channel)
+- [Channels](/channels/create-a-channel)

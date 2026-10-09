@@ -21,6 +21,8 @@ return [
     'cache_retention_hours' => (int) env('CREATE_CACHE_RETENTION_HOURS', 24),
     'local_maintenance_enabled' => (bool) env('CREATE_LOCAL_MAINTENANCE_ENABLED', false),
     'workspaces' => array_filter(array_map('intval', explode(',', (string) env('CREATE_WORKSPACES', '')))),
+    // Open to every signed-in user (owner, 2026-10-09: Weave opens to all customers). Off, only the lists below.
+    'open_to_all' => (bool) env('CREATE_OPEN_TO_ALL', false),
     // Who may see and use Create (owner, 2026-10-06): accounts on these email domains, plus these addresses.
     'allowed_domains' => array_values(array_filter(array_map(fn ($d) => strtolower(trim($d)), explode(',', (string) env('CREATE_ALLOWED_DOMAINS', 'wyvstudio.com'))))),
     'allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('CREATE_ALLOWED_EMAILS', 'kolakachi@gmail.com'))))),

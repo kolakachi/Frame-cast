@@ -27,6 +27,20 @@ On the review page, watch the video, add timed comments where a change is needed
 
 Use **Attach current time** while reviewing, then **Add comment**. Posting a comment and submitting an approval decision are separate actions.
 
+## Approve from the client home
+
+People with a [client seat](./people-and-access) in the workspace also see work waiting on them on their client home, under **Waiting for your approval**:
+
+1. Watch the video.
+2. Click **Approve**, or **Ask for changes**.
+3. If you ask for changes, write a note saying what to change. The note is required.
+
+Asking for changes is recorded as a rejected decision, with the note attached.
+
+## What the agency sees
+
+When a client asks for changes, the agency's notification reads **Changes asked**, and the request appears with the client's note in [Agency › Overview › Needs you](./agency-overview). Needs you also lists finished videos not yet sent for approval, and videos waiting on the client.
+
 The agency follows the review link to see the comments and decision. If changes are requested, revise the project and **export the new version**. Request approval for that export; approval of the previous export is not approval of the new one.
 
 ## Why a video is missing from Delivery

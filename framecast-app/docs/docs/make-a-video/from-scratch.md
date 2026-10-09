@@ -12,7 +12,7 @@ Choose **Start from Scratch** when you want full control — no AI script, no pr
 
 ## 1. Open the New Video dialog
 
-From the dashboard, click **New Video** (top right), then choose **Start from Scratch**.
+In the sidebar, open **Classic › Composer**, then choose **Start from Scratch**.
 
 ![the 'How do you want to start?' dialog with the three cards](/img/howto/new-video-path-picker.png)
 

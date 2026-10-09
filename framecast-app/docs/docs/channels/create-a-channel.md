@@ -1,34 +1,26 @@
 ---
 sidebar_position: 1
-title: Create a channel
-description: Organize videos into channels with their own brand kit, voice, language, and platform targets.
+title: Where channels are now
+description: Channels are no longer in the menu. Find your existing channels in Settings.
 ---
 
-# Create a channel
+# Where channels are now
 
-A **channel** is a content lane — a way to organize videos by topic, brand, or platform. Each channel carries its own defaults (brand kit, voice, language, and platform targets), so every video you start in it is pre-configured.
+Channels are no longer in the sidebar menu, and new channels can't be created from the app.
 
-## Create a channel
+## Find your existing channels
 
-From **Channels**, click **New Channel** to open the setup drawer and fill in:
+1. Open **Settings**.
+2. Choose the **Channels** tab. It only appears if your workspace already has channels.
+3. Click a channel to open its own page, where you can view and edit it.
 
-- **Channel Name** *(required)* — what the channel is for (e.g. "Supplement Ads").
-- **Description** *(optional)* — a short note.
-- **Platform Targets** — where this channel publishes, which sets the aspect ratio: TikTok (9:16), Instagram Reels (9:16), YouTube Shorts (9:16), Instagram Post (1:1), YouTube (16:9), or Facebook (16:9). Pick one or more.
-- **Default Language** — English, Spanish, French, German, Portuguese, Italian, Hindi, Japanese, Arabic, or Chinese.
-- **Brand Kit** *(optional)* — the [brand kit](/brand-kits/create-and-apply-brand-kits) to apply by default.
-- **Default Voice** *(optional)* — the default voiceover for new videos.
+See [Manage channels](/channels/manage-channels) for what's on a channel's page.
 
-Click **Save** to create it.
+## Connected social accounts
 
-![the New Channel drawer with its fields](/img/howto/channel-create.png)
-
-## Start a video in a channel
-
-Open a channel and click **+ New Video** — the wizard opens with the channel's brand kit, language, and format pre-filled.
+Your connected YouTube, TikTok, Instagram and Facebook accounts haven't changed. They're in **Settings › Connected Accounts** — see [Connect an account & publish](/export-and-publish/connect-and-publish).
 
 ## What's next
 
 - [Manage channels](/channels/manage-channels)
-- [Create and apply brand kits](/brand-kits/create-and-apply-brand-kits)
-- [Generate from a brief](/make-a-video/from-a-brief)
+- [Account & billing](/workspaces/account-and-billing)

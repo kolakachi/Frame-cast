@@ -8,7 +8,7 @@ description: Turn a brief into a reviewed plan, a generated take and an exported
 
 UGC Ads creates **creator-style ads** from your idea, script, product information or existing material. You can make a talking-presenter ad, a demonstration, a story, a silent reaction, or text-led cards. An AI presenter is not an actual customer testimonial: use factual product messaging rather than inventing a person's experience.
 
-Open **UGC Ads** in the sidebar, then **＋ New take**. Generation requires a paid plan and sufficient credits. This guide uses a fictional brand, **Acme Skincare**; screenshots show demo data in the app's interface.
+Open **Classic › UGC Ads** in the sidebar, then **＋ New take**. Generation requires a paid plan and sufficient credits. This guide uses a fictional brand, **Acme Skincare**; screenshots show demo data in the app's interface.
 
 ## 1. Describe what you need
 
@@ -48,4 +48,4 @@ A generated preview and a completed export are different stages. Sharing, schedu
 
 ## Where your work goes
 
-Return to **UGC Ads** to find your takes. Open a ready take for review or a running take to follow progress. If a take needs a retry, use the [troubleshooting guide](./troubleshooting). Long ads may be assembled from several generations; they are not necessarily a single uninterrupted shot.
+Return to **Classic › UGC Ads** to find your takes. Open a ready take for review or a running take to follow progress. If a take needs a retry, use the [troubleshooting guide](./troubleshooting). Long ads may be assembled from several generations; they are not necessarily a single uninterrupted shot.

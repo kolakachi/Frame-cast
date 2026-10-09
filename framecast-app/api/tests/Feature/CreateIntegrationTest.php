@@ -5381,6 +5381,17 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['changes', 'approved'], array_column($home['recent'], 'decision'));
     }
 
+    public function test_create_opens_to_every_signed_in_user_with_one_switch(): void
+    {
+        // Owner, 2026-10-09: Weave opens to all customers through CREATE_OPEN_TO_ALL; off, only the allow-lists.
+        $stranger = User::create(['email' => 'someone@customer.test', 'name' => 'Someone', 'role' => 'owner', 'status' => 'active']);
+        config(['create.open_to_all' => false, 'create.allowed_emails' => ['local@example.test'], 'create.allowed_domains' => ['wyvstudio.com']]);
+        $this->assertFalse(ConversationService::personAllowed($stranger));
+        config(['create.open_to_all' => true]);
+        $this->assertTrue(ConversationService::personAllowed($stranger));
+        $this->assertFalse(ConversationService::personAllowed(new User(['email' => ''])), 'never an account without an email');
+    }
+
     public function test_the_library_lists_by_type_when_an_archived_create_upload_shares_the_page(): void
     {
         $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);

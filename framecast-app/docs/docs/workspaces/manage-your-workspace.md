@@ -32,4 +32,4 @@ Credits are only spent on AI generation (images, video/animation, voice, music).
 ## What's next
 
 - [Account & billing](/workspaces/account-and-billing)
-- [Create a channel](/channels/create-a-channel)
+- [Channels](/channels/create-a-channel)

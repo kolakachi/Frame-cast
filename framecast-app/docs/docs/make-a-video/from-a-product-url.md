@@ -8,9 +8,9 @@ description: Turn any product or article page into a finished short.
 
 WyvStudio can read a product page or article and ground the whole plan in its actual content — ideal for DTC ad creative.
 
-## 1. Open New Video → From URL / Article
+## 1. Open Composer → From URL / Article
 
-Click **+ New Video**, then choose the **From URL / Article** source (or paste the URL directly into a One-shot prompt).
+In the sidebar, open **Classic › Composer**, then choose the **From URL / Article** source (or paste the URL directly into a One-shot prompt).
 
 ![the wizard source picker with 'From URL / Article' highlighted](/img/howto/url-source-pick.png)
 

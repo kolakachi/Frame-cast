@@ -10,7 +10,7 @@ description: Type one line and get a complete multi-scene video — image, anima
 
 ## 1. Describe your video
 
-In the composer, type what you want — for example:
+Open **Classic › Composer** in the sidebar and choose **One-shot from a prompt**. In the composer, type what you want — for example:
 
 > A calm founder explaining her morning ritual, ending with a call to visit the site.
 
