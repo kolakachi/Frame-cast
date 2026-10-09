@@ -345,7 +345,7 @@ class PlanMediaService
     }
 
     /** Items that make one prediction: if creating it never connected, nothing billable exists. */
-    private const SINGLE_PREDICTION = ['music', 'generated_shot', 'animate_image', 'ai_image', 'talking_shot', 'talking_take', 'cutout'];
+    private const SINGLE_PREDICTION = ['music', 'generated_shot', 'animate_image', 'ai_image', 'talking_shot', 'talking_take', 'cutout', 'cutout_video'];
 
     /**
      * cURL could not resolve or connect while CREATING a prediction (or uploading its input), so no prediction exists.
@@ -382,7 +382,11 @@ class PlanMediaService
         $boughtImages = DB::table('create_plan_media')->where('conversation_id', $run->conversation_id)->where('plan_id', $input['plan']['plan_id'] ?? '')->where('status', 'succeeded')->orderBy('item_index')->pluck('record_json')
             ->map(fn ($r) => json_decode((string) $r, true)['file'] ?? null)->filter(fn ($f) => is_array($f) && str_starts_with((string) ($f['mime_type'] ?? ''), 'image/') && ! empty($f['storage_path']))->values();
         $latest = $boughtImages->last();
-        return ['cutout_files' => $cutoutFiles, 'cutout_latest' => $latest ? ['name' => $latest['name'], 'path' => app(CreateStorage::class)->path($latest['storage_path'])] : null, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
+        // The take or clip bought just before a video cutout is what it means when it names no file the run has.
+        $latestVideo = DB::table('create_plan_media')->where('conversation_id', $run->conversation_id)->where('plan_id', $input['plan']['plan_id'] ?? '')->where('status', 'succeeded')->orderBy('item_index')->pluck('record_json')
+            ->map(fn ($r) => json_decode((string) $r, true)['file'] ?? null)->filter(fn ($f) => is_array($f) && str_starts_with((string) ($f['mime_type'] ?? ''), 'video/') && ! empty($f['storage_path']))->last();
+        return ['cutout_files' => $cutoutFiles, 'cutout_latest' => $latest ? ['name' => $latest['name'], 'path' => app(CreateStorage::class)->path($latest['storage_path'])] : null,
+            'cutout_latest_video' => $latestVideo ? ['name' => $latestVideo['name'], 'path' => app(CreateStorage::class)->path($latestVideo['storage_path'])] : null, 'character_style' => $input['plan']['character_style'] ?? '', 'workspace_id' => (int) $run->workspace_id, 'aspect_ratio' => $input['settings']['aspect_ratio'] ?? '9:16',
             'language' => $input['settings']['language'] ?? 'en', 'approved_copy' => $input['plan']['on_screen_copy'] ?? [], 'source_images' => $images, 'source_files' => $input['input_files'] ?? [],
             'narration' => $input['plan']['narration'] ?? [], 'voice' => $input['plan']['voice'] ?? null, 'duration_seconds' => (int) ($input['settings']['duration_seconds'] ?? 15),
             // Items made from earlier items (the talking shot) find them by the plan.

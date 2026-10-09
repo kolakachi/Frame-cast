@@ -26,6 +26,8 @@ class CapabilityCatalogue
             ['kind' => 'ai_image', 'what' => 'A new generated image or scene background', 'credits' => app(ImageAdapterFactory::class)->costFor(null)],
             // 851-labs/background-remover on Replicate: a fraction of a cent per image, sold at the smallest useful price.
             ['kind' => 'cutout', 'what' => 'Cut an image out of its background (a transparent PNG): the description starts with the file name of an image the run has; to cut out a stock or generated image bought in this plan, put the cutout after it (it uses the image bought just before it)', 'credits' => self::CUTOUT_CREDITS],
+            // Robust Video Matting (arielreplicate/robust_video_matting): the person kept, the background see-through.
+            ['kind' => 'cutout_video', 'what' => 'Cut a person (a presenter, a talking take) out of a video\'s background: a WebM with a see-through background and its own sound, up to 60 s, to stand the person over a page, a scene or the design. The description starts with the file name of a video the run has; to cut out a take or clip bought in this plan, put the cutout_video after it (it uses the video bought just before it)', 'credits' => self::CUTOUT_VIDEO_CREDITS],
             ['kind' => 'animate_image', 'what' => 'A 5-second generated motion clip from a still', 'credits' => CreditService::animationCost('quick', '480p', 5)],
             // Generated video. Priced per item from its engine and length (ShotRoute); the figure here is a typical item.
             ['kind' => 'reference_sheet', 'what' => 'The cast and world sheet for generated shots: one still per subject (a character, a place, a product, up to 4) in the video\'s look, approved before any clip is made. 35 credits a subject', 'credits' => 2 * self::CHARACTER_MASTER_CREDITS],
@@ -61,6 +63,8 @@ class CapabilityCatalogue
 
     public const SFX_CREDITS = 50;
     public const CUTOUT_CREDITS = 2;
+    /** Robust Video Matting on Replicate: a few cents of GPU for a clip up to 60 s. */
+    public const CUTOUT_VIDEO_CREDITS = 6;
     /** Nano Banana Pro at 35 credits an image: a base character plus up to 5 poses. Cut-outs are negligible. */
     public const POSE_CREDITS = 210;
     public const CHARACTER_MASTER_CREDITS = 35;

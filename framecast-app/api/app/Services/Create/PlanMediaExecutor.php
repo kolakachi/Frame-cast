@@ -18,7 +18,7 @@ use RuntimeException;
 class PlanMediaExecutor
 {
     /** Kinds this executor can make; the catalogue must not offer anything outside it. */
-    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'cutout', 'reference_sheet', 'storyboard', 'generated_shot', 'ugc_take'];
+    public const KINDS = ['stock_video', 'stock_image', 'ai_image', 'animate_image', 'voiceover', 'cloned_voiceover', 'music', 'sfx', 'character_poses', 'character_variants', 'talking_shot', 'talking_take', 'brand_kit', 'cutout', 'cutout_video', 'reference_sheet', 'storyboard', 'generated_shot', 'ugc_take'];
 
     /** @return array{path:string,mime:string,title:string,provider_id:string,note?:string,brand?:array} */
     public function produce(string $kind, string $description, array $ctx, string $dir): array
@@ -39,6 +39,7 @@ class PlanMediaExecutor
             'talking_take' => $this->talkingShot($ctx, $dir, true),
             'brand_kit' => $this->brand($ctx, $dir),
             'cutout' => $this->cutout($description, $ctx, $dir),
+            'cutout_video' => $this->cutoutVideo($description, $ctx, $dir),
             'reference_sheet' => $this->referenceSheet($description, $ctx, $dir),
             'storyboard' => $this->storyboard($description, $ctx, $dir),
             // Generated shots and takes run as provider jobs started and collected separately (startJob, pollJob, finishGenerated).
@@ -57,6 +58,30 @@ class PlanMediaExecutor
         if (! in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) throw new \InvalidArgumentException('Only a PNG, JPEG or WebP image can be cut out.');
         $cut = $this->replicate('851-labs/background-remover', ['image' => $this->replicateUpload((string) file_get_contents($file['path']), $mime), 'format' => 'png', 'background_type' => 'rgba']);
         return ['path' => $this->fetch($cut, $dir.'/cutout.png'), 'mime' => 'image/png', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-'.Str::uuid(), 'extra' => []];
+    }
+
+    /**
+     * A person cut out of a video (2026-10-09): Robust Video Matting returns the person's mask frame by frame; it is
+     * merged with the original as the alpha of a VP9 WebM, which the render keeps see-through (tested: the background
+     * shows through). The sound travels with it, so a talking take stays one clip.
+     */
+    private function cutoutVideo(string $description, array $ctx, string $dir): array
+    {
+        $name = rtrim((string) (preg_split('/\s+/', trim($description))[0] ?? ''), ':,.;');
+        $file = collect($ctx['cutout_files'] ?? [])->firstWhere('name', $name) ?? ($ctx['cutout_latest_video'] ?? null);
+        if (! $file || ! is_file($file['path'])) throw new \InvalidArgumentException('Name the video to cut out by its file name (one this run has), or buy the take or clip earlier in the plan: '.mb_substr($name, 0, 80));
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file['path']);
+        if (! in_array($mime, ['video/mp4', 'video/quicktime', 'video/webm'], true)) throw new \InvalidArgumentException('Only an MP4, MOV or WebM video can be cut out.');
+        $seconds = (float) trim((string) \Illuminate\Support\Facades\Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $file['path']])->output());
+        if ($seconds <= 0 || $seconds > 60) throw new \InvalidArgumentException('A video cutout takes a clip of up to 60 seconds.');
+        $mask = $this->replicate('arielreplicate/robust_video_matting', ['input_video' => $this->replicateUpload((string) file_get_contents($file['path']), $mime), 'output_type' => 'alpha-mask'], 600);
+        $maskPath = $this->fetch($mask, $dir.'/mask.mp4');
+        $out = $dir.'/cutout.webm';
+        $r = \Illuminate\Support\Facades\Process::timeout(600)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $file['path'], '-i', $maskPath,
+            '-filter_complex', '[1:v][0:v]scale2ref[m][v];[m]format=gray[g];[v][g]alphamerge,format=yuva420p[o]', '-map', '[o]', '-map', '0:a?',
+            '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '0', '-crf', '30', '-auto-alt-ref', '0', '-row-mt', '1', '-c:a', 'libopus', '-b:a', '128k', '-shortest', $out]);
+        if (! $r->successful() || ! is_file($out) || filesize($out) < 1000) throw new RuntimeException('The cut-out video could not be made: '.mb_substr($r->errorOutput(), 0, 160));
+        return ['path' => $out, 'mime' => 'video/webm', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-video-'.Str::uuid(), 'extra' => []];
     }
 
     private function stock(string $kind, string $q, bool $portrait, string $dir): array
@@ -732,7 +757,7 @@ class PlanMediaExecutor
     private function replicateUpload(string $bytes, string $mime): string
     {
         if ($bytes === '') throw new RuntimeException('The character image could not be read.');
-        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)->attach('content', $bytes, 'image.'.(str_contains($mime, 'jpeg') ? 'jpg' : 'png'), ['Content-Type' => $mime])
+        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)->attach('content', $bytes, (str_starts_with($mime, 'video/') ? 'video.' : 'image.').(['image/jpeg' => 'jpg', 'image/webp' => 'webp', 'video/mp4' => 'mp4', 'video/quicktime' => 'mov', 'video/webm' => 'webm'][$mime] ?? 'png'), ['Content-Type' => $mime])
             ->post('https://api.replicate.com/v1/files');
         $url = $r->json('urls.get');
         if (! $r->successful() || ! is_string($url)) throw new RuntimeException('The character image could not be prepared for the model.');
@@ -819,7 +844,7 @@ class PlanMediaExecutor
     }
 
     /** Run an official Replicate model and return its output URL. */
-    private function replicate(string $model, array $input): string
+    private function replicate(string $model, array $input, int $seconds = 240): string
     {
         $token = (string) config('services.replicate.api_token');
         if ($token === '') throw new RuntimeException('The media provider is not configured.');
@@ -832,7 +857,7 @@ class PlanMediaExecutor
             $res = $http()->withHeaders(['Prefer' => 'wait=60'])->post('https://api.replicate.com/v1/predictions', ['version' => $version, 'input' => $input]);
         }
         $p = $res->json();
-        $deadline = time() + 240;
+        $deadline = time() + $seconds;
         while (in_array($p['status'] ?? '', ['starting', 'processing'], true) && time() < $deadline) {
             sleep(2);
             // Checking on a job only reads it: a network drop is waited out, never a reason to hold the run.
@@ -840,7 +865,7 @@ class PlanMediaExecutor
         }
         if (($p['status'] ?? '') !== 'succeeded') throw new RuntimeException('The '.explode('/', $model)[1].' model did not finish: '.(($p['error'] ?? null) ? mb_substr((string) $p['error'], 0, 120) : ($p['status'] ?? 'no response')).'.');
         $out = is_array($p['output'] ?? null) ? ($p['output'][0] ?? null) : ($p['output'] ?? null);
-        if (! is_string($out) || ! str_starts_with($out, 'https://')) throw new RuntimeException('The model returned no audio.');
+        if (! is_string($out) || ! str_starts_with($out, 'https://')) throw new RuntimeException('The model returned no file.');
         return $out;
     }
 
