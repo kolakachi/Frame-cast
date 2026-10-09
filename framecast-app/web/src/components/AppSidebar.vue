@@ -50,17 +50,19 @@ const TABS = [
   { key: "videos",    label: "Videos",   to: "videos" },
   { key: "create",    label: "Create",   action: "create" },
   { key: "calendar",  label: "Calendar", to: "calendar" },
-  // On a phone the chat bubble sat on top of Calendar (2026-10-09): support opens from here instead.
-  { key: "help",      label: "Help",     action: "help" },
+  // Five tabs with Create in the middle (owner, 2026-10-09). Help moved to a chat icon in the phone header.
+  { key: "settings",  label: "Settings", to: "settings" },
 ];
+
+// On a phone the chat bubble sat on top of the tab bar (2026-10-09): the header's help icon opens support instead.
+function openHelp() {
+  mobileOpen.value = false;
+  if (window.$crisp) window.dispatchEvent(new CustomEvent("wyv:open-support"));
+  else window.open("https://docs.wyvstudio.com", "_blank", "noopener");
+}
 
 function tabTap(tab) {
   mobileOpen.value = false;
-  if (tab.action === "help") {
-    if (window.$crisp) window.dispatchEvent(new CustomEvent("wyv:open-support"));
-    else window.open("https://docs.wyvstudio.com", "_blank", "noopener");
-    return;
-  }
   if (tab.action === "create") {
     if (createEnabled.value) { router.push({ name: 'create' }); return; }
     // The dashboard owns the wizard; anywhere else, go there and open it.
@@ -215,6 +217,11 @@ onBeforeUnmount(() => {
     <span class="mshell-title">{{ screenTitle }}</span>
     <span v-if="workspaceStore.usage?.credits_balance !== null && workspaceStore.usage?.credits_balance !== undefined"
           class="mshell-credits">{{ workspaceStore.usage.credits_balance.toLocaleString() }}</span>
+    <button class="mshell-icon" type="button" aria-label="Help and support" @click.stop="openHelp">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M9.6 9.5a2.5 2.5 0 0 1 4.8.9c0 1.6-2.4 2.1-2.4 3.4M12 16.6h.01" />
+      </svg>
+    </button>
     <NotifBell />
   </header>
 
@@ -760,7 +767,7 @@ onBeforeUnmount(() => {
         <template v-if="t.key === 'dashboard'"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></template>
         <template v-else-if="t.key === 'videos'"><path d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></template>
         <template v-else-if="t.key === 'calendar'"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></template>
-        <template v-else-if="t.key === 'help'"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M9.6 9.5a2.5 2.5 0 0 1 4.8.9c0 1.6-2.4 2.1-2.4 3.4M12 16.6h.01" /></template>
+        <template v-else-if="t.key === 'settings'"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></template>
         <template v-else><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></template>
       </svg>
       <span class="mshell-tab-l">{{ t.label }}</span>
