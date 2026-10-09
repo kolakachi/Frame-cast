@@ -465,6 +465,35 @@
 
 
     <script>
+    /* Menu jumps land with the heading just below the sticky menu (its height changes when it wraps on a phone),
+       and land again once the page settles: posters and the calendar above can grow the page mid-scroll. */
+    (function () {
+      var root = document.documentElement, bar = document.querySelector('.nav-bar');
+      function measure() { if (bar) root.style.setProperty('--nav-h', bar.offsetHeight + 'px'); }
+      measure(); window.addEventListener('resize', measure);
+      function land(target, smooth) {
+        var top = target.getBoundingClientRect().top + window.scrollY - ((bar ? bar.offsetHeight : 72) + 16);
+        window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+      }
+      document.addEventListener('click', function (e) {
+        var link = e.target.closest && e.target.closest('a[href^="#"]');
+        if (!link || link.getAttribute('href').length < 2) return;
+        var target = document.getElementById(link.getAttribute('href').slice(1));
+        if (!target) return;
+        e.preventDefault(); measure();
+        var smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+        land(target, smooth);
+        if (history.pushState) history.pushState(null, '', link.getAttribute('href'));
+        // Once the scroll ends (and again a moment later, for late layout), land again if the target moved.
+        function check() { var off = target.getBoundingClientRect().top - ((bar ? bar.offsetHeight : 72) + 16); if (Math.abs(off) > 4) land(target, false); }
+        var done = false;
+        function settle() { if (done) return; done = true; window.removeEventListener('scrollend', settle); check(); setTimeout(check, 400); }
+        window.addEventListener('scrollend', settle);
+        setTimeout(settle, 1200);
+      });
+    })();
+    </script>
+    <script>
     /* Light or dark: follows the device until the visitor picks one with the toggle, which is remembered. */
     (function () {
       var root = document.documentElement, btn = document.getElementById('theme-toggle');

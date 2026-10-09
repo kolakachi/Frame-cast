@@ -51,7 +51,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-h, 72px) + 16px); }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: var(--font); font-size: 1rem; line-height: 1.55;
