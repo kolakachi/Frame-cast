@@ -1516,7 +1516,9 @@ class DeveloperApiTest extends TestCase
         $this->artisan('api:release-hold', ['operation' => $id, '--admin' => $email, '--evidence' => 'scene 3 refused by Gemini E005', '--confirm' => true])->assertSuccessful();
         $op = DB::table('api_operations')->where('id', $id)->first();
         $this->assertSame(['failed', 0, 6], [$op->status, (int) $op->reserved_credits, (int) $op->spent_credits]);
-        $this->assertSame('api_operation.release_hold', DB::table('admin_audit_logs')->where('target_id', $id)->value('action'));
+        $audit = DB::table('admin_audit_logs')->where('action', 'api_operation.release_hold')->first();
+        $this->assertNull($audit->target_id, 'the numeric column stays empty on Postgres');
+        $this->assertSame($id, json_decode($audit->payload_json, true)['operation_id']);
         // A job that may still run blocks it.
         $other = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 20), $key->id));
         DB::table('api_operations')->where('id', $other)->update(['status' => 'needs_attention']);

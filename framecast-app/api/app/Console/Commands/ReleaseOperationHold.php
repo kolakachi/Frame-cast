@@ -36,8 +36,9 @@ class ReleaseOperationHold extends Command
         DB::transaction(function () use ($id, $op, $evidence, $admin) {
             $n = DB::table('api_operations')->where('id', $id)->where('status', 'needs_attention')->update(['status' => 'failed', 'reserved_credits' => 0, 'updated_at' => now()]);
             if ($n !== 1) throw new \RuntimeException('The operation changed while releasing it; nothing was released.');
-            \App\Models\AdminAuditLog::query()->create(['admin_user_id' => $admin->getKey(), 'action' => 'api_operation.release_hold', 'target_type' => 'api_operation', 'target_id' => $id,
-                'payload_json' => ['released_credits' => (int) $op->reserved_credits, 'spent_credits' => (int) $op->spent_credits, 'evidence' => $evidence]]);
+            \App\Models\AdminAuditLog::query()->create(['admin_user_id' => $admin->getKey(), 'action' => 'api_operation.release_hold', 'target_type' => 'api_operation', 'target_id' => null,
+                // target_id is numeric; an operation id is text, so it is kept in the payload.
+                'payload_json' => ['operation_id' => $id, 'released_credits' => (int) $op->reserved_credits, 'spent_credits' => (int) $op->spent_credits, 'evidence' => $evidence]]);
         });
         $this->info('Released '.(int) $op->reserved_credits.' credits; '.(int) $op->spent_credits.' stay charged.');
         return self::SUCCESS;
