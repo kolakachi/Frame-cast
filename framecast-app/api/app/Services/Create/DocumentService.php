@@ -121,11 +121,15 @@ class DocumentService
     }
 
     /** How a document may be used (the drawer's question; owner, 2026-10-09: nothing chosen until the user picks). */
-    public const MODES = ['pages', 'pictures', 'notes', 'words'];
+    public const MODES = ['auto', 'pages', 'pictures', 'notes', 'words'];
+    /** Let Weave choose: the most pictures offered, and the smallest worth offering (pixels a side). */
+    public const AUTO_PICTURES = 8;
+    public const AUTO_MIN_SIDE = 200;
 
     /**
-     * The drawer's answer. $modes: pages (shown as they look), pictures (used on their own), notes (a deck's speaker
-     * notes are the script), words (its words only). The ticked pictures and pages become pictures in the conversation
+     * The drawer's answer. $modes: auto (Weave chooses: its larger pictures are offered for the planner to use where
+     * they fit, and its words shape the plan), pages (shown as they look), pictures (the ticked ones, used on their
+     * own), notes (a deck's speaker notes are the script), words (its words only). The ticked pictures and pages become pictures in the conversation
      * (source attachments), each noted with the document and page it came from: [{kind: picture, id, part} | {kind:
      * page, number, part}]. The words are read whatever is chosen.
      */
@@ -138,6 +142,8 @@ class DocumentService
         $a = json_decode((string) $d->analysis_json, true) ?: [];
         $modes = array_values(array_intersect(self::MODES, $modes));
         if (in_array('words', $modes, true)) $modes = ['words'];
+        // Letting Weave choose the pictures replaces ticking them.
+        if (in_array('auto', $modes, true)) $modes = array_values(array_diff($modes, ['pictures']));
         if (empty($a['notes'])) $modes = array_values(array_diff($modes, ['notes']));
         abort_unless($modes, 422, 'Choose how Weave should use this document.');
         $picks = array_values(array_filter($picks, fn ($p) => ($p['kind'] ?? null) === 'page' ? in_array('pages', $modes, true) : (($p['kind'] ?? null) === 'picture' && in_array('pictures', $modes, true))));
@@ -148,11 +154,20 @@ class DocumentService
         })->map(fn ($p) => ($p['kind'] === 'picture' ? ['kind' => 'picture', 'id' => (string) $p['id']] : ['kind' => 'page', 'number' => (int) $p['number']]) + ['part' => max(1, (int) ($p['part'] ?? 1))])
             ->unique(fn ($p) => json_encode($p))->values()->all();
         $used = DB::table('create_attachments')->where('conversation_id', $conversationId)->count();
+        // Weave chooses: the larger pictures (each part of a tall one), biggest first, as many as there is room for.
+        $offered = [];
+        if (in_array('auto', $modes, true)) {
+            $room = min(self::AUTO_PICTURES, 20 - $used - count($valid));
+            foreach (collect($a['pictures'] ?? [])->filter(fn ($x) => min((int) $x['width'], (int) $x['height']) >= self::AUTO_MIN_SIDE)->sortByDesc(fn ($x) => (int) $x['width'] * (int) $x['height']) as $x)
+                foreach ($x['parts'] ?? [['part' => 1]] as $part) if (count($offered) < $room) $offered[] = ['kind' => 'picture', 'id' => (string) $x['id'], 'part' => (int) $part['part'], 'optional' => true];
+        }
         abort_if($used + count($valid) > 20, 422, 'A conversation holds 20 files. You have room for '.max(0, 20 - $used).' more.');
         abort_unless((int) DB::table('create_conversations')->where('id', $conversationId)->value('version') === $version, 409, 'Conversation changed. Refresh first.');
-        if ($valid) {
-            $images = collect($this->render($d, $valid))->keyBy('key');
-            foreach ($valid as $p) {
+        $added = [];
+        if ($valid || $offered) {
+            $all = array_merge($valid, $offered);
+            $images = collect($this->render($d, array_map(fn ($p) => array_diff_key($p, ['optional' => 1]), $all)))->keyBy('key');
+            foreach ($all as $p) {
                 $key = $p['kind'] === 'picture' ? 'picture-'.$p['id'].'-'.$p['part'] : 'page-'.$p['number'].'-'.$p['part'];
                 $img = $images->get($key);
                 if (! $img) continue;
@@ -166,12 +181,42 @@ class DocumentService
                     $current = (int) DB::table('create_conversations')->where('id', $conversationId)->value('version');
                     $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, $file, 'source', 'doc:'.$d->id.':'.$key, $current);
                     // A page or slide is shown as it looks; a picture is used on its own, like an uploaded photo.
+                    // An offered picture (Weave chooses) is used only where it fits.
                     DB::table('create_attachments')->where('conversation_id', $conversationId)->where('asset_id', $asset->id)->update(['notes_json' => json_encode([
-                        'kind' => $p['kind'] === 'page' ? 'document_page' : 'document_picture', 'use' => 'From '.$d->title.', '.lcfirst($label), 'document_id' => $d->id]), 'updated_at' => now()]);
+                        'kind' => $p['kind'] === 'page' ? 'document_page' : 'document_picture', 'use' => 'From '.$d->title.', '.lcfirst($label).(! empty($p['optional']) ? ' (use it where it fits)' : ''), 'document_id' => $d->id]
+                        + (! empty($p['optional']) ? ['optional' => true] : [])), 'updated_at' => now()]);
+                    if (! empty($p['optional'])) $added[] = ['asset_id' => (int) $asset->id, 'bytes' => base64_decode($img['base64'])];
                 } finally { @unlink($tmp); }
             }
         }
-        DB::table('create_documents')->where('id', $d->id)->update(['picks_json' => json_encode(['modes' => $modes, 'picks' => $valid]), 'updated_at' => now()]);
+        // The planner sees the offered pictures as one sheet, so it can tell which fit.
+        $sheet = $added ? $this->sheet($d, $added) : null;
+        DB::table('create_documents')->where('id', $d->id)->update(['picks_json' => json_encode(['modes' => $modes, 'picks' => $valid,
+            'offered' => array_column($added, 'asset_id'), 'sheet' => $sheet]), 'updated_at' => now()]);
+    }
+
+    /** Cells of 360 px, four across, in the order of $pictures; stored beside the document. Null when ffmpeg fails. */
+    private function sheet(object $d, array $pictures): ?string
+    {
+        $dir = sys_get_temp_dir().'/docsheet-'.Str::random(8);
+        @mkdir($dir);
+        try {
+            $args = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y'];
+            $chain = []; $layout = [];
+            foreach ($pictures as $i => $p) {
+                file_put_contents($dir.'/'.$i.'.jpg', $p['bytes']);
+                array_push($args, '-i', $dir.'/'.$i.'.jpg');
+                $chain[] = '['.$i.']scale=352:352:force_original_aspect_ratio=decrease,pad=360:360:(ow-iw)/2:(oh-ih)/2:color=white[c'.$i.']';
+                $layout[] = (($i % 4) * 360).'_'.(intdiv($i, 4) * 360);
+            }
+            $n = count($pictures);
+            $graph = implode(';', $chain).';'.($n === 1 ? '[c0]null[out]' : implode('', array_map(fn ($i) => '[c'.$i.']', range(0, $n - 1))).'xstack=inputs='.$n.':layout='.implode('|', $layout).':fill=white[out]');
+            array_push($args, '-filter_complex', $graph, '-map', '[out]', '-frames:v', '1', '-q:v', '4', $dir.'/sheet.jpg');
+            $r = \Illuminate\Support\Facades\Process::timeout(60)->run($args);
+            if (! $r->successful() || ! is_file($dir.'/sheet.jpg')) { Log::warning('Create document: sheet failed', ['error' => mb_substr($r->errorOutput(), 0, 300)]); return null; }
+            $path = 'create/documents/'.$d->workspace_id.'/'.$d->id.'-offered.jpg';
+            return app(CreateStorage::class)->put($path, (string) file_get_contents($dir.'/sheet.jpg'), ['visibility' => 'private']) ? $path : null;
+        } finally { foreach (glob($dir.'/*') ?: [] as $f) @unlink($f); @rmdir($dir); }
     }
 
     public function remove(User $user, string $conversationId, string $docId): void
@@ -200,15 +245,16 @@ class DocumentService
         if ($d->status === 'reading' && \Illuminate\Support\Carbon::parse($d->updated_at)->lt(now()->subMinutes(10))) { $d->status = 'failed'; $d->error = 'Reading took too long. Remove it and add it again.'; }
         return ['id' => $d->id, 'title' => $d->title, 'source' => $d->source, 'status' => $d->status, 'error' => $d->error, 'page_count' => (int) $d->page_count, 'pages_total' => (int) ($a['pages_total'] ?? $d->page_count), 'created_at' => $d->created_at,
             'pictures' => count($a['pictures'] ?? []), 'notes' => count($a['notes'] ?? []), 'text_only' => (bool) ($a['text_only'] ?? false), 'chosen' => $d->picks_json !== null,
-            'modes' => self::choice($d)['modes'], 'picked' => count(self::choice($d)['picks']), 'summary' => $facts['summary'] ?? '', 'facts' => $facts['facts'] ?? []];
+            'modes' => self::choice($d)['modes'], 'picked' => count(self::choice($d)['picks']), 'offered' => count(self::choice($d)['offered']), 'summary' => $facts['summary'] ?? '', 'facts' => $facts['facts'] ?? []];
     }
 
     /** What the user chose in the drawer: {modes, picks} (an older choice was the list of picks alone). */
     public static function choice(object $d): array
     {
         $c = json_decode((string) $d->picks_json, true);
-        if (! is_array($c)) return ['modes' => [], 'picks' => []];
-        return array_is_list($c) ? ['modes' => $c ? ['pages', 'pictures'] : ['words'], 'picks' => $c] : ['modes' => (array) ($c['modes'] ?? []), 'picks' => (array) ($c['picks'] ?? [])];
+        if (! is_array($c)) return ['modes' => [], 'picks' => [], 'offered' => [], 'sheet' => null];
+        return array_is_list($c) ? ['modes' => $c ? ['pages', 'pictures'] : ['words'], 'picks' => $c, 'offered' => [], 'sheet' => null]
+            : ['modes' => (array) ($c['modes'] ?? []), 'picks' => (array) ($c['picks'] ?? []), 'offered' => (array) ($c['offered'] ?? []), 'sheet' => $c['sheet'] ?? null];
     }
 
     /** The drawer: every picture and page part with its thumbnail. */
@@ -242,6 +288,21 @@ class DocumentService
                     'facts' => array_map(fn ($x) => $x['text'].($x['page'] ? ' (page '.$x['page'].')' : ''), $f['facts'] ?? []),
                     'text' => $d->text ? mb_substr((string) $d->text, 0, self::PLAN_TEXT).(mb_strlen((string) $d->text) > self::PLAN_TEXT ? "\n[… the rest is covered by the summary and facts]" : '') : null]);
             })->all();
+    }
+
+    /** The sheets of pictures offered to the planner (Weave chooses), labelled with their files in cell order. */
+    public static function planSheets(string $conversationId): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('create_documents')) return [];
+        $out = [];
+        foreach (DB::table('create_documents')->where('conversation_id', $conversationId)->where('status', 'ready')->orderBy('created_at')->get() as $d) {
+            $c = self::choice($d);
+            $ids = array_values(array_filter($c['offered'], fn ($id) => DB::table('create_attachments')->where('conversation_id', $conversationId)->where('asset_id', $id)->exists()));
+            if (! $ids || ! $c['sheet'] || ! ($bytes = app(CreateStorage::class)->get($c['sheet']))) continue;
+            $out[] = ['label' => 'Pictures from the user\'s document "'.$d->title.'", offered for you to use where they fit: cells left to right, then down, are assets '.implode(', ', array_map(fn ($id) => (string) $id, $c['offered'])).(count($ids) < count($c['offered']) ? ' (the user removed some; use only assets '.implode(', ', $ids).')' : ''),
+                'media_type' => 'image/jpeg', 'data' => base64_encode($bytes)];
+        }
+        return $out;
     }
 
     private function render(object $d, array $items): array

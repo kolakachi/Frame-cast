@@ -139,7 +139,7 @@ function sizeLabel(a) {
 // brief is still waiting in the composer.
 const messageAttachments = computed(() => {
   const docs = (data.value?.documents || []).map(d => ({ asset_id: 'd' + d.id, title: d.title, asset_type: 'document', attached_at: d.created_at }))
-  const out = {}, list = [...(data.value?.attachments || []), ...docs].sort((a, b) => Date.parse(a.attached_at || 0) - Date.parse(b.attached_at || 0))
+  const out = {}, list = [...(data.value?.attachments || []).filter(a => !a.offered), ...docs].sort((a, b) => Date.parse(a.attached_at || 0) - Date.parse(b.attached_at || 0))
   const briefs = (data.value?.messages || []).filter(m => m.role === 'user')
   for (const a of list) {
     const at = Date.parse(a.attached_at || 0)
@@ -151,7 +151,7 @@ const messageAttachments = computed(() => {
 const pendingAttachments = computed(() => {
   const briefs = (data.value?.messages || []).filter(m => m.role === 'user')
   const last = briefs.length ? Date.parse(briefs[briefs.length - 1].created_at) : -Infinity
-  return (data.value?.attachments || []).filter(a => Date.parse(a.attached_at || 0) > last)
+  return (data.value?.attachments || []).filter(a => Date.parse(a.attached_at || 0) > last && !a.offered)
 })
 // The prompt box's pill row: files already attached for the next message, then files that upload when it is sent.
 const fileKind = type => type.startsWith('image/') ? 'image' : type.startsWith('audio/') ? 'audio' : 'video'
@@ -165,7 +165,7 @@ const pendingDocuments = computed(() => {
   return documents.value.filter(d => Date.parse(d.created_at || 0) > last)
 })
 const docAdding = ref([])
-const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : (d.pages_total > d.page_count ? `first ${d.page_count} of ${d.pages_total} pages · ` : '') + (d.text_only ? 'text only' : !d.chosen ? 'choose how to use it' : (d.modes || []).includes('words') ? 'words only' : [d.picked ? d.picked + ' chosen' : '', (d.modes || []).includes('notes') ? 'notes as script' : ''].filter(Boolean).join(' · ') || 'chosen')
+const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : (d.pages_total > d.page_count ? `first ${d.page_count} of ${d.pages_total} pages · ` : '') + (d.text_only ? 'text only' : !d.chosen ? 'choose how to use it' : (d.modes || []).includes('words') ? 'words only' : [(d.modes || []).includes('auto') ? (d.offered ? `Weave chooses from ${d.offered} picture${d.offered === 1 ? '' : 's'}` : 'Weave chooses') : '', d.picked ? d.picked + ' chosen' : '', (d.modes || []).includes('notes') ? 'notes as script' : ''].filter(Boolean).join(' · ') || 'chosen')
 const docBusy = computed(() => docAdding.value.some(u => !u.error) || documents.value.some(d => d.status === 'reading'))
 const trayItems = computed(() => [
   ...pendingDocuments.value.map(d => ({ key: 'd' + d.id, title: d.title, type: 'document', uploading: d.status === 'reading', sub: docSub(d), error: d.status === 'failed' ? d.error || 'Could not read that document.' : '', open: d.status === 'ready' && !d.text_only, note: d.summary, doc: d })),
@@ -239,16 +239,20 @@ const docModeList = computed(() => {
   if (!f) return []
   const unit = docUnit.value
   return [
+    ...(f.picture_list.length ? [{ key: 'auto', title: 'Let Weave choose', detail: 'It uses the pictures that fit and reads the words to understand what is needed. Nothing to tick.' }] : []),
     { key: 'pages', title: `Show the ${unit}s as they look`, detail: docDeck.value ? 'A presentation video: each slide on screen while it is talked through.' : 'A walkthrough, as if flipping through it.' },
     ...(f.notes_list?.length ? [{ key: 'notes', title: 'Use my speaker notes as the script', detail: `What is said over each slide comes from its notes (${f.notes_list.length} ${f.notes_list.length === 1 ? 'slide has' : 'slides have'} notes).` }] : []),
-    ...(f.picture_list.length ? [{ key: 'pictures', title: 'Use its pictures', detail: 'The photos and images inside it, on their own.' }] : []),
+    ...(f.picture_list.length ? [{ key: 'pictures', title: 'Use its pictures, I\'ll pick them', detail: 'The photos and images inside it, on their own.' }] : []),
     { key: 'words', title: 'Use its words only', detail: 'Weave writes from it and makes its own visuals. Nothing to tick.' },
   ]
 })
 function toggleDocMode(key) {
   const next = { ...docModes.value, [key]: !docModes.value[key] }
-  if (key === 'words' && next.words) { next.pages = false; next.pictures = false; next.notes = false }
+  if (key === 'words' && next.words) { next.pages = false; next.pictures = false; next.notes = false; next.auto = false }
   if (key !== 'words' && next[key]) next.words = false
+  // Weave choosing the pictures and ticking them are one or the other.
+  if (key === 'auto' && next.auto) next.pictures = false
+  if (key === 'pictures' && next.pictures) next.auto = false
   docModes.value = next
 }
 const pickedOf = kind => Object.values(docPicks.value).filter(p => p.kind === kind)
@@ -269,6 +273,7 @@ const docSummary = computed(() => {
   if (!Object.values(m).some(Boolean)) return 'Choose how Weave should use it.'
   const np = pickedOf('page').length, ni = pickedOf('picture').length
   if (m.pages) out.push(np ? `${np} ${docUnit.value}${np === 1 ? '' : 's'} shown as they look` : `tick the ${docUnit.value}s to show`)
+  if (m.auto) out.push('Weave picks from its pictures')
   if (m.notes) out.push('script from your notes')
   if (m.pictures) out.push(ni ? `${ni} picture${ni === 1 ? '' : 's'}` : 'tick the pictures to use')
   out.push(`words from all ${f.page_count} ${docUnit.value}s`)

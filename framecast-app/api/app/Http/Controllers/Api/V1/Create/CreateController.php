@@ -90,7 +90,10 @@ class CreateController extends Controller
                 $asset = Asset::where('workspace_id',$r->user()->workspace_id)->find($attachment->asset_id);
                 if (!$asset) return null;
                 $storage = app(StorageService::class);
+                $notes = json_decode((string) ($attachment->notes_json ?? ''), true) ?: [];
                 return ['asset_id'=>$asset->id,'purpose'=>$attachment->purpose,'title'=>$asset->title,'asset_type'=>$asset->asset_type,
+                    // A picture offered from a document for Weave to use where it fits shows under its document, not as its own pill.
+                    'document_id'=>$notes['document_id'] ?? null,'offered'=>!empty($notes['optional']),
                     'attached_at'=>$attachment->created_at,'duration_seconds'=>$asset->duration_seconds,'dimensions'=>$asset->dimensions_json,
                     'bytes'=>$asset->file_size_bytes,'source'=>data_get($asset->metadata_json,'reference_source'),'reference'=>data_get($asset->metadata_json,'reference_analysis.notes'),'suggested_claims'=>data_get($asset->metadata_json,'reference_analysis.suggested_claims',[]),
                     // What a link is used for, shown on its pill: a video post is a style reference; the user's own page gives facts and look; a social page only its look.

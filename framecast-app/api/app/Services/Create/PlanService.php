@@ -704,7 +704,7 @@ class PlanService
                 // What a sound or video file says, so the user's own recording can be the narration word for word.
                 ...(in_array($asset->asset_type, ['audio', 'video'], true) && $a->purpose === 'source' && ($t = trim((string) $asset->transcript_text)) !== '' ? ['speech' => mb_substr($t, 0, 1500)] : []),
                 // What the file is and what the user wants from it (and, for a frame of their current video, its time).
-                ...(($n = json_decode((string) ($a->notes_json ?? ''), true)) ? ['notes' => array_intersect_key($n, array_flip(['kind', 'use', 'time']))] : []),
+                ...(($n = json_decode((string) ($a->notes_json ?? ''), true)) ? ['notes' => array_intersect_key($n, array_flip(['kind', 'use', 'time', 'optional']))] : []),
                 // An SVG is checked against the rig contract when uploaded; only a character (or a rig-ready file) is a
                 // rig. A logo or icon SVG is just a crisp picture, so its missing layers are not reported.
                 ...(is_array(data_get($asset->metadata_json, 'rig')) && (data_get($asset->metadata_json, 'rig.ready') === true || data_get(json_decode((string) ($a->notes_json ?? ''), true), 'kind') === 'character') ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),
@@ -725,7 +725,7 @@ class PlanService
             'documents' => DocumentService::forPlan($c->id),
             'files' => $files, 'brand_library' => array_map(fn ($b) => array_intersect_key($b, array_flip(['asset_id', 'role', 'title', 'asset_type'])), BrandLibrary::items((int) $user->workspace_id)), 'settings' => $settings, 'house_style' => StyleService::brief($settings['style_id'] ?? null, (int) $user->workspace_id), 'approved_facts' => $settings['approved_facts'] ?? [],
             // Pictures for the planner (underscored keys never reach the JSON): frames of each studied reference video, and the page capture.
-            '_images' => $this->planImages($user, $files),
+            '_images' => array_merge($this->planImages($user, $files), DocumentService::planSheets($c->id)),
             // Built-in style packs to start from, and the ones this workspace used last, so the planner varies them.
             'style_packs' => StylePacks::catalogue(),
             // From scratch: format playbooks (beats, energy, structures, openings, endings) and motion voices.

@@ -223,7 +223,40 @@ class CreateDocumentsTest extends TestCase
         catch (HttpException $e) { $this->assertSame(422, $e->getStatusCode()); }
     }
 
-    public function test_using_the_words_only_and_another_workspace_cannot_see_it(): void
+    public function test_letting_weave_choose_offers_the_larger_pictures_on_a_sheet_the_planner_sees(): void
+    {
+        $d = $this->added();
+        $thumb = ['part' => 1, 'of' => 1, 'y0' => 0, 'y1' => 100, 'thumb' => 'AAAA'];
+        $analysis = $this->analysis(['pictures' => [
+            ['id' => 'x5', 'page' => 1, 'width' => 900, 'height' => 1200, 'parts' => [$thumb]],
+            ['id' => 'x6', 'page' => 2, 'width' => 120, 'height' => 90, 'parts' => [$thumb]],
+            ['id' => 'x7', 'page' => 3, 'width' => 800, 'height' => 3000, 'parts' => [$thumb, ['part' => 2] + $thumb]],
+        ]]);
+        Http::fake(['extract:8000/extract/document' => Http::response($analysis)]);
+        app(DocumentService::class)->readNow($d->id);
+        $jpeg = base64_encode($this->jpeg());
+        $asked = null;
+        Http::fake(['extract:8000/extract/document/render' => function ($request) use (&$asked, $jpeg) {
+            foreach ($request->data() as $part) if (($part['name'] ?? '') === 'items') $asked = json_decode($part['contents'], true);
+            return Http::response(['images' => array_map(fn ($i) => ['key' => $i['kind'].'-'.$i['id'].'-'.$i['part'], 'mime_type' => 'image/jpeg', 'width' => 1, 'height' => 1, 'base64' => $jpeg], $asked)]);
+        }]);
+        $version = (int) DB::table('create_conversations')->where('id', $d->conversation_id)->value('version');
+        // A ticked picture is ignored: Weave chooses them.
+        app(DocumentService::class)->useParts($this->owner, $d->conversation_id, $d->id, ['auto', 'pictures'], [['kind' => 'picture', 'id' => 'x6', 'part' => 1]], $version);
+        $this->assertSame([['kind' => 'picture', 'id' => 'x7', 'part' => 1], ['kind' => 'picture', 'id' => 'x7', 'part' => 2], ['kind' => 'picture', 'id' => 'x5', 'part' => 1]], $asked, 'larger first, every part of a tall one, the tiny one left out');
+        $notes = DB::table('create_attachments')->where('conversation_id', $d->conversation_id)->orderBy('id')->pluck('notes_json')->map(fn ($n) => json_decode($n, true));
+        $this->assertCount(3, $notes);
+        $this->assertTrue($notes->every(fn ($n) => ($n['optional'] ?? false) === true && $n['kind'] === 'document_picture'));
+        $this->assertStringEndsWith('(use it where it fits)', $notes[2]['use']);
+        $brief = DocumentService::brief(DB::table('create_documents')->where('id', $d->id)->first());
+        $this->assertSame([['auto'], 3, 0], [$brief['modes'], $brief['offered'], $brief['picked']]);
+        $sheets = DocumentService::planSheets($d->conversation_id);
+        $this->assertCount(1, $sheets, 'the planner sees the offered pictures on one sheet');
+        $this->assertStringContainsString('offered for you to use where they fit', $sheets[0]['label']);
+        $this->assertSame('/9j/', substr($sheets[0]['data'], 0, 4));
+    }
+
+        public function test_using_the_words_only_and_another_workspace_cannot_see_it(): void
     {
         $d = $this->added();
         Http::fake(['extract:8000/extract/document' => Http::response($this->analysis())]);
