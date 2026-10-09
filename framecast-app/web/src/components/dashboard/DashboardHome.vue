@@ -11,10 +11,12 @@ const props = defineProps({ user: { type: Object, default: null }, credits: { ty
 const router = useRouter()
 
 const firstName = computed(() => String(props.user?.name || '').trim().split(/\s+/)[0] || 'there')
-// A typical video, plan included, uses about 230 credits (production, October 2026).
-const TYPICAL = 230
+// The low-credit nudge (owner, 2026-10-09: a video count overpromised). Production's last two weeks: a Weave build
+// used 217 credits at the median and 440 at the 75th percentile, plus about 45 per plan, so a video is 250–500.
+// Shown under 1,000 credits; under 300 it says most videos need more. The smallest top-up is 500 credits for $8.
+const LOW = 1000, VERY_LOW = 300
 const balance = computed(() => (props.credits && props.credits.balance !== null ? Number(props.credits.balance) : null))
-const videosLeft = computed(() => (balance.value === null ? null : Math.floor(balance.value / TYPICAL)))
+const lowCredits = computed(() => balance.value !== null && balance.value > 0 && balance.value < LOW)
 
 const setup = ref(null)
 const brand = computed(() => setup.value?.brand_name || '')
@@ -120,8 +122,10 @@ function startIdea(i) {
     <header class="dh-welcome">
       <h1>Welcome, <em>{{ firstName }}</em></h1>
       <p v-if="balance !== null">{{ balance.toLocaleString() }} credits</p>
-      <button v-if="videosLeft !== null && balance > 0 && videosLeft <= 3" type="button" class="dh-low" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
-        Enough for about {{ videosLeft === 0 ? 'less than one' : videosLeft }} more video{{ videosLeft === 1 ? '' : 's' }} · Top up from $8
+      <button v-if="lowCredits" type="button" class="dh-low" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
+        <template v-if="balance < VERY_LOW">Running low: most videos need 250–500 credits</template>
+        <template v-else>{{ balance.toLocaleString() }} credits left · A video in Weave usually uses 250–500</template>
+        · Top up: 500 credits for $8 →
       </button>
     </header>
 

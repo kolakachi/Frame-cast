@@ -102,7 +102,7 @@ return [
                 .'your brand name is said, your face and voice, and your first video. Nothing is locked, and you '
                 .'can hide the steps anytime. Once you are set up, This week shows your calendar at a glance, with '
                 .'what is posted, scheduled or empty, and Recent videos shows a real frame of each video. The '
-                .'low-credit reminder now only appears when you have about three videos\' worth of credits left.',
+                .'low-credit reminder now appears when you are running low, with what a video usually uses.',
         ],
 
         [
