@@ -688,6 +688,35 @@ class DeveloperApiTest extends TestCase
         $this->assertSame(['cinematic', false], [$img['style'], $img['in_progress']]);
         $this->assertSame(777, (int) $row->visual_asset_id, 'the finished picture stays');
 
+        // Re-review (2026-10-10): a cancel flag is generation state, never put back; a scene a job touched during the
+        // request is left out of the step; edited-then-deleted comes back as before the edit; generating ends redo.
+        $this->assertTrue($EH::transient('animation_cancel_requested'));
+        $this->assertTrue($EH::transient('animation_cancelled_at'));
+        $all = $EH::snapshot($id);
+        DB::table('scenes')->where('id', $s2)->update(['label' => 'Mine']);
+        DB::table('scenes')->where('id', $s1)->update(['visual_asset_id' => 888, 'image_generation_settings_json' => json_encode(['in_progress' => false, 'generation_token' => 'new'])]);
+        $edit = $EH::record($id, $all, 'Assistant edit', 'assistant', null);
+        $step = json_decode(DB::table('project_edits')->where('id', $edit)->value('before_json'), true);
+        $this->assertArrayHasKey($s2, $step['scenes']);
+        $this->assertArrayNotHasKey($s1, $step['scenes'], 'scene 1 was a job landing, not this edit');
+        $api('POST', '/undo')->assertOk();
+        $this->assertSame(888, (int) DB::table('scenes')->where('id', $s1)->value('visual_asset_id'));
+
+        $b = $EH::snapshot($id, [$s2]);
+        DB::table('scenes')->where('id', $s2)->update(['label' => 'Temp']);
+        $EH::record($id, $b, 'Deleted scene 2', 'user', 9, [$s2]);
+        $b = $EH::snapshot($id);
+        $kept = DB::table('scenes')->where('id', $s2)->value('label');
+        DB::table('scenes')->where('id', $s2)->delete();
+        $EH::record($id, $b, 'Deleted scene 2', 'user', 9);
+        $api('POST', '/undo')->assertOk();
+        $this->assertNotSame('Temp', DB::table('scenes')->where('id', $s2)->value('label'), 'the scene returns as it was before the edit');
+        $this->assertSame('Temp', $kept);
+        $api('POST', '/redo')->assertOk();
+        $api('POST', '/undo')->assertOk();
+        $EH::endRedo($id);
+        $api('GET', '/history')->assertJsonPath('data.can_redo', false);
+
         // Typing in the script box: saves moments apart are one step.
         foreach (['One', 'One two', 'One two three'] as $text) {
             $b = $EH::snapshot($id, [$s2]);

@@ -38,7 +38,27 @@ final class EditHistory
     /** Generation state, never recorded or restored: in-progress flags, tokens, timing, provider ids, errors. */
     public static function transient(string $key): bool
     {
-        return $key === 'in_progress' || (bool) preg_match('/(in_progress|_token|token$|_started_at|_prediction_id|last_error|still_rendering|cancel|refunded|needs_visual|_queued_at)$/', $key);
+        return $key === 'in_progress' || str_contains($key, 'cancel')
+            || (bool) preg_match('/(in_progress|_token|token$|_started_at|_prediction_id|last_error|still_rendering|refunded|needs_visual|_queued_at)$/', $key);
+    }
+
+    /** Signs a background job worked on a scene: the generation flags, tokens, provider ids and start times. */
+    private static function jobMarker(string $key): bool
+    {
+        return (bool) preg_match('/(^in_progress|in_progress$|_token$|^token$|_prediction_id$|_started_at$)/', $key);
+    }
+
+    /** True when a job touched this scene between the two snapshots (its markers changed): its fields are not this edit's. */
+    private static function jobTouched(array $was, array $now): bool
+    {
+        foreach (self::JSON_COLS as $col) {
+            $a = json_decode((string) ($was[$col] ?? ''), true); $b = json_decode((string) ($now[$col] ?? ''), true);
+            $a = is_array($a) ? $a : []; $b = is_array($b) ? $b : [];
+            foreach (array_unique(array_merge(array_keys($a), array_keys($b))) as $k) {
+                if (self::jobMarker((string) $k) && ($a[$k] ?? null) !== ($b[$k] ?? null)) return true;
+            }
+        }
+        return false;
     }
 
     /** @return array{project: array<string,mixed>, scenes: array<int, array<string,mixed>>} */
@@ -58,6 +78,8 @@ final class EditHistory
         $scenes = [];
         foreach ($before['scenes'] as $id => $row) {
             if (! isset($after['scenes'][$id])) { $scenes[$id] = ['deleted' => $row]; continue; }
+            // A generation landing on this scene mid-request: what changed is the job's, not the edit's.
+            if (self::jobTouched($row, $after['scenes'][$id])) continue;
             $change = self::rowDiff($row, $after['scenes'][$id]);
             if ($change) $scenes[$id] = $change;
         }
@@ -112,7 +134,8 @@ final class EditHistory
             // A new edit ends the redo trail, as in any editor.
             DB::table('project_edits')->where('project_id', $projectId)->whereNotNull('undone_at')->delete();
             $last = DB::table('project_edits')->where('project_id', $projectId)->orderByDesc('id')->first();
-            if ($last && $last->label === $label && (int) $last->user_id === (int) $userId && $last->actor === $actor
+            // Only a person's own repeated saves merge (typing); separate assistant edits stay separate steps.
+            if ($last && $actor === 'user' && $last->label === $label && (int) $last->user_id === (int) $userId && $last->actor === $actor
                 && now()->subSeconds(self::MERGE_SECONDS)->lte($last->created_at)) {
                 DB::table('project_edits')->where('id', $last->id)->update(['before_json' => json_encode(self::merge(json_decode($last->before_json, true), $change)), 'created_at' => now()]);
                 return (int) $last->id;
@@ -133,7 +156,21 @@ final class EditHistory
             if (! isset($older['scenes'][$id])) { $older['scenes'][$id] = $c; continue; }
             $o = &$older['scenes'][$id];
             if (isset($o['created']) || isset($o['deleted'])) continue;
-            if (isset($c['created']) || isset($c['deleted'])) { $o = $c; continue; }
+            if (isset($c['created'])) { $o = $c; continue; }
+            if (isset($c['deleted'])) {
+                // Edited, then deleted: bring the scene back as it was before the edit, not as it was when deleted.
+                $row = $c['deleted'];
+                foreach ($o['cols'] ?? [] as $col => $v) $row[$col] = $v;
+                foreach ($o['keys'] ?? [] as $col => $ks) {
+                    $j = json_decode((string) ($row[$col] ?? ''), true); $j = is_array($j) ? $j : [];
+                    foreach ($ks as $k => $v) { if ($v === self::ABSENT) unset($j[$k]); else $j[$k] = $v; }
+                    $row[$col] = json_encode($j);
+                }
+                $o = ['deleted' => $row];
+                continue;
+            }
+            // The voice that went with the script comes from the step that first changed the script.
+            if (! isset($o['cols']['script_text']) && isset($c['audio'])) $o['audio'] = $c['audio'];
             $o['cols'] = ($o['cols'] ?? []) + ($c['cols'] ?? []);
             foreach ($c['keys'] ?? [] as $col => $ks) $o['keys'][$col] = ($o['keys'][$col] ?? []) + $ks;
             unset($o);
@@ -186,6 +223,12 @@ final class EditHistory
             DB::table('project_edits')->where('id', $entry->id)->update(['undone_at' => null, 'redo_json' => null]);
             return $entry->label;
         });
+    }
+
+    /** Something new was generated: a redo would put back what it replaced, so there is nothing left to redo. */
+    public static function endRedo(int $projectId): void
+    {
+        DB::table('project_edits')->where('project_id', $projectId)->whereNotNull('undone_at')->delete();
     }
 
     public static function forget(int $projectId): void

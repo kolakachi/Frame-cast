@@ -311,7 +311,8 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
       // handlers refresh again once it does.
       try { await refreshProjectPayload() } catch (_) {}
       // After the assistant undoes or redoes, the open scene's drafts reload from what was put back.
-      if (['undo_last_edit', 'redo_last_edit'].includes(card.tool)) await resyncSceneDrafts();
+      // …unless the user is typing: then their text stays and the scene reloads when they switch to it.
+      if (['undo_last_edit', 'redo_last_edit'].includes(card.tool) && !savesInFlight()) await resyncSceneDrafts();
     } else if (card.affected_scene_id) {
       // One-shot scene fetch so the editor picks up the in_progress flag
       // (regenerate_image / animate) or the new voice/script.
@@ -3491,6 +3492,8 @@ function sortScenesByOrder(nextScenes) {
 }
 
 function replaceSceneInCollection(updatedScene) {
+  // A scene came back (often a picture or animation finishing): undo and redo may be available again.
+  scheduleHistoryRefresh();
   if (!updatedScene?.id) return;
 
   const idx = scenes.value.findIndex((s) => s.id === updatedScene.id);
@@ -4180,8 +4183,8 @@ async function resyncSceneDrafts() {
 function savesInFlight() {
   return [scriptSaveState, voiceSaveState, captionSaveState, motionSaveState, musicSaveState, audiogramSaveState, visualStyleSaveState, customVisualStyleSaveState]
     .some((state) => ["pending", "saving"].includes(state.value))
-    || Boolean(scriptSaveTimer || voiceSaveTimer || captionSaveTimer || musicSaveTimer || audiogramSaveTimer)
-    || volumeSavesPending.value > 0
+    || Boolean(scriptSaveTimer || voiceSaveTimer || captionSaveTimer || musicSaveTimer || audiogramSaveTimer || sceneVoiceVolumeSaveTimer || sceneSoundVolumeSaveTimer)
+    || volumeSavesPending.value > 0 || sceneDurationSaving.value
     || Boolean(activeScene.value && sceneScriptDraft.value !== (activeScene.value.script_text || ""));
 }
 async function stepHistory(step) {
@@ -4229,7 +4232,7 @@ function historyKeys(event) {
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
   const t = event.target;
   if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
-  if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;   // a dialog is open
+  if (document.querySelector('[role="dialog"]:not(.wcn), [aria-modal="true"]')) return;   // a dialog is open (not the cookie notice)
   const key = event.key.toLowerCase();
   if (key === "z" && !event.shiftKey) { event.preventDefault(); stepHistory("undo"); }
   else if ((key === "z" && event.shiftKey) || key === "y") { event.preventDefault(); stepHistory("redo"); }

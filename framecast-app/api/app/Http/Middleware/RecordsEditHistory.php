@@ -43,9 +43,12 @@ class RecordsEditHistory
     {
         $action = class_basename((string) $request->route()?->getActionName());
         $tool = is_string($request->input('tool')) ? $request->input('tool') : null;
-        if ($request->isMethod('GET') || in_array($action, self::GENERATING, true) || in_array(strtok($action, '@'), self::GENERATING, true)
-            || in_array($tool, self::GENERATING_TOOLS, true)) {
-            return $next($request);
+        if ($request->isMethod('GET') || in_array($tool, ['undo_last_edit', 'redo_last_edit'], true)) return $next($request);
+        if (in_array($action, self::GENERATING, true) || in_array(strtok($action, '@'), self::GENERATING, true) || in_array($tool, self::GENERATING_TOOLS, true)) {
+            // Not a step, but it ends the redo trail: redo would put back what the new generation replaced.
+            $response = $next($request);
+            if ($response->getStatusCode() < 400 && ($projectId = $this->projectId($request))) rescue(fn () => EditHistory::endRedo($projectId), report: false);
+            return $response;
         }
         $projectId = $this->projectId($request);
         if (! $projectId) return $next($request);
