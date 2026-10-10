@@ -219,6 +219,9 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
                 ? $cfg['last_error']
                 : 'Generation timed out — please try again.';
             $cfg['reaped_at'] = now()->toIso8601String();
+            // A reaped one-take run loses the take: if its job is still queued, it can no longer deliver and charge
+            // after the user has started a new take.
+            if (! empty($cfg['oneshot_token'])) $cfg['oneshot_token'] = 'reaped:'.\Illuminate\Support\Str::uuid();
 
             $scene->forceFill(['image_generation_settings_json' => $cfg])->save();
 

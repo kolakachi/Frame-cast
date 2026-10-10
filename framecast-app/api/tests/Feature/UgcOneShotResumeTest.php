@@ -21,6 +21,7 @@ class UgcOneShotResumeTest extends TestCase
     private ?int $failOn = null;
     private array $charged = [];
     private string $tier = 'creator';
+    private int $balance = 100000;
     private ?\Closure $onPoll = null;
     private array $startFrames = [];
     private array $refs = [];
@@ -62,6 +63,7 @@ class UgcOneShotResumeTest extends TestCase
         $credits = Mockery::mock(CreditService::class)->shouldIgnoreMissing();
         $credits->shouldReceive('deduct')->andReturnUsing(function ($ws, $amount) { $this->charged[] = $amount; return true; });
         $credits->shouldReceive('planTier')->andReturnUsing(fn () => $this->tier);
+        $credits->shouldReceive('balance')->andReturnUsing(fn () => $this->balance);
         $this->app->instance(CreditService::class, $credits);
         $words = Mockery::mock(\App\Services\Media\MediaTranscriptionService::class);
         $words->shouldReceive('transcribeLocalMediaWithTimestamps')->andReturnUsing(fn () => $this->clipWords);
@@ -144,6 +146,9 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame('not_resumable', GenerateOneShotUgcJob::resume(Scene::query()->find(70)), 'nothing saved yet');
         $this->failOn = 3;
         $this->run_($this->job());
+        $this->balance = 10;
+        $this->assertSame('short', GenerateOneShotUgcJob::resume(Scene::query()->find(70)), 'only resumes when the balance can still pay');
+        $this->balance = 100000;
         $this->tier = 'ugc_pass';
         $this->assertSame('not_resumable', GenerateOneShotUgcJob::resume(Scene::query()->find(70)), 'a Test Pass take handed its reservation back');
     }
@@ -255,5 +260,34 @@ class UgcOneShotResumeTest extends TestCase
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
         $this->assertEqualsWithDelta(2.5, (float) $video->duration_seconds, 0.15, 'the ad ends a second after "skin", the counting is gone');
         @unlink($long);
+    }
+
+    public function test_a_job_queued_before_run_tokens_still_runs_and_records_its_failure(): void
+    {
+        // A job serialized by the old code has no runToken in its payload.
+        $job = $this->job();
+        $payload = serialize($job);
+        $old = unserialize(str_replace('s:8:"runToken";N;', '', $payload));
+        $this->failOn = 1;
+        $this->assertNotNull($this->run_($old));
+        $this->assertStringContainsString('refused', $this->settings()['last_error'], 'its failure is recorded, not lost');
+    }
+
+    public function test_a_clip_without_sound_still_joins(): void
+    {
+        $mute = sys_get_temp_dir().'/oneshot-test-mute.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=64x112:r=24:d=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', $mute])->throw();
+        $temps = [];
+        $clips = [$this->clip, $mute];
+        $out = (fn () => $this->concat($clips, $temps))->call($this->job());
+        $this->assertGreaterThan(2.5, (float) trim(Process::run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $out])->output()));
+        foreach ([$mute, ...$temps] as $f) @unlink($f);
+    }
+
+    public function test_a_delivered_take_never_resumes(): void
+    {
+        $this->run_($this->job());
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(['last_error' => 'late timeout', 'oneshot_recipe' => 'x'] + $this->settings())]);
+        $this->assertSame('not_resumable', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
     }
 }

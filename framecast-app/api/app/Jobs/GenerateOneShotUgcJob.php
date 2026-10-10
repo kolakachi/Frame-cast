@@ -63,12 +63,17 @@ class GenerateOneShotUgcJob implements ShouldQueue
         /** Storage URL of a real demo clip, spliced over a window in post
          *  (ffmpeg) so the ACTUAL recording shows — not a model recreation. */
         public readonly ?string $demoStorageUrl = null,
-        /** Which run owns the take (oneshot_token on the scene). A job whose token is no longer the scene's — a
-         *  resumed or redelivered copy — stops without saving, failing or charging. Null: dispatched before tokens. */
-        public readonly ?string $runToken = null,
+        ?string $runToken = null,
     ) {
+        $this->runToken = $runToken;
         $this->onQueue('generation');
     }
+
+    /** Which run owns the take (oneshot_token on the scene). A job whose token is no longer the scene's — a resumed or
+     *  redelivered copy — stops without saving, failing or charging. Null: queued before tokens existed. A plain
+     *  property with a default, not a promoted readonly one: a job queued before the deploy unserializes without it,
+     *  and reading an uninitialized readonly property throws (review, 2026-10-10). */
+    public ?string $runToken = null;
 
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
@@ -135,6 +140,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 } else {
                     if (! $this->owns($scene->refresh())) return; // superseded: the newer run makes the rest
                     $path = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                    if (! $this->owns($scene->refresh())) return; // superseded while this clip was made
                     // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
                     $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
                     $this->savePart($project, $scene, $storage, $i, $path);
@@ -202,27 +208,35 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     'visual_asset_id' => $asset->id,
                     'duration_seconds' => $duration ?: $scene->duration_seconds,
                     'status' => 'ready',
-                    'image_generation_settings_json' => array_merge(
+                    // The recipe goes with delivery, in the same step: a failure after this point can never resume
+                    // (and charge) a delivered take.
+                    'image_generation_settings_json' => array_diff_key(array_merge(
                         $scene->image_generation_settings_json ?? [],
                         ['in_progress' => false, 'last_error' => null],
-                    ),
+                    ), array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash'])),
                 ])->save();
 
                 $project->forceFill(['status' => 'ready_for_review'])->save();
 
                 // Money moves only now, with the finished video stored.
-                $credits->deduct($project->workspace_id, $this->credits, 'ugc_oneshot', [
+                $charged = $credits->deduct($project->workspace_id, $this->credits, 'ugc_oneshot', [
                     'project_id' => $this->projectId, 'scene_id' => $this->sceneId,
                     'segments' => count($this->chunks),
                 ]);
+                if ($charged === false) {
+                    // Delivered but not paid (the balance went between start and finish): the team hears of it.
+                    \Illuminate\Support\Facades\Log::error('one-shot: delivered without charge', ['project_id' => $this->projectId,
+                        'workspace_id' => $project->workspace_id, 'credits' => $this->credits]);
+                    report(new \RuntimeException('UGC one-take '.$this->projectId.' delivered without charge ('.$this->credits.' credits).'));
+                }
                 return true;
             });
             if (! $delivered) {
                 return;
             }
 
-            // Delivered: the saved segments have done their job.
-            self::forgetParts($scene->refresh(), (int) $project->workspace_id);
+            // Delivered: the saved segment files have done their job.
+            try { self::parts()->deleteDirectory(self::partsDir((int) $project->workspace_id, $this->sceneId)); } catch (\Throwable $e) { report($e); }
         } finally {
             foreach ($temps as $t) {
                 @unlink($t);
@@ -232,7 +246,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        Scene::query()->whereKey($this->sceneId)->get()->filter(fn (Scene $scene) => $this->owns($scene))->each(function (Scene $scene) use ($e): void {
+        Scene::query()->whereKey($this->sceneId)->get()
+            ->filter(fn (Scene $scene) => $this->owns($scene) && ! ($scene->status === 'ready' && $scene->visual_asset_id))
+            ->each(function (Scene $scene) use ($e): void {
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->image_generation_settings_json ?? [],
                 ['in_progress' => false, 'last_error' => mb_substr($e->getMessage(), 0, 300)],
@@ -416,6 +432,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if ($word($k) === $want[$n - 1] && $word($k - 1) === $want[$n - 2]) $last = $k;
         }
         if ($first === null || $last === null || $last < $first) return $path;
+        // Only an unambiguous match is cut: the matched span holds nearly every scripted word, starts within the first
+        // few spoken words and ends within the last few. A mis-heard closing pair that also occurs earlier would
+        // otherwise cut real lines (review, 2026-10-10).
+        if ($last - $first + 1 < 0.85 * $n || $first > 6 || count($said) - 1 - $last > 6) return $path;
 
         $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
         // Extra words before the first scripted one always go; a silent lead-in goes only where a cut hides it.
@@ -516,6 +536,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
     /**
      * Retry a failed take from the segment that failed. Returns 'resumed'; 'running' while a run is still making it;
+     * 'short' when the balance can no longer pay for it;
      * 'not_resumable' when nothing was saved or it is a Test Pass take (its reservation was handed back when it
      * failed) — the caller then makes it again from the start. The claim is made under the scene's row lock with a new
      * run token, so two retries at once start one run, and any older run stops without saving or charging.
@@ -527,11 +548,14 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $scene->refresh();
             $settings = $scene->image_generation_settings_json ?? [];
             if (! empty($settings['in_progress'])) return 'running';
+            if ($scene->status === 'ready' && $scene->visual_asset_id) return 'not_resumable'; // delivered
             $project = Project::query()->find($scene->project_id);
             if (! $project || empty($settings['oneshot_recipe']) || empty($settings['last_error'])) return 'not_resumable';
             if (app(CreditService::class)->planTier((int) $project->workspace_id) === 'ugc_pass') return 'not_resumable';
             $recipe = json_decode((string) self::parts()->get($settings['oneshot_recipe']), true);
             if (! is_array($recipe) || (int) ($recipe['sceneId'] ?? 0) !== (int) $scene->getKey() || empty($recipe['chunks'])) return 'not_resumable';
+            // The take is charged on delivery: it only resumes when the balance can still pay for it.
+            if (app(CreditService::class)->balance((int) $project->workspace_id) < (int) $recipe['credits']) return 'short';
             $token = (string) Str::uuid();
             $scene->forceFill(['image_generation_settings_json' => array_merge($settings, [
                 'last_error' => null, 'in_progress' => true, 'generation_started_at' => now()->toIso8601String(), 'oneshot_token' => $token,
@@ -564,17 +588,27 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $inputs = [];
         $graph = '';
         $last = count($paths) - 1;
+        $silent = [];
+        // The clips come first (input i is clip i); a silent clip's stand-in sound is appended after them.
+        foreach ($paths as $path) array_push($inputs, '-i', $path);
+        $next = count($paths);
         foreach ($paths as $i => $path) {
-            array_push($inputs, '-i', $path);
             // A clip that started from the previous clip's last frame repeats it first: drop that frame and its sound.
             $skip = ! empty($fromTail[$i]) ? 'trim=start_frame=1,' : '';
             $askip = ! empty($fromTail[$i]) ? 'atrim=start=0.0417,' : '';
             $len = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', $path])->output());
+            if ($len <= 0) {
+                // A clip returned without sound (a safety filter can strip it): silence of its own length, or the
+                // join fails, and every resume with it.
+                $vlen = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output()) ?: 1.0;
+                array_push($inputs, '-f', 'lavfi', '-t', sprintf('%.3f', $vlen), '-i', 'anullsrc=r=48000:cl=stereo');
+                $silent[$i] = $next++;
+            }
             // 30 ms fades at each join, so no click where two clips' sound meets.
             $out = $i < $last ? 0.03 : 0.25; // the ad's last sound fades rather than stopping on a hard edge
             $fades = ($i > 0 ? ',afade=t=in:d=0.03' : '').($len > 0.5 ? sprintf(',afade=t=out:st=%.3f:d=%.2f', $len - ($askip !== '' ? 0.0417 : 0) - $out, $out) : '');
             $graph .= sprintf('[%1$d:v]%4$ssetpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v%1$d];'
-                .'[%1$d:a]%5$sasetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo%6$s[a%1$d];', $i, $w, $h, $skip, $askip, $fades);
+                .'[%7$s:a]%5$sasetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo%6$s[a%1$d];', $i, $w, $h, $skip, $askip, $fades, $silent[$i] ?? $i);
         }
         foreach (array_keys($paths) as $i) $graph .= "[v{$i}][a{$i}]";
         $graph .= 'concat=n='.count($paths).':v=1:a=1[outv][outa]';

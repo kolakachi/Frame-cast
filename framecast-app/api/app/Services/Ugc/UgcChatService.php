@@ -349,6 +349,7 @@ final class UgcChatService
                 $scene = \App\Models\Scene::query()->where('project_id', (int) $run['take_ids'][0])->orderBy('scene_order')->first();
                 $resumed = $scene ? \App\Jobs\GenerateOneShotUgcJob::resume($scene) : 'not_resumable';
                 if ($resumed === 'running') abort(409, 'This video is already being made.');
+                if ($resumed === 'short') abort(402, 'Your balance can no longer cover this video. Top up, then try again; nothing was charged for the failed part.');
                 if ($resumed === 'resumed') {
                     $making['runs'][$runIndex] = ['attempt' => $attempt, 'resumed' => true] + $run;
                     DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($making)]);

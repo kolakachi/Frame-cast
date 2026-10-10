@@ -820,6 +820,7 @@ class UgcController extends Controller
             return match (\App\Jobs\GenerateOneShotUgcJob::resume($scene)) {
                 'resumed' => response()->json(['data' => ['retried' => ['video']], 'meta' => []]),
                 'running' => $this->error('already_running', 'This video is already being made.', 409),
+                'short' => $this->error('insufficient_credits', 'Your balance can no longer cover this video. Top up, then retry; nothing was charged for the failed part.', 402),
                 default => $this->error('one_shot_retry', 'This one-take video has to be made again from the start. Start it again from your UGC chat or the UGC form; nothing was charged for the failed one.', 422),
             };
         }

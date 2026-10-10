@@ -165,29 +165,40 @@ class UgcOneShotCompiler
     {
         $out = [];
         foreach ($beats as $beat) {
-            $seconds = max(1.0, (float) ($beat['seconds'] ?? 3));
             $text = trim((string) ($beat['script_text'] ?? ''));
-            $words = str_word_count($text);
+            $words = self::words($text);
+            // A beat is as long as its words need, whatever was planned: 25 words planned at 8 s still need ~11 s.
+            $seconds = max(1.0, (float) ($beat['seconds'] ?? 3), $words > 0 ? $words / 2.5 + 1 : 0);
             if ($seconds <= $maxSeconds || $words < 2) { $out[] = $beat; continue; }
             $perWord = $seconds / $words;
             $limit = max(1, (int) floor($maxSeconds / $perWord));
             $pieces = [];
             foreach (preg_split('/(?<=[.!?…])\s+/u', $text) ?: [$text] as $sentence) {
-                if (str_word_count($sentence) <= $limit) { $pieces[] = $sentence; continue; }
-                foreach (preg_split('/(?<=[,;:—])\s+/u', $sentence) ?: [$sentence] as $part) $pieces[] = $part;
+                if (self::words($sentence) <= $limit) { $pieces[] = $sentence; continue; }
+                foreach (preg_split('/(?<=[,;:—])\s+/u', $sentence) ?: [$sentence] as $part) {
+                    if (self::words($part) <= $limit) { $pieces[] = $part; continue; }
+                    // No punctuation to split at: by word count.
+                    foreach (array_chunk(preg_split('/\s+/u', trim($part)) ?: [], $limit) as $chunk) $pieces[] = implode(' ', $chunk);
+                }
             }
             $groups = []; $current = '';
             foreach ($pieces as $piece) {
                 $joined = $current === '' ? $piece : $current.' '.$piece;
-                if ($current !== '' && str_word_count($joined) > $limit) { $groups[] = $current; $current = $piece; }
+                if ($current !== '' && self::words($joined) > $limit) { $groups[] = $current; $current = $piece; }
                 else $current = $joined;
             }
             if ($current !== '') $groups[] = $current;
             foreach ($groups as $i => $group) {
-                $out[] = ['script_text' => $group, 'seconds' => round(str_word_count($group) * $perWord, 2), 'continues' => $i > 0] + $beat;
+                $out[] = ['script_text' => $group, 'seconds' => round(self::words($group) * $perWord, 2), 'continues' => $i > 0] + $beat;
             }
         }
         return $out;
+    }
+
+    /** Words in any script (str_word_count counts none in non-Latin text, so such lines were never split). */
+    private static function words(string $text): int
+    {
+        return preg_match_all('/\S+/u', $text);
     }
 
     private static function pack(array $beats, int $maxSeconds = self::MAX_SEGMENT_SECONDS): array
@@ -222,7 +233,7 @@ class UgcOneShotCompiler
         // A clip with words lasts as long as they take at a natural 2.5 words a second, plus a beat to finish: spare
         // seconds were filled with ad-libs and repeats.
         return array_map(function ($c) use ($snap) {
-            $words = array_sum(array_map(fn ($b) => str_word_count((string) ($b['script_text'] ?? '')), $c['beats']));
+            $words = array_sum(array_map(fn ($b) => self::words((string) ($b['script_text'] ?? '')), $c['beats']));
             $seconds = $words > 0 ? min($c['seconds'], (float) ceil($words / 2.5) + 1) : $c['seconds'];
             return ['beats' => $c['beats'], 'seconds' => $snap($seconds)];
         }, $chunks);

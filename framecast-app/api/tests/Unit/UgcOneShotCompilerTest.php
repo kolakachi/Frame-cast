@@ -121,4 +121,12 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringNotContainsStringIgnoringCase('headline', $chunks[0]['prompt']);
         $this->assertStringNotContainsStringIgnoringCase('safe space', $chunks[0]['prompt']);
     }
+
+    public function test_a_beat_with_more_words_than_its_planned_time_is_still_split(): void
+    {
+        $script = 'This lotion changed my mornings because it sinks in fast and never leaves my hands greasy or sticky at all today honestly try it';
+        $chunks = UgcOneShotCompiler::compile([['script_text' => $script, 'seconds' => 8, 'visual_brief' => 'kitchen']]);
+        $this->assertGreaterThan(1, count($chunks), '25 words do not fit 8 s');
+        $this->assertSame($script, implode(' ', array_column($chunks, 'dialogue')));
+    }
 }
