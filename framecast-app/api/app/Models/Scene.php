@@ -13,6 +13,18 @@ class Scene extends Model
     protected static function booted(): void
     {
         static::saving(fn (Scene $scene) => Project::find($scene->project_id)?->assertSceneEditor());
+        // A new picture ends an earlier animation attempt's error and cancel flag: they were about the picture that is
+        // gone, and a leftover error blocked export (2026-10-10: "Animation needs a still image" stayed on a scene
+        // swapped back to an image). Not while an animation runs, and not when this save records a new error.
+        static::saving(function (Scene $scene) {
+            if (! $scene->exists || ! $scene->isDirty('visual_asset_id')) return;
+            $now = $scene->image_generation_settings_json ?? [];
+            $was = $scene->getOriginal('image_generation_settings_json') ?? [];
+            if (! empty($now['animation_in_progress'])) return;
+            if (($now['animation_last_error'] ?? null) !== ($was['animation_last_error'] ?? null)) return;
+            if (($now['animation_last_error'] ?? null) === null && empty($now['animation_cancel_requested'])) return;
+            $scene->image_generation_settings_json = array_merge($now, ['animation_last_error' => null, 'animation_cancel_requested' => false]);
+        });
     }
 
     protected $fillable = [

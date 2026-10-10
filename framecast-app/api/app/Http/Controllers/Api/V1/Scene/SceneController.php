@@ -1467,7 +1467,9 @@ class SceneController extends Controller
                 'animation_in_progress'    => false,
                 'animation_cancel_requested' => true,
                 'animation_cancelled_at'   => now()->toIso8601String(),
-                'animation_last_error'     => 'Cancelled by user. Credits refunded.',
+                // A cancel is a notice, not an error: as an error it blocked export until the scene was regenerated.
+                'animation_last_error'     => null,
+                'animation_notice'         => 'Cancelled by user. Credits refunded.',
             ]),
         ])->save();
 

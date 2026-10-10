@@ -76,6 +76,24 @@ class SlowAnimationTest extends TestCase
         return [$scene, $ws];
     }
 
+    public function test_a_new_picture_clears_an_earlier_animation_error_but_not_a_running_one_or_a_new_one(): void
+    {
+        // 2026-10-10: "Animation needs a still image" stayed on a scene swapped back to an image and blocked export.
+        [$scene, $ws] = $this->scene(['animation_last_error' => 'Animation needs a still image, but this scene has only a video.', 'animation_cancel_requested' => true]);
+        $image = Asset::query()->create(['workspace_id' => $ws, 'asset_type' => 'image', 'title' => 'new', 'storage_url' => 'https://cdn.test/new.png', 'mime_type' => 'image/png']);
+        $scene->forceFill(['visual_asset_id' => $image->id])->save();
+        $s = $scene->fresh()->image_generation_settings_json;
+        $this->assertNull($s['animation_last_error']);
+        $this->assertFalse($s['animation_cancel_requested']);
+
+        // A save that records a new error with the picture keeps it; a running animation keeps its state.
+        $scene->forceFill(['visual_asset_id' => $image->id + 100, 'image_generation_settings_json' => ['animation_last_error' => 'New failure']])->save();
+        $this->assertSame('New failure', $scene->fresh()->image_generation_settings_json['animation_last_error']);
+        $scene->forceFill(['image_generation_settings_json' => ['animation_last_error' => 'Old', 'animation_in_progress' => true]])->save();
+        $scene->forceFill(['visual_asset_id' => $image->id])->save();
+        $this->assertSame('Old', $scene->fresh()->image_generation_settings_json['animation_last_error']);
+    }
+
     private function credits(int $ws): int
     {
         return (int) DB::table('workspaces')->where('id', $ws)->value('credits_topup');
