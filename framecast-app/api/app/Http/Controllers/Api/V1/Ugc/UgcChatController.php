@@ -67,6 +67,13 @@ class UgcChatController extends Controller
         return response()->json(['data' => ['reply' => $reply, 'chat' => $this->chats->show($request, $id)], 'meta' => []]);
     }
 
+    public function rewrite(Request $request, string $id): JsonResponse
+    {
+        if ($gate = $this->gate($request)) return $gate;
+        $v = $request->validate(['script' => ['required', 'string', 'min:10', 'max:4000']]);
+        return response()->json(['data' => ['script' => $this->chats->rewrite($request, $id, $v['script'])], 'meta' => []]);
+    }
+
     /** The same plan gate as the UGC wizard: UGC is a paid-plan feature. */
     private function gate(Request $request): ?JsonResponse
     {

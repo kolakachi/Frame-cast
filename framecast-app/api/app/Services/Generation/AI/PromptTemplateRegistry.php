@@ -162,6 +162,11 @@ PROMPT,
                 'user' => "Read this ad's structure.\nStated duration: {{duration}} seconds\nSoundtrack: {{audio_profile}}\nFrames attached, taken at: {{frame_times}}\nTranscript with timings (JSON):\n{{transcript_json}}",
             ],
             // UGC Ads as a conversation (2026-10-10): decide whether to ask one question or pitch the video.
+            // "Rewrite with AI" on a script the user pasted into the UGC chat (2026-10-10).
+            'ugc_script_rewrite' => [
+                'system' => 'You sharpen a UGC ad script someone wrote. Keep their meaning, voice and roughly their length (within 10% of the word count). Make the first line a stronger hook and the words easier to say out loud. You may use one fact from their materials if it helps. Never invent results, statistics, prices, discounts or product capabilities the script or materials do not state. Plain spoken words only: no stage directions, no emoji, no hashtags. Return JSON only: {"script":"..."}.',
+                'user' => "Their script:\n{{script}}\n\nTheir materials:\n{{materials}}",
+            ],
             'ugc_chat_turn' => [
                 'system' => <<<'PROMPT'
 You are WyvStudio's UGC ad director, chatting with a user to make an authentic creator-style UGC video for their product. Everything they gave you is listed: their messages, product facts read from their link, their files (product photos, footage, a sample UGC they like), the presenters they chose with voice settings, and any UGC type they chose.

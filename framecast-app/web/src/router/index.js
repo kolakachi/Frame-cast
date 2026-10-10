@@ -76,7 +76,10 @@ const routes = [
   // UGC Ads lands on the takes listing — management first; creation is a
   // deliberate step behind "+ New take".
   { path: '/ugc-ads', name: 'ugc-ads', component: () => import('../views/UgcTakesView.vue'), meta: { requiresAuth: true } },
-  { path: '/ugc-ads/new', name: 'ugc-new', component: UgcAdsView, meta: { requiresAuth: true } },
+  // UGC Ads as a conversation (2026-10-10); the step-by-step form stays reachable.
+  { path: '/ugc-ads/new', name: 'ugc-new', component: () => import('../views/UgcChatView.vue'), meta: { requiresAuth: true } },
+  { path: '/ugc-ads/chat/:chatId', name: 'ugc-chat', component: () => import('../views/UgcChatView.vue'), meta: { requiresAuth: true } },
+  { path: '/ugc-ads/wizard', name: 'ugc-wizard', component: UgcAdsView, meta: { requiresAuth: true } },
   // The run and review screens are route-addressable so "you can leave this
   // page — we'll keep working" is actually true.
   { path: '/ugc-ads/takes', redirect: '/ugc-ads' },

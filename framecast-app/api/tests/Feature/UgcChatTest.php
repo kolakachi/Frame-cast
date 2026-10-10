@@ -70,7 +70,10 @@ class UgcChatTest extends TestCase
 
         $this->replies[] = ['action' => 'ask', 'question' => 'Who says it on camera?', 'chips' => ['You', 'One of our actors', 'Let us pick']];
         $reply = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A UGC ad for my serum',
-            'link' => 'https://dewbloom.co', 'attachments' => [['asset_id' => 20]]])->assertOk()->json('data.reply');
+            'link' => 'https://dewbloom.co', 'attachments' => [['asset_id' => 20]]])->assertOk();
+        $facts = collect($reply->json('data.chat.messages'))->firstWhere('kind', 'facts');
+        $this->assertSame(['source' => 'page', 'text' => 'Dewbloom serum · Vitamin C, 30 ml'], $facts['payload']['facts'][0], 'what we read from the page is shown back');
+        $reply = $reply->json('data.reply');
         $this->assertSame(['question', ['You', 'One of our actors', 'Let us pick']], [$reply['kind'], $reply['payload']['chips']]);
         $state = json_decode(DB::table('ugc_chats')->where('id', $chat)->value('state_json'), true);
         $this->assertSame('Dewbloom serum', $state['link']['facts']['product']);
@@ -100,5 +103,15 @@ class UgcChatTest extends TestCase
 
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-1111-4a2b-9c3d-123456789abc', 'consent' => true])->assertStatus(409);
         $this->actingAs($this->user(2))->getJson("/api/v1/ugc/chats/{$chat}")->assertNotFound();
+    }
+
+    public function test_rewrite_returns_a_sharper_script_and_is_free(): void
+    {
+        $this->withoutMiddleware();
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $this->replies[] = ['script' => 'I almost skipped this serum. Glad I did not.'];
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/rewrite", ['script' => 'I almost did not buy this serum but I am glad I did.'])
+            ->assertOk()->assertJsonPath('data.script', 'I almost skipped this serum. Glad I did not.');
+        $this->assertSame(0, DB::table('ugc_chat_messages')->count(), 'a rewrite is not a turn');
     }
 }

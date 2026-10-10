@@ -430,6 +430,7 @@ input {
      content ends underneath both. */
   .main,
   .ugc-main,
+  .uc-main,
   .ap-main,
   .cal-main {
     padding-top: calc(52px + env(safe-area-inset-top)) !important;

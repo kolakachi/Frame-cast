@@ -497,6 +497,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/chats/{id}', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'show'])->whereUuid('id');
             Route::post('/chats/{id}/messages', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'message'])->whereUuid('id');
             Route::post('/chats/{id}/make', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'make'])->whereUuid('id');
+            Route::post('/chats/{id}/rewrite', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'rewrite'])->whereUuid('id');
 
             // My Footage: bring a video, correct our read of it, plan and
             // produce your version. Same gate as the rest of UGC.

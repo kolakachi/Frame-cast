@@ -118,7 +118,7 @@ return [
             'visual_brief', 'summarize_document', 'scene_visual_concepts',
             'ugc_shot_plan', 'ugc_shot_reanchor', 'ugc_reference_read', 'ugc_hook_variants',
             'one_shot_plan', 'one_shot_plan_multi',
-            'ugc_brief_suggestion', 'ugc_chat_turn',
+            'ugc_brief_suggestion', 'ugc_chat_turn', 'ugc_script_rewrite',
         ],
     ],
 

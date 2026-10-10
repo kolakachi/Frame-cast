@@ -22,13 +22,7 @@ assembly stays simple, motion graphics stay in Create.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| P2-UI | Chat screen: prompt box with Create-style pills (product, footage, link, sample, script), thread, question chips | open | build to the mockup |
-| P2-CAST | Presenter popover: stock / upload / saved character / Let us pick; per-presenter voice (pace, delivery, direction) | open | build |
-| P2-TYPE | Type: Auto ▾ menu with all 13 types | open | build |
-| P2-PITCH | Pitch card: summary, script, presenters, price, consent, Make it; low-balance state | open | build |
-| P2-MAKING | Making and delivered: live status per video, then Download / Share / Fine-tune in editor | open | build |
-| P2-ROUTE | Chat becomes the UGC entry; the old wizard stays reachable | open | build |
-| P2-REWRITE | "Rewrite with AI" on a pasted script (free) | open | build (API + UI) |
+| P2-ASPECT | Only 9:16 offered: one-take always renders 9:16; composed takes accept 1:1 and 16:9 but the chat sends 9:16 | open | decide, then pass aspect through |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |
 | P3-PLAYBOOKS | Per-type playbooks for the director and planner | open | after P2 |
 | P4-CHANGE | Change the delivered video by chat (one component, per change-scope rule) | open | after P3 |
@@ -40,8 +34,10 @@ assembly stays simple, motion graphics stay in Create.
 |---|---|---|
 | D-TYPE | An explicit type beats the sample's type (recommended) | owner OK |
 | D-LEN | A pasted script's length wins over the chosen length (recommended; built that way) | owner OK |
+| D-REWRITE | Rewrite with AI is free (built that way) | owner OK |
 | D-CHAR | Saved characters come from Library → Characters (recommended) | owner OK |
-| LIVE | A real paid make from the chat on prod after deploy | after push |
+| LIVE | A real paid make from the chat on prod after deploy (Make it, making, ready, Download, Review & share, Fine-tune) | after push |
+| STOCK-UI | Stock actors in the presenter picker and the hero faces: local has no stock actors, so only seen with own characters | look on prod |
 
 ## 3. Other open items from 2026-10-10 (not UGC chat)
 
@@ -53,6 +49,12 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 Phase 2 chat screen (`/ugc-ads/new`, `/ugc-ads/chat/:id`; old form at `/ugc-ads/wizard`): one prompt box
+  with Create-style pills (photos, footage, sample, link; drop and paste), presenter popover (Let us pick, upload a photo
+  with consent, actors, your characters, per-presenter pace/delivery/direction, same voice for all), Type: Auto menu,
+  length menu, fact cards from page and sample, question chips, pitch card with script, price, top-up and consent,
+  making and ready states (Download, Review & share, Fine-tune in editor), free Rewrite with AI on a quoted script.
 
 - 2026-10-10 `32e61846` Phase 1 backend: chats + messages tables, `ugc_chat_turn` director (asks or pitches, word
   budget enforced, no invented claims), pitch priced by the existing pipeline, Make it via one-shot/composed with

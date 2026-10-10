@@ -54,6 +54,7 @@ final class UgcChatService
         $user = $request->user();
         $chat = $this->chat($user, $id);
         $state = json_decode((string) $chat->state_json, true) ?: [];
+        $before = $state;
 
         foreach ($input['attachments'] ?? [] as $a) {
             $asset = DB::table('assets')->where('id', (int) $a['asset_id'])->where('workspace_id', $user->workspace_id)->first(['id', 'asset_type', 'title']);
@@ -76,6 +77,17 @@ final class UgcChatService
         DB::table('ugc_chat_messages')->insert(['chat_id' => $id, 'role' => 'user', 'kind' => 'text', 'content' => mb_substr((string) ($input['text'] ?? ''), 0, 4000),
             'payload_json' => json_encode(['attachments' => $input['attachments'] ?? [], 'link' => $input['link'] ?? null]), 'created_at' => now()]);
         DB::table('ugc_chats')->where('id', $id)->update(['state_json' => json_encode($state), 'updated_at' => now()]);
+        // What we read from their page and sample is shown back before anything is decided on it.
+        $facts = [];
+        if (! empty($input['link']) && ($before['link']['url'] ?? null) !== ($state['link']['url'] ?? null)) {
+            $facts[] = ['source' => 'page', 'text' => ! empty($state['link']['facts'])
+                ? trim(implode(' · ', array_filter([$state['link']['facts']['product'] ?? '', $state['link']['facts']['context'] ?? ''])))
+                : 'I could not read that page. Tell me about the product instead.'];
+        }
+        if (! empty($state['sample']['reference']) && ($before['sample']['asset_id'] ?? null) !== ($state['sample']['asset_id'] ?? null)) {
+            $facts[] = ['source' => 'sample', 'text' => self::sampleLine($state['sample']['reference'])];
+        }
+        if ($facts) $this->say($id, 'facts', '', ['facts' => $facts]);
 
         return $this->turn($request, $id, $state);
     }
@@ -125,7 +137,7 @@ final class UgcChatService
             'script' => mb_substr((string) ($d['script'] ?? ''), 0, 1500), 'context' => mb_substr((string) ($d['context'] ?? $d['summary']), 0, 1500),
             'product' => mb_substr((string) ($d['product'] ?? ($state['link']['facts']['product'] ?? '')), 0, 200), 'format' => $format,
             'duration_seconds' => $seconds, 'language' => 'en', 'footage_asset_ids' => $footage ?: null,
-            'reference' => ! empty($state['sample']['reference']) ? array_intersect_key($state['sample']['reference'], ['shape' => 1, 'beats' => 1]) : null,
+            'reference' => ! empty($state['sample']['reference']) ? array_intersect_key($state['sample']['reference'], ['duration' => 1, 'shape' => 1, 'beats' => 1]) : null,
         ], fn ($v) => $v !== null && $v !== ''));
         if (isset($plan['error'])) return $this->say($id, 'error', $plan['error']['message'] ?? 'The plan could not be made. Try again.');
 
@@ -231,12 +243,35 @@ final class UgcChatService
             if ($m->kind === 'making') {
                 foreach ($payload['runs'] ?? [] as $i => $run) {
                     $takes = $run['run_id'] ? $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET') : [];
-                    $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'credits', 'revision_export_id'])), $takes['takes'] ?? []);
+                    $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'credits', 'format', 'revision_export_id'])), $takes['takes'] ?? []);
                 }
             }
             return ['id' => (int) $m->id, 'role' => $m->role, 'kind' => $m->kind, 'content' => $m->content, 'payload' => $payload, 'at' => $m->created_at];
         })->all();
         return ['id' => $chat->id, 'title' => $chat->title, 'state' => json_decode((string) $chat->state_json, true), 'messages' => $messages];
+    }
+
+    /** A sample's structure in one line: its shape, length and beats, never its words. */
+    private static function sampleLine(array $ref): string
+    {
+        $parts = array_filter([
+            is_string($ref['shape'] ?? null) ? $ref['shape'] : null,
+            ! empty($ref['duration']) ? round((float) $ref['duration']).' s' : null,
+            is_array($ref['beats'] ?? null) ? count($ref['beats']).' beats' : null,
+        ]);
+        return ($parts ? implode(' · ', $parts).'. ' : '').'We copy how it is built, never its words, face or music.';
+    }
+
+    /** "Rewrite with AI" on a pasted script: sharper, same length and meaning, nothing invented. Free. */
+    public function rewrite(Request $request, string $id, string $script): string
+    {
+        $chat = $this->chat($request->user(), $id);
+        $state = json_decode((string) $chat->state_json, true) ?: [];
+        $out = $this->ai->generate('ugc_script_rewrite', ['script' => $script, 'materials' => $this->materials($state)], 900, 0.6, ['operation' => 'ugc_script_rewrite']);
+        try { $d = UgcPlan::decodeModelJson((string) ($out['content'] ?? '')); } catch (\Throwable) { $d = []; }
+        $new = trim((string) ($d['script'] ?? ''));
+        if ($new === '') abort(422, 'Could not rewrite it just now. Try again.');
+        return mb_substr($new, 0, 4000);
     }
 
     private function say(string $id, string $kind, string $content, array $payload = []): array
