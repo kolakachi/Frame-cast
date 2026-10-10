@@ -10,16 +10,21 @@ class CaptionExportParityTest extends TestCase
     public function test_export_font_sizes_match_the_480px_editor_preview_scale(): void
     {
         $renderer = $this->renderer();
+        $metrics = new \App\Services\Media\FontMetrics();
 
-        foreach (['small' => 52, 'medium' => 68, 'large' => 92, 'xlarge' => 120] as $size => $expected) {
-            $ass = $renderer->caption($size);
-
+        // The editor size scaled from 480px to 1920px (52/68/92/120 CSS px, or a custom number), then converted from
+        // CSS pixels to the font's ASS line box, as the animated presets do. Plain captions skipped that conversion
+        // and exported up to a third smaller than the preview (2026-10-10).
+        foreach (['small' => 52, 'medium' => 68, 'large' => 92, 'xlarge' => 120, '15' => 60, '99' => 240] as $size => $css) {
+            $expected = (int) round($metrics->assFontSize('Luckiest Guy', (float) $css) ?? $css);
+            $this->assertGreaterThan($css, $expected, 'the ASS line box is taller than the CSS em');
             $this->assertStringContainsString(
                 "Style: Default,Luckiest Guy,{$expected},",
-                $ass,
-                "The {$size} export caption should be the editor size scaled from 480px to 1920px."
+                $renderer->caption((string) $size),
+                "The {$size} export caption should match the preview."
             );
         }
+        $this->assertSame([13, 17, 23, 30, 8, 60, 21], array_map(fn ($s) => \App\Traits\RendersExportScenes::captionPreviewPx($s), ['small', 'medium', 'large', 'xlarge', '3', '99', '21']));
     }
 
     public function test_comic_line_mode_keeps_preview_scale_and_active_word_motion(): void

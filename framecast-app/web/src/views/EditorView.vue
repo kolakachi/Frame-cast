@@ -1786,6 +1786,9 @@ onBeforeUnmount(() => {
   if (captionClockRaf) cancelAnimationFrame(captionClockRaf);
 });
 const CAPTION_SIZE_MAP = { small: "13px", medium: "17px", large: "23px", xlarge: "30px" };
+// A caption size in preview pixels on the 480px-tall frame: S/M/L/XL, or a custom number (8 to 60) from the slider.
+// The export uses the same numbers (RendersExportScenes::captionPreviewPx).
+const captionBasePx = (size) => (/^\d+$/.test(String(size ?? "")) ? Math.max(8, Math.min(60, Number(size))) : parseFloat(CAPTION_SIZE_MAP[size] || "17px"));
 const fontDropdownOpen = ref(false);
 const captionSaveState = ref("idle");
 const captionSaveError = ref("");
@@ -2844,22 +2847,18 @@ const selectedCaptionFont = computed(
     }
 );
 const captionFontStyle = computed(() => {
-  // CAPTION_SIZE_MAP is calibrated to a 480px-tall preview, and the export
-  // scales those same px by playResY/480. But the preview box keeps its
-  // longest side at 480, so a 16:9 project previews only 270px tall — a
-  // fixed px size there rendered captions ~1.8x larger than they export.
-  // Scale by the pane's actual height so both sides stay the same fraction
-  // of the frame at every aspect ratio.
-  const ratio = project.value?.aspect_ratio || "9:16";
-  const [w, h] = { "9:16": [9, 16], "16:9": [16, 9], "1:1": [1, 1] }[ratio] || [9, 16];
-  const paneHeight = Math.round(h * (480 / Math.max(w, h)));
-  const basePx = parseFloat(CAPTION_SIZE_MAP[captionSizeDraft.value] || "17px");
-
+  // The export makes a caption basePx/480 of the video's height (playResY/480). The preview does the same against the
+  // frame's real height in container units (cqh on .preview-container), not an assumed 480px: on a smaller screen the
+  // frame shrinks while fixed pixels did not, so captions previewed bigger than they exported (2026-10-10).
+  const basePx = captionBasePx(captionSizeDraft.value);
   return {
     fontFamily: fontFamilyValue(captionFontDraft.value || DEFAULT_CAPTION_FONT),
-    fontSize: `${(basePx * (paneHeight / 480)).toFixed(2)}px`,
+    fontSize: `${((basePx / 480) * 100).toFixed(3)}cqh`,
   };
 });
+// The font picker shows the face only: its label sits outside the preview frame.
+const captionFamilyStyle = computed(() => ({ fontFamily: fontFamilyValue(captionFontDraft.value || DEFAULT_CAPTION_FONT) }));
+const captionSizeIsCustom = computed(() => /^\d+$/.test(String(captionSizeDraft.value ?? "")));
 const activeCaptionSettings = computed(
   () => activeScene.value?.caption_settings ?? activeScene.value?.caption_settings_json ?? {}
 );
@@ -9602,7 +9601,7 @@ onBeforeUnmount(() => {
                       @click="fontDropdownOpen = !fontDropdownOpen"
                     >
                       <span class="font-trigger-copy">
-                        <span class="font-trigger-name" :style="captionFontStyle">
+                        <span class="font-trigger-name" :style="captionFamilyStyle">
                           {{ selectedCaptionFont.font }}
                         </span>
                         <span class="font-trigger-group">{{ selectedCaptionFont.group }}</span>
@@ -9675,6 +9674,15 @@ onBeforeUnmount(() => {
                     :class="['size-opt', captionSizeDraft === sz[0] ? 'active' : '']"
                     @click="captionSizeDraft = sz[0]"
                   >{{ sz[1] }}</button>
+                </div>
+                <!-- A custom size between the presets (S 13, M 17, L 23, XL 30); the preview and export follow it. -->
+                <div class="caption-size-custom">
+                  <input
+                    type="range" min="8" max="48" step="1" aria-label="Custom caption size"
+                    :value="captionBasePx(captionSizeDraft)"
+                    @input="captionSizeDraft = String($event.target.value)"
+                  />
+                  <span :class="['caption-size-value', captionSizeIsCustom ? 'active' : '']">{{ captionSizeIsCustom ? `Custom · ${captionSizeDraft}` : captionBasePx(captionSizeDraft) }}</span>
                 </div>
 
                 <!-- Apply the current caption settings to every scene at once -->
@@ -12553,6 +12561,8 @@ button {
 
 .preview-container {
   /* width/height come from :style binding (previewContainerStyle) to match the project aspect ratio */
+  /* Captions size in cqh against this frame's real height, as the export sizes them against the video's. */
+  container-type: size;
   width: 270px;
   height: 480px;
   background: #000;
@@ -14894,6 +14904,10 @@ select.preset-select {
   position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; padding: 0;
 }
 .caption-size-row { display: flex; gap: 5px; }
+.caption-size-custom { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.caption-size-custom input { flex: 1; accent-color: #a78bfa; }
+.caption-size-value { min-width: 72px; text-align: right; font: 11px var(--font-mono); color: var(--color-text-muted); }
+.caption-size-value.active { color: #a78bfa; }
 .size-opt {
   flex: 1; height: 28px; border-radius: 6px; border: 1px solid var(--color-border);
   background: var(--color-bg-elevated); color: var(--color-text-muted);

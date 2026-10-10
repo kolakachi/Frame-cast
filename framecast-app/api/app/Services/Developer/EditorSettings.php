@@ -44,7 +44,7 @@ class EditorSettings
                 'font' => $f('string|null', 'nullable|string|in:'.implode(',', CaptionFonts::ALL), 'Null uses style default.'),
                 'highlight_color' => $f('string|null', 'nullable|string|max:32', 'CSS color; use #RRGGBB.'),
                 'color' => $f('string|null', 'nullable|string|max:32', 'CSS color; use #RRGGBB.'),
-                'size' => $f('string|null', 'nullable|string|in:small,medium,large,xlarge', '', 'medium'),
+                'size' => $f('string|null', 'nullable|string|regex:/^[a-z0-9]{1,6}$/', 'small, medium, large, xlarge, or a custom size from 8 to 60 (the editor preview\'s pixels on its 480px-tall frame).', 'medium'),
                 'preset_id' => $f('integer|null', 'nullable|integer', 'Preset identity only: copy resolved settings from list_caption_presets; does not expand a preset.'),
                 'animation' => $f('string|null', 'nullable|string|in:plain,beast,comic,sticker,karaoke,box,stream,blur,glitch,slide,wave,punch,tracking,neon,news,marker', '', 'plain'),
                 'highlight_style' => $f('string|null', 'nullable|string|in:color,underline,plain', '', 'color'),

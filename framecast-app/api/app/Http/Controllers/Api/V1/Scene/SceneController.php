@@ -220,7 +220,7 @@ class SceneController extends Controller
             'caption_settings_json.font' => ['sometimes', 'nullable', 'string', \Illuminate\Validation\Rule::in(CaptionFonts::ALL)],
             'caption_settings_json.highlight_color' => ['sometimes', 'nullable', 'string', 'max:32'],
             'caption_settings_json.color' => ['sometimes', 'nullable', 'string', 'max:32'],
-            'caption_settings_json.size' => ['sometimes', 'nullable', 'string', 'in:small,medium,large,xlarge'],
+            'caption_settings_json.size' => ['sometimes', 'nullable', 'string', 'regex:/^(small|medium|large|xlarge|[89]|[1-5][0-9]|60)$/'], // S/M/L/XL or a custom 8-60
             'caption_settings_json.preset_id' => ['sometimes', 'nullable'],
             'caption_settings_json.animation' => ['sometimes', 'nullable', 'string', 'max:30'],
             'caption_settings_json.highlight_style' => ['sometimes', 'nullable', 'string', 'in:color,underline,plain'],

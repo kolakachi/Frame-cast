@@ -438,6 +438,8 @@ function captionClassName(style, enabled) {
 }
 
 function captionFontSize(size, height) {
+  // A custom size is the editor's preview pixels on its 480px-tall frame (8 to 60).
+  if (/^\d+$/.test(String(size))) return (Math.max(8, Math.min(60, Number(size))) * height) / 480;
   const base = (17 * height) / 480;
   // Ratios of the editor's CAPTION_SIZE_MAP (13/17/23/30 px) — the same
   // scale buildASSCaption uses, so all three renderers agree.

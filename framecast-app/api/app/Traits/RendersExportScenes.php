@@ -812,12 +812,7 @@ trait RendersExportScenes
         // so line wrapping and preset proportions remain identical. The old
         // 22px base made medium captions 29% larger in exports (88px versus
         // the preview-equivalent 68px at 1080x1920).
-        $previewFontSize = match ($captionSize) {
-            'small'  => 13,
-            'large'  => 23,
-            'xlarge' => 30,
-            default  => 17,
-        };
+        $previewFontSize = self::captionPreviewPx($captionSize);
         $fontSize = (int) round($previewFontSize * $playResY / 480);
         $primaryColor = $this->hexToASS($captionColor);
 
@@ -856,6 +851,11 @@ trait RendersExportScenes
             return;
         }
 
+        // $fontSize is the CSS em the editor previews; libass sizes Fontsize by the font's ascent+descent box, so plain
+        // captions passed it straight in and exported up to a third smaller than the preview (2026-10-10). The
+        // animated presets already converted (BuildsAnimatedCaptions).
+        $assFontSize = (int) round(app(\App\Services\Media\FontMetrics::class)->assFontSize($fontName, (float) $fontSize) ?? $fontSize);
+
         $events = match ($highlightMode) {
             'word_by_word'           => $this->buildWordByWordEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
             'line_by_line', 'keywords' => $this->buildKaraokeLineEvents($text, $captionStyle, $duration, $timedWords, $captionHighlightColor),
@@ -877,7 +877,7 @@ trait RendersExportScenes
             '',
             '[V4+ Styles]',
             'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-            "Style: Default,{$fontName},{$fontSize},{$primaryColor},&H000000FF&,&H00000000&,&H80000000&,{$bold},{$italic},0,0,100,100,0,0,1,3,2,{$alignment},{$marginLR},{$marginLR},{$marginV},1",
+            "Style: Default,{$fontName},{$assFontSize},{$primaryColor},&H000000FF&,&H00000000&,&H80000000&,{$bold},{$italic},0,0,100,100,0,0,1,3,2,{$alignment},{$marginLR},{$marginLR},{$marginV},1",
             '',
             '[Events]',
             'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -885,6 +885,16 @@ trait RendersExportScenes
         ]);
 
         file_put_contents($outputPath, $content);
+    }
+
+    /**
+     * A caption size in the editor's preview pixels on its 480px-tall frame: S/M/L/XL, or a custom number (8 to 60)
+     * the user set. The export scales this to its own height, so captions keep the same share of the frame.
+     */
+    public static function captionPreviewPx(string $size): int
+    {
+        if (ctype_digit($size)) return max(8, min(60, (int) $size));
+        return match ($size) { 'small' => 13, 'large' => 23, 'xlarge' => 30, default => 17 };
     }
 
     /** @return list<array{string,string,string}> */

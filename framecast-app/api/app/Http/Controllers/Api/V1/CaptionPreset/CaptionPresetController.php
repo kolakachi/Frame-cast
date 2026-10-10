@@ -35,7 +35,7 @@ class CaptionPresetController extends Controller
             'name'             => ['required', 'string', 'max:80'],
             'preset_type'      => ['nullable', 'string', 'in:impact,editorial,hacker'],
             'font'             => ['nullable', 'string', 'max:100'],
-            'font_size_rule'   => ['nullable', 'string', 'in:small,medium,large,xlarge'],
+            'font_size_rule'   => ['nullable', 'string', 'regex:/^(small|medium|large|xlarge|[89]|[1-5][0-9]|60)$/'],
             'highlight_mode'   => ['nullable', 'string', 'in:keywords,word_by_word,line_by_line,none'],
             'highlight_color'  => ['nullable', 'string', 'max:20'],
             'caption_color'    => ['nullable', 'string', 'max:20'],
