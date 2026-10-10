@@ -85,6 +85,10 @@ class AttemptService
             $credits = $verified && str_starts_with($verified->evidence,'pilot-tariff:') && in_array($attempt->kind,['agent','critic','plan_media'],true) ? min((int)$attempt->credit_limit,(int)ceil($cost/4000)) : ($status === 'unknown' ? 0 : (($status === 'succeeded' || $cost > 0) ? (int) $attempt->credit_limit : 0));
             // A repair round corrects our own work after the final check blocked it: recorded at its cost, never charged (todo D).
             if (str_starts_with((string) $attempt->attempt_key, 'repair')) $credits = 0;
+            // Released after 24 hours under review (CreditHolds): the user was told those credits came back, so a late
+            // reconciliation records the provider's cost as ours and charges nothing.
+            if (\Illuminate\Support\Facades\Schema::hasColumn('api_operations', 'hold_expired_at')
+                && DB::table('api_operations')->where('id', $run->operation_id)->whereNotNull('hold_expired_at')->exists()) $credits = 0;
             $previous = Context::getHidden(OperationAccounting::CONTEXT);
             try {
                 Context::addHidden(OperationAccounting::CONTEXT, $run->operation_id);

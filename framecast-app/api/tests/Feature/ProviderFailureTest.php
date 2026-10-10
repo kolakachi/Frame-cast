@@ -49,5 +49,10 @@ class ProviderFailureTest extends TestCase
         $this->assertSame('vendor_config', VendorError::classify('nano-banana failed to start (401): {"detail":"Unauthenticated"}'));
         $this->assertSame('busy', VendorError::classify('gemini-tts failed to start (429): {}'));
         $this->assertSame('other', VendorError::classify('The model returned no file.'));
+        // A number in a quoted line or file name is not a status, and a failed poll does not say nothing was made.
+        $this->assertSame('content_refused', VendorError::classify('The voice engine\'s safety filter refused to read this line: "Call (402) 555-0199 today". Reword it and try again.'));
+        $this->assertSame('other', VendorError::classify('Name the video to cut out by its file name: photo (403).png'));
+        $this->assertSame('other', VendorError::classify('nano-banana poll failed (503).'));
+        $this->assertSame('vendor_credit', VendorError::classify('The music model could not start (402): You have insufficient credit to run this model.'));
     }
 }

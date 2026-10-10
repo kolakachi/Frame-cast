@@ -61,7 +61,7 @@ class CreateHealth
         $holds = DB::table('api_operations')->whereIn('status', ['running', 'needs_attention'])->where('reserved_credits', '>', 0)
             ->where('updated_at', '<', now()->subHours(3))->get(['id']);
         if ($holds->isNotEmpty()) $out['holds'] = ['title' => 'Credit holds left open',
-            'text' => $holds->count().' operation(s) have held credits for over 3 hours: '.collect($holds)->pluck('id')->take(10)->implode(', ').'. Reconcile them; never release by age alone.'];
+            'text' => $holds->count().' operation(s) have held credits for over 3 hours: '.collect($holds)->pluck('id')->take(10)->implode(', ').'. Reconcile them; the credits:settle-holds pass keeps only what is uncertain and releases everything after 24 hours.'];
 
         // Our model account, before it runs dry (Anthropic has no balance API: see ModelBalance).
         if (($b = \App\Services\Vendors\ModelBalance::estimate()) && $b['left'] < (float) config('create.model_balance_warn_usd', 40)) $out['balance'] = ['title' => 'Our Anthropic balance is low',

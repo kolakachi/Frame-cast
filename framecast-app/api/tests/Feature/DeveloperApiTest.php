@@ -1557,7 +1557,9 @@ class DeveloperApiTest extends TestCase
         $abandoned = $op(20); DB::table('api_operations')->where('id', $abandoned)->update(['created_at' => now()->subHours(25)]);
         $busy = $op(20); $job($busy, 'running'); DB::table('api_operations')->where('id', $busy)->update(['created_at' => now()->subHours(25)]);
         $recent = $op(20);
+        $input = $op(15); DB::table('api_operations')->where('id', $input)->update(['status' => 'needs_input', 'created_at' => now()->subHours(25)]);
         $this->artisan('credits:settle-holds')->assertSuccessful();
+        $this->assertSame(0, (int) $row($input)->reserved_credits, 'an old hold is released whatever state it was left in');
         $this->assertSame(['needs_attention', 0], [$row($live)->status, (int) $row($live)->reserved_credits]);
         $this->assertSame(['failed', 0], [$row($abandoned)->status, (int) $row($abandoned)->reserved_credits]);
         $this->assertSame(['running', 20], [$row($busy)->status, (int) $row($busy)->reserved_credits]);
@@ -1576,12 +1578,39 @@ class DeveloperApiTest extends TestCase
         $this->assertSame(44, \App\Services\Developer\CreditHolds::releaseForProject(4242, $ws->id));
         $this->assertSame(['cancelled', 0, 6], [DB::table('api_operations')->where('id', $id)->value('status'), (int) DB::table('api_operations')->where('id', $id)->value('reserved_credits'), (int) DB::table('api_operations')->where('id', $id)->value('spent_credits')]);
         $this->assertSame(0, \App\Services\Developer\CreditHolds::releaseForProject(4242, $ws->id + 1), 'another workspace releases nothing');
-        // A UGC request lists its takes' projects in the quote's payload.
+        // A UGC request lists its takes' projects in the quote's payload, and ends only when every take is deleted:
+        // deleting one take never strands the others.
         $ugc = $this->operationQuote($ws, 30);
         $ugcOp = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($ugc, $key->id));
         DB::table('api_quotes')->where('id', $ugc->id)->update(['payload_json' => json_encode(['__kind' => 'ugc', 'project_ids' => [278, 279]])]);
-        $this->assertSame(30, \App\Services\Developer\CreditHolds::releaseForProject(279, $ws->id));
+        $take = \App\Models\Project::query()->create(['workspace_id' => $ws->id, 'title' => 'Take 1', 'status' => 'generating']);
+        DB::table('api_quotes')->where('id', $ugc->id)->update(['payload_json' => json_encode(['__kind' => 'ugc', 'project_ids' => [$take->id, 279]])]);
+        $this->assertSame(0, \App\Services\Developer\CreditHolds::releaseForProject(279, $ws->id));
+        $this->assertSame('running', DB::table('api_operations')->where('id', $ugcOp)->value('status'));
+        $take->delete();
+        $this->assertSame(30, \App\Services\Developer\CreditHolds::releaseForProject($take->id, $ws->id));
         $this->assertSame('cancelled', DB::table('api_operations')->where('id', $ugcOp)->value('status'));
+        // A character-image request keeps a generation id in project_id: deleting a project with that number leaves it.
+        $img = $this->operationQuote($ws, 10);
+        $imgOp = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($img, $key->id));
+        DB::table('api_quotes')->where('id', $img->id)->update(['project_id' => 5151, 'payload_json' => json_encode(['__kind' => 'character_image'])]);
+        $this->assertSame(0, \App\Services\Developer\CreditHolds::releaseForProject(5151, $ws->id));
+        $this->assertSame('running', DB::table('api_operations')->where('id', $imgOp)->value('status'));
+    }
+
+    public function test_a_refused_charge_still_fences_even_a_job_that_charges_per_delivered_unit(): void
+    {
+        $this->enableOperationAccounting();
+        Bus::swap(new \Illuminate\Bus\Dispatcher(app()));
+        Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        [$ws, , $token] = $this->tenant('creator', 100);
+        $key = ApiKey::resolve($token);
+        $id = DB::transaction(fn () => \App\Services\Developer\OperationAccounting::reserve($this->operationQuote($ws, 40), $key->id));
+        try {
+            \Illuminate\Support\Facades\Queue::connection('sync')->push(new RepeatableBudgetScenarioJob($ws->id));
+            $this->fail('expected the job exception to surface');
+        } catch (\App\Services\Developer\OperationBudgetExceeded) {}
+        $this->assertSame('needs_attention', DB::table('api_operations')->where('id', $id)->value('status'));
     }
 
     public function test_media_upload_validates_bytes_and_is_workspace_scoped(): void
@@ -1961,6 +1990,17 @@ class OperationAccountingScenarioJob implements \Illuminate\Contracts\Queue\Shou
 class RepeatableScenarioJob extends OperationAccountingScenarioJob implements \App\Services\Developer\RepeatableAfterCharge
 {
     public function __construct(int $workspaceId) { parent::__construct($workspaceId, 'throw_after'); }
+}
+
+class RepeatableBudgetScenarioJob extends OperationAccountingScenarioJob implements \App\Services\Developer\RepeatableAfterCharge
+{
+    public function __construct(int $workspaceId) { parent::__construct($workspaceId, 'charge'); }
+
+    public function handle(): void
+    {
+        parent::handle();
+        throw new \App\Services\Developer\OperationBudgetExceeded();
+    }
 }
 
 class OperationAccountingNestedCommand

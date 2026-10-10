@@ -98,7 +98,8 @@ class AccountedJob
                 // skips what was delivered (RepeatableAfterCharge: the voice-over job skips scenes that have a
                 // voice). Either way a retry cannot pay twice, so the operation keeps running instead of being
                 // fenced with its credits held (2026-10-09: one failed scene held 368 credits overnight).
-                if ($op && ((int) $op->spent_credits === $spentBefore || $command instanceof RepeatableAfterCharge)) {
+                // A refused charge (OperationBudgetExceeded) is never retried: an accounted action stops there.
+                if ($op && ((int) $op->spent_credits === $spentBefore || ($command instanceof RepeatableAfterCharge && ! $e instanceof OperationBudgetExceeded))) {
                     // Nothing was charged in this attempt: an ordinary retry is
                     // as safe here as it is for the dashboard's own jobs.
                     DB::table('api_operation_jobs')->where('id', $uuid)->where('status', 'running')

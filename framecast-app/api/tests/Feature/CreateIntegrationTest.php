@@ -27,6 +27,7 @@ class CreateIntegrationTest extends TestCase
         Bus::fake(); Http::preventStrayRequests(); Redis::shouldReceive('get')->andReturn(null);
         $this->buildDeveloperSchema();
         (require database_path('migrations/2026_09_25_200000_create_api_operations.php'))->up();
+        (require database_path('migrations/2026_10_10_090000_add_hold_expired_at_to_api_operations.php'))->up();
         (require database_path('migrations/2026_09_28_120000_create_composition_conversations.php'))->up();
         (require database_path('migrations/2026_09_29_000000_create_composition_attempts.php'))->up();
         (require database_path('migrations/2026_09_29_120000_link_composition_outputs.php'))->up();
@@ -3513,6 +3514,25 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(150, \App\Services\Developer\CreditHolds::shrink($run->operation_id));
         $this->assertSame($limit,(int)DB::table('api_operations')->where('id',$run->operation_id)->value('reserved_credits'));
         $this->assertSame(0, \App\Services\Developer\CreditHolds::shrink($run->operation_id), 'a second pass changes nothing');
+    }
+
+    public function test_a_call_settled_after_its_hold_expired_charges_nothing(): void
+    {
+        // Review finding (2026-10-10): after the 24-hour release, a late "succeeded" must not charge the user.
+        [, , $run]=$this->admitted(); $claim=$this->runs->claim(); $attempts=app(\App\Services\Create\AttemptService::class);
+        $input=json_decode($run->input_json,true);$input['mode']='agent';
+        $input['execution_policy']['agent']=['provider'=>'anthropic','model'=>'claude-opus-5-5','credits'=>75,'cost_limit_microusd'=>300000,'max_calls'=>3];
+        DB::table('composition_runs')->where('id',$run->id)->update(['input_json'=>json_encode($input)]);
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['authorized_credits'=>225,'reserved_credits'=>225]);
+        config(['create.paid_execution_enabled'=>true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000]);
+        $this->workspace->update(['credits_monthly'=>1000]);
+        $a=$attempts->begin($run->id,$claim['lease_token'],'agent-1','agent',str_repeat('b',64));
+        DB::table('api_operations')->where('id',$run->operation_id)->update(['hold_expired_at'=>now()]);
+        $attempts->bindPrediction($run->id,$claim['lease_token'],$a['id'],'msg_late');
+        $receipt=new \App\Services\Create\VerifiedAttemptReceipt($a['id'],'succeeded','msg_late',100000,'pilot-tariff:2026-09-30; test');
+        $out=$attempts->settle($run->id,$claim['lease_token'],$a['id'],$receipt->result(),$receipt);
+        $this->assertSame(0,$out['charged_credits']);
+        $this->assertSame(1000,(int)$this->workspace->fresh()->credits_monthly);
     }
 
     public function test_a_claude_server_error_with_a_request_id_costs_nothing_and_is_waited_out_like_a_busy_model(): void

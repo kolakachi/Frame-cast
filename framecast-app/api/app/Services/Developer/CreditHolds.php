@@ -51,8 +51,8 @@ final class CreditHolds
             $keep = min((int) $op->reserved_credits, self::uncertain($op));
             $released = (int) $op->reserved_credits - $keep;
             // With no job left to run, a review no longer counts against the workspace's active videos either.
-            $idle = ! DB::table('api_operation_jobs')->where('operation_id', $id)->whereIn('status', self::LIVE_JOBS)
-                ->where('id', 'not like', 'create-call-%')->exists();
+            // A build's provider call still open (create-call-*) may belong to a worker that is still alive: its slot stays.
+            $idle = ! DB::table('api_operation_jobs')->where('operation_id', $id)->whereIn('status', self::LIVE_JOBS)->exists();
             $update = ($released > 0 ? ['reserved_credits' => $keep] : []) + ($idle && (int) $op->capacity_slots > 0 ? ['capacity_slots' => 0] : []);
             if ($update) {
                 // updated_at is left alone: it dates the last real activity, which the status page reads.
@@ -77,10 +77,13 @@ final class CreditHolds
                 if (DB::table('api_operation_jobs')->where('operation_id', $id)->whereIn('status', self::LIVE_JOBS)->exists()) return 0;
                 if (\Illuminate\Support\Facades\Schema::hasTable('composition_runs')
                     && DB::table('composition_runs')->where('operation_id', $id)->whereIn('status', ['queued', 'running', 'cancel_requested'])->exists()) return 0;
-                DB::table('api_operations')->where('id', $id)->update(['status' => 'failed', 'producer_closed' => true, 'reserved_credits' => 0, 'updated_at' => now()]);
+                $update = ['status' => 'failed', 'producer_closed' => true, 'reserved_credits' => 0, 'updated_at' => now()];
             } else {
-                DB::table('api_operations')->where('id', $id)->update(['reserved_credits' => 0, 'capacity_slots' => 0]);
+                $update = ['reserved_credits' => 0, 'capacity_slots' => 0];
             }
+            // Marked so a late reconciliation charges nothing for it (AttemptService::settle).
+            if (\Illuminate\Support\Facades\Schema::hasColumn('api_operations', 'hold_expired_at')) $update['hold_expired_at'] = now();
+            DB::table('api_operations')->where('id', $id)->update($update);
             Log::warning('credits.hold_expired', ['operation_id' => $id, 'released' => (int) $op->reserved_credits, 'status' => $op->status]);
             return (int) $op->reserved_credits;
         });
@@ -90,13 +93,21 @@ final class CreditHolds
     public static function releaseForProject(int $projectId, int $workspaceId): int
     {
         $released = 0;
-        // A video request records its project in project_id; a UGC request, one per take, in payload_json.project_ids.
-        // The workspace's open requests are few, so they are matched here rather than with a JSON query.
+        // Which requests were for this video: a video, edit or assistant-plan request records it in project_id (other
+        // kinds put a generation or asset id there); a UGC request lists one project per take in project_ids, and is
+        // only ended once every one of its takes is deleted, so deleting one take never strands the others.
         $ops = DB::table('api_operations')->join('api_quotes', 'api_quotes.id', '=', 'api_operations.quote_id')
             ->where('api_operations.workspace_id', $workspaceId)->whereIn('api_operations.status', ['running', 'needs_attention'])
             ->get(['api_operations.id', 'api_operations.reserved_credits', 'api_quotes.project_id', 'api_quotes.payload_json'])
-            ->filter(fn ($op) => (int) $op->project_id === $projectId
-                || in_array($projectId, array_map('intval', (array) (json_decode((string) $op->payload_json, true)['project_ids'] ?? [])), true));
+            ->filter(function ($op) use ($projectId) {
+                $f = json_decode((string) $op->payload_json, true) ?: [];
+                $kind = $f['__kind'] ?? 'video';
+                if ($kind === 'ugc') {
+                    $ids = array_map('intval', (array) ($f['project_ids'] ?? []));
+                    return in_array($projectId, $ids, true) && ! DB::table('projects')->whereIn('id', $ids)->exists();
+                }
+                return in_array($kind, ['video', 'edit', 'assistant_plan'], true) && (int) $op->project_id === $projectId;
+            });
         foreach ($ops as $op) {
             if (OperationAccounting::cancel($op->id, $workspaceId)) $released += (int) $op->reserved_credits;
         }
@@ -107,12 +118,13 @@ final class CreditHolds
     public static function sweep(): array
     {
         $shrunk = $expired = [];
+        // One operation's error never stops the pass, so everything released is still reported.
         foreach (DB::table('api_operations')->where('status', 'needs_attention')->where(fn ($q) => $q->where('reserved_credits', '>', 0)->orWhere('capacity_slots', '>', 0))->pluck('id') as $id) {
-            if ($n = self::shrink($id)) $shrunk[$id] = $n;
+            try { if ($n = self::shrink($id)) $shrunk[$id] = $n; } catch (\Throwable $e) { report($e); }
         }
-        foreach (DB::table('api_operations')->whereIn('status', ['running', 'needs_attention', 'failed', 'completed', 'cancelled'])->where('reserved_credits', '>', 0)
-            ->where('created_at', '<', now()->subHours(self::REVIEW_HOURS))->pluck('id') as $id) {
-            if ($n = self::expire($id)) $expired[$id] = $n;
+        // Every status (needs_input included): a hold older than REVIEW_HOURS is checked whatever state it was left in.
+        foreach (DB::table('api_operations')->where('reserved_credits', '>', 0)->where('created_at', '<', now()->subHours(self::REVIEW_HOURS))->pluck('id') as $id) {
+            try { if ($n = self::expire($id)) $expired[$id] = $n; } catch (\Throwable $e) { report($e); }
         }
         return ['shrunk' => $shrunk, 'expired' => $expired];
     }
