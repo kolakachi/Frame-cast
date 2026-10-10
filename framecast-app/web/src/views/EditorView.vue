@@ -310,6 +310,8 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
       // (change_music) this is a no-op until the job lands; the completion
       // handlers refresh again once it does.
       try { await refreshProjectPayload() } catch (_) {}
+      // After the assistant undoes or redoes, the open scene's drafts reload from what was put back.
+      if (['undo_last_edit', 'redo_last_edit'].includes(card.tool)) await resyncSceneDrafts();
     } else if (card.affected_scene_id) {
       // One-shot scene fetch so the editor picks up the in_progress flag
       // (regenerate_image / animate) or the new voice/script.
@@ -590,6 +592,7 @@ function cruiseToolTouchesProject(tool) {
     'pick_library_music', 'change_music', 'add_sound_effect',
     'apply_brand_kit',                                      // asset / project-level
     'lock_subject',                                         // binds a character + regenerates several scenes
+    'undo_last_edit', 'redo_last_edit',                     // the edit history: any scene or setting may change
   ].includes(tool)
 }
 
@@ -3276,6 +3279,9 @@ watch(visualStyleDraft, (nextStyle) => {
   const scene = activeScene.value;
   if (!scene) return;
   if ((nextStyle ?? null) === (scene.visual_style ?? null)) return;
+  // Loading a scene fills the draft with the style it inherits; that is not a change to save (it also became an undo
+  // step that cleared redo).
+  if (scene.visual_style == null && (nextStyle ?? null) === (scene.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null)) return;
 
   visualStyleSaveState.value = "pending";
   clearTimeout(visualStyleSaveTimer);
@@ -4145,6 +4151,8 @@ function applyProjectPayload(data, { preserveActiveScene = true } = {}) {
 async function refreshProjectPayload() {
   const response = await api.get(`/projects/${projectId.value}`);
   applyProjectPayload(response.data?.data, { preserveActiveScene: true });
+  // A generation finishing reloads the project: undo and redo may be available again.
+  scheduleHistoryRefresh();
 }
 
 // ── Undo / redo (2026-10-10) ───────────────────────────────────────────────
@@ -4161,30 +4169,50 @@ function scheduleHistoryRefresh() {
   if (historyTimer) window.clearTimeout(historyTimer);
   historyTimer = window.setTimeout(loadEditHistory, 400);
 }
+// Re-select the open scene so every draft (script, voice, captions…) reloads from what was put back.
+async function resyncSceneDrafts() {
+  const keep = activeSceneId.value;
+  activeSceneId.value = null;
+  await nextTick();
+  activeSceneId.value = scenes.value.some((s) => s.id === keep) ? keep : scenes.value[0]?.id ?? null;
+}
+// Only a save still on its way blocks undo; a save that failed does not.
+function savesInFlight() {
+  return [scriptSaveState, voiceSaveState, captionSaveState, motionSaveState, musicSaveState, audiogramSaveState, visualStyleSaveState, customVisualStyleSaveState]
+    .some((state) => ["pending", "saving"].includes(state.value))
+    || Boolean(scriptSaveTimer || voiceSaveTimer || captionSaveTimer || musicSaveTimer || audiogramSaveTimer)
+    || volumeSavesPending.value > 0
+    || Boolean(activeScene.value && sceneScriptDraft.value !== (activeScene.value.script_text || ""));
+}
 async function stepHistory(step) {
   const can = step === "undo" ? editHistory.value.can_undo : editHistory.value.can_redo;
   if (!can || historyStepping.value) return;
   // A save still on its way would land on top of the undo: let it finish first.
-  if (hasPendingExportChanges()) {
+  if (savesInFlight()) {
     pushToast({ id: `history-wait-${Date.now()}`, title: "Saving your changes", message: `Try ${step} again in a moment.` });
     return;
   }
   historyStepping.value = true;
+  let label;
   try {
-    const { data } = await api.post(`/projects/${projectId.value}/${step}`);
-    const label = data?.data?.undone ?? data?.data?.redone;
+    const expect = step === "undo" ? editHistory.value.undo_id : editHistory.value.redo_id;
+    const { data } = await api.post(`/projects/${projectId.value}/${step}`, expect ? { edit_id: expect } : {});
+    label = data?.data?.undone ?? data?.data?.redone;
     editHistory.value = data?.data ?? editHistory.value;
-    await refreshProjectPayload();
-    // Re-select the scene so every draft (script, voice, captions…) reloads from the restored scene.
-    const keep = activeSceneId.value;
-    activeSceneId.value = null;
-    await nextTick();
-    activeSceneId.value = scenes.value.some((s) => s.id === keep) ? keep : scenes.value[0]?.id ?? null;
-    refreshExportFreshness();
-    pushToast({ id: `history-${Date.now()}`, title: step === "undo" ? "Undone" : "Redone", message: label || "" });
   } catch (e) {
     pushToast({ id: `history-fail-${Date.now()}`, title: `Could not ${step}`, message: e?.response?.data?.error?.message ?? "Try again in a moment." });
     loadEditHistory();
+    historyStepping.value = false;
+    return;
+  }
+  // It worked; showing it is separate, so a failed reload never reads as a failed undo (and invites a second one).
+  pushToast({ id: `history-${Date.now()}`, title: step === "undo" ? "Undone" : "Redone", message: label || "" });
+  try {
+    await refreshProjectPayload();
+    await resyncSceneDrafts();
+    refreshExportFreshness();
+  } catch {
+    pushToast({ id: `history-reload-${Date.now()}`, title: "Reload to see the change", message: "It was saved, but the editor could not refresh." });
   } finally {
     historyStepping.value = false;
   }
@@ -4201,6 +4229,7 @@ function historyKeys(event) {
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
   const t = event.target;
   if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+  if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;   // a dialog is open
   const key = event.key.toLowerCase();
   if (key === "z" && !event.shiftKey) { event.preventDefault(); stepHistory("undo"); }
   else if ((key === "z" && event.shiftKey) || key === "y") { event.preventDefault(); stepHistory("redo"); }

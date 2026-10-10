@@ -440,9 +440,13 @@ class EditorController extends DeveloperController
     {
         if (! $this->find($request, $videoId)) return $this->fail('not_found', 'Video not found.', 404);
         try {
-            $label = \App\Services\Editor\EditHistory::$step($videoId);
+            $expect = $request->input('edit_id');
+            $label = \App\Services\Editor\EditHistory::$step($videoId, is_scalar($expect) && ctype_digit((string) $expect) ? (int) $expect : null);
         } catch (\DomainException $e) {
             return $this->fail('history_unavailable', $e->getMessage(), 409);
+        } catch (\Illuminate\Database\QueryException $e) {
+            report($e);
+            return $this->fail('history_unavailable', 'That step could not be put back. Nothing was changed.', 409);
         }
         return response()->json(['data' => [($step === 'undo' ? 'undone' : 'redone') => $label] + \App\Services\Editor\EditHistory::status($videoId)]);
     }

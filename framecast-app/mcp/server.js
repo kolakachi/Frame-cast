@@ -728,16 +728,16 @@ function buildServer(token) {
   server.registerTool('undo_edit', {
     title: 'Undo the latest edit',
     description: "Puts the video back to before its latest edit, whoever made it. Call get_edit_history first and tell the user what will be undone (undo_label); undo only when they want that. Free: credits are not refunded or charged, generated files are kept, so redo_edit brings it back. Refused while something in the video is still generating. The export becomes out of date, so re-export before delivering.",
-    inputSchema: z.object({ video_id: z.number().int() }),
+    inputSchema: z.object({ video_id: z.number().int(), edit_id: z.number().int().optional().describe('The undo_id you showed the user, from get_edit_history: refused if another step is next by now.') }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/undo`, {}, 'undo_edit'))
+  }, async ({ video_id, edit_id }) => call(token, 'POST', `/videos/${video_id}/undo`, edit_id ? { edit_id } : {}, 'undo_edit'))
 
   server.registerTool('redo_edit', {
     title: 'Redo the last undone edit',
     description: 'Brings back the edit most recently undone (redo_label from get_edit_history). Free. Not available after a new edit was made since the undo.',
-    inputSchema: z.object({ video_id: z.number().int() }),
+    inputSchema: z.object({ video_id: z.number().int(), edit_id: z.number().int().optional().describe('The redo_id you showed the user, from get_edit_history: refused if another step is next by now.') }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/redo`, {}, 'redo_edit'))
+  }, async ({ video_id, edit_id }) => call(token, 'POST', `/videos/${video_id}/redo`, edit_id ? { edit_id } : {}, 'redo_edit'))
 
   server.registerTool('get_post', {
     title: 'Check a published or scheduled post',

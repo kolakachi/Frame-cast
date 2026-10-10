@@ -673,8 +673,35 @@ class DeveloperApiTest extends TestCase
         \App\Services\Editor\EditHistory::record($id, $before, 'Deleted scene 2', 'user', null);
         $api('POST', '/undo')->assertOk()->assertJsonPath('data.undone', 'Deleted scene 2');
         $this->assertSame('Changed by hand.', $script($s2));
-        DB::table('scenes')->where('id', $s1)->update(['voice_settings_json' => json_encode(['in_progress' => true])]);
-        $api('POST', '/undo')->assertStatus(409)->assertJsonPath('error.code', 'history_unavailable');
+        // Undo puts back only what the edit changed: a picture that finished generating since stays, and the
+        // generation's in-progress flag is never restored.
+        $EH = \App\Services\Editor\EditHistory::class;
+        DB::table('scenes')->where('id', $s1)->update(['image_generation_settings_json' => json_encode(['in_progress' => true, 'style' => 'cinematic'])]);
+        $before = $EH::snapshot($id, [$s1]);
+        DB::table('scenes')->where('id', $s1)->update(['label' => 'Hook v2', 'image_generation_settings_json' => json_encode(['in_progress' => true, 'style' => 'anime'])]);
+        $EH::record($id, $before, 'Edited scene 1', 'user', null, [$s1]);
+        DB::table('scenes')->where('id', $s1)->update(['visual_asset_id' => 777, 'image_generation_settings_json' => json_encode(['in_progress' => false, 'style' => 'anime'])]); // the job lands
+        $api('POST', '/undo')->assertOk();
+        $row = DB::table('scenes')->where('id', $s1)->first();
+        $img = json_decode($row->image_generation_settings_json, true);
+        $this->assertNotSame('Hook v2', $row->label, 'the edited label goes back');
+        $this->assertSame(['cinematic', false], [$img['style'], $img['in_progress']]);
+        $this->assertSame(777, (int) $row->visual_asset_id, 'the finished picture stays');
+
+        // Typing in the script box: saves moments apart are one step.
+        foreach (['One', 'One two', 'One two three'] as $text) {
+            $b = $EH::snapshot($id, [$s2]);
+            DB::table('scenes')->where('id', $s2)->update(['script_text' => $text]);
+            $EH::record($id, $b, 'Edited scene 2', 'user', 5, [$s2]);
+        }
+        $api('POST', '/undo')->assertOk();
+        $this->assertSame('Changed by hand.', $script($s2), 'one undo takes the whole burst back');
+
+        // The step the caller showed must still be next; a generating picture blocks undo.
+        $api('POST', '/undo')->assertOk();
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/redo", ['edit_id' => 999999])->assertStatus(409);
+        DB::table('scenes')->where('id', $s1)->update(['image_generation_settings_json' => json_encode(['in_progress' => true])]);
+        $api('POST', '/redo')->assertStatus(409)->assertJsonPath('error.code', 'history_unavailable');
         [, , $other] = $this->tenant();
         $this->withToken($other)->postJson("/api/developer/v1/videos/{$id}/undo")->assertNotFound();
     }

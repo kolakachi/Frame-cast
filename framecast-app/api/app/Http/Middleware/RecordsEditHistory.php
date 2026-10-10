@@ -29,35 +29,58 @@ class RecordsEditHistory
         'EditorController@apply' => 'Assistant edit', 'AssistantController@apply' => "Applied the assistant's plan",
     ];
 
+    /** Generating: the result comes later from a job, so these are not undoable steps. */
+    private const GENERATING = ['SceneController@generateDraft', 'SceneController@generateImage', 'SceneController@editImage', 'SceneController@animate',
+        'SceneController@cancelAnimation', 'SceneController@regenerateVoice', 'SceneController@regenerateMusic', 'BulkAnimateController',
+        'BulkVisualController', 'BulkVoiceController', 'ProjectController@resumeFailed', 'ProjectController@retryGeneration'];
+    private const GENERATING_TOOLS = ['regenerate_image', 'animate_scene', 'make_spokesperson', 'rerecord_voice', 'change_music', 'export_video',
+        'schedule_post', 'undo_last_edit', 'redo_last_edit'];
+    /** Edits that change only the scene they name: only that scene is compared, so another scene's job result is never swept in. */
+    private const ONE_SCENE = ['SceneController@update', 'SceneController@swapVisual', 'SceneController@revertAnimation',
+        'SceneController@useAnimationFromHistory', 'SceneController@rewrite'];
+
     public function handle(Request $request, Closure $next): Response
     {
-        // The assistant's own undo/redo steps move through the history; recording them would end the redo trail.
-        $historyStep = in_array($request->input('tool'), ['undo_last_edit', 'redo_last_edit'], true);
-        $projectId = $request->isMethod('GET') || $historyStep ? null : $this->projectId($request);
-        if (! $projectId || ! \Illuminate\Support\Facades\Schema::hasTable('project_edits')) return $next($request);
-        $before = EditHistory::snapshot($projectId);
+        $action = class_basename((string) $request->route()?->getActionName());
+        $tool = is_string($request->input('tool')) ? $request->input('tool') : null;
+        if ($request->isMethod('GET') || in_array($action, self::GENERATING, true) || in_array(strtok($action, '@'), self::GENERATING, true)
+            || in_array($tool, self::GENERATING_TOOLS, true)) {
+            return $next($request);
+        }
+        $projectId = $this->projectId($request);
+        if (! $projectId) return $next($request);
+        $sceneId = (int) ($request->route('sceneId') ?? 0);
+        $scope = in_array($action, self::ONE_SCENE, true) && $sceneId ? [$sceneId] : null;
+        $before = EditHistory::snapshot($projectId, $scope);
         $response = $next($request);
         try {
-            $action = class_basename((string) $request->route()?->getActionName());
-            $sceneId = (int) ($request->route('sceneId') ?? $request->input('scene_id') ?? data_get($request->input('params'), 'scene_id') ?? 0);
-            $n = $sceneId && isset($before['scenes'][$sceneId]) ? $before['scenes'][$sceneId]['scene_order'] : null;
+            if ($response->getStatusCode() >= 400) return $response;   // a refused request changed nothing worth a step
+            $paramScene = data_get($request->input('params'), 'scene_id');
+            $n = null;
+            foreach ([$sceneId, is_scalar($request->input('scene_id')) ? (int) $request->input('scene_id') : 0, is_scalar($paramScene) ? (int) $paramScene : 0] as $id) {
+                if ($id && isset($before['scenes'][$id])) { $n = $before['scenes'][$id]['scene_order']; break; }
+            }
             $label = self::LABELS[$action] ?? self::LABELS[strtok($action, '@')] ?? 'Edited the video';
-            if ($action === 'CruiseControlController@apply' && $request->input('tool')) $label = 'Assistant: '.str_replace('_', ' ', (string) $request->input('tool'));
+            if ($action === 'CruiseControlController@apply' && $tool) $label = 'Assistant: '.str_replace('_', ' ', $tool);
             $label = $n ? str_replace('{n}', (string) $n, $label) : str_replace([' {n}', "{n}'s"], ['', "a scene's"], $label);
             $actor = str_starts_with($request->path(), 'api/developer/') ? 'assistant' : (str_contains($action, 'CruiseControlController') ? 'cruise' : 'user');
-            EditHistory::record($projectId, $before, $label, $actor, $request->user()?->getKey());
+            EditHistory::record($projectId, $before, $label, $actor, $request->user()?->getKey(), $scope);
         } catch (\Throwable $e) {
-            report($e); // the edit itself stands; only its history entry is lost
+            report($e); // the edit itself stands; only its history step is lost
         }
         return $response;
     }
 
+    /** The project this request edits, if it is a Classic project in the requester's own workspace. */
     private function projectId(Request $request): ?int
     {
-        $id = $request->route('projectId') ?? $request->route('videoId') ?? $request->input('project_id');
-        if (! $id && ($sceneId = $request->route('sceneId'))) $id = DB::table('scenes')->where('id', (int) $sceneId)->value('project_id');
-        if (! $id) return null;
+        $raw = $request->route('projectId') ?? $request->route('videoId') ?? $request->input('project_id');
+        $id = is_scalar($raw) && ctype_digit((string) $raw) ? (int) $raw : null;
+        if (! $id && ($sceneId = $request->route('sceneId'))) $id = (int) DB::table('scenes')->where('id', (int) $sceneId)->value('project_id');
+        $workspaceId = $request->user()?->workspace_id;
+        if (! $id || ! $workspaceId) return null;
+        $project = DB::table('projects')->where('id', $id)->where('workspace_id', $workspaceId)->first(['id', 'editor_kind']);
         // Classic projects only: a Weave video (editor_kind composition) has versions of its own.
-        return DB::table('projects')->where('id', (int) $id)->value('editor_kind') === 'composition' ? null : (int) $id;
+        return $project && ($project->editor_kind ?? null) !== 'composition' ? (int) $project->id : null;
     }
 }
