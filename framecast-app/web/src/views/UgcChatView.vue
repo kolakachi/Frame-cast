@@ -550,7 +550,7 @@ onBeforeUnmount(() => {
                     <b>{{ run.name === 'A fitting presenter' ? 'Your' : `${run.name}'s` }} video didn't come out.</b>
                     <p class="uc-muted">Nothing was charged for it. Try again and we make it again from the same pitch.</p>
                     <div class="uc-ready-btns">
-                      <button type="button" class="uc-btn uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : 'Try again' }}</button>
+                      <button type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : 'Try again' }}</button>
                       <button type="button" class="uc-link-btn" @click="openRun(run)">Details</button>
                     </div>
                   </div>
@@ -776,6 +776,7 @@ onBeforeUnmount(() => {
 .uc-ready-side h3 { margin: 4px 0 4px; font-size: 17px; }
 .uc-ready-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .uc-failed p { margin: 4px 0 10px; font-size: 13px; }
+.uc-failed .uc-ready-btns { align-items: center; margin-top: 0; }
 .uc-err { color: #f0b4ac; border-color: rgba(240, 180, 172, .3); }
 .uc-thinking { display: flex; gap: 10px; align-items: center; color: var(--color-text-secondary); }
 .uc-hint { margin: 0 0 0 40px; font-size: 12.5px; color: var(--color-text-muted); }
