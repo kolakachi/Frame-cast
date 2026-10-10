@@ -26,6 +26,8 @@ assembly stays simple, motion graphics stay in Create.
 | P2-POLISH | Small: a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
+| VISION | The director reads only file names: the sweep's product (a tube) became a pump bottle in 3 of 6 videos. Let it look at product photos | proposed | build |
+| QUEUE-REAP | Composed scenes waiting behind long one-takes on a busy queue are reaped as "timed out" at 10 minutes | open | fix |
 | ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
 | VARIETY | "Let us pick" chose the same actor 11/12 times for one product | open | decide |
 | SKIT-CAST | A skit's second person has no cast reference | open | after P3 |
@@ -54,6 +56,11 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 Sweep videos (local POC): clips joined by stream copy came out with broken timestamps (18 s playing as
+  6 or 87 s, sound out of step) once Omni chained clips; the join now re-times and re-encodes. The video model drew
+  garbled text where shot briefs asked for headline space ("UGC her headlines"); headline notes are removed from
+  one-take prompts. The six local videos were re-timed in place.
 
 - 2026-10-10 Type sweep (13 types, one product): all pitch without questions; reaction was broken (spoken script for a
   silent clip; empty script dropped at hand-off), fixed. Captions on one-take videos (were off since one-take began):

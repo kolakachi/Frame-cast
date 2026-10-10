@@ -86,4 +86,13 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertGreaterThanOrEqual(18, array_sum(array_column($chunks, 'seconds')));
         foreach ($chunks as $c) $this->assertStringNotContainsString('Cut to', $c['prompt'], 'one shot carrying on, no cuts');
     }
+
+    public function test_headline_notes_never_reach_the_video_model(): void
+    {
+        $chunks = UgcOneShotCompiler::compile([['script_text' => 'This lotion sinks in fast.', 'seconds' => 5,
+            'visual_brief' => 'Bright bathroom, she holds the tube at chest height. Safe space left above her head for headline text. Soft daylight.']]);
+        $this->assertStringContainsString('she holds the tube at chest height', $chunks[0]['prompt']);
+        $this->assertStringNotContainsStringIgnoringCase('headline', $chunks[0]['prompt']);
+        $this->assertStringNotContainsStringIgnoringCase('safe space', $chunks[0]['prompt']);
+    }
 }

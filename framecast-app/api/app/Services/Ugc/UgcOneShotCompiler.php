@@ -67,7 +67,7 @@ class UgcOneShotCompiler
 
             $out[] = [
                 'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines)
-                    ."\n\nCasual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no overlaid text, graphics or watermarks — the product's own packaging, label and branding stay visible and legible. Natural room tone.",
+                    ."\n\nCasual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting. No words, captions, titles, graphics or watermarks anywhere on screen (text is added later, never by you) — the product's own packaging, label and branding stay visible and legible. Natural room tone.",
                 'seconds' => $chunk['seconds'],
                 'dialogue' => implode(' ', $dialogue),
             ];
@@ -127,7 +127,7 @@ class UgcOneShotCompiler
 ".implode(' ', $lines).$demoLine
                 ."
 
-Casual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting, no overlaid text, graphics or watermarks — the product's own packaging, label and branding stay visible and legible. Natural room tone.",
+Casual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting. No words, captions, titles, graphics or watermarks anywhere on screen (text is added later, never by you) — the product's own packaging, label and branding stay visible and legible. Natural room tone.",
             'seconds' => max(4, $total),
             'dialogue' => implode(' ', $dialogue),
         ];
@@ -218,7 +218,11 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
 
     private static function framing(array $beat): string
     {
-        $brief = trim((string) ($beat['visual_brief'] ?? ''));
+        // Shot briefs are written for the editor too, which lays a headline over "safe space". A one-take has no
+        // overlay step, so the video model drew that text itself, garbled ("UGC her headlines", 2026-10-10 sweep):
+        // anything about on-screen text goes before the brief reaches it.
+        $brief = trim((string) preg_replace('/[^.;]*\b(headline|caption|on-screen text|overlay|text overlay|title card|safe space)\b[^.;]*[.;]?/iu', '', (string) ($beat['visual_brief'] ?? '')));
+        $brief = trim((string) preg_replace('/\s{2,}/', ' ', $brief), " ,;");
 
         return $brief !== '' ? lcfirst(rtrim($brief, '.')) : 'the same framing, holding eye contact with the camera';
     }

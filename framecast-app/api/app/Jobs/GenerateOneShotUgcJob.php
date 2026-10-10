@@ -468,27 +468,35 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return $claim;
     }
 
-    /** Segments share codec/resolution by construction; concat without re-encode, re-encode as fallback. */
+    /**
+     * Join the segments into one video, re-timed. Never a stream copy: Omni returns clips with different time bases
+     * (1/90000 and 1/12288 in one take), and a copied join kept their timestamps, so an 18-second take played as 6 or
+     * as 87 seconds with its sound out of step (2026-10-10). Each clip is reset to start at zero, set to one frame
+     * rate and size, and joined with the concat filter.
+     */
     private function concat(array $paths, array &$temps): string
     {
         if (count($paths) === 1) {
             return $paths[0];
         }
-        $list = tempnam(sys_get_temp_dir(), 'oneshot-list-').'.txt';
-        $temps[] = $list;
-        file_put_contents($list, implode("\n", array_map(fn ($p) => "file '".$p."'", $paths)));
+        $size = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', $paths[0]]);
+        [$w, $h] = array_map('intval', explode('x', trim($size->output())) + [1 => 0]);
+        if ($w <= 0 || $h <= 0) [$w, $h] = [720, 1280];
+        $inputs = [];
+        $graph = '';
+        foreach ($paths as $i => $path) {
+            array_push($inputs, '-i', $path);
+            $graph .= sprintf('[%1$d:v]setpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v%1$d];'
+                .'[%1$d:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a%1$d];', $i, $w, $h);
+        }
+        foreach (array_keys($paths) as $i) $graph .= "[v{$i}][a{$i}]";
+        $graph .= 'concat=n='.count($paths).':v=1:a=1[outv][outa]';
 
         $out = tempnam(sys_get_temp_dir(), 'oneshot-final-').'.mp4';
         $temps[] = $out;
-        $copy = Process::timeout(300)->run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', $list, '-c', 'copy', $out]);
-        if ($copy->successful() && filesize($out)) {
-            return $out;
-        }
-        $encode = Process::timeout(900)->run([
-            'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', $list,
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'aac', $out,
-        ]);
-        if (! $encode->successful() || ! filesize($out)) {
+        $run = Process::timeout(900)->run(['ffmpeg', '-y', ...$inputs, '-filter_complex', $graph, '-map', '[outv]', '-map', '[outa]',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'aac', '-movflags', '+faststart', $out]);
+        if (! $run->successful() || ! filesize($out)) {
             throw new \RuntimeException('The segments could not be joined into one video.');
         }
 

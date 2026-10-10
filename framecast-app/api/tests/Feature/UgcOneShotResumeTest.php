@@ -202,4 +202,21 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(3, $this->starts - $startsBefore, 'clip 1 is not reused after clip 0 is remade');
         $this->assertSame([396], $this->charged);
     }
+
+    public function test_clips_with_different_time_bases_join_at_their_real_length(): void
+    {
+        // Omni returned clips timed at 1/90000 and 1/12288 in one take; a copied join played 18 s as 6 s or 87 s.
+        $clips = [];
+        foreach ([90000, 12288, 90000] as $i => $scale) {
+            $clips[$i] = sys_get_temp_dir()."/oneshot-tb-{$i}.mp4";
+            Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x112:r=24:d=2', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
+                '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-video_track_timescale', (string) $scale, '-shortest', $clips[$i]])->throw();
+        }
+        $temps = [];
+        $out = (fn () => $this->concat($clips, $temps))->call($this->job());
+        $probe = fn ($stream) => (float) trim(Process::run(['ffprobe', '-v', 'error', '-select_streams', $stream, '-show_entries', 'stream=duration', '-of', 'csv=p=0', $out])->output());
+        $this->assertEqualsWithDelta(6.0, $probe('v:0'), 0.2, 'the picture runs the real length');
+        $this->assertEqualsWithDelta($probe('v:0'), $probe('a:0'), 0.2, 'sound and picture stay in step');
+        foreach ([...$clips, ...$temps] as $f) @unlink($f);
+    }
 }
