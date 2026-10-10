@@ -20,6 +20,15 @@ use Illuminate\Support\Facades\Log;
 final class CreditHolds
 {
     public const REVIEW_HOURS = 24;
+
+    /**
+     * Whether api_operations has hold_expired_at yet. Checked each time, not cached: a long-lived queue worker can start
+     * before the deploy's migration runs, and a cached "no" would last until it restarts.
+     */
+    public static function marksExpiry(): bool
+    {
+        return \Illuminate\Support\Facades\Schema::hasColumn('api_operations', 'hold_expired_at');
+    }
     private const LIVE_JOBS = ['pending', 'running', 'released'];
 
     public static function state(object $op): string
@@ -82,7 +91,7 @@ final class CreditHolds
                 $update = ['reserved_credits' => 0, 'capacity_slots' => 0];
             }
             // Marked so a late reconciliation charges nothing for it (AttemptService::settle).
-            if (\Illuminate\Support\Facades\Schema::hasColumn('api_operations', 'hold_expired_at')) $update['hold_expired_at'] = now();
+            if (self::marksExpiry()) $update['hold_expired_at'] = now();
             DB::table('api_operations')->where('id', $id)->update($update);
             Log::warning('credits.hold_expired', ['operation_id' => $id, 'released' => (int) $op->reserved_credits, 'status' => $op->status]);
             return (int) $op->reserved_credits;
@@ -93,7 +102,7 @@ final class CreditHolds
     public static function releaseForProject(int $projectId, int $workspaceId): int
     {
         $released = 0;
-        // Which requests were for this video: a video, edit or assistant-plan request records it in project_id (other
+        // Which requests were for this video: a video, edit, retry or assistant-plan request records it in project_id (other
         // kinds put a generation or asset id there); a UGC request lists one project per take in project_ids, and is
         // only ended once every one of its takes is deleted, so deleting one take never strands the others.
         $ops = DB::table('api_operations')->join('api_quotes', 'api_quotes.id', '=', 'api_operations.quote_id')
@@ -106,7 +115,7 @@ final class CreditHolds
                     $ids = array_map('intval', (array) ($f['project_ids'] ?? []));
                     return in_array($projectId, $ids, true) && ! DB::table('projects')->whereIn('id', $ids)->exists();
                 }
-                return in_array($kind, ['video', 'edit', 'assistant_plan'], true) && (int) $op->project_id === $projectId;
+                return in_array($kind, ['video', 'edit', 'retry', 'assistant_plan'], true) && (int) $op->project_id === $projectId;
             });
         foreach ($ops as $op) {
             if (OperationAccounting::cancel($op->id, $workspaceId)) $released += (int) $op->reserved_credits;

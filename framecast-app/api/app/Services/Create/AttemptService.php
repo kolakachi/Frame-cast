@@ -87,7 +87,7 @@ class AttemptService
             if (str_starts_with((string) $attempt->attempt_key, 'repair')) $credits = 0;
             // Released after 24 hours under review (CreditHolds): the user was told those credits came back, so a late
             // reconciliation records the provider's cost as ours and charges nothing.
-            if (\Illuminate\Support\Facades\Schema::hasColumn('api_operations', 'hold_expired_at')
+            if (\App\Services\Developer\CreditHolds::marksExpiry()
                 && DB::table('api_operations')->where('id', $run->operation_id)->whereNotNull('hold_expired_at')->exists()) $credits = 0;
             $previous = Context::getHidden(OperationAccounting::CONTEXT);
             try {
