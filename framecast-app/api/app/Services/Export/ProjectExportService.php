@@ -60,12 +60,27 @@ class ProjectExportService
             if ($this->shouldWatermark($project->workspace_id, false)) {
                 throw new RuntimeException('Your current plan requires a watermark. Upgrade to download this whole-video take.');
             }
+            // A one-take with captions on gets them burned in over its own picture and sound; otherwise the video is
+            // the finished file as it is.
+            $first = $scenes->first();
+            $captions = data_get($project->visual_brief, 'ugc_format') === 'one_shot'
+                && ($first->caption_settings_json['enabled'] ?? false) === true && trim((string) $first->script_text) !== '';
+            if ($captions) {
+                $job = ExportJob::query()->create([
+                    'workspace_id' => $project->workspace_id, 'project_id' => $project->id,
+                    'aspect_ratio' => $project->aspect_ratio ?: '9:16', 'language' => $language,
+                    'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
+                    'watermark_enabled' => false, 'status' => 'queued', 'progress_percent' => 0, 'priority' => 0, 'queued_at' => now(),
+                ]);
+                \App\Jobs\BurnOneShotCaptionsJob::dispatch((int) $job->getKey())->afterCommit();
+                return $job;
+            }
             return ExportJob::query()->create([
                 'workspace_id' => $project->workspace_id, 'project_id' => $project->id,
                 'aspect_ratio' => $project->aspect_ratio ?: '9:16', 'language' => $language,
                 'file_name' => "{$titleSlug}-{$aspectRatio}-{$language}.mp4",
                 'watermark_enabled' => false, 'status' => 'completed', 'progress_percent' => 100,
-                'output_asset_id' => $scenes->first()->visual_asset_id, 'priority' => 0,
+                'output_asset_id' => $first->visual_asset_id, 'priority' => 0,
                 'queued_at' => now(), 'started_at' => now(), 'completed_at' => now(),
             ]);
         }

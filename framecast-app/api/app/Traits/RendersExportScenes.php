@@ -996,7 +996,9 @@ trait RendersExportScenes
     /** A video carrying its own speech (a one-take UGC ad) times its captions from its own transcript. */
     protected function spokenVideo(?Asset $asset): ?Asset
     {
-        return $asset && ($asset->asset_type === 'video' || str_starts_with((string) $asset->mime_type, 'video/'))
+        // Only a one-take ad's own video: uploaded footage is transcribed too, and its speech is not the narration.
+        return $asset && in_array('ugc_oneshot', (array) ($asset->tags ?? []), true)
+            && ($asset->asset_type === 'video' || str_starts_with((string) $asset->mime_type, 'video/'))
             && data_get($asset->metadata_json, 'caption_timing.words')
             // A provider failure leaves placeholder words: even timing beats timing from words nobody said.
             && data_get($asset->metadata_json, 'caption_timing.source') !== 'local_fallback' ? $asset : null;
