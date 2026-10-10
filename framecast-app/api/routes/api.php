@@ -491,6 +491,12 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/read-link', [UgcController::class, 'readLink']);
             Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
             Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');
+            // UGC Ads as a conversation (2026-10-10).
+            Route::get('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'index']);
+            Route::post('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'store']);
+            Route::get('/chats/{id}', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'show'])->whereUuid('id');
+            Route::post('/chats/{id}/messages', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'message'])->whereUuid('id');
+            Route::post('/chats/{id}/make', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'make'])->whereUuid('id');
 
             // My Footage: bring a video, correct our read of it, plan and
             // produce your version. Same gate as the rest of UGC.
