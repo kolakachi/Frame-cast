@@ -128,6 +128,7 @@ function voiceText(p) {
   return [LABEL[p.voice.pace] || 'Natural', LABEL[p.voice.delivery] || 'Friendly'].join(' · ') + (p.voice.direction ? ` · "${p.voice.direction}"` : '')
 }
 function addPresenter(c) {
+  presentersTouched = true
   if (c && !c.is_stock && !canOwnCharacter.value) { error.value = 'Casting your own character is a Creator feature. Pick one of our actors, or upgrade to use your own.'; return }
   if (c && presenters.value.some(p => p.character_id === c.id)) return
   if (!c && presenters.value.some(p => !p.character_id)) return
@@ -148,8 +149,10 @@ function stepPreview(dir) {
   if (i >= 0 && list.length) previewing.value = list[(i + dir + list.length) % list.length]
 }
 function addPreviewed() { const c = previewing.value; if (c) { addPresenter(c); previewing.value = null } }
-function removePresenter(p) { presenters.value = presenters.value.filter(x => x !== p); if (expanded.value === p.key) expanded.value = null }
+function removePresenter(p) {
+  presentersTouched = true; presenters.value = presenters.value.filter(x => x !== p); if (expanded.value === p.key) expanded.value = null }
 function setVoice(p, key, value) {
+  presentersTouched = true
   const apply = x => { x.voice = { pace: 'natural', delivery: 'friendly', direction: '', ...(x.voice || {}), [key]: value } }
   if (sameVoice.value) presenters.value.forEach(apply)
   else apply(p)
@@ -157,6 +160,7 @@ function setVoice(p, key, value) {
 watch(sameVoice, on => { if (on && presenters.value[0]?.voice) presenters.value.forEach(x => { x.voice = { ...presenters.value[0].voice } }) })
 
 function toggleMenu(name) { menu.value = menu.value === name ? '' : name; previewing.value = null; if (menu.value === 'cast') loadCharacters() }
+function escMenus(e) { if (e.key === 'Escape') menu.value = '' }
 function closeMenus(e) { if (!e.target.closest('.uc-pop, .uc-pill, .uc-plus')) menu.value = '' }
 
 async function loadCharacters() {
@@ -211,7 +215,7 @@ async function upload(u, file) {
   }
 }
 function removeTray(i) {
-  if (i.isLink) { link.value = null; return }
+  if (i.isLink) { dismissedLink.value = link.value; link.value = null; return }
   if (i.upload?.preview) URL.revokeObjectURL(i.upload.preview)
   uploads.value = uploads.value.filter(u => u !== i.upload)
 }
@@ -228,11 +232,13 @@ function saveLink() {
   if (v && /^https?:\/\/\S+\.\S+/.test(v)) { link.value = v; linkOpen.value = false; error.value = '' }
   else error.value = 'Paste the full product page address, starting with https://'
 }
-// A product link pasted into the text becomes the page we read.
+// A product link pasted into the text becomes the page we read (unless its chip was removed).
+const dismissedLink = ref('')
 watch(text, t => {
   if (link.value) return
   const m = t.match(/https?:\/\/[^\s"”]+\.[^\s"”]+/)
-  if (m) link.value = m[0].replace(/[).,]+$/, '')
+  const url = m ? m[0].replace(/[).,]+$/, '') : ''
+  if (url && url !== dismissedLink.value) link.value = url
 })
 
 // Your own presenter: a photo of someone you have the right to use becomes a saved character.
@@ -242,10 +248,12 @@ function onPhoto(e) {
   if (!file) return
   if (!canOwnCharacter.value) { error.value = 'Using your own photo is a Creator feature. Pick one of our actors, or upgrade.'; return }
   if (!file.type.startsWith('image/')) { error.value = 'Use a photo (PNG, JPEG or WebP).'; return }
+  if (ownPhoto.value?.preview) URL.revokeObjectURL(ownPhoto.value.preview)
   ownPhoto.value = { file, preview: URL.createObjectURL(file) }
   ownName.value = ''
   ownConsent.value = false
 }
+function cancelOwn() { if (ownPhoto.value?.preview) URL.revokeObjectURL(ownPhoto.value.preview); ownPhoto.value = null }
 async function saveOwn() {
   if (!ownPhoto.value || !ownConsent.value || ownBusy.value) return
   ownBusy.value = true
@@ -267,13 +275,17 @@ async function saveOwn() {
   }
 }
 
+// One chat however many first actions race (Rewrite and Send both create it on a new page).
+let creating = null
 async function ensureChat() {
   if (chatId.value) return chatId.value
-  const { data } = await api.post('/ugc/chats')
-  chatId.value = data.data.id
-  chat.value = data.data
-  router.replace({ name: 'ugc-chat', params: { chatId: chatId.value } })
-  return chatId.value
+  creating ??= api.post('/ugc/chats').then(({ data }) => {
+    chatId.value = data.data.id
+    chat.value = data.data
+    router.replace({ name: 'ugc-chat', params: { chatId: chatId.value } })
+    return chatId.value
+  }).finally(() => { creating = null })
+  return creating
 }
 
 async function rewrite() {
@@ -281,9 +293,10 @@ async function rewrite() {
   rewriteState.value = 'busy'
   try {
     const id = await ensureChat()
-    const { data } = await api.post(`/ugc/chats/${id}/rewrite`, { script: text.value.trim().replace(/^["“'‘]|["”'’]$/g, '') })
-    text.value = `"${data.data.script}"`
-    rewriteState.value = 'done'
+    const asked = text.value
+    const { data } = await api.post(`/ugc/chats/${id}/rewrite`, { script: asked.trim().replace(/^["“'‘]|["”'’]$/g, '') })
+    // Only if the box still holds what was rewritten (it may have been sent or edited meanwhile).
+    if (text.value === asked) { text.value = `"${data.data.script}"`; rewriteState.value = 'done' } else rewriteState.value = ''
   } catch (err) {
     rewriteState.value = ''
     error.value = apiErrorMessage(err, 'Could not rewrite it just now.')
@@ -292,7 +305,7 @@ async function rewrite() {
 
 async function send(override = null) {
   const body = override ?? text.value.trim()
-  if (sending.value || hasUploading.value) return
+  if (sending.value || hasUploading.value || rewriteState.value === 'busy') return
   if (!override && !canSend.value) return
   error.value = ''
   sending.value = true
@@ -309,21 +322,32 @@ async function send(override = null) {
     scrollDown()
     const { data } = await api.post(`/ugc/chats/${id}/messages`, {
       text: body, attachments, link: sentLink, type: type.value, length: length.value,
-      presenters: presenters.value.map(p => ({ character_id: p.character_id, voice: p.voice })),
+      // Only once the presenters are known: before the actor list loads they look empty and would wipe the chat's.
+      ...(presentersKnown() ? { presenters: presenters.value.map(p => ({ character_id: p.character_id, voice: p.voice })) } : {}),
     }, { timeout: 180000 })
+    if (id !== chatId.value) return // the user moved to another chat meanwhile
     chat.value = data.data.chat
     if (data.data.chat?.state?.type) type.value = data.data.chat.state.type
     confirmFor.value = null
     loadRecent()
   } catch (err) {
-    error.value = apiErrorMessage(err, 'That did not go through. Try again.')
-    if (chatId.value) await load()
+    if (notAvailable(err)) return
+    // A slow reply may still land: keep watching for it rather than inviting a duplicate.
+    error.value = err?.code === 'ECONNABORTED' ? 'Still thinking. The reply will appear here.' : apiErrorMessage(err, 'That did not go through. Try again.')
+    if (chatId.value) { await load(); if (last.value?.role === 'user') awaitReply() }
   } finally {
     sending.value = false
     scrollDown()
     schedulePoll()
   }
 }
+function awaitReply(tries = 24) {
+  clearTimeout(poll)
+  poll = setTimeout(async () => { await load(); if (last.value?.role === 'user' && tries > 1) awaitReply(tries - 1); else { error.value = ''; scrollDown(); schedulePoll() } }, 5000)
+}
+function presentersKnown() { return presentersTouched || !(chat.value?.state?.presenters?.length) || restoredPresenters }
+let presentersTouched = false
+let restoredPresenters = false
 
 function canMake(m) { return m.kind === 'pitch' && !m.payload?.made && m.id === lastPitchId.value }
 const lastPitchId = computed(() => [...messages.value].reverse().find(m => m.kind === 'pitch')?.id)
@@ -334,6 +358,7 @@ async function make(m) {
   making.value = true
   error.value = ''
   try {
+    if (sending.value) return
     const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true }, { timeout: 120000 })
     chat.value = data.data.chat
     confirmFor.value = null
@@ -377,6 +402,7 @@ async function retryRun(m, ri) {
 }
 // Download hands over the finished file (captions burned in): the take's export, started here when there is none yet.
 const finishing = ref({})
+const ready = ref({})
 async function download(run) {
   const t = takeOf(run)
   if (!t || finishing.value[t.id]) return
@@ -384,18 +410,22 @@ async function download(run) {
   error.value = ''
   try {
     // The finished file is made once the take is ready (initial finishing); ask for it if it has not started yet.
+    // The newest export is the one to wait on (an older completed one may predate a revision).
     let job = null
     for (let i = 0; i < 120; i++) {
       const jobs = (await api.get(`/projects/${t.id}/exports`)).data?.data?.export_jobs ?? []
-      job = jobs.find(j => j.status === 'completed') ?? jobs.find(j => j.status !== 'failed') ?? null
+      job = jobs[0] ?? null
       if (!job && i === 0) job = (await api.post(`/projects/${t.id}/export`, { initial: true })).data?.data?.export_job ?? null
-      if (job?.status === 'completed') break
+      if (!job && i > 2) throw new Error('This video could not be finished here. Open it with Review & share.')
+      if (job?.status === 'completed' || job?.status === 'failed') break
       await new Promise(r => setTimeout(r, 3000))
-      if (disposed) return
+      if (disposed || takeOf(run)?.id !== t.id) return
     }
+    if (job?.status === 'failed') throw new Error(job.failure_reason || 'The video could not be finished. Try again.')
     const url = job?.status === 'completed' ? job.output_asset?.storage_url : null
-    if (!url) throw new Error(job?.failure_reason || 'The video could not be finished. Try again.')
-    window.open(url, '_blank', 'noopener')
+    if (!url) throw new Error('The video is taking long to finish. Try again in a minute.')
+    // A link the user clicks: a window opened after this long wait would be blocked as a pop-up.
+    ready.value = { ...ready.value, [t.id]: url }
   } catch (err) {
     error.value = err?.response ? apiErrorMessage(err, 'Could not prepare the download.') : err.message
   } finally {
@@ -416,12 +446,14 @@ function isLatest(m) { return last.value?.id === m.id }
 
 async function load() {
   if (!chatId.value) return
+  const id = chatId.value
   try {
-    const { data } = await api.get(`/ugc/chats/${chatId.value}`)
-    if (disposed) return
+    const { data } = await api.get(`/ugc/chats/${id}`)
+    if (disposed || id !== chatId.value) return
     chat.value = data.data
     restoreSettings()
   } catch (err) {
+    if (notAvailable(err)) return
     if (err?.response?.status === 404) { router.replace({ name: 'ugc-new' }); return }
     error.value = apiErrorMessage(err, 'Could not load this chat.')
   }
@@ -438,6 +470,7 @@ function restoreSettings() {
 function restorePresenters() {
   const s = chat.value?.state
   if (!s?.presenters?.length || presenters.value.length || !characters.value.length) return
+  restoredPresenters = true
   presenters.value = s.presenters.map(p => {
     const c = p.character_id ? byId.value.get(p.character_id) : null
     return { key: crypto.randomUUID(), character_id: p.character_id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice: p.voice ?? null }
@@ -449,20 +482,38 @@ function schedulePoll() {
   poll = setTimeout(async () => { await load(); schedulePoll() }, 8000)
 }
 function scrollDown() { nextTick(() => { if (thread.value) thread.value.scrollTop = thread.value.scrollHeight }) }
-function onKey(e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() } }
+// Enter sends, except mid-composition (Safari reports keyCode 229 there) and on touch screens, where Enter is a newline.
+const touch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+function onKey(e) {
+  if (e.key === 'Escape') { menu.value = ''; return }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && !touch) { e.preventDefault(); send() }
+}
 function focusPrompt() { prompt.value?.focus() }
 
 watch(() => route.params.chatId, id => {
   if ((id || null) === chatId.value) return
-  chatId.value = id || null; chat.value = null; restored = false; presenters.value = []; type.value = 'auto'; length.value = null
+  clearTimeout(poll)
+  chatId.value = id || null; chat.value = null; restored = false; restoredPresenters = false; presentersTouched = false; presenters.value = []; type.value = 'auto'; length.value = null
   if (id) load().then(() => { scrollDown(); schedulePoll() })
 })
 
+// Staff-only until UGC_CHAT_OPEN_TO_ALL: everyone else makes UGC with the step-by-step form. Capabilities load after
+// the page on a hard load, so this is checked when they arrive, and on the API's own answer.
+function notAvailable(err) {
+  if (err?.response?.status === 404 && err?.response?.data?.error?.code === 'not_available') { router.replace({ name: 'ugc-wizard' }); return true }
+  return false
+}
+watch(() => workspaceStore.capabilities, caps => {
+  if (!caps || disposed) return
+  if (caps.ugc_ads === false) router.replace({ name: 'ugc-ads' })
+  else if (caps.ugc_chat === false) router.replace({ name: 'ugc-wizard' })
+}, { immediate: true })
+
 onMounted(async () => {
-  if (!canUgc.value) { router.replace({ name: 'ugc-ads' }); return }
-  // Staff-only until UGC_CHAT_OPEN_TO_ALL: everyone else makes UGC with the step-by-step form.
-  if (workspaceStore.capabilities?.ugc_chat === false) { router.replace({ name: 'ugc-wizard' }); return }
+  if (workspaceStore.capabilities && !canUgc.value) return
+  if (workspaceStore.capabilities?.ugc_chat === false) return
   document.addEventListener('pointerdown', closeMenus)
+  document.addEventListener('keydown', escMenus)
   loadBalance(); loadCharacters(); loadRecent()
   if (chatId.value) { await load(); scrollDown(); schedulePoll() }
 })
@@ -470,6 +521,8 @@ onBeforeUnmount(() => {
   disposed = true
   clearTimeout(poll)
   document.removeEventListener('pointerdown', closeMenus)
+  document.removeEventListener('keydown', escMenus)
+  if (ownPhoto.value?.preview) URL.revokeObjectURL(ownPhoto.value.preview)
   uploads.value.forEach(u => u.preview && URL.revokeObjectURL(u.preview))
 })
 </script>
@@ -478,7 +531,7 @@ onBeforeUnmount(() => {
   <div class="uc-shell" @dragover.prevent @drop.prevent="onDrop">
     <AppSidebar :user="authStore.user" active-page="ugc-ads" @logout="authStore.logout()" />
     <main class="uc-main">
-      <header class="uc-top topbar">
+      <header class="uc-top">
         <div class="uc-crumb"><router-link :to="{ name: 'ugc-ads' }">UGC Ads</router-link> / <b>{{ title }}</b></div>
         <div class="uc-top-r">
           <router-link class="uc-ghost" :to="{ name: 'ugc-ads' }">My ads</router-link>
@@ -546,7 +599,7 @@ onBeforeUnmount(() => {
                   <span><b>{{ m.payload.takes.length }} video{{ m.payload.takes.length === 1 ? '' : 's' }}</b> · <b>{{ m.payload.credits }}</b> credits</span>
                   <template v-if="canMake(m)">
                     <router-link v-if="short(m)" class="uc-btn" :to="{ name: 'plans' }">Top up · you have {{ balance }}</router-link>
-                    <button v-else-if="confirmFor !== m.id" type="button" class="uc-btn uc-btn--primary" @click="startMake(m)">Make it</button>
+                    <button v-else-if="confirmFor !== m.id" type="button" class="uc-btn uc-btn--primary" :disabled="sending" @click="startMake(m)">Make it</button>
                   </template>
                   <span v-else-if="m.payload.made" :class="['uc-pitch-state', 'is-' + pitchState(m)]">{{ { making: 'Making…', ready: 'Made', failed: 'Needs a look' }[pitchState(m)] }}</span>
                 </div>
@@ -573,7 +626,8 @@ onBeforeUnmount(() => {
                       <h3>Your video is ready</h3>
                       <p class="uc-muted">{{ run.name }} · {{ takeOf(run)?.credits ?? run.credits }} credits</p>
                       <div class="uc-ready-btns">
-                        <button type="button" class="uc-btn uc-btn--primary" :disabled="!!finishing[takeOf(run)?.id]" @click="download(run)">{{ finishing[takeOf(run)?.id] || 'Download' }}</button>
+                        <a v-if="ready[takeOf(run)?.id]" class="uc-btn uc-btn--primary" :href="ready[takeOf(run)?.id]" target="_blank" rel="noopener" download>Save video</a>
+                        <button v-else type="button" class="uc-btn uc-btn--primary" :disabled="!!finishing[takeOf(run)?.id]" @click="download(run)">{{ finishing[takeOf(run)?.id] || 'Download' }}</button>
                         <button type="button" class="uc-btn" @click="openReview(run)">Review & share</button>
                         <button type="button" class="uc-btn" @click="openEditor(run)">Fine-tune in editor</button>
                       </div>
@@ -608,7 +662,7 @@ onBeforeUnmount(() => {
             <button type="button" class="uc-btn" @click="linkOpen = false">Cancel</button>
             <button type="button" class="uc-btn uc-btn--primary" @click="saveLink">Add link</button>
           </div>
-          <textarea id="ugc-prompt" ref="prompt" v-model="text" rows="2" :placeholder="placeholder" :disabled="sending" @keydown="onKey" @paste="onPaste"></textarea>
+          <textarea id="ugc-prompt" ref="prompt" v-model="text" rows="2" aria-label="Describe your ad" :placeholder="placeholder" :disabled="sending" @keydown="onKey" @paste="onPaste"></textarea>
           <div v-if="showRewrite" class="uc-rewrite">
             <span><b>✦ Rewrite with AI?</b> A sharper first line, same length and meaning.</span>
             <span class="uc-rewrite-btns">
@@ -639,7 +693,7 @@ onBeforeUnmount(() => {
                 </div>
                 <p v-if="!presenters.length" class="uc-muted uc-pad">None chosen: we pick who fits your product, and the model sets the voice from your prompt.</p>
                 <div v-for="p in presenters" :key="p.key" :class="['uc-pres', { 'is-open': expanded === p.key }]">
-                  <div class="uc-pres-h" @click="expanded = expanded === p.key ? null : p.key">
+                  <div class="uc-pres-h" role="button" tabindex="0" :aria-expanded="expanded === p.key" :aria-label="`${p.name} voice settings`" @click="expanded = expanded === p.key ? null : p.key" @keydown.enter.prevent="expanded = expanded === p.key ? null : p.key" @keydown.space.prevent="expanded = expanded === p.key ? null : p.key">
                     <img v-if="p.image" :src="p.image" alt="" /><span v-else class="uc-spark uc-spark--lg">✦</span>
                     <span class="uc-pres-t"><b>{{ p.name }}</b><small>{{ voiceText(p) }}</small></span>
                     <span class="uc-caret">{{ expanded === p.key ? '▴' : '▾' }}</span>
@@ -696,7 +750,7 @@ onBeforeUnmount(() => {
                     <input v-model="ownName" maxlength="120" placeholder="Their name (optional)" />
                     <label><input v-model="ownConsent" type="checkbox" /> I have the rights and consent to use this person's likeness.</label>
                     <div class="uc-consent-row">
-                      <button type="button" class="uc-btn uc-btn--sm" @click="ownPhoto = null">Cancel</button>
+                      <button type="button" class="uc-btn uc-btn--sm" @click="cancelOwn">Cancel</button>
                       <button type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="!ownConsent || ownBusy" @click="saveOwn">{{ ownBusy ? 'Adding…' : 'Add presenter' }}</button>
                     </div>
                   </div>
@@ -735,8 +789,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.uc-shell { display: flex; height: 100vh; background: var(--color-bg-deep); color: var(--color-text-primary); }
-.uc-main { margin-left: var(--sidebar-width, 220px); flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
+.uc-shell { display: flex; height: 100vh; height: 100dvh; background: var(--color-bg-deep); color: var(--color-text-primary); }
+.uc-main { margin-left: var(--sidebar-width, 220px); flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .uc-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--color-border); }
 .uc-crumb { font-size: 14px; color: var(--color-text-muted); }
 .uc-crumb a { color: inherit; text-decoration: none; }
@@ -910,7 +964,9 @@ onBeforeUnmount(() => {
   .uc-dock { padding: 8px 16px 12px; }
   .uc-bubble { max-width: 88%; }
   .uc-pitch-img { width: 64px; height: 114px; }
-  .uc-pop { position: fixed; left: 16px; right: 16px; bottom: 140px; width: auto; }
+  .uc-pop { position: fixed; left: 16px; right: 16px; top: calc(60px + env(safe-area-inset-top)); bottom: auto; width: auto; max-height: calc(100dvh - 300px); }
+  .uc-top { padding: 10px 16px; }
+  .uc-crumb { display: none; }
   .uc-type { grid-template-columns: 1fr; }
 }
 </style>

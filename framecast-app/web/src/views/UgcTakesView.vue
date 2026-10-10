@@ -75,7 +75,7 @@ async function load() {
 function open(take) {
   // Made in the UGC chat: it lives in its chat (download, share, fine-tune, change by chat). The review page is for
   // takes made before the chat.
-  if (take.chat_id) return router.push({ name: "ugc-chat", params: { chatId: take.chat_id } });
+  if (take.chat_id && workspaceStore.capabilities?.ugc_chat !== false) return router.push({ name: "ugc-chat", params: { chatId: take.chat_id } });
   router.push(
     take.status === "ready_for_review"
       ? { name: "ugc-review", params: { projectId: take.id } }

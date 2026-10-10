@@ -210,11 +210,14 @@ async function applyRevision() {
   }
 }
 
+let seenRunning = false;
 async function refreshStatus() {
   clearTimeout(revisionTimer);
   // "Pending" includes "not checked yet": only work this page saw running counts as just finished. The first check
-  // used to reload the previews, which swapped the player out from under a click on play (2026-10-10).
-  const wasPending = statusKnown.value && workPending.value;
+  // used to reload the previews, which swapped the player out from under a click on play (2026-10-10). seenRunning
+  // stays set through a failed check, so a finish in that gap still reloads.
+  if (statusKnown.value && workPending.value) seenRunning = true;
+  const wasPending = seenRunning;
   try {
     const { data } = await api.get("/ugc/takes", { params: { project_id: projectId.value, detail: 1 } });
     take.value = data?.data?.takes?.[0] ?? null;
@@ -224,6 +227,7 @@ async function refreshStatus() {
     if (!await loadHistory()) statusKnown.value = false;
     if (workPending.value) exportJob.value = null;
     if (wasPending && !workPending.value) {
+      seenRunning = false;
       previews.value = {};
       const { data: projectData } = await api.get(`/projects/${projectId.value}`);
       scenes.value = (projectData?.data?.scenes ?? []).slice().sort((a,b) => a.scene_order - b.scene_order);
