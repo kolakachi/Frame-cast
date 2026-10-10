@@ -422,7 +422,7 @@ onBeforeUnmount(() => {
           <p>Add your product, a link, a sample ad you like and your script, in any order. Pick a presenter or let us. We ask only what we can't work out, then make one video. You see the price first.</p>
           <div v-if="stock.length" class="uc-faces">
             <span class="uc-face-row"><img v-for="c in stock.slice(0, 5)" :key="c.id" :src="imageOf(c)" alt="" /></span>
-            <span>{{ stock.length }}+ actors, your photo or your characters</span>
+            <span>{{ stock.length }} actors, your photo or your characters</span>
           </div>
           <div v-if="recent.length" class="uc-recent">
             <span class="uc-label">Pick up where you left off</span>

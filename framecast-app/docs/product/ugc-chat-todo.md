@@ -37,7 +37,6 @@ assembly stays simple, motion graphics stay in Create.
 | D-REWRITE | Rewrite with AI is free (built that way) | owner OK |
 | D-CHAR | Saved characters come from Library → Characters (recommended) | owner OK |
 | LIVE | A real paid make from the chat on prod after deploy (Make it, making, ready, Download, Review & share, Fine-tune) | after push |
-| STOCK-UI | Stock actors in the presenter picker and the hero faces: local has no stock actors, so only seen with own characters | look on prod |
 
 ## 3. Other open items from 2026-10-10 (not UGC chat)
 
@@ -49,6 +48,8 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 Stock actors (38) imported from prod into local (photos into local MinIO) so the picker can be checked locally.
 
 - 2026-10-10 Phase 2 chat screen (`/ugc-ads/new`, `/ugc-ads/chat/:id`; old form at `/ugc-ads/wizard`): one prompt box
   with Create-style pills (photos, footage, sample, link; drop and paste), presenter popover (Let us pick, upload a photo
