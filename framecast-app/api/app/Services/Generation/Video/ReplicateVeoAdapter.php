@@ -125,8 +125,13 @@ class ReplicateVeoAdapter
         $id = (string) data_get($response->json(), 'id');
         if (! $response->successful() || $id === '') {
             $why = 'Veo submit failed: '.mb_substr($response->body(), 0, 200);
+            // Our Replicate account running dry or misconfigured alerts the team at once (2026-10-10: it ran out with
+            // nobody told, and every UGC video failed).
+            \App\Services\Vendors\VendorAlerts::observe('replicate', $why, $response->status(), ['kind' => 'video:'.$engine]);
             throw \App\Services\Generation\ProviderFailed::rejectedAtStart($response->status()) ? new \App\Services\Generation\ProviderFailed($why) : new \RuntimeException($why);
         }
+
+        \App\Services\Vendors\VendorAlerts::recovered('replicate');
 
         return $id;
     }

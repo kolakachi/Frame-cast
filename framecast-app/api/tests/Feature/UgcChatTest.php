@@ -28,6 +28,7 @@ class UgcChatTest extends TestCase
         ]]);
         DB::purge('ugc_chat_test');
         Bus::fake();
+        config(['services.ugc.chat_open_to_all' => true]);
         foreach (['characters' => ['workspace_id', 'name', 'description', 'status', 'is_stock', 'reference_asset_id', 'gender'],
             'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'duration_seconds']] as $table => $cols) {
             Schema::create($table, function (Blueprint $t) use ($cols) { $t->id(); foreach ($cols as $c) $t->text($c)->nullable(); $t->timestamps(); });
@@ -158,5 +159,28 @@ class UgcChatTest extends TestCase
         $own = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'It is me, use my face', 'type' => 'founder_story',
             'presenters' => [['character_id' => 6]]])->assertOk()->json('data.reply');
         $this->assertSame(['pitch', 'founder_story'], [$own['kind'], $own['payload']['type']]);
+    }
+
+    public function test_while_staff_only_only_the_team_gets_the_chat(): void
+    {
+        $this->withoutMiddleware();
+        config(['services.ugc.chat_open_to_all' => false, 'create.allowed_domains' => ['wyvstudio.com']]);
+        $customer = $this->user()->forceFill(['email' => 'shopper@example.com', 'role' => 'owner']);
+        $team = $this->user()->forceFill(['email' => 'hello@wyvstudio.com', 'role' => 'owner']);
+        $this->actingAs($customer)->postJson('/api/v1/ugc/chats')->assertNotFound();
+        $this->actingAs($customer)->getJson('/api/v1/ugc/chats')->assertNotFound();
+        $this->actingAs($team)->postJson('/api/v1/ugc/chats')->assertCreated();
+        config(['services.ugc.chat_allowed_emails' => ['shopper@example.com']]);
+        $this->actingAs($customer)->postJson('/api/v1/ugc/chats')->assertCreated();
+        config(['services.ugc.chat_allowed_emails' => []]);
+        config(['services.ugc.chat_open_to_all' => true]);
+        $this->actingAs($customer)->postJson('/api/v1/ugc/chats')->assertCreated();
+    }
+
+    public function test_types_not_offered_yet_are_refused(): void
+    {
+        $this->withoutMiddleware();
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A skit', 'type' => 'skit'])->assertStatus(422);
     }
 }

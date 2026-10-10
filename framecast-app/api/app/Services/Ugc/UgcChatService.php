@@ -24,6 +24,9 @@ final class UgcChatService
 {
     public const TYPES = ['testimonial', 'problem_solution', 'green_screen', 'before_after', 'unboxing', 'comparison', 'pov_hook',
         'asmr', 'day_in_life', 'skit', 'listicle', 'founder_story', 'reaction'];
+    /** Types listed but not offered yet (owner, 2026-10-10 go-live): skit needs every person cast first; POV hook and
+     *  reaction are composed and not yet re-proven. The director never picks them and the API refuses them. */
+    public const SOON = ['skit', 'pov_hook', 'reaction'];
     private const NOT_FOUNDER = 'Make it a testimonial instead';
     /** Everyday outfits that suit any presenter; each ad gets one this workspace has not used lately. */
     private const WARDROBE = ['a rust ribbed knit sweater', 'a white cotton tee under an open light-wash denim shirt', 'a soft sage green hoodie',
@@ -35,6 +38,17 @@ final class UgcChatService
         'deadpan' => 'Dry and deadpan, understated'];
 
     public function __construct(private AIGenerationAdapter $ai, private CreditService $credits) {}
+
+    /** Everyone once UGC_CHAT_OPEN_TO_ALL is on; until then the team (Create's allowed addresses and domains) and super admins. */
+    public static function allowed(User $user): bool
+    {
+        if (config('services.ugc.chat_open_to_all')) return true;
+        if (in_array($user->role, ['super_admin', 'platform_admin'], true)) return true;
+        $email = strtolower(trim((string) $user->email));
+        return $email !== '' && (in_array($email, (array) config('services.ugc.chat_allowed_emails', []), true)
+            || in_array($email, (array) config('create.allowed_emails', []), true)
+            || in_array(substr(strrchr($email, '@') ?: '', 1), (array) config('create.allowed_domains', []), true));
+    }
 
     public function create(User $user): string
     {
@@ -134,7 +148,7 @@ final class UgcChatService
     /** Turn the director's pitch into the existing UGC plan, one take per presenter, each priced by the pipeline's own rules. */
     private function pitch(Request $request, string $id, array $state, array $d): array
     {
-        $type = in_array($d['type'] ?? null, self::TYPES, true) ? $d['type'] : 'testimonial';
+        $type = in_array($d['type'] ?? null, self::TYPES, true) && ! in_array($d['type'], self::SOON, true) ? $d['type'] : 'testimonial';
         if (in_array($state['type'] ?? 'auto', self::TYPES, true)) $type = $state['type'];
         // A founder story is told by the founder (owner, 2026-10-10): an actor saying "I made this" for a real brand
         // deceives. It needs the user's own face, an uploaded photo or a saved character, on every presenter.
@@ -459,6 +473,9 @@ final class UgcChatService
             $response = $action(app(UgcController::class), $inner);
         } catch (ValidationException $e) {
             return ['error' => ['code' => 'validation_failed', 'message' => collect($e->errors())->flatten()->first() ?? 'Invalid request.']];
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            // A refusal such as "our video service is down" reaches the chat as said, not as a crash.
+            return ['error' => ['code' => 'refused', 'message' => $e->getMessage() ?: 'The request was refused.']];
         }
         $body = $response->getData(true);
         if ($response->getStatusCode() >= 400) return ['error' => $body['error'] ?? ['code' => 'ugc_refused', 'message' => 'The request was refused.']];

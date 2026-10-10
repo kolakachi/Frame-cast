@@ -56,6 +56,12 @@ assembly stays simple, motion graphics stay in Create.
 
 ## Done
 
+- 2026-10-10 Go-live blockers: saved one-take clips and recipes moved off the public media bucket to the private disk
+  (api_private on prod); Replicate running dry now alerts the team (video submits and the chat's AI calls report to
+  VendorAlerts) and UGC refuses new videos with a clear message while it is down; skit, POV hook and reaction marked
+  Soon (never picked, refused); the chat is staff-only until UGC_CHAT_OPEN_TO_ALL (team domains/emails, super admins,
+  UGC_CHAT_ALLOWED_EMAILS), everyone else keeps the step-by-step form.
+
 - 2026-10-10 Second review: the phone is the camera and never in frame (a mirror-selfie phone floated while both hands
   rubbed lotion); two-handed actions use a propped camera. A new shot's references are presenter + the previous
   shot's last frame + product (hair came back different after a cutaway), and its silent lead-in is trimmed. Clip ends

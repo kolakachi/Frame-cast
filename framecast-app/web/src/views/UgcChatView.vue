@@ -38,6 +38,8 @@ const TYPES = [
   ['reaction', 'Reaction', 'A silent reaction with a headline'],
 ]
 const TYPE_LABEL = Object.fromEntries(TYPES.map(([k, l]) => [k, l]))
+// Listed, not offered yet (the API refuses them): skit needs every person cast first; POV hook and reaction come next.
+const SOON = ['skit', 'pov_hook', 'reaction']
 const PACE = [['slower', 'Slower'], ['natural', 'Natural'], ['faster', 'Faster']]
 const DELIVERY = [['friendly', 'Friendly'], ['excited', 'Excited'], ['calm', 'Calm expert'], ['deadpan', 'Deadpan']]
 const LABEL = Object.fromEntries([...PACE, ...DELIVERY])
@@ -458,6 +460,8 @@ watch(() => route.params.chatId, id => {
 
 onMounted(async () => {
   if (!canUgc.value) { router.replace({ name: 'ugc-ads' }); return }
+  // Staff-only until UGC_CHAT_OPEN_TO_ALL: everyone else makes UGC with the step-by-step form.
+  if (workspaceStore.capabilities?.ugc_chat === false) { router.replace({ name: 'ugc-wizard' }); return }
   document.addEventListener('pointerdown', closeMenus)
   loadBalance(); loadCharacters(); loadRecent()
   if (chatId.value) { await load(); scrollDown(); schedulePoll() }
@@ -705,7 +709,7 @@ onBeforeUnmount(() => {
               <button type="button" class="uc-pill" @click="toggleMenu('type')"><span class="uc-muted">Type:</span> {{ TYPE_LABEL[type] }} <span class="uc-caret">▾</span></button>
               <div v-if="menu === 'type'" class="uc-pop uc-pop--type">
                 <span class="uc-label uc-pad">UGC type</span>
-                <button v-for="[k, l, d] in TYPES" :key="k" type="button" :class="['uc-type', { on: type === k }]" @click="type = k; menu = ''"><b>{{ l }}<template v-if="type === k"> ✓</template></b><span>{{ d }}</span></button>
+                <button v-for="[k, l, d] in TYPES" :key="k" type="button" :class="['uc-type', { on: type === k, soon: SOON.includes(k) }]" :disabled="SOON.includes(k)" @click="type = k; menu = ''"><b>{{ l }}<template v-if="type === k"> ✓</template><em v-if="SOON.includes(k)" class="uc-soon">Soon</em></b><span>{{ d }}</span></button>
               </div>
             </div>
 
@@ -850,6 +854,9 @@ onBeforeUnmount(() => {
 .uc-pop--add button span, .uc-type span { font-size: 12px; color: var(--color-text-muted); }
 .uc-pop--add button:hover, .uc-type:hover, .uc-type.on { background: var(--color-bg-card); }
 .uc-pop--type { width: 340px; }
+.uc-type.soon { opacity: .5; cursor: default; }
+.uc-type.soon:hover { background: transparent; }
+.uc-soon { margin-left: 6px; font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--color-border-active); color: var(--color-text-muted); }
 .uc-type { grid-template-columns: 130px 1fr; gap: 10px; font-size: 13px; }
 .uc-pop--shape { width: 240px; }
 .uc-pop--shape .uc-type { grid-template-columns: 1fr; }

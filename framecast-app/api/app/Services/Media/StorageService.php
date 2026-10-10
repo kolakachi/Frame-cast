@@ -42,12 +42,6 @@ class StorageService
 
     // ── Deletes ──────────────────────────────────────────────────────────────
 
-    /** Delete everything under a MinIO folder (a take's saved one-take segments). */
-    public function deleteDirectory(string $path): void
-    {
-        Storage::disk(self::MINIO)->deleteDirectory($path);
-    }
-
     /**
      * Delete a file from storage. Only acts on managed URLs (minio:// / b2://).
      * External HTTP URLs are silently ignored (we don't own them).

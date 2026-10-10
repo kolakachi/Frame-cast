@@ -437,6 +437,8 @@ class UgcController extends Controller
 
     public function generate(Request $request): JsonResponse
     {
+        // While our video vendor account is down, say so rather than start videos that cannot finish.
+        \App\Services\Vendors\VendorAlerts::assertUp(['replicate']);
         if ($gate = $this->ugcGate($request)) {
             return $gate;
         }
@@ -950,6 +952,8 @@ class UgcController extends Controller
 
     public function generateOneShot(Request $request, \App\Services\CreditService $creditService): JsonResponse
     {
+        // While our video vendor account is down, say so rather than start videos that cannot finish.
+        \App\Services\Vendors\VendorAlerts::assertUp(['replicate']);
         if ($gate = $this->ugcGate($request)) {
             return $gate;
         }

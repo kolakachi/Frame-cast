@@ -107,6 +107,13 @@ return [
     // model quality shows in the finished video. Templates that pass images
     // (visual_reference_style, transcribe_document_page, script_from_images)
     // MUST stay off this list — the Replicate text adapter has no vision path.
+    // The UGC chat (2026-10-10): staff-only until this is on; everyone else keeps the step-by-step form.
+    'ugc' => [
+        'chat_open_to_all' => (bool) env('UGC_CHAT_OPEN_TO_ALL', false),
+        // Named accounts that get the chat while it is staff-only (comma-separated), e.g. the canary account.
+        'chat_allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('UGC_CHAT_ALLOWED_EMAILS', ''))))),
+    ],
+
     'ai' => [
         'premium_model'  => env('AI_PREMIUM_MODEL', 'anthropic/claude-sonnet-5'),
         'premium_effort' => env('AI_PREMIUM_EFFORT', 'medium'),

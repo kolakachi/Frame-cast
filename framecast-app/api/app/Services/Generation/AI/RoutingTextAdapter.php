@@ -23,6 +23,8 @@ class RoutingTextAdapter implements AIGenerationAdapter
 
                 return $result;
             } catch (\Throwable $e) {
+                // The fallback keeps users working; our account running dry still alerts the team.
+                \App\Services\Vendors\VendorAlerts::observe('replicate', $e->getMessage(), null, ['kind' => 'text:'.$promptTemplateKey]);
                 \Illuminate\Support\Facades\Log::warning('premium text model fell back to cheap tier', [
                     'template' => $promptTemplateKey,
                     'error' => mb_substr($e->getMessage(), 0, 200),

@@ -15,6 +15,7 @@ class UgcChatController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
         // A chat with no pitch yet is named by its first message, so unfinished chats can be told apart.
         $rows = DB::table('ugc_chats')->where('workspace_id', $request->user()->workspace_id)->orderByDesc('updated_at')->limit(30)
             ->get(['id', 'title', 'updated_at'])->map(fn ($c) => ['id' => $c->id, 'updated_at' => $c->updated_at, 'title' => $c->title
@@ -33,6 +34,7 @@ class UgcChatController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
+        if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
         return response()->json(['data' => $this->chats->show($request, $id), 'meta' => []]);
     }
 
@@ -51,7 +53,7 @@ class UgcChatController extends Controller
             'presenters.*.voice.pace' => ['nullable', 'string', 'in:slower,natural,faster'],
             'presenters.*.voice.delivery' => ['nullable', 'string', 'in:friendly,excited,calm,deadpan'],
             'presenters.*.voice.direction' => ['nullable', 'string', 'max:300'],
-            'type' => ['sometimes', 'string', 'in:auto,'.implode(',', UgcChatService::TYPES)],
+            'type' => ['sometimes', 'string', 'in:auto,'.implode(',', array_diff(UgcChatService::TYPES, UgcChatService::SOON))],
             'aspect' => ['sometimes', 'string', 'in:9:16,1:1,16:9'],
             'length' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:60'],
         ]);
@@ -85,9 +87,10 @@ class UgcChatController extends Controller
         return response()->json(['data' => ['script' => $this->chats->rewrite($request, $id, $v['script'])], 'meta' => []]);
     }
 
-    /** The same plan gate as the UGC wizard: UGC is a paid-plan feature. */
+    /** The same plan gate as the UGC wizard: UGC is a paid-plan feature. While staff-only, others get the wizard. */
     private function gate(Request $request): ?JsonResponse
     {
+        if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
         return app(\App\Services\CreditService::class)->limitFor((int) $request->user()->workspace_id, 'ugc_ads') ? null
             : $this->error('upgrade_required', 'UGC ads are available on paid plans. Upgrade to start making them.', 402);
     }

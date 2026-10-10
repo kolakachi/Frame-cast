@@ -34,6 +34,7 @@ class UgcOneShotResumeTest extends TestCase
         ]]);
         DB::purge('oneshot_test');
         Bus::fake();
+        Storage::fake('local');
         Storage::fake('minio');
         foreach ([
             'projects' => ['workspace_id', 'created_by_user_id', 'title', 'aspect_ratio', 'duration_target_seconds', 'status', 'source_type', 'visual_brief'],
@@ -101,7 +102,8 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertStringContainsString('refused', $s['last_error']);
         $this->assertSame([0, 1], array_column($s['oneshot_parts'], 'i'), 'the two finished clips are kept');
         $this->assertSame([], $this->charged, 'a failure charges nothing');
-        $this->assertCount(3, Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'recipe and two clips');
+        $this->assertCount(3, Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'recipe and two clips');
+        $this->assertSame([], Storage::disk('minio')->allFiles(), 'nothing of a run (the recipe holds the presenter\'s photo) goes near the public media bucket');
 
         $this->failOn = null;
         $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
@@ -119,7 +121,7 @@ class UgcOneShotResumeTest extends TestCase
         $asset = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
         $this->assertSame('Okay', data_get($asset->metadata_json, 'caption_timing.words.0.word'), 'captions are timed from the video\'s own speech');
         $this->assertSame('ready_for_review', Project::query()->find(7)->status);
-        $this->assertSame([], Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'saved clips go once delivered');
+        $this->assertSame([], Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'saved clips go once delivered');
         $this->assertArrayNotHasKey('oneshot_parts', $this->settings());
     }
 
@@ -151,17 +153,17 @@ class UgcOneShotResumeTest extends TestCase
         $this->failOn = 3;
         $this->run_($this->job());
         $this->artisan('ugc:prune-oneshot-parts')->assertSuccessful();
-        $this->assertNotEmpty(Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'kept within the week');
+        $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'kept within the week');
 
         DB::table('scenes')->where('id', 70)->update(['updated_at' => now()->subDays(GenerateOneShotUgcJob::PARTS_DAYS + 1)]);
         $this->artisan('ugc:prune-oneshot-parts')->assertSuccessful();
-        $this->assertSame([], Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
+        $this->assertSame([], Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
 
         $this->failOn = $this->starts + 3;
         $this->run_($this->job());
-        $this->assertNotEmpty(Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
+        $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
         Project::query()->find(7)->delete();
-        $this->assertSame([], Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
+        $this->assertSame([], Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
     }
 
     public function test_two_retries_start_one_run_and_a_superseded_run_never_charges(): void
@@ -199,7 +201,7 @@ class UgcOneShotResumeTest extends TestCase
         $this->failOn = 3;
         $this->run_($this->job());
         $parts = $this->settings()['oneshot_parts'];
-        Storage::disk('minio')->delete(substr(collect($parts)->firstWhere('i', 0)['url'], strlen('minio://')));
+        Storage::disk('local')->delete(collect($parts)->firstWhere('i', 0)['url']);
         $this->failOn = null;
         $startsBefore = $this->starts;
         $this->run_($this->job());

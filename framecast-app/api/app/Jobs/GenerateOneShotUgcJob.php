@@ -87,7 +87,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // the old clip's last frame and would not join the new one.
             $reuse = [];
             foreach (array_keys($this->chunks) as $i) {
-                $bytes = isset($saved[$i]) ? $storage->get($saved[$i]['url']) : null;
+                $bytes = isset($saved[$i]) ? self::parts()->get($saved[$i]['url']) : null;
                 if (! is_string($bytes) || $bytes === '') break;
                 $reuse[$i] = $bytes;
             }
@@ -437,9 +437,19 @@ class GenerateOneShotUgcJob implements ShouldQueue
     }
 
     /** Where a take's saved segments and recipe live until it is delivered. */
+    /**
+     * Where a take's saved segments and recipe live: the private local disk (on prod the api_private volume shared by
+     * the API, the workers and the scheduler), never the media bucket, which serves public reads. The recipe holds the
+     * presenter's and product photos.
+     */
     public static function partsDir(int $workspaceId, int $sceneId): string
     {
-        return sprintf('workspaces/%d/ugc-oneshot-parts/%d', $workspaceId, $sceneId);
+        return sprintf('ugc-oneshot-parts/%d/%d', $workspaceId, $sceneId);
+    }
+
+    private static function parts(): \Illuminate\Contracts\Filesystem\Filesystem
+    {
+        return \Illuminate\Support\Facades\Storage::disk('local');
     }
 
     /** What makes the segments: a saved one is reused only while all of this is unchanged. */
@@ -463,11 +473,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
             return array_column($settings['oneshot_parts'] ?? [], null, 'i');
         }
         self::forgetParts($scene, (int) $project->workspace_id);
-        $recipe = $storage->put(self::partsDir((int) $project->workspace_id, $this->sceneId).'/recipe-'.$hash.'.json', json_encode([
+        $recipe = self::partsDir((int) $project->workspace_id, $this->sceneId).'/recipe-'.$hash.'.json';
+        self::parts()->put($recipe, json_encode([
             'projectId' => $this->projectId, 'sceneId' => $this->sceneId, 'chunks' => $this->chunks, 'credits' => $this->credits,
             'engine' => $this->engine, 'referenceImages' => $this->referenceImages, 'initialStartFrame' => $this->initialStartFrame,
             'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl,
-        ]), ['ContentType' => 'application/json']);
+        ]));
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
         return [];
@@ -481,8 +492,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if (! $probe->successful() || (float) trim($probe->output()) <= 0) {
             throw new \RuntimeException(sprintf('Segment %d came back damaged. Retry to make it again; nothing was charged.', $i + 1));
         }
-        $url = $storage->put(self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/'.$i.'.mp4',
-            file_get_contents($path), ['ContentType' => 'video/mp4']);
+        $url = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/'.$i.'.mp4';
+        self::parts()->put($url, file_get_contents($path));
         $settings = $scene->refresh()->image_generation_settings_json ?? [];
         $parts = array_values(array_filter($settings['oneshot_parts'] ?? [], fn ($p) => (int) $p['i'] !== $i));
         $parts[] = ['i' => $i, 'url' => $url];
@@ -493,7 +504,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
     public static function forgetParts(Scene $scene, int $workspaceId): void
     {
         try {
-            app(StorageService::class)->deleteDirectory(self::partsDir($workspaceId, (int) $scene->getKey()));
+            self::parts()->deleteDirectory(self::partsDir($workspaceId, (int) $scene->getKey()));
         } catch (\Throwable $e) {
             report($e);
         }
@@ -519,7 +530,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $project = Project::query()->find($scene->project_id);
             if (! $project || empty($settings['oneshot_recipe']) || empty($settings['last_error'])) return 'not_resumable';
             if (app(CreditService::class)->planTier((int) $project->workspace_id) === 'ugc_pass') return 'not_resumable';
-            $recipe = json_decode((string) app(StorageService::class)->get($settings['oneshot_recipe']), true);
+            $recipe = json_decode((string) self::parts()->get($settings['oneshot_recipe']), true);
             if (! is_array($recipe) || (int) ($recipe['sceneId'] ?? 0) !== (int) $scene->getKey() || empty($recipe['chunks'])) return 'not_resumable';
             $token = (string) Str::uuid();
             $scene->forceFill(['image_generation_settings_json' => array_merge($settings, [
