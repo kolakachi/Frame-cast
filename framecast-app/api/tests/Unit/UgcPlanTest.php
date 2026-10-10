@@ -152,7 +152,7 @@ class UgcPlanTest extends TestCase
     public function test_ai_receives_brief_and_returns_a_reviewable_reaction(): void
     {
         $ai = $this->createMock(AIGenerationAdapter::class);
-        $ai->expects($this->once())->method('generate')->with('ugc_shot_plan', $this->callback(fn ($v) => $v['format'] === 'reaction' && $v['context'] === 'Concern then relief' && $v['product'] === 'My app'), 3500, 0.3)
+        $ai->expects($this->once())->method('generate')->with('ugc_shot_plan', $this->callback(fn ($v) => $v['format'] === 'reaction' && $v['context'] === 'Concern then relief' && $v['product'] === 'My app'), 6000, 0.3)
             ->willReturn(['content' => json_encode(['format' => 'reaction', 'reasoning' => 'One expressive beat.',
                 'segments' => [$this->shot(['kind' => 'reaction', 'script_text' => '', 'headline' => 'Almost gave up', 'motion_prompt' => 'Smile.'])]])]);
         $plan = (new UgcShotPlanner($ai))->plan('', 'My app', 'Concern then relief', format: 'reaction');
