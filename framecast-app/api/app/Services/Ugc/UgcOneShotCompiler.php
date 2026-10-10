@@ -20,19 +20,32 @@ class UgcOneShotCompiler
 
     public const MIN_SEGMENT_SECONDS = 4;
 
+    /** Omni takes any length up to 10 s, so its clips need neither snapping nor the Veo 8-second cap. */
+    public const OMNI_SEGMENT_SECONDS = 10;
+
+    /**
+     * What every take is told about the people and things in it. The hands rules came from the 2026-10-10 sweep: a box
+     * floated in mid-air while one hand held the phone, so a second hand only joins once the phone is set down.
+     */
+    private const CLOSING = 'Casual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter\'s face and identity from the reference image — the setting, framing, clothing and action come from this description, never from the reference\'s own background or outfit. The presenter matches the reference person\'s face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands: in a selfie shot one hand holds the phone, so only the other hand holds or uses anything; anything that needs both hands happens only after the presenter props the phone up or sets it down, and the framing shows that. When the product, a box, a plate or anything else is not in a hand it rests on a counter, table or shelf. Nothing floats or hovers; anything held shows a real grip and weight, fingers relaxed, at a natural distance from the camera. No counting on fingers and no holding up a number of fingers (models miscount them). No studio lighting. No words, captions, titles, graphics or watermarks anywhere on screen (text is added later, never by you) — the product\'s own packaging, label and branding stay visible and legible. Natural room tone.';
+
     /**
      * @param  array<int, array{script_text: string, seconds: float|int, visual_brief: string, voice_direction?: string}>  $beats
      * @param  array{presenter?: string, setting?: string, product?: string, tone?: string}  $style
-     * @return array<int, array{prompt: string, seconds: int, dialogue: string}>
+     * $maxSeconds: the longest clip the engine makes (Veo 8, snapped to 4/6/8; Omni 10, any length).
+     * new_shot: the clip opens on a cut rather than carrying the previous shot on, so it can start from the reference
+     * photos instead of the last frame (GenerateOneShotUgcJob).
+     *
+     * @return array<int, array{prompt: string, seconds: int, dialogue: string, new_shot: bool}>
      */
-    public static function compile(array $beats, array $style = []): array
+    public static function compile(array $beats, array $style = [], int $maxSeconds = self::MAX_SEGMENT_SECONDS): array
     {
         $beats = array_values(array_filter($beats, fn ($b) => is_array($b)));
         if ($beats === []) {
             return [];
         }
 
-        $chunks = self::pack($beats);
+        $chunks = self::pack($beats, $maxSeconds);
         $preamble = self::preamble($style);
         $pron = PronunciationMap::parse((string) ($style['pronunciations'] ?? ''));
 
@@ -63,13 +76,22 @@ class UgcOneShotCompiler
                 }
             }
 
-            $continuation = $i === 0 ? '' : 'The same presenter — same outfit, same setting, same light — continues without a break. ';
+            $newShot = $i === 0 || empty($chunk['beats'][0]['continues']);
+            // Exactly the scripted words (2026-10-10: a listicle came back with "One, two, three." and an ad-libbed
+            // line between its scripted ones, which sounded like repeats at the joins).
+            $wordsOnly = $dialogue !== []
+                ? ' They say exactly these words, in this order, and nothing else: no added words, no ad-libs, no counting aloud. After the last word they stop talking and hold a natural, relaxed expression.'
+                : '';
+            $continuation = $i === 0 ? '' : ($newShot
+                ? 'The next shot of the same presenter, in the same outfit, setting and light. '
+                : 'The same presenter — same outfit, same setting, same light — continues without a break. ');
 
             $out[] = [
-                'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines)
-                    ."\n\nCasual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting. No words, captions, titles, graphics or watermarks anywhere on screen (text is added later, never by you) — the product's own packaging, label and branding stay visible and legible. Natural room tone.",
+                'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines).$wordsOnly
+                    ."\n\n".self::CLOSING,
                 'seconds' => $chunk['seconds'],
                 'dialogue' => implode(' ', $dialogue),
+                'new_shot' => $newShot,
             ];
         }
 
@@ -127,7 +149,7 @@ class UgcOneShotCompiler
 ".implode(' ', $lines).$demoLine
                 ."
 
-Casual creator energy, natural imperfect delivery. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter's face and identity from the reference image — the setting, framing, wardrobe changes and action come from this description, never from the reference's own background. The presenter matches the reference person's face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. Hands stay at a natural medium distance from the camera, fingers relaxed. Objects obey gravity: anything held shows natural hand contact and weight, nothing floats. No studio lighting. No words, captions, titles, graphics or watermarks anywhere on screen (text is added later, never by you) — the product's own packaging, label and branding stay visible and legible. Natural room tone.",
+".self::CLOSING,
             'seconds' => max(4, $total),
             'dialogue' => implode(' ', $dialogue),
         ];
@@ -139,16 +161,16 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
      * the seconds shared by word count. Before 2026-10-10 a long talking shot went whole into one 8-second clip, and
      * the presenter was cut off mid-sentence (an 18-second direct-to-camera take delivered as 8 seconds).
      */
-    private static function splitLong(array $beats): array
+    private static function splitLong(array $beats, int $maxSeconds = self::MAX_SEGMENT_SECONDS): array
     {
         $out = [];
         foreach ($beats as $beat) {
             $seconds = max(1.0, (float) ($beat['seconds'] ?? 3));
             $text = trim((string) ($beat['script_text'] ?? ''));
             $words = str_word_count($text);
-            if ($seconds <= self::MAX_SEGMENT_SECONDS || $words < 2) { $out[] = $beat; continue; }
+            if ($seconds <= $maxSeconds || $words < 2) { $out[] = $beat; continue; }
             $perWord = $seconds / $words;
-            $limit = max(1, (int) floor(self::MAX_SEGMENT_SECONDS / $perWord));
+            $limit = max(1, (int) floor($maxSeconds / $perWord));
             $pieces = [];
             foreach (preg_split('/(?<=[.!?…])\s+/u', $text) ?: [$text] as $sentence) {
                 if (str_word_count($sentence) <= $limit) { $pieces[] = $sentence; continue; }
@@ -168,14 +190,14 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
         return $out;
     }
 
-    private static function pack(array $beats): array
+    private static function pack(array $beats, int $maxSeconds = self::MAX_SEGMENT_SECONDS): array
     {
-        $beats = self::splitLong($beats);
+        $beats = self::splitLong($beats, $maxSeconds);
         $chunks = [];
         $current = ['beats' => [], 'seconds' => 0.0];
         foreach ($beats as $beat) {
             $s = max(1.0, (float) ($beat['seconds'] ?? 3));
-            if ($current['beats'] !== [] && $current['seconds'] + $s > self::MAX_SEGMENT_SECONDS) {
+            if ($current['beats'] !== [] && $current['seconds'] + $s > $maxSeconds) {
                 $chunks[] = $current;
                 $current = ['beats' => [], 'seconds' => 0.0];
             }
@@ -186,8 +208,8 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
             $chunks[] = $current;
         }
 
-        // Veo accepts exactly 4, 6 or 8 seconds — snap up to the nearest.
-        $snap = function (float $s): int {
+        // Veo accepts exactly 4, 6 or 8 seconds — snap up to the nearest. Omni takes any length up to its cap.
+        $snap = $maxSeconds !== self::MAX_SEGMENT_SECONDS ? fn (float $s): int => (int) min($maxSeconds, max(self::MIN_SEGMENT_SECONDS, ceil($s))) : function (float $s): int {
             foreach ([4, 6, 8] as $allowed) {
                 if (ceil($s) <= $allowed) {
                     return $allowed;
@@ -197,10 +219,13 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
             return self::MAX_SEGMENT_SECONDS;
         };
 
-        return array_map(fn ($c) => [
-            'beats' => $c['beats'],
-            'seconds' => $snap($c['seconds']),
-        ], $chunks);
+        // A clip with words lasts as long as they take at a natural 2.5 words a second, plus a beat to finish: spare
+        // seconds were filled with ad-libs and repeats.
+        return array_map(function ($c) use ($snap) {
+            $words = array_sum(array_map(fn ($b) => str_word_count((string) ($b['script_text'] ?? '')), $c['beats']));
+            $seconds = $words > 0 ? min($c['seconds'], (float) ceil($words / 2.5) + 1) : $c['seconds'];
+            return ['beats' => $c['beats'], 'seconds' => $snap($seconds)];
+        }, $chunks);
     }
 
     private static function preamble(array $style): string
@@ -210,8 +235,10 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
         $product = trim((string) ($style['product'] ?? ''));
         $tone = trim((string) ($style['tone'] ?? '')) ?: 'warm and genuine';
 
+        $wardrobe = trim((string) ($style['wardrobe'] ?? ''));
+
         return 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. '
-            .ucfirst($presenter).' talks directly to the phone camera in '.$setting
+            .ucfirst($presenter).($wardrobe !== '' ? ', wearing '.$wardrobe.',' : '').' talks directly to the phone camera in '.$setting
             .($product !== '' ? ', featuring '.$product : '')
             .'. The delivery is '.$tone.', unpolished and believable.';
     }

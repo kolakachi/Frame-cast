@@ -115,7 +115,15 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     ]);
                 }
             }
+            $fromTail = [];
             foreach ($this->chunks as $i => $chunk) {
+                // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
+                // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from
+                // clip to clip (2026-10-10: a face changed across a before/after). A clip carrying a shot on starts
+                // from the last frame, and that duplicate first frame is dropped when the clips are joined.
+                $fromRefs = $i > 0 && ! empty($chunk['new_shot']) && $this->referenceImages !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
+                if ($fromRefs) $startFrame = null;
+                $fromTail[$i] = $i > 0 && ! $fromRefs;
                 // A segment saved by an earlier attempt is used as it is; the next one starts from its last frame.
                 if (isset($reuse[$i])) {
                     $path = tempnam(sys_get_temp_dir(), 'oneshot-').'.mp4';
@@ -124,6 +132,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 } else {
                     if (! $this->owns($scene->refresh())) return; // superseded: the newer run makes the rest
                     $path = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps);
+                    $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps);
                     $this->savePart($project, $scene, $storage, $i, $path);
                 }
                 $segmentPaths[] = $path;
@@ -132,7 +141,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if ($i < count($this->chunks) - 1) {
                     $framePath = tempnam(sys_get_temp_dir(), 'oneshot-frame-').'.png';
                     $temps[] = $framePath;
-                    $result = Process::timeout(60)->run(['ffmpeg', '-y', '-sseof', '-0.15', '-i', $path, '-frames:v', '1', $framePath]);
+                    // The very last frame (each decoded frame overwrites the file): an earlier one made the next clip
+                    // replay a few frames of motion at every join.
+                    $result = Process::timeout(60)->run(['ffmpeg', '-y', '-sseof', '-0.5', '-i', $path, '-update', '1', '-q:v', '2', $framePath]);
                     if (! $result->successful() || ! filesize($framePath)) {
                         throw new \RuntimeException(sprintf('Could not read the handoff frame after segment %d.', $i + 1));
                     }
@@ -140,7 +151,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 }
             }
 
-            $finalPath = $this->concat($segmentPaths, $temps);
+            $finalPath = $this->concat($segmentPaths, $temps, $fromTail);
 
             // Post-composite: splice the ACTUAL demo clip full-frame over a
             // mid-ad window while the presenter's voice keeps playing — the
@@ -368,6 +379,51 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return $this->runToken === null || $token === null || $token === $this->runToken;
     }
 
+    /**
+     * Cut a clip to what was scripted for it, read from its own transcript: speech the model added before the first
+     * scripted word or after the last one is trimmed, so the join lands right after the real last word and the next
+     * clip never sounds like a repeat (owner, 2026-10-10). Speech in the middle is left alone. Any doubt (no words, a
+     * placeholder transcript, lines that cannot be found) keeps the clip as made.
+     */
+    private function trimToScript(string $path, string $dialogue, int $i, array &$temps): string
+    {
+        $norm = fn (string $w) => preg_replace('/[^a-z0-9]+/', '', mb_strtolower($w));
+        $want = array_values(array_filter(array_map($norm, preg_split('/\s+/u', trim($dialogue)) ?: [])));
+        if (count($want) < 2) return $path;
+        try {
+            $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
+        } catch (\Throwable $e) {
+            report($e);
+            return $path;
+        }
+        $said = array_values(array_filter($t['words'] ?? [], fn ($w) => $norm((string) ($w['text'] ?? $w['word'] ?? '')) !== ''));
+        if (($t['provider_key'] ?? '') === 'local_fallback' || count($said) < 2) return $path;
+        $word = fn (int $k) => $norm((string) ($said[$k]['text'] ?? $said[$k]['word'] ?? ''));
+        $first = $last = null;
+        for ($k = 0; $k < count($said) - 1 && $first === null; $k++) {
+            if ($word($k) === $want[0] && $word($k + 1) === $want[1]) $first = $k;
+        }
+        $n = count($want);
+        for ($k = count($said) - 1; $k > 0 && $last === null; $k--) {
+            if ($word($k) === $want[$n - 1] && $word($k - 1) === $want[$n - 2]) $last = $k;
+        }
+        if ($first === null || $last === null || $last < $first) return $path;
+
+        $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
+        $from = $first > 0 ? max(0.0, (float) $said[$first]['start'] - 0.12) : 0.0;
+        $to = min($length, (float) $said[$last]['end'] + 0.4);
+        if ($length <= 0 || ($from < 0.05 && $length - $to < 0.3) || $to - $from < 1.0) return $path;
+
+        $out = tempnam(sys_get_temp_dir(), 'oneshot-trim-').'.mp4';
+        $temps[] = $out;
+        $run = Process::timeout(300)->run(['ffmpeg', '-y', '-ss', sprintf('%.3f', $from), '-to', sprintf('%.3f', $to), '-i', $path,
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', $out]);
+        if (! $run->successful() || ! filesize($out)) return $path;
+        \Illuminate\Support\Facades\Log::info('one-shot: clip trimmed to its script', ['project_id' => $this->projectId, 'segment' => $i + 1,
+            'from' => round($from, 2), 'to' => round($to, 2), 'was' => round($length, 2)]);
+        return $out;
+    }
+
     /** Where a take's saved segments and recipe live until it is delivered. */
     public static function partsDir(int $workspaceId, int $sceneId): string
     {
@@ -474,7 +530,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * as 87 seconds with its sound out of step (2026-10-10). Each clip is reset to start at zero, set to one frame
      * rate and size, and joined with the concat filter.
      */
-    private function concat(array $paths, array &$temps): string
+    private function concat(array $paths, array &$temps, array $fromTail = []): string
     {
         if (count($paths) === 1) {
             return $paths[0];
@@ -484,10 +540,17 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if ($w <= 0 || $h <= 0) [$w, $h] = [720, 1280];
         $inputs = [];
         $graph = '';
+        $last = count($paths) - 1;
         foreach ($paths as $i => $path) {
             array_push($inputs, '-i', $path);
-            $graph .= sprintf('[%1$d:v]setpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v%1$d];'
-                .'[%1$d:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a%1$d];', $i, $w, $h);
+            // A clip that started from the previous clip's last frame repeats it first: drop that frame and its sound.
+            $skip = ! empty($fromTail[$i]) ? 'trim=start_frame=1,' : '';
+            $askip = ! empty($fromTail[$i]) ? 'atrim=start=0.0417,' : '';
+            $len = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', $path])->output());
+            // 30 ms fades at each join, so no click where two clips' sound meets.
+            $fades = ($i > 0 ? ',afade=t=in:d=0.03' : '').($i < $last && $len > 0.2 ? sprintf(',afade=t=out:st=%.3f:d=0.03', $len - ($askip !== '' ? 0.0417 : 0) - 0.03) : '');
+            $graph .= sprintf('[%1$d:v]%4$ssetpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v%1$d];'
+                .'[%1$d:a]%5$sasetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo%6$s[a%1$d];', $i, $w, $h, $skip, $askip, $fades);
         }
         foreach (array_keys($paths) as $i) $graph .= "[v{$i}][a{$i}]";
         $graph .= 'concat=n='.count($paths).':v=1:a=1[outv][outa]';

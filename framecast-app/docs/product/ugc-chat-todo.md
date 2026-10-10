@@ -29,8 +29,7 @@ assembly stays simple, motion graphics stay in Create.
 | VISION | The director reads only file names: the sweep's product (a tube) became a pump bottle in 3 of 6 videos. Let it look at product photos | proposed | build |
 | QUEUE-REAP | Composed scenes waiting behind long one-takes on a busy queue are reaped as "timed out" at 10 minutes | open | fix |
 | ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
-| VARIETY | "Let us pick" chose the same actor 11/12 times for one product | open | decide |
-| SKIT-CAST | A skit's second person has no cast reference | open | after P3 |
+| CAST-ALL | Multi-person ads (skit): cast every role from the presenter library (or the user's picks) before making; every person's photo as a reference; a voice per person; chosen presenters = one video's cast for a skit | open | build next |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |
 | P3-PLAYBOOKS | Per-type playbooks for the director and planner | open | after P2 |
 | P4-CHANGE | Change the delivered video by chat (one component, per change-scope rule) | open | after P3 |
@@ -56,6 +55,14 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 Owner review of the sweep videos. Joins: next clip starts from the true last frame and its duplicate
+  first frame is dropped; 30 ms audio fades; Omni clips up to 10 s (fewer joins). A clip opening a new shot starts
+  from the presenter/product photos (identity and packaging re-anchored; drift across a before/after). Hands and props
+  rules (phone hand, set the phone down for two-handed actions, nothing floats) in director, planner and video
+  prompts; no finger counting. Variety: recently cast faces sit out of "let us pick"; each ad gets a fresh outfit and
+  stock descriptions lose their clothing. Duplicates: clips say exactly their lines (sized to their words), and each
+  clip is cut after its last scripted word from its own transcript, so joins never repeat.
 
 - 2026-10-10 Sweep videos (local POC): clips joined by stream copy came out with broken timestamps (18 s playing as
   6 or 87 s, sound out of step) once Omni chained clips; the join now re-times and re-encodes. The video model drew

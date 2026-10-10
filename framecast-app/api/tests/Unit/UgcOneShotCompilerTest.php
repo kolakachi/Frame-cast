@@ -45,8 +45,33 @@ class UgcOneShotCompilerTest extends TestCase
         // The bug this guards: chunk 1's action ("holds up the bottle") was
         // dropped because only cuts and the first chunk carried framing.
         $this->assertStringContainsString('holds up the bottle', $chunks[1]['prompt']);
-        $this->assertStringContainsString('continues without a break', $chunks[1]['prompt']);
+        // A clip opening on a new beat is a new shot (it may start from the reference photos)...
+        $this->assertStringContainsString('The next shot of the same presenter', $chunks[1]['prompt']);
+        $this->assertSame([true, true, true], array_column($chunks, 'new_shot'));
         $this->assertStringNotContainsString('continues without a break', $chunks[0]['prompt']);
+        // ...a long shot split to fit carries on from the last frame.
+        $long = UgcOneShotCompiler::compile([['script_text' => 'One two three four five six. Seven eight nine ten eleven twelve. Thirteen fourteen fifteen sixteen.', 'seconds' => 14, 'visual_brief' => 'kitchen']]);
+        $this->assertSame(true, $long[0]['new_shot']);
+        $this->assertFalse($long[1]['new_shot']);
+        $this->assertStringContainsString('continues without a break', $long[1]['prompt']);
+    }
+
+    public function test_omni_clips_run_up_to_ten_seconds_unsnapped(): void
+    {
+        $script = 'Okay, my mornings just got so much better. This is Crunchy Clouds, honey oat cereal. Look how light and crispy it is. Just pour, add milk, done. Seriously, try this.';
+        $veo = UgcOneShotCompiler::compile([['script_text' => $script, 'seconds' => 17, 'visual_brief' => 'kitchen']]);
+        $omni = UgcOneShotCompiler::compile([['script_text' => $script, 'seconds' => 17, 'visual_brief' => 'kitchen']], [], UgcOneShotCompiler::OMNI_SEGMENT_SECONDS);
+        $this->assertLessThan(count($veo), count($omni), 'fewer joins on Omni');
+        foreach ($omni as $c) $this->assertLessThanOrEqual(10, $c['seconds']);
+        $this->assertSame($script, implode(' ', array_column($omni, 'dialogue')));
+    }
+
+    public function test_every_take_is_told_how_hands_and_props_behave(): void
+    {
+        $chunk = UgcOneShotCompiler::compile([['script_text' => 'Hi.', 'seconds' => 4, 'visual_brief' => 'kitchen']], ['wardrobe' => 'a rust knit sweater'])[0]['prompt'];
+        $this->assertStringContainsString('props the phone up or sets it down', $chunk);
+        $this->assertStringContainsString('Nothing floats', $chunk);
+        $this->assertStringContainsString('wearing a rust knit sweater', $chunk);
     }
 
     public function test_dialogue_is_quoted_verbatim_and_collected(): void

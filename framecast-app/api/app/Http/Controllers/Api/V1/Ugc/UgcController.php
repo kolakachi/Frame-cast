@@ -213,6 +213,9 @@ class UgcController extends Controller
             'footage_asset_ids.*' => ['integer', 'min:1'],
             // The shape read off a reference, if the user started from one.
             'reference' => ['sometimes', 'array'],
+            // Faces this workspace used lately: left out of the casting roster so ads do not all star the same person.
+            'avoid_character_ids' => ['sometimes', 'array', 'max:20'],
+            'avoid_character_ids.*' => ['integer'],
             'reference.shape' => ['sometimes', 'nullable', 'string', 'max:300'],
             'reference.beats' => ['sometimes', 'array', 'max:8'],
             'reference.beats.*.role' => ['required_with:reference.beats', 'string', 'max:24'],
@@ -249,8 +252,10 @@ class UgcController extends Controller
         // best audience fit from text; no image leaves the workspace. Same
         // scope the picker shows: workspace library plus stock actors.
         $roster = [];
+        $avoid = array_map('intval', $v['avoid_character_ids'] ?? []);
         foreach (\App\Models\Character::query()
             ->where('status', 'active')->where('is_auto', false)
+            ->when($avoid !== [], fn ($q) => $q->whereNotIn('id', $avoid))
             // Only faces the pipeline can anchor: a pick without a reference
             // image would generate a stranger under a saved character's name.
             ->whereNotNull('reference_asset_id')
@@ -963,6 +968,8 @@ class UgcController extends Controller
             'language' => ['sometimes', 'string', 'max:12'],
             // The UGC chat names the video after its pitch; otherwise the script's first words.
             'title' => ['nullable', 'string', 'max:120'],
+            // What the presenter wears in this ad (the chat varies it, so a stock actor is not always in one outfit).
+            'wardrobe' => ['nullable', 'string', 'max:160'],
             'consent' => ['accepted'],
             'reviewed' => ['accepted'],
             'credits' => ['required', 'integer'],
@@ -1040,7 +1047,14 @@ class UgcController extends Controller
                 $variantSeed = crc32('wyv-char-'.$c->getKey()) & 0x7FFFFFFF;
             } elseif ($c) {
                 if ($presenter === '') {
-                    $presenter = trim($c->name.($c->description ? ' — '.$c->description : ''));
+                    $description = (string) $c->description;
+                    // An ad that sets its own wardrobe drops the clothing written into a stock description ("oversized
+                    // linen shirt"), or every ad put the actor in the same outfit.
+                    if (trim((string) ($v['wardrobe'] ?? '')) !== '') {
+                        $description = implode(', ', array_filter(array_map('trim', explode(',', $description)),
+                            fn ($part) => ! preg_match('/\b(shirt|t-shirt|tee|top|sweater|jumper|hoodie|cardigan|jacket|blazer|coat|dress|blouse|tank|vest|linen|denim|knit|sweatshirt|overshirt|wearing|outfit)\b/i', $part)));
+                    }
+                    $presenter = trim($c->name.($description !== '' ? ' — '.$description : ''));
                 }
                 if ($uri = $dataUri((int) $c->reference_asset_id)) {
                     array_unshift($referenceImages, $uri); // presenter first — identity outranks props
@@ -1113,6 +1127,7 @@ class UgcController extends Controller
             'setting' => trim((string) ($v['setting'] ?? '')),
             'product' => trim((string) ($v['product'] ?? '')),
             'tone' => trim((string) ($v['tone'] ?? '')),
+            'wardrobe' => trim((string) ($v['wardrobe'] ?? '')),
             'pronunciations' => $pronNotes,
             'demo' => $demoStorageUrl !== null,
         ];
@@ -1133,7 +1148,8 @@ class UgcController extends Controller
         }
         $chunks = $single !== null
             ? [$single]
-            : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style);
+            : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style,
+                $engine === 'omni' ? \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : \App\Services\Ugc\UgcOneShotCompiler::MAX_SEGMENT_SECONDS);
         // Quote from the PLAN's seconds, not the snapped chunk sum — chunk
         // snapping (4/6/8 on Veo) can exceed the plan by a few seconds, and
         // that overage is ours to absorb, not the user's to re-approve.
@@ -1245,7 +1261,7 @@ class UgcController extends Controller
         }
         \App\Jobs\GenerateOneShotUgcJob::dispatch(
             $project->id, $scene->id,
-            array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds']], $chunks),
+            array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds'], 'new_shot' => (bool) ($c['new_shot'] ?? true), 'dialogue' => (string) ($c['dialogue'] ?? '')], $chunks),
             $quote,
             $engine,
             $referenceImages,

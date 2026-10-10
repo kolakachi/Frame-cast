@@ -22,6 +22,8 @@ class UgcOneShotResumeTest extends TestCase
     private array $charged = [];
     private string $tier = 'creator';
     private ?\Closure $onPoll = null;
+    private array $startFrames = [];
+    private array $clipWords = ['transcript' => '', 'provider_key' => 'test', 'words' => []];
 
     protected function setUp(): void
     {
@@ -48,7 +50,7 @@ class UgcOneShotResumeTest extends TestCase
                 '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
         }
         $veo = Mockery::mock(ReplicateVeoAdapter::class);
-        $veo->shouldReceive('start')->andReturnUsing(function () { return 'pred-'.(++$this->starts); });
+        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null) { $this->startFrames[] = $startFrame; return 'pred-'.(++$this->starts); });
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
             if ($this->onPoll) ($this->onPoll)();
@@ -60,6 +62,7 @@ class UgcOneShotResumeTest extends TestCase
         $credits->shouldReceive('planTier')->andReturnUsing(fn () => $this->tier);
         $this->app->instance(CreditService::class, $credits);
         $words = Mockery::mock(\App\Services\Media\MediaTranscriptionService::class);
+        $words->shouldReceive('transcribeLocalMediaWithTimestamps')->andReturnUsing(fn () => $this->clipWords);
         $words->shouldReceive('transcribeAssetWithTimestamps')->andReturn(['transcript' => 'Okay so', 'provider_key' => 'test', 'model' => 'm',
             'words' => [['word' => 'Okay', 'start' => 0.1, 'end' => 0.4], ['word' => 'so', 'start' => 0.4, 'end' => 0.6]], 'segments' => []]);
         $this->app->instance(\App\Services\Media\MediaTranscriptionService::class, $words);
@@ -218,5 +221,33 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertEqualsWithDelta(6.0, $probe('v:0'), 0.2, 'the picture runs the real length');
         $this->assertEqualsWithDelta($probe('v:0'), $probe('a:0'), 0.2, 'sound and picture stay in step');
         foreach ([...$clips, ...$temps] as $f) @unlink($f);
+    }
+
+    public function test_a_new_shot_starts_from_the_photos_and_a_carried_on_shot_from_the_last_frame(): void
+    {
+        $this->run_($this->job([['prompt' => 'one', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'cut to two', 'seconds' => 6, 'new_shot' => true],
+            ['prompt' => 'two carries on', 'seconds' => 6, 'new_shot' => false]]));
+        $this->assertNull($this->startFrames[0]);
+        $this->assertNull($this->startFrames[1], 'a cut re-anchors on the reference photos');
+        $this->assertStringStartsWith('data:image/png;base64,', (string) $this->startFrames[2], 'a carried-on shot starts from the last frame');
+        $this->assertSame([396], $this->charged);
+        $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
+        $this->assertEqualsWithDelta(3 - 1 / 24, (float) $video->duration_seconds, 0.15, 'the duplicated first frame of the carried-on clip is dropped');
+    }
+
+    public function test_a_clip_is_cut_after_its_last_scripted_word_so_joins_never_repeat(): void
+    {
+        // The model said its line, then ad-libbed "one two three" (2026-10-10 listicle): the clip ends after "skin".
+        $long = sys_get_temp_dir().'/oneshot-test-long.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=green:s=64x112:r=24:d=4', '-f', 'lavfi', '-i', 'sine=frequency=300:sample_rate=48000',
+            '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $long])->throw();
+        $this->clip = $long;
+        $w = fn ($text, $start, $end) => ['text' => $text, 'start' => $start, 'end' => $end];
+        $this->clipWords = ['transcript' => 'x', 'provider_key' => 'openai', 'words' => [
+            $w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('dry', 0.8, 1.1), $w('skin.', 1.1, 1.5), $w('One,', 2.0, 2.3), $w('two,', 2.4, 2.7), $w('three.', 2.8, 3.2)]];
+        $this->run_($this->job([['prompt' => 'p', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'It soothes dry skin.']]));
+        $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
+        $this->assertEqualsWithDelta(1.9, (float) $video->duration_seconds, 0.15, 'ends 0.4 s after "skin", the counting is gone');
+        @unlink($long);
     }
 }
