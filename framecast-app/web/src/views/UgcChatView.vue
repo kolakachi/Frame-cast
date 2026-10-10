@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
 import ComposerTray from '../components/create/ComposerTray.vue'
+import RefThumb from '../components/create/RefThumb.vue'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -294,12 +295,15 @@ async function send(override = null) {
   error.value = ''
   sending.value = true
   const attachments = override ? [] : uploads.value.filter(u => u.asset_id).map(u => ({ asset_id: u.asset_id, role: u.role }))
+  const shown = override ? [] : uploads.value.filter(u => u.asset_id).map(u => ({ asset_id: u.asset_id, role: u.role, title: u.name, type: u.type, url: u.preview }))
   const sentLink = override ? null : link.value
   try {
     const id = await ensureChat()
     // Shown at once; the server's copy replaces it when the reply comes back.
-    chat.value = { ...chat.value, messages: [...messages.value, { id: 'tmp', role: 'user', kind: 'text', content: body, payload: { attachments, link: sentLink } }] }
-    if (!override) { text.value = ''; uploads.value.forEach(u => u.preview && URL.revokeObjectURL(u.preview)); uploads.value = []; link.value = null; rewriteState.value = ''; rewriteDismissed.value = '' }
+    chat.value = { ...chat.value, messages: [...messages.value, { id: 'tmp', role: 'user', kind: 'text', content: body, payload: { attachments: shown, link: sentLink } }] }
+    const sentUploads = override ? [] : uploads.value
+    if (!override) { text.value = ''; uploads.value = []; link.value = null; rewriteState.value = ''; rewriteDismissed.value = '' }
+    setTimeout(() => sentUploads.forEach(u => u.preview && URL.revokeObjectURL(u.preview)), 60000)
     scrollDown()
     const { data } = await api.post(`/ugc/chats/${id}/messages`, {
       text: body, attachments, link: sentLink, type: type.value, length: length.value,
@@ -346,14 +350,16 @@ function pitchSeconds(m) { return Math.round((m.payload?.plan?.segments ?? []).r
 function pitchImage(m) { const t = m.payload?.takes?.[0]; return t?.character_id ? imageOf(byId.value.get(t.character_id)) : '' }
 function takeOf(run) { return run.takes?.[0] ?? null }
 function runState(run) { const t = takeOf(run); return !t ? 'generating' : t.status === 'ready_for_review' ? 'ready' : t.status === 'needs_attention' ? 'failed' : 'generating' }
+// A pitch says what its videos are doing now, read from the "making" message that started them.
+function pitchState(m) {
+  const runs = messages.value.find(x => x.kind === 'making' && x.payload?.pitch_id === m.id)?.payload?.runs ?? []
+  const states = runs.map(runState)
+  return !states.length || states.includes('generating') ? 'making' : states.every(x => x === 'ready') ? 'ready' : 'failed'
+}
 function isMaking(m) { return m.kind === 'making' && (m.payload?.runs ?? []).some(r => runState(r) === 'generating') }
 function openReview(run) { const t = takeOf(run); if (t) router.push({ name: 'ugc-review', params: { projectId: t.id } }) }
 function openEditor(run) { const t = takeOf(run); if (t) router.push({ name: 'project-editor', params: { projectId: t.id } }) }
 function openRun(run) { if (run.run_id) router.push({ name: 'ugc-run', params: { runId: run.run_id } }) }
-function sentFiles(m) {
-  const n = m.payload?.attachments?.length || 0
-  return [n ? `${n} file${n === 1 ? '' : 's'}` : '', m.payload?.link ? m.payload.link.replace(/^https?:\/\//, '') : ''].filter(Boolean).join(' · ')
-}
 function ago(at) {
   const d = new Date(String(at).replace(' ', 'T') + (String(at).includes('Z') || String(at).includes('+') ? '' : 'Z'))
   const mins = Math.round((Date.now() - d) / 60000)
@@ -450,7 +456,10 @@ onBeforeUnmount(() => {
         <div v-else class="uc-msgs">
           <template v-for="m in messages" :key="m.id">
             <div v-if="m.role === 'user'" class="uc-user">
-              <div class="uc-bubble"><span v-if="m.payload?.attachments?.length || m.payload?.link" class="uc-sent-files">{{ sentFiles(m) }}</span><span v-if="m.content && m.content.trim() !== m.payload?.link" class="uc-said">{{ m.content }}</span></div>
+              <div class="uc-bubble"><span v-if="m.payload?.attachments?.length || m.payload?.link" class="uc-sent">
+                  <span v-for="a in m.payload.attachments || []" :key="a.asset_id" class="uc-sent-pill" :title="a.title"><RefThumb :type="a.type" :url="a.url" /><span>{{ a.role === 'sample' ? 'Sample · ' : '' }}{{ a.title || 'File' }}</span></span>
+                  <span v-if="m.payload?.link" class="uc-sent-pill" :title="m.payload.link"><RefThumb link /><span>{{ m.payload.link.replace(/^https?:\/\//, '') }}</span></span>
+                </span><span v-if="m.content && m.content.trim() !== m.payload?.link" class="uc-said">{{ m.content }}</span></div>
             </div>
 
             <div v-else class="uc-bot">
@@ -491,7 +500,7 @@ onBeforeUnmount(() => {
                     <router-link v-if="short(m)" class="uc-btn" :to="{ name: 'plans' }">Top up · you have {{ balance }}</router-link>
                     <button v-else-if="confirmFor !== m.id" type="button" class="uc-btn uc-btn--primary" @click="startMake(m)">Make it</button>
                   </template>
-                  <span v-else-if="m.payload.made" class="uc-muted">Made</span>
+                  <span v-else-if="m.payload.made" :class="['uc-pitch-state', 'is-' + pitchState(m)]">{{ { making: 'Making…', ready: 'Made', failed: 'Needs a look' }[pitchState(m)] }}</span>
                 </div>
                 <div v-if="confirmFor === m.id && canMake(m)" class="uc-consent">
                   <label><input v-model="consent" type="checkbox" /> I have the right to use {{ pitchNames(m) === 'A fitting presenter' ? "the presenter's" : pitchNames(m) + "'s" }} likeness and voice in this ad, and the product facts I gave are accurate.</label>
@@ -702,7 +711,10 @@ onBeforeUnmount(() => {
 .uc-user { display: flex; justify-content: flex-end; }
 .uc-bubble { max-width: 70%; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.5; }
 .uc-said { white-space: pre-wrap; }
-.uc-sent-files { display: block; font-size: 12px; color: var(--color-text-muted); margin-bottom: 4px; }
+.uc-sent { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.uc-sent-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; height: 26px; padding: 0 8px 0 3px; border-radius: 4px; background: #333; font-size: 12px; color: #c9cbcf; }
+.uc-sent-pill > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-sent-pill :deep(.ref-thumb) { width: 20px; height: 20px; }
 .uc-bot { display: flex; gap: 12px; align-items: flex-start; }
 .uc-mark { flex: 0 0 28px; height: 28px; border-radius: 7px; background: var(--color-accent); color: #fff; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
 .uc-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.5; max-width: 600px; }
@@ -731,6 +743,10 @@ onBeforeUnmount(() => {
 .uc-script summary { cursor: pointer; color: var(--color-text-muted); }
 .uc-script p { margin-top: 6px; white-space: pre-wrap; }
 .uc-pitch-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+.uc-pitch-state { font-size: 13px; color: var(--color-text-muted); }
+.uc-pitch-state.is-making { color: var(--color-accent); }
+.uc-pitch-state.is-ready { color: #4fd18b; }
+.uc-pitch-state.is-failed { color: #f0b4ac; }
 .uc-consent { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--color-bg-soft); font-size: 13px; }
 .uc-consent label, .uc-own label { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; }
 .uc-consent-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }

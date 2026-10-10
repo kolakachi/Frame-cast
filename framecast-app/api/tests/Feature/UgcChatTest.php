@@ -71,13 +71,16 @@ class UgcChatTest extends TestCase
         $this->replies[] = ['action' => 'ask', 'question' => 'Who says it on camera?', 'chips' => ['You', 'One of our actors', 'Let us pick']];
         $reply = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A UGC ad for my serum',
             'link' => 'https://dewbloom.co', 'attachments' => [['asset_id' => 20]]])->assertOk();
-        $facts = collect($reply->json('data.chat.messages'))->firstWhere('kind', 'facts');
+        $chatMessages = $reply->json('data.chat.messages');
+        $facts = collect($chatMessages)->firstWhere('kind', 'facts');
         $this->assertSame(['source' => 'page', 'text' => 'Dewbloom serum · Vitamin C, 30 ml'], $facts['payload']['facts'][0], 'what we read from the page is shown back');
         $reply = $reply->json('data.reply');
         $this->assertSame(['question', ['You', 'One of our actors', 'Let us pick']], [$reply['kind'], $reply['payload']['chips']]);
         $state = json_decode(DB::table('ugc_chats')->where('id', $chat)->value('state_json'), true);
         $this->assertSame('Dewbloom serum', $state['link']['facts']['product']);
         $this->assertSame('product', $state['attachments'][0]['role'], 'a photo is a product reference by default');
+        $sent = collect($chatMessages)->firstWhere('role', 'user')['payload']['attachments'][0];
+        $this->assertSame(['serum.jpg', 'image'], [$sent['title'], $sent['type']], 'what was sent shows as pills, not "1 file"');
 
         $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Dewbloom review', 'summary' => 'Yara holds the 30 ml bottle at its real size and tells you what changed.',
             'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Dull skin', 'duration_seconds' => 15];

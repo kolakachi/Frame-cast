@@ -74,4 +74,16 @@ class UgcOneShotCompilerTest extends TestCase
     {
         $this->assertSame([], UgcOneShotCompiler::compile([]));
     }
+
+    public function test_a_long_shot_is_split_at_sentences_so_every_word_is_said(): void
+    {
+        $script = 'Okay, my mornings just got so much better. This is Crunchy Clouds — honey oat cereal. Look how light and crispy it is. Just pour, add milk, done. Light, crispy, morning-ready. Seriously, try this.';
+        $chunks = UgcOneShotCompiler::compile([['script_text' => $script, 'seconds' => 18, 'visual_brief' => 'kitchen counter, holding the carton']]);
+
+        $this->assertGreaterThan(1, count($chunks), 'an 18-second shot never goes into one 8-second clip');
+        foreach ($chunks as $c) $this->assertLessThanOrEqual(UgcOneShotCompiler::MAX_SEGMENT_SECONDS, $c['seconds']);
+        $this->assertSame($script, implode(' ', array_column($chunks, 'dialogue')), 'every word, once, in order');
+        $this->assertGreaterThanOrEqual(18, array_sum(array_column($chunks, 'seconds')));
+        foreach ($chunks as $c) $this->assertStringNotContainsString('Cut to', $c['prompt'], 'one shot carrying on, no cuts');
+    }
 }

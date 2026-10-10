@@ -241,8 +241,18 @@ final class UgcChatService
     public function show(Request $request, string $id): array
     {
         $chat = $this->chat($request->user(), $id);
-        $messages = DB::table('ugc_chat_messages')->where('chat_id', $id)->orderBy('id')->get()->map(function ($m) use ($request) {
+        // What the user sent is shown as the same pills they attached: each file's name, kind and a preview.
+        $rows = DB::table('ugc_chat_messages')->where('chat_id', $id)->orderBy('id')->get();
+        $ids = $rows->where('role', 'user')->flatMap(fn ($m) => array_column(json_decode((string) $m->payload_json, true)['attachments'] ?? [], 'asset_id'))->unique()->all();
+        $assets = $ids ? DB::table('assets')->where('workspace_id', $chat->workspace_id)->whereIn('id', $ids)->get(['id', 'title', 'asset_type'])->keyBy('id') : collect();
+        $messages = $rows->map(function ($m) use ($request, $assets) {
             $payload = json_decode((string) $m->payload_json, true) ?: [];
+            if ($m->role === 'user') foreach ($payload['attachments'] ?? [] as $i => $a) {
+                $asset = $assets->get((int) $a['asset_id']);
+                if (! $asset) continue;
+                $payload['attachments'][$i] += ['title' => (string) $asset->title, 'type' => $asset->asset_type,
+                    'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addHours(2), ['assetId' => $asset->id])];
+            }
             if ($m->kind === 'pitch') foreach ($payload['takes'] ?? [] as $i => $t) unset($payload['takes'][$i]['request']);
             if ($m->kind === 'making') {
                 foreach ($payload['runs'] ?? [] as $i => $run) {

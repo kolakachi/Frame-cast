@@ -41,7 +41,9 @@ class UgcOneShotCompiler
             $lines = [];
             $dialogue = [];
             foreach ($chunk['beats'] as $j => $beat) {
-                if ($j > 0) {
+                if ($j > 0 && ! empty($beat['continues'])) {
+                    // The same shot carrying on (a long shot split to fit): no cut, they keep talking.
+                } elseif ($j > 0) {
                     // A cut between beats inside one generation — the only
                     // edit UGC permits, landing where a creator would cut.
                     $lines[] = 'Cut to '.self::framing($beat).'.';
@@ -132,8 +134,43 @@ Casual creator energy, natural imperfect delivery. Only the cuts this script cal
     }
 
     /** Beats greedily packed into 4–8s generations, cuts kept inside chunks. */
+    /**
+     * A shot longer than one generation is split at sentence ends (then at commas) into pieces that each fit, with
+     * the seconds shared by word count. Before 2026-10-10 a long talking shot went whole into one 8-second clip, and
+     * the presenter was cut off mid-sentence (an 18-second direct-to-camera take delivered as 8 seconds).
+     */
+    private static function splitLong(array $beats): array
+    {
+        $out = [];
+        foreach ($beats as $beat) {
+            $seconds = max(1.0, (float) ($beat['seconds'] ?? 3));
+            $text = trim((string) ($beat['script_text'] ?? ''));
+            $words = str_word_count($text);
+            if ($seconds <= self::MAX_SEGMENT_SECONDS || $words < 2) { $out[] = $beat; continue; }
+            $perWord = $seconds / $words;
+            $limit = max(1, (int) floor(self::MAX_SEGMENT_SECONDS / $perWord));
+            $pieces = [];
+            foreach (preg_split('/(?<=[.!?…])\s+/u', $text) ?: [$text] as $sentence) {
+                if (str_word_count($sentence) <= $limit) { $pieces[] = $sentence; continue; }
+                foreach (preg_split('/(?<=[,;:—])\s+/u', $sentence) ?: [$sentence] as $part) $pieces[] = $part;
+            }
+            $groups = []; $current = '';
+            foreach ($pieces as $piece) {
+                $joined = $current === '' ? $piece : $current.' '.$piece;
+                if ($current !== '' && str_word_count($joined) > $limit) { $groups[] = $current; $current = $piece; }
+                else $current = $joined;
+            }
+            if ($current !== '') $groups[] = $current;
+            foreach ($groups as $i => $group) {
+                $out[] = ['script_text' => $group, 'seconds' => round(str_word_count($group) * $perWord, 2), 'continues' => $i > 0] + $beat;
+            }
+        }
+        return $out;
+    }
+
     private static function pack(array $beats): array
     {
+        $beats = self::splitLong($beats);
         $chunks = [];
         $current = ['beats' => [], 'seconds' => 0.0];
         foreach ($beats as $beat) {
