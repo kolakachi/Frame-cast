@@ -96,6 +96,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      # Private files (one-take segments, Create uploads) shared with the API, as on prod.
+      - api_storage:/var/www/html/storage/app
 
   worker-exports:
     # NOTE the queue ORDER: Laravel drains --queue left to right, so listing
@@ -133,6 +136,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      # Private files (one-take segments, Create uploads) shared with the API, as on prod.
+      - api_storage:/var/www/html/storage/app
 
   reverb:
     init: true  # see note at top of file
