@@ -24,6 +24,7 @@ final class UgcChatService
 {
     public const TYPES = ['testimonial', 'problem_solution', 'green_screen', 'before_after', 'unboxing', 'comparison', 'pov_hook',
         'asmr', 'day_in_life', 'skit', 'listicle', 'founder_story', 'reaction'];
+    private const NOT_FOUNDER = 'Make it a testimonial instead';
     private const PACE = ['slower' => 0.9, 'natural' => 1.0, 'faster' => 1.12];
     private const DELIVERY = ['friendly' => 'Warm and friendly, like telling a friend about something that worked',
         'excited' => 'Excited and upbeat, genuinely impressed', 'calm' => 'Calm and assured, like an expert explaining',
@@ -73,6 +74,7 @@ final class UgcChatService
             $state['link'] = ['url' => (string) $input['link'], 'facts' => isset($facts['error']) ? null : $facts];
         }
         foreach (['presenters', 'type', 'aspect', 'length'] as $k) if (array_key_exists($k, $input)) $state[$k] = $input[$k];
+        if (trim((string) ($input['text'] ?? '')) === self::NOT_FOUNDER && ($state['type'] ?? '') === 'founder_story') $state['type'] = 'testimonial';
 
         DB::table('ugc_chat_messages')->insert(['chat_id' => $id, 'role' => 'user', 'kind' => 'text', 'content' => mb_substr((string) ($input['text'] ?? ''), 0, 4000),
             'payload_json' => json_encode(['attachments' => $input['attachments'] ?? [], 'link' => $input['link'] ?? null]), 'created_at' => now()]);
@@ -130,6 +132,11 @@ final class UgcChatService
     {
         $type = in_array($d['type'] ?? null, self::TYPES, true) ? $d['type'] : 'testimonial';
         if (in_array($state['type'] ?? 'auto', self::TYPES, true)) $type = $state['type'];
+        // A founder story is told by the founder (owner, 2026-10-10): an actor saying "I made this" for a real brand
+        // deceives. It needs the user's own face, an uploaded photo or a saved character, on every presenter.
+        if ($type === 'founder_story' && ! $this->ownFaces($request, $state)) {
+            return $this->say($id, 'question', 'A founder story is told by the founder, so it needs your own face. Add your photo (Presenters → upload) or pick your saved character, then send again. Or I can make it a testimonial instead.', ['chips' => [self::NOT_FOUNDER]]);
+        }
         $format = in_array($d['format'] ?? null, UgcPlan::FORMATS, true) ? $d['format'] : 'auto';
         $seconds = (int) max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15)));
         $footage = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'footage')));
@@ -196,6 +203,15 @@ final class UgcChatService
             'title' => $title], fn ($x) => $x !== null && $x !== '');
         return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'composed',
             'engine' => 'composed', 'credits' => $per, 'request' => $v];
+    }
+
+    /** Whether every chosen presenter is the workspace's own character (never a stock actor, never "let us pick"). */
+    private function ownFaces(Request $request, array $state): bool
+    {
+        $ids = array_map(fn ($p) => (int) ($p['character_id'] ?? 0), $state['presenters'] ?? []);
+        if (! $ids || in_array(0, $ids, true)) return false;
+        return DB::table('characters')->whereIn('id', $ids)->where('workspace_id', $request->user()->workspace_id)
+            ->where(fn ($q) => $q->whereNull('is_stock')->orWhere('is_stock', false))->count() === count(array_unique($ids));
     }
 
     /** The pipeline's own rule for one fluid take (web/src/services/ugcGenerationMode.js). */

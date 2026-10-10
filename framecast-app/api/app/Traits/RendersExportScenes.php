@@ -151,7 +151,7 @@ trait RendersExportScenes
                 $this->buildASSCaption(
                     $captionText, $captionStyle, $captionPosition, $captionFont, $duration,
                     $dimensions, $assFile, $captionHighlightMode,
-                    $this->captionTimingWordsFromAsset($audioAsset),
+                    $this->captionTimingWordsFromAsset($audioAsset ?? $this->spokenVideo($visualAsset)),
                     $captionColor, $captionSize, $captionHighlightColor,
                     $captionAnimationOptions,
                 );
@@ -993,6 +993,15 @@ trait RendersExportScenes
     }
 
     /** @return array<int,array{text:string,start:float,end:float}>|null */
+    /** A video carrying its own speech (a one-take UGC ad) times its captions from its own transcript. */
+    protected function spokenVideo(?Asset $asset): ?Asset
+    {
+        return $asset && ($asset->asset_type === 'video' || str_starts_with((string) $asset->mime_type, 'video/'))
+            && data_get($asset->metadata_json, 'caption_timing.words')
+            // A provider failure leaves placeholder words: even timing beats timing from words nobody said.
+            && data_get($asset->metadata_json, 'caption_timing.source') !== 'local_fallback' ? $asset : null;
+    }
+
     protected function captionTimingWordsFromAsset(?Asset $asset): ?array
     {
         if (! $asset) { return null; }

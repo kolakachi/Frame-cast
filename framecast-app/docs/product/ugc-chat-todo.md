@@ -26,6 +26,9 @@ assembly stays simple, motion graphics stay in Create.
 | P2-POLISH | Small: a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
+| ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
+| VARIETY | "Let us pick" chose the same actor 11/12 times for one product | open | decide |
+| SKIT-CAST | A skit's second person has no cast reference | open | after P3 |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |
 | P3-PLAYBOOKS | Per-type playbooks for the director and planner | open | after P2 |
 | P4-CHANGE | Change the delivered video by chat (one component, per change-scope rule) | open | after P3 |
@@ -51,6 +54,12 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 Type sweep (13 types, one product): all pitch without questions; reaction was broken (spoken script for a
+  silent clip; empty script dropped at hand-off), fixed. Captions on one-take videos (were off since one-take began):
+  timed from the video's own speech (transcribed before the take counts as ready; placeholder timings ignored),
+  Download in the chat hands over the captioned finished file. Founder story only with the user's own face (photo or
+  saved character); otherwise it asks, or makes a testimonial.
 
 - 2026-10-10 One-take videos resume from the clip that failed (clips saved as they land, recipe saved, reused only while
   unchanged and up to the first clip remade, damaged clips never saved; removed on delivery, delete, or after 7 days).

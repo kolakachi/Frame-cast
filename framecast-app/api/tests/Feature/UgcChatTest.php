@@ -133,4 +133,30 @@ class UgcChatTest extends TestCase
             ->assertOk()->assertJsonPath('data.script', 'I almost skipped this serum. Glad I did not.');
         $this->assertSame(0, DB::table('ugc_chat_messages')->count(), 'a rewrite is not a turn');
     }
+
+    public function test_a_founder_story_needs_the_users_own_face(): void
+    {
+        $this->withoutMiddleware();
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $this->replies[] = ['action' => 'pitch', 'type' => 'founder_story', 'format' => 'direct_camera', 'title' => 'Why I made it', 'summary' => 'The founder explains why.',
+            'script' => 'I made this because my skin was dry.', 'product' => 'Dewbloom serum', 'context' => 'Founder', 'duration_seconds' => 15];
+        $reply = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A founder story for my serum', 'type' => 'founder_story',
+            'presenters' => [['character_id' => 5]]])->assertOk()->json('data');
+        $this->assertSame('question', $reply['reply']['kind'], 'a stock actor never says "I made this"');
+        $this->assertSame(['Make it a testimonial instead'], $reply['reply']['payload']['chips']);
+        $this->assertSame([], $this->handed);
+
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Dewbloom review', 'summary' => 'Yara reviews it.',
+            'script' => 'This serum fixed my dull skin.', 'product' => 'Dewbloom serum', 'context' => 'Dull skin', 'duration_seconds' => 15];
+        $next = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Make it a testimonial instead', 'type' => 'founder_story',
+            'presenters' => [['character_id' => 5]]])->assertOk()->json('data');
+        $this->assertSame(['pitch', 'testimonial', 'testimonial'], [$next['reply']['kind'], $next['reply']['payload']['type'], $next['chat']['state']['type']]);
+
+        DB::table('characters')->insert(['id' => 6, 'workspace_id' => 1, 'name' => 'Ada (me)', 'status' => 'active', 'is_stock' => false, 'reference_asset_id' => 10]);
+        $this->replies[] = ['action' => 'pitch', 'type' => 'founder_story', 'format' => 'direct_camera', 'title' => 'Why I made it', 'summary' => 'Ada explains why.',
+            'script' => 'I made this because my skin was dry.', 'product' => 'Dewbloom serum', 'context' => 'Founder', 'duration_seconds' => 15];
+        $own = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'It is me, use my face', 'type' => 'founder_story',
+            'presenters' => [['character_id' => 6]]])->assertOk()->json('data.reply');
+        $this->assertSame(['pitch', 'founder_story'], [$own['kind'], $own['payload']['type']]);
+    }
 }

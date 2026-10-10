@@ -1230,7 +1230,10 @@ class UgcController extends Controller
             'project_id' => $project->id, 'scene_order' => 1, 'scene_type' => 'narration',
             'label' => 'One-take ad', 'script_text' => $script, 'duration_seconds' => $totalSeconds,
             'voice_settings_json' => ['enabled' => false],
-            'caption_settings_json' => ['enabled' => false],
+            // Captions are timed from the finished video's own speech (GenerateOneShotUgcJob transcribes it). They were
+            // off until 2026-10-10, so one-take ads downloaded without captions.
+            'caption_settings_json' => ['enabled' => true, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
+                'position' => 'bottom_third', 'font' => 'Arial', 'highlight_color' => '#ffffff'],
             'visual_type' => 'video', 'status' => 'draft',
             'image_generation_settings_json' => [
                 'in_progress' => true, 'ugc_kind' => 'on_camera', 'oneshot_token' => $runToken,

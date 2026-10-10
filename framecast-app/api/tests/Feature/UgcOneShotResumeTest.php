@@ -35,7 +35,7 @@ class UgcOneShotResumeTest extends TestCase
         foreach ([
             'projects' => ['workspace_id', 'created_by_user_id', 'title', 'aspect_ratio', 'duration_target_seconds', 'status', 'source_type', 'visual_brief'],
             'scenes' => ['project_id', 'scene_order', 'label', 'script_text', 'duration_seconds', 'visual_asset_id', 'status', 'image_generation_settings_json'],
-            'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'file_size_bytes', 'duration_seconds', 'tags', 'status', 'created_by_user_id'],
+            'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'file_size_bytes', 'duration_seconds', 'tags', 'status', 'created_by_user_id', 'metadata_json', 'transcript_text', 'transcription_status', 'transcription_error'],
         ] as $table => $cols) {
             Schema::create($table, function (Blueprint $t) use ($cols) { $t->id(); foreach ($cols as $c) $t->text($c)->nullable(); $t->timestamps(); });
         }
@@ -59,6 +59,10 @@ class UgcOneShotResumeTest extends TestCase
         $credits->shouldReceive('deduct')->andReturnUsing(function ($ws, $amount) { $this->charged[] = $amount; return true; });
         $credits->shouldReceive('planTier')->andReturnUsing(fn () => $this->tier);
         $this->app->instance(CreditService::class, $credits);
+        $words = Mockery::mock(\App\Services\Media\MediaTranscriptionService::class);
+        $words->shouldReceive('transcribeAssetWithTimestamps')->andReturn(['transcript' => 'Okay so', 'provider_key' => 'test', 'model' => 'm',
+            'words' => [['word' => 'Okay', 'start' => 0.1, 'end' => 0.4], ['word' => 'so', 'start' => 0.4, 'end' => 0.6]], 'segments' => []]);
+        $this->app->instance(\App\Services\Media\MediaTranscriptionService::class, $words);
         $this->app->instance(\App\Services\UgcPassTakeService::class, Mockery::mock(\App\Services\UgcPassTakeService::class)->shouldIgnoreMissing());
     }
 
@@ -108,6 +112,8 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(1, $this->starts - $startsBefore, 'only the clip that failed is made again');
         $this->assertSame([396], $this->charged, 'charged once, on delivery');
         $this->assertNotNull(Scene::query()->find(70)->visual_asset_id);
+        $asset = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
+        $this->assertSame('Okay', data_get($asset->metadata_json, 'caption_timing.words.0.word'), 'captions are timed from the video\'s own speech');
         $this->assertSame('ready_for_review', Project::query()->find(7)->status);
         $this->assertSame([], Storage::disk('minio')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'saved clips go once delivered');
         $this->assertArrayNotHasKey('oneshot_parts', $this->settings());

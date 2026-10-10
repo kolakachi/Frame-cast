@@ -310,6 +310,7 @@ async function send(override = null) {
       presenters: presenters.value.map(p => ({ character_id: p.character_id, voice: p.voice })),
     }, { timeout: 180000 })
     chat.value = data.data.chat
+    if (data.data.chat?.state?.type) type.value = data.data.chat.state.type
     confirmFor.value = null
     loadRecent()
   } catch (err) {
@@ -370,6 +371,34 @@ async function retryRun(m, ri) {
   } finally {
     retrying.value = ''
     schedulePoll()
+  }
+}
+// Download hands over the finished file (captions burned in): the take's export, started here when there is none yet.
+const finishing = ref({})
+async function download(run) {
+  const t = takeOf(run)
+  if (!t || finishing.value[t.id]) return
+  finishing.value = { ...finishing.value, [t.id]: 'Preparing…' }
+  error.value = ''
+  try {
+    // The finished file is made once the take is ready (initial finishing); ask for it if it has not started yet.
+    let job = null
+    for (let i = 0; i < 120; i++) {
+      const jobs = (await api.get(`/projects/${t.id}/exports`)).data?.data?.export_jobs ?? []
+      job = jobs.find(j => j.status === 'completed') ?? jobs.find(j => j.status !== 'failed') ?? null
+      if (!job && i === 0) job = (await api.post(`/projects/${t.id}/export`, { initial: true })).data?.data?.export_job ?? null
+      if (job?.status === 'completed') break
+      await new Promise(r => setTimeout(r, 3000))
+      if (disposed) return
+    }
+    const url = job?.status === 'completed' ? job.output_asset?.storage_url : null
+    if (!url) throw new Error(job?.failure_reason || 'The video could not be finished. Try again.')
+    window.open(url, '_blank', 'noopener')
+  } catch (err) {
+    error.value = err?.response ? apiErrorMessage(err, 'Could not prepare the download.') : err.message
+  } finally {
+    const { [t.id]: _, ...rest } = finishing.value
+    finishing.value = rest
   }
 }
 function openReview(run) { const t = takeOf(run); if (t) router.push({ name: 'ugc-review', params: { projectId: t.id } }) }
@@ -540,7 +569,7 @@ onBeforeUnmount(() => {
                       <h3>Your video is ready</h3>
                       <p class="uc-muted">{{ run.name }} · {{ takeOf(run)?.credits ?? run.credits }} credits</p>
                       <div class="uc-ready-btns">
-                        <a v-if="takeOf(run)?.thumbnail_type === 'video'" class="uc-btn uc-btn--primary" :href="takeOf(run).thumbnail_url" download target="_blank" rel="noopener">Download</a>
+                        <button type="button" class="uc-btn uc-btn--primary" :disabled="!!finishing[takeOf(run)?.id]" @click="download(run)">{{ finishing[takeOf(run)?.id] || 'Download' }}</button>
                         <button type="button" class="uc-btn" @click="openReview(run)">Review & share</button>
                         <button type="button" class="uc-btn" @click="openEditor(run)">Fine-tune in editor</button>
                       </div>

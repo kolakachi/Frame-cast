@@ -168,6 +168,14 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 'created_by_user_id' => $project->created_by_user_id,
             ]);
 
+            // Word timings for the captions, read from the video's own speech before it counts as ready. A failed
+            // transcription never fails the take: captions then fall back to even timing.
+            try {
+                (new TranscribeAssetJob((int) $asset->id))->handle(app(\App\Services\Media\MediaTranscriptionService::class));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('one-shot: caption timing failed', ['project_id' => $this->projectId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            }
+
             // Only the run that owns the take delivers and charges. The ownership check, the delivery and the charge run
             // under the scene's row lock, the same lock resume() claims under, so one always sees the other.
             $delivered = DB::transaction(function () use ($scene, $project, $asset, $duration, $credits) {
