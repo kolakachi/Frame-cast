@@ -40,7 +40,7 @@ class UgcShotPlanner
         }
 
         Log::warning('UGC director returned no usable plan', ['error' => $previousError]);
-        throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again or simplify the brief. Reaction clips need a visual brief, not a spoken script.']);
+        throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again, or simplify the brief.']);
     }
 
     private function planOnce(string $scriptText, string $product, string $context, int $durationSeconds,
@@ -64,7 +64,8 @@ class UgcShotPlanner
                 'previous_error' => $previousError !== ''
                     ? 'Your previous plan was rejected: '.$previousError.' Return a corrected plan that fixes exactly this.'
                     : '',
-            ], 3500, 0.3);
+            // 3500 cut a ten-shot plan off mid-JSON ("Syntax error", 2026-10-10: a ten-scene ASMR screenplay).
+            ], 6000, 0.3);
             $parsed = UgcPlan::decodeModelJson((string) ($result['content'] ?? $result['text'] ?? ''));
             $chosen = (string) ($parsed['format'] ?? '');
             if (! in_array($chosen, UgcPlan::FORMATS, true) || ($format !== 'auto' && $format !== $chosen)) {
