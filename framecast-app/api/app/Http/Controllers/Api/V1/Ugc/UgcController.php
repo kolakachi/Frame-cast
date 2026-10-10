@@ -120,6 +120,20 @@ class UgcController extends Controller
             return $row;
         });
 
+        // A take made in the UGC chat opens there (owner, 2026-10-10); the review page stays for the others.
+        $runs = $takes->pluck('run_id')->filter()->unique()->all();
+        if ($runs && \Illuminate\Support\Facades\Schema::hasTable('ugc_chat_messages')) {
+            $chatOf = [];
+            foreach (DB::table('ugc_chat_messages')->join('ugc_chats', 'ugc_chats.id', '=', 'ugc_chat_messages.chat_id')
+                ->where('ugc_chats.workspace_id', $request->user()->workspace_id)->where('ugc_chat_messages.kind', 'making')
+                ->orderByDesc('ugc_chat_messages.id')->limit(300)->get(['ugc_chat_messages.chat_id', 'ugc_chat_messages.payload_json']) as $m) {
+                foreach ((json_decode((string) $m->payload_json, true) ?: [])['runs'] ?? [] as $run) {
+                    if (! empty($run['run_id']) && ! isset($chatOf[$run['run_id']])) $chatOf[$run['run_id']] = $m->chat_id;
+                }
+            }
+            $takes = $takes->map(fn ($t) => $t + ['chat_id' => $chatOf[$t['run_id'] ?? ''] ?? null]);
+        }
+
         return response()->json(['data' => ['takes' => $takes], 'meta' => []]);
     }
 

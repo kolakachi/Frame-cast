@@ -23,6 +23,7 @@ class UgcOneShotResumeTest extends TestCase
     private string $tier = 'creator';
     private ?\Closure $onPoll = null;
     private array $startFrames = [];
+    private array $refs = [];
     private array $clipWords = ['transcript' => '', 'provider_key' => 'test', 'words' => []];
 
     protected function setUp(): void
@@ -50,7 +51,7 @@ class UgcOneShotResumeTest extends TestCase
                 '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
         }
         $veo = Mockery::mock(ReplicateVeoAdapter::class);
-        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null) { $this->startFrames[] = $startFrame; return 'pred-'.(++$this->starts); });
+        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = []) { $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
             if ($this->onPoll) ($this->onPoll)();
@@ -229,6 +230,9 @@ class UgcOneShotResumeTest extends TestCase
             ['prompt' => 'two carries on', 'seconds' => 6, 'new_shot' => false]]));
         $this->assertNull($this->startFrames[0]);
         $this->assertNull($this->startFrames[1], 'a cut re-anchors on the reference photos');
+        $this->assertSame('data:image/png;base64,AAAA', $this->refs[1][0], 'the presenter photo first');
+        $this->assertStringStartsWith('data:image/png;base64,', $this->refs[1][1]);
+        $this->assertNotSame('data:image/png;base64,AAAA', $this->refs[1][1], 'then the previous shot\'s last frame, for hair, clothes and setting');
         $this->assertStringStartsWith('data:image/png;base64,', (string) $this->startFrames[2], 'a carried-on shot starts from the last frame');
         $this->assertSame([396], $this->charged);
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
@@ -247,7 +251,7 @@ class UgcOneShotResumeTest extends TestCase
             $w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('dry', 0.8, 1.1), $w('skin.', 1.1, 1.5), $w('One,', 2.0, 2.3), $w('two,', 2.4, 2.7), $w('three.', 2.8, 3.2)]];
         $this->run_($this->job([['prompt' => 'p', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'It soothes dry skin.']]));
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
-        $this->assertEqualsWithDelta(1.9, (float) $video->duration_seconds, 0.15, 'ends 0.4 s after "skin", the counting is gone');
+        $this->assertEqualsWithDelta(2.5, (float) $video->duration_seconds, 0.15, 'the ad ends a second after "skin", the counting is gone');
         @unlink($long);
     }
 }

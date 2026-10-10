@@ -69,7 +69,8 @@ class UgcOneShotCompilerTest extends TestCase
     public function test_every_take_is_told_how_hands_and_props_behave(): void
     {
         $chunk = UgcOneShotCompiler::compile([['script_text' => 'Hi.', 'seconds' => 4, 'visual_brief' => 'kitchen']], ['wardrobe' => 'a rust knit sweater'])[0]['prompt'];
-        $this->assertStringContainsString('props the phone up or sets it down', $chunk);
+        $this->assertStringContainsString('never appears in the frame', $chunk);
+        $this->assertStringContainsString('propped on the counter', $chunk);
         $this->assertStringContainsString('Nothing floats', $chunk);
         $this->assertStringContainsString('wearing a rust knit sweater', $chunk);
     }

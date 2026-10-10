@@ -212,7 +212,9 @@ async function applyRevision() {
 
 async function refreshStatus() {
   clearTimeout(revisionTimer);
-  const wasPending = workPending.value;
+  // "Pending" includes "not checked yet": only work this page saw running counts as just finished. The first check
+  // used to reload the previews, which swapped the player out from under a click on play (2026-10-10).
+  const wasPending = statusKnown.value && workPending.value;
   try {
     const { data } = await api.get("/ugc/takes", { params: { project_id: projectId.value, detail: 1 } });
     take.value = data?.data?.takes?.[0] ?? null;

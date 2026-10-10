@@ -56,6 +56,12 @@ assembly stays simple, motion graphics stay in Create.
 
 ## Done
 
+- 2026-10-10 Second review: the phone is the camera and never in frame (a mirror-selfie phone floated while both hands
+  rubbed lotion); two-handed actions use a propped camera. A new shot's references are presenter + the previous
+  shot's last frame + product (hair came back different after a cutaway), and its silent lead-in is trimmed. Clip ends
+  keep 0.6 s after the last word (1 s at the ad's end, with a fade): 0.4 s clipped the last syllable. My ads opens a
+  chat-made take in its chat. The review page no longer swaps its player out under the first click on play.
+
 - 2026-10-10 Owner review of the sweep videos. Joins: next clip starts from the true last frame and its duplicate
   first frame is dropped; 30 ms audio fades; Omni clips up to 10 s (fewer joins). A clip opening a new shot starts
   from the presenter/product photos (identity and packaging re-anchored; drift across a before/after). Hands and props

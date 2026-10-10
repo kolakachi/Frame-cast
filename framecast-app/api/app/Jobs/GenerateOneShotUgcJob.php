@@ -122,6 +122,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 // clip to clip (2026-10-10: a face changed across a before/after). A clip carrying a shot on starts
                 // from the last frame, and that duplicate first frame is dropped when the clips are joined.
                 $fromRefs = $i > 0 && ! empty($chunk['new_shot']) && $this->referenceImages !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
+                // The previous clip's last frame rides along as a reference for hair, clothes and setting; the
+                // presenter's photo alone re-imagined them (2026-10-10: tied hair came back loose after a cutaway).
+                $continuity = $fromRefs ? $startFrame : null;
                 if ($fromRefs) $startFrame = null;
                 $fromTail[$i] = $i > 0 && ! $fromRefs;
                 // A segment saved by an earlier attempt is used as it is; the next one starts from its last frame.
@@ -131,8 +134,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     file_put_contents($path, $reuse[$i]);
                 } else {
                     if (! $this->owns($scene->refresh())) return; // superseded: the newer run makes the rest
-                    $path = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps);
-                    $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps);
+                    $path = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                    // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
+                    $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
                     $this->savePart($project, $scene, $storage, $i, $path);
                 }
                 $segmentPaths[] = $path;
@@ -320,7 +324,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
     }
 
     /** Make one segment on the provider (one automatic retry on a bare transport error) and download it. */
-    private function generateSegment(ReplicateVeoAdapter $veo, Scene $scene, int $i, array $chunk, ?string $startFrame, array &$temps): string
+    private function generateSegment(ReplicateVeoAdapter $veo, Scene $scene, int $i, array $chunk, ?string $startFrame, array &$temps, ?string $continuity = null): string
     {
         // Provider containers occasionally die with a bare transport
         // error (httpx.ReadError, empty error string) — transient, and
@@ -339,6 +343,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $chunkRefs = ($this->engine === 'veo_hq' || $this->engine === 'omni' || $i === 0)
                 ? $this->referenceImages
                 : [];
+            // A new shot: the presenter (first), the previous shot's last frame, then the product; the engine takes 3.
+            if ($continuity !== null && $chunkRefs !== []) {
+                $chunkRefs = array_slice(array_merge([$chunkRefs[0], $continuity], array_slice($chunkRefs, 1)), 0, 3);
+            }
             $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution);
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->refresh()->image_generation_settings_json ?? [],
@@ -385,7 +393,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * clip never sounds like a repeat (owner, 2026-10-10). Speech in the middle is left alone. Any doubt (no words, a
      * placeholder transcript, lines that cannot be found) keeps the clip as made.
      */
-    private function trimToScript(string $path, string $dialogue, int $i, array &$temps): string
+    private function trimToScript(string $path, string $dialogue, int $i, array &$temps, bool $leadIn = false, bool $ending = false): string
     {
         $norm = fn (string $w) => preg_replace('/[^a-z0-9]+/', '', mb_strtolower($w));
         $want = array_values(array_filter(array_map($norm, preg_split('/\s+/u', trim($dialogue)) ?: [])));
@@ -410,8 +418,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if ($first === null || $last === null || $last < $first) return $path;
 
         $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
-        $from = $first > 0 ? max(0.0, (float) $said[$first]['start'] - 0.12) : 0.0;
-        $to = min($length, (float) $said[$last]['end'] + 0.4);
+        // Extra words before the first scripted one always go; a silent lead-in goes only where a cut hides it.
+        $from = $first > 0 ? max(0.0, (float) $said[$first]['start'] - 0.12)
+            : ($leadIn && (float) $said[$first]['start'] > 0.6 ? (float) $said[$first]['start'] - 0.25 : 0.0);
+        // Transcripts mark a word's end early, more so a trailing word ("softer."): 0.4 s clipped the last syllable
+        // (2026-10-10). A join keeps 0.6 s, the ad's ending a full second.
+        $to = min($length, (float) $said[$last]['end'] + ($ending ? 1.0 : 0.6));
         if ($length <= 0 || ($from < 0.05 && $length - $to < 0.3) || $to - $from < 1.0) return $path;
 
         $out = tempnam(sys_get_temp_dir(), 'oneshot-trim-').'.mp4';
@@ -548,7 +560,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $askip = ! empty($fromTail[$i]) ? 'atrim=start=0.0417,' : '';
             $len = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', $path])->output());
             // 30 ms fades at each join, so no click where two clips' sound meets.
-            $fades = ($i > 0 ? ',afade=t=in:d=0.03' : '').($i < $last && $len > 0.2 ? sprintf(',afade=t=out:st=%.3f:d=0.03', $len - ($askip !== '' ? 0.0417 : 0) - 0.03) : '');
+            $out = $i < $last ? 0.03 : 0.25; // the ad's last sound fades rather than stopping on a hard edge
+            $fades = ($i > 0 ? ',afade=t=in:d=0.03' : '').($len > 0.5 ? sprintf(',afade=t=out:st=%.3f:d=%.2f', $len - ($askip !== '' ? 0.0417 : 0) - $out, $out) : '');
             $graph .= sprintf('[%1$d:v]%4$ssetpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v%1$d];'
                 .'[%1$d:a]%5$sasetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo%6$s[a%1$d];', $i, $w, $h, $skip, $askip, $fades);
         }
