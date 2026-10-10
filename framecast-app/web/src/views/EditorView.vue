@@ -1620,6 +1620,19 @@ function toggleExportRatio(r) {
 // project.is_shared + project.share_url come from the project serializer.
 // First click enables share + copies; subsequent clicks just re-copy.
 const shareTogglePending = ref(false);
+// The Share menu: closes after an action, on a click outside it, or on Escape; the copy keeps it open to show "copied".
+const shareMenuOpen = ref(false);
+const shareWrap = ref(null);
+function shareAction(action) {
+  if (action !== 'share') shareMenuOpen.value = false;
+  requestExportAction(action);
+}
+function closeShareMenu(event) {
+  if (!shareMenuOpen.value) return;
+  if (event.type === 'keydown' ? event.key === 'Escape' : !shareWrap.value?.contains(event.target)) shareMenuOpen.value = false;
+}
+onMounted(() => { document.addEventListener('pointerdown', closeShareMenu); document.addEventListener('keydown', closeShareMenu); });
+onBeforeUnmount(() => { document.removeEventListener('pointerdown', closeShareMenu); document.removeEventListener('keydown', closeShareMenu); });
 const shareCopiedToast = ref('');
 let shareCopiedTimer = null;
 async function toggleShareLink() {
@@ -7448,35 +7461,38 @@ onBeforeUnmount(() => {
                 <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V6a1 1 0 0 0-1-1Zm0 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" clip-rule="evenodd"/></svg>
                 <span class="export-fail-tooltip">{{ latestExportJob.failure_reason }}</span>
               </span>
-              <template v-if="activeExportJob?.status === 'completed' && latestExportDownloadUrl">
-                <span class="export-pill-sep">·</span>
-                <span v-if="exportsByRatio.length > 1" class="export-ratio-chips" role="group" aria-label="Which export">
+            </div>
+            <!-- Share (owner, 2026-10-10): one button; its menu picks the aspect ratio, then Open, Download, Schedule,
+                 Send for approval and Copy share link act on that ratio's file. -->
+            <div v-if="activeExportJob?.status === 'completed' && latestExportDownloadUrl" ref="shareWrap" class="share-wrap">
+              <button :class="['btn btn-ghost share-btn', shareMenuOpen ? 'active' : '']" type="button" aria-haspopup="menu" :aria-expanded="shareMenuOpen" @click="shareMenuOpen = !shareMenuOpen">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+                Share <span class="share-caret">▾</span>
+              </button>
+              <div v-if="shareMenuOpen" class="share-menu" role="menu">
+                <div class="share-menu-label">Aspect ratio</div>
+                <div class="share-ratios">
                   <button
-                    v-for="job in exportsByRatio" :key="job.id" type="button"
-                    :class="['export-ratio-chip', job.id === activeExportJob?.id ? 'on' : '']"
-                    :title="job.file_name"
-                    @click.prevent="selectedExportRatio = job.aspect_ratio"
-                  >{{ job.aspect_ratio }}</button>
-                </span>
-                <button type="button"
-                  class="export-pill-link"
-                  @click.prevent="requestExportAction('open')"
-                >Open ↗</button>
-                <button type="button"
-                  class="export-pill-link"
-                  @click.prevent="requestExportAction('download')"
-                >Download ↓</button>
-                <span class="export-pill-sep">·</span>
-                <button class="export-pill-link export-pill-schedule" @click="requestExportAction('schedule')">📅 Schedule</button>
-                <span class="export-pill-sep">·</span>
-                <button class="export-pill-link" @click="requestExportAction('approval')">📝 Send for approval</button>
-                <span class="export-pill-sep">·</span>
-                <button class="export-pill-link" @click="requestExportAction('share')" :disabled="shareTogglePending" :title="project?.is_shared ? 'Public link is on — click again to copy' : 'Generate a public link anyone can watch'">
-                  {{ shareTogglePending ? '…' : (project?.is_shared ? '🔗 Copy share link' : '🔗 Share publicly') }}
+                    v-for="job in (exportsByRatio.length ? exportsByRatio : [activeExportJob])" :key="job.id" type="button" role="menuitemradio"
+                    :aria-checked="job.id === activeExportJob?.id"
+                    :class="['share-ratio', job.id === activeExportJob?.id ? 'on' : '']"
+                    @click="selectedExportRatio = job.aspect_ratio"
+                  >
+                    <b>{{ job.aspect_ratio }}</b>
+                    <span>{{ ASPECT_RATIO_OPTIONS.find((o) => o.value === job.aspect_ratio)?.sub || '' }}</span>
+                    <i v-if="job.id === activeExportJob?.id">✓</i>
+                  </button>
+                </div>
+                <div class="share-menu-sep"></div>
+                <button type="button" role="menuitem" class="share-item" @click="shareAction('open')"><span>↗</span>Open in new tab</button>
+                <button type="button" role="menuitem" class="share-item" @click="shareAction('download')"><span>↓</span>Download MP4</button>
+                <button type="button" role="menuitem" class="share-item" @click="shareAction('schedule')"><span>📅</span>Schedule</button>
+                <button type="button" role="menuitem" class="share-item" @click="shareAction('approval')"><span>📝</span>Send for approval</button>
+                <button type="button" role="menuitem" class="share-item" :disabled="shareTogglePending" @click="shareAction('share')">
+                  <span>🔗</span>{{ shareTogglePending ? 'Creating link…' : shareCopiedToast === 'Copied!' ? 'Link copied' : 'Copy share link' }}
                 </button>
-                <span v-if="shareCopiedToast" class="export-pill-sep">·</span>
-                <span v-if="shareCopiedToast" class="export-share-copied">{{ shareCopiedToast }}</span>
-              </template>
+                <div v-if="shareCopiedToast && shareCopiedToast !== 'Copied!'" class="share-menu-url">{{ shareCopiedToast }}</div>
+              </div>
             </div>
             <!-- Phone only: the way into the settings sheet. Desktop has the
                  panel on screen permanently and needs no button. -->
@@ -11038,6 +11054,35 @@ button {
   color: var(--border);
 }
 
+.share-wrap { position: relative; }
+.share-btn { display: inline-flex; align-items: center; gap: 6px; }
+.share-btn.active { border-color: var(--accent, #ff6b35); color: var(--accent, #ff6b35); }
+.share-caret { font-size: 10px; opacity: .7; }
+.share-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 272px; padding: 10px;
+  background: var(--surface, #15151b); border: 1px solid var(--border, #2a2a36); border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.5);
+}
+.share-menu-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim, #9a9aa5); margin: 2px 4px 8px; }
+.share-ratios { display: flex; flex-direction: column; gap: 2px; }
+.share-ratio {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent;
+  background: transparent; color: var(--text-primary, #ececf3); cursor: pointer; text-align: left; font-size: 13px;
+}
+.share-ratio b { min-width: 38px; font-family: var(--font-mono, monospace); font-size: 12px; }
+.share-ratio span { color: var(--text-dim, #9a9aa5); font-size: 12px; flex: 1; }
+.share-ratio i { font-style: normal; color: var(--accent, #ff6b35); font-weight: 700; }
+.share-ratio:hover { background: rgba(255,255,255,.04); }
+.share-ratio.on { border-color: rgba(255,107,53,.45); background: rgba(255,107,53,.08); }
+.share-menu-sep { height: 1px; background: var(--border, #2a2a36); margin: 10px 2px; }
+.share-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text-primary, #ececf3); font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.share-item span { width: 18px; text-align: center; }
+.share-item:hover { background: rgba(255,255,255,.05); }
+.share-item:disabled { opacity: .5; cursor: default; }
+.share-menu-url { margin: 4px 10px 2px; font-size: 11.5px; color: var(--text-dim, #9a9aa5); word-break: break-all; user-select: all; }
 .export-ratio-chips { display: inline-flex; gap: 3px; margin-right: 6px; vertical-align: middle; }
 .export-ratio-chips-sheet { display: flex; gap: 6px; margin: 4px 0 8px; }
 .export-ratio-chip {
