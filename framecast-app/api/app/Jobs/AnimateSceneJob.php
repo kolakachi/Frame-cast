@@ -394,6 +394,9 @@ class AnimateSceneJob implements ShouldQueue
             $this->releaseSharedScenes(mb_substr($e->getMessage(), 0, 1000));
             GenerationProgressed::dispatch($this->projectId, 'animation', 'failed', $e->getMessage(), ['scene_id' => $this->sceneId]);
             app(CruiseActionRunService::class)->markStageFailed($this->projectId, 'animation', $e->getMessage(), $this->sceneId);
+            // A failed clip is finished work too: with nothing else in flight the project leaves "generating". Only
+            // the success path did this, so one failed animation left a project generating for good (2026-10-10).
+            rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId), report: false);
             throw $e;
         }
     }
@@ -407,6 +410,7 @@ class AnimateSceneJob implements ShouldQueue
         // worker killed. Without it a shared batch leaves scenes stuck
         // "animating" with no job left to finish them.
         $this->releaseSharedScenes(mb_substr($exception->getMessage(), 0, 1000));
+        rescue(fn () => app(\App\Services\Generation\PipelineStatusService::class)->maybeMarkReady($this->projectId), report: false);
     }
 
     /** Clear the in_progress lock on scenes that were waiting on a shared clip. */
