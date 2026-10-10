@@ -25,7 +25,7 @@ const publicApi = axios.create({ baseURL: `${apiBase}/api/v1` })
 async function loadSample() {
   loading.value = true
   try {
-    const res = await publicApi.get(`/public/projects/${token.value}`)
+    const res = await publicApi.get(`/public/projects/${token.value}`, { params: route.query.r ? { ratio: String(route.query.r) } : {} })
     data.value = res.data?.data ?? null
     if (!data.value) {
       notFound.value = true
@@ -54,7 +54,7 @@ function startPolling() {
     pollAttempts += 1
     if (pollAttempts > 30) { stopPolling(); return }
     try {
-      const res = await publicApi.get(`/public/projects/${token.value}`)
+      const res = await publicApi.get(`/public/projects/${token.value}`, { params: route.query.r ? { ratio: String(route.query.r) } : {} })
       const next = res.data?.data
       if (next?.export_ready) {
         data.value = next

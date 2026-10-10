@@ -467,8 +467,10 @@ async function shareVideo() {
   actionMessage.value = ''
   try {
     const { data } = await api.post(`/projects/${projectId.value}/share`, { enabled: true })
-    const url = data?.data?.share_url
-    if (!url) throw new Error('No link returned')
+    // With exports in several ratios, the link plays the one being watched (?r=9x16).
+    const base = data?.data?.share_url
+    if (!base) throw new Error('No link returned')
+    const url = exportsByRatio.value.length > 1 && viewJob.value?.aspect_ratio ? `${base}?r=${viewJob.value.aspect_ratio.replace(':', 'x')}` : base
     try { await navigator.clipboard.writeText(url); actionMessage.value = 'Share link copied.' }
     catch { actionMessage.value = url }
   } catch { actionMessage.value = 'Could not create a share link. Please try again.' }

@@ -1629,11 +1629,14 @@ async function toggleShareLink() {
     // Idempotent: if already shared, this is a no-op server-side and
     // returns the existing share_url for us to copy.
     const res = await api.post(`/projects/${project.value.id}/share`, { enabled: true });
-    const url = res.data?.data?.share_url;
+    // With exports in several ratios, the link plays the one chosen in the export bar (?r=9x16).
+    const base = res.data?.data?.share_url;
+    const url = base && exportsByRatio.value.length > 1 && activeExportJob.value?.aspect_ratio
+      ? `${base}?r=${activeExportJob.value.aspect_ratio.replace(':', 'x')}` : base;
     if (url) {
       // Mutate the local project state so the button label flips
       // immediately, then copy.
-      project.value = { ...project.value, is_shared: true, share_token: res.data.data.share_token, share_url: url };
+      project.value = { ...project.value, is_shared: true, share_token: res.data.data.share_token, share_url: base };
       try {
         await navigator.clipboard.writeText(url);
         shareCopiedToast.value = 'Copied!';

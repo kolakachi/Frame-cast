@@ -81,6 +81,9 @@ class PublicShareController extends Controller
      */
     public function show(string $token, StorageService $storage): JsonResponse
     {
+        // A link copied with a ratio chosen (?ratio=9x16) plays that ratio's export; without one, the newest.
+        $ratio = str_replace('x', ':', (string) request()->query('ratio', ''));
+        $ratio = in_array($ratio, ['9:16', '16:9', '1:1', '4:5'], true) ? $ratio : null;
         $project = Project::query()
             ->where('share_token', $token)
             ->where('is_shared', true)
@@ -99,8 +102,11 @@ class PublicShareController extends Controller
             ->where('project_id', $project->getKey())
             ->whereIn('status', ['completed', 'succeeded'])
             ->whereNotNull('output_asset_id')
+            ->when($ratio, fn ($q) => $q->where('aspect_ratio', $ratio))
             ->orderByDesc('completed_at')
-            ->first();
+            ->first()
+            ?? ($ratio ? ExportJob::query()->where('project_id', $project->getKey())->whereIn('status', ['completed', 'succeeded'])
+                ->whereNotNull('output_asset_id')->orderByDesc('completed_at')->first() : null);
 
         $videoUrl = null;
         if ($export) {
@@ -121,7 +127,8 @@ class PublicShareController extends Controller
             'data' => [
                 'project' => [
                     'title'        => $project->title ?? 'Untitled',
-                    'aspect_ratio' => $project->aspect_ratio,
+                    // The shape of the export that plays, so the frame fits it.
+                    'aspect_ratio' => $export?->aspect_ratio ?: $project->aspect_ratio,
                     'scene_count'  => $scenes->count(),
                 ],
                 'video_url' => $videoUrl,
