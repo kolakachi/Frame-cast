@@ -18,6 +18,8 @@ class UgcChatTest extends TestCase
     private array $replies = [];
     private array $handed = [];
     private string $takeStatus = 'generating';
+    private string $takeFormat = 'one_shot';
+    private array $sceneRetries = [];
     private array $deleted = [];
 
     protected function setUp(): void
@@ -29,7 +31,7 @@ class UgcChatTest extends TestCase
         DB::purge('ugc_chat_test');
         Bus::fake();
         config(['services.ugc.chat_open_to_all' => true]);
-        foreach (['characters' => ['workspace_id', 'name', 'description', 'status', 'is_stock', 'reference_asset_id', 'gender'],
+        foreach (['scenes' => ['project_id', 'scene_order', 'image_generation_settings_json'], 'characters' => ['workspace_id', 'name', 'description', 'status', 'is_stock', 'reference_asset_id', 'gender'],
             'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'duration_seconds']] as $table => $cols) {
             Schema::create($table, function (Blueprint $t) use ($cols) { $t->id(); foreach ($cols as $c) $t->text($c)->nullable(); $t->timestamps(); });
         }
@@ -57,7 +59,10 @@ class UgcChatTest extends TestCase
             $this->handed[] = $request->all();
             return $ok(['takes' => [['id' => 300 + count($this->handed), 'status' => 'generating']], 'credits_quoted' => (int) $request->input('credits'), 'run_id' => 'run-'.count($this->handed)], 201);
         });
-        $ugc->shouldReceive('takes')->andReturnUsing(fn () => $ok(['takes' => [['id' => 301, 'status' => $this->takeStatus, 'credits' => 330]]]));
+        $ugc->shouldReceive('takes')->andReturnUsing(fn ($request) => $ok(['takes' => [['id' => 301, 'status' => $this->takeStatus, 'credits' => 330, 'format' => $this->takeFormat,
+            'working' => false, 'scene_rows' => [['id' => 41, 'visual' => 'done'], ['id' => 42, 'visual' => 'failed', 'error' => 'x']]]]]));
+        $ugc->shouldReceive('sceneRetry')->andReturnUsing(function ($request, $sceneId) use ($ok) { $this->sceneRetries[] = $sceneId; return $ok(['retried' => ['visual']]); });
+        $ugc->shouldReceive('generate')->andReturnUsing(function ($request) use ($ok) { $this->handed[] = $request->all(); return $ok(['takes' => [['id' => 400]], 'run_id' => 'run-c'], 201); });
         $this->app->instance(UgcController::class, $ugc);
         $projects = Mockery::mock(\App\Http\Controllers\Api\V1\Project\ProjectController::class);
         $projects->shouldReceive('destroy')->andReturnUsing(function ($request, $projectId) use ($ok) { $this->deleted[] = $projectId; return $ok(['deleted' => true]); });
@@ -182,5 +187,30 @@ class UgcChatTest extends TestCase
         $this->withoutMiddleware();
         $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A skit', 'type' => 'skit'])->assertStatus(422);
+    }
+
+    public function test_a_composed_video_retries_only_its_failed_shots_and_is_never_remade_whole(): void
+    {
+        $this->withoutMiddleware();
+        $this->takeFormat = 'composed';
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        DB::table('ugc_chat_messages')->insert(['id' => 900, 'chat_id' => $chat, 'role' => 'assistant', 'kind' => 'making', 'content' => 'Making it now.',
+            'payload_json' => json_encode(['pitch_id' => 0, 'runs' => [['run_id' => 'run-x', 'take_ids' => [301], 'name' => 'Yara', 'take' => 0]]]), 'created_at' => now()]);
+        $this->takeStatus = 'needs_attention';
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/retry", ['message_id' => 900, 'run' => 0])->assertOk();
+        $this->assertSame([42], $this->sceneRetries, 'only the failed shot is made again');
+        $this->assertSame([], $this->handed, 'never remade whole: its finished shots were already paid for');
+        $this->assertSame([], $this->deleted);
+    }
+
+    public function test_a_presenter_from_another_workspace_is_dropped(): void
+    {
+        $this->withoutMiddleware();
+        DB::table('characters')->insert(['id' => 77, 'workspace_id' => 2, 'name' => 'Someone Private', 'status' => 'active', 'is_stock' => false, 'reference_asset_id' => 10]);
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $this->replies[] = ['action' => 'ask', 'question' => 'What is it?', 'chips' => ['A serum']];
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'An ad', 'presenters' => [['character_id' => 77], ['character_id' => 5]]])->assertOk();
+        $state = json_decode(DB::table('ugc_chats')->where('id', $chat)->value('state_json'), true);
+        $this->assertSame([5], array_column($state['presenters'], 'character_id'));
     }
 }

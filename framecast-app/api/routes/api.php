@@ -493,11 +493,11 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');
             // UGC Ads as a conversation (2026-10-10).
             Route::get('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'index']);
-            Route::post('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'store']);
+            Route::post('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'store'])->middleware('throttle:20,1');
             Route::get('/chats/{id}', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'show'])->whereUuid('id');
-            Route::post('/chats/{id}/messages', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'message'])->whereUuid('id');
+            Route::post('/chats/{id}/messages', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'message'])->whereUuid('id')->middleware('throttle:20,1');
             Route::post('/chats/{id}/make', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'make'])->whereUuid('id');
-            Route::post('/chats/{id}/rewrite', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'rewrite'])->whereUuid('id');
+            Route::post('/chats/{id}/rewrite', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'rewrite'])->whereUuid('id')->middleware('throttle:10,1');
             Route::post('/chats/{id}/retry', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'retry'])->whereUuid('id');
 
             // My Footage: bring a video, correct our read of it, plan and

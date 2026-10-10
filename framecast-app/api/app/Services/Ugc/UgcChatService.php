@@ -91,11 +91,19 @@ final class UgcChatService
             $facts = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'readLink'], ['request' => $r]), ['url' => (string) $input['link']]);
             $state['link'] = ['url' => (string) $input['link'], 'facts' => isset($facts['error']) ? null : $facts];
         }
+        // Presenters are this workspace's characters or stock actors, each with a face to anchor; anything else is
+        // dropped (an id from another workspace leaked its name into the pitch).
+        if (array_key_exists('presenters', $input)) {
+            $ids = array_filter(array_map(fn ($p) => (int) ($p['character_id'] ?? 0), $input['presenters'] ?? []));
+            $usable = $ids ? self::castable($user)->whereIn('id', $ids)->pluck('id')->map(fn ($v) => (int) $v)->all() : [];
+            $input['presenters'] = array_values(array_filter($input['presenters'] ?? [], fn ($p) => empty($p['character_id']) || in_array((int) $p['character_id'], $usable, true)));
+        }
         foreach (['presenters', 'type', 'aspect', 'length'] as $k) if (array_key_exists($k, $input)) $state[$k] = $input[$k];
         if (trim((string) ($input['text'] ?? '')) === self::NOT_FOUNDER && ($state['type'] ?? '') === 'founder_story') $state['type'] = 'testimonial';
 
         DB::table('ugc_chat_messages')->insert(['chat_id' => $id, 'role' => 'user', 'kind' => 'text', 'content' => mb_substr((string) ($input['text'] ?? ''), 0, 4000),
-            'payload_json' => json_encode(['attachments' => $input['attachments'] ?? [], 'link' => $input['link'] ?? null]), 'created_at' => now()]);
+            'payload_json' => json_encode(['attachments' => array_map(fn ($a) => ['asset_id' => (int) $a['asset_id'], 'role' => $a['role'] ?? null], $input['attachments'] ?? []),
+                'link' => $input['link'] ?? null]), 'created_at' => now()]);
         DB::table('ugc_chats')->where('id', $id)->update(['state_json' => json_encode($state), 'updated_at' => now()]);
         // What we read from their page and sample is shown back before anything is decided on it.
         $facts = [];
@@ -119,7 +127,7 @@ final class UgcChatService
         for ($try = 0; $try < 3 && ! $decision; $try++) {
             $out = $this->ai->generate('ugc_chat_turn', [
                 'transcript' => $this->transcript($id), 'materials' => $this->materials($state),
-                'presenters' => $this->presentersText($state), 'type' => $state['type'] ?? 'auto',
+                'presenters' => $this->presentersText($state, (int) $request->user()->workspace_id), 'type' => $state['type'] ?? 'auto',
                 'shape' => ($state['aspect'] ?? '9:16').(! empty($state['length']) ? ', '.$state['length'].' seconds' : ', length open'),
                 'previous_error' => $error,
             ], 1500, 0.4);
@@ -156,6 +164,7 @@ final class UgcChatService
             return $this->say($id, 'question', 'A founder story is told by the founder, so it needs your own face. Add your photo (Presenters → upload) or pick your saved character, then send again. Or I can make it a testimonial instead.', ['chips' => [self::NOT_FOUNDER]]);
         }
         $format = in_array($d['format'] ?? null, UgcPlan::FORMATS, true) ? $d['format'] : 'auto';
+        if ($format === 'reaction' && in_array('reaction', self::SOON, true)) $format = 'direct_camera';
         $seconds = (int) max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15)));
         $footage = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'footage')));
         // A reaction is silent: its words are a headline, never a spoken script (the planner refuses one).
@@ -209,7 +218,7 @@ final class UgcChatService
             return $s;
         }, $plan['segments']);
         $characterId = $p['character_id'] ?? null;
-        $name = $characterId ? (string) DB::table('characters')->where('id', $characterId)->value('name') : 'A fitting presenter';
+        $name = $characterId ? (string) self::castable($request->user())->where('id', $characterId)->value('name') : 'A fitting presenter';
         $oneShot = self::oneShotEligible($plan['format'], $segments);
         if ($oneShot) {
             $v = array_filter(['format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_id' => $characterId,
@@ -253,6 +262,13 @@ final class UgcChatService
         return $pool[random_int(0, count($pool) - 1)];
     }
 
+    /** Characters this workspace may cast: its own, and stock actors, active and with a reference photo. */
+    private static function castable(User $user): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('characters')->where('status', 'active')->whereNotNull('reference_asset_id')
+            ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)->orWhere(fn ($q) => $q->whereNull('workspace_id')->where('is_stock', true)));
+    }
+
     /** Whether every chosen presenter is the workspace's own character (never a stock actor, never "let us pick"). */
     private function ownFaces(Request $request, array $state): bool
     {
@@ -293,11 +309,15 @@ final class UgcChatService
         if (! empty($pitch['made'])) abort(409, 'This video is already being made.');
         $runs = []; $failed = null;
         foreach ($pitch['takes'] as $i => $t) {
-            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$requestId.':'.$i)->toString()];
+            if (isset($pitch['started'][$i])) { $runs[] = $pitch['started'][$i]; continue; } // started by an earlier Make
+            // Keyed by the pitch, not the browser: a second Make after a reload is the same request (idempotent).
+            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$messageId.':'.$i)->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) { $failed = $out['error']['message'] ?? 'One video could not be started.'; break; }
-            $runs[] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $t['name'], 'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i];
+            $runs[] = $pitch['started'][$i] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $t['name'], 'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i];
+            // Saved per take, so a failure on a later take never loses track of one already started.
+            DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($pitch)]);
         }
         if ($runs) {
             $pitch['made'] = true;
@@ -335,8 +355,27 @@ final class UgcChatService
                     return $this->show($request, $id);
                 }
             }
+            // A composed video paid for each finished shot as it was made: only its failed shots are made again
+            // (remaking it whole charged those shots twice and deleted paid work).
+            if (($takes[0]['format'] ?? '') !== 'one_shot') {
+                $retried = 0;
+                foreach ($run['take_ids'] ?? [] as $takeId) {
+                    $detail = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['project_id' => (int) $takeId, 'detail' => 1], 'GET')['takes'][0] ?? null;
+                    if (! empty($detail['working'])) abort(409, 'Part of this video is still being made. Try again once it stops.');
+                    foreach ($detail['scene_rows'] ?? [] as $row) {
+                        if (($row['visual'] ?? '') !== 'failed' && empty($row['error'])) continue;
+                        $out = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'sceneRetry'], ['request' => $r, 'sceneId' => (int) $row['id']]), []);
+                        if (! isset($out['error'])) $retried++;
+                    }
+                }
+                if (! $retried) abort(422, 'Nothing in this video can be made again from here. Open it to fix the failed part.');
+                $making['runs'][$runIndex] = ['attempt' => $attempt] + $run;
+                DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($making)]);
+                return $this->show($request, $id);
+            }
             $pitch = json_decode((string) DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', (int) ($making['pitch_id'] ?? 0))->value('payload_json'), true) ?: [];
             $i = $run['take'] ?? collect($pitch['takes'] ?? [])->search(fn ($t) => $t['name'] === $run['name']);
+            if ($i === false || $i === null) abort(404, 'The pitch for this video is gone.');
             $t = $pitch['takes'][$i] ?? abort(404, 'The pitch for this video is gone.');
             $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt)->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
@@ -452,11 +491,11 @@ final class UgcChatService
         return $lines ? implode("\n", $lines) : '(nothing yet)';
     }
 
-    private function presentersText(array $s): string
+    private function presentersText(array $s, int $workspaceId): string
     {
         $out = [];
         foreach ($s['presenters'] ?? [] as $p) {
-            $name = ! empty($p['character_id']) ? (string) DB::table('characters')->where('id', $p['character_id'])->value('name') : 'let us pick';
+            $name = ! empty($p['character_id']) ? (string) DB::table('characters')->where('id', $p['character_id'])->where(fn ($q) => $q->whereNull('workspace_id')->orWhere('workspace_id', $workspaceId))->value('name') : 'let us pick';
             $v = $p['voice'] ?? null;
             $out[] = $name.($v ? ' (voice: '.($v['pace'] ?? 'natural').' pace, '.($v['delivery'] ?? 'friendly').(! empty($v['direction']) ? ', '.$v['direction'] : '').')' : ' (voice: their default)');
         }
@@ -476,6 +515,9 @@ final class UgcChatService
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
             // A refusal such as "our video service is down" reaches the chat as said, not as a crash.
             return ['error' => ['code' => 'refused', 'message' => $e->getMessage() ?: 'The request was refused.']];
+        } catch (\Throwable $e) {
+            report($e);
+            return ['error' => ['code' => 'failed', 'message' => 'Something went wrong on our side. Nothing was charged for it; try again.']];
         }
         $body = $response->getData(true);
         if ($response->getStatusCode() >= 400) return ['error' => $body['error'] ?? ['code' => 'ugc_refused', 'message' => 'The request was refused.']];
