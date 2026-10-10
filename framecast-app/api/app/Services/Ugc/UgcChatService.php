@@ -227,7 +227,7 @@ final class UgcChatService
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) { $failed = $out['error']['message'] ?? 'One video could not be started.'; break; }
-            $runs[] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $t['name'], 'credits' => (int) ($out['credits_quoted'] ?? $t['credits'])];
+            $runs[] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $t['name'], 'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i];
         }
         if ($runs) {
             $pitch['made'] = true;
@@ -235,6 +235,43 @@ final class UgcChatService
         }
         if (! $runs) return $this->say($id, 'error', $failed ?? 'The video could not be started.');
         return $this->say($id, 'making', $failed ? 'Started '.count($runs).' of '.count($pitch['takes']).'. '.$failed : 'Making it now.', ['pitch_id' => $messageId, 'runs' => $runs]);
+    }
+
+    /**
+     * "Try again" on a video that failed: the same pitch is made again in the chat and the failed take is removed. A
+     * failed take was never charged (charge on success), so the retry costs only what the new one delivers.
+     */
+    public function retry(Request $request, string $id, int $messageId, int $runIndex): array
+    {
+        $chat = $this->chat($request->user(), $id);
+        $lock = \Illuminate\Support\Facades\Cache::lock('ugc-chat-retry:'.$messageId.':'.$runIndex, 120);
+        if (! $lock->get()) abort(409, 'This video is already being made again.');
+        try {
+            $msg = DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', $messageId)->where('kind', 'making')->first() ?? abort(404, 'Video not found.');
+            $making = json_decode((string) $msg->payload_json, true) ?: [];
+            $run = $making['runs'][$runIndex] ?? abort(404, 'Video not found.');
+            $takes = $run['run_id'] ? ($this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET')['takes'] ?? []) : [];
+            if (! $takes || collect($takes)->contains(fn ($t) => ($t['status'] ?? '') !== 'needs_attention')) abort(409, 'Only a video that failed can be made again.');
+            $pitch = json_decode((string) DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', (int) ($making['pitch_id'] ?? 0))->value('payload_json'), true) ?: [];
+            $i = $run['take'] ?? collect($pitch['takes'] ?? [])->search(fn ($t) => $t['name'] === $run['name']);
+            $t = $pitch['takes'][$i] ?? abort(404, 'The pitch for this video is gone.');
+            $attempt = (int) ($run['attempt'] ?? 0) + 1;
+            $payload = $t['request'] + ['consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt)->toString()];
+            $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
+                ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
+            if (isset($out['error'])) abort(422, $out['error']['message'] ?? 'It could not be started again.');
+            // The failed take goes; nothing was charged for it.
+            foreach ($run['take_ids'] ?? [] as $old) {
+                try { $this->call($request, fn ($c, Request $r) => app()->call([app(\App\Http\Controllers\Api\V1\Project\ProjectController::class), 'destroy'], ['request' => $r, 'projectId' => (int) $old]), [], 'DELETE'); }
+                catch (\Throwable $e) { report($e); }
+            }
+            $making['runs'][$runIndex] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $run['name'],
+                'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i, 'attempt' => $attempt];
+            DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($making)]);
+            return $this->show($request, $id);
+        } finally {
+            $lock->release();
+        }
     }
 
     /** The chat with its messages; a "making" message carries each video's live status from the pipeline. */

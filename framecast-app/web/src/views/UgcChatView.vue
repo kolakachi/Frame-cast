@@ -357,6 +357,21 @@ function pitchState(m) {
   return !states.length || states.includes('generating') ? 'making' : states.every(x => x === 'ready') ? 'ready' : 'failed'
 }
 function isMaking(m) { return m.kind === 'making' && (m.payload?.runs ?? []).some(r => runState(r) === 'generating') }
+const retrying = ref('')
+async function retryRun(m, ri) {
+  if (retrying.value) return
+  retrying.value = `${m.id}:${ri}`
+  error.value = ''
+  try {
+    const { data } = await api.post(`/ugc/chats/${chatId.value}/retry`, { message_id: m.id, run: ri }, { timeout: 120000 })
+    chat.value = data.data.chat
+  } catch (err) {
+    error.value = apiErrorMessage(err, 'Could not start it again.')
+  } finally {
+    retrying.value = ''
+    schedulePoll()
+  }
+}
 function openReview(run) { const t = takeOf(run); if (t) router.push({ name: 'ugc-review', params: { projectId: t.id } }) }
 function openEditor(run) { const t = takeOf(run); if (t) router.push({ name: 'project-editor', params: { projectId: t.id } }) }
 function openRun(run) { if (run.run_id) router.push({ name: 'ugc-run', params: { runId: run.run_id } }) }
@@ -512,7 +527,7 @@ onBeforeUnmount(() => {
               </div>
 
               <div v-else-if="m.kind === 'making'" class="uc-runs">
-                <div v-for="run in m.payload.runs" :key="run.run_id || run.name" class="uc-run">
+                <div v-for="(run, ri) in m.payload.runs" :key="run.run_id || run.name" class="uc-run">
                   <div v-if="runState(run) === 'generating'" class="uc-card uc-making">
                     <b>Making {{ run.name === 'A fitting presenter' ? 'your video' : `${run.name}'s video` }}</b>
                     <span class="uc-spin" aria-hidden="true"></span>
@@ -532,9 +547,12 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                   <div v-else class="uc-card uc-failed">
-                    <b>{{ run.name }}'s video hit a problem.</b>
-                    <p class="uc-muted">Credits for anything not made come back. You can retry the failed step from the take.</p>
-                    <button type="button" class="uc-btn" @click="openRun(run)">Open the take</button>
+                    <b>{{ run.name === 'A fitting presenter' ? 'Your' : `${run.name}'s` }} video didn't come out.</b>
+                    <p class="uc-muted">Nothing was charged for it. Try again and we make it again from the same pitch.</p>
+                    <div class="uc-ready-btns">
+                      <button type="button" class="uc-btn uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : 'Try again' }}</button>
+                      <button type="button" class="uc-link-btn" @click="openRun(run)">Details</button>
+                    </div>
                   </div>
                 </div>
                 <p v-if="m.content && m.content !== 'Making it now.'" class="uc-muted">{{ m.content }}</p>

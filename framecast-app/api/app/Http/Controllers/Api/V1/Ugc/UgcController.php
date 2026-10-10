@@ -794,6 +794,10 @@ class UgcController extends Controller
             return $this->error('not_found', 'Scene not found.', 404);
         }
 
+        // A one-take video is remade whole. The still-image retry below would replace the video with a photo.
+        if (data_get($scene->project?->visual_brief, 'ugc_format') === 'one_shot') {
+            return $this->error('one_shot_retry', 'A one-take video is made again as a whole. Start it again from your UGC chat or the UGC form; nothing was charged for the failed one.', 422);
+        }
         $settings = $scene->image_generation_settings_json ?? [];
         $voice = $scene->voice_settings_json ?? [];
         $retried = [];

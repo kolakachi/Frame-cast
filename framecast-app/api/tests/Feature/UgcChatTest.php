@@ -17,6 +17,8 @@ class UgcChatTest extends TestCase
 {
     private array $replies = [];
     private array $handed = [];
+    private string $takeStatus = 'generating';
+    private array $deleted = [];
 
     protected function setUp(): void
     {
@@ -54,8 +56,11 @@ class UgcChatTest extends TestCase
             $this->handed[] = $request->all();
             return $ok(['takes' => [['id' => 300 + count($this->handed), 'status' => 'generating']], 'credits_quoted' => (int) $request->input('credits'), 'run_id' => 'run-'.count($this->handed)], 201);
         });
-        $ugc->shouldReceive('takes')->andReturnUsing(fn () => $ok(['takes' => [['id' => 301, 'status' => 'generating', 'credits' => 330]]]));
+        $ugc->shouldReceive('takes')->andReturnUsing(fn () => $ok(['takes' => [['id' => 301, 'status' => $this->takeStatus, 'credits' => 330]]]));
         $this->app->instance(UgcController::class, $ugc);
+        $projects = Mockery::mock(\App\Http\Controllers\Api\V1\Project\ProjectController::class);
+        $projects->shouldReceive('destroy')->andReturnUsing(function ($request, $projectId) use ($ok) { $this->deleted[] = $projectId; return $ok(['deleted' => true]); });
+        $this->app->instance(\App\Http\Controllers\Api\V1\Project\ProjectController::class, $projects);
     }
 
     private function user(int $workspace = 1): User
@@ -106,6 +111,17 @@ class UgcChatTest extends TestCase
 
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-1111-4a2b-9c3d-123456789abc', 'consent' => true])->assertStatus(409);
         $this->actingAs($this->user(2))->getJson("/api/v1/ugc/chats/{$chat}")->assertNotFound();
+
+        // Try again: only a failed video, made again from the same pitch; the failed take is removed.
+        $makingId = $made['reply']['id'];
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/retry", ['message_id' => $makingId, 'run' => 0])->assertStatus(409);
+        $this->takeStatus = 'needs_attention';
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/retry", ['message_id' => $makingId, 'run' => 0])->assertOk();
+        $this->assertCount(2, $this->handed);
+        $this->assertNotSame($this->handed[0]['request_id'], $this->handed[1]['request_id']);
+        $this->assertSame([301], $this->deleted, 'the failed take is removed');
+        $run = json_decode(DB::table('ugc_chat_messages')->where('id', $makingId)->value('payload_json'), true)['runs'][0];
+        $this->assertSame(['run-2', 1], [$run['run_id'], $run['attempt']]);
     }
 
     public function test_rewrite_returns_a_sharper_script_and_is_free(): void

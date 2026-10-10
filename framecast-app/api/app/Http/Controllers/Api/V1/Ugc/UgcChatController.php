@@ -71,6 +71,13 @@ class UgcChatController extends Controller
         return response()->json(['data' => ['reply' => $reply, 'chat' => $this->chats->show($request, $id)], 'meta' => []]);
     }
 
+    public function retry(Request $request, string $id): JsonResponse
+    {
+        if ($gate = $this->gate($request)) return $gate;
+        $v = $request->validate(['message_id' => ['required', 'integer'], 'run' => ['required', 'integer', 'min:0']]);
+        return response()->json(['data' => ['chat' => $this->chats->retry($request, $id, (int) $v['message_id'], (int) $v['run'])], 'meta' => []]);
+    }
+
     public function rewrite(Request $request, string $id): JsonResponse
     {
         if ($gate = $this->gate($request)) return $gate;
