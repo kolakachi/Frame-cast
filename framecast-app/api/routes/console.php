@@ -98,6 +98,8 @@ Schedule::command('create:maintain-storage --apply --originals --limit=100')->ho
 // Stuck planning, long queues, a silent worker, stranded builds, open holds and low disk: emailed within minutes.
 // Held credits: a review keeps only what is uncertain, and nothing is held past 24 hours (CreditHolds, 2026-10-10).
 Schedule::command('credits:settle-holds')->everyFiveMinutes()->withoutOverlapping(10);
+// One-take segments saved for a retry are kept 7 days (GenerateOneShotUgcJob).
+Schedule::command('ugc:prune-oneshot-parts')->dailyAt('04:20')->withoutOverlapping(60);
 Schedule::command('create:health')->everyFiveMinutes()->withoutOverlapping(10)
     ->when(fn () => (bool) config('create.enabled'));
 

@@ -238,8 +238,9 @@ final class UgcChatService
     }
 
     /**
-     * "Try again" on a video that failed: the same pitch is made again in the chat and the failed take is removed. A
-     * failed take was never charged (charge on success), so the retry costs only what the new one delivers.
+     * "Try again" on a video that failed. A one-take video resumes from the clip that failed (GenerateOneShotUgcJob);
+     * otherwise the same pitch is made again and the failed take removed. A failed take was never charged (charge on
+     * success), so a retry costs only what is delivered.
      */
     public function retry(Request $request, string $id, int $messageId, int $runIndex): array
     {
@@ -252,10 +253,21 @@ final class UgcChatService
             $run = $making['runs'][$runIndex] ?? abort(404, 'Video not found.');
             $takes = $run['run_id'] ? ($this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET')['takes'] ?? []) : [];
             if (! $takes || collect($takes)->contains(fn ($t) => ($t['status'] ?? '') !== 'needs_attention')) abort(409, 'Only a video that failed can be made again.');
+            // A one-take video picks up from the clip that failed: same take, only the rest is made.
+            $attempt = (int) ($run['attempt'] ?? 0) + 1;
+            if (count($run['take_ids'] ?? []) === 1 && ($takes[0]['format'] ?? '') === 'one_shot') {
+                $scene = \App\Models\Scene::query()->where('project_id', (int) $run['take_ids'][0])->orderBy('scene_order')->first();
+                $resumed = $scene ? \App\Jobs\GenerateOneShotUgcJob::resume($scene) : 'not_resumable';
+                if ($resumed === 'running') abort(409, 'This video is already being made.');
+                if ($resumed === 'resumed') {
+                    $making['runs'][$runIndex] = ['attempt' => $attempt, 'resumed' => true] + $run;
+                    DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($making)]);
+                    return $this->show($request, $id);
+                }
+            }
             $pitch = json_decode((string) DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', (int) ($making['pitch_id'] ?? 0))->value('payload_json'), true) ?: [];
             $i = $run['take'] ?? collect($pitch['takes'] ?? [])->search(fn ($t) => $t['name'] === $run['name']);
             $t = $pitch['takes'][$i] ?? abort(404, 'The pitch for this video is gone.');
-            $attempt = (int) ($run['attempt'] ?? 0) + 1;
             $payload = $t['request'] + ['consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt)->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);

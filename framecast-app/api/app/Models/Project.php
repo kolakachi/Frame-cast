@@ -34,6 +34,11 @@ class Project extends Model
      */
     protected static function booted(): void
     {
+        // A deleted take's saved one-take segments go with it (GenerateOneShotUgcJob keeps them until delivery).
+        static::deleting(function (Project $project): void {
+            Scene::query()->where('project_id', $project->getKey())->whereNotNull('image_generation_settings_json->oneshot_recipe')->get()
+                ->each(fn (Scene $scene) => \App\Jobs\GenerateOneShotUgcJob::forgetParts($scene, (int) $project->workspace_id));
+        });
         static::created(function (Project $project): void {
             if ($project->usesAutomaticFinish() && $project->status === 'generating') {
                 \App\Jobs\FinishGeneratedVideoJob::dispatch((int) $project->id)->delay(now()->addSeconds(30))->afterCommit();

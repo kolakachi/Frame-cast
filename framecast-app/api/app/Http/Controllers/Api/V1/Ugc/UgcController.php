@@ -794,9 +794,13 @@ class UgcController extends Controller
             return $this->error('not_found', 'Scene not found.', 404);
         }
 
-        // A one-take video is remade whole. The still-image retry below would replace the video with a photo.
+        // A one-take video resumes from the clip that failed (the still-image retry below would replace it with a photo).
         if (data_get($scene->project?->visual_brief, 'ugc_format') === 'one_shot') {
-            return $this->error('one_shot_retry', 'A one-take video is made again as a whole. Start it again from your UGC chat or the UGC form; nothing was charged for the failed one.', 422);
+            return match (\App\Jobs\GenerateOneShotUgcJob::resume($scene)) {
+                'resumed' => response()->json(['data' => ['retried' => ['video']], 'meta' => []]),
+                'running' => $this->error('already_running', 'This video is already being made.', 409),
+                default => $this->error('one_shot_retry', 'This one-take video has to be made again from the start. Start it again from your UGC chat or the UGC form; nothing was charged for the failed one.', 422),
+            };
         }
         $settings = $scene->image_generation_settings_json ?? [];
         $voice = $scene->voice_settings_json ?? [];
@@ -1220,6 +1224,8 @@ class UgcController extends Controller
                 'ugc_run_id' => $runId,
             ],
         ]);
+        // The run that owns this take (GenerateOneShotUgcJob: a resumed or redelivered copy never charges).
+        $runToken = (string) Str::uuid();
         $scene = Scene::query()->create([
             'project_id' => $project->id, 'scene_order' => 1, 'scene_type' => 'narration',
             'label' => 'One-take ad', 'script_text' => $script, 'duration_seconds' => $totalSeconds,
@@ -1227,7 +1233,7 @@ class UgcController extends Controller
             'caption_settings_json' => ['enabled' => false],
             'visual_type' => 'video', 'status' => 'draft',
             'image_generation_settings_json' => [
-                'in_progress' => true, 'ugc_kind' => 'on_camera',
+                'in_progress' => true, 'ugc_kind' => 'on_camera', 'oneshot_token' => $runToken,
                 'generation_started_at' => now()->toIso8601String(),
             ],
         ]);
@@ -1244,6 +1250,7 @@ class UgcController extends Controller
             $variantSeed,
             $resolution,
             $demoStorageUrl,
+            $runToken,
         )->afterCommit();
 
         $payload = ['data' => [

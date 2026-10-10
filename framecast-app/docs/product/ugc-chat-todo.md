@@ -24,7 +24,8 @@ assembly stays simple, motion graphics stay in Create.
 |---|---|---|---|
 | P2-ASPECT | Only 9:16 offered: one-take always renders 9:16; composed takes accept 1:1 and 16:9 but the chat sends 9:16 | open | decide, then pass aspect through |
 | P2-POLISH | Small: a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
-| RUN-RETRY | The take page's "Retry this scene" now refuses one-take videos (it would have made a still image); give it a real one-take retry (remake the clips) for the old form too | open | build |
+| ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
+| DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |
 | P3-PLAYBOOKS | Per-type playbooks for the director and planner | open | after P2 |
 | P4-CHANGE | Change the delivered video by chat (one component, per change-scope rule) | open | after P3 |
@@ -50,6 +51,12 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 One-take videos resume from the clip that failed (clips saved as they land, recipe saved, reused only while
+  unchanged and up to the first clip remade, damaged clips never saved; removed on delivery, delete, or after 7 days).
+  Each run has a token: a resumed, redelivered or superseded run never saves, fails or charges; delivery + charge and
+  the retry claim share the scene's row lock. Job timeout 2300 s (< retry_after 2400). The stuck-generation reaper no
+  longer marks a running one-take failed at 10 minutes (it did on prod). Take-page Retry resumes one-takes too.
 
 - 2026-10-10 Try again in the chat: a failed video is made again from the same pitch inside the chat (failed take
   removed; it was never charged). The take page's scene retry no longer turns a one-take video into a still image.

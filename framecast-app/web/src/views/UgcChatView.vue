@@ -548,7 +548,7 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-else class="uc-card uc-failed">
                     <b>{{ run.name === 'A fitting presenter' ? 'Your' : `${run.name}'s` }} video didn't come out.</b>
-                    <p class="uc-muted">Nothing was charged for it. Try again and we make it again from the same pitch.</p>
+                    <p class="uc-muted">Nothing was charged for it. Try again picks up where it stopped.</p>
                     <div class="uc-ready-btns">
                       <button type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : 'Try again' }}</button>
                       <button type="button" class="uc-link-btn" @click="openRun(run)">Details</button>

@@ -208,6 +208,11 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
         $cleared = 0;
         foreach ($stuck as $scene) {
             $cfg = $scene->image_generation_settings_json ?? [];
+            // A one-take run beats generation_started_at at every segment and is bounded by its own job timeout; it is
+            // only stuck once that has passed (it used to be reaped at 10 minutes while still being made).
+            if (! empty($cfg['oneshot_token']) && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subSeconds((new \App\Jobs\GenerateOneShotUgcJob(0, 0, [], 0))->timeout + 300))) {
+                continue;
+            }
             $cfg['in_progress']  = false;
             $cfg['needs_visual'] = true;
             $cfg['last_error']   = ($cfg['last_error'] ?? '') !== ''
@@ -248,6 +253,11 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
         $cleared = 0;
         foreach ($stuck as $scene) {
             $cfg = $scene->image_generation_settings_json ?? [];
+            // A one-take run beats generation_started_at at every segment and is bounded by its own job timeout; it is
+            // only stuck once that has passed (it used to be reaped at 10 minutes while still being made).
+            if (! empty($cfg['oneshot_token']) && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subSeconds((new \App\Jobs\GenerateOneShotUgcJob(0, 0, [], 0))->timeout + 300))) {
+                continue;
+            }
 
             // RESUME instead of discard: if we kept the Replicate prediction
             // id, the clip is still finishing (or done) in their cloud — the
