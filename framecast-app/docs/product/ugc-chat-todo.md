@@ -44,7 +44,7 @@ assembly stays simple, motion graphics stay in Create.
 | D-LEN | A pasted script's length wins over the chosen length (recommended; built that way) | owner OK |
 | D-REWRITE | Rewrite with AI is free (built that way) | owner OK |
 | D-CHAR | Saved characters come from Library → Characters (recommended) | owner OK |
-| LIVE | A real paid make from the chat on prod after deploy (Make it, making, ready, Download, Review & share, Fine-tune) | after push |
+| LIVE | Deployed 2026-10-10 and opened to every paid account (UGC_CHAT_OPEN_TO_ALL=true on prod). A real paid make from the chat on prod (charges, captions, Download, resume) still to run | run soon |
 
 ## 3. Other open items from 2026-10-10 (not UGC chat)
 
