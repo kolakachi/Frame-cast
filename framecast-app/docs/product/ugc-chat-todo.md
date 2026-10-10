@@ -24,6 +24,7 @@ assembly stays simple, motion graphics stay in Create.
 |---|---|---|---|
 | P2-ASPECT | Only 9:16 offered: one-take always renders 9:16; composed takes accept 1:1 and 16:9 but the chat sends 9:16 | open | decide, then pass aspect through |
 | P2-POLISH | Small: a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
+| OLD-FORM-CHANGES | Old-form one-takes change on deploy: captions on by default, cuts at shot changes re-anchored on photos, shorter job timeout (resumable) | review | owner OK |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
 | VISION | The director reads only file names: the sweep's product (a tube) became a pump bottle in 3 of 6 videos. Let it look at product photos | proposed | build |
@@ -55,6 +56,16 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 Pre-launch review (3 reviewers: money/pipeline, chat/security, web/captions), all fixed: jobs queued
+  before the deploy unserialize safely; trims only on unambiguous matches; silent clips join; long lines always split;
+  delivery clears the recipe, resume rechecks balance and refuses delivered takes; reaped runs lose the take; refused
+  charges reported. Composed retries redo only failed shots; presenters scoped to the workspace; inner failures answer
+  instead of crashing; Make keyed by the pitch, saved per take; rate limits; sent files store only ids; cascading
+  deletes. One-take Download now burns captions over the video's own sound (BurnOneShotCaptionsJob; it was the raw
+  file); transcript timing only for one-take videos. Web: capability-aware redirect, newest-export Download with a
+  link, single chat creation, Make locked while sending, slow replies awaited, presenters never wiped, keyboard,
+  accessibility, phone layout.
 
 - 2026-10-10 Go-live blockers: saved one-take clips and recipes moved off the public media bucket to the private disk
   (api_private on prod); Replicate running dry now alerts the team (video submits and the chat's AI calls report to
