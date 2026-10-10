@@ -121,6 +121,9 @@ async function copyShareLink() {
   }
 }
 const activePreview = computed(() => (activeScene.value ? previews.value[activeScene.value] : null));
+// A scene's own clip (a talking take) plays as video; a still plays with the scene's voice under it.
+const sceneIsClip = computed(() => activePreview.value?.visual_type === "video" || /\.(mp4|webm|mov)(\?|$)/i.test(String(activePreview.value?.visual_url || "")));
+const frameAspect = computed(() => String(project.value?.aspect_ratio || "9:16").replace(":", " / "));
 const activeSceneRow = computed(() => scenes.value.find((s) => s.id === activeScene.value));
 
 async function load() {
@@ -355,22 +358,8 @@ onBeforeUnmount(() => {
 
       <div class="rev-body">
         <section class="rev-preview">
-          <div class="rev-frame">
-            <FinishedVideoPlayer v-if="projectId >= 216 && downloadUrl && showFinished" :src="downloadUrl" />
-            <video v-else-if="downloadUrl && showFinished" :src="downloadUrl" controls playsinline aria-label="Finished video" />
-            <video
-              v-else-if="activePreview?.visual_url && (activePreview?.visual_type === 'video' || String(activePreview.visual_url).match(/\.(mp4|webm|mov)(\?|$)/i))"
-              :src="activePreview.visual_url"
-              controls
-              playsinline
-            />
-            <img v-else-if="activePreview?.visual_url" :src="activePreview.visual_url" alt="" />
-            <div v-else class="rev-frame-empty">Preview loads per scene — pick one below</div>
-
-          </div>
-          <p v-if="(!downloadUrl || !showFinished) && activeSceneRow?.script_text" class="rev-muted">{{ activeSceneRow.script_text }}</p>
-          <audio v-if="(!downloadUrl || !showFinished) && activePreview?.audio_url" class="rev-audio" :src="activePreview.audio_url" controls />
-          <p class="rev-muted">{{ downloadUrl && showFinished ? "Finished video · Ready to download" : "Scene preview · Your finished video will include captions and music." }}</p>
+          <!-- One player for everything (2026-10-10): the finished video, a scene's clip, or a scene's still with its
+               voice, all in the same frame and controls; the chips sit above so they never move. -->
           <div v-if="scenes.length > 1 || downloadUrl" class="rev-scenes">
             <button v-if="downloadUrl" type="button" :class="['rev-scene-chip', showFinished ? 'on' : '']" @click="showFinished = true">Finished video</button>
             <button
@@ -383,6 +372,15 @@ onBeforeUnmount(() => {
               {{ s.label || `Scene ${s.scene_order}` }}
             </button>
           </div>
+          <FinishedVideoPlayer v-if="downloadUrl && showFinished" :key="'finished'" :src="downloadUrl" :aspect="frameAspect" />
+          <FinishedVideoPlayer v-else-if="activePreview?.visual_url && sceneIsClip" :key="'clip-' + activeScene" :src="activePreview.visual_url" :aspect="frameAspect" />
+          <FinishedVideoPlayer v-else-if="activePreview?.visual_url && activePreview?.audio_url" :key="'still-' + activeScene" :src="activePreview.audio_url" :poster="activePreview.visual_url" :aspect="frameAspect" />
+          <div v-else class="rev-frame" :style="{ aspectRatio: frameAspect }">
+            <img v-if="activePreview?.visual_url" :src="activePreview.visual_url" alt="" />
+            <div v-else class="rev-frame-empty">Preview loads per scene — pick one above</div>
+          </div>
+          <p v-if="(!downloadUrl || !showFinished) && activeSceneRow?.script_text" class="rev-muted">{{ activeSceneRow.script_text }}</p>
+          <p class="rev-muted">{{ downloadUrl && showFinished ? "Finished video · Ready to download" : downloadUrl ? "This scene on its own, as it was made. The finished video adds captions and music." : "Scene preview · Your finished video will include captions and music." }}</p>
         </section>
 
         <section class="rev-panel">
@@ -555,7 +553,6 @@ onBeforeUnmount(() => {
   position: absolute; left: 16px; right: 16px; bottom: 20px; color: #fff; font-size: 14px;
   font-weight: 600; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); pointer-events: none;
 }
-.rev-audio { width: 100%; }
 .rev-scenes { display: flex; gap: 6px; flex-wrap: wrap; }
 .rev-scene-chip {
   border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-primary);

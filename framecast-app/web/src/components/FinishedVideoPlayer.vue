@@ -4,7 +4,9 @@ import { getCurrentInstance, ref, watch } from 'vue'
 // capture: the page reads frames from the video (Change this moment), which needs a CORS-enabled request. Only our
 // own media allows that; a classic export redirects to storage that sends no CORS header, and asking anyway made
 // every classic finished video fail to load (2026-10-09). So only pages that capture ask for it.
-const props = defineProps({ src: { type: String, required: true }, capture: { type: Boolean, default: false } })
+// poster: a still shown while the source plays, e.g. a scene's picture with its voice (an audio-only source keeps
+// the poster on screen). aspect: the frame's shape, "9 / 16", so stills, clips and the finished video match in size.
+const props = defineProps({ src: { type: String, required: true }, capture: { type: Boolean, default: false }, poster: { type: String, default: '' }, aspect: { type: String, default: '' } })
 // A streamed video comes from a signed link that expires (about 30 to 45 minutes). When playback fails and the page
 // can renew the link (it listens for "stale"), the player asks once, then plays from the new link by itself.
 const emit = defineEmits(['stale'])
@@ -66,7 +68,7 @@ async function fullscreen() {
 <template>
   <div ref="shell" class="finished-player">
     <div class="player-screen">
-      <video ref="video" :src="src" :crossorigin="capture ? 'anonymous' : undefined" playsinline preload="metadata" aria-label="Finished video"
+      <video ref="video" :src="src" :poster="poster || undefined" :style="aspect ? { aspectRatio: aspect } : undefined" :crossorigin="capture ? 'anonymous' : undefined" playsinline preload="metadata" aria-label="Finished video"
         @click="toggle" @loadedmetadata="sync" @durationchange="sync" @timeupdate="sync"
         @play="playing = true" @pause="playing = false" @ended="playing = false"
         @volumechange="muted = video.muted; volume = video.volume" @error="failed" />
