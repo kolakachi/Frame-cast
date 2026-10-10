@@ -60,6 +60,8 @@ const menu = ref('')
 const expanded = ref(null)
 const castSearch = ref('')
 const castAll = ref(false)
+// An actor or character opened for a closer look before they are added (owner, 2026-10-10).
+const previewing = ref(null)
 const rewriteState = ref('')
 const rewriteDismissed = ref('')
 const confirmFor = ref(null)
@@ -130,6 +132,19 @@ function addPresenter(c) {
   const voice = sameVoice.value && presenters.value[0]?.voice ? { ...presenters.value[0].voice } : null
   presenters.value.push({ key: crypto.randomUUID(), character_id: c?.id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice })
 }
+const AGE = { young_adult: 'Young adult', adult: 'Adult', senior: 'Senior' }
+const previewList = computed(() => previewing.value?.is_stock ? filteredStock.value : mine.value)
+const previewTags = computed(() => {
+  const c = previewing.value
+  if (!c) return []
+  return [c.is_stock ? 'Actor' : 'Your character', AGE[c.age_group], c.gender ? c.gender[0].toUpperCase() + c.gender.slice(1) : '', ...(c.situations || []).slice(0, 3)].filter(Boolean)
+})
+const previewAdded = computed(() => !!previewing.value && presenters.value.some(p => p.character_id === previewing.value.id))
+function stepPreview(dir) {
+  const list = previewList.value, i = list.findIndex(c => c.id === previewing.value?.id)
+  if (i >= 0 && list.length) previewing.value = list[(i + dir + list.length) % list.length]
+}
+function addPreviewed() { const c = previewing.value; if (c) { addPresenter(c); previewing.value = null } }
 function removePresenter(p) { presenters.value = presenters.value.filter(x => x !== p); if (expanded.value === p.key) expanded.value = null }
 function setVoice(p, key, value) {
   const apply = x => { x.voice = { pace: 'natural', delivery: 'friendly', direction: '', ...(x.voice || {}), [key]: value } }
@@ -138,7 +153,7 @@ function setVoice(p, key, value) {
 }
 watch(sameVoice, on => { if (on && presenters.value[0]?.voice) presenters.value.forEach(x => { x.voice = { ...presenters.value[0].voice } }) })
 
-function toggleMenu(name) { menu.value = menu.value === name ? '' : name; if (menu.value === 'cast') loadCharacters() }
+function toggleMenu(name) { menu.value = menu.value === name ? '' : name; previewing.value = null; if (menu.value === 'cast') loadCharacters() }
 function closeMenus(e) { if (!e.target.closest('.uc-pop, .uc-pill, .uc-plus')) menu.value = '' }
 
 async function loadCharacters() {
@@ -580,19 +595,38 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
 
+                <div v-if="previewing" class="uc-preview">
+                  <img v-if="imageOf(previewing)" :src="imageOf(previewing)" :alt="previewing.name" />
+                  <span v-else class="uc-preview-none">{{ previewing.name.slice(0, 1) }}</span>
+                  <div class="uc-preview-t">
+                    <b>{{ previewing.name }}</b>
+                    <p v-if="previewing.description">{{ previewing.description }}</p>
+                    <span class="uc-preview-tags"><span v-for="t in previewTags" :key="t">{{ t }}</span></span>
+                    <span class="uc-preview-btns">
+                      <button type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="previewAdded" @click="addPreviewed">{{ previewAdded ? 'Added' : `Add ${previewing.name}` }}</button>
+                      <button type="button" class="uc-btn uc-btn--sm" @click="previewing = null">Back</button>
+                    </span>
+                    <span v-if="previewList.length > 1" class="uc-preview-nav">
+                      <button type="button" aria-label="Previous" @click="stepPreview(-1)">‹</button>
+                      <button type="button" aria-label="Next" @click="stepPreview(1)">›</button>
+                    </span>
+                  </div>
+                </div>
+                <template v-else>
                 <span class="uc-label uc-pad">Add a presenter</span>
                 <div class="uc-add">
                   <button type="button" class="uc-add-i" title="Let us pick" @click="addPresenter(null)">✦</button>
                   <button type="button" class="uc-add-i" title="Upload a photo of you or someone you have the rights to" @click="pickPhoto">⇪</button>
-                  <button v-for="c in filteredStock" :key="c.id" type="button" class="uc-add-face" :title="c.name" @click="addPresenter(c)"><img :src="imageOf(c)" :alt="c.name" /></button>
+                  <button v-for="c in filteredStock" :key="c.id" type="button" :class="['uc-add-face', { on: presenters.some(p => p.character_id === c.id) }]" :title="c.name" @click="previewing = c"><img :src="imageOf(c)" :alt="c.name" /></button>
                   <button v-if="!castAll && stock.length > 6" type="button" class="uc-add-i uc-add-more" @click="castAll = true">+{{ stock.length - 6 }}</button>
                 </div>
                 <input v-if="castAll" v-model="castSearch" class="uc-search" placeholder="Search actors" />
                 <template v-if="mine.length">
                   <span class="uc-label uc-pad">Your characters</span>
                   <div class="uc-add">
-                    <button v-for="c in mine" :key="c.id" type="button" class="uc-add-face" :title="c.name" @click="addPresenter(c)"><img v-if="imageOf(c)" :src="imageOf(c)" :alt="c.name" /><span v-else>{{ c.name.slice(0, 1) }}</span></button>
+                    <button v-for="c in mine" :key="c.id" type="button" :class="['uc-add-face', { on: presenters.some(p => p.character_id === c.id) }]" :title="c.name" @click="previewing = c"><img v-if="imageOf(c)" :src="imageOf(c)" :alt="c.name" /><span v-else>{{ c.name.slice(0, 1) }}</span></button>
                   </div>
+                </template>
                 </template>
                 <div v-if="ownPhoto" class="uc-own">
                   <img :src="ownPhoto.preview" alt="" />
@@ -774,6 +808,20 @@ onBeforeUnmount(() => {
 .uc-add { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 6px 6px; }
 .uc-add-i, .uc-add-face { width: 34px; height: 34px; border-radius: 7px; border: 1px dashed var(--color-border-active); background: transparent; color: var(--color-text-secondary); cursor: pointer; padding: 0; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
 .uc-add-face { border-style: solid; }
+.uc-add-face.on { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.uc-preview { display: flex; gap: 12px; padding: 8px; border-radius: 9px; background: var(--color-bg-card); }
+.uc-preview > img, .uc-preview-none { width: 150px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
+.uc-preview-none { display: inline-flex; align-items: center; justify-content: center; font-size: 36px; background: var(--color-bg-elevated); color: var(--color-text-muted); }
+.uc-preview-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.uc-preview-t b { font-size: 15px; }
+.uc-preview-t p::first-letter { text-transform: uppercase; }
+.uc-preview-t p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--color-text-secondary); }
+.uc-preview-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.uc-preview-tags span { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--color-border-active); color: var(--color-text-secondary); text-transform: capitalize; }
+.uc-preview-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.uc-preview-nav { display: flex; gap: 4px; }
+.uc-preview-nav button { width: 28px; height: 26px; border-radius: 6px; border: 1px solid var(--color-border-active); background: transparent; color: var(--color-text-secondary); cursor: pointer; font-size: 15px; line-height: 1; }
+.uc-preview-nav button:hover { border-color: var(--color-accent); color: var(--color-text-primary); }
 .uc-add-face img { width: 100%; height: 100%; object-fit: cover; }
 .uc-add-i:hover, .uc-add-face:hover { border-color: var(--color-accent); }
 .uc-add-more { font-size: 11.5px; }
