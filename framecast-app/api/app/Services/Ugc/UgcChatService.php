@@ -133,6 +133,12 @@ final class UgcChatService
         $format = in_array($d['format'] ?? null, UgcPlan::FORMATS, true) ? $d['format'] : 'auto';
         $seconds = (int) max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15)));
         $footage = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'footage')));
+        // A reaction is silent: its words are a headline, never a spoken script (the planner refuses one).
+        if ($format === 'reaction' || $type === 'reaction') {
+            $format = 'reaction';
+            $d['context'] = trim((string) ($d['context'] ?? $d['summary']).' Headline idea: '.trim((string) ($d['script'] ?? '')));
+            $d['script'] = '';
+        }
         $plan = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'plan'], ['request' => $r]), array_filter([
             'script' => mb_substr((string) ($d['script'] ?? ''), 0, 1500), 'context' => mb_substr((string) ($d['context'] ?? $d['summary']), 0, 1500),
             'product' => mb_substr((string) ($d['product'] ?? ($state['link']['facts']['product'] ?? '')), 0, 200), 'format' => $format,
@@ -223,7 +229,7 @@ final class UgcChatService
         if (! empty($pitch['made'])) abort(409, 'This video is already being made.');
         $runs = []; $failed = null;
         foreach ($pitch['takes'] as $i => $t) {
-            $payload = $t['request'] + ['consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$requestId.':'.$i)->toString()];
+            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$requestId.':'.$i)->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) { $failed = $out['error']['message'] ?? 'One video could not be started.'; break; }
@@ -268,7 +274,7 @@ final class UgcChatService
             $pitch = json_decode((string) DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', (int) ($making['pitch_id'] ?? 0))->value('payload_json'), true) ?: [];
             $i = $run['take'] ?? collect($pitch['takes'] ?? [])->search(fn ($t) => $t['name'] === $run['name']);
             $t = $pitch['takes'][$i] ?? abort(404, 'The pitch for this video is gone.');
-            $payload = $t['request'] + ['consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt)->toString()];
+            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt)->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) abort(422, $out['error']['message'] ?? 'It could not be started again.');
