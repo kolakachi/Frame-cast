@@ -2602,6 +2602,18 @@ const unreadCount = computed(() =>
   notifications.value.filter((item) => !item.is_read).length
 );
 const latestExportJob = computed(() => exportJobs.value[0] ?? null);
+// Exporting several aspect ratios makes one file each (C10). The newest finished file per ratio, newest first; the
+// ratio chips pick which one Open, Download, Schedule, approval and sharing act on (2026-10-10). Before, everything
+// used the newest export only and the other ratio had no way in.
+const exportsByRatio = computed(() => {
+  const seen = new Set();
+  return exportJobs.value.filter((job) => job.status === "completed" && job.output_asset?.storage_url
+    && !seen.has(job.aspect_ratio) && seen.add(job.aspect_ratio));
+});
+const selectedExportRatio = ref(null);
+const activeExportJob = computed(() =>
+  exportsByRatio.value.find((job) => job.aspect_ratio === selectedExportRatio.value)
+  ?? (latestExportJob.value?.status === "completed" ? latestExportJob.value : exportsByRatio.value[0] ?? latestExportJob.value));
 
 // ── Post-export feedback (once per user, ever) ──────────────────────────
 // Fires when an export completes in this session — the peak moment, when the
@@ -2661,11 +2673,11 @@ function trackVideoDownloaded(via) {
   window.__posthog?.capture('video_downloaded', {
     via,
     project_id: Number(projectId.value),
-    export_job_id: latestExportJob.value?.id ?? null,
+    export_job_id: activeExportJob.value?.id ?? null,
   })
 }
 const latestExportDownloadUrl = computed(
-  () => latestExportJob.value?.output_asset?.storage_url ?? null
+  () => activeExportJob.value?.output_asset?.storage_url ?? null
 );
 function hasPendingExportChanges() {
   return [scriptSaveState, voiceSaveState, captionSaveState, motionSaveState,
@@ -2733,7 +2745,7 @@ watch(() => hasPendingExportChanges(), (pending, was) => {
 const { warning: exportWarning, checking: exportActionChecking, request: requestExportAction,
   cancel: cancelExportAction, continuePrevious: continueExportAction, updateFirst: updateExportAction } = useExportActionGuard({
   projectId: () => projectId.value,
-  getExport: () => latestExportJob.value,
+  getExport: () => activeExportJob.value,
   hasPendingChanges: hasPendingExportChanges,
   perform: performExportAction,
   update: queueExport,
@@ -7433,8 +7445,16 @@ onBeforeUnmount(() => {
                 <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V6a1 1 0 0 0-1-1Zm0 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" clip-rule="evenodd"/></svg>
                 <span class="export-fail-tooltip">{{ latestExportJob.failure_reason }}</span>
               </span>
-              <template v-if="latestExportJob.status === 'completed' && latestExportDownloadUrl">
+              <template v-if="activeExportJob?.status === 'completed' && latestExportDownloadUrl">
                 <span class="export-pill-sep">·</span>
+                <span v-if="exportsByRatio.length > 1" class="export-ratio-chips" role="group" aria-label="Which export">
+                  <button
+                    v-for="job in exportsByRatio" :key="job.id" type="button"
+                    :class="['export-ratio-chip', job.id === activeExportJob?.id ? 'on' : '']"
+                    :title="job.file_name"
+                    @click.prevent="selectedExportRatio = job.aspect_ratio"
+                  >{{ job.aspect_ratio }}</button>
+                </span>
                 <button type="button"
                   class="export-pill-link"
                   @click.prevent="requestExportAction('open')"
@@ -7457,7 +7477,8 @@ onBeforeUnmount(() => {
             </div>
             <!-- Phone only: the way into the settings sheet. Desktop has the
                  panel on screen permanently and needs no button. -->
-            <button :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
+            <!-- Hidden (owner, 2026-10-10): the timeline editor stays in the code; the button is off for now. -->
+            <button v-if="false" :class="['btn btn-ghost btn-timeline-toggle', timelineOpen ? 'active' : '']" type="button" @click="timelineOpen = !timelineOpen">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
               Timeline
             </button>
@@ -8240,6 +8261,13 @@ onBeforeUnmount(() => {
             </div>
             <div class="ed-projsheet-body">
               <template v-if="latestExportDownloadUrl">
+                <div v-if="exportsByRatio.length > 1" class="export-ratio-chips export-ratio-chips-sheet" role="group" aria-label="Which export">
+                  <button
+                    v-for="job in exportsByRatio" :key="job.id" type="button"
+                    :class="['export-ratio-chip', job.id === activeExportJob?.id ? 'on' : '']"
+                    @click.prevent="selectedExportRatio = job.aspect_ratio"
+                  >{{ job.aspect_ratio }}</button>
+                </div>
                 <button type="button"
                   class="ed-prow"
                   @click.prevent="requestExportAction('open')"
@@ -8253,7 +8281,7 @@ onBeforeUnmount(() => {
                   @click.prevent="requestExportAction('download')"
                 >
                   <span class="ed-prow-ic">↓</span>
-                  <span class="ed-prow-b"><b>Download</b><span>MP4 · {{ latestExportJob?.file_name || '1080p' }}</span></span>
+                  <span class="ed-prow-b"><b>Download</b><span>MP4 · {{ activeExportJob?.file_name || '1080p' }}</span></span>
                   <span class="ed-prow-rt">›</span>
                 </button>
                 <button class="ed-prow" type="button" @click="requestExportAction('schedule')">
@@ -8290,7 +8318,7 @@ onBeforeUnmount(() => {
                 <span class="ed-prow-b"><b>Variants</b><span>Other cuts of this project</span></span>
                 <span class="ed-prow-rt">›</span>
               </button>
-              <div class="ed-prow is-disabled">
+              <div v-if="false" class="ed-prow is-disabled">
                 <span class="ed-prow-ic">◨</span>
                 <span class="ed-prow-b"><b>Timeline</b><span>Needs a wider screen</span></span>
                 <span class="ed-prow-rt">desktop</span>
@@ -10293,7 +10321,7 @@ onBeforeUnmount(() => {
     />
     <SchedulePostModal
       v-if="scheduleModalOpen"
-      :export-job-id="deliveryExport?.id ?? latestExportJob?.id ?? null"
+      :export-job-id="deliveryExport?.id ?? activeExportJob?.id ?? null"
       @close="scheduleModalOpen = false"
       @scheduled="onPostScheduled"
     />
@@ -11007,6 +11035,14 @@ button {
   color: var(--border);
 }
 
+.export-ratio-chips { display: inline-flex; gap: 3px; margin-right: 6px; vertical-align: middle; }
+.export-ratio-chips-sheet { display: flex; gap: 6px; margin: 4px 0 8px; }
+.export-ratio-chip {
+  border: 1px solid var(--color-border, #2a2a36); background: transparent; color: var(--text-secondary, #a1a1b5);
+  border-radius: 999px; padding: 1px 8px; font: 600 11px var(--font-mono, monospace); cursor: pointer;
+}
+.export-ratio-chips-sheet .export-ratio-chip { padding: 5px 12px; font-size: 12px; }
+.export-ratio-chip.on { border-color: var(--accent, #ff6b35); color: var(--accent, #ff6b35); }
 .export-pill-link {
   color: var(--text-primary);
   text-decoration: none;

@@ -16,6 +16,15 @@ const finishError = ref('')
 const pipelineFailure = ref('')
 const exportRequestPending = ref(false)
 const downloadUrl = computed(() => exportJob.value?.status === 'completed' ? exportJob.value.output_asset?.storage_url : null)
+// Every finished export, newest per aspect ratio: with more than one, chips choose which plays and downloads.
+const allExports = ref([])
+const exportsByRatio = computed(() => {
+  const seen = new Set()
+  return allExports.value.filter(job => job.status === 'completed' && job.output_asset?.storage_url && !seen.has(job.aspect_ratio) && seen.add(job.aspect_ratio))
+})
+const viewRatio = ref(null)
+const viewJob = computed(() => exportsByRatio.value.find(job => job.aspect_ratio === viewRatio.value) ?? exportJob.value)
+const viewUrl = computed(() => viewJob.value?.status === 'completed' ? viewJob.value.output_asset?.storage_url : downloadUrl.value)
 const scheduleOpen = ref(false)
 const actionMessage = ref('')
 const actionPending = ref(false)
@@ -266,6 +275,7 @@ async function finishVideo(retry = false) {
       exportJob.value = data?.data?.export_job ?? null
     } else {
       const { data } = await api.get(`/projects/${projectId.value}/exports`)
+      allExports.value = data?.data?.export_jobs ?? []
       exportJob.value = data?.data?.export_jobs?.[0] ?? null
       if (!exportJob.value) {
         const response = await api.post(`/projects/${projectId.value}/export`, { initial: true })
@@ -482,9 +492,12 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
       </div>
 
       <section v-if="downloadUrl" class="gen-result">
-        <FinishedVideoPlayer :src="downloadUrl" />
+        <div v-if="exportsByRatio.length > 1" class="gen-ratio-chips" role="group" aria-label="Which export">
+          <button v-for="job in exportsByRatio" :key="job.id" type="button" :class="['gen-ratio-chip', job.id === viewJob?.id ? 'on' : '']" @click="viewRatio = job.aspect_ratio">{{ job.aspect_ratio }}</button>
+        </div>
+        <FinishedVideoPlayer :key="viewJob?.id" :src="viewUrl" />
         <div class="gen-result-actions">
-          <a class="gen-download" :href="exportJob.download_url || downloadUrl" :download="exportJob.file_name">Download video</a>
+          <a class="gen-download" :href="viewJob?.download_url || viewUrl" :download="viewJob?.file_name">Download video</a>
           <button class="gen-foot-btn" :disabled="actionPending" @click="shareVideo">{{ actionPending ? 'Creating link…' : 'Copy share link' }}</button>
           <button class="gen-foot-btn" @click="scheduleOpen = true">Schedule</button>
           <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ editorOpening ? 'Opening…' : 'Edit video' }}</button>
@@ -564,11 +577,14 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
       </div>
     </div>
   </main>
-  <SchedulePostModal v-if="scheduleOpen" :export-job-id="Number(exportJob.id)" @close="scheduleOpen = false" @scheduled="scheduleOpen = false; actionMessage = 'Video scheduled.'" />
+  <SchedulePostModal v-if="scheduleOpen" :export-job-id="Number(viewJob?.id ?? exportJob.id)" @close="scheduleOpen = false" @scheduled="scheduleOpen = false; actionMessage = 'Video scheduled.'" />
 </template>
 
 <style scoped>
 .gen-action-message { color: var(--color-text-secondary); font-size: 13px; overflow-wrap: anywhere; }
+.gen-ratio-chips { display: flex; gap: 6px; margin: 0 0 12px; }
+.gen-ratio-chip { border: 1px solid var(--color-border, #2a2a36); background: transparent; color: var(--color-text-secondary, #a1a1b5); border-radius: 999px; padding: 5px 12px; font: 600 12px var(--font-mono, monospace); cursor: pointer; }
+.gen-ratio-chip.on { border-color: var(--color-accent, #ff6b35); color: var(--color-accent, #ff6b35); }
 .gen-result-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0; }
 .gen-download { background: var(--color-accent, #ff6b35); color: white; border-radius: 8px; padding: 12px 20px; text-decoration: none; font-weight: 600; }
 .gen-finish-error { padding: 16px; margin-bottom: 16px; border: 1px solid #f87171; border-radius: 12px; }
