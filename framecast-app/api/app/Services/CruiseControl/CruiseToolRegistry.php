@@ -54,6 +54,8 @@ class CruiseToolRegistry
         SetAudiogramVisualTool::class,
         UpdateCaptionsTool::class,
         ApplyBrandKitTool::class,
+        \App\Services\CruiseControl\Tools\UndoLastEditTool::class,
+        \App\Services\CruiseControl\Tools\RedoLastEditTool::class,
         // Library / search (pick from existing)
         FindStockVideoTool::class,
         FindStockImageTool::class,

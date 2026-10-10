@@ -4147,6 +4147,67 @@ async function refreshProjectPayload() {
   applyProjectPayload(response.data?.data, { preserveActiveScene: true });
 }
 
+// ── Undo / redo (2026-10-10) ───────────────────────────────────────────────
+// One history per project, shared with the in-editor assistant and ChatGPT/Claude (EditHistory on the server).
+// Every edit is a step; undo and redo are free (no credits move, generated files are kept).
+const editHistory = ref({ can_undo: false, can_redo: false, undo_label: null, redo_label: null, busy: false });
+const historyStepping = ref(false);
+let historyTimer = null;
+async function loadEditHistory() {
+  if (!projectId.value) return;
+  try { editHistory.value = (await api.get(`/projects/${projectId.value}/history`)).data?.data ?? editHistory.value; } catch { /* the buttons just stay as they were */ }
+}
+function scheduleHistoryRefresh() {
+  if (historyTimer) window.clearTimeout(historyTimer);
+  historyTimer = window.setTimeout(loadEditHistory, 400);
+}
+async function stepHistory(step) {
+  const can = step === "undo" ? editHistory.value.can_undo : editHistory.value.can_redo;
+  if (!can || historyStepping.value) return;
+  // A save still on its way would land on top of the undo: let it finish first.
+  if (hasPendingExportChanges()) {
+    pushToast({ id: `history-wait-${Date.now()}`, title: "Saving your changes", message: `Try ${step} again in a moment.` });
+    return;
+  }
+  historyStepping.value = true;
+  try {
+    const { data } = await api.post(`/projects/${projectId.value}/${step}`);
+    const label = data?.data?.undone ?? data?.data?.redone;
+    editHistory.value = data?.data ?? editHistory.value;
+    await refreshProjectPayload();
+    // Re-select the scene so every draft (script, voice, captions…) reloads from the restored scene.
+    const keep = activeSceneId.value;
+    activeSceneId.value = null;
+    await nextTick();
+    activeSceneId.value = scenes.value.some((s) => s.id === keep) ? keep : scenes.value[0]?.id ?? null;
+    refreshExportFreshness();
+    pushToast({ id: `history-${Date.now()}`, title: step === "undo" ? "Undone" : "Redone", message: label || "" });
+  } catch (e) {
+    pushToast({ id: `history-fail-${Date.now()}`, title: `Could not ${step}`, message: e?.response?.data?.error?.message ?? "Try again in a moment." });
+    loadEditHistory();
+  } finally {
+    historyStepping.value = false;
+  }
+}
+// Any edit refreshes what undo and redo would do (the in-editor assistant's too).
+const historyInterceptor = api.interceptors.response.use((response) => {
+  const method = String(response.config?.method || "get").toLowerCase();
+  const url = String(response.config?.url || "");
+  if (method !== "get" && !/\/(undo|redo|history)$/.test(url) && (/^\/scenes/.test(url) || url.startsWith(`/projects/${projectId.value}`) || /^\/cruise\/(apply|undo)/.test(url))) scheduleHistoryRefresh();
+  return response;
+});
+// ⌘Z / Ctrl+Z undo, ⇧⌘Z / Ctrl+Y redo — except while typing, where the text box keeps its own undo.
+function historyKeys(event) {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+  const t = event.target;
+  if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+  const key = event.key.toLowerCase();
+  if (key === "z" && !event.shiftKey) { event.preventDefault(); stepHistory("undo"); }
+  else if ((key === "z" && event.shiftKey) || key === "y") { event.preventDefault(); stepHistory("redo"); }
+}
+onMounted(() => { document.addEventListener("keydown", historyKeys); loadEditHistory(); });
+onBeforeUnmount(() => { document.removeEventListener("keydown", historyKeys); api.interceptors.response.eject(historyInterceptor); if (historyTimer) window.clearTimeout(historyTimer); });
+
 async function loadMe() {
   try {
     const response = await api.get("/me");
@@ -7461,6 +7522,19 @@ onBeforeUnmount(() => {
                 <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8-5a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V6a1 1 0 0 0-1-1Zm0 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" clip-rule="evenodd"/></svg>
                 <span class="export-fail-tooltip">{{ latestExportJob.failure_reason }}</span>
               </span>
+            </div>
+            <!-- Undo / redo (2026-10-10): the project's shared edit history. -->
+            <div class="history-btns" role="group" aria-label="Undo and redo">
+              <button type="button" class="btn btn-ghost history-btn" :disabled="!editHistory.can_undo || historyStepping"
+                :title="editHistory.can_undo ? `Undo: ${editHistory.undo_label} (⌘Z)` : (editHistory.busy ? 'Wait for generation to finish' : 'Nothing to undo')"
+                aria-label="Undo" @click="stepHistory('undo')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+              <button type="button" class="btn btn-ghost history-btn" :disabled="!editHistory.can_redo || historyStepping"
+                :title="editHistory.can_redo ? `Redo: ${editHistory.redo_label} (⇧⌘Z)` : 'Nothing to redo'"
+                aria-label="Redo" @click="stepHistory('redo')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+              </button>
             </div>
             <!-- Share (owner, 2026-10-10): one button; its menu picks the aspect ratio, then Open, Download, Schedule,
                  Send for approval and Copy share link act on that ratio's file. -->
@@ -11054,6 +11128,10 @@ button {
   color: var(--border);
 }
 
+.history-btns { display: inline-flex; gap: 4px; }
+.history-btn { width: 34px; padding: 0; justify-content: center; align-items: center; }
+.history-btn svg { flex: 0 0 15px; width: 15px; height: 15px; }
+.history-btn:disabled { opacity: .35; cursor: default; }
 .share-wrap { position: relative; }
 .share-btn { display: inline-flex; align-items: center; gap: 6px; }
 .share-btn.active { border-color: var(--accent, #ff6b35); color: var(--accent, #ff6b35); }

@@ -114,11 +114,14 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\Guar
     Route::get('/videos/{videoId}/project', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'project'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/project/schema', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'schema'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/proposals', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'propose'])->whereNumber('videoId');
-    Route::post('/videos/{videoId}/proposals/{proposalId}/apply', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'apply'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/proposals/{proposalId}/apply', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'apply'])->whereNumber('videoId')->middleware('edit.history');
     Route::post('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'export'])->whereNumber('videoId');
     Route::get('/videos/{videoId}/exports', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'exports'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/retry-quotes', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retryQuote'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/retry', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'retry'])->whereNumber('videoId');
+    Route::get('/videos/{videoId}/history', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'history'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/undo', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'undo'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/redo', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'redo'])->whereNumber('videoId');
     // Weave (Create) for assistants (L3, 2026-10-09): start, status, reply, price, approve, share, list.
     Route::get('/weave/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'index']);
     Route::post('/weave/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'store']);
@@ -129,7 +132,7 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\Guar
     Route::post('/weave/videos/{id}/share', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'share'])->whereUuid('id');
     Route::get('/assistant/tools', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'tools']);
     Route::post('/videos/{videoId}/assistant/plans', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'plan'])->whereNumber('videoId');
-    Route::post('/videos/{videoId}/assistant/plans/{planId}/apply', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'apply'])->whereNumber('videoId');
+    Route::post('/videos/{videoId}/assistant/plans/{planId}/apply', [\App\Http\Controllers\Api\Developer\V1\AssistantController::class, 'apply'])->whereNumber('videoId')->middleware('edit.history');
 });
 
 Route::prefix('v1')->group(function (): void {
@@ -325,14 +328,14 @@ Route::prefix('v1')->group(function (): void {
 
         // Cruise Control — chat-driven editor (see spec/CRUISE_CONTROL_PLAN.md)
         Route::post('/cruise/resolve', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'resolve']);
-        Route::post('/cruise/apply',   [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'apply']);
+        Route::post('/cruise/apply',   [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'apply'])->middleware('edit.history');
         Route::post('/cruise/skip',    [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'skip']);
         Route::get('/cruise/conversation/{projectId}', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'conversation'])->whereNumber('projectId');
         Route::patch('/cruise/settings', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'updateSettings']);
         Route::patch('/cruise/brief/{projectId}', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'updateBrief'])->whereNumber('projectId');
         Route::post('/cruise/brief/{projectId}/refresh', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'refreshBrief'])->whereNumber('projectId');
         Route::post('/cruise/conversation/{projectId}/reset', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'resetConversation'])->whereNumber('projectId');
-        Route::post('/cruise/undo', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'undo']);
+        Route::post('/cruise/undo', [\App\Http\Controllers\Api\V1\CruiseControl\CruiseControlController::class, 'undo'])->middleware('edit.history');
         Route::patch('/me', [VerificationController::class, 'updateMe']);
         // The Weave onboarding (2026-10-09): the brand from a website (or a typed name), then the answers and a first brief.
         Route::post('/onboarding/brand', [\App\Http\Controllers\Api\V1\Onboarding\OnboardingController::class, 'brand'])->middleware('throttle:10,1,onboarding-brand');
@@ -620,11 +623,11 @@ Route::prefix('v1')->group(function (): void {
         // Dry run for an uploaded PDF — free, no rendering, no credits spent.
         Route::post('/projects/analyze-pdf', \App\Http\Controllers\Api\V1\Project\PdfAnalysisController::class);
         // Animate every scene at once. Returns a costed preview unless confirm=true.
-        Route::post('/projects/{projectId}/animate-all', \App\Http\Controllers\Api\V1\Project\BulkAnimateController::class)->whereNumber('projectId');
+        Route::post('/projects/{projectId}/animate-all', \App\Http\Controllers\Api\V1\Project\BulkAnimateController::class)->whereNumber('projectId')->middleware('edit.history');
         // Restyle every scene's image at once. Costed preview unless confirm=true.
-        Route::post('/projects/{projectId}/restyle-all', \App\Http\Controllers\Api\V1\Project\BulkVisualController::class)->whereNumber('projectId');
+        Route::post('/projects/{projectId}/restyle-all', \App\Http\Controllers\Api\V1\Project\BulkVisualController::class)->whereNumber('projectId')->middleware('edit.history');
         // Re-record every scene's voiceover. Costed preview unless confirm=true.
-        Route::post('/projects/{projectId}/rerecord-all', \App\Http\Controllers\Api\V1\Project\BulkVoiceController::class)->whereNumber('projectId');
+        Route::post('/projects/{projectId}/rerecord-all', \App\Http\Controllers\Api\V1\Project\BulkVoiceController::class)->whereNumber('projectId')->middleware('edit.history');
 
         // The dashboard's setup steps (2026-10-08).
         Route::get('/dashboard/setup', [\App\Http\Controllers\Api\V1\DashboardController::class, 'setup']);
@@ -640,7 +643,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/one-shot/plan', [ProjectController::class, 'planOneShot']);
             Route::post('/one-shot', [ProjectController::class, 'storeOneShot']);
             Route::get('/{projectId}', [ProjectController::class, 'show'])->whereNumber('projectId');
-            Route::patch('/{projectId}', [ProjectController::class, 'update'])->whereNumber('projectId');
+            Route::patch('/{projectId}', [ProjectController::class, 'update'])->whereNumber('projectId')->middleware('edit.history');
             Route::post('/{projectId}/editor-opened', [ProjectController::class, 'editorOpened'])->whereNumber('projectId');
             Route::get('/{projectId}/exports/{exportId}/freshness', [ProjectController::class, 'exportFreshness'])->whereNumber(['projectId', 'exportId']);
             Route::get('/{projectId}/exports', [ProjectController::class, 'exports'])->whereNumber('projectId');
@@ -653,9 +656,13 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{projectId}/hooks/generate', [ProjectController::class, 'generateHooks'])->whereNumber('projectId');
             // Toggle public share link for the /sample/<token> page
             Route::post('/{projectId}/share', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'toggle'])->whereNumber('projectId');
-            Route::post('/{projectId}/resume-failed', [ProjectController::class, 'resumeFailed'])->whereNumber('projectId');
-            Route::post('/{projectId}/retry-generation', [ProjectController::class, 'retryGeneration'])->whereNumber('projectId');
+            Route::post('/{projectId}/resume-failed', [ProjectController::class, 'resumeFailed'])->whereNumber('projectId')->middleware('edit.history');
+            Route::post('/{projectId}/retry-generation', [ProjectController::class, 'retryGeneration'])->whereNumber('projectId')->middleware('edit.history');
             Route::post('/{projectId}/duplicate', [ProjectController::class, 'duplicate'])->whereNumber('projectId');
+            // Undo / redo (2026-10-10).
+            Route::get('/{projectId}/history', [\App\Http\Controllers\Api\V1\Project\EditHistoryController::class, 'show'])->whereNumber('projectId');
+            Route::post('/{projectId}/undo', [\App\Http\Controllers\Api\V1\Project\EditHistoryController::class, 'undo'])->whereNumber('projectId');
+            Route::post('/{projectId}/redo', [\App\Http\Controllers\Api\V1\Project\EditHistoryController::class, 'redo'])->whereNumber('projectId');
             Route::delete('/{projectId}', [ProjectController::class, 'destroy'])->whereNumber('projectId');
         });
 
@@ -697,7 +704,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{approvalId}/decide', [ApprovalController::class, 'decide'])->whereNumber('approvalId');
         });
 
-        Route::prefix('/scenes')->group(function (): void {
+        Route::prefix('/scenes')->middleware('edit.history')->group(function (): void {
             Route::post('/', [SceneController::class, 'store']);
             Route::post('/generate-draft', [SceneController::class, 'generateDraft']);
             Route::patch('/reorder', [SceneController::class, 'reorder']);

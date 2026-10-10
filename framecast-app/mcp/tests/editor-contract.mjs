@@ -67,6 +67,12 @@ try {
   const image = { video_id: 1, revision: 'replace-with-current-revision', changes: [{ op: 'generate_image', scene_id: 1, model_key: 'gpt-image-2', style: 'anime', prompt_override: 'A ceramic mug on a clean desk.' }] }
   for (const args of [clear, image]) await rpc('tools/call', { name: 'propose_edits', arguments: args })
   await rpc('tools/call', { name: 'apply_edits', arguments: { video_id: 1, proposal_id: 'proposal-test' } })
+  // Undo / redo reach the video's shared edit history (2026-10-10).
+  for (const name of ['get_edit_history', 'undo_edit', 'redo_edit']) assert(listed.tools.some(t => t.name === name), name)
+  await rpc('tools/call', { name: 'undo_edit', arguments: { video_id: 7 } })
+  await rpc('tools/call', { name: 'redo_edit', arguments: { video_id: 7 } })
+  assert(captured.some(c => c.method === 'POST' && c.path === '/api/developer/v1/videos/7/undo'))
+  assert(captured.some(c => c.method === 'POST' && c.path === '/api/developer/v1/videos/7/redo'))
   for (const name of ['upload_asset', 'get_asset', 'clone_voice', 'preview_voice', 'save_voice']) assert(listed.tools.some(t => t.name === name))
   const mediaCalls = [
     ['upload_asset', { title: 'Narration', asset_type: 'audio', content_base64: Buffer.alloc(120000).toString('base64') }, '/assets'],

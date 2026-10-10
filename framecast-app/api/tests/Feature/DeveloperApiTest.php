@@ -631,6 +631,54 @@ class DeveloperApiTest extends TestCase
         $this->withToken($foreign)->get("/api/developer/v1/videos/{$id}/scenes/{$scene->id}/preview")->assertNotFound();
     }
 
+    public function test_undo_and_redo_put_an_applied_edit_back_and_forward_and_a_new_edit_clears_redo(): void
+    {
+        // Undo/redo (owner, 2026-10-10): any edit, by a person or an assistant, is one undoable step; no credits move.
+        config(['developer.limits.writes_per_minute' => 100, 'developer.limits.workspace_writes_per_minute' => 100]);
+        if (! Schema::hasTable('project_edits')) (require database_path('migrations/2026_10_10_120000_create_project_edits.php'))->up();
+        [$ws, , $key] = $this->tenant();
+        [$id, [$s1, $s2]] = $this->editableVideo($key, $ws->id);
+        $api = fn (string $m, string $path) => $this->withToken($key)->json($m, "/api/developer/v1/videos/{$id}{$path}");
+        $script = fn (int $sceneId) => DB::table('scenes')->where('id', $sceneId)->value('script_text');
+
+        $rev = $api('GET', '/project')->json('data.revision');
+        $changes = [['op' => 'update_scene', 'scene_id' => $s1, 'settings' => ['script_text' => 'A sharper hook line.']], ['op' => 'reorder_scenes', 'scene_ids' => [$s2, $s1]]];
+        $proposal = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals", ['revision' => $rev, 'changes' => $changes])->assertStatus(201)->json('data');
+        $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/proposals/{$proposal['proposal_id']}/apply", ['confirm' => true])->assertSuccessful();
+        $this->assertSame('A sharper hook line.', $script($s1));
+
+        $history = $api('GET', '/history')->assertOk()->json('data');
+        $this->assertTrue($history['can_undo']);
+        $this->assertFalse($history['can_redo']);
+        $this->assertSame('assistant', $history['entries'][0]['by']);
+
+        $api('POST', '/undo')->assertOk()->assertJsonPath('data.can_redo', true);
+        $this->assertSame('Hook line.', $script($s1));
+        $this->assertSame(1, (int) DB::table('scenes')->where('id', $s1)->value('scene_order'), 'the order comes back too');
+
+        $api('POST', '/redo')->assertOk()->assertJsonPath('data.can_redo', false);
+        $this->assertSame('A sharper hook line.', $script($s1));
+        $this->assertSame(2, (int) DB::table('scenes')->where('id', $s1)->value('scene_order'));
+
+        // Undo, then a new edit: nothing left to redo.
+        $api('POST', '/undo')->assertOk();
+        $before = \App\Services\Editor\EditHistory::snapshot($id);
+        DB::table('scenes')->where('id', $s2)->update(['script_text' => 'Changed by hand.']);
+        \App\Services\Editor\EditHistory::record($id, $before, 'Edited scene 2', 'user', null);
+        $api('GET', '/history')->assertJsonPath('data.can_redo', false)->assertJsonPath('data.undo_label', 'Edited scene 2');
+
+        // A deleted scene comes back; a generating scene blocks undo.
+        $before = \App\Services\Editor\EditHistory::snapshot($id);
+        DB::table('scenes')->where('id', $s2)->delete();
+        \App\Services\Editor\EditHistory::record($id, $before, 'Deleted scene 2', 'user', null);
+        $api('POST', '/undo')->assertOk()->assertJsonPath('data.undone', 'Deleted scene 2');
+        $this->assertSame('Changed by hand.', $script($s2));
+        DB::table('scenes')->where('id', $s1)->update(['voice_settings_json' => json_encode(['in_progress' => true])]);
+        $api('POST', '/undo')->assertStatus(409)->assertJsonPath('error.code', 'history_unavailable');
+        [, , $other] = $this->tenant();
+        $this->withToken($other)->postJson("/api/developer/v1/videos/{$id}/undo")->assertNotFound();
+    }
+
     /** A created video with two finished scenes, ready to edit. */
     private function editableVideo(string $key, int $wsId): array
     {

@@ -418,6 +418,35 @@ class EditorController extends DeveloperController
         return in_array(data_get($project->visual_brief, 'ugc_format'), ['one_shot', 'restyle'], true);
     }
 
+    /** The video's edit history: what undo and redo would do next, and the latest edits with who made them. */
+    public function history(Request $request, int $videoId): JsonResponse
+    {
+        if (! $this->find($request, $videoId)) return $this->fail('not_found', 'Video not found.', 404);
+        return response()->json(['data' => \App\Services\Editor\EditHistory::status($videoId)]);
+    }
+
+    /** Undo the latest edit (by anyone). Free: no credits move and generated files are kept. */
+    public function undo(Request $request, int $videoId): JsonResponse
+    {
+        return $this->historyStep($request, $videoId, 'undo');
+    }
+
+    public function redo(Request $request, int $videoId): JsonResponse
+    {
+        return $this->historyStep($request, $videoId, 'redo');
+    }
+
+    private function historyStep(Request $request, int $videoId, string $step): JsonResponse
+    {
+        if (! $this->find($request, $videoId)) return $this->fail('not_found', 'Video not found.', 404);
+        try {
+            $label = \App\Services\Editor\EditHistory::$step($videoId);
+        } catch (\DomainException $e) {
+            return $this->fail('history_unavailable', $e->getMessage(), 409);
+        }
+        return response()->json(['data' => [($step === 'undo' ? 'undone' : 'redone') => $label] + \App\Services\Editor\EditHistory::status($videoId)]);
+    }
+
     private function find(Request $request, int $videoId): ?Project
     {
         /** @var User $user */

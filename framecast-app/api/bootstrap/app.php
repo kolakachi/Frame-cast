@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\RequireAdmin::class,
             'admin.ip' => \App\Http\Middleware\AdminIpAllowlist::class,
             'internal' => \App\Http\Middleware\RequireInternal::class,
+            'edit.history' => \App\Http\Middleware\RecordsEditHistory::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

@@ -65,6 +65,9 @@ Credits
 Timing
 - Planning takes a minute or two; building a Weave video usually takes 10 to 20 minutes. Tell the user, and check weave_status every minute or two rather than continuously. Share preview_url and app_url when it is ready.
 
+Undo
+- "Undo that" on a Classic video: get_edit_history, say what will be undone, then undo_edit (redo_edit brings it back). For a Weave video, use weave_reply to ask for the earlier version.
+
 Publishing
 - publish_video posts Classic exports. For a Weave video, give the user its app_url to publish from WyvStudio, or weave_share for a watch link.
 `
@@ -713,6 +716,28 @@ function buildServer(token) {
     }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   }, async ({ video_id, ...args }) => call(token, 'POST', `/videos/${video_id}/posts`, args, 'publish_video'))
+
+  // Undo / redo for Classic videos (2026-10-10): one history per video, shared with the editor and every assistant.
+  server.registerTool('get_edit_history', {
+    title: 'Edit history of a Classic video',
+    description: 'What undo and redo would do next (undo_label, redo_label) and the latest edits, each with who made it (user, assistant, cruise). Classic videos only (numeric video id); a Weave video has versions instead. Free.',
+    inputSchema: z.object({ video_id: z.number().int() }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/history`, undefined, 'get_edit_history'))
+
+  server.registerTool('undo_edit', {
+    title: 'Undo the latest edit',
+    description: "Puts the video back to before its latest edit, whoever made it. Call get_edit_history first and tell the user what will be undone (undo_label); undo only when they want that. Free: credits are not refunded or charged, generated files are kept, so redo_edit brings it back. Refused while something in the video is still generating. The export becomes out of date, so re-export before delivering.",
+    inputSchema: z.object({ video_id: z.number().int() }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/undo`, {}, 'undo_edit'))
+
+  server.registerTool('redo_edit', {
+    title: 'Redo the last undone edit',
+    description: 'Brings back the edit most recently undone (redo_label from get_edit_history). Free. Not available after a new edit was made since the undo.',
+    inputSchema: z.object({ video_id: z.number().int() }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ video_id }) => call(token, 'POST', `/videos/${video_id}/redo`, {}, 'redo_edit'))
 
   server.registerTool('get_post', {
     title: 'Check a published or scheduled post',
