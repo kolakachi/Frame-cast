@@ -23,6 +23,7 @@ assembly stays simple, motion graphics stay in Create.
 | ID | Item | Status | Next |
 |---|---|---|---|
 | P2-ASPECT | Only 9:16 offered: one-take always renders 9:16; composed takes accept 1:1 and 16:9 but the chat sends 9:16 | open | decide, then pass aspect through |
+| P2-POLISH | Small: a user's sent photos show as "1 file" (no thumbnail); a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |
 | P3-PLAYBOOKS | Per-type playbooks for the director and planner | open | after P2 |
 | P4-CHANGE | Change the delivered video by chat (one component, per change-scope rule) | open | after P3 |
@@ -48,6 +49,14 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-10 User-POV review, local (vague prompt, photo + link, pasted script + Rewrite, two presenters with voices +
+  explicit type, change after pitch, reload, typed "I'll send the link", Make it hand-off with jobs held, phone). Fixed:
+  uploads stuck at 0% and blocking Send (non-reactive copy); chips that promised a later answer looped the same
+  question 4 times; invented product names; pitches promising green-screen pages and splits the pipeline cannot make;
+  "same again" drifting from 15 s to 27 s (the director now sees its last pitch's type, length and script); videos
+  titled with the script's first words (now the pitch title); unfinished chats listed as "New UGC video"; long fact
+  cards; link shown twice; phone pitch card layout; "no product photo" hint on pitches.
 
 - 2026-10-10 Stock actors (38) imported from prod into local (photos into local MinIO) so the picker can be checked locally.
 

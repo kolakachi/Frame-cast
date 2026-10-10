@@ -81,7 +81,7 @@ final class UgcChatService
         $facts = [];
         if (! empty($input['link']) && ($before['link']['url'] ?? null) !== ($state['link']['url'] ?? null)) {
             $facts[] = ['source' => 'page', 'text' => ! empty($state['link']['facts'])
-                ? trim(implode(' · ', array_filter([$state['link']['facts']['product'] ?? '', $state['link']['facts']['context'] ?? ''])))
+                ? Str::limit(trim(implode(' · ', array_filter([$state['link']['facts']['product'] ?? '', $state['link']['facts']['context'] ?? '']))), 240)
                 : 'I could not read that page. Tell me about the product instead.'];
         }
         if (! empty($state['sample']['reference']) && ($before['sample']['asset_id'] ?? null) !== ($state['sample']['asset_id'] ?? null)) {
@@ -145,10 +145,14 @@ final class UgcChatService
         $presenters = $state['presenters'] ?? [];
         if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? null, 'voice' => null, 'picked' => true]];
         $takes = [];
-        foreach ($presenters as $p) $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type);
-
-        $total = array_sum(array_column($takes, 'credits'));
         $title = mb_substr(trim((string) ($d['title'] ?? 'UGC video')), 0, 120);
+        foreach ($presenters as $p) $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type, $title);
+
+        // The director writes before anyone is cast: a single presenter it could not name is named now.
+        if (count($takes) === 1 && $takes[0]['character_id']) {
+            $d['summary'] = preg_replace('/^(A|The) (presenter|creator|customer|woman|man|person)\b/i', $takes[0]['name'], (string) $d['summary'], 1);
+        }
+        $total = array_sum(array_column($takes, 'credits'));
         if (! DB::table('ugc_chats')->where('id', $id)->value('title')) DB::table('ugc_chats')->where('id', $id)->update(['title' => $title]);
         return $this->say($id, 'pitch', mb_substr((string) $d['summary'], 0, 600), [
             'type' => $type, 'title' => $title, 'plan' => ['format' => $plan['format'], 'script' => $plan['script'], 'segments' => $plan['segments']],
@@ -157,7 +161,7 @@ final class UgcChatService
     }
 
     /** One presenter's video: their voice applied to every spoken shot; one take when the pipeline can, composed otherwise. */
-    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type): array
+    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title): array
     {
         $voice = $p['voice'] ?? null;
         $segments = array_map(function ($s) use ($voice) {
@@ -174,7 +178,7 @@ final class UgcChatService
             $v = array_filter(['format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_id' => $characterId,
                 'engine' => $characterId ? 'omni' : 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null,
                 'product_asset_ids' => $products ?: null, 'product' => mb_substr($product, 0, 200), 'language' => 'en',
-                'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400)], fn ($x) => $x !== null && $x !== '');
+                'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title], fn ($x) => $x !== null && $x !== '');
             $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
             $v['credits'] = (int) $price['quote'];
             return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'one_shot',
@@ -183,7 +187,7 @@ final class UgcChatService
         $per = UgcPlan::quote($segments);
         $v = array_filter(['format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_ids' => $characterId ? [$characterId] : null,
             'aspect_ratio' => '9:16', 'language' => 'en', 'product_asset_id' => $products[0] ?? null, 'credits_per_character' => $per,
-            'title' => mb_substr($product !== '' ? $product.' UGC' : 'UGC video', 0, 120)], fn ($x) => $x !== null && $x !== '');
+            'title' => $title], fn ($x) => $x !== null && $x !== '');
         return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'composed',
             'engine' => 'composed', 'credits' => $per, 'request' => $v];
     }
@@ -297,8 +301,16 @@ final class UgcChatService
     {
         return DB::table('ugc_chat_messages')->where('chat_id', $id)->orderByDesc('id')->limit(16)->get()->reverse()
             ->map(fn ($m) => ($m->role === 'user' ? 'User: ' : 'You: ').match ($m->kind) {
-                'pitch' => '[pitched] '.$m->content, 'making' => '[making the video]', default => (string) $m->content,
+                'pitch' => '[pitched] '.$m->content.self::pitchLine($m), 'making' => '[making the video]', default => (string) $m->content,
             })->implode("\n");
+    }
+
+    /** What a pitch was, so "same again" or "shorter" starts from it: its type, length and words. */
+    private static function pitchLine(object $m): string
+    {
+        $p = json_decode((string) $m->payload_json, true) ?: [];
+        $seconds = (int) round(array_sum(array_map(fn ($s) => (float) ($s['seconds'] ?? 0), $p['plan']['segments'] ?? [])));
+        return ' (type '.($p['type'] ?? '?').', '.$seconds.' s, script: "'.mb_substr((string) ($p['plan']['script'] ?? ''), 0, 600).'")';
     }
 
     private function materials(array $s): string

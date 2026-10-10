@@ -953,6 +953,8 @@ class UgcController extends Controller
             'product' => ['nullable', 'string', 'max:200'],
             'tone' => ['nullable', 'string', 'max:200'],
             'language' => ['sometimes', 'string', 'max:12'],
+            // The UGC chat names the video after its pitch; otherwise the script's first words.
+            'title' => ['nullable', 'string', 'max:120'],
             'consent' => ['accepted'],
             'reviewed' => ['accepted'],
             'credits' => ['required', 'integer'],
@@ -1201,7 +1203,7 @@ class UgcController extends Controller
             $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
             'created_by_user_id' => $user->id,
-            'title' => Str::limit($script, 48, '…', preserveWords: true) ?: 'One-take UGC ad',
+            'title' => trim((string) ($v['title'] ?? '')) ?: (Str::limit($script, 48, '…', preserveWords: true) ?: 'One-take UGC ad'),
             'aspect_ratio' => '9:16',
             'duration_target_seconds' => (int) $totalSeconds,
             'status' => 'generating',

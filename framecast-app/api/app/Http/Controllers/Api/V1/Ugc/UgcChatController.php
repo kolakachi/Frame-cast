@@ -15,8 +15,12 @@ class UgcChatController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // A chat with no pitch yet is named by its first message, so unfinished chats can be told apart.
         $rows = DB::table('ugc_chats')->where('workspace_id', $request->user()->workspace_id)->orderByDesc('updated_at')->limit(30)
-            ->get(['id', 'title', 'updated_at'])->map(fn ($c) => ['id' => $c->id, 'title' => $c->title ?: 'New UGC video', 'updated_at' => $c->updated_at]);
+            ->get(['id', 'title', 'updated_at'])->map(fn ($c) => ['id' => $c->id, 'updated_at' => $c->updated_at, 'title' => $c->title
+                ?: \Illuminate\Support\Str::limit(trim((string) DB::table('ugc_chat_messages')->where('chat_id', $c->id)->where('role', 'user')->where('content', '!=', '')->orderBy('id')->value('content')), 48)
+                ?: 'New UGC video'])
+            ->filter(fn ($c) => DB::table('ugc_chat_messages')->where('chat_id', $c['id'])->exists())->values();
         return response()->json(['data' => ['chats' => $rows], 'meta' => []]);
     }
 

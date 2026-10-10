@@ -188,7 +188,8 @@ function addFiles(files, role = null) {
     if (uploads.value.length >= 12) { error.value = 'Twelve files at most.'; break }
     const u = { key: crypto.randomUUID(), name: file.name, type: kind, role: role || (kind === 'image' ? 'product' : 'footage'), preview: URL.createObjectURL(file), uploading: true, progress: 0, error: '', asset_id: null }
     uploads.value.push(u)
-    upload(u, file)
+    // The reactive copy: progress and the finished asset id must reach the pill and the Send button.
+    upload(uploads.value[uploads.value.length - 1], file)
   }
 }
 async function upload(u, file) {
@@ -449,7 +450,7 @@ onBeforeUnmount(() => {
         <div v-else class="uc-msgs">
           <template v-for="m in messages" :key="m.id">
             <div v-if="m.role === 'user'" class="uc-user">
-              <div class="uc-bubble"><span v-if="m.payload?.attachments?.length || m.payload?.link" class="uc-sent-files">{{ sentFiles(m) }}</span><span class="uc-said">{{ m.content }}</span></div>
+              <div class="uc-bubble"><span v-if="m.payload?.attachments?.length || m.payload?.link" class="uc-sent-files">{{ sentFiles(m) }}</span><span v-if="m.content && m.content.trim() !== m.payload?.link" class="uc-said">{{ m.content }}</span></div>
             </div>
 
             <div v-else class="uc-bot">
@@ -476,11 +477,12 @@ onBeforeUnmount(() => {
                     <p>{{ m.content }}</p>
                     <div class="uc-tags">
                       <span class="uc-tag uc-tag--type">{{ TYPE_LABEL[m.payload.type] || m.payload.type }}</span>
-                      <span class="uc-tag">{{ pitchNames(m) }}</span>
+                      <span class="uc-tag">{{ pitchNames(m) }}<template v-if="m.payload.takes.some(t => t.picked)"> · picked for you</template></span>
                       <span class="uc-tag">{{ pitchSeconds(m) }} s</span>
                       <span class="uc-tag">{{ m.payload.aspect }}</span>
                     </div>
                     <details class="uc-script"><summary>The script</summary><p>{{ m.payload.plan?.script }}</p></details>
+                    <p v-if="canMake(m) && !m.payload.product_asset_ids?.length" class="uc-tip">No product photo yet, so it will be a generic one. Add a photo with + and send it to show yours at its real size.</p>
                   </div>
                 </div>
                 <div class="uc-pitch-foot">
@@ -725,6 +727,7 @@ onBeforeUnmount(() => {
 .uc-tag { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--color-border-active); color: var(--color-text-secondary); }
 .uc-tag--type { border-color: rgba(79, 209, 139, .5); color: #4fd18b; }
 .uc-script { margin-top: 10px; font-size: 13px; }
+.uc-tip { margin: 10px 0 0 !important; font-size: 12.5px; color: #e8b26a !important; }
 .uc-script summary { cursor: pointer; color: var(--color-text-muted); }
 .uc-script p { margin-top: 6px; white-space: pre-wrap; }
 .uc-pitch-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); }
@@ -835,7 +838,7 @@ onBeforeUnmount(() => {
   .uc-thread { padding: 16px 16px 8px; }
   .uc-dock { padding: 8px 16px 12px; }
   .uc-bubble { max-width: 88%; }
-  .uc-pitch-body { flex-direction: column; }
+  .uc-pitch-img { width: 64px; height: 114px; }
   .uc-pop { position: fixed; left: 16px; right: 16px; bottom: 140px; width: auto; }
   .uc-type { grid-template-columns: 1fr; }
 }
