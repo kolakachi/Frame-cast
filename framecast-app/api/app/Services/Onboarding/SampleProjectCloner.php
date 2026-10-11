@@ -81,6 +81,8 @@ class SampleProjectCloner
             $project->music_asset_id = $assetMap[$source->music_asset_id] ?? null;
             $project->default_character_id = $charMap[$source->default_character_id] ?? null;
             $project->source_image_asset_ids = $this->remapIdList($source->source_image_asset_ids, $assetMap);
+            // Marked, so "your first video" never counts the one we gave them (#11, 2026-10-12).
+            $project->visual_brief = array_merge(is_array($source->visual_brief) ? $source->visual_brief : [], ['onboarding_sample' => true]);
             $project->save();
 
             // ── 5. Clone scenes (remap columns + JSON-embedded asset ids) ────

@@ -806,7 +806,8 @@ const linkKeys = {}
 const siteBrief = ref(false), waitingBrief = ref(false), siteBriefClip = ref(false), siteBriefFrom = ref(null)
 // A dashboard card's starter brief (from=card:<type>) has parts in [brackets] for the user to fill in.
 const fromCard = computed(() => String(siteBriefFrom.value || '').startsWith('card:'))
-const fromOnboarding = computed(() => siteBriefFrom.value === 'onboarding')
+// "first": the dashboard's first-ad box (#11), greeted like onboarding's first video.
+const fromOnboarding = computed(() => ['onboarding', 'first'].includes(siteBriefFrom.value))
 function offerSiteBrief() {
   waitingBrief.value = false
   if (!available.value || !auth.user || !peekBrief()) return
@@ -1766,7 +1767,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
 
           <div v-if="canWrite && !conversation?.archived_at" class="composer-dock">
             <div v-if="error" class="create-error" role="alert"><p>{{ error }}</p><p v-if="conflict">We refreshed the conversation. Your unsent text is still here; check the latest version before trying again.</p><button type="button" aria-label="Dismiss error" @click="error = ''; conflict = false">×</button></div>
-            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />{{ fromOnboarding ? 'Your first video, from your answers' : fromCard ? 'A starting point from your dashboard' : 'From your visit to wyvstudio.com' }}</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
+            <div v-if="siteBrief" class="site-brief"><span><i aria-hidden="true" />{{ siteBriefFrom === 'first' ? 'Your first ad, from your dashboard' : fromOnboarding ? 'Your first video, from your answers' : fromCard ? 'A starting point from your dashboard' : 'From your visit to wyvstudio.com' }}</span><button type="button" class="quiet quiet--sm" @click="clearSiteBrief">Clear it</button></div>
             <div v-else-if="waitingBrief" class="site-brief" role="status"><span><i aria-hidden="true" />You have a brief from your visit to wyvstudio.com</span><span class="site-brief__actions"><button type="button" class="quiet quiet--sm" @click="useSiteBrief">{{ id ? 'Start a new creation with it' : 'Use it instead of this draft' }}</button><button type="button" class="quiet quiet--sm" @click="dismissSiteBrief">Dismiss</button></span></div>
             <form class="prompt-form" @submit.prevent="send">
               <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="locked" @remove="removeTrayItem" @open="i => openDocument(i.doc)" />

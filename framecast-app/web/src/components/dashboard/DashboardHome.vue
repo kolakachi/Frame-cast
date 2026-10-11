@@ -28,6 +28,20 @@ const STEPS = computed(() => [
   { key: 'face_voice', title: 'Your face and voice', text: 'One photo for your character, a short recording for your cloned voice.', action: 'Add a photo', to: { name: 'characters' }, alt: { label: 'or clone your voice', to: { name: 'voices' } }, optional: true },
   { key: 'first_video', title: 'Make your first video', text: 'Describe it, or start from a video you love. You see the plan before anything is made.', action: 'Open Create', to: { name: 'create' } },
 ])
+// Until they have made a video of their own, the first thing on the dashboard is one box that makes it (#11,
+// 2026-10-12: eight accounts skipped onboarding and never made anything; the setup steps came first).
+const firstAd = ref('')
+const firstAdOpen = computed(() => !!setup.value && !setup.value.steps?.first_video && props.user?.role !== 'collaborator')
+const FIRST_AD_EXAMPLES = [
+  'A 15-second ad for my coffee subscription: fresh beans roasted weekly, delivered every two weeks.',
+  'A short video showing what my app does, for people who run a small online shop.',
+  'A testimonial-style ad for my skincare serum, filmed like a real customer review.',
+]
+function makeFirstAd() {
+  const text = firstAd.value.trim()
+  if (!text) return
+  router.push({ name: 'create', hash: '#brief=' + encodeURIComponent(text.slice(0, 1500)) + '&from=first' })
+}
 const nextStep = computed(() => STEPS.value.find(s => setup.value && !setup.value.steps?.[s.key])?.key)
 // The studio setup is the agency owner's to do, so a collaborator never sees it. (The agency's own view lives
 // under Agency in the menu, not on the dashboard: owner, 2026-10-09.)
@@ -134,6 +148,15 @@ function startIdea(i) {
         · Top up: 500 credits for $8 →
       </button>
     </header>
+
+    <form v-if="firstAdOpen" class="dh-first" @submit.prevent="makeFirstAd">
+      <label for="dh-first-text"><b>Make your first ad</b><span>Describe it, or paste your product's link. You see the plan and its price before anything is made.</span></label>
+      <textarea id="dh-first-text" v-model="firstAd" rows="3" maxlength="1500" placeholder="e.g. A 15-second ad for my bakery's new sourdough, for people nearby who order online"></textarea>
+      <div class="dh-first-row">
+        <button v-for="(e, i) in FIRST_AD_EXAMPLES" :key="i" type="button" class="dh-first-eg" @click="firstAd = e">{{ ['Coffee subscription', 'App explainer', 'Customer review'][i] }}</button>
+        <button type="submit" class="dh-first-go" :disabled="!firstAd.trim()">Make my first ad →</button>
+      </div>
+    </form>
 
     <div v-if="setup && !setupDone && setupHidden" class="dh-hd dh-hidden"><span>Set up your studio <b>{{ setup.done }} / {{ setup.total }}</b></span><button type="button" class="dh-link" @click="hideSetup(false)">Show setup</button></div>
     <template v-else-if="setup && !setupDone">
@@ -272,4 +295,15 @@ button.dh-link{background:none;border:0;padding:0;font:inherit;font-size:13px;co
 .dh-agency__go{font-weight:700;color:var(--accent,#ff6b35);text-decoration:none;white-space:nowrap}
 .dh-agency__go:hover{text-decoration:underline}
 .dh-agency__x{border:0;background:none;color:var(--text-faint,#8f95a1);font-size:18px;cursor:pointer;width:32px;height:32px}
+.dh-first{display:flex;flex-direction:column;gap:10px;padding:18px;border-radius:16px;border:1px solid var(--color-border-active);background:var(--color-bg-card);box-shadow:0 10px 30px rgba(0,0,0,.18);max-width:760px;width:100%;margin:0 auto 6px}
+.dh-first label{display:flex;flex-direction:column;gap:2px}
+.dh-first label b{font-size:17px}
+.dh-first label span{font-size:13px;color:var(--color-text-secondary)}
+.dh-first textarea{font:inherit;font-size:15px;padding:12px 14px;border-radius:12px;border:1px solid var(--color-border);background:var(--color-bg-elevated,transparent);color:var(--color-text-primary);resize:vertical}
+.dh-first textarea:focus{outline:none;border-color:var(--color-accent)}
+.dh-first-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dh-first-eg{font:inherit;font-size:12.5px;padding:6px 12px;border-radius:999px;border:1px dashed var(--color-border-active);background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.dh-first-eg:hover{color:var(--color-text-primary);border-color:var(--color-accent)}
+.dh-first-go{margin-left:auto;font:inherit;font-weight:600;font-size:14px;padding:10px 18px;border-radius:10px;border:0;background:var(--color-accent);color:#fff;cursor:pointer}
+.dh-first-go:disabled{opacity:.5;cursor:default}
 </style>

@@ -26,7 +26,9 @@ async function checkPayment() {
       if (stopped) return
       try { localStorage.removeItem('wyv_pending_plan'); localStorage.removeItem('wyv_pending_confirmation') } catch { /* optional cache */ }
       // Bought with a brief from wyvstudio.com: straight to Create, where it is waiting (onboarding offers the same).
-      await router.replace({ name: auth.isOnboarded ? (peekBrief() ? 'create' : 'settings') : 'onboarding' })
+      // Otherwise to making a video, never Settings (#11, 2026-10-12): the $9 pass to the UGC chat it pays for, every
+      // other plan to the dashboard, whose first box makes their first ad.
+      await router.replace({ name: auth.isOnboarded ? (peekBrief() ? 'create' : plan === 'ugc_pass' ? 'ugc-new' : 'dashboard') : 'onboarding' })
       return
     }
   } catch (error) {

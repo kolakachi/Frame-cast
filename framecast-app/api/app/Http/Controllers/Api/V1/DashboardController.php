@@ -52,14 +52,29 @@ class DashboardController extends Controller
             // The user's own character or a cloned voice (optional step).
             'face_voice' => $has('characters', fn ($q) => $q->where('status', 'active')->where('is_auto', false))
                 || $has('voice_profiles', fn ($q) => $q->where('is_cloned', true)->where('status', '!=', 'archived')),
-            // Any video made, in the classic editor or in Create.
-            'first_video' => $has('projects', fn ($q) => $q)
+            // Any video they made, in the classic editor or in Create. The sample video every account gets at sign-up is
+            // not theirs: it ticked this step for everyone (#11, 2026-10-12).
+            'first_video' => $has('projects', fn ($q) => self::ownProjects($q))
                 || DB::table('composition_revisions')->join('create_conversations', 'create_conversations.id', '=', 'composition_revisions.conversation_id')
                     ->where('create_conversations.workspace_id', $ws)->exists(),
         ];
     }
 
-    /** The agency's view (phase 3): Needs you, a card per client and the month's credits; null data when none. */
+    /** Projects the workspace made itself: without the onboarding sample (marked, or, for older copies, its title and brief). */
+    public static function ownProjects($query)
+    {
+        $query->where(fn ($w) => $w->whereNull('visual_brief')->orWhereNull('visual_brief->onboarding_sample'));
+        $sampleId = (int) config('onboarding.sample_project_id', 0);
+        $sample = $sampleId ? DB::table('projects')->where('id', $sampleId)->first(['title', 'source_content_raw']) : null;
+        if ($sample) {
+            $query->where(fn ($w) => $w->where('title', '!=', (string) $sample->title)->orWhereNull('title')
+                ->orWhere('source_content_raw', '!=', (string) $sample->source_content_raw)->orWhereNull('source_content_raw'));
+        }
+
+        return $query;
+    }
+
+        /** The agency's view (phase 3): Needs you, a card per client and the month's credits; null data when none. */
     public function agency(Request $request, \App\Services\Agency\AgencyDashboard $dashboard): JsonResponse
     {
         return response()->json(['data' => $dashboard->for($request->user())]);
