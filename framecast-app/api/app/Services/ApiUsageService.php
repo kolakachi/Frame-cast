@@ -61,6 +61,11 @@ class ApiUsageService
      */
     public function record(array $data): ?ApiUsageEvent
     {
+        // A caller that did not say whose spend this is gets the request's or job's workspace and project (2026-10-11).
+        $ctx = rescue(fn () => \App\Services\Usage\UsageContext::current(), [], false);
+        foreach (['workspace_id', 'project_id', 'user_id'] as $k) {
+            if (($data[$k] ?? null) === null && isset($ctx[$k])) $data[$k] = $ctx[$k];
+        }
         $event = rescue(fn () => ApiUsageEvent::query()->create([
             'workspace_id' => $this->nullableInt($data['workspace_id'] ?? null),
             'project_id' => $this->nullableInt($data['project_id'] ?? null),

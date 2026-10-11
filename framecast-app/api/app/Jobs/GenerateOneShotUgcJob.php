@@ -88,6 +88,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if (! $project || ! $scene || $this->chunks === [] || ! $this->owns($scene)) {
             return;
         }
+        \App\Services\Usage\UsageContext::set((int) $project->workspace_id, (int) $project->id);
 
         $temps = [];
         try {

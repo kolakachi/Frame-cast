@@ -21,6 +21,7 @@ class PlanMediaService
     public function produce(string $runId, string $lease, int $index): array
     {
         $run = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
+        \App\Services\Usage\UsageContext::set((int) $run->workspace_id ?: null); // whose spend the media is (usage recording)
         $input = json_decode($run->input_json, true);
         $item = $input['plan_media'][$index] ?? null;
         abort_unless(is_array($item) && isset($input['plan']['plan_id']), 404, 'This run has no such plan item.');
@@ -321,6 +322,7 @@ class PlanMediaService
     public function produceAdHoc(string $runId, string $lease, string $kind, string $description, array $requirementIds = []): array
     {
         $run = DB::table('composition_runs')->where('id', $runId)->firstOrFail();
+        \App\Services\Usage\UsageContext::set((int) $run->workspace_id ?: null); // whose spend the media is (usage recording)
         app(RunService::class)->validateResultLease($runId, $lease);
         $input = json_decode($run->input_json, true);
         abort_if(count($requirementIds) > 24 || count(array_filter($requirementIds, 'is_string')) !== count($requirementIds) || array_diff($requirementIds, array_column($input['plan']['requirements'] ?? [], 'id')) !== [], 422, 'Only requirements in the approved plan may be linked to a purchase.');

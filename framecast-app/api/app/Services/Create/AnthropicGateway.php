@@ -38,6 +38,8 @@ class AnthropicGateway
 
     public function complete(string $runId, string $lease, string $attemptId, array $input): array
     {
+        // The build's workspace, so its Claude calls are recorded against the customer (usage recording, 2026-10-11).
+        \App\Services\Usage\UsageContext::set((int) DB::table('composition_runs')->where('id', $runId)->value('workspace_id') ?: null);
         app(RunService::class)->validateResultLease($runId, $lease);
         $attempt = DB::table('composition_attempts')->where('run_id', $runId)->where('id', $attemptId)->firstOrFail();
         abort_unless($attempt->provider === 'anthropic' && in_array($attempt->kind, ['agent', 'critic'], true), 422, 'This attempt is not an Anthropic agent call.');

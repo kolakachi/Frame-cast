@@ -73,6 +73,8 @@ class AppServiceProvider extends ServiceProvider
         // without anyone remembering to cover it.
         Event::listen(MessageSent::class, RecordSentMail::class);
         \Illuminate\Support\Facades\Bus::pipeThrough([\App\Services\Developer\AccountedJob::class]);
+        // The real cost of every Replicate prediction and Claude reply, wherever it is called from (2026-10-11).
+        \Illuminate\Support\Facades\Http::globalMiddleware(\App\Services\Usage\VendorUsageRecorder::middleware());
         // Runs after the framework has hydrated Context from the payload. The
         // job uuid is forgotten first: a child job's payload carries its
         // parent's uuid in hidden context, and before() may run failed()

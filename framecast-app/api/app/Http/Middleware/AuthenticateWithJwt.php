@@ -102,6 +102,8 @@ class AuthenticateWithJwt
         // The person behind this request rides into every job it starts, so each spend is put against them
         // (a collaborator's allowance, and "who used what" for the agency).
         \Illuminate\Support\Facades\Context::addHidden(\App\Services\Agency\Allowance::CONTEXT, (int) $user->id);
+        // And the workspace, so every paid call it leads to is put against the right customer (usage recording).
+        \App\Services\Usage\UsageContext::set((int) $active);
 
         \Illuminate\Support\Facades\DB::table('workspace_memberships')->where('workspace_id', $active)->where('user_id', $user->id)->whereNull('accepted_at')->whereNull('revoked_at')->update(['accepted_at' => now()]);
 

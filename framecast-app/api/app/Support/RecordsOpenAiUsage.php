@@ -38,6 +38,8 @@ trait RecordsOpenAiUsage
             'prompt_tokens'     => (int) ($usage['prompt_tokens'] ?? 0),
             'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
             'total_tokens'      => (int) ($usage['total_tokens'] ?? 0),
+            // Priced like the adapter's own rows; these were recorded at $0 (2026-10-11).
+            'estimated_cost_usd' => app(ApiUsageService::class)->estimateTextCost($model, (int) ($usage['prompt_tokens'] ?? 0), (int) ($usage['completion_tokens'] ?? 0), (int) ($usage['total_tokens'] ?? 0)),
             'error_message'     => $error,
             'metadata_json'     => $started !== null
                 ? ['ms' => (int) round((microtime(true) - $started) * 1000)]

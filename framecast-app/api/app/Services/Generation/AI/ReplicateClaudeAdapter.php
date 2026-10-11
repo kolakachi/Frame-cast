@@ -94,9 +94,10 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
             $content = trim(preg_replace('/^```(?:json)?\s*|\s*```$/', '', $content));
         }
 
-        // Sonnet 5 ~$3/$15 per 1M tokens; chars/4 approximates tokens.
-        $inTok  = (int) ceil((mb_strlen($systemPrompt) + mb_strlen($userPrompt)) / 4);
-        $outTok = (int) ceil(mb_strlen($content) / 4);
+        // Sonnet 5 ~$3/$15 per 1M tokens: Replicate's own token counts, else chars/4.
+        $metrics = (array) ($prediction['metrics'] ?? []);
+        $inTok  = (int) ($metrics['input_token_count'] ?? ceil((mb_strlen($systemPrompt) + mb_strlen($userPrompt)) / 4));
+        $outTok = (int) ($metrics['output_token_count'] ?? ceil(mb_strlen($content) / 4));
         $this->usage->record([
             ...$usageContext,
             'provider' => 'replicate',
@@ -105,6 +106,9 @@ class ReplicateClaudeAdapter implements AIGenerationAdapter
             'model' => $model,
             'status' => 'succeeded',
             'units' => $inTok + $outTok,
+            'prompt_tokens' => $inTok,
+            'completion_tokens' => $outTok,
+            'total_tokens' => $inTok + $outTok,
             'estimated_cost_usd' => round(($inTok * 3 + $outTok * 15) / 1e6, 6),
         ]);
 
