@@ -99,7 +99,8 @@ class BillingController extends Controller
             $workspace->plan_tier === $checkout->plan && $workspace->plan_status === 'active'
             && $workspace->kelviq_subscription_id
         ));
-        return response()->json(['data' => ['confirmed' => (bool) $ready]]);
+        // The plan rides along once paid, so the app can report the purchase's value to Google Ads (2026-10-11).
+        return response()->json(['data' => ['confirmed' => (bool) $ready, 'plan' => $ready ? $checkout->plan : null]]);
     }
 
     /**

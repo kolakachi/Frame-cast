@@ -16,6 +16,7 @@
   var TTL_DAYS = 180;
 
   function dismissed() {
+    try { if (/(?:^|;\s*)wyv_consent=(all|essential)/.test(document.cookie)) return true; } catch (e) {}
     try {
       var raw = localStorage.getItem(KEY);
       if (!raw) return false;
@@ -28,6 +29,11 @@
 
   function dismiss(all) {
     try { localStorage.setItem(KEY, JSON.stringify({ ts: Date.now(), choice: all ? 'all' : 'essential' })); } catch (e) {}
+    // Shared with app.wyvstudio.com, so the visitor is not asked again after signing up.
+    try {
+      var domain = location.hostname.slice(-13) === 'wyvstudio.com' ? '; domain=.wyvstudio.com' : '';
+      document.cookie = 'wyv_consent=' + (all ? 'all' : 'essential') + '; max-age=' + (TTL_DAYS * 86400) + '; path=/; samesite=lax' + domain + (location.protocol === 'https:' ? '; secure' : '');
+    } catch (e) {}
     if (window.wyvConsent) window.wyvConsent(all);
     var el = document.getElementById('wyv-cookie-notice');
     if (el) el.remove();

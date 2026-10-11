@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
 import { peekBrief, clearBrief } from "../services/pendingBrief.js";
+import { conversion } from '../services/googleAds.js';
 
 const authStore = useAuthStore();
 const route = useRoute();
@@ -80,6 +81,7 @@ async function submit() {
       form.password || null,
       pendingPlan.value || null
     );
+    conversion('signup');
     if (pendingPlan.value) {
       await router.replace({ name: 'continue-checkout', query: { plan: pendingPlan.value } });
     } else {

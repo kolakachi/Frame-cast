@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import { peekBrief } from '../services/pendingBrief.js'
+import { conversion, PLAN_VALUE_USD } from '../services/googleAds.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +19,9 @@ async function checkPayment() {
     const { data } = await api.get(`/billing/confirmation/${encodeURIComponent(String(route.query.attempt || ''))}`)
     if (stopped) return
     if (data?.data?.confirmed) {
+      // Counted once per checkout: Google drops a repeat with the same transaction id.
+      const plan = data.data.plan || ''
+      conversion('purchase', { value: PLAN_VALUE_USD[plan] ?? null, transactionId: route.query.attempt })
       await auth.refreshUser()
       if (stopped) return
       try { localStorage.removeItem('wyv_pending_plan'); localStorage.removeItem('wyv_pending_confirmation') } catch { /* optional cache */ }

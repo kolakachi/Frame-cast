@@ -27,7 +27,8 @@
 
   // No cookies until the visitor allows them in the cookie notice (2026-10-11); before that, memory only.
   var allowed = false;
-  try { var rec = JSON.parse(localStorage.getItem('wyv_cookie_notice_v2') || 'null'); allowed = !!rec && rec.choice === 'all'; } catch (e) {}
+  try { allowed = /(?:^|;\s*)wyv_consent=all/.test(document.cookie); } catch (e) {}
+  if (!allowed) { try { var rec = JSON.parse(localStorage.getItem('wyv_cookie_notice_v2') || 'null'); allowed = !!rec && rec.choice === 'all'; } catch (e) {} }
 
   posthog.init(POSTHOG_KEY, {
     api_host: 'https://us.i.posthog.com',

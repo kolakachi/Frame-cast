@@ -8,7 +8,10 @@
 (function () {
   var ID = 'AW-18506583015';
   var choice = null;
-  try { var rec = JSON.parse(localStorage.getItem('wyv_cookie_notice_v2') || 'null'); choice = rec && rec.choice; } catch (e) {}
+  try { var m = document.cookie.match(/(?:^|;\s*)wyv_consent=(all|essential)/); choice = m ? m[1] : null; } catch (e) {}
+  if (!choice) {
+    try { var rec = JSON.parse(localStorage.getItem('wyv_cookie_notice_v2') || 'null'); choice = rec && rec.choice; } catch (e) {}
+  }
   var state = choice === 'all' ? 'granted' : 'denied';
 
   window.dataLayer = window.dataLayer || [];
