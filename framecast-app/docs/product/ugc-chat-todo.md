@@ -29,7 +29,6 @@ assembly stays simple, motion graphics stay in Create.
 | OLD-FORM-CHANGES | Old-form one-takes change on deploy: captions on by default, cuts at shot changes re-anchored on photos, shorter job timeout (resumable) | review | owner OK |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
-| VISION | Built 2026-10-11 (local): each product photo is read once by Haiku (form, size, colours, label) and the sheet goes to the director, the plan's brief and every clip prompt; a pasted link brings up to 3 of its own product shots (JSON-LD, og:image, Shopify feed), removable in the chat | ready | push, then one paid take with the Nécessaire tube |
 | QUEUE-REAP | Composed scenes waiting behind long one-takes on a busy queue are reaped as "timed out" at 10 minutes | open | fix |
 | ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
 | CAST-ALL | Multi-person ads (skit): cast every role from the presenter library (or the user's picks) before making; every person's photo as a reference; a voice per person; chosen presenters = one video's cast for a skit | open | build next |
@@ -139,3 +138,4 @@ assembly stays simple, motion graphics stay in Create.
 - 2026-10-10 `32e61846` Phase 1 backend: chats + messages tables, `ugc_chat_turn` director (asks or pitches, word
   budget enforced, no invented claims), pitch priced by the existing pipeline, Make it via one-shot/composed with
   consent and a double-click lock, live take status.
+- 2026-10-11 VISION (c3c1013c): product photos read once (Haiku sheet: form, size, colours, label) and used by the director, plan and every clip prompt; a link brings up to 3 of its own product shots. Prod check take 281 (Nécessaire tube): the tube stayed a tube in every frame, label legible. Note: some shops (Nécessaire's Cloudflare) rate-limit our prod IP (429), so their page can't be read from the server; the chat says so.

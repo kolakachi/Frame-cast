@@ -24,7 +24,7 @@ where they are; this file is the order to work in.
 
 | # | Item | Why it matters | Who / next |
 |---|---|---|---|
-| 1 | **Built, local (2026-10-11): the director sees product photos (VISION).** Each photo is read once (what it is, packaging, colours, size, label text). A pasted product link pulls its images. | The director only reads file names: in 3 of 6 test videos a tube became a pump bottle. This makes "paste your product link" true. | build (about a cent a photo) |
+| 1 | **Done (2026-10-11, prod take 281): the director sees product photos (VISION).** Each photo is read once (what it is, packaging, colours, size, label text). A pasted product link pulls its images. | The director only reads file names: in 3 of 6 test videos a tube became a pump bottle. This makes "paste your product link" true. | build (about a cent a photo) |
 | 2 | **Outfits that hold.** An outfit step spells the outfit out in detail and names it in every clip prompt (from Jellyfish's outfit agent). | Planned outfits lose to the presenter photo's outfit (prod take 280). | build, then a few paid test takes |
 | 3 | **Done (2026-10-11): Anthropic auto-reload on** (API-BAL). | If the Anthropic credit runs out, Create and the UGC chat stop. | owner (a few minutes) |
 | 4 | **Done (2026-10-11): cost tracking step 2, money in.** Record the dollar amount of every purchase (Kelviq, Test Pass, AppSumo after its cut). | Step 1 (real cost of every paid call) is live. Without money in there is no margin. | build |

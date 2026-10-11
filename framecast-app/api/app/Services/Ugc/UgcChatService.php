@@ -90,15 +90,14 @@ final class UgcChatService
         if (! empty($input['link']) && ($state['link']['url'] ?? null) !== $input['link']) {
             $facts = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'readLink'], ['request' => $r]), ['url' => (string) $input['link']]);
             $state['link'] = ['url' => (string) $input['link'], 'facts' => isset($facts['error']) ? null : $facts];
-            // Its product photos come too (VISION): after the user's own, which stay first.
-            if (! isset($facts['error'])) {
-                $linked = $this->images->import($user, (string) $input['link'], (string) ($facts['product'] ?? ''));
-                foreach ($linked as $assetId) {
-                    if (collect($state['attachments'] ?? [])->contains(fn ($x) => (int) $x['asset_id'] === $assetId)) continue;
-                    $state['attachments'][] = ['asset_id' => $assetId, 'role' => 'product', 'type' => 'image', 'title' => (string) DB::table('assets')->where('id', $assetId)->value('title'), 'from_link' => true];
-                }
-                $state['link']['images'] = $linked;
+            // Its product photos come too (VISION): after the user's own, which stay first. Tried even when the text
+            // could not be read: a thin page can still name good photos.
+            $linked = $this->images->import($user, (string) $input['link'], isset($facts['error']) ? '' : (string) ($facts['product'] ?? ''));
+            foreach ($linked as $assetId) {
+                if (collect($state['attachments'] ?? [])->contains(fn ($x) => (int) $x['asset_id'] === $assetId)) continue;
+                $state['attachments'][] = ['asset_id' => $assetId, 'role' => 'product', 'type' => 'image', 'title' => (string) DB::table('assets')->where('id', $assetId)->value('title'), 'from_link' => true];
             }
+            $state['link']['images'] = $linked;
         }
         // What each product photo shows, read once (VISION): the director describes the product from this, never from
         // a file name.
