@@ -45,7 +45,7 @@ class AppSumoReactivationTest extends TestCase
             $t->string('status')->nullable(); $t->unsignedBigInteger('owner_user_id')->nullable();
             $t->integer('credits_monthly')->default(0); $t->integer('credits_topup')->default(0);
             $t->integer('credits_free_granted')->default(0);
-            $t->timestamp('welcome_email_sent_at')->nullable(); $t->timestamps();
+            $t->timestamp('welcome_email_sent_at')->nullable(); $t->string('acquisition_channel')->nullable(); $t->timestamps();
         });
         Schema::create('appsumo_licenses', function (Blueprint $t) {
             $t->id(); $t->string('license_key'); $t->unsignedBigInteger('workspace_id')->nullable();

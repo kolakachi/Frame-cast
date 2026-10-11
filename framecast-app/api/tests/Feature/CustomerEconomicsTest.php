@@ -22,7 +22,7 @@ class CustomerEconomicsTest extends TestCase
         DB::purge('econ_test');
         (require database_path('migrations/2026_10_11_200000_create_revenue_events.php'))->up();
         $tables = [
-            'workspaces' => ['name', 'plan_tier', 'parent_workspace_id'], 'users' => ['workspace_id', 'email'],
+            'workspaces' => ['name', 'plan_tier', 'parent_workspace_id', 'acquisition_channel', 'acquisition_json'], 'users' => ['workspace_id', 'email'],
             'credit_ledger' => ['workspace_id', 'operation', 'credits', 'upstream_cost_usd'], 'api_usage_events' => ['workspace_id', 'estimated_cost_usd', 'occurred_at'],
             'appsumo_licenses' => ['license_key', 'workspace_id', 'tier', 'appsumo_tier', 'status'], 'affiliate_conversions' => ['order_id'],
             'billing_checkout_attempts' => ['plan'], 'billing_webhook_logs' => ['provider', 'event', 'signature_valid', 'payload'],
@@ -55,7 +55,7 @@ class CustomerEconomicsTest extends TestCase
         $rows = DB::table('revenue_events')->get();
         $this->assertCount(1, $rows, 'a replay lands on the same row');
         $r = $rows[0];
-        $this->assertSame([28, 'kelviq', 'ord_1', 'lifetime_creator', 'direct', 179.0, 35.8], [(int) $r->workspace_id, $r->provider, $r->external_id, $r->plan, $r->channel, (float) $r->net_usd, (float) $r->tax]);
+        $this->assertSame([28, 'kelviq', 'ord_1', 'lifetime_creator', 'unknown', 179.0, 35.8], [(int) $r->workspace_id, $r->provider, $r->external_id, $r->plan, $r->channel, (float) $r->net_usd, (float) $r->tax]);
         $this->assertSame(6.63, (float) $r->fee_usd, "Kelviq's intro 2.9% + \$0.40 of the \$214.80 charged");
         // Past the first $5,000 processed, the standard 3.5% applies; the sale that crosses it is split.
         DB::table('revenue_events')->insert(['workspace_id' => 28, 'provider' => 'kelviq', 'external_id' => 'big', 'kind' => 'pack', 'currency' => 'USD', 'gross' => 4900, 'net' => 4900, 'net_usd' => 4900, 'occurred_at' => now()->addMinute()]);
@@ -117,5 +117,25 @@ class CustomerEconomicsTest extends TestCase
         $this->assertFalse($byId->has(1), 'paying customers only by default');
         $this->assertSame(12.25, (float) $byId[0]['money_in_usd'], 'an unredeemed licence still reached us');
         $this->assertSame((float) collect($d['by_channel'])->sum('money_in_usd'), (float) $d['totals']['money_in_usd'], 'the two totals agree');
+    }
+
+    public function test_accounts_and_sales_are_counted_by_where_the_account_came_from(): void
+    {
+        $this->kelviq(['subtotal' => 59.0, 'discount' => 0.0, 'tax' => 0.0, 'total' => 59.0, 'refunded' => 0.0]);
+        DB::table('workspaces')->where('id', 28)->update(['acquisition_channel' => 'google_ads', 'acquisition_json' => json_encode(['gclid' => 'Cj0KCQjw_abcdefghij', 'utm_campaign' => 'brand'])]);
+        DB::table('workspaces')->where('id', 27)->update(['acquisition_channel' => 'appsumo']);
+        DB::table('workspaces')->insert(['id' => 40, 'name' => 'Lurker', 'plan_tier' => 'free', 'acquisition_channel' => 'google_ads']);
+        DB::table('workspaces')->insert(['id' => 41, 'name' => 'Client', 'plan_tier' => 'free', 'parent_workspace_id' => 1]);
+        app(RevenueService::class)->fromKelviqEvent(['id' => 'evt_9', 'type' => 'checkout.completed', 'data' => ['object' => ['id' => 'chk_9', 'order_id' => 'ord-9', 'amount' => 59.0,
+            'currency' => 'USD', 'plan' => ['identifier' => 'starter-pack'], 'metadata' => ['checkout_attempt_id' => 'att-1']]]]);
+        $this->assertSame('google_ads', DB::table('revenue_events')->where('external_id', 'ord-9')->value('channel'), 'a sale takes its account\'s channel');
+
+        $d = app(EconomicsController::class)->index(Request::create('/admin/economics'))->getData(true)['data'];
+        $google = collect($d['by_source'])->firstWhere('channel', 'google_ads');
+        $this->assertSame([2, 1, 50.0], [$google['signups'], $google['paying'], (float) $google['conversion_pct']]);
+        $this->assertNull(collect($d['by_source'])->firstWhere('signups', 0), 'no empty rows');
+        $this->assertSame(4, collect($d['by_source'])->sum('signups'), 'client workspaces are not sign-ups');
+        $row = collect($d['rows'])->firstWhere('workspace_id', 28);
+        $this->assertSame(['google_ads', 'Google ad click · campaign brand'], [$row['acquisition'], $row['acquisition_detail']]);
     }
 }

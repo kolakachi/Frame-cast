@@ -7,6 +7,9 @@ import api from '../../services/api'
 const data = ref(null), loading = ref(false), error = ref(''), days = ref(''), paidOnly = ref(true), sort = ref('money_in_usd')
 const usd = n => (n < 0 ? '−$' : '$') + Math.abs(Number(n || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const rows = computed(() => [...(data.value?.rows || [])].sort((a, b) => (b[sort.value] ?? 0) - (a[sort.value] ?? 0)))
+const LABELS = { appsumo: 'AppSumo', affiliate: 'Affiliate', google_ads: 'Google Ads', referral: 'Friend referral', paid_social: 'Paid social', email: 'Email',
+  ai: 'AI assistant', search: 'Search', social: 'Social', other_site: 'Other site', direct: 'Direct', unknown: 'Unknown' }
+const label = c => LABELS[c] || c || '—'
 const since = computed(() => data.value ? new Date(data.value.full_cost_since.replace(' ', 'T') + 'Z').toLocaleDateString() : '')
 
 async function load() {
@@ -41,10 +44,17 @@ onMounted(load)
       <div><small>Unattributed cost</small><b>{{ usd(data.unattributed_cost_usd) }}</b><span>our own tools and scripts</span></div>
     </div>
 
-    <h3 class="econ-h3">By channel</h3>
+    <h3 class="econ-h3">Where accounts came from</h3>
+    <p class="econ-sub">Accounts that signed up {{ days ? `in the last ${days} days` : 'ever' }}, by where they first came from; paying and money in are theirs to date. "Unknown" is accounts from before 11 Oct 2026, when this started being recorded.</p>
+    <div class="econ-scroll"><table class="econ-table">
+      <thead><tr><th>Came from</th><th class="num">Sign-ups</th><th class="num">Paying</th><th class="num">Conversion</th><th class="num">Money in</th></tr></thead>
+      <tbody><tr v-for="c in data.by_source || []" :key="c.channel"><td>{{ label(c.channel) }}</td><td class="num">{{ c.signups }}</td><td class="num">{{ c.paying }}</td><td class="num">{{ c.conversion_pct }}%</td><td class="num">{{ usd(c.money_in_usd) }}</td></tr></tbody>
+    </table></div>
+
+    <h3 class="econ-h3">Sales by channel</h3>
     <div class="econ-scroll"><table class="econ-table">
       <thead><tr><th>Channel</th><th>Sales</th><th>Refunded</th><th class="num">Money in</th></tr></thead>
-      <tbody><tr v-for="c in data.by_channel" :key="c.channel"><td>{{ c.channel }}</td><td>{{ c.sales }}</td><td>{{ c.refunded_sales }}</td><td class="num">{{ usd(c.money_in_usd) }}</td></tr></tbody>
+      <tbody><tr v-for="c in data.by_channel" :key="c.channel"><td>{{ label(c.channel) }}</td><td>{{ c.sales }}</td><td>{{ c.refunded_sales }}</td><td class="num">{{ usd(c.money_in_usd) }}</td></tr></tbody>
     </table></div>
 
     <h3 class="econ-h3">By customer</h3>
@@ -60,7 +70,7 @@ onMounted(load)
       <tbody>
         <tr v-for="r in rows" :key="r.workspace_id">
           <td><b>{{ r.name }}</b><small>#{{ r.workspace_id }}<template v-if="r.owner_email"> · {{ r.owner_email }}</template><template v-if="r.client_of"> · client of #{{ r.client_of }}</template></small></td>
-          <td>{{ r.channels.join(', ') || '—' }}</td>
+          <td>{{ label(r.acquisition) }}<small v-if="r.acquisition_detail">{{ r.acquisition_detail }}</small><small v-if="r.channels.length && r.channels.join() !== r.acquisition">sales: {{ r.channels.map(label).join(', ') }}</small></td>
           <td>{{ r.plan || '—' }}</td>
           <td class="num">{{ usd(r.money_in_usd) }}<small v-if="r.platform_fees_usd">paid {{ usd(r.paid_usd) }}, cut {{ usd(r.platform_fees_usd) }}</small><small v-if="r.unpriced_sales" class="warn">{{ r.unpriced_sales }} sale(s) not in USD</small></td>
           <td class="num">{{ r.refunded_usd ? usd(r.refunded_usd) : '—' }}</td>

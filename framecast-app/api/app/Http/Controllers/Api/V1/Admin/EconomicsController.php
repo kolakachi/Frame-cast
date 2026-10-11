@@ -57,6 +57,9 @@ class EconomicsController extends Controller
                 'plan' => $w->plan_tier ?? null,
                 'client_of' => $w->parent_workspace_id ?? null,
                 'channels' => $sales->pluck('channel')->filter()->unique()->values(),
+                // Where the account came from, and the detail it was read from (Acquisition).
+                'acquisition' => $w->acquisition_channel ?? null,
+                'acquisition_detail' => self::detail($w),
                 'sales' => $sales->count(),
                 'first_sale_at' => $sales->min('occurred_at'),
                 'paid_usd' => round($paid, 2),
@@ -79,6 +82,19 @@ class EconomicsController extends Controller
                 'refunded_sales' => $g->filter(fn ($r) => (float) $r->refunded_usd > 0)->count(),
             ])->values();
 
+        // Accounts by where they came from, as one cohort: those that signed up in the period (all, without one), how
+        // many of them have paid, and what they have brought in since. Client workspaces an agency made are not sign-ups.
+        $paying = DB::table('revenue_events')->whereNotNull('workspace_id')->get()->groupBy('workspace_id')
+            ->map(fn ($g) => (float) $g->sum(fn ($r) => (float) ($r->net_usd ?? 0)) - (float) $g->sum('fee_usd') - (float) $g->sum('refunded_usd'));
+        $accounts = DB::table('workspaces')->whereNull('parent_workspace_id')->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+            ->get(['id', 'acquisition_channel']);
+        $bySource = $accounts->groupBy(fn ($w) => $w->acquisition_channel ?: 'unknown')->map(function ($g, $ch) use ($paying) {
+            $payers = $g->filter(fn ($w) => $paying->has($w->id));
+            return ['channel' => $ch, 'signups' => $g->count(), 'paying' => $payers->count(),
+                'conversion_pct' => round(100 * $payers->count() / max(1, $g->count()), 1),
+                'money_in_usd' => round((float) $payers->sum(fn ($w) => $paying[$w->id]), 2)];
+        })->sortByDesc(fn ($r) => [$r['money_in_usd'], $r['signups']])->values();
+
         $totals = ['money_in_usd' => round((float) $rows->sum('money_in_usd'), 2), 'cost_recorded_usd' => round((float) $rows->sum('cost_recorded_usd'), 2),
             'cost_earlier_estimate_usd' => round((float) $rows->sum('cost_earlier_estimate_usd'), 2), 'margin_usd' => round((float) $rows->sum('margin_usd'), 2),
             'refunded_usd' => round((float) $rows->sum('refunded_usd'), 2), 'paying_workspaces' => $rows->where('sales', '>', 0)->count()];
@@ -86,8 +102,24 @@ class EconomicsController extends Controller
         $unattributed = round((float) DB::table('api_usage_events')->whereNull('workspace_id')->when($since, fn ($q) => $q->where('occurred_at', '>=', $since))->sum('estimated_cost_usd'), 2);
 
         return response()->json(['data' => [
-            'rows' => $rows, 'by_channel' => $byChannel, 'totals' => $totals, 'unattributed_cost_usd' => $unattributed,
+            'rows' => $rows, 'by_channel' => $byChannel, 'by_source' => $bySource, 'totals' => $totals, 'unattributed_cost_usd' => $unattributed,
             'full_cost_since' => self::FULL_SINCE, 'period_days' => $days,
         ], 'meta' => []]);
+    }
+
+    /** "Google ad · campaign spring", "chatgpt.com", "utm facebook / cpc": what the channel was read from. */
+    private static function detail(?object $w): ?string
+    {
+        $t = $w && $w->acquisition_json ? (json_decode((string) $w->acquisition_json, true) ?: []) : [];
+        if (! $t) return null;
+        $parts = array_filter([
+            ! empty($t['gclid']) || ! empty($t['gbraid']) || ! empty($t['wbraid']) ? 'Google ad click' : null,
+            ! empty($t['utm_source']) ? 'utm '.$t['utm_source'].(! empty($t['utm_medium']) ? ' / '.$t['utm_medium'] : '') : null,
+            ! empty($t['utm_campaign']) ? 'campaign '.$t['utm_campaign'] : null,
+            $t['ref_host'] ?? null,
+            ! empty($t['landing']) && $t['landing'] !== '/' ? 'landed on '.$t['landing'] : null,
+        ]);
+
+        return $parts ? mb_substr(implode(' · ', $parts), 0, 200) : 'no referrer';
     }
 }

@@ -1,4 +1,5 @@
 import { captureAffiliate } from './services/affiliate.js'
+import { captureAttribution } from './services/attribution.js'
 import { watch } from 'vue'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
@@ -127,6 +128,8 @@ if (authStore.isAuthenticated && authStore.user) {
 
 // Keep pending attribution until the API has acknowledged it.
 captureAffiliate(api)
+// Where this visitor first came from, sent with a sign-up (priorities #6).
+try { captureAttribution() } catch {}
 
 watch(
   () => authStore.accessToken,

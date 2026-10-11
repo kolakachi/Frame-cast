@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import api, { refreshApi } from '../services/api'
 import { useWorkspaceStore } from './workspace'
+import { attribution } from '../services/attribution.js'
 
 const STORAGE_KEY = 'framecast.auth'
 
@@ -65,8 +66,11 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async requestMagicLink(email, name = null, password = null, plan = null) {
+      const src = attribution()
       await api.post('/auth/magic-link', {
         email,
+        // Where they first came from; used only if this creates the account.
+        ...(src ? { src } : {}),
         ...(name ? { name } : {}),
         ...(password ? { password } : {}),
         // Passed so the sign-in email can name the plan they picked. The key
@@ -76,7 +80,8 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async register(email, name, password, plan) {
-      const response = await api.post('/auth/register', { email, name, password, plan })
+      const src = attribution()
+      const response = await api.post('/auth/register', { email, name, password, plan, ...(src ? { src } : {}) })
       this._applySessionData(response.data.data)
     },
 

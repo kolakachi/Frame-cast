@@ -175,7 +175,8 @@ class RevenueService
     {
         if ($orderId !== '' && DB::table('affiliate_conversions')->where('order_id', $orderId)->exists()) return 'affiliate';
         if ($workspace && DB::table('appsumo_licenses')->where('workspace_id', $workspace->getKey())->exists()) return 'appsumo';
-        return 'direct';
+        // Otherwise where the account came from (Acquisition): google_ads, search, ai, social…
+        return (string) (($workspace ? DB::table('workspaces')->where('id', $workspace->getKey())->value('acquisition_channel') : null) ?: 'unknown');
     }
 
     private function upsert(string $provider, string $externalId, array $row): void

@@ -33,6 +33,8 @@
     try {
       var domain = location.hostname.slice(-13) === 'wyvstudio.com' ? '; domain=.wyvstudio.com' : '';
       document.cookie = 'wyv_consent=' + (all ? 'all' : 'essential') + '; max-age=' + (TTL_DAYS * 86400) + '; path=/; samesite=lax' + domain + (location.protocol === 'https:' ? '; secure' : '');
+      // The first-visit cookie (google-ads.js) is kept only with "Allow".
+      if (!all) document.cookie = 'wyv_src=; max-age=0; path=/' + domain;
     } catch (e) {}
     if (window.wyvConsent) window.wyvConsent(all);
     var el = document.getElementById('wyv-cookie-notice');

@@ -89,6 +89,9 @@ class AuthController extends Controller
             // Affiliate code, distinct from `ref`: that one names a workspace
             // referring a friend, this one names a marketer taking a cut.
             'aff' => ['nullable', 'string', 'max:32'],
+            // The first visit, as the browser captured it (Acquisition): click ids, UTM tags, referring site.
+            'src' => ['nullable', 'array'],
+            'src.*' => ['nullable', 'string', 'max:400'],
             // Plan chosen on the pricing page. A key only — the label shown in
             // the email is looked up server-side, so the client cannot put its
             // own text (a different price, say) into a mail sent by us.
@@ -569,6 +572,10 @@ class AuthController extends Controller
                     $workspace,
                     $validated['aff'] ?? app(\App\Services\Affiliate\AffiliateAttribution::class)->fromCookie(request()),
                 ), null, false);
+
+                // Where they came from, after the affiliate stamp so that wins.
+                rescue(fn () => \App\Services\Analytics\Acquisition::record($workspace->refresh(),
+                    \App\Services\Analytics\Acquisition::fromRequest(request(), $validated['src'] ?? null)), null, false);
 
                 // Give the new workspace its own shareable referral code.
                 app(\App\Services\RewardService::class)->ensureReferralCode($workspace);

@@ -676,6 +676,8 @@ class KelviqService
                 ])->save();
 
                 rescue(fn () => app(RewardService::class)->ensureReferralCode($workspace));
+                // Bought without signing up: nothing says where they came from, unless an affiliate is stamped later.
+                rescue(fn () => \App\Services\Analytics\Acquisition::record($workspace, []), null, false);
 
                 Log::info('KelviqService: provisioned account for direct checkout', [
                     'workspace_id' => $workspace->getKey(),

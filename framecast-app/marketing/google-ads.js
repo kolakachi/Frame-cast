@@ -52,3 +52,57 @@
     }
   };
 })();
+
+/*
+ * Where a visitor first came from (owner, 2026-10-11): the Google click id, UTM tags, referring site and landing page of
+ * their first visit, sent with the sign-up in the app so each account and each sale has a channel. Kept for the visit
+ * in sessionStorage; after "Allow" also in a cookie the app shares, for 90 days. Without that cookie the visit rides on
+ * our links into app.wyvstudio.com (?src=…). Same rules as web/src/services/attribution.js.
+ */
+(function () {
+  var KEYS = ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  var CLICKS = ['gclid', 'gbraid', 'wbraid'];
+  var NAME = 'wyv_src';
+  var PASSING = /(^|\.)(wyvstudio\.com|kelviq\.com|stripe\.com|paypal\.com|appsumo\.com)$|^accounts\.google\.com$|^localhost$/;
+
+  function consented() { try { return /(?:^|;\s*)wyv_consent=all/.test(document.cookie); } catch (e) { return false; } }
+  function cookie() { try { return /(?:^|;\s*)wyv_src=/.test(document.cookie); } catch (e) { return false; } }
+  function read() {
+    try { var m = document.cookie.match(/(?:^|;\s*)wyv_src=([^;]+)/); if (m) return JSON.parse(decodeURIComponent(m[1])); } catch (e) {}
+    try { return JSON.parse(sessionStorage.getItem(NAME) || 'null'); } catch (e) { return null; }
+  }
+  function store(t) {
+    var v = JSON.stringify(t);
+    try { sessionStorage.setItem(NAME, v); } catch (e) {}
+    if (!consented()) return;
+    var domain = /(^|\.)wyvstudio\.com$/.test(location.hostname) ? '; domain=.wyvstudio.com' : '';
+    try { document.cookie = NAME + '=' + encodeURIComponent(v) + '; max-age=' + (90 * 86400) + '; path=/; samesite=lax' + domain + (location.protocol === 'https:' ? '; secure' : ''); } catch (e) {}
+  }
+
+  try {
+    var q = new URLSearchParams(location.search), fresh = {};
+    KEYS.forEach(function (k) { var v = q.get(k); if (v) fresh[k] = v.slice(0, 200); });
+    try {
+      var ref = document.referrer ? new URL(document.referrer).hostname.replace(/^www\./, '').toLowerCase() : '';
+      if (ref && !PASSING.test(ref)) fresh.ref_host = ref;
+    } catch (e) {}
+    var t = read();
+    if (!t || typeof t !== 'object') {
+      t = fresh; t.landing = location.pathname.slice(0, 200); t.at = new Date().toISOString();
+    } else if (!CLICKS.some(function (k) { return t[k]; })) {
+      CLICKS.forEach(function (k) { if (fresh[k]) t[k] = fresh[k]; });
+    }
+    store(t);
+  } catch (e) {}
+
+  // Links into the app carry the visit when the shared cookie cannot.
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || cookie()) return;
+    var u; try { u = new URL(a.href, location.href); } catch (x) { return; }
+    if (u.hostname !== 'app.wyvstudio.com') return;
+    var t = read(); if (!t) return;
+    u.searchParams.set('src', JSON.stringify(t));
+    a.href = u.toString();
+  }, true);
+})();

@@ -33,6 +33,9 @@ function choose(all) {
   try { localStorage.setItem(KEY, JSON.stringify({ ts: Date.now(), choice })) } catch {}
   const domain = location.hostname.endsWith('wyvstudio.com') ? '; domain=.wyvstudio.com' : ''
   document.cookie = `wyv_consent=${choice}; max-age=${TTL_DAYS * 86400}; path=/; samesite=lax${domain}${location.protocol === 'https:' ? '; secure' : ''}`
+  // The first-visit cookie (services/attribution.js) is kept only with "Allow"; otherwise the visit stays in this tab.
+  if (!all) document.cookie = `wyv_src=; max-age=0; path=/${domain}`
+  else { try { const v = sessionStorage.getItem('wyv_src'); if (v) document.cookie = `wyv_src=${encodeURIComponent(v)}; max-age=${90 * 86400}; path=/; samesite=lax${domain}${location.protocol === 'https:' ? '; secure' : ''}` } catch {} }
   if (typeof window.wyvConsent === 'function') window.wyvConsent(all)
   visible.value = false
 }

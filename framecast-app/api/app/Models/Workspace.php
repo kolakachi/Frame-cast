@@ -48,9 +48,13 @@ class Workspace extends Model
         'pending_checkout_plan',
         'pending_checkout_at',
         'pending_checkout_reminded_at',
+        // Where the account came from (Acquisition): one channel, and the first visit it was read from.
+        'acquisition_channel',
+        'acquisition_json',
     ];
 
     protected $casts = [
+        'acquisition_json' => 'array',
         'subscription_ends_at' => 'datetime',
         'billing_state_version' => 'datetime',
         'plan_renews_at'    => 'datetime',

@@ -291,6 +291,7 @@ class AppSumoService
                 'name'      => Str::of($email)->before('@')->headline().' Workspace',
                 'plan_tier' => $license->tier ?? 'appsumo_starter',
                 'status'    => 'active',
+                'acquisition_channel' => 'appsumo',
             ]);
             $user = User::query()->create([
                 'workspace_id'  => $workspace->getKey(),
