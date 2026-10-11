@@ -65,6 +65,7 @@ class EditSceneImageJob implements ShouldQueue
         if (! $scene || ! $scene->project) {
             return;
         }
+        \App\Support\SceneRun::started($scene); // timed from now, not from the queue (QUEUE-REAP)
 
         $source = $scene->visual_asset_id ? Asset::query()->find((int) $scene->visual_asset_id) : null;
 

@@ -84,7 +84,8 @@ services:
     init: true  # see note at top of file
     build:
       context: ./api
-    command: php artisan queue:work redis --queue=generation,tts,visual,translation --tries=1
+    # Locally one worker also runs the one-take queue (prod gives it worker-ugc).
+    command: php artisan queue:work redis --queue=generation,tts,visual,translation,ugc --tries=1
     env_file:
       - ./api/.env
     environment:

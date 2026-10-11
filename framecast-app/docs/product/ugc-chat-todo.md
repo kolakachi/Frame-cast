@@ -29,7 +29,7 @@ assembly stays simple, motion graphics stay in Create.
 | OLD-FORM-CHANGES | Old-form one-takes change on deploy: captions on by default, cuts at shot changes re-anchored on photos, shorter job timeout (resumable) | review | owner OK |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
-| QUEUE-REAP | Composed scenes waiting behind long one-takes on a busy queue are reaped as "timed out" at 10 minutes | open | fix |
+| QUEUE-REAP | Built 2026-10-12: work is timed from when its job starts (SceneRun), queued work waits up to 2 h with a "nothing was charged" message, one-takes run on their own worker (worker-ugc, 2 at a time) | ready | push, then check worker-ugc is up |
 | ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
 | CAST-ALL | Multi-person ads (skit): cast every role from the presenter library (or the user's picks) before making; every person's photo as a reference; a voice per person; chosen presenters = one video's cast for a skit | open | build next |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |

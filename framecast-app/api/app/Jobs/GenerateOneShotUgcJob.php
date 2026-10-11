@@ -68,7 +68,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
     ) {
         $this->runToken = $runToken;
         $this->checkFace = (bool) $checkFace;
-        $this->onQueue('generation');
+        // Its own queue and worker (worker-ugc): a 30-minute take held up every voiceover and image behind it (QUEUE-REAP).
+        $this->onQueue('ugc');
     }
 
     /** Which run owns the take (oneshot_token on the scene). A job whose token is no longer the scene's — a resumed or
@@ -89,6 +90,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             return;
         }
         \App\Services\Usage\UsageContext::set((int) $project->workspace_id, (int) $project->id);
+        // Timed from now: a take queued behind another was reaped before it began (QUEUE-REAP).
+        \App\Support\SceneRun::started($scene);
 
         $temps = [];
         try {
@@ -393,7 +396,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->refresh()->image_generation_settings_json ?? [],
                 // generation_started_at is the heartbeat the stuck-generation reaper reads.
-                ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId, 'generation_started_at' => now()->toIso8601String()],
+                ['oneshot_segment' => $i + 1, 'oneshot_total' => count($this->chunks), 'oneshot_prediction_id' => $predictionId] + \App\Support\SceneRun::beat(),
             )])->save();
 
             try {

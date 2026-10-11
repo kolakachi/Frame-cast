@@ -123,6 +123,7 @@ class GenerateTalkingVideoJob implements ShouldQueue
             'animation_tier'        => 'spokesperson',
             'animation_cost'        => $cost,
         ]);
+        \App\Support\SceneRun::started($scene, \App\Support\SceneRun::ANIMATION); // timed from now (QUEUE-REAP)
 
         $charged = app(CreditService::class)->deduct(
             (int) $scene->project->workspace_id,

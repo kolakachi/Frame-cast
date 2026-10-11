@@ -54,6 +54,7 @@ class RestyleVideoJob implements ShouldQueue
         if (! $session || ! $scene || ! $source) {
             return; // deleted mid-flight; nothing to charge, nothing to do
         }
+        \App\Support\SceneRun::started($scene); // timed from now, not from the queue (QUEUE-REAP)
 
         $temps = [];
         $stagedKey = null;

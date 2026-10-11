@@ -109,6 +109,35 @@ services:
       redis:
         condition: service_healthy
 
+  # One-take UGC videos (GenerateOneShotUgcJob, up to ~38 min each) run here, two at a time, so voiceovers, images and
+  # animations on worker-generation never wait behind one, and two customers' takes run side by side (QUEUE-REAP,
+  # 2026-10-12). A deploy gives the take in hand the same grace as worker-generation; a cut-off take resumes from its
+  # saved predictions.
+  worker-ugc:
+    init: true  # see note at top of file
+    build:
+      context: ./api
+    command: php -d memory_limit=768M artisan queue:work redis --queue=ugc --tries=1 --sleep=3
+    stop_grace_period: 330s
+    deploy:
+      replicas: 2
+    env_file:
+      - ./api/.env
+    volumes:
+      - api_private:/var/www/html/storage/app/private
+    environment:
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+      REDIS_QUEUE_RETRY_AFTER: 2400
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   worker-exports:
     # NOTE the queue ORDER: Laravel drains --queue left to right, so listing
     # exports-priority first IS the "top priority queue" Agency is sold on.

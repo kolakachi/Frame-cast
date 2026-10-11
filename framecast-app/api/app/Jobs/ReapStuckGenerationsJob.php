@@ -58,6 +58,15 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
     private const ANIMATION_MAX_MINUTES = 15;
 
     /**
+     * Work that never started (its job still waiting in the queue) is given this long (QUEUE-REAP, 2026-10-12): a busy
+     * queue is not a stuck job. The limits above time only real runs, from when the job began (SceneRun).
+     */
+    private const QUEUED_MAX_MINUTES = 120;
+
+    /** What a customer reads when their work never got a turn: it never ran, so nothing was charged. */
+    private const NEVER_STARTED = 'Our servers were too busy to start this. Nothing was charged; please try again.';
+
+    /**
      * A project whose work has finished but which was never flipped out of
      * `generating`. Long enough that a slow-but-healthy run is never cut short,
      * short enough that nobody sits watching a spinner over a finished video.
@@ -203,27 +212,34 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
         $stuck = Scene::query()
             ->whereRaw("(image_generation_settings_json->>'in_progress')::text = 'true'")
             ->whereRaw("(image_generation_settings_json->>'generation_started_at')::timestamp < ?", [$cutoff->toIso8601String()])
-            ->get(['id', 'image_generation_settings_json']);
+            ->get(['id', 'project_id', 'image_generation_settings_json']);
 
         $cleared = 0;
         foreach ($stuck as $scene) {
             $cfg = $scene->image_generation_settings_json ?? [];
+            // Still waiting for its turn: a queue behind a long one-take is busy, not stuck.
+            $waiting = \App\Support\SceneRun::runningSince($cfg) === null;
+            if ($waiting && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subMinutes(self::QUEUED_MAX_MINUTES))) {
+                continue;
+            }
             // A one-take run beats generation_started_at at every segment and is bounded by its own job timeout; it is
             // only stuck once that has passed (it used to be reaped at 10 minutes while still being made).
-            if (! empty($cfg['oneshot_token']) && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subSeconds((new \App\Jobs\GenerateOneShotUgcJob(0, 0, [], 0))->timeout + 300))) {
+            if (! $waiting && ! empty($cfg['oneshot_token']) && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subSeconds((new \App\Jobs\GenerateOneShotUgcJob(0, 0, [], 0))->timeout + 300))) {
                 continue;
             }
             $cfg['in_progress']  = false;
             $cfg['needs_visual'] = true;
             $cfg['last_error']   = ($cfg['last_error'] ?? '') !== ''
                 ? $cfg['last_error']
-                : 'Generation timed out — please try again.';
+                : ($waiting ? self::NEVER_STARTED : 'Generation timed out — please try again.');
             $cfg['reaped_at'] = now()->toIso8601String();
             // A reaped one-take run loses the take: if its job is still queued, it can no longer deliver and charge
             // after the user has started a new take.
             if (! empty($cfg['oneshot_token'])) $cfg['oneshot_token'] = 'reaped:'.\Illuminate\Support\Str::uuid();
 
             $scene->forceFill(['image_generation_settings_json' => $cfg])->save();
+            // A reaped take can no longer deliver: a $9 pass gets the take back.
+            if (! empty($cfg['oneshot_token'])) rescue(fn () => app(\App\Services\UgcPassTakeService::class)->releaseProject((int) $scene->project_id), null, false);
 
             // Defensive raw UPDATE — mirrors GenerateAIImageJob's belt-and-suspenders
             // pattern. Catches the same Eloquent silent-save bug we saw on prod.
@@ -256,6 +272,11 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
         $cleared = 0;
         foreach ($stuck as $scene) {
             $cfg = $scene->image_generation_settings_json ?? [];
+            // Still waiting for its turn: a busy queue, not a stuck job.
+            $waiting = \App\Support\SceneRun::runningSince($cfg, \App\Support\SceneRun::ANIMATION) === null;
+            if ($waiting && \Carbon\CarbonImmutable::parse($cfg['animation_started_at'])->gt(now()->subMinutes(self::QUEUED_MAX_MINUTES))) {
+                continue;
+            }
             // A one-take run beats generation_started_at at every segment and is bounded by its own job timeout; it is
             // only stuck once that has passed (it used to be reaped at 10 minutes while still being made).
             if (! empty($cfg['oneshot_token']) && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subSeconds((new \App\Jobs\GenerateOneShotUgcJob(0, 0, [], 0))->timeout + 300))) {
@@ -298,7 +319,7 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
             $cfg['animation_in_progress'] = false;
             $cfg['animation_last_error']  = ($cfg['animation_last_error'] ?? '') !== ''
                 ? $cfg['animation_last_error']
-                : 'Animation timed out — please try again.';
+                : ($waiting ? self::NEVER_STARTED : 'Animation timed out — please try again.');
             $cfg['animation_reaped_at']   = now()->toIso8601String();
 
             $scene->forceFill(['image_generation_settings_json' => $cfg])->save();

@@ -65,6 +65,8 @@ class GenerateAIImageJob implements ShouldQueue
         if (! $scene) {
             return;
         }
+        // The run starts now, however long it waited in the queue (QUEUE-REAP).
+        \App\Support\SceneRun::started($scene, \App\Support\SceneRun::IMAGE, $this->generationToken);
 
         GenerationProgressed::dispatch($this->projectId, 'ai_image', 'processing', null, [
             'scene_id' => $this->sceneId,

@@ -110,7 +110,8 @@ class GenerateProjectAIImagesJob implements ShouldQueue
             $scene->forceFill([
                 'image_generation_settings_json' => array_merge(
                     $scene->image_generation_settings_json ?? [],
-                    ['in_progress' => true]
+                    // Running from now (QUEUE-REAP): each scene is timed from when its turn comes.
+                    ['in_progress' => true] + \App\Support\SceneRun::beat()
                 ),
             ])->save();
 

@@ -102,6 +102,8 @@ class AnimateSceneJob implements ShouldQueue
             'animation_quality'       => $quality,
             'animation_cost'          => $cost,
         ]);
+        // Timed from now, however long it waited in the queue (QUEUE-REAP).
+        \App\Support\SceneRun::started($scene, \App\Support\SceneRun::ANIMATION);
 
         // Charge up-front (reserve) here — the SINGLE billing point for EVERY
         // animation path (manual editor, Cruise, one-shot, chained). Animation
