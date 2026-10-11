@@ -81,7 +81,7 @@ async function submit() {
       form.password || null,
       pendingPlan.value || null
     );
-    conversion('signup');
+    conversion('signup', { value: 1 });
     if (pendingPlan.value) {
       await router.replace({ name: 'continue-checkout', query: { plan: pendingPlan.value } });
     } else {

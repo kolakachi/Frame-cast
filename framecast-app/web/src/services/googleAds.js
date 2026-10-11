@@ -3,7 +3,7 @@
 // its label from the Google Ads conversion action ("AW-18506583015/<label>"); until a label is filled in, nothing is sent.
 const ID = 'AW-18506583015'
 const LABELS = {
-  signup: '',
+  signup: 'z_DsCOG_lJkdEOeX0PhE', // "Sign-up" action, 2026-10-11 (Google's snippet sends a $1 value)
   purchase: '',
 }
 // What each one-time purchase is worth, for the purchase conversion's value (the public prices).
