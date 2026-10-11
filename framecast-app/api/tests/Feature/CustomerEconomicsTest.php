@@ -56,6 +56,14 @@ class CustomerEconomicsTest extends TestCase
         $this->assertCount(1, $rows, 'a replay lands on the same row');
         $r = $rows[0];
         $this->assertSame([28, 'kelviq', 'ord_1', 'lifetime_creator', 'direct', 179.0, 35.8], [(int) $r->workspace_id, $r->provider, $r->external_id, $r->plan, $r->channel, (float) $r->net_usd, (float) $r->tax]);
+        $this->assertSame(6.63, (float) $r->fee_usd, "Kelviq's intro 2.9% + \$0.40 of the \$214.80 charged");
+        // Past the first $5,000 processed, the standard 3.5% applies; the sale that crosses it is split.
+        DB::table('revenue_events')->insert(['workspace_id' => 28, 'provider' => 'kelviq', 'external_id' => 'big', 'kind' => 'pack', 'currency' => 'USD', 'gross' => 4900, 'net' => 4900, 'net_usd' => 4900, 'occurred_at' => now()->addMinute()]);
+        DB::table('revenue_events')->insert(['workspace_id' => 28, 'provider' => 'kelviq', 'external_id' => 'after', 'kind' => 'pack', 'currency' => 'USD', 'gross' => 100, 'net' => 100, 'net_usd' => 100, 'occurred_at' => now()->addMinutes(2)]);
+        app(RevenueService::class)->kelviqFees();
+        // $214.80 + $4,900 = $5,114.80: $4,785.20 of "big" at 2.9%, $114.80 at 3.5%, + $0.40.
+        $this->assertSame(143.19, (float) DB::table('revenue_events')->where('external_id', 'big')->value('fee_usd'));
+        $this->assertSame(3.9, (float) DB::table('revenue_events')->where('external_id', 'after')->value('fee_usd'));
     }
 
     public function test_the_invoice_that_follows_a_checkout_is_not_a_renewal_but_a_second_one_is(): void

@@ -50,6 +50,11 @@ return [
         'appsumo_campaigns' => [
             ['from' => '2026-10-11 00:00:00', 'to' => '2026-10-31 23:59:59', 'discount' => 0.15],
         ],
-        'kelviq_fee_rate' => (float) env('KELVIQ_FEE_RATE', 0),
+        // Kelviq's fee per successful payment (owner, 2026-10-11): 3.5% + $0.40 of the amount charged, at a founder intro
+        // rate of 2.9% + $0.40 for the first $5,000 processed.
+        'kelviq_fee_rate' => (float) env('KELVIQ_FEE_RATE', 0.035),
+        'kelviq_fee_intro_rate' => (float) env('KELVIQ_FEE_INTRO_RATE', 0.029),
+        'kelviq_fee_intro_volume' => (float) env('KELVIQ_FEE_INTRO_VOLUME', 5000),
+        'kelviq_fee_fixed' => (float) env('KELVIQ_FEE_FIXED', 0.40),
     ],
 ];

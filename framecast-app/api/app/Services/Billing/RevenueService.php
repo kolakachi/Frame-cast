@@ -65,11 +65,34 @@ class RevenueService
             'currency' => $currency,
             'gross' => round($gross, 2), 'discount' => round($discount, 2), 'tax' => round($tax, 2), 'net' => round($net, 2),
             'net_usd' => $netUsd !== null ? round($netUsd, 2) : null,
-            'fee_usd' => $netUsd !== null ? round($netUsd * (float) config('pricing.revenue.kelviq_fee_rate', 0), 2) : 0,
+            'fee_usd' => 0, // set by kelviqFees(): the rate depends on how much went through Kelviq before this sale
             'refunded_usd' => $currency === 'USD' ? round((float) ($breakdown['refunded'] ?? 0), 2) : 0,
             'occurred_at' => self::when($event),
             'metadata' => ['order_id' => $orderId, 'breakdown' => $breakdown !== null, 'tax_known' => $breakdown !== null],
         ]);
+        $this->kelviqFees();
+    }
+
+    /**
+     * Kelviq's fee on every sale, in the order they happened: the intro rate until the volume processed passes the intro
+     * cap (the sale that crosses it is split), the standard rate after, plus the fixed amount per payment, on the amount
+     * charged. Recomputed whole, so a late or backfilled sale never leaves a later one at the wrong rate.
+     */
+    public function kelviqFees(): void
+    {
+        $intro = (float) config('pricing.revenue.kelviq_fee_intro_rate', 0.029);
+        $rate = (float) config('pricing.revenue.kelviq_fee_rate', 0.035);
+        $cap = (float) config('pricing.revenue.kelviq_fee_intro_volume', 5000);
+        $fixed = (float) config('pricing.revenue.kelviq_fee_fixed', 0.40);
+        $volume = 0.0;
+        foreach (DB::table('revenue_events')->where('provider', 'kelviq')->orderBy('occurred_at')->orderBy('id')->get(['id', 'gross', 'currency']) as $r) {
+            $gross = (float) $r->gross;
+            if ($r->currency !== 'USD' || $gross <= 0) continue;
+            $atIntro = max(0, min($gross, $cap - $volume));
+            $fee = round($atIntro * $intro + ($gross - $atIntro) * $rate + $fixed, 2);
+            $volume += $gross;
+            DB::table('revenue_events')->where('id', $r->id)->update(['fee_usd' => $fee]);
+        }
     }
 
     /** An AppSumo licence: the tier's list price, AppSumo's cut, and a full refund once it is deactivated. */
@@ -113,6 +136,7 @@ class RevenueService
                 }
             });
         DB::table('appsumo_licenses')->orderBy('id')->each(function ($l) use (&$n) { $this->fromAppSumoLicense($l); $n['appsumo']++; });
+        $this->kelviqFees();
         return $n;
     }
 
