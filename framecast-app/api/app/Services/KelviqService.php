@@ -82,6 +82,15 @@ class KelviqService
     {
         // The receipt and entitlement changes commit together, including on crashes.
         DB::transaction(fn () => $this->processEvent($event));
+        // Money in (revenue_events), after the commit: it asks Kelviq for the order's breakdown over the network, and a
+        // failure there never undoes the purchase. Idempotent, so a replay lands on the same row.
+        rescue(fn () => app(\App\Services\Billing\RevenueService::class)->fromKelviqEvent($event));
+    }
+
+    /** The workspace a Kelviq object belongs to (for the revenue record). */
+    public function workspaceFor(array $object): ?Workspace
+    {
+        return $this->resolveWorkspace($object);
     }
 
     private function processEvent(array $event): void

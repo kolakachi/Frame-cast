@@ -521,6 +521,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/api-keys/{keyId}/rotate', [\App\Http\Controllers\Api\V1\Developer\ApiKeyController::class, 'rotate'])->whereNumber('keyId');
 
         Route::prefix('/admin')->middleware(['admin', 'admin.ip'])->group(function (): void {
+            // Customer economics: money in against real cost, per workspace (2026-10-11).
+            Route::get('/economics', [\App\Http\Controllers\Api\V1\Admin\EconomicsController::class, 'index']);
             Route::get('/create-trajectories', [\App\Http\Controllers\Api\V1\Admin\CreateTrajectoryController::class, 'index']);
             Route::get('/create-trajectories/{id}', [\App\Http\Controllers\Api\V1\Admin\CreateTrajectoryController::class, 'show'])->whereUuid('id');
             Route::get('/affiliates', [\App\Http\Controllers\Api\V1\Admin\AffiliateController::class, 'index']);

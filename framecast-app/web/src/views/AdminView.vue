@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import api from "../services/api";
 import CreateTrajectories from "../components/admin/CreateTrajectories.vue";
+import AdminEconomics from "../components/admin/AdminEconomics.vue";
 import NotifBell from "../components/NotifBell.vue";
 import { useAuthStore } from "../stores/auth";
 
@@ -1916,6 +1917,15 @@ onMounted(() => {
           Job Failures
         </button>
         <button
+          :class="['nav-item', activeView === 'economics' ? 'active' : '']"
+          @click="navigate('economics')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Customer economics
+        </button>
+        <button
           :class="['nav-item', activeView === 'create-trajectories' ? 'active' : '']"
           @click="navigate('create-trajectories')"
         >
@@ -2031,6 +2041,7 @@ onMounted(() => {
 
       <div class="gm-content">
         <CreateTrajectories v-if="activeView === 'create-trajectories'" />
+        <AdminEconomics v-if="activeView === 'economics'" />
         <!-- ═══ DASHBOARD ═══ -->
         <template v-if="activeView === 'dashboard'">
           <div v-if="dashLoading" class="gm-spinner-wrap">

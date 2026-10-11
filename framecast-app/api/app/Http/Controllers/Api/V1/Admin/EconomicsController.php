@@ -1,0 +1,90 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1\Admin;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Customer economics (owner, 2026-10-11, cost tracking step 3): per workspace, what reached us (revenue_events after the
+ * platform's cut and refunds) against what it cost us (api_usage_events, real since FULL_SINCE; before that, the credit
+ * ledger's estimates), with credits granted and used, and totals by channel. Super admin only (the admin route group).
+ */
+class EconomicsController extends Controller
+{
+    /** Every paid call records its real cost from here on (VendorUsageRecorder); earlier cost is partly estimated. */
+    public const FULL_SINCE = '2026-10-11 16:00:00';
+
+    public function index(Request $request): JsonResponse
+    {
+        $days = in_array($request->query('days'), ['30', '90'], true) ? (int) $request->query('days') : null;
+        $since = $days ? now()->subDays($days) : null;
+        $paidOnly = $request->query('paid_only', '1') !== '0';
+
+        $rev = DB::table('revenue_events')->when($since, fn ($q) => $q->where('occurred_at', '>=', $since))->get()->groupBy('workspace_id');
+        $cost = DB::table('api_usage_events')->whereNotNull('workspace_id')->when($since, fn ($q) => $q->where('occurred_at', '>=', $since))
+            ->groupBy('workspace_id')->selectRaw('workspace_id, SUM(estimated_cost_usd) as usd')->pluck('usd', 'workspace_id');
+        $earlier = DB::table('credit_ledger')->where('created_at', '<', self::FULL_SINCE)->whereNotNull('upstream_cost_usd')
+            ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+            ->groupBy('workspace_id')->selectRaw('workspace_id, SUM(upstream_cost_usd) as usd')->pluck('usd', 'workspace_id');
+        $credits = DB::table('credit_ledger')->when($since, fn ($q) => $q->where('created_at', '>=', $since))->groupBy('workspace_id')
+            ->selectRaw("workspace_id, SUM(CASE WHEN operation LIKE 'grant:%' THEN -credits ELSE 0 END) as granted, SUM(CASE WHEN operation LIKE 'grant:%' THEN 0 ELSE credits END) as used")
+            ->get()->keyBy('workspace_id');
+
+        $ids = collect($rev->keys())->merge($cost->keys())->merge($earlier->keys())->filter()->unique()->values();
+        $workspaces = DB::table('workspaces')->whereIn('id', $ids)->get()->keyBy('id');
+        $owners = DB::table('users')->whereIn('workspace_id', $ids)->orderBy('id')->get(['workspace_id', 'email'])->unique('workspace_id')->pluck('email', 'workspace_id');
+
+        $rows = $ids->map(function ($id) use ($rev, $cost, $earlier, $credits, $workspaces, $owners) {
+            $sales = $rev->get($id, collect());
+            $paid = (float) $sales->sum(fn ($r) => (float) ($r->net_usd ?? 0));
+            $fees = (float) $sales->sum('fee_usd');
+            $refunds = (float) $sales->sum('refunded_usd');
+            $in = $paid - $fees - $refunds;
+            $real = (float) ($cost[$id] ?? 0);
+            $est = (float) ($earlier[$id] ?? 0);
+            $w = $workspaces->get($id);
+            $c = $credits->get($id);
+            return [
+                'workspace_id' => (int) $id,
+                'name' => $w->name ?? ('Workspace '.$id),
+                'owner_email' => $owners[$id] ?? null,
+                'plan' => $w->plan_tier ?? null,
+                'client_of' => $w->parent_workspace_id ?? null,
+                'channels' => $sales->pluck('channel')->filter()->unique()->values(),
+                'sales' => $sales->count(),
+                'first_sale_at' => $sales->min('occurred_at'),
+                'paid_usd' => round($paid, 2),
+                'platform_fees_usd' => round($fees, 2),
+                'refunded_usd' => round($refunds, 2),
+                'money_in_usd' => round($in, 2),
+                'cost_recorded_usd' => round($real, 2),
+                'cost_earlier_estimate_usd' => round($est, 2),
+                'margin_usd' => round($in - $real - $est, 2),
+                'credits_granted' => (int) ($c->granted ?? 0),
+                'credits_used' => (int) ($c->used ?? 0),
+                'unpriced_sales' => $sales->whereNull('net_usd')->count(),
+            ];
+        })->filter(fn ($r) => ! $paidOnly || $r['sales'] > 0)->sortByDesc('money_in_usd')->values();
+
+        $byChannel = DB::table('revenue_events')->when($since, fn ($q) => $q->where('occurred_at', '>=', $since))->get()
+            ->groupBy(fn ($r) => $r->channel ?: 'unknown')->map(fn ($g, $ch) => [
+                'channel' => $ch, 'sales' => $g->count(),
+                'money_in_usd' => round((float) $g->sum(fn ($r) => (float) ($r->net_usd ?? 0)) - (float) $g->sum('fee_usd') - (float) $g->sum('refunded_usd'), 2),
+                'refunded_sales' => $g->filter(fn ($r) => (float) $r->refunded_usd > 0)->count(),
+            ])->values();
+
+        $totals = ['money_in_usd' => round((float) $rows->sum('money_in_usd'), 2), 'cost_recorded_usd' => round((float) $rows->sum('cost_recorded_usd'), 2),
+            'cost_earlier_estimate_usd' => round((float) $rows->sum('cost_earlier_estimate_usd'), 2), 'margin_usd' => round((float) $rows->sum('margin_usd'), 2),
+            'refunded_usd' => round((float) $rows->sum('refunded_usd'), 2), 'paying_workspaces' => $rows->where('sales', '>', 0)->count()];
+        // What paid calls cost us with no workspace to put them against (the company's own tools, scripts).
+        $unattributed = round((float) DB::table('api_usage_events')->whereNull('workspace_id')->when($since, fn ($q) => $q->where('occurred_at', '>=', $since))->sum('estimated_cost_usd'), 2);
+
+        return response()->json(['data' => [
+            'rows' => $rows, 'by_channel' => $byChannel, 'totals' => $totals, 'unattributed_cost_usd' => $unattributed,
+            'full_cost_since' => self::FULL_SINCE, 'period_days' => $days,
+        ], 'meta' => []]);
+    }
+}

@@ -115,3 +115,6 @@ Schedule::command('create:recover-planning')->everyMinute()->withoutOverlapping(
 Schedule::command('create:provider-contracts')->dailyAt('06:10')->name('create-provider-contracts')->withoutOverlapping();
 // Vendor failures of the last day (refusals, busy, our own credit or key), to the alert list; quiet days send nothing.
 Schedule::command('create:vendor-digest')->dailyAt('09:05')->name('create-vendor-digest')->withoutOverlapping();
+
+// Money in: refunds of recent Kelviq orders and every AppSumo licence's tier and status (cost tracking, 2026-10-11).
+Schedule::command('revenue:sync')->dailyAt('05:40')->name('revenue-sync')->withoutOverlapping();

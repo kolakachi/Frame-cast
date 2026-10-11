@@ -126,6 +126,12 @@ class AppSumoService
             'deactivate'           => $this->deactivate($payload),
             default                => Log::info('AppSumo: unhandled event', ['event' => $event]),
         };
+        // Money in (revenue_events): the licence's tier price, AppSumo's cut, and a refund once deactivated.
+        $key = (string) ($payload['license_key'] ?? '');
+        if ($key !== '') rescue(function () use ($key) {
+            $license = \Illuminate\Support\Facades\DB::table('appsumo_licenses')->where('license_key', $key)->first();
+            if ($license) app(\App\Services\Billing\RevenueService::class)->fromAppSumoLicense($license);
+        });
     }
 
     /**

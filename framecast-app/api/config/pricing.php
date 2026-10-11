@@ -35,4 +35,14 @@ return [
     'replicate_time_rate' => 0.000725,
     // Models whose adapter already records its own usage row: the recorder skips them so nothing is counted twice.
     'replicate_self_recorded' => ['anthropic/claude-sonnet-5', 'google/gemini-3.1-flash-tts', 'resemble-ai/chatterbox'],
+
+    /*
+    | Money in (revenue_events). AppSumo keeps most of each licence sale; Kelviq, as merchant of record, may keep a fee.
+    | AppSumo list prices per tier are those in config/appsumo.php's notes.
+    */
+    'revenue' => [
+        'appsumo_cut' => (float) env('APPSUMO_CUT', 0.75),
+        'appsumo_price_usd' => [1 => 49, 2 => 139, 3 => 299],
+        'kelviq_fee_rate' => (float) env('KELVIQ_FEE_RATE', 0),
+    ],
 ];

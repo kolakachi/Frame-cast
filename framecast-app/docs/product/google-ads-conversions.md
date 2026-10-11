@@ -34,9 +34,9 @@ How an ad click stays linked to the sale:
   app.wyvstudio.com can read it, so a sign-up or purchase in the app is matched to the ad click on wyvstudio.com
   automatically.
 - **Visitors who choose "Essential only".**
-  - **Today:** there is no cookie, so the click id is lost between wyvstudio.com and the app.
-  - **Planned:** we will switch on Google's **URL passthrough** on wyvstudio.com. It adds the ad's click id to our links
-    into the app without cookies, so these conversions still link to the right ad.
+  - There is no cookie, so on its own the click id would be lost between wyvstudio.com and the app.
+  - **Live since 2026-10-11:** Google's **URL passthrough** is on at wyvstudio.com. It adds the ad's click id to our
+    links into the app without cookies, so these conversions still link to the right ad.
   - **On your side:** nothing to do.
 - **Don't send ads straight to app.wyvstudio.com.** It is a sign-in page with no message or prices.
 
@@ -73,7 +73,7 @@ The "Conversion type ID" (a number such as 7836811085) is **not** the label.
 | Click-through window | 30 days |
 | Primary or secondary | **Secondary** if you want the ads to bid for purchases; **Primary** only while there are too few purchases to learn from |
 
-## 2. Purchase (needs a new label)
+## 2. Purchase (done: label `LtsvCN-Jn5kdEOeX0PhE`, live 2026-10-11)
 
 **Step by step:**
 
@@ -103,7 +103,8 @@ The "Conversion type ID" (a number such as 7836811085) is **not** the label.
 **What our code sends:**
 
 - **When:** after the payment provider confirms the payment, on the app's payment confirmation step.
-- **Value:** the real price, in USD:
+- **Value:** the list price, in USD. Once purchases record their amounts, it becomes the amount actually paid, after
+  discounts and before tax:
 
   | Purchase | Value |
   |---|---|
@@ -134,9 +135,9 @@ The "Conversion type ID" (a number such as 7836811085) is **not** the label.
 
 | Event | Fires when | Suggested count | Why |
 |---|---|---|---|
-| Begin checkout | Someone presses a plan or Test Pass button and goes to payment | Every | Shows ad clicks that nearly bought |
-| First video made | An account's first finished video | One | The real sign of a good customer |
-| Brief started | Someone types a brief on wyvstudio.com and goes to sign up | One | Shows intent before sign-up |
+| Begin checkout (wired; waiting for its label) | Someone presses a plan or Test Pass button and goes to payment | Every | Shows ad clicks that nearly bought |
+| First video made (built when its label arrives) | An account's first finished video | One | The real sign of a good customer |
+| Brief started (wired; waiting for its label) | Someone saves a brief in the box on wyvstudio.com | One | Shows intent before sign-up |
 
 ## 4. Check that it works
 
@@ -159,6 +160,6 @@ The "Conversion type ID" (a number such as 7836811085) is **not** the label.
   ads. They will not appear as Google conversions.
   - We plan to label every account and purchase by source (Google, AppSumo, affiliate, direct) inside WyvStudio, so
     the numbers can be compared.
-- **Enhanced conversions** (sending a hashed email for better matching) is optional. Ask if you want it, and we can
-  add it to Sign-up and Purchase.
+- **Enhanced conversions** are on for Sign-up and Purchase (live 2026-10-11). The tag hashes the email before sending, and
+  only for visitors who allowed ad data. Accept the customer data terms in Google Ads.
 - **The name:** WyvStudio is said "weave studio".
