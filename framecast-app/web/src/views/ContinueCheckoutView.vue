@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { conversion, PLAN_VALUE_USD } from '../services/googleAds.js'
 
 /**
  * The landing point for "finish checkout" links we send by email.
@@ -53,6 +54,8 @@ async function startCheckout() {
     const { data } = await api.post('/billing/kelviq/checkout', body)
     if (!data?.data?.url) throw new Error('Payment did not return a checkout link.')
     try { localStorage.removeItem('wyv_pending_plan') } catch { /* optional cache */ }
+    // Begin checkout (Google Ads, secondary): sent before leaving for the payment page, which would cut it off.
+    await conversion('begin_checkout', { value: PLAN_VALUE_USD[plan] ?? null, email: authStore.user?.email })
     window.location.href = data.data.url
   } catch (error) {
     errorMessage.value = error.response?.status >= 500 || !error.response

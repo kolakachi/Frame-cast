@@ -21,7 +21,7 @@ async function checkPayment() {
     if (data?.data?.confirmed) {
       // Counted once per checkout: Google drops a repeat with the same transaction id.
       const plan = data.data.plan || ''
-      conversion('purchase', { value: PLAN_VALUE_USD[plan] ?? null, transactionId: route.query.attempt })
+      conversion('purchase', { value: PLAN_VALUE_USD[plan] ?? null, transactionId: route.query.attempt, email: auth.user?.email })
       await auth.refreshUser()
       if (stopped) return
       try { localStorage.removeItem('wyv_pending_plan'); localStorage.removeItem('wyv_pending_confirmation') } catch { /* optional cache */ }

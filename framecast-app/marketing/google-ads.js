@@ -24,6 +24,9 @@
   });
   // Without consent, ad click identifiers are not stored and are redacted from what is sent.
   gtag('set', 'ads_data_redaction', state === 'denied');
+  // Without cookies, the ad's click id rides on our links into app.wyvstudio.com instead, so a sign-up or purchase
+  // there still links to the ad (owner, 2026-10-11).
+  gtag('set', 'url_passthrough', true);
   gtag('js', new Date());
   gtag('config', ID);
 
@@ -31,6 +34,13 @@
   s.async = true;
   s.src = 'https://www.googletagmanager.com/gtag/js?id=' + ID;
   document.head.appendChild(s);
+
+  // Conversions sent from this site; a kind without a label sends nothing (labels come from the Google Ads side).
+  var LABELS = { brief_started: '' };
+  window.wyvConversion = function (kind) {
+    var label = LABELS[kind];
+    if (label) gtag('event', 'conversion', { send_to: ID + '/' + label });
+  };
 
   // Called by the cookie notice when the visitor chooses.
   window.wyvConsent = function (all) {

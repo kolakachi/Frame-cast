@@ -363,6 +363,8 @@
         var u = new URL(a.href); u.hash = hash.slice(1); a.href = u.toString();
       });
       document.getElementById('brief-saved').hidden = false;
+      // Brief started (Google Ads, secondary), once per visit.
+      if (window.wyvConversion && !window.__wyvBriefSent) { window.__wyvBriefSent = true; window.wyvConversion('brief_started'); }
     }
     var target = document.getElementById('pricing');
     target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
