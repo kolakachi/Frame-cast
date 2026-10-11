@@ -25,7 +25,7 @@ class CustomerEconomicsTest extends TestCase
             'workspaces' => ['name', 'plan_tier', 'parent_workspace_id'], 'users' => ['workspace_id', 'email'],
             'credit_ledger' => ['workspace_id', 'operation', 'credits', 'upstream_cost_usd'], 'api_usage_events' => ['workspace_id', 'estimated_cost_usd', 'occurred_at'],
             'appsumo_licenses' => ['license_key', 'workspace_id', 'tier', 'appsumo_tier', 'status'], 'affiliate_conversions' => ['order_id'],
-            'billing_checkout_attempts' => ['plan'],
+            'billing_checkout_attempts' => ['plan'], 'billing_webhook_logs' => ['provider', 'event', 'signature_valid', 'payload'],
         ];
         foreach ($tables as $t => $cols) Schema::create($t, function (Blueprint $b) use ($t, $cols) {
             $t === 'billing_checkout_attempts' ? $b->string('id')->primary() : $b->id();
@@ -56,6 +56,21 @@ class CustomerEconomicsTest extends TestCase
         $this->assertCount(1, $rows, 'a replay lands on the same row');
         $r = $rows[0];
         $this->assertSame([28, 'kelviq', 'ord_1', 'lifetime_creator', 'direct', 179.0, 35.8], [(int) $r->workspace_id, $r->provider, $r->external_id, $r->plan, $r->channel, (float) $r->net_usd, (float) $r->tax]);
+    }
+
+    public function test_the_invoice_that_follows_a_checkout_is_not_a_renewal_but_a_second_one_is(): void
+    {
+        $this->kelviq(null);
+        $invoice = fn (string $id) => ['id' => 'evt_'.$id, 'type' => 'invoice.paid', 'created_at' => now()->toIso8601String(),
+            'data' => ['object' => ['id' => $id, 'subscription_id' => 'sub-1', 'amount' => 10.8, 'currency' => 'USD']]];
+        // The first invoice of a one-time purchase: its webhook is stored as it arrives, and it is not money in twice.
+        DB::table('billing_webhook_logs')->insert(['provider' => 'kelviq', 'event' => 'invoice.paid', 'signature_valid' => true, 'payload' => json_encode($invoice('INV-1')), 'created_at' => now()]);
+        app(RevenueService::class)->fromKelviqEvent($invoice('INV-1'));
+        $this->assertSame(0, DB::table('revenue_events')->count());
+        // A month later the same subscription is invoiced again: that is a renewal.
+        $this->travel(31)->days();
+        app(RevenueService::class)->fromKelviqEvent($invoice('INV-2'));
+        $this->assertSame(['renewal', 'invoice:INV-2'], [DB::table('revenue_events')->value('kind'), DB::table('revenue_events')->value('external_id')]);
     }
 
     public function test_an_appsumo_licence_keeps_a_quarter_and_a_deactivation_is_a_refund(): void

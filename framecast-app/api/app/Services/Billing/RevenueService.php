@@ -23,8 +23,11 @@ class RevenueService
         $o = $event['data']['object'] ?? null;
         if (! is_array($o)) return;
         if ($type === 'checkout.completed') $this->kelviqSale($o, $this->kindFor($o), (string) ($o['order_id'] ?? $o['id'] ?? ''), $event);
-        // A renewal invoice; the first payment of a subscription arrives as its checkout.
-        if ($type === 'invoice.paid' && ($o['subscription_id'] ?? $o['subscription']['id'] ?? null) && ($o['billing_reason'] ?? '') !== 'subscription_create') {
+        // A renewal: Kelviq sends an invoice for every purchase (one-time packs too), a minute after its checkout, so
+        // only an invoice whose subscription already had an earlier one is a renewal; the first is the checkout itself
+        // (prod backfill 2026-10-11: five "renewals" were each sale counted twice, with tax).
+        $sub = (string) ($o['subscription_id'] ?? $o['subscription']['id'] ?? '');
+        if ($type === 'invoice.paid' && $sub !== '' && $this->earlierInvoice($sub, (string) ($o['id'] ?? ''), $event)) {
             $this->kelviqSale($o, 'renewal', 'invoice:'.(string) ($o['id'] ?? ''), $event);
         }
     }
@@ -117,6 +120,15 @@ class RevenueService
             });
         $s = $this->sync(36500);
         return ['kelviq_events' => $n, 'appsumo_licenses' => $s['appsumo']];
+    }
+
+    /** Whether this subscription was invoiced before this invoice (from the stored webhooks). */
+    private function earlierInvoice(string $subscriptionId, string $invoiceId, array $event): bool
+    {
+        $before = self::when($event);
+        return DB::table('billing_webhook_logs')->where('provider', 'kelviq')->where('event', 'invoice.paid')->where('signature_valid', true)
+            ->where('payload', 'like', '%'.$subscriptionId.'%')->where('created_at', '<', $before)
+            ->when($invoiceId !== '', fn ($q) => $q->where('payload', 'not like', '%'.$invoiceId.'%'))->exists();
     }
 
     /** When the sale happened: the stored webhook's time on a backfill, the event's own time, or now. */
