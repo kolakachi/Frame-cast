@@ -36,8 +36,9 @@ class EconomicsController extends Controller
         $ids = collect($rev->keys())->merge($cost->keys())->merge($earlier->keys())->filter()->unique()->values();
         // Sales with no account behind them (an AppSumo licence bought but never redeemed) still reached us: one row.
         if ($rev->has('')) $ids->push('');
-        $workspaces = DB::table('workspaces')->whereIn('id', $ids)->get()->keyBy('id');
-        $owners = DB::table('users')->whereIn('workspace_id', $ids)->orderBy('id')->get(['workspace_id', 'email'])->unique('workspace_id')->pluck('email', 'workspace_id');
+        $real = $ids->filter(fn ($id) => $id !== '')->values(); // Postgres refuses '' for a bigint
+        $workspaces = DB::table('workspaces')->whereIn('id', $real)->get()->keyBy('id');
+        $owners = DB::table('users')->whereIn('workspace_id', $real)->orderBy('id')->get(['workspace_id', 'email'])->unique('workspace_id')->pluck('email', 'workspace_id');
 
         $rows = $ids->map(function ($id) use ($rev, $cost, $earlier, $credits, $workspaces, $owners) {
             $sales = $rev->get($id, collect());
