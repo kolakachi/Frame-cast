@@ -4,7 +4,7 @@ Only what is still open. Add new items here and nowhere else; when one is done, 
 (date and commit). Mockup the build must match: https://claude.ai/artifact/E9eE41WsjNVscrRS3aBHzP (look:
 https://claude.ai/artifact/3rF2EVivGciqqgfD6e2bA4).
 
-Last updated: 2026-10-10.
+Last updated: 2026-10-11.
 
 **Status:** `open` not started · `partly` some built · `ready` built, needs a real run or a look · `blocked` waiting
 on the owner or another item · `proposed` not yet approved.
@@ -22,6 +22,12 @@ assembly stays simple, motion graphics stay in Create.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
+| CAST-MODAL | Prompt box shows 6 faces + More; More opens a Presenters window (search, Actors/Your characters, gender and age filters, close-up, Background picker, add/remove); Background also in each presenter's mini settings; a place set on the presenter beats the director's | ready | owner look locally |
+| CAST-25 | 25 new stock presenters (Imagen 4, 50 candidates made, $2): ages 18-75, plus-size, hijab, turban, glasses, tattoos, vitiligo, Pacific, Indigenous | partly | 25 picks + 16 redraws (Silas, Idris, Valentina, Lucas, Andre, Nia, Ben, Amara, Priya, Nadia, Rafa, Theo, Zayn, Callum, Marcus, Jonah) in the LOCAL library; prod import at push |
+| SETTINGS | 24 places (config/ugc_settings.php); the director picks one, its empty background photo goes as a loose reference (kind of place, model free on spot and time); outfits suit the place | ready | 24 photos made locally; test take 128 (Megan, kitchen) came out in the kitchen, not her boutique photo; run `ugc:seed-settings` on prod at push |
+| FACE-CHECK | Each cast clip's face checked against the presenter's photo (Haiku vision); under 70 is made again once at our cost, max two a take; scores on the scene | ready | take 128: 85 and 85, no remakes; watch the rate over more takes |
+| LIGHT-JOIN | Continued clips matched in colour and brightness to where the last clip ended (within 15%); 118 jumped 11% at a join | ready | take 128: no jump at its join; one take is not proof |
+| REFS-LIMIT | veo-3.1 references only work at 16:9 and 8 s (its schema), so vertical Veo HQ takes likely ignore them; Omni lists no limit, we cap at 3 | done | Omni accepts 5 and uses all (headphones and kitchen showed), but the face held less well than take 128's 3 (plus-size build and red lip lost): keep 3 |
 | P2-ASPECT | Only 9:16 offered: one-take always renders 9:16; composed takes accept 1:1 and 16:9 but the chat sends 9:16 | open | decide, then pass aspect through |
 | P2-POLISH | Small: a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
 | OLD-FORM-CHANGES | Old-form one-takes change on deploy: captions on by default, cuts at shot changes re-anchored on photos, shorter job timeout (resumable) | review | owner OK |

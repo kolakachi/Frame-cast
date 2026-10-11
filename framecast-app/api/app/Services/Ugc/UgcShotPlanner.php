@@ -40,7 +40,7 @@ class UgcShotPlanner
         }
 
         Log::warning('UGC director returned no usable plan', ['error' => $previousError]);
-        throw ValidationException::withMessages(['plan' => 'The director could not produce a valid plan. No credits were spent. Try again, or simplify the brief.']);
+        throw ValidationException::withMessages(['plan' => 'The Creative Director could not produce a valid plan. No credits were spent. Try again, or simplify the brief.']);
     }
 
     private function planOnce(string $scriptText, string $product, string $context, int $durationSeconds,

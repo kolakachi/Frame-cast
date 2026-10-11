@@ -11,11 +11,13 @@ class Project extends Model
 {
     use HasFactory;
 
+    /** Prod's first project made with automatic finishing; older ones keep the manual export flow. */
     public const AUTOMATIC_FINISH_MIN_ID = 216;
 
     public function usesAutomaticFinish(): bool
     {
-        return ! $this->isComposition() && (int) $this->getKey() >= self::AUTOMATIC_FINISH_MIN_ID;
+        // A setting, so a local database (whose ids never reached prod's 216) finishes its takes too (2026-10-11).
+        return ! $this->isComposition() && (int) $this->getKey() >= (int) config('app.automatic_finish_min_id', self::AUTOMATIC_FINISH_MIN_ID);
     }
 
     public function isComposition(): bool { return $this->editor_kind === 'composition'; }

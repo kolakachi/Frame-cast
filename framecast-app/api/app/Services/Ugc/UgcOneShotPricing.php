@@ -71,7 +71,8 @@ class UgcOneShotPricing
 
         $style = [
             'presenter' => $presenter,
-            'setting' => trim((string) ($v['setting'] ?? '')),
+            'setting' => ! empty($v['setting_key']) ? UgcSettings::direction((string) $v['setting_key']) : trim((string) ($v['setting'] ?? '')),
+            'place_note' => ! empty($v['setting_key']) ? UgcSettings::note((string) $v['setting_key'], true) : '',
             'product' => trim((string) ($v['product'] ?? '')),
             'tone' => trim((string) ($v['tone'] ?? '')),
             'pronunciations' => '',

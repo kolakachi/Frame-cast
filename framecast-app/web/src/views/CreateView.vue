@@ -165,7 +165,7 @@ const pendingDocuments = computed(() => {
   return documents.value.filter(d => Date.parse(d.created_at || 0) > last)
 })
 const docAdding = ref([])
-const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : (d.pages_total > d.page_count ? `first ${d.page_count} of ${d.pages_total} pages · ` : '') + (d.text_only ? 'text only' : !d.chosen ? 'choose how to use it' : (d.modes || []).includes('words') ? 'words only' : [(d.modes || []).includes('auto') ? (d.offered ? `Weave chooses from ${d.offered} picture${d.offered === 1 ? '' : 's'}` : 'Weave chooses') : '', d.picked ? d.picked + ' chosen' : '', (d.modes || []).includes('notes') ? 'notes as script' : ''].filter(Boolean).join(' · ') || 'chosen')
+const docSub = d => d.status === 'reading' ? 'reading…' : d.status === 'failed' ? '' : (d.pages_total > d.page_count ? `first ${d.page_count} of ${d.pages_total} pages · ` : '') + (d.text_only ? 'text only' : !d.chosen ? 'choose how to use it' : (d.modes || []).includes('words') ? 'words only' : [(d.modes || []).includes('auto') ? (d.offered ? `The Creative Director chooses from ${d.offered} picture${d.offered === 1 ? '' : 's'}` : 'The Creative Director chooses') : '', d.picked ? d.picked + ' chosen' : '', (d.modes || []).includes('notes') ? 'notes as script' : ''].filter(Boolean).join(' · ') || 'chosen')
 const docBusy = computed(() => docAdding.value.some(u => !u.error) || documents.value.some(d => d.status === 'reading'))
 const trayItems = computed(() => [
   ...pendingDocuments.value.map(d => ({ key: 'd' + d.id, title: d.title, type: 'document', uploading: d.status === 'reading', sub: docSub(d), error: d.status === 'failed' ? d.error || 'Could not read that document.' : '', open: d.status === 'ready' && !d.text_only, note: d.summary, doc: d })),
@@ -239,11 +239,11 @@ const docModeList = computed(() => {
   if (!f) return []
   const unit = docUnit.value
   return [
-    ...(f.picture_list.length ? [{ key: 'auto', title: 'Let Weave choose', detail: 'It uses the pictures that fit and reads the words to understand what is needed. Nothing to tick.' }] : []),
+    ...(f.picture_list.length ? [{ key: 'auto', title: 'Let the Creative Director choose', detail: 'It uses the pictures that fit and reads the words to understand what is needed. Nothing to tick.' }] : []),
     { key: 'pages', title: `Show the ${unit}s as they look`, detail: docDeck.value ? 'A presentation video: each slide on screen while it is talked through.' : 'A walkthrough, as if flipping through it.' },
     ...(f.notes_list?.length ? [{ key: 'notes', title: 'Use my speaker notes as the script', detail: `What is said over each slide comes from its notes (${f.notes_list.length} ${f.notes_list.length === 1 ? 'slide has' : 'slides have'} notes).` }] : []),
     ...(f.picture_list.length ? [{ key: 'pictures', title: 'Use its pictures, I\'ll pick them', detail: 'The photos and images inside it, on their own.' }] : []),
-    { key: 'words', title: 'Use its words only', detail: 'Weave writes from it and makes its own visuals. Nothing to tick.' },
+    { key: 'words', title: 'Use its words only', detail: 'The Creative Director writes from it and makes its own visuals. Nothing to tick.' },
   ]
 })
 function toggleDocMode(key) {
@@ -270,10 +270,10 @@ const docReady = computed(() => {
 const docSummary = computed(() => {
   const m = docModes.value, f = docFull.value, out = []
   if (!f) return ''
-  if (!Object.values(m).some(Boolean)) return 'Choose how Weave should use it.'
+  if (!Object.values(m).some(Boolean)) return 'Choose how the Creative Director should use it.'
   const np = pickedOf('page').length, ni = pickedOf('picture').length
   if (m.pages) out.push(np ? `${np} ${docUnit.value}${np === 1 ? '' : 's'} shown as they look` : `tick the ${docUnit.value}s to show`)
-  if (m.auto) out.push('Weave picks from its pictures')
+  if (m.auto) out.push('The Creative Director picks from its pictures')
   if (m.notes) out.push('script from your notes')
   if (m.pictures) out.push(ni ? `${ni} picture${ni === 1 ? '' : 's'}` : 'tick the pictures to use')
   out.push(`words from all ${f.page_count} ${docUnit.value}s`)
@@ -1951,7 +1951,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
       <SideDrawer :open="!!docOpenId" :title="docFull?.title || 'Document'" :meta="docFull ? (docFull.pages_total > docFull.page_count ? 'First ' + docFull.page_count + ' of ' + docFull.pages_total + ' ' + docUnit + 's' : docFull.page_count + ' ' + docUnit + (docFull.page_count === 1 ? '' : 's')) + ' · ' + docFull.picture_list.length + (docFull.picture_list.length === 1 ? ' picture' : ' pictures') + (docFull.notes_list?.length ? ' · speaker notes on ' + docFull.notes_list.length : '') : 'Opening…'" @close="docOpenId = null">
         <div v-if="docFull" class="doc-pick">
           <section class="doc-pick__sec">
-            <h3>How should Weave use this document?</h3>
+            <h3>How should the Creative Director use this document?</h3>
             <small class="muted">Pick one or more.</small>
             <button v-for="m in docModeList" :key="m.key" type="button" :class="['doc-mode', { on: docModes[m.key] }]" :aria-pressed="!!docModes[m.key]" @click="toggleDocMode(m.key)">
               <span class="doc-mode__box" aria-hidden="true">✓</span>
@@ -1962,7 +1962,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
           </section>
           <section v-if="docModes.pages" class="doc-pick__sec">
             <div class="doc-pick__bar"><h3>{{ docDeck ? 'Slides' : 'Pages' }} to show as they look</h3><span class="doc-pick__all"><button type="button" class="quiet quiet--sm" @click="setDocPicks(docPageGroups, true)">Select all</button><button type="button" class="quiet quiet--sm" @click="setDocPicks(docPageGroups, false)">None</button></span></div>
-            <small class="muted">{{ docDeck ? 'Each slide fills the screen as it looks, with a move or a zoom on the part being talked about.' : 'Shown with their text, charts and layout, turning like a book or on a screen. Weave may zoom in on the part that matters.' }}</small>
+            <small class="muted">{{ docDeck ? 'Each slide fills the screen as it looks, with a move or a zoom on the part being talked about.' : 'Shown with their text, charts and layout, turning like a book or on a screen. The Creative Director may zoom in on the part that matters.' }}</small>
             <div :class="['doc-pick__grid', { 'doc-pick__grid--wide': docDeck }]">
               <template v-for="g in docPageGroups" :key="g.key">
                 <p v-if="g.label" class="doc-pick__group">{{ g.label }}</p>
@@ -1993,7 +1993,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
             </div>
           </section>
           <details v-if="docFull.summary || docFull.facts.length" class="doc-pick__read" open>
-            <summary>What Weave read · from all {{ docFull.page_count }} {{ docUnit }}s</summary>
+            <summary>What the Creative Director read · from all {{ docFull.page_count }} {{ docUnit }}s</summary>
             <p v-if="docFull.summary">{{ docFull.summary }}</p>
             <ul v-if="docFull.facts.length"><li v-for="(f, n) in docFull.facts" :key="n">{{ f.text }}<template v-if="f.page"> ({{ docUnit }} {{ f.page }})</template></li></ul>
             <small>The words are always read, whatever you pick. The script only says what the document says.</small>

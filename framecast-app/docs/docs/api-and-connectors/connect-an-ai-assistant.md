@@ -53,11 +53,11 @@ claude mcp add --transport http wyvstudio https://app.wyvstudio.com/mcp \
 
 ## What a conversation looks like
 
-The assistant makes videos with **Weave**, the same planner and builder as Create in the app. It uses the Classic tools only when you ask for Classic, a scene-by-scene edit of an existing Classic video, UGC Ads takes to test side by side, or a video longer than Weave makes.
+The assistant makes videos with **Create** and its **Creative Director**, the same planner and builder you use in the app. It uses the Classic tools only when you ask for Classic, a scene-by-scene edit of an existing Classic video, UGC Ads takes to test side by side, or a video longer than Create makes.
 
 > **You:** Make a 15-second vertical ad for our Dewbloom vitamin C serum. Warm, for dull skin.
 >
-> **Assistant:** I'll have Weave plan it. Planning costs a few credits; nothing else is charged until you approve a price.
+> **Assistant:** I'll have the Creative Director plan it. Planning costs a few credits; nothing else is charged until you approve a price.
 >
 > **Assistant:** Here's the plan: a close-up open, three quick benefits with the product in hand, and an end card with your offer, narrated by Kore. It will cost at most 140 credits; you have 2,053. Go ahead?
 >
@@ -67,7 +67,7 @@ The assistant makes videos with **Weave**, the same planner and builder as Creat
 >
 > **You:** Make the logo bigger at the end.
 >
-> **Assistant:** Weave re-planned the end card with a larger logo. That change costs at most 20 credits. Apply?
+> **Assistant:** The Creative Director re-planned the end card with a larger logo. That change costs at most 20 credits. Apply?
 
 The assistant always shows the price and waits for your yes. WyvStudio enforces that on the server: anything that costs credits runs only against a price you were shown, and never for more than it said. If your balance is short, the assistant offers a cheaper version (quicker build, shorter video, fewer AI shots) or the link to top up.
 

@@ -59,7 +59,7 @@ try {
   }
   const init = await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'phase-b-test', version: '1' } })
   // Assistants are told Weave is the default and Classic is only on request (2026-10-09).
-  assert.match(init.instructions ?? '', /Default: Weave/)
+  assert.match(init.instructions ?? '', /Default: Create/)
   assert.match(init.instructions ?? '', /can_afford is false/)
   const listed = await rpc('tools/list', {})
   assert(listed.tools.some(t => t.name === 'propose_edits'))
@@ -143,7 +143,7 @@ try {
   assert.deepEqual(captured.find(c => c.path === `/api/developer/v1/weave/videos/${vid}/quotes`).body, {}, 'step 1 asks for the price only')
   await rpc('tools/call', { name: 'weave_start', arguments: { brief: 'x', format: 'podcast' } }, true)
   await writeFile(path.join(dir, 'editor-payloads.json'), JSON.stringify(records))
-  console.log('PASS real MCP HTTP discovery, Weave tools and the two-step price, editor/media/voice/consent forwarding and >100KB upload body. Schema rejection, API errors, real timeout, operation polling and identical replay passed. Recorded editor-payloads.json for PHP persistence tests.')
+  console.log('PASS real MCP HTTP discovery, Create (weave_*) tools and the two-step price, editor/media/voice/consent forwarding and >100KB upload body. Schema rejection, API errors, real timeout, operation polling and identical replay passed. Recorded editor-payloads.json for PHP persistence tests.')
 } finally {
   child.kill(); await new Promise(r => child.once('exit', r)); await new Promise(r => backend.close(r))
 }

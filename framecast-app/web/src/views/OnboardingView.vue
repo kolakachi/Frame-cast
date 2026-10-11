@@ -483,7 +483,7 @@ onMounted(async () => {
 <template>
   <div class="ob-shell">
     <button class="ob-skip" type="button" @click="skip">Skip setup</button>
-    <div v-if="hasSiteBrief" class="ob-brief" role="status">Your brief from wyvstudio.com is waiting in Weave. <button type="button" @click="toWeave">Go to Weave →</button></div>
+    <div v-if="hasSiteBrief" class="ob-brief" role="status">Your brief from wyvstudio.com is waiting for your Creative Director. <button type="button" @click="toWeave">Open it in Create →</button></div>
 
     <div class="ob-card">
       <!-- Header -->

@@ -32,7 +32,7 @@ class UgcChatTest extends TestCase
         Bus::fake();
         config(['services.ugc.chat_open_to_all' => true]);
         foreach (['scenes' => ['project_id', 'scene_order', 'image_generation_settings_json'], 'characters' => ['workspace_id', 'name', 'description', 'status', 'is_stock', 'reference_asset_id', 'gender'],
-            'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'duration_seconds']] as $table => $cols) {
+            'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'duration_seconds', 'status', 'tags']] as $table => $cols) {
             Schema::create($table, function (Blueprint $t) use ($cols) { $t->id(); foreach ($cols as $c) $t->text($c)->nullable(); $t->timestamps(); });
         }
         (require database_path('migrations/2026_10_10_160000_create_ugc_chats.php'))->up();
@@ -128,6 +128,52 @@ class UgcChatTest extends TestCase
         $this->assertSame([301], $this->deleted, 'the failed take is removed');
         $run = json_decode(DB::table('ugc_chat_messages')->where('id', $makingId)->value('payload_json'), true)['runs'][0];
         $this->assertSame(['run-2', 1], [$run['run_id'], $run['attempt']]);
+    }
+
+    public function test_the_director_picks_a_setting_with_a_photo_and_the_outfit_suits_it(): void
+    {
+        $this->withoutMiddleware();
+        DB::table('assets')->insert([['id' => 30, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'UGC setting: beach', 'storage_url' => 'x/beach.png', 'mime_type' => 'image/png', 'status' => 'active', 'tags' => '["ugc_setting"]'],
+            ['id' => 31, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'UGC setting: car', 'storage_url' => 'x/car.png', 'mime_type' => 'image/png', 'status' => 'active', 'tags' => '["ugc_setting"]']]);
+        // A user's own upload with the same title never stands in for ours (review, 2026-10-11).
+        DB::table('assets')->insert(['id' => 32, 'workspace_id' => 2, 'asset_type' => 'image', 'title' => 'UGC setting: kitchen', 'storage_url' => 'x/k.png', 'mime_type' => 'image/png', 'status' => 'active', 'tags' => '["ugc_setting"]']);
+        DB::table('assets')->insert(['id' => 33, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'UGC setting: gym', 'storage_url' => 'x/g.png', 'mime_type' => 'image/png', 'status' => 'active', 'tags' => '[]']);
+        $this->assertSame(['car', 'beach'], array_keys(\App\Services\Ugc\UgcSettings::available()), 'only settings whose photo exists are offered');
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->assertCreated()->json('data.id');
+        $pitch = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Sunscreen', 'summary' => 'Yara on the beach.',
+            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Sun', 'duration_seconds' => 15];
+
+        $this->replies[] = $pitch + ['setting' => 'beach'];
+        $made = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'At the beach', 'presenters' => [['character_id' => 5]]])
+            ->assertOk()->json('data.reply.payload.takes.0');
+        $this->assertSame('beach', $made['setting']);
+        $this->assertContains($made['wardrobe'], config('ugc_settings.beach.wardrobe'), 'beach clothes, never swimwear');
+
+        // A setting with no photo yet is never sent; one with a photo is picked instead.
+        $this->replies[] = $pitch + ['setting' => 'boutique'];
+        $made = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Another', 'presenters' => [['character_id' => 5]]])
+            ->assertOk()->json('data.reply.payload.takes.0');
+        $this->assertSame('car', $made['setting'], 'the beach was just used, so the other setting with a photo');
+    }
+
+    public function test_a_background_set_on_the_presenter_wins_and_the_list_offers_only_places_with_a_photo(): void
+    {
+        $this->withoutMiddleware();
+        DB::table('assets')->insert([['id' => 30, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'UGC setting: beach', 'storage_url' => 'x/beach.png', 'mime_type' => 'image/png', 'status' => 'active', 'tags' => '["ugc_setting"]'],
+            ['id' => 31, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'UGC setting: car', 'storage_url' => 'x/car.png', 'mime_type' => 'image/png', 'status' => 'active', 'tags' => '["ugc_setting"]']]);
+        $listed = $this->actingAs($this->user())->getJson('/api/v1/ugc/settings')->assertOk()->json('data.settings');
+        $this->assertSame(['car', 'beach'], array_column($listed, 'key'));
+        $this->assertSame('Car', $listed[0]['label']);
+        $this->assertStringContainsString('/assets/31', $listed[0]['image_url']);
+
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->assertCreated()->json('data.id');
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Go', 'presenters' => [['character_id' => 5, 'setting' => 'moon']]])->assertStatus(422);
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Serum', 'summary' => 'Yara on the beach.',
+            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Sun', 'duration_seconds' => 15, 'setting' => 'beach'];
+        $take = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Go', 'presenters' => [['character_id' => 5, 'setting' => 'car']]])
+            ->assertOk()->json('data.reply.payload.takes.0');
+        $this->assertSame('car', $take['setting'], 'the place the user set beats the director\'s');
+        $this->assertSame('car', json_decode(DB::table('ugc_chats')->where('id', $chat)->value('state_json'), true)['presenters'][0]['setting'], 'kept with the chat');
     }
 
     public function test_rewrite_returns_a_sharper_script_and_is_free(): void

@@ -602,12 +602,12 @@ onBeforeUnmount(() => {
                 <div v-else class="continue-thumb-inner"><div class="phone-frame"><div class="phone-line"></div><div class="phone-line accent"></div><div class="phone-line"></div></div></div>
                 <video v-if="hovered === item.key" class="continue-poster" :src="item.weave.video_url" autoplay muted loop playsinline aria-hidden="true"></video>
                 <div class="continue-overlay"></div>
-                <span class="continue-badge weave-badge">Weave</span>
+                <span class="continue-badge weave-badge">Create</span>
                 <span class="aspect-badge">{{ item.weave.aspect_ratio }}</span>
               </div>
               <div class="continue-body">
                 <div class="continue-title continue-title--static">{{ item.weave.title }}</div>
-                <div class="continue-meta"><span class="continue-meta-muted">Made in Weave · {{ ago(item.weave.updated_at) }}</span></div>
+                <div class="continue-meta"><span class="continue-meta-muted">Made in Create · {{ ago(item.weave.updated_at) }}</span></div>
               </div>
             </article>
             <template v-else>

@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
 import ComposerTray from '../components/create/ComposerTray.vue'
 import RefThumb from '../components/create/RefThumb.vue'
+import UgcBackgroundPicker from '../components/ugc/UgcBackgroundPicker.vue'
+import UgcPresenterModal from '../components/ugc/UgcPresenterModal.vue'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -61,8 +63,11 @@ const type = ref('auto')
 const length = ref(null)
 const menu = ref('')
 const expanded = ref(null)
-const castSearch = ref('')
-const castAll = ref(false)
+// Every presenter, in a window opened from the More card (owner, 2026-10-11); the prompt box shows only a few.
+const castModal = ref(false)
+// Where presenters can be filmed, each with its background photo.
+const settings = ref([])
+const settingLabel = computed(() => Object.fromEntries(settings.value.map(s => [s.key, s.label])))
 // An actor or character opened for a closer look before they are added (owner, 2026-10-10).
 const previewing = ref(null)
 const rewriteState = ref('')
@@ -117,27 +122,28 @@ const presenterLabel = computed(() => {
   return presenters.value.map(p => p.name).join(' + ') + (presenters.value.length === 1 && presenters.value[0].voice ? ' · ' + (LABEL[presenters.value[0].voice.delivery] || 'friendly').toLowerCase() : '')
 })
 const shapeLabel = computed(() => '9:16 · ' + (length.value ? `${length.value} s` : 'auto length'))
+// A few faces in the prompt box, the chosen ones first; the rest are behind More.
 const filteredStock = computed(() => {
-  const q = castSearch.value.trim().toLowerCase()
-  const rows = q ? stock.value.filter(c => `${c.name} ${c.description || ''}`.toLowerCase().includes(q)) : stock.value
-  return castAll.value || q ? rows : rows.slice(0, 6)
+  const on = id => presenters.value.some(p => p.character_id === id)
+  return [...stock.value.filter(c => on(c.id)), ...stock.value.filter(c => !on(c.id))].slice(0, 6)
 })
 
 function voiceText(p) {
-  if (!p.voice) return p.character_id ? 'Default voice' : 'Voice: set by the model'
-  return [LABEL[p.voice.pace] || 'Natural', LABEL[p.voice.delivery] || 'Friendly'].join(' · ') + (p.voice.direction ? ` · "${p.voice.direction}"` : '')
+  const place = p.setting && settingLabel.value[p.setting] ? ` · ${settingLabel.value[p.setting]}` : ''
+  if (!p.voice) return (p.character_id ? 'Default voice' : 'Voice: set by the model') + place
+  return [LABEL[p.voice.pace] || 'Natural', LABEL[p.voice.delivery] || 'Friendly'].join(' · ') + (p.voice.direction ? ` · "${p.voice.direction}"` : '') + place
 }
-function addPresenter(c) {
+function addPresenter(c, setting = null) {
   presentersTouched = true
   if (c && !c.is_stock && !canOwnCharacter.value) { error.value = 'Casting your own character is a Creator feature. Pick one of our actors, or upgrade to use your own.'; return }
   if (c && presenters.value.some(p => p.character_id === c.id)) return
   if (!c && presenters.value.some(p => !p.character_id)) return
   if (presenters.value.length >= 5) { error.value = 'Five presenters at most, one video each.'; return }
   const voice = sameVoice.value && presenters.value[0]?.voice ? { ...presenters.value[0].voice } : null
-  presenters.value.push({ key: crypto.randomUUID(), character_id: c?.id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice })
+  presenters.value.push({ key: crypto.randomUUID(), character_id: c?.id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice, setting })
 }
 const AGE = { young_adult: 'Young adult', adult: 'Adult', senior: 'Senior' }
-const previewList = computed(() => previewing.value?.is_stock ? filteredStock.value : mine.value)
+const previewList = computed(() => previewing.value?.is_stock ? stock.value : mine.value)
 const previewTags = computed(() => {
   const c = previewing.value
   if (!c) return []
@@ -159,7 +165,12 @@ function setVoice(p, key, value) {
 }
 watch(sameVoice, on => { if (on && presenters.value[0]?.voice) presenters.value.forEach(x => { x.voice = { ...presenters.value[0].voice } }) })
 
-function toggleMenu(name) { menu.value = menu.value === name ? '' : name; previewing.value = null; if (menu.value === 'cast') loadCharacters() }
+function toggleMenu(name) { menu.value = menu.value === name ? '' : name; previewing.value = null; if (menu.value === 'cast') { loadCharacters(); loadSettings() } }
+function openCastModal() { menu.value = ''; previewing.value = null; castModal.value = true; loadCharacters(); loadSettings() }
+function setPlace(p, key) { presentersTouched = true; p.setting = key }
+function modalRemove(id) { const p = presenters.value.find(x => x.character_id === id); if (p) removePresenter(p) }
+function modalSetPlace({ character_id: id, setting }) { const p = presenters.value.find(x => x.character_id === id); if (p) setPlace(p, setting) }
+function modalUpload() { castModal.value = false; menu.value = 'cast'; pickPhoto() }
 function escMenus(e) { if (e.key === 'Escape') menu.value = '' }
 function closeMenus(e) { if (!e.target.closest('.uc-pop, .uc-pill, .uc-plus')) menu.value = '' }
 
@@ -170,6 +181,12 @@ async function loadCharacters() {
     characters.value = (data?.data?.characters ?? []).filter(c => c.status !== 'archived')
     restorePresenters()
   } catch { /* the picker shows "Let us pick" alone */ }
+}
+// The photos' signed links last 12 hours: a tab left open longer fetches fresh ones.
+let settingsAt = 0
+async function loadSettings() {
+  if (settings.value.length && Date.now() - settingsAt < 6 * 3600 * 1000) return
+  try { const { data } = await api.get('/ugc/settings'); settings.value = data?.data?.settings ?? []; settingsAt = Date.now() } catch { /* Auto only: the director picks the place */ }
 }
 async function loadBalance() {
   try { const { data } = await api.get('/me'); balance.value = data?.data?.credits?.balance ?? null } catch { /* cosmetic */ }
@@ -323,7 +340,7 @@ async function send(override = null) {
     const { data } = await api.post(`/ugc/chats/${id}/messages`, {
       text: body, attachments, link: sentLink, type: type.value, length: length.value,
       // Only once the presenters are known: before the actor list loads they look empty and would wipe the chat's.
-      ...(presentersKnown() ? { presenters: presenters.value.map(p => ({ character_id: p.character_id, voice: p.voice })) } : {}),
+      ...(presentersKnown() ? { presenters: presenters.value.map(p => ({ character_id: p.character_id, voice: p.voice, setting: p.setting || null })) } : {}),
     }, { timeout: 180000 })
     if (id !== chatId.value) return // the user moved to another chat meanwhile
     chat.value = data.data.chat
@@ -473,7 +490,7 @@ function restorePresenters() {
   restoredPresenters = true
   presenters.value = s.presenters.map(p => {
     const c = p.character_id ? byId.value.get(p.character_id) : null
-    return { key: crypto.randomUUID(), character_id: p.character_id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice: p.voice ?? null }
+    return { key: crypto.randomUUID(), character_id: p.character_id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice: p.voice ?? null, setting: p.setting ?? null }
   })
 }
 function schedulePoll() {
@@ -706,6 +723,10 @@ onBeforeUnmount(() => {
                     <span class="uc-opts"><button v-for="[k, l] in DELIVERY" :key="k" type="button" :class="['uc-opt', { on: (p.voice?.delivery || (p.voice ? 'friendly' : '')) === k }]" @click="setVoice(p, 'delivery', k)">{{ l }}</button></span>
                     <span class="uc-vl">Direction</span>
                     <input :value="p.voice?.direction || ''" maxlength="300" placeholder="Optional, e.g. like he just found out" @change="setVoice(p, 'direction', $event.target.value)" />
+                    <template v-if="settings.length">
+                      <span class="uc-vl">Background</span>
+                      <UgcBackgroundPicker :model-value="p.setting || null" :settings="settings" compact @update:model-value="k => setPlace(p, k)" />
+                    </template>
                     <p v-if="!p.voice" class="uc-muted uc-vnote">{{ p.character_id ? 'Their default voice until you change one of these.' : 'The model sets the voice from your prompt. Change any of these to set it yourself.' }}</p>
                     <button v-else type="button" class="uc-link-btn" @click="p.voice = null">{{ p.character_id ? 'Back to their default voice' : 'Let the model set it' }}</button>
                   </div>
@@ -734,9 +755,8 @@ onBeforeUnmount(() => {
                   <button type="button" class="uc-add-i" title="Let us pick" @click="addPresenter(null)">✦</button>
                   <button type="button" class="uc-add-i" title="Upload a photo of you or someone you have the rights to" @click="pickPhoto">⇪</button>
                   <button v-for="c in filteredStock" :key="c.id" type="button" :class="['uc-add-face', { on: presenters.some(p => p.character_id === c.id) }]" :title="c.name" @click="previewing = c"><img :src="imageOf(c)" :alt="c.name" /></button>
-                  <button v-if="!castAll && stock.length > 6" type="button" class="uc-add-i uc-add-more" @click="castAll = true">+{{ stock.length - 6 }}</button>
+                  <button v-if="stock.length > 6 || mine.length" type="button" class="uc-add-i uc-add-more" :title="`All ${stock.length + mine.length} presenters`" @click="openCastModal">More</button>
                 </div>
-                <input v-if="castAll" v-model="castSearch" class="uc-search" placeholder="Search actors" />
                 <template v-if="mine.length">
                   <span class="uc-label uc-pad">Your characters</span>
                   <div class="uc-add">
@@ -785,6 +805,9 @@ onBeforeUnmount(() => {
         <p class="uc-foot">One video unless you pick more presenters or ask · you see the price before anything is made</p>
       </div>
     </main>
+    <UgcPresenterModal v-if="castModal" :stock="stock" :mine="mine" :presenters="presenters" :settings="settings" :error="error"
+      @close="castModal = false" @add="({ character, setting }) => addPresenter(character, setting)" @remove="modalRemove"
+      @set-setting="modalSetPlace" @pick-for-me="addPresenter(null)" @upload="modalUpload" />
   </div>
 </template>
 
@@ -952,7 +975,7 @@ onBeforeUnmount(() => {
 .uc-preview-nav button:hover { border-color: var(--color-accent); color: var(--color-text-primary); }
 .uc-add-face img { width: 100%; height: 100%; object-fit: cover; }
 .uc-add-i:hover, .uc-add-face:hover { border-color: var(--color-accent); }
-.uc-add-more { font-size: 11.5px; }
+.uc-add-more { width: auto; padding: 0 10px; font-size: 11.5px; font-weight: 600; border-style: solid; color: var(--color-text-primary); }
 .uc-search { margin: 0 6px 6px; }
 .uc-own { display: flex; gap: 10px; padding: 8px; border-radius: 9px; background: var(--color-bg-card); font-size: 12.5px; }
 .uc-own img { width: 56px; height: 72px; object-fit: cover; border-radius: 6px; }

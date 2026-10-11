@@ -30,6 +30,16 @@ return [
     'entries' => [
 
         [
+            'slug'  => '2026-10-11-creative-director',
+            'date'  => '2026-10-11',
+            'tag'   => 'improved',
+            'title' => 'Weave is now your Creative Director',
+            'body'  => 'Same assistant, clearer name. The Creative Director plans your video, shows you the plan and '
+                .'its price first, builds it once you approve, and checks it before you see it. You still find it '
+                .'under Create, and the UGC ad chat uses the same Creative Director.',
+        ],
+
+        [
             'slug'  => '2026-10-09-meet-weave',
             'date'  => '2026-10-09',
             'tag'   => 'new',

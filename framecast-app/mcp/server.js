@@ -52,9 +52,9 @@ const API_TIMEOUT_MS = 30_000
 const INSTRUCTIONS = `WyvStudio makes short branded videos for the user's workspace, spending its credits.
 
 Which tools to use
-- Default: Weave. For any request to make a video, ad, promo, explainer, tutorial, testimonial or a UGC-style ad, use weave_start, then weave_status, then weave_approve. Changes to a Weave video go through weave_reply, never the Classic edit tools.
-- Use the Classic tools (estimate_video, create_video, the get_project/propose_edits/apply_edits editor, export_video, plan_ugc/create_ugc) only when: the user asks for Classic, the composer or a scene-by-scene video; the video is an existing Classic project (a numeric video id); the user wants UGC Ads takes (several actors or hooks to test side by side, or an ad analysed with analyze_ugc_reference); or the video is longer than weave_start allows. If unsure, use Weave.
-- If weave_start is refused because Weave is unavailable to the workspace, say so and offer the Classic way.
+- Default: Create, where the Creative Director plans and makes the video. For any request to make a video, ad, promo, explainer, tutorial, testimonial or a UGC-style ad, use weave_start, then weave_status, then weave_approve. Changes to a Create video go through weave_reply, never the Classic edit tools.
+- Use the Classic tools (estimate_video, create_video, the get_project/propose_edits/apply_edits editor, export_video, plan_ugc/create_ugc) only when: the user asks for Classic, the composer or a scene-by-scene video; the video is an existing Classic project (a numeric video id); the user wants UGC Ads takes (several actors or hooks to test side by side, or an ad analysed with analyze_ugc_reference); or the video is longer than weave_start allows. If unsure, use Create.
+- If weave_start is refused because Create is unavailable to the workspace, say so and offer the Classic way.
 
 Credits
 - Call get_capabilities first for the balance and plan.
@@ -63,13 +63,13 @@ Credits
 - When can_afford is false, do not start the build. Offer what if_short lists (quick effort, a shorter video, fewer paid shots via weave_reply) or the top-up link, and let the user choose.
 
 Timing
-- Planning takes a minute or two; building a Weave video usually takes 10 to 20 minutes. Tell the user, and check weave_status every minute or two rather than continuously. Share preview_url and app_url when it is ready.
+- Planning takes a minute or two; building a Create video usually takes 10 to 20 minutes. Tell the user, and check weave_status every minute or two rather than continuously. Share preview_url and app_url when it is ready.
 
 Undo
-- "Undo that" on a Classic video: get_edit_history, say what will be undone, then undo_edit (redo_edit brings it back). For a Weave video, use weave_reply to ask for the earlier version.
+- "Undo that" on a Classic video: get_edit_history, say what will be undone, then undo_edit (redo_edit brings it back). For a Create video, use weave_reply to ask for the earlier version.
 
 Publishing
-- publish_video posts Classic exports. For a Weave video, give the user its app_url to publish from WyvStudio, or weave_share for a watch link.
+- publish_video posts Classic exports. For a Create video, give the user its app_url to publish from WyvStudio, or weave_share for a watch link.
 `
 
 // ── Developer API client ───────────────────────────────────────────────────
@@ -285,7 +285,7 @@ function buildServer(token) {
     'estimate_video',
     {
       title: 'Classic: estimate a video (free)',
-      description: 'Classic only (see the server instructions; Weave via weave_start is the default). Price a scene-by-scene video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
+      description: 'Classic only (see the server instructions; Create via weave_start is the default). Price a scene-by-scene video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
       inputSchema: z.object({
         source_type: z.enum(SOURCE_TYPES).describe('"prompt": a brief WyvStudio writes a script from. "script": narration used as-is. "url": a web page or article text. "product_description": copy to sell a product. "images": 1–15 library images become the scenes (needs image_asset_ids and a prompt in content).'),
         content: z.string().min(10).max(10000).describe('The prompt, script, URL/article text, or product description.'),
@@ -720,7 +720,7 @@ function buildServer(token) {
   // Undo / redo for Classic videos (2026-10-10): one history per video, shared with the editor and every assistant.
   server.registerTool('get_edit_history', {
     title: 'Edit history of a Classic video',
-    description: 'What undo and redo would do next (undo_label, redo_label) and the latest edits, each with who made it (user, assistant, cruise). Classic videos only (numeric video id); a Weave video has versions instead. Free.',
+    description: 'What undo and redo would do next (undo_label, redo_label) and the latest edits, each with who made it (user, assistant, cruise). Classic videos only (numeric video id); a Create video has versions instead. Free.',
     inputSchema: z.object({ video_id: z.number().int() }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ video_id }) => call(token, 'GET', `/videos/${video_id}/history`, undefined, 'get_edit_history'))
@@ -812,20 +812,20 @@ function buildServer(token) {
   // credits; making the video costs the approved quote at most.
   const WEAVE_FORMATS = ['offer_ad', 'launch_promo', 'testimonial', 'explainer', 'listicle', 'product_demo', 'ugc_ad', 'before_after', 'tutorial', 'brand_story']
   const WEAVE_STYLES = ['data-story', 'editorial-frame', 'kinetic-type', 'launch-reel', 'mascot-explainer', 'product-ui']
-  const weaveId = z.string().uuid().describe('The Weave video id from weave_start or weave_list.')
+  const weaveId = z.string().uuid().describe('The Create video id from weave_start or weave_list.')
 
   server.registerTool(
     'weave_start',
     {
-      title: 'Make a video (Weave, the default)',
-      description: "The default way to make any video, including UGC-style ads. Describe a short branded video and WyvStudio's Weave plans it: concept, scenes, script and voice, in the workspace's brand. Planning starts at once and costs a few credits; nothing else is charged until the user approves a price with weave_approve. Write the brief in the user's words, with the product, offer, audience and any exact lines. Then poll weave_status (planning takes a minute or two). Files: upload with upload_asset and pass their ids. A TikTok, Reel, YouTube or X link in reference_url makes the video in that clip's style; a product page link gives facts and look.",
+      title: 'Make a video (Create, the default)',
+      description: "The default way to make any video, including UGC-style ads. Describe a short branded video and WyvStudio's Creative Director plans it: concept, scenes, script and voice, in the workspace's brand. Planning starts at once and costs a few credits; nothing else is charged until the user approves a price with weave_approve. Write the brief in the user's words, with the product, offer, audience and any exact lines. Then poll weave_status (planning takes a minute or two). Files: upload with upload_asset and pass their ids. A TikTok, Reel, YouTube or X link in reference_url makes the video in that clip's style; a product page link gives facts and look.",
       inputSchema: z.object({
         brief: z.string().min(3).max(10000).describe("What the video is, in the user's words."),
-        format: z.enum(WEAVE_FORMATS).optional().describe('The kind of video, when the user chose one: offer_ad (product ad), launch_promo (launch teaser), testimonial (spoken to camera), explainer, listicle (tips), product_demo, ugc_ad, before_after, tutorial, brand_story. Leave out to let Weave choose.'),
+        format: z.enum(WEAVE_FORMATS).optional().describe('The kind of video, when the user chose one: offer_ad (product ad), launch_promo (launch teaser), testimonial (spoken to camera), explainer, listicle (tips), product_demo, ugc_ad, before_after, tutorial, brand_story. Leave out to let the Creative Director choose.'),
         aspect_ratio: z.enum(['9:16', '16:9', '1:1', '4:5']).optional().describe('9:16 for Reels, TikTok and Shorts (the default).'),
         duration_seconds: z.number().int().min(5).max(30).optional().describe('Length in seconds; 15 by default.'),
-        voice: z.string().max(40).optional().describe('A narration voice name (for example Kore, Puck, Charon, Erinome) or "clone" for the workspace\'s own cloned voice. Leave out to let Weave choose.'),
-        style_pack: z.enum(WEAVE_STYLES).optional().describe('A WyvStudio look to follow. Leave out to let Weave choose from the brand.'),
+        voice: z.string().max(40).optional().describe('A narration voice name (for example Kore, Puck, Charon, Erinome) or "clone" for the workspace\'s own cloned voice. Leave out to let the Creative Director choose.'),
+        style_pack: z.enum(WEAVE_STYLES).optional().describe('A WyvStudio look to follow. Leave out to let the Creative Director choose from the brand.'),
         effort: z.enum(['quick', 'standard', 'thorough']).optional().describe('How much care goes into the build; standard by default.'),
         captions: z.boolean().optional().describe('Spoken words on screen; true by default.'),
         reference_url: z.string().url().max(500).optional().describe('A video post to match the style of, or a page with facts about the product.'),
@@ -840,8 +840,8 @@ function buildServer(token) {
   server.registerTool(
     'weave_status',
     {
-      title: 'Weave video status',
-      description: "Where a Weave video stands, with what to do next. state is one of: planning (check again shortly), question (Weave asks the user something: ask them and send the answer with weave_reply), plan_ready (show the user the plan; get the price with weave_approve), look_ready (show the user the images; approve them with weave_approve and look_token), building (check again in a minute or two), ready (preview_url to watch; preview links last about 45 minutes, so call again for a fresh one), needs_attention (what went wrong and how to continue). app_url opens it in WyvStudio.",
+      title: 'Create video status',
+      description: "Where a Create video stands, with what to do next. state is one of: planning (check again shortly), question (the Creative Director asks the user something: ask them and send the answer with weave_reply), plan_ready (show the user the plan; get the price with weave_approve), look_ready (show the user the images; approve them with weave_approve and look_token), building (check again in a minute or two), ready (preview_url to watch; preview links last about 45 minutes, so call again for a fresh one), needs_attention (what went wrong and how to continue). app_url opens it in WyvStudio.",
       inputSchema: z.object({ id: weaveId }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -851,8 +851,8 @@ function buildServer(token) {
   server.registerTool(
     'weave_reply',
     {
-      title: 'Reply to Weave or ask for a change',
-      description: "Send the user's answer to Weave's question, a change to the plan before it is made, or a change to the finished video (\"make the logo bigger\", \"use a calmer voice\"). Weave re-plans, which costs a few credits; the change itself is priced and approved with weave_approve like the first version. Then poll weave_status.",
+      title: 'Reply to the Creative Director or ask for a change',
+      description: "Send the user's answer to the Creative Director's question, a change to the plan before it is made, or a change to the finished video (\"make the logo bigger\", \"use a calmer voice\"). The Creative Director re-plans, which costs a few credits; the change itself is priced and approved with weave_approve like the first version. Then poll weave_status.",
       inputSchema: z.object({ id: weaveId, message: z.string().min(1).max(10000).describe("The user's answer or change, in their words."), idempotency_key: z.string().max(100).optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
@@ -862,7 +862,7 @@ function buildServer(token) {
   server.registerTool(
     'weave_approve',
     {
-      title: 'Price and approve a Weave video',
+      title: 'Price and approve a Create video',
       description: "Two steps, always. 1) Without quote_id: returns the price of what the plan will make (credits_max is the most it can cost; only what is used is charged), what it makes, and a quote_id. Nothing is charged. Show the user the price and wait for their explicit yes. 2) Only after the user agrees: call again with that quote_id to start the build, then poll weave_status. Never pass a quote_id the user has not approved. Approving also agrees to send the brief and approved media to WyvStudio's AI providers. When status is look_ready and the user likes the images, pass look_token in step 1.",
       inputSchema: z.object({
         id: weaveId,
@@ -880,8 +880,8 @@ function buildServer(token) {
   server.registerTool(
     'weave_list',
     {
-      title: 'List Weave videos',
-      description: "The workspace's newest Weave videos with each one's state, newest first. Use an id with weave_status, weave_reply or weave_share.",
+      title: 'List Create videos',
+      description: "The workspace's newest Create videos with each one's state, newest first. Use an id with weave_status, weave_reply or weave_share.",
       inputSchema: z.object({ limit: z.number().int().min(1).max(50).optional() }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -891,7 +891,7 @@ function buildServer(token) {
   server.registerTool(
     'weave_share',
     {
-      title: 'Share a Weave video',
+      title: 'Share a Create video',
       description: 'A link anyone can watch the finished video at (saved to the library first). Pass version for an earlier one; enabled false turns the link off.',
       inputSchema: z.object({ id: weaveId, version: z.number().int().min(1).optional(), enabled: z.boolean().optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },

@@ -19,7 +19,8 @@ class AutomaticVideoFinishTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['cache.default' => 'array']);
+        // Prod's cutoff, whatever a local .env sets for its own database.
+        config(['cache.default' => 'array', 'app.automatic_finish_min_id' => 216]);
         config(['database.default' => 'finish_test', 'database.connections.finish_test' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]]);

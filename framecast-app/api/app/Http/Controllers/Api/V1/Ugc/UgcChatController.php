@@ -32,6 +32,13 @@ class UgcChatController extends Controller
         return response()->json(['data' => $this->chats->show($request, $id), 'meta' => []], 201);
     }
 
+    /** The places a presenter can be filmed in, each with its background photo (only those whose photo exists). */
+    public function settings(Request $request): JsonResponse
+    {
+        if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
+        return response()->json(['data' => ['settings' => \App\Services\Ugc\UgcSettings::listed()], 'meta' => []]);
+    }
+
     public function show(Request $request, string $id): JsonResponse
     {
         if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
@@ -50,6 +57,8 @@ class UgcChatController extends Controller
             'presenters' => ['sometimes', 'array', 'max:5'],
             'presenters.*.character_id' => ['nullable', 'integer'],
             'presenters.*.voice' => ['nullable', 'array'],
+            // Where this presenter is filmed (config/ugc_settings.php); empty lets the director pick.
+            'presenters.*.setting' => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Ugc\UgcSettings::all()))],
             'presenters.*.voice.pace' => ['nullable', 'string', 'in:slower,natural,faster'],
             'presenters.*.voice.delivery' => ['nullable', 'string', 'in:friendly,excited,calm,deadpan'],
             'presenters.*.voice.direction' => ['nullable', 'string', 'max:300'],

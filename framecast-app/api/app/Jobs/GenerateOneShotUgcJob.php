@@ -64,8 +64,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
          *  (ffmpeg) so the ACTUAL recording shows — not a model recreation. */
         public readonly ?string $demoStorageUrl = null,
         ?string $runToken = null,
+        ?bool $checkFace = null,
     ) {
         $this->runToken = $runToken;
+        $this->checkFace = (bool) $checkFace;
         $this->onQueue('generation');
     }
 
@@ -74,6 +76,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
      *  property with a default, not a promoted readonly one: a job queued before the deploy unserializes without it,
      *  and reading an uninitialized readonly property throws (review, 2026-10-10). */
     public ?string $runToken = null;
+
+    /** A cast presenter (the first reference image) whose face each clip is checked against, and made again once if it
+     *  is someone else. A plain property for the same reason as runToken. */
+    public bool $checkFace = false;
 
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
@@ -121,6 +127,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 }
             }
             $fromTail = [];
+            $faceRetries = 0;
             foreach ($this->chunks as $i => $chunk) {
                 // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
                 // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from
@@ -141,6 +148,24 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     if (! $this->owns($scene->refresh())) return; // superseded: the newer run makes the rest
                     $path = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                     if (! $this->owns($scene->refresh())) return; // superseded while this clip was made
+                    // Resemblance (owner, 2026-10-11): each cast clip's face is scored against the presenter's photo. With
+                    // remakes on (services.ugc.face_retry), a clip under the pass mark is made again once, at our cost, and
+                    // the closer of the two is kept; at most two remakes a take. A remake whose check could not run is
+                    // never preferred to a clip that was checked.
+                    if ($this->checkFace && $this->referenceImages !== []) {
+                        $checker = app(\App\Services\Ugc\UgcFaceCheck::class);
+                        $score = $checker->score($this->referenceImages[0], $path);
+                        if ($score !== null && $score < \App\Services\Ugc\UgcFaceCheck::PASS && $faceRetries < 2 && config('services.ugc.face_retry')) {
+                            if (! $this->owns($scene->refresh())) return; // superseded while the check ran: no paid remake
+                            $faceRetries++;
+                            \Illuminate\Support\Facades\Log::info('one-shot: presenter did not match, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1, 'score' => $score]);
+                            $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                            if (! $this->owns($scene->refresh())) return;
+                            $second = $checker->score($this->referenceImages[0], $again);
+                            if ($second !== null && $second > $score) { $path = $again; $score = $second; }
+                        }
+                        $this->noteFace($scene, $i, $score);
+                    }
                     // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
                     $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
                     $this->savePart($project, $scene, $storage, $i, $path);
@@ -497,11 +522,20 @@ class GenerateOneShotUgcJob implements ShouldQueue
         self::parts()->put($recipe, json_encode([
             'projectId' => $this->projectId, 'sceneId' => $this->sceneId, 'chunks' => $this->chunks, 'credits' => $this->credits,
             'engine' => $this->engine, 'referenceImages' => $this->referenceImages, 'initialStartFrame' => $this->initialStartFrame,
-            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl,
+            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace,
         ]));
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
         return [];
+    }
+
+    /** Each clip's resemblance score on the scene, so the take's record shows how close the presenter stayed. */
+    private function noteFace(Scene $scene, int $i, ?int $score): void
+    {
+        $settings = $scene->refresh()->image_generation_settings_json ?? [];
+        $scores = (array) ($settings['face_scores'] ?? []);
+        $scores[(string) ($i + 1)] = $score;
+        $scene->forceFill(['image_generation_settings_json' => array_merge($settings, ['face_scores' => $scores])])->save();
     }
 
     /** Save a finished segment the moment it lands, so a retry never makes it again. */
@@ -564,7 +598,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             self::dispatch(
                 (int) $recipe['projectId'], (int) $recipe['sceneId'], $recipe['chunks'], (int) $recipe['credits'], (string) $recipe['engine'],
                 $recipe['referenceImages'] ?? [], $recipe['initialStartFrame'] ?? null, $recipe['seed'] ?? null,
-                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token,
+                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false),
             )->afterCommit();
             return 'resumed';
         });
@@ -592,7 +626,21 @@ class GenerateOneShotUgcJob implements ShouldQueue
         // The clips come first (input i is clip i); a silent clip's stand-in sound is appended after them.
         foreach ($paths as $path) array_push($inputs, '-i', $path);
         $next = count($paths);
+        // A clip carried on from the previous one's last frame keeps its light (owner, 2026-10-11: the light shifted at
+        // joins). Its colour and brightness are matched to where the previous clip ended, gently and only there: at a
+        // cut the picture changes on purpose, so a new shot is left as made.
+        $gains = [];
         foreach ($paths as $i => $path) {
+            $gains[$i] = [1.0, 1.0, 1.0];
+            if ($i > 0 && ! empty($fromTail[$i])) {
+                $prev = self::meanRgb($paths[$i - 1], true);
+                $cur = self::meanRgb($path, false);
+                if ($prev && $cur) $gains[$i] = self::joinGains($prev, $gains[$i - 1], $cur);
+            }
+        }
+        foreach ($paths as $i => $path) {
+            $mix = max(array_map(fn ($g) => abs($g - 1), $gains[$i])) > 0.01
+                ? vsprintf('colorchannelmixer=rr=%.4f:gg=%.4f:bb=%.4f,', $gains[$i]) : '';
             // A clip that started from the previous clip's last frame repeats it first: drop that frame and its sound.
             $skip = ! empty($fromTail[$i]) ? 'trim=start_frame=1,' : '';
             $askip = ! empty($fromTail[$i]) ? 'atrim=start=0.0417,' : '';
@@ -607,8 +655,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // 30 ms fades at each join, so no click where two clips' sound meets.
             $out = $i < $last ? 0.03 : 0.25; // the ad's last sound fades rather than stopping on a hard edge
             $fades = ($i > 0 ? ',afade=t=in:d=0.03' : '').($len > 0.5 ? sprintf(',afade=t=out:st=%.3f:d=%.2f', $len - ($askip !== '' ? 0.0417 : 0) - $out, $out) : '');
-            $graph .= sprintf('[%1$d:v]%4$ssetpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v%1$d];'
-                .'[%7$s:a]%5$sasetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo%6$s[a%1$d];', $i, $w, $h, $skip, $askip, $fades, $silent[$i] ?? $i);
+            $graph .= sprintf('[%1$d:v]%4$ssetpts=PTS-STARTPTS,fps=24,scale=%2$d:%3$d:force_original_aspect_ratio=decrease,pad=%2$d:%3$d:(ow-iw)/2:(oh-ih)/2,setsar=1,%8$sformat=yuv420p[v%1$d];'
+                .'[%7$s:a]%5$sasetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo%6$s[a%1$d];', $i, $w, $h, $skip, $askip, $fades, $silent[$i] ?? $i, $mix);
         }
         foreach (array_keys($paths) as $i) $graph .= "[v{$i}][a{$i}]";
         $graph .= 'concat=n='.count($paths).':v=1:a=1[outv][outa]';
@@ -622,5 +670,28 @@ class GenerateOneShotUgcJob implements ShouldQueue
         }
 
         return $out;
+    }
+
+    /** A frame's average colour (red, green, blue, 0-255): the clip's last frame, or the one after its first. */
+    private static function meanRgb(string $path, bool $end): ?array
+    {
+        $seek = $end ? ['-sseof', '-0.2'] : ['-ss', '0.05'];
+        $run = Process::timeout(30)->run(['ffmpeg', '-v', 'error', ...$seek, '-i', $path, '-frames:v', '1', '-vf', 'scale=1:1:flags=area', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']);
+        $px = $run->successful() ? $run->output() : '';
+        return strlen($px) >= 3 ? array_values(unpack('C3', $px)) : null;
+    }
+
+    /**
+     * Per-channel gains that bring a clip's opening colour to where the previous clip ended (after that clip's own
+     * gains), each within 15%, so a correction never repaints a shot. A near-black channel is left alone.
+     *
+     * @param  array{0: float, 1: float, 2: float}  $prev  the previous clip's last frame, before its gains
+     * @param  array{0: float, 1: float, 2: float}  $prevGain
+     * @param  array{0: float, 1: float, 2: float}  $cur  this clip's opening frame
+     * @return array{0: float, 1: float, 2: float}
+     */
+    public static function joinGains(array $prev, array $prevGain, array $cur): array
+    {
+        return array_map(fn ($p, $g, $c) => $c < 8 ? 1.0 : round(max(0.85, min(1.15, ($p * $g) / $c)), 4), $prev, $prevGain, $cur);
     }
 }

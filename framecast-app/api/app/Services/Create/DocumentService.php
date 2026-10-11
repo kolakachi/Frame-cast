@@ -145,7 +145,7 @@ class DocumentService
         // Letting Weave choose the pictures replaces ticking them.
         if (in_array('auto', $modes, true)) $modes = array_values(array_diff($modes, ['pictures']));
         if (empty($a['notes'])) $modes = array_values(array_diff($modes, ['notes']));
-        abort_unless($modes, 422, 'Choose how Weave should use this document.');
+        abort_unless($modes, 422, 'Choose how the Creative Director should use this document.');
         $picks = array_values(array_filter($picks, fn ($p) => ($p['kind'] ?? null) === 'page' ? in_array('pages', $modes, true) : (($p['kind'] ?? null) === 'picture' && in_array('pictures', $modes, true))));
         $valid = collect($picks)->filter(fn ($p) => match ($p['kind'] ?? null) {
             'picture' => collect($a['pictures'] ?? [])->contains(fn ($x) => $x['id'] === ($p['id'] ?? null) && (int) ($p['part'] ?? 1) <= count($x['parts'] ?? [1])),

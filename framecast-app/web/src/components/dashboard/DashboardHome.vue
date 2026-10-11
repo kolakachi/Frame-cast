@@ -130,7 +130,7 @@ function startIdea(i) {
       <p v-if="balance !== null">{{ balance.toLocaleString() }} credits</p>
       <button v-if="lowCredits" type="button" class="dh-low" @click="router.push({ name: 'settings', query: { section: 'billing' } })">
         <template v-if="balance < VERY_LOW">Running low: most videos need 250–500 credits</template>
-        <template v-else>{{ balance.toLocaleString() }} credits left · A video in Weave usually uses 250–500</template>
+        <template v-else>{{ balance.toLocaleString() }} credits left · A video from the Creative Director usually uses 250–500</template>
         · Top up: 500 credits for $8 →
       </button>
     </header>

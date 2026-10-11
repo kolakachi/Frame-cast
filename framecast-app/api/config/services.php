@@ -112,6 +112,11 @@ return [
         'chat_open_to_all' => (bool) env('UGC_CHAT_OPEN_TO_ALL', false),
         // Named accounts that get the chat while it is staff-only (comma-separated), e.g. the canary account.
         'chat_allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('UGC_CHAT_ALLOWED_EMAILS', ''))))),
+        // The company workspace that owns the setting photos (ugc:seed-settings); only its tagged images are used.
+        'settings_workspace_id' => (int) env('UGC_SETTINGS_WORKSPACE_ID', 1),
+        // A cast clip whose face scores under the check's pass mark is made again (at our cost) only when this is on.
+        // Off until the scores are calibrated on real takes; the scores are recorded either way.
+        'face_retry' => (bool) env('UGC_FACE_RETRY', false),
     ],
 
     'ai' => [

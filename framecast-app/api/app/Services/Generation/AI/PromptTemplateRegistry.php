@@ -183,15 +183,16 @@ What these formats can make today, and so all a pitch may promise: a presenter t
 A reaction is silent: its script is the short on-screen headline, never spoken words.
 Physical sense: the phone is the camera and never appears on screen, except a deliberate mirror selfie (outfits, fit), where it stays in one hand; talking to it handheld leaves one hand free, and anything needing both hands is filmed from the camera propped on a counter. Products rest on a surface when not held. Never ask for counting on fingers or holding up numbers of fingers: say the numbers instead.
 founder_story is only for the product's own founder presenting with their own face: never pick it for a stock actor or an unnamed presenter; use testimonial instead.
-Never invent a product or brand name. If they have not named it, call it what it is ("your moisturizer") and ask for the name only if the ad must say it.
+Setting: pick the one place from the settings list where this product is really used or bought and this type plays naturally (a lotion in a bathroom or bedroom, a car accessory in a car, clothing in a fitting room or boutique, a protein bar at the gym or after a run). A place the user asked for wins. Avoid the settings used lately unless asked or nothing else fits. The summary says where it is filmed.
+Never invent a product or brand name, and never put another company's brand or logo in a scene. Show the product once (one box, one bottle), not a second copy beside it. If they have not named it, call it what it is ("your moisturizer") and ask for the name only if the ad must say it.
 
 The product photos are references for the product's real look, shape and size in the presenter's hands, never a first frame. Keep a script the user wrote word for word. When they wrote a screenplay (scene headings, camera or action notes, SFX, stage directions, speaker labels), "script" is only the words spoken aloud, in order and unchanged, with every note removed; the scenes, actions, sounds and delivery (e.g. whispered) go into "context" as the shot plan. Otherwise write natural spoken words for the type, a strong hook first, sized to duration_seconds at about 2.4 words a second (15 seconds is about 36 words; never more than 2.6 words a second). Do not invent results, statistics, prices or product capabilities that their files, link or answers do not state.
 
 Return JSON only, one of:
 {"action":"ask","question":"...","chips":["...","..."]}  (chips may be [] when they only need to paste or attach something)
-{"action":"pitch","type":"<type>","format":"direct_camera|demo|story|reaction|text_led","title":"a short name for the video","summary":"one or two plain sentences: who says what, where, and how the product appears (e.g. held at its real size)","script":"the exact words to speak","product":"the product name","context":"audience, goal, facts and must-say lines for the director","duration_seconds":15}
+{"action":"pitch","type":"<type>","format":"direct_camera|demo|story|reaction|text_led","title":"a short name for the video","summary":"one or two plain sentences: who says what, where, and how the product appears (e.g. held at its real size)","script":"the exact words to speak","product":"the product name","context":"audience, goal, facts and must-say lines for the director","setting":"one key from the settings list","duration_seconds":15}
 PROMPT,
-                'user' => "Conversation so far:\n{{transcript}}\n\nWhat the user has given:\n{{materials}}\n\nPresenters chosen: {{presenters}}\nUGC type chosen: {{type}}\nShape and length chosen: {{shape}}\n{{previous_error}}",
+                'user' => "Conversation so far:\n{{transcript}}\n\nWhat the user has given:\n{{materials}}\n\nPresenters chosen: {{presenters}}\nUGC type chosen: {{type}}\nShape and length chosen: {{shape}}\nSettings you can film in:\n{{settings}}\n{{previous_error}}",
             ],
             'ugc_shot_plan' => [
                 'system' => <<<'PROMPT'

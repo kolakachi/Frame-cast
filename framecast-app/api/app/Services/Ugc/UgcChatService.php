@@ -129,7 +129,7 @@ final class UgcChatService
                 'transcript' => $this->transcript($id), 'materials' => $this->materials($state),
                 'presenters' => $this->presentersText($state, (int) $request->user()->workspace_id), 'type' => $state['type'] ?? 'auto',
                 'shape' => ($state['aspect'] ?? '9:16').(! empty($state['length']) ? ', '.$state['length'].' seconds' : ', length open'),
-                'previous_error' => $error,
+                'settings' => $this->settingsText($request), 'previous_error' => $error,
             ], 1500, 0.4);
             try { $d = UgcPlan::decodeModelJson((string) ($out['content'] ?? '')); } catch (\Throwable) { $d = []; }
             if (($d['action'] ?? null) === 'ask' && trim((string) ($d['question'] ?? '')) !== '') $decision = $d;
@@ -175,12 +175,20 @@ final class UgcChatService
         }
         // Variety (owner, 2026-10-10: one actor in the same shirt in 11 of 12 ads): when we pick, recently cast faces
         // sit out, and every ad gets an outfit this workspace has not used lately.
-        [$recentFaces, $recentOutfits] = $this->recentCasting($request);
-        $wardrobe = $this->pickWardrobe($recentOutfits);
+        [$recentFaces, $recentOutfits, $recentSettings] = $this->recentCasting($request);
+        // Where it is filmed (owner, 2026-10-11): the director's pick from the settings that have a background photo;
+        // otherwise one not used lately. The outfit suits the place.
+        $settings = UgcSettings::available();
+        // A place the user set on every presenter wins over the director's (owner, 2026-10-11: background in the presenter settings).
+        $chosen = array_values(array_unique(array_filter(array_map(fn ($p) => is_string($p['setting'] ?? null) && isset($settings[$p['setting']]) ? $p['setting'] : null, $state['presenters'] ?? []))));
+        $everyone = $chosen && count($chosen) === 1 && count(array_filter($state['presenters'] ?? [], fn ($p) => empty($p['setting']))) === 0;
+        $named = is_string($d['setting'] ?? null) ? $d['setting'] : '';
+        $setting = $everyone ? $chosen[0] : (isset($settings[$named]) ? $named : $this->pickSetting($settings, $recentSettings));
+        $wardrobe = $this->pickWardrobe($recentOutfits, $setting !== null ? ($settings[$setting]['wardrobe'] ?? []) : []);
         $plan = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'plan'], ['request' => $r]), array_filter([
             'avoid_character_ids' => empty($state['presenters']) && $recentFaces ? $recentFaces : null,
             'script' => mb_substr((string) ($d['script'] ?? ''), 0, 1500),
-            'context' => mb_substr(trim((string) ($d['context'] ?? $d['summary'])).' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
+            'context' => mb_substr(trim((string) ($d['context'] ?? $d['summary'])).($setting !== null ? ' Filmed in '.$settings[$setting]['place'].'.' : '').' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
             'product' => mb_substr((string) ($d['product'] ?? ($state['link']['facts']['product'] ?? '')), 0, 200), 'format' => $format,
             'duration_seconds' => $seconds, 'language' => 'en', 'footage_asset_ids' => $footage ?: null,
             'reference' => ! empty($state['sample']['reference']) ? array_intersect_key($state['sample']['reference'], ['duration' => 1, 'shape' => 1, 'beats' => 1]) : null,
@@ -192,7 +200,12 @@ final class UgcChatService
         if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? null, 'voice' => null, 'picked' => true]];
         $takes = [];
         $title = mb_substr(trim((string) ($d['title'] ?? 'UGC video')), 0, 120);
-        foreach ($presenters as $p) $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type, $title, $wardrobe);
+        foreach ($presenters as $p) {
+            // A presenter with their own place gets it, and clothes that suit it.
+            $own = is_string($p['setting'] ?? null) && isset($settings[$p['setting']]) && $p['setting'] !== $setting ? $p['setting'] : null;
+            $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type, $title,
+                $own ? $this->pickWardrobe($recentOutfits, $settings[$own]['wardrobe'] ?? []) : $wardrobe, $own ?? $setting);
+        }
 
         // The director writes before anyone is cast: a single presenter it could not name is named now.
         if (count($takes) === 1 && $takes[0]['character_id']) {
@@ -207,7 +220,7 @@ final class UgcChatService
     }
 
     /** One presenter's video: their voice applied to every spoken shot; one take when the pipeline can, composed otherwise. */
-    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = ''): array
+    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null): array
     {
         $voice = $p['voice'] ?? null;
         $segments = array_map(function ($s) use ($voice) {
@@ -224,10 +237,11 @@ final class UgcChatService
             $v = array_filter(['format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_id' => $characterId,
                 'engine' => $characterId ? 'omni' : 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null,
                 'product_asset_ids' => $products ?: null, 'product' => mb_substr($product, 0, 200), 'language' => 'en',
-                'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title, 'wardrobe' => $wardrobe], fn ($x) => $x !== null && $x !== '');
+                'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title, 'wardrobe' => $wardrobe,
+                'setting_key' => $setting], fn ($x) => $x !== null && $x !== '');
             $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
             $v['credits'] = (int) $price['quote'];
-            return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'one_shot', 'wardrobe' => $wardrobe,
+            return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'one_shot', 'wardrobe' => $wardrobe, 'setting' => $setting,
                 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'request' => $v];
         }
         $per = UgcPlan::quote($segments);
@@ -241,25 +255,45 @@ final class UgcChatService
     /**
      * The faces and outfits of this workspace's recent pitches, newest first.
      *
-     * @return array{0: list<int>, 1: list<string>}
+     * @return array{0: list<int>, 1: list<string>, 2: list<string>}
      */
     private function recentCasting(Request $request): array
     {
         $pitches = DB::table('ugc_chat_messages')->join('ugc_chats', 'ugc_chats.id', '=', 'ugc_chat_messages.chat_id')
             ->where('ugc_chats.workspace_id', $request->user()->workspace_id)->where('ugc_chat_messages.kind', 'pitch')
             ->orderByDesc('ugc_chat_messages.id')->limit(8)->pluck('ugc_chat_messages.payload_json');
-        $faces = $outfits = [];
+        $faces = $outfits = $places = [];
         foreach ($pitches as $json) foreach ((json_decode((string) $json, true) ?: [])['takes'] ?? [] as $t) {
             if (! empty($t['character_id'])) $faces[] = (int) $t['character_id'];
             if (! empty($t['wardrobe'])) $outfits[] = (string) $t['wardrobe'];
+            if (! empty($t['setting'])) $places[] = (string) $t['setting'];
         }
-        return [array_values(array_slice(array_unique($faces), 0, 6)), array_values(array_unique($outfits))];
+        return [array_values(array_slice(array_unique($faces), 0, 6)), array_values(array_unique($outfits)), array_values(array_slice(array_unique($places), 0, 4))];
     }
 
-    private function pickWardrobe(array $recent): string
+    private function pickWardrobe(array $recent, array $suited = []): string
     {
-        $pool = array_values(array_diff(self::WARDROBE, array_slice($recent, 0, 6))) ?: self::WARDROBE;
+        $all = $suited ?: self::WARDROBE;
+        $pool = array_values(array_diff($all, array_slice($recent, 0, 6))) ?: $all;
         return $pool[random_int(0, count($pool) - 1)];
+    }
+
+    /** A setting not used lately, when the director named none it can have. Null when no setting has a photo yet. */
+    private function pickSetting(array $settings, array $recent): ?string
+    {
+        if (! $settings) return null;
+        $pool = array_values(array_diff(array_keys($settings), $recent)) ?: array_keys($settings);
+        return $pool[random_int(0, count($pool) - 1)];
+    }
+
+    /** The settings list the director picks from, with the ones used lately. */
+    private function settingsText(Request $request): string
+    {
+        $settings = UgcSettings::available();
+        if (! $settings) return '(none yet: leave "setting" empty and say where it is filmed in the summary)';
+        $recent = $this->recentCasting($request)[2];
+        return implode("\n", array_map(fn ($k, $s) => $k.': '.$s['place'], array_keys($settings), $settings))
+            .($recent ? "\nUsed lately: ".implode(', ', $recent) : '');
     }
 
     /** Characters this workspace may cast: its own, and stock actors, active and with a reference photo. */
@@ -498,7 +532,9 @@ final class UgcChatService
         foreach ($s['presenters'] ?? [] as $p) {
             $name = ! empty($p['character_id']) ? (string) DB::table('characters')->where('id', $p['character_id'])->where(fn ($q) => $q->whereNull('workspace_id')->orWhere('workspace_id', $workspaceId))->value('name') : 'let us pick';
             $v = $p['voice'] ?? null;
-            $out[] = $name.($v ? ' (voice: '.($v['pace'] ?? 'natural').' pace, '.($v['delivery'] ?? 'friendly').(! empty($v['direction']) ? ', '.$v['direction'] : '').')' : ' (voice: their default)');
+            $place = ! empty($p['setting']) ? (UgcSettings::all()[$p['setting']]['place'] ?? null) : null;
+            $out[] = $name.($v ? ' (voice: '.($v['pace'] ?? 'natural').' pace, '.($v['delivery'] ?? 'friendly').(! empty($v['direction']) ? ', '.$v['direction'] : '').')' : ' (voice: their default)')
+                .($place ? ' (filmed in '.$place.', the user chose it)' : '');
         }
         return $out ? implode('; ', $out) : 'none chosen (pick one that fits)';
     }

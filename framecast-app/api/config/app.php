@@ -15,6 +15,10 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // Projects from this id on are finished automatically (Download works); older ones use the editor's export.
+    // Prod: 216. A local database sets 1.
+    'automatic_finish_min_id' => (int) env('AUTOMATIC_FINISH_MIN_ID', 216),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

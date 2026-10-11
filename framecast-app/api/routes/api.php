@@ -492,6 +492,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/fetch-video', [UgcController::class, 'fetchVideo']);
             Route::post('/scenes/{sceneId}/retry', [UgcController::class, 'sceneRetry'])->whereNumber('sceneId');
             // UGC Ads as a conversation (2026-10-10).
+            Route::get('/settings', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'settings']);
             Route::get('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'index']);
             Route::post('/chats', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'store'])->middleware('throttle:20,1');
             Route::get('/chats/{id}', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'show'])->whereUuid('id');

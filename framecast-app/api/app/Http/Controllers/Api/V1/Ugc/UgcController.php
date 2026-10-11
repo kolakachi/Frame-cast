@@ -982,6 +982,8 @@ class UgcController extends Controller
             // A real screen recording cut into the ad (video_in / Seedance).
             'demo_asset_id' => ['nullable', 'integer', 'min:1'],
             'setting' => ['nullable', 'string', 'max:300'],
+            // A place from config/ugc_settings.php: its background photo rides as a loose reference (the kind of place).
+            'setting_key' => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Ugc\UgcSettings::all()))],
             'product' => ['nullable', 'string', 'max:200'],
             'tone' => ['nullable', 'string', 'max:200'],
             'language' => ['sometimes', 'string', 'max:12'],
@@ -1082,6 +1084,15 @@ class UgcController extends Controller
             }
         }
 
+        // The setting's background photo (owner, 2026-10-11): the kind of place, never a copy. It goes third, after the
+        // presenter and the first product photo, so it is inside the three references a model takes; a later product
+        // angle gives way to it.
+        $placePhoto = false;
+        if (! empty($v['setting_key']) && ($plate = \App\Services\Ugc\UgcSettings::plate((string) $v['setting_key']))) {
+            array_splice($referenceImages, min(2, count($referenceImages)), 0, [$plate]);
+            $placePhoto = true;
+        }
+
         // Pricing below is mirrored in App\Services\Ugc\UgcOneShotPricing for the
         // developer API's quotes; change both, or the API's quote will not match
         // the credits check further down and every create will be refused.
@@ -1143,7 +1154,8 @@ class UgcController extends Controller
         )['pronunciations'] ?? '');
         $style = [
             'presenter' => $presenter,
-            'setting' => trim((string) ($v['setting'] ?? '')),
+            'setting' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::direction((string) $v['setting_key']) : trim((string) ($v['setting'] ?? '')),
+            'place_note' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::note((string) $v['setting_key'], $placePhoto) : '',
             'product' => trim((string) ($v['product'] ?? '')),
             'tone' => trim((string) ($v['tone'] ?? '')),
             'wardrobe' => trim((string) ($v['wardrobe'] ?? '')),
@@ -1265,9 +1277,9 @@ class UgcController extends Controller
             'project_id' => $project->id, 'scene_order' => 1, 'scene_type' => 'narration',
             'label' => 'One-take ad', 'script_text' => $script, 'duration_seconds' => $totalSeconds,
             'voice_settings_json' => ['enabled' => false],
-            // Captions are timed from the finished video's own speech (GenerateOneShotUgcJob transcribes it). They were
-            // off until 2026-10-10, so one-take ads downloaded without captions.
-            'caption_settings_json' => ['enabled' => true, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
+            // Captions off (owner, 2026-10-11: "we do not need to burn captions inside of the video"); the style is kept so
+            // turning them on in the editor burns them in, timed from the video's own speech.
+            'caption_settings_json' => ['enabled' => false, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
                 'position' => 'bottom_third', 'font' => 'Arial', 'highlight_color' => '#ffffff'],
             'visual_type' => 'video', 'status' => 'draft',
             'image_generation_settings_json' => [
@@ -1289,6 +1301,7 @@ class UgcController extends Controller
             $resolution,
             $demoStorageUrl,
             $runToken,
+            $presenterImageAttached && in_array($engine, ['omni', 'veo_hq'], true),
         )->afterCommit();
 
         $payload = ['data' => [
@@ -1387,8 +1400,9 @@ class UgcController extends Controller
                     // A silent card has no line to read — leaving voice
                     // enabled sent '' to the TTS engine.
                     'enabled' => ! $reaction && trim((string) $seg['script_text']) !== ''],
+                // Spoken captions off by default (owner, 2026-10-11); a reaction's headline is the ad itself and stays.
                 'caption_settings_json' => [
-                    'enabled' => ! $reaction, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
+                    'enabled' => false, 'style_key' => 'impact', 'highlight_mode' => 'line_by_line',
                     'position' => 'bottom_third', 'font' => 'Arial', 'highlight_color' => '#ffffff',
                     'ugc_headline' => UgcHeadline::layout($seg['headline']),
                 ],

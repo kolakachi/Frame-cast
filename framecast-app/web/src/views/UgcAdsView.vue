@@ -229,7 +229,7 @@ const productAssets = ref([]);    // [{ id, thumbnail_url, title }]
 const demoPicker = ref(false);
 const demoAsset = ref(null);      // { id, thumbnail_url, title }
 const formatOptions = [
-  ["auto", "Let the director choose"],
+  ["auto", "Let the Creative Director choose"],
   ["direct_camera", "Continuous talking take"],
   ["demo", "Product / app demonstration"],
   ["story", "Story with deliberate cuts"],
@@ -1283,7 +1283,7 @@ onMounted(() => {
                editable, instead of an invisible default. -->
           <div v-if="plan && oneShotEligible && !noCast && castEngine === 'seedance' && plan.presenter !== undefined" class="ugc-card ugc-fields">
             <label>
-              <span class="ugc-label-row">Who fronts this ad <span class="ugc-opt">(the director's pick — edit freely)</span></span>
+              <span class="ugc-label-row">Who fronts this ad <span class="ugc-opt">(the Creative Director's pick — edit freely)</span></span>
               <textarea v-model="plan.presenter" maxlength="300" rows="2"></textarea>
             </label>
           </div>
