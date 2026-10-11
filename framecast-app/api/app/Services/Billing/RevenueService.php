@@ -76,7 +76,14 @@ class RevenueService
     public function fromAppSumoLicense(object $license): void
     {
         $tier = (int) ($license->appsumo_tier ?? 0);
-        $price = (float) (((array) config('pricing.revenue.appsumo_price_usd', []))[$tier] ?? 0);
+        $list = (float) (((array) config('pricing.revenue.appsumo_price_usd', []))[$tier] ?? 0);
+        // Bought during an AppSumo campaign: the list price less its discount.
+        $bought = strtotime((string) ($license->created_at ?? 'now')) ?: time();
+        $discount = 0.0;
+        foreach ((array) config('pricing.revenue.appsumo_campaigns', []) as $c) {
+            if ($bought >= strtotime($c['from']) && $bought <= strtotime($c['to'])) $discount = (float) $c['discount'];
+        }
+        $price = round($list * (1 - $discount), 2);
         $refunded = ($license->status ?? '') === 'deactivated';
         $this->upsert('appsumo', 'license:'.$license->id, [
             'workspace_id' => $license->workspace_id,
@@ -84,11 +91,11 @@ class RevenueService
             'plan' => $license->tier ?? ('tier '.$tier),
             'channel' => 'appsumo',
             'currency' => 'USD',
-            'gross' => $price, 'discount' => 0, 'tax' => 0, 'net' => $price, 'net_usd' => $price,
+            'gross' => $price, 'discount' => round($list - $price, 2), 'tax' => 0, 'net' => $price, 'net_usd' => $price,
             'fee_usd' => round($price * (float) config('pricing.revenue.appsumo_cut', 0.75), 2),
             'refunded_usd' => $refunded ? round($price * (1 - (float) config('pricing.revenue.appsumo_cut', 0.75)), 2) : 0,
             'occurred_at' => $license->created_at ?? now(),
-            'metadata' => ['appsumo_tier' => $tier, 'status' => $license->status ?? null, 'price_known' => $price > 0],
+            'metadata' => ['appsumo_tier' => $tier, 'status' => $license->status ?? null, 'list_usd' => $list, 'campaign_discount' => $discount, 'price_known' => $price > 0],
         ]);
     }
 

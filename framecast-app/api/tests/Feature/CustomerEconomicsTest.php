@@ -76,14 +76,18 @@ class CustomerEconomicsTest extends TestCase
     public function test_an_appsumo_licence_keeps_a_quarter_and_a_deactivation_is_a_refund(): void
     {
         $this->kelviq(null);
-        DB::table('appsumo_licenses')->insert(['id' => 5, 'license_key' => 'k1', 'workspace_id' => 27, 'tier' => 'appsumo_creator', 'appsumo_tier' => 2, 'status' => 'active']);
+        DB::table('appsumo_licenses')->insert(['id' => 5, 'license_key' => 'k1', 'workspace_id' => 27, 'tier' => 'appsumo_creator', 'appsumo_tier' => 2, 'status' => 'active', 'created_at' => '2026-09-01 10:00:00']);
         app(RevenueService::class)->sync();
         $r = DB::table('revenue_events')->first();
-        $this->assertSame([139.0, 104.25, 0.0, 'appsumo'], [(float) $r->net_usd, (float) $r->fee_usd, (float) $r->refunded_usd, $r->channel]);
+        $this->assertSame([147.0, 110.25, 0.0, 'appsumo'], [(float) $r->net_usd, (float) $r->fee_usd, (float) $r->refunded_usd, $r->channel]);
         DB::table('appsumo_licenses')->where('id', 5)->update(['status' => 'deactivated']);
         app(RevenueService::class)->sync();
-        $this->assertSame(34.75, (float) DB::table('revenue_events')->value('refunded_usd'), 'what reached us goes back');
-        $this->assertSame(1, DB::table('revenue_events')->count());
+        $this->assertSame(36.75, (float) DB::table('revenue_events')->value('refunded_usd'), 'what reached us goes back');
+        // Bought during the 15% campaign: $124.95.
+        DB::table('appsumo_licenses')->insert(['id' => 6, 'license_key' => 'k2', 'workspace_id' => null, 'tier' => 'appsumo_creator', 'appsumo_tier' => 2, 'status' => 'active', 'created_at' => '2026-10-20 12:00:00']);
+        app(RevenueService::class)->sync();
+        $this->assertSame([124.95, 22.05], [(float) DB::table('revenue_events')->where('external_id', 'license:6')->value('net_usd'), (float) DB::table('revenue_events')->where('external_id', 'license:6')->value('discount')]);
+        $this->assertSame(2, DB::table('revenue_events')->count());
     }
 
     public function test_economics_sets_money_in_against_cost_per_customer(): void

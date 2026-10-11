@@ -42,7 +42,14 @@ return [
     */
     'revenue' => [
         'appsumo_cut' => (float) env('APPSUMO_CUT', 0.75),
-        'appsumo_price_usd' => [1 => 49, 2 => 139, 3 => 299],
+        // AppSumo list prices per tier (owner's screenshot, 2026-10-11): Starter $49, Creator $147, Agency $339.
+        'appsumo_price_usd' => [1 => 49, 2 => 147, 3 => 339],
+        // AppSumo campaigns: a licence bought inside a window paid the list price less the discount. AppSumo's webhook
+        // does not carry the price, so this is how the sale's amount is known. The start of the current 15% campaign
+        // is assumed (the screenshot only shows its end, about 2026-10-31).
+        'appsumo_campaigns' => [
+            ['from' => '2026-10-11 00:00:00', 'to' => '2026-10-31 23:59:59', 'discount' => 0.15],
+        ],
         'kelviq_fee_rate' => (float) env('KELVIQ_FEE_RATE', 0),
     ],
 ];
