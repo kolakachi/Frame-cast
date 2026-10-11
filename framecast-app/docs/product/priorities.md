@@ -24,13 +24,13 @@ where they are; this file is the order to work in.
 
 | # | Item | Why it matters | Who / next |
 |---|---|---|---|
-| 1 | **The director sees product photos (VISION).** Each photo is read once (what it is, packaging, colours, size, label text). A pasted product link pulls its images. | The director only reads file names: in 3 of 6 test videos a tube became a pump bottle. This makes "paste your product link" true. | build (about a cent a photo) |
+| 1 | **Built, local (2026-10-11): the director sees product photos (VISION).** Each photo is read once (what it is, packaging, colours, size, label text). A pasted product link pulls its images. | The director only reads file names: in 3 of 6 test videos a tube became a pump bottle. This makes "paste your product link" true. | build (about a cent a photo) |
 | 2 | **Outfits that hold.** An outfit step spells the outfit out in detail and names it in every clip prompt (from Jellyfish's outfit agent). | Planned outfits lose to the presenter photo's outfit (prod take 280). | build, then a few paid test takes |
-| 3 | **Anthropic auto-reload on, and the balance recorded** (API-BAL). | If the Anthropic credit runs out, Create and the UGC chat stop. | owner (a few minutes) |
-| 4 | **Cost tracking step 2: money in.** Record the dollar amount of every purchase (Kelviq, Test Pass, AppSumo after its cut). | Step 1 (real cost of every paid call) is live. Without money in there is no margin. | build |
-| 5 | **Cost tracking step 3: "Customer economics" in God Mode.** Per workspace: money in, credits, real cost, margin. | Shows which buyers and channels make or lose money. | build |
+| 3 | **Done (2026-10-11): Anthropic auto-reload on** (API-BAL). | If the Anthropic credit runs out, Create and the UGC chat stop. | owner (a few minutes) |
+| 4 | **Done (2026-10-11): cost tracking step 2, money in.** Record the dollar amount of every purchase (Kelviq, Test Pass, AppSumo after its cut). | Step 1 (real cost of every paid call) is live. Without money in there is no margin. | build |
+| 5 | **Done (2026-10-11): cost tracking step 3, "Customer economics" in God Mode.** Per workspace: money in, credits, real cost, margin. | Shows which buyers and channels make or lose money. | build |
 | 6 | **Where buyers came from.** Each account and purchase is tagged Google, AppSumo, affiliate or direct, and the Google click id is carried through sign-up. Turns on URL passthrough. | Proves the Google campaign works. Feeds item 5. | build |
-| 7 | **Purchase conversion label.** | Purchases are not counted in Google Ads until then. | marketer (guide: `google-ads-conversions.md`) |
+| 7 | **Done (2026-10-11): Purchase conversion label.** | Purchases are not counted in Google Ads until then. | marketer (guide: `google-ads-conversions.md`) |
 | 8 | **Ship the /agencies page.** Mockup at `marketing/agencies.html`; link it from the footer and the Agency pricing card. | Gives agencies a page that speaks to them. | owner: feedback or "ship" |
 | 9 | **Queue timeouts (QUEUE-REAP).** Composed scenes waiting behind long one-takes are timed out at 10 minutes. | A real customer's video can fail for no reason. | build |
 | 10 | **A take delivered after the balance ran out (DEDUCT-FALSE).** Today it is not charged. | Revenue leak, small. | owner: decide |

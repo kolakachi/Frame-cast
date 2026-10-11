@@ -21,6 +21,9 @@ class UgcChatTest extends TestCase
     private string $takeFormat = 'one_shot';
     private array $sceneRetries = [];
     private array $deleted = [];
+    private array $prompts = [];
+    private array $planned = [];
+    private array $linkPhotos = [];
 
     protected function setUp(): void
     {
@@ -37,7 +40,18 @@ class UgcChatTest extends TestCase
         }
         (require database_path('migrations/2026_10_10_160000_create_ugc_chats.php'))->up();
         DB::table('assets')->insert([['id' => 10, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'yara.png', 'storage_url' => 'x/yara.png', 'mime_type' => 'image/png'],
-            ['id' => 20, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'serum.jpg', 'storage_url' => 'x/serum.jpg', 'mime_type' => 'image/jpeg']]);
+            ['id' => 20, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'serum.jpg', 'storage_url' => 'x/serum.jpg', 'mime_type' => 'image/jpeg'],
+            ['id' => 60, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'dewbloom-front.jpg', 'storage_url' => 'x/front.jpg', 'mime_type' => 'image/jpeg']]);
+        // What each product photo shows (VISION): the real reader calls a vision model, so the test fixes its answers.
+        $sheets = [20 => ['kind' => 'product', 'what' => 'a face serum', 'form' => 'squeeze tube', 'size' => 'about the length of a hand', 'look' => 'white with a green flip cap', 'label' => 'Dewbloom Vitamin C'],
+            60 => ['kind' => 'product', 'what' => 'a face serum', 'form' => 'squeeze tube', 'size' => 'palm-sized', 'look' => 'white, green cap, seen from the front', 'label' => 'Dewbloom']];
+        $vision = Mockery::mock(\App\Services\Ugc\ProductVision::class);
+        $vision->shouldReceive('sheets')->andReturnUsing(fn (array $ids) => array_intersect_key($sheets, array_flip($ids)));
+        $vision->shouldReceive('look')->andReturnUsing(fn (array $ids) => ($first = collect($ids)->map(fn ($i) => $sheets[$i] ?? null)->filter()->first()) ? \App\Services\Ugc\ProductVision::line($first) : '');
+        $this->app->instance(\App\Services\Ugc\ProductVision::class, $vision);
+        $finder = Mockery::mock(\App\Services\Ugc\ProductImageFinder::class);
+        $finder->shouldReceive('import')->andReturnUsing(fn () => $this->linkPhotos);
+        $this->app->instance(\App\Services\Ugc\ProductImageFinder::class, $finder);
         DB::table('characters')->insert(['id' => 5, 'workspace_id' => null, 'name' => 'Yara', 'status' => 'active', 'is_stock' => true, 'reference_asset_id' => 10, 'gender' => 'female']);
 
         $credits = Mockery::mock(CreditService::class)->shouldIgnoreMissing();
@@ -45,15 +59,15 @@ class UgcChatTest extends TestCase
         $credits->shouldReceive('planTier')->andReturn('creator');
         $this->app->instance(CreditService::class, $credits);
         $ai = Mockery::mock(AIGenerationAdapter::class);
-        $ai->shouldReceive('generate')->andReturnUsing(fn () => ['content' => json_encode(array_shift($this->replies))]);
+        $ai->shouldReceive('generate')->andReturnUsing(function ($key, $vars) { $this->prompts[] = [$key, $vars]; return ['content' => json_encode(array_shift($this->replies))]; });
         $this->app->instance(AIGenerationAdapter::class, $ai);
 
         $segments = [['kind' => 'on_camera', 'script_text' => 'This serum fixed my dull skin in a week.', 'seconds' => 15, 'visual_brief' => 'Bathroom mirror selfie',
             'voice_direction' => 'Warm.', 'anchor' => 'This serum fixed my dull skin in a week.', 'anchor_role' => 'establish', 'source' => null, 'speed' => 1.0, 'headline' => null, 'motion_prompt' => '']];
         $ugc = Mockery::mock(UgcController::class)->makePartial();
         $ok = fn (array $data, int $status = 200) => new JsonResponse(['data' => $data, 'meta' => []], $status);
-        $ugc->shouldReceive('plan')->andReturnUsing(fn () => $ok(['format' => 'direct_camera', 'script' => $segments[0]['script_text'], 'segments' => $segments,
-            'presenter' => 'A woman in her late twenties', 'presenter_character_id' => 5, 'credits_per_character' => 99]));
+        $ugc->shouldReceive('plan')->andReturnUsing(fn ($request) => ($this->planned[] = $request->all()) ? $ok(['format' => 'direct_camera', 'script' => $segments[0]['script_text'], 'segments' => $segments,
+            'presenter' => 'A woman in her late twenties', 'presenter_character_id' => 5, 'credits_per_character' => 99]) : null);
         $ugc->shouldReceive('readLink')->andReturnUsing(fn () => $ok(['product' => 'Dewbloom serum', 'context' => 'Vitamin C, 30 ml', 'must_include' => '']));
         $ugc->shouldReceive('generateOneShot')->andReturnUsing(function ($request) use ($ok) {
             $this->handed[] = $request->all();
@@ -84,7 +98,7 @@ class UgcChatTest extends TestCase
             'link' => 'https://dewbloom.co', 'attachments' => [['asset_id' => 20]]])->assertOk();
         $chatMessages = $reply->json('data.chat.messages');
         $facts = collect($chatMessages)->firstWhere('kind', 'facts');
-        $this->assertSame(['source' => 'page', 'text' => 'Dewbloom serum · Vitamin C, 30 ml'], $facts['payload']['facts'][0], 'what we read from the page is shown back');
+        $this->assertSame(['page', 'Dewbloom serum · Vitamin C, 30 ml'], [$facts['payload']['facts'][0]['source'], $facts['payload']['facts'][0]['text']], 'what we read from the page is shown back');
         $reply = $reply->json('data.reply');
         $this->assertSame(['question', ['You', 'One of our actors', 'Let us pick']], [$reply['kind'], $reply['payload']['chips']]);
         $state = json_decode(DB::table('ugc_chats')->where('id', $chat)->value('state_json'), true);
@@ -128,6 +142,38 @@ class UgcChatTest extends TestCase
         $this->assertSame([301], $this->deleted, 'the failed take is removed');
         $run = json_decode(DB::table('ugc_chat_messages')->where('id', $makingId)->value('payload_json'), true)['runs'][0];
         $this->assertSame(['run-2', 1], [$run['run_id'], $run['attempt']]);
+    }
+
+    public function test_the_director_sees_what_the_product_photos_show_and_a_link_brings_its_photos(): void
+    {
+        $this->withoutMiddleware();
+        $this->linkPhotos = [60];
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->assertCreated()->json('data.id');
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Dewbloom review', 'summary' => 'Yara holds the tube.',
+            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Dull skin', 'duration_seconds' => 15];
+        $res = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A UGC ad for my serum',
+            'link' => 'https://dewbloom.co/products/serum', 'attachments' => [['asset_id' => 20]],
+            'presenters' => [['character_id' => 5, 'voice' => null]]])->assertOk()->json('data');
+
+        // The user's own photo first, then the page's; each described, never just a file name.
+        $state = $res['chat']['state'];
+        $this->assertSame([20, 60], array_column($state['attachments'], 'asset_id'));
+        $this->assertTrue($state['attachments'][1]['from_link']);
+        $materials = collect($this->prompts)->firstWhere(0, 'ugc_chat_turn')[1]['materials'];
+        $this->assertStringContainsString('serum.jpg showing a face serum (squeeze tube); white with a green flip cap; about the length of a hand; the label reads "Dewbloom Vitamin C"', $materials);
+        $this->assertStringContainsString('from their product page: dewbloom-front.jpg showing', $materials);
+        $this->assertStringStartsWith('The product, exactly as its photos show: a face serum (squeeze tube)', $this->planned[0]['context'], 'the plan describes the product from its photo');
+        $facts = collect($res['chat']['messages'])->firstWhere('kind', 'facts')['payload']['facts'][0];
+        $this->assertSame(60, $facts['images'][0]['asset_id'], 'the page photos are shown under what we read there');
+
+        // A page photo that is not theirs to use is taken out, and the video is made without it.
+        $pitch = collect($res['chat']['messages'])->firstWhere('kind', 'pitch');
+        $after = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/attachments/remove", ['asset_id' => 60])->assertOk()->json('data.chat.state');
+        $this->assertSame([20], array_column($after['attachments'], 'asset_id'));
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-1111-4a2b-9c3d-123456789abc', 'consent' => true])->assertOk();
+        $this->assertSame([20], $this->handed[0]['product_asset_ids']);
+        $this->assertSame(20, (int) $this->handed[0]['product_asset_id']);
+        $this->actingAs($this->user(2))->postJson("/api/v1/ugc/chats/{$chat}/attachments/remove", ['asset_id' => 20])->assertNotFound();
     }
 
     public function test_the_director_picks_a_setting_with_a_photo_and_the_outfit_suits_it(): void

@@ -1157,6 +1157,8 @@ class UgcController extends Controller
             'setting' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::direction((string) $v['setting_key']) : trim((string) ($v['setting'] ?? '')),
             'place_note' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::note((string) $v['setting_key'], $placePhoto) : '',
             'product' => trim((string) ($v['product'] ?? '')),
+            // What the product photos show (VISION): its form, size, colours and label, so a tube stays a tube.
+            'product_look' => $productIds ? app(\App\Services\Ugc\ProductVision::class)->look($productIds, (int) $user->workspace_id) : '',
             'tone' => trim((string) ($v['tone'] ?? '')),
             'wardrobe' => trim((string) ($v['wardrobe'] ?? '')),
             'pronunciations' => $pronNotes,

@@ -31,7 +31,7 @@ class UgcOneShotCompiler
 
     /**
      * @param  array<int, array{script_text: string, seconds: float|int, visual_brief: string, voice_direction?: string}>  $beats
-     * @param  array{presenter?: string, setting?: string, product?: string, tone?: string}  $style
+     * @param  array{presenter?: string, setting?: string, product?: string, product_look?: string, tone?: string}  $style
      * $maxSeconds: the longest clip the engine makes (Veo 8, snapped to 4/6/8; Omni 10, any length).
      * new_shot: the clip opens on a cut rather than carrying the previous shot on, so it can start from the reference
      * photos instead of the last frame (GenerateOneShotUgcJob).
@@ -252,6 +252,9 @@ class UgcOneShotCompiler
             .ucfirst($presenter).($wardrobe !== '' ? ', wearing '.$wardrobe.',' : '').' talks directly to the phone camera in '.$setting
             .($product !== '' ? ', featuring '.$product : '')
             .'. The delivery is '.$tone.', unpolished and believable.'
+            // The product as its photos show it (VISION, 2026-10-11): a squeeze tube came out as a pump bottle in 3 of 6.
+            .(trim((string) ($style['product_look'] ?? '')) !== '' ? ' The product is exactly the one in the product reference photos: '.rtrim(trim((string) $style['product_look']), '.')
+                .'. Keep its exact form, size, colours, cap and label in every shot; never turn it into a different kind of container or package.' : '')
             .(trim((string) ($style['place_note'] ?? '')) !== '' ? ' '.trim((string) $style['place_note']) : '');
     }
 

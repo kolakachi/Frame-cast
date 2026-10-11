@@ -320,6 +320,26 @@ async function rewrite() {
   }
 }
 
+// Photos brought from a pasted product page, while the chat still uses them (VISION).
+function linkPhotos(f) {
+  const used = new Set((chat.value?.state?.attachments || []).map(a => a.asset_id))
+  return (f.images || []).filter(p => used.has(p.asset_id))
+}
+const removingPhoto = ref(null)
+async function removePhoto(p) {
+  if (removingPhoto.value) return
+  removingPhoto.value = p.asset_id
+  const id = chatId.value
+  try {
+    const { data } = await api.post(`/ugc/chats/${id}/attachments/remove`, { asset_id: p.asset_id })
+    if (id === chatId.value) chat.value = data.data.chat
+  } catch (err) {
+    error.value = apiErrorMessage(err, 'That photo could not be removed. Try again.')
+  } finally {
+    removingPhoto.value = null
+  }
+}
+
 async function send(override = null) {
   const body = override ?? text.value.trim()
   if (sending.value || hasUploading.value || rewriteState.value === 'busy') return
@@ -584,7 +604,18 @@ onBeforeUnmount(() => {
               <span class="uc-mark" aria-hidden="true">W</span>
 
               <div v-if="m.kind === 'facts'" class="uc-card uc-facts">
-                <p v-for="(f, i) in m.payload.facts" :key="i" class="uc-fact"><span class="uc-label uc-label--ok">From your {{ f.source }}</span> {{ f.text }}</p>
+                <template v-for="(f, i) in m.payload.facts" :key="i">
+                  <p class="uc-fact"><span class="uc-label uc-label--ok">From your {{ f.source }}</span> {{ f.text }}</p>
+                  <div v-if="linkPhotos(f).length" class="uc-linkpics">
+                    <span class="uc-linkpics-note">Product photos from the page, used as references. Remove any that aren't yours to use.</span>
+                    <div class="uc-linkpics-row">
+                      <span v-for="p in linkPhotos(f)" :key="p.asset_id" class="uc-linkpic">
+                        <img :src="p.url" alt="Product photo from the page" loading="lazy" />
+                        <button type="button" class="uc-x" :disabled="removingPhoto === p.asset_id" aria-label="Remove this photo" @click="removePhoto(p)">×</button>
+                      </span>
+                    </div>
+                  </div>
+                </template>
               </div>
 
               <div v-else-if="m.kind === 'question'" class="uc-card">
@@ -850,6 +881,12 @@ onBeforeUnmount(() => {
 .uc-label--accent { color: var(--color-accent); }
 .uc-label--ok { color: #4fd18b; }
 .uc-facts { display: flex; flex-direction: column; gap: 8px; }
+.uc-linkpics { display: flex; flex-direction: column; gap: 6px; }
+.uc-linkpics-note { font-size: 12px; color: var(--color-text-muted); }
+.uc-linkpics-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.uc-linkpic { position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden; border: 1px solid var(--color-border); background: var(--color-bg-elevated, transparent); }
+.uc-linkpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.uc-linkpic .uc-x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: 14px; line-height: 20px; }
 .uc-fact { margin: 0; padding: 8px 10px; border: 1px dashed var(--color-border-active); border-radius: 8px; color: var(--color-text-secondary); font-size: 13px; }
 .uc-q { margin: 4px 0 10px; }
 .uc-chips { display: flex; flex-wrap: wrap; gap: 6px; }

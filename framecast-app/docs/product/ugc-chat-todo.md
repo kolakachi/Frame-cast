@@ -29,7 +29,7 @@ assembly stays simple, motion graphics stay in Create.
 | OLD-FORM-CHANGES | Old-form one-takes change on deploy: captions on by default, cuts at shot changes re-anchored on photos, shorter job timeout (resumable) | review | owner OK |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
-| VISION | The director reads only file names: the sweep's product (a tube) became a pump bottle in 3 of 6 videos. Let it look at product photos | proposed | build |
+| VISION | Built 2026-10-11 (local): each product photo is read once by Haiku (form, size, colours, label) and the sheet goes to the director, the plan's brief and every clip prompt; a pasted link brings up to 3 of its own product shots (JSON-LD, og:image, Shopify feed), removable in the chat | ready | push, then one paid take with the Nécessaire tube |
 | QUEUE-REAP | Composed scenes waiting behind long one-takes on a busy queue are reaped as "timed out" at 10 minutes | open | fix |
 | ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
 | CAST-ALL | Multi-person ads (skit): cast every role from the presenter library (or the user's picks) before making; every person's photo as a reference; a voice per person; chosen presenters = one video's cast for a skit | open | build next |
@@ -46,7 +46,7 @@ assembly stays simple, motion graphics stay in Create.
 | D-LEN | A pasted script's length wins over the chosen length (recommended; built that way) | owner OK |
 | D-REWRITE | Rewrite with AI is free (built that way) | owner OK |
 | D-CHAR | Saved characters come from Library → Characters (recommended) | owner OK |
-| LIVE | Deployed 2026-10-10 and opened to every paid account (UGC_CHAT_OPEN_TO_ALL=true on prod). A real paid make from the chat on prod (charges, captions, Download, resume) still to run | run soon |
+| LIVE | Deployed 2026-10-10, open to every paid account; prod canary take 280 passed 2026-10-11 (delivered, charged once, plain-video Download) | done |
 
 ## 3. Other open items from 2026-10-10 (not UGC chat)
 

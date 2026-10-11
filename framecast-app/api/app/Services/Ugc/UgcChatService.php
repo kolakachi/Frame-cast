@@ -37,7 +37,7 @@ final class UgcChatService
         'excited' => 'Excited and upbeat, genuinely impressed', 'calm' => 'Calm and assured, like an expert explaining',
         'deadpan' => 'Dry and deadpan, understated'];
 
-    public function __construct(private AIGenerationAdapter $ai, private CreditService $credits) {}
+    public function __construct(private AIGenerationAdapter $ai, private CreditService $credits, private ProductVision $vision, private ProductImageFinder $images) {}
 
     /** Everyone once UGC_CHAT_OPEN_TO_ALL is on; until then the team (Create's allowed addresses and domains) and super admins. */
     public static function allowed(User $user): bool
@@ -90,6 +90,26 @@ final class UgcChatService
         if (! empty($input['link']) && ($state['link']['url'] ?? null) !== $input['link']) {
             $facts = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'readLink'], ['request' => $r]), ['url' => (string) $input['link']]);
             $state['link'] = ['url' => (string) $input['link'], 'facts' => isset($facts['error']) ? null : $facts];
+            // Its product photos come too (VISION): after the user's own, which stay first.
+            if (! isset($facts['error'])) {
+                $linked = $this->images->import($user, (string) $input['link'], (string) ($facts['product'] ?? ''));
+                foreach ($linked as $assetId) {
+                    if (collect($state['attachments'] ?? [])->contains(fn ($x) => (int) $x['asset_id'] === $assetId)) continue;
+                    $state['attachments'][] = ['asset_id' => $assetId, 'role' => 'product', 'type' => 'image', 'title' => (string) DB::table('assets')->where('id', $assetId)->value('title'), 'from_link' => true];
+                }
+                $state['link']['images'] = $linked;
+            }
+        }
+        // What each product photo shows, read once (VISION): the director describes the product from this, never from
+        // a file name.
+        $unread = array_values(array_map(fn ($a) => (int) $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'product' && $a['type'] === 'image' && ! isset($a['look']))));
+        if ($unread) {
+            $sheets = $this->vision->sheets($unread, (int) $user->workspace_id);
+            foreach ($state['attachments'] as $i => $a) {
+                if (! isset($sheets[(int) $a['asset_id']])) continue;
+                $state['attachments'][$i]['look'] = ProductVision::line($sheets[(int) $a['asset_id']]);
+                $state['attachments'][$i]['shot'] = $sheets[(int) $a['asset_id']]['kind'];
+            }
         }
         // Presenters are this workspace's characters or stock actors, each with a face to anchor; anything else is
         // dropped (an id from another workspace leaked its name into the pitch).
@@ -110,7 +130,7 @@ final class UgcChatService
         if (! empty($input['link']) && ($before['link']['url'] ?? null) !== ($state['link']['url'] ?? null)) {
             $facts[] = ['source' => 'page', 'text' => ! empty($state['link']['facts'])
                 ? Str::limit(trim(implode(' · ', array_filter([$state['link']['facts']['product'] ?? '', $state['link']['facts']['context'] ?? '']))), 240)
-                : 'I could not read that page. Tell me about the product instead.'];
+                : 'I could not read that page. Tell me about the product instead.', 'images' => $state['link']['images'] ?? []];
         }
         if (! empty($state['sample']['reference']) && ($before['sample']['asset_id'] ?? null) !== ($state['sample']['asset_id'] ?? null)) {
             $facts[] = ['source' => 'sample', 'text' => self::sampleLine($state['sample']['reference'])];
@@ -185,17 +205,18 @@ final class UgcChatService
         $named = is_string($d['setting'] ?? null) ? $d['setting'] : '';
         $setting = $everyone ? $chosen[0] : (isset($settings[$named]) ? $named : $this->pickSetting($settings, $recentSettings));
         $wardrobe = $this->pickWardrobe($recentOutfits, $setting !== null ? ($settings[$setting]['wardrobe'] ?? []) : []);
+        $products = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'product')));
+        $look = $products ? $this->vision->look($products, (int) $request->user()->workspace_id) : '';
         $plan = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'plan'], ['request' => $r]), array_filter([
             'avoid_character_ids' => empty($state['presenters']) && $recentFaces ? $recentFaces : null,
             'script' => mb_substr((string) ($d['script'] ?? ''), 0, 1500),
-            'context' => mb_substr(trim((string) ($d['context'] ?? $d['summary'])).($setting !== null ? ' Filmed in '.$settings[$setting]['place'].'.' : '').' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
+            'context' => mb_substr(($look !== '' ? 'The product, exactly as its photos show: '.$look.'. Every shot that shows it shows this same object, at this size. ' : '').trim((string) ($d['context'] ?? $d['summary'])).($setting !== null ? ' Filmed in '.$settings[$setting]['place'].'.' : '').' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
             'product' => mb_substr((string) ($d['product'] ?? ($state['link']['facts']['product'] ?? '')), 0, 200), 'format' => $format,
             'duration_seconds' => $seconds, 'language' => 'en', 'footage_asset_ids' => $footage ?: null,
             'reference' => ! empty($state['sample']['reference']) ? array_intersect_key($state['sample']['reference'], ['duration' => 1, 'shape' => 1, 'beats' => 1]) : null,
         ], fn ($v) => $v !== null && $v !== ''));
         if (isset($plan['error'])) return $this->say($id, 'error', $plan['error']['message'] ?? 'The plan could not be made. Try again.');
 
-        $products = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'product')));
         $presenters = $state['presenters'] ?? [];
         if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? null, 'voice' => null, 'picked' => true]];
         $takes = [];
@@ -342,8 +363,13 @@ final class UgcChatService
         $pitch = json_decode((string) $msg->payload_json, true);
         if (! empty($pitch['made'])) abort(409, 'This video is already being made.');
         $runs = []; $failed = null;
+        // A product photo taken out after the pitch is not sent (one brought from their page may not be theirs to use).
+        $kept = array_map(fn ($a) => (int) $a['asset_id'], (json_decode((string) $chat->state_json, true) ?: [])['attachments'] ?? []);
         foreach ($pitch['takes'] as $i => $t) {
             if (isset($pitch['started'][$i])) { $runs[] = $pitch['started'][$i]; continue; } // started by an earlier Make
+            $products = array_values(array_filter(array_map('intval', (array) ($t['request']['product_asset_ids'] ?? array_filter([$t['request']['product_asset_id'] ?? null]))), fn ($p) => in_array($p, $kept, true)));
+            unset($t['request']['product_asset_id'], $t['request']['product_asset_ids']);
+            if ($products) $t['request'] += $t['mode'] === 'one_shot' ? ['product_asset_id' => $products[0], 'product_asset_ids' => $products] : ['product_asset_id' => $products[0]];
             // Keyed by the pitch, not the browser: a second Make after a reload is the same request (idempotent).
             $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$messageId.':'.$i)->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
@@ -447,6 +473,11 @@ final class UgcChatService
                     'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addHours(2), ['assetId' => $asset->id])];
             }
             if ($m->kind === 'pitch') foreach ($payload['takes'] ?? [] as $i => $t) unset($payload['takes'][$i]['request']);
+            // Photos brought from their product page, shown under what we read there.
+            if ($m->kind === 'facts') foreach ($payload['facts'] ?? [] as $i => $f) {
+                $payload['facts'][$i]['images'] = array_map(fn ($assetId) => ['asset_id' => (int) $assetId,
+                    'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addHours(2), ['assetId' => (int) $assetId])], $f['images'] ?? []);
+            }
             if ($m->kind === 'making') {
                 foreach ($payload['runs'] ?? [] as $i => $run) {
                     $takes = $run['run_id'] ? $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET') : [];
@@ -456,6 +487,17 @@ final class UgcChatService
             return ['id' => (int) $m->id, 'role' => $m->role, 'kind' => $m->kind, 'content' => $m->content, 'payload' => $payload, 'at' => $m->created_at];
         })->all();
         return ['id' => $chat->id, 'title' => $chat->title, 'state' => json_decode((string) $chat->state_json, true), 'messages' => $messages];
+    }
+
+    /** Take a file out of what the chat uses (a product photo brought from their page that is not theirs to use, or wrong). */
+    public function removeAttachment(User $user, string $id, int $assetId): array
+    {
+        $chat = $this->chat($user, $id);
+        $state = json_decode((string) $chat->state_json, true) ?: [];
+        $state['attachments'] = array_values(array_filter($state['attachments'] ?? [], fn ($a) => (int) $a['asset_id'] !== $assetId));
+        DB::table('ugc_chats')->where('id', $id)->update(['state_json' => json_encode($state), 'updated_at' => now()]);
+
+        return $state;
     }
 
     /** A sample's structure in one line: its shape, length and beats, never its words. */
@@ -519,7 +561,10 @@ final class UgcChatService
     private function materials(array $s): string
     {
         $lines = [];
-        foreach ($s['attachments'] ?? [] as $a) $lines[] = "- {$a['role']} {$a['type']}: {$a['title']}";
+        foreach ($s['attachments'] ?? [] as $a) {
+            $seen = ! empty($a['look']) ? (($a['shot'] ?? 'product') === 'other' ? ' (not a product shot: '.$a['look'].')' : ' showing '.$a['look']) : '';
+            $lines[] = "- {$a['role']} {$a['type']}".(! empty($a['from_link']) ? ' from their product page' : '').": {$a['title']}{$seen}";
+        }
         if (! empty($s['link']['facts'])) $lines[] = '- Product page '.$s['link']['url'].': '.json_encode(array_intersect_key($s['link']['facts'], array_flip(['product', 'context', 'must_include'])));
         elseif (! empty($s['link']['url'])) $lines[] = '- Product page '.$s['link']['url'].' (could not be read)';
         if (! empty($s['sample']['reference'])) $lines[] = '- Sample UGC structure (copy its shape, never its words): '.json_encode($s['sample']['reference']);

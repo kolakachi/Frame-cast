@@ -73,6 +73,15 @@ class UgcChatController extends Controller
         return response()->json(['data' => ['reply' => $reply, 'chat' => $this->chats->show($request, $id)], 'meta' => []]);
     }
 
+    /** Take a file out of what the chat uses, such as a photo brought from their product page. */
+    public function removeAttachment(Request $request, string $id): JsonResponse
+    {
+        if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
+        $v = $request->validate(['asset_id' => ['required', 'integer']]);
+        $this->chats->removeAttachment($request->user(), $id, (int) $v['asset_id']);
+        return response()->json(['data' => ['chat' => $this->chats->show($request, $id)], 'meta' => []]);
+    }
+
     /** "Make it": spends credits, so the user confirms the rights the wizard asked for. */
     public function make(Request $request, string $id): JsonResponse
     {
