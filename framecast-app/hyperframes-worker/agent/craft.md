@@ -29,6 +29,10 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - One shape of energy for the whole video: build, peak, breathe, a bigger peak, land. Quiet stretches between peaks are what make the peaks land; never run every beat at full intensity. A move that comes back changes something (direction, speed, scale), never repeats exactly.
 - Ease by material: rigid things (cards, devices, UI) snap and settle with little overshoot; elastic things (characters, stickers, icons) overshoot and bounce; paper drifts and settles slowly; light, smoke and glows ease out long. A move's sound matches its weight: a soft settle never gets a big hit.
 - Everything is still on the last frame before a cut; something still moving at a cut looks cheap.
+- One camera: pushes, pans and zooms go on one container, and a handoff starts where the last move ended, never snapping back to 1.0 at a scene change. Never zoom in and straight back out.
+- Hand off with shared elements when the plan allows: what leaves becomes what arrives (a button grows into the page, a dot becomes the logo, a card flies into its slot), rather than a crossfade between unrelated scenes.
+- Something that appears in under 0.3 s reads as a pop: cut to it, or fade over at least 0.3 s.
+- Unless the approved plan or reference calls for them, avoid the looks that mark a video as generated: particle bursts, shockwave rings, lens flares, camera shake, RGB split, neon glows, grid floors, flashing backgrounds, repeated bouncing. Emphasise a word with colour, weight or scale, never a highlight box behind it (it reads as a text selection).
 - Before hand-building a named visual (device frame, captions, CTA, counter, chart, chat UI, transition, texture, mascot), search the registry with the catalog action and wire the item (kit/registry.md).
 
 ## Character (when there is one)
@@ -52,6 +56,7 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - Motion-kit moves bring their own effects (kit/motion-kit.md, Sound); keep them unless the brief or reference is silent (then `data-sounds="off"`). Neither every cut nor every text reveal needs a sound: words, writeOn and rise are silent, and moves closer than 0.25 s share one.
 - The voice sits clearly above any music. A short near-silence can emphasize a reveal when that suits the requested style; it is not mandatory for educational or source-footage edits.
 - Put cuts and pops on the music's strong beats when the music has a clear pulse.
+- A sound effect lands by its peak (the hit), not by where its file starts: a whoosh peaks on the cut, an impact on the landing.
 
 ## The presenter performs (when a talking shot or character poses exist)
 - A talking take (the whole narration) or talking shot (the hook line) is the A-roll: the character speaks on camera at hero scale while the words are heard, its own audio as the voice track for its span (do not also play the narration file over it); never leave it as a muted clip or a still. B-roll beats (UI cards, the browser, the formats) cut in beside or over the A-roll and return to it; the close is A-roll.
@@ -80,6 +85,11 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - Text hidden inside a mask still counts as overlapping: hide it with `autoAlpha:0` on a wrapper that is not a `.clip` until its turn.
 - A Lottie layer with an animated transform renders blank: keep the Lottie still and move its container with GSAP.
 - `main.js` may run before the page's elements exist: build the timeline in a function and call it from the inline script at the end of `index.html`.
+- `opacity` or `filter` on a `transform-style: preserve-3d` element flattens it, and both faces of a flip show: fade a wrapper around it instead.
+- A registry item's slot (data-composition-src) whose `data-duration` is shorter than its beat goes blank when it ends: give it the whole beat (lint: `subcomposition_blanks_before_host`). Its own timeline ending early is fine; it holds the last frame.
+- A clip is hidden at exactly `data-start + data-duration`: land its end state a little before, or its last state is never rendered.
+- A colour flood or a shape that fills the frame scales from its origin past the farthest corner (check all four), taking about 0.35 s; shorter reads as a flash, smaller leaves a corner uncovered.
+- Give every layer that covers another (a flood, a card, a mask) an explicit `z-index`; source order breaks as soon as an element is added or moved.
 
 ## Before finishing
 - Every requested idea is present; every read has time; intentional holds remain intact. Inspect the full timeline for unintended blank intervals and missing content.
