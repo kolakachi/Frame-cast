@@ -34,6 +34,8 @@ class EconomicsController extends Controller
             ->get()->keyBy('workspace_id');
 
         $ids = collect($rev->keys())->merge($cost->keys())->merge($earlier->keys())->filter()->unique()->values();
+        // Sales with no account behind them (an AppSumo licence bought but never redeemed) still reached us: one row.
+        if ($rev->has('')) $ids->push('');
         $workspaces = DB::table('workspaces')->whereIn('id', $ids)->get()->keyBy('id');
         $owners = DB::table('users')->whereIn('workspace_id', $ids)->orderBy('id')->get(['workspace_id', 'email'])->unique('workspace_id')->pluck('email', 'workspace_id');
 
@@ -49,7 +51,7 @@ class EconomicsController extends Controller
             $c = $credits->get($id);
             return [
                 'workspace_id' => (int) $id,
-                'name' => $w->name ?? ('Workspace '.$id),
+                'name' => $id === '' ? 'Not linked to an account (unredeemed licences)' : ($w->name ?? ('Workspace '.$id)),
                 'owner_email' => $owners[$id] ?? null,
                 'plan' => $w->plan_tier ?? null,
                 'client_of' => $w->parent_workspace_id ?? null,

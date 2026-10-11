@@ -93,6 +93,7 @@ class CustomerEconomicsTest extends TestCase
             ['workspace_id' => 28, 'provider' => 'kelviq', 'external_id' => 'o1', 'kind' => 'pack', 'channel' => 'direct', 'currency' => 'USD', 'net' => 199, 'net_usd' => 199, 'fee_usd' => 0, 'refunded_usd' => 0, 'occurred_at' => now()],
             ['workspace_id' => 27, 'provider' => 'appsumo', 'external_id' => 'license:5', 'kind' => 'appsumo', 'channel' => 'appsumo', 'currency' => 'USD', 'net' => 139, 'net_usd' => 139, 'fee_usd' => 104.25, 'refunded_usd' => 0, 'occurred_at' => now()],
         ]);
+        DB::table('revenue_events')->insert(['workspace_id' => null, 'provider' => 'appsumo', 'external_id' => 'license:9', 'kind' => 'appsumo', 'channel' => 'appsumo', 'currency' => 'USD', 'net' => 49, 'net_usd' => 49, 'fee_usd' => 36.75, 'refunded_usd' => 0, 'occurred_at' => now()]);
         DB::table('api_usage_events')->insert([['workspace_id' => 28, 'estimated_cost_usd' => 12.5, 'occurred_at' => now()], ['workspace_id' => 27, 'estimated_cost_usd' => 40, 'occurred_at' => now()], ['workspace_id' => null, 'estimated_cost_usd' => 3, 'occurred_at' => now()]]);
         DB::table('credit_ledger')->insert([['workspace_id' => 28, 'operation' => 'grant:lifetime_kelviq', 'credits' => -12000, 'upstream_cost_usd' => null, 'created_at' => now()],
             ['workspace_id' => 28, 'operation' => 'ugc_oneshot', 'credits' => 330, 'upstream_cost_usd' => 2.0, 'created_at' => '2026-10-01 10:00:00']]);
@@ -102,5 +103,7 @@ class CustomerEconomicsTest extends TestCase
         $this->assertSame(-5.25, (float) $byId[27]['margin_usd'], 'an AppSumo buyer who used $40 of video on a $34.75 share loses money');
         $this->assertSame(3.0, (float) $d['unattributed_cost_usd']);
         $this->assertFalse($byId->has(1), 'paying customers only by default');
+        $this->assertSame(12.25, (float) $byId[0]['money_in_usd'], 'an unredeemed licence still reached us');
+        $this->assertSame((float) collect($d['by_channel'])->sum('money_in_usd'), (float) $d['totals']['money_in_usd'], 'the two totals agree');
     }
 }
