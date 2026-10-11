@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
+import { useAuthStore } from '../stores/auth'
 import { getEcho } from '../services/echo'
 import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
 import SchedulePostModal from '../components/SchedulePostModal.vue'
@@ -14,6 +15,25 @@ const finishing = ref(false)
 const exportJob = ref(null)
 const finishError = ref('')
 const pipelineFailure = ref('')
+// A first brief that failed at the script gets a way forward here, not only the editor (#11, 2026-10-12): paste the
+// text a link hid, read a scanned PDF's pages, edit and retry, or use the words as the script.
+const failedBrief = ref(null)
+const briefText = ref('')
+const retrying = ref(false)
+// Asked once per user on the finished video itself (#11): five AppSumo refunds made videos and never downloaded one,
+// and the only bad review said the video did not follow the prompt. The editor only asked after an export there.
+const authStore = useAuthStore()
+const fbState = ref(authStore.user?.preferences?.export_feedback_done ? 'done' : 'ask') // ask | not_quite | sent | done
+const fbChips = ref([])
+const fbComment = ref('')
+const FB_MISSES = ['Not what I described', 'Script missed the mark', 'Visuals look off', 'Voice sounded off', 'Took too long']
+async function sendFeedback(fit) {
+  const body = fit ? { rating: 5, options: ['Matched my brief'], trigger: 'ready', project_id: Number(projectId.value) || null }
+    : { rating: 2, options: fbChips.value, comment: fbComment.value.trim() || null, trigger: 'ready', project_id: Number(projectId.value) || null }
+  fbState.value = 'sent'
+  try { await api.post('/feedback/export', body) } catch { /* feedback never errors at the user */ }
+  if (authStore.user) authStore.user = { ...authStore.user, preferences: { ...(authStore.user.preferences ?? {}), export_feedback_done: true } }
+}
 const exportRequestPending = ref(false)
 const downloadUrl = computed(() => exportJob.value?.status === 'completed' ? exportJob.value.output_asset?.storage_url : null)
 // Every finished export, newest per aspect ratio: with more than one, chips choose which plays and downloads.
@@ -199,6 +219,11 @@ function previousStageKeys(key) {
 
 function applyStoredGenerationState(project) {
   pipelineFailure.value = project?.status === 'failed' ? displayMessage(project?.generation_status_json?.last_message || 'Generation paused. Review the brief before retrying.') : ''
+  const scriptStage = project?.generation_status_json?.stages?.script
+  if (project?.status === 'failed' && scriptStage?.status === 'failed' && ['prompt', 'script', 'url', 'pdf_upload'].includes(project.source_type)) {
+    if (!failedBrief.value) briefText.value = project.source_type === 'url' ? '' : (project.source_content_raw || '')
+    failedBrief.value = { reason: scriptStage.validation_reason || 'failed', sourceType: project.source_type }
+  } else if (project?.status !== 'failed') failedBrief.value = null
   const storedStages = project?.generation_status_json?.stages ?? {}
 
   // Brief-mode stages are sequential (script -> scenes -> hooks -> ...).
@@ -451,6 +476,21 @@ function unsubscribe() {
   if (echo && channelName) echo.leave(channelName)
 }
 
+async function retryBrief(body) {
+  if (retrying.value) return
+  retrying.value = true
+  actionMessage.value = ''
+  try {
+    await api.post(`/projects/${projectId.value}/retry-generation`, body)
+    failedBrief.value = null
+    pipelineFailure.value = ''
+    stages.value.forEach(stage => markStage(stage.key, 'pending'))
+    await loadProjectStatus()
+  } catch (err) {
+    actionMessage.value = err?.response?.data?.error?.message || 'That could not be started. Please try again.'
+  } finally { retrying.value = false }
+}
+
 async function openEditor() {
   if (editorOpening.value) return
   editorOpening.value = true
@@ -504,10 +544,45 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
           <button class="gen-foot-btn" @click="scheduleOpen = true">Schedule</button>
           <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ editorOpening ? 'Opening…' : 'Edit video' }}</button>
         </div>
+        <div v-if="fbState !== 'done'" class="gen-fit" role="group" aria-label="Is this what you asked for?">
+          <template v-if="fbState === 'ask'">
+            <span>Is this what you asked for?</span>
+            <button type="button" class="gen-foot-btn" @click="sendFeedback(true)">Yes</button>
+            <button type="button" class="gen-foot-btn" @click="fbState = 'not_quite'">Not quite</button>
+          </template>
+          <template v-else-if="fbState === 'not_quite'">
+            <span>What's off? Pick any.</span>
+            <div class="gen-fit-chips">
+              <button v-for="c in FB_MISSES" :key="c" type="button" :class="['gen-fit-chip', fbChips.includes(c) ? 'on' : '']" @click="fbChips = fbChips.includes(c) ? fbChips.filter(x => x !== c) : [...fbChips, c]">{{ c }}</button>
+            </div>
+            <textarea v-model="fbComment" class="gen-way-text" rows="2" maxlength="2000" placeholder="What did you want instead? (optional)"></textarea>
+            <div class="gen-way-actions">
+              <button type="button" class="gen-download" @click="sendFeedback(false)">Send</button>
+              <button type="button" class="gen-foot-btn" :disabled="editorOpening" @click="sendFeedback(false); openEditor()">Send and change it</button>
+            </div>
+          </template>
+          <span v-else>Thanks. That goes straight to the founders.</span>
+        </div>
       </section>
       <div v-if="pipelineFailure && !downloadUrl" class="gen-finish-error" role="alert">
         <p>{{ pipelineFailure }}</p>
-        <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ scenes.length ? 'Review script and scenes' : 'Edit brief' }}</button>
+        <template v-if="failedBrief && !scenes.length">
+          <template v-if="failedBrief.reason === 'scanned_pdf'">
+            <p class="gen-way-note">Its pages are pictures of text. We can read them as images instead; that uses credits for each page read.</p>
+            <div class="gen-way-actions">
+              <button class="gen-download" :disabled="retrying" @click="retryBrief({ pdf_read_scanned: true })">{{ retrying ? 'Starting…' : 'Read the pages as images' }}</button>
+            </div>
+          </template>
+          <template v-else>
+            <label class="gen-way-label" for="gen-brief">{{ failedBrief.reason === 'unreadable_link' ? 'Paste what the page says instead: the product, what it does and the facts to use' : 'Your brief' }}</label>
+            <textarea id="gen-brief" v-model="briefText" class="gen-way-text" rows="5" :placeholder="failedBrief.reason === 'unreadable_link' ? 'e.g. Northside Roasters, a coffee subscription: fresh beans roasted weekly, delivered every two weeks, from $18.' : ''"></textarea>
+            <div class="gen-way-actions">
+              <button class="gen-download" :disabled="retrying || !briefText.trim()" @click="retryBrief(failedBrief.sourceType === 'url' || failedBrief.sourceType === 'pdf_upload' ? { source_content_raw: briefText, source_type: 'prompt' } : { source_content_raw: briefText })">{{ retrying ? 'Starting…' : failedBrief.reason === 'unreadable_link' ? 'Make it from this text' : 'Try again' }}</button>
+              <button v-if="failedBrief.sourceType === 'prompt' && briefText.trim().split(/\s+/).length >= 25" class="gen-foot-btn" :disabled="retrying" @click="retryBrief({ source_content_raw: briefText, source_type: 'script' })">Use my words as the script</button>
+            </div>
+          </template>
+        </template>
+        <button class="gen-foot-btn" :disabled="editorOpening" @click="openEditor">{{ scenes.length ? 'Review script and scenes' : 'Open in the editor' }}</button>
       </div>
       <p v-if="actionMessage" class="gen-action-message" role="status">{{ actionMessage }}</p>
       <div v-if="finishError" class="gen-finish-error" role="alert">
@@ -658,4 +733,14 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
 .gen-foot-note { font-size: 12px; color: var(--color-text-muted); }
 .gen-foot-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-secondary); background: transparent; border: 0.5px solid var(--color-border); padding: 8px 14px; border-radius: 8px; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
 .gen-foot-btn:hover { color: var(--color-text-primary); border-color: var(--color-border-active); }
+.gen-way-note { margin: 4px 0 8px; font-size: 13px; color: var(--color-text-secondary); }
+.gen-way-label { display: block; margin: 6px 0 6px; font-size: 13px; color: var(--color-text-secondary); }
+.gen-way-text { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--color-border-active); background: var(--color-bg-card); color: var(--color-text-primary); resize: vertical; }
+.gen-way-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+button.gen-download { border: 0; cursor: pointer; font: inherit; font-weight: 600; }
+button.gen-download:disabled { opacity: .6; cursor: default; }
+.gen-fit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--color-text-secondary); }
+.gen-fit-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.gen-fit-chip { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-border-active); background: transparent; color: var(--color-text-primary); cursor: pointer; }
+.gen-fit-chip.on { border-color: var(--color-accent); color: var(--color-accent); }
 </style>

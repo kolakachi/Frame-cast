@@ -303,7 +303,15 @@ class GenerateScriptJob implements ShouldQueue
                 'status' => 'failed',
             ]);
 
-        GenerationProgressed::dispatch($this->projectId, 'script', 'failed', $exception->getMessage());
+        // Why, in a word the progress screen can act on (#11, 2026-10-12): a link we could not read offers "paste the
+        // text instead", a scanned PDF offers reading its pages as images.
+        $message = $exception->getMessage();
+        $reason = match (true) {
+            str_contains($message, 'readable text') => 'scanned_pdf',
+            str_contains($message, "couldn't read") || str_contains($message, "isn't available") || str_contains($message, 'block automated reading') => 'unreadable_link',
+            default => 'failed',
+        };
+        GenerationProgressed::dispatch($this->projectId, 'script', 'failed', $message, ['validation_reason' => $reason]);
     }
 
     private function promptTemplateKey(string $sourceType): string

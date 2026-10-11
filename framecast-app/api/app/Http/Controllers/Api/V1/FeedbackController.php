@@ -42,6 +42,8 @@ class FeedbackController extends Controller
             'project_id'    => ['nullable', 'integer'],
             'export_job_id' => ['nullable', 'integer'],
             'dismissed'     => ['sometimes', 'boolean'],
+            // "ready": asked on the finished video's own screen (#11), where the automatic finish lands people.
+            'trigger'       => ['sometimes', 'string', 'in:export,ready'],
         ]);
 
         $dismissed = (bool) ($validated['dismissed'] ?? false);
@@ -53,7 +55,7 @@ class FeedbackController extends Controller
                 'rating'        => $validated['rating'] ?? null,
                 'options'       => $validated['options'] ?? null,
                 'comment'       => $validated['comment'] ?? null,
-                'trigger'       => 'export',
+                'trigger'       => $validated['trigger'] ?? 'export',
                 'project_id'    => $validated['project_id'] ?? null,
                 'export_job_id' => $validated['export_job_id'] ?? null,
             ]);

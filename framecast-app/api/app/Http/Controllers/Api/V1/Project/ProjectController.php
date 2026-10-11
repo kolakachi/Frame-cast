@@ -392,7 +392,16 @@ class ProjectController extends Controller
             // document is image-only; this lets the retry opt in to vision
             // without recreating the project.
             'pdf_read_scanned'   => ['sometimes', 'boolean'],
+            // A way forward from a failed first brief (#11): a link we could not read becomes the text they paste, and
+            // a brief the writer could not match can be used as the script word for word.
+            'source_type'        => ['sometimes', 'string', 'in:prompt,script'],
         ]);
+        if (! empty($retryValidated['source_type']) && trim((string) ($retryValidated['source_content_raw'] ?? '')) === '' && $retryValidated['source_type'] !== 'script') {
+            return $this->error('invalid_source_content', 'Paste the text to make the video from.', 422);
+        }
+        if (! empty($retryValidated['source_type'])) {
+            $project->forceFill(['source_type' => $retryValidated['source_type'], 'allow_script_edit' => false])->save();
+        }
 
         if (($retryValidated['pdf_read_scanned'] ?? false) && $project->source_type === 'pdf_upload') {
             $project->forceFill(['pdf_read_scanned' => true])->save();
@@ -839,6 +848,18 @@ class ProjectController extends Controller
         $title       = $validated['title']
             ?? \Illuminate\Support\Str::limit($promptText, 60, '');
 
+        // Language: explicit choice first, then the chosen channel's default, then the brief's own language, then
+        // English. Scoped to the workspace so a channel id from elsewhere cannot influence it. Set before either
+        // branch: it was only defined when no plan was sent.
+        $oneShotLanguage = null;
+        if (! empty($validated['channel_id'])) {
+            $oneShotLanguage = \App\Models\Channel::query()
+                ->where('workspace_id', $user->workspace_id)
+                ->whereKey((int) $validated['channel_id'])
+                ->value('default_language') ?: null;
+        }
+        $oneShotLanguage ??= \App\Support\TextLanguage::detect((string) $validated['prompt']) ?? 'en';
+
         // Use the approved plan verbatim when the wizard sent one (so the
         // user's edits survive); otherwise split the prompt via the parser.
         // For N=1 the parser short-circuits to the single-scene path.
@@ -868,16 +889,6 @@ class ProjectController extends Controller
         } else {
             // No approved plan sent — re-parse, letting the planner SEE the
             // reference images (already resolved + workspace-scoped above).
-        // Language: explicit choice first, then the chosen channel's default,
-        // then English. Scoped to the workspace so a channel id from elsewhere
-        // cannot influence it.
-        $oneShotLanguage = 'en';
-        if (! empty($validated['channel_id'])) {
-            $oneShotLanguage = \App\Models\Channel::query()
-                ->where('workspace_id', $user->workspace_id)
-                ->whereKey((int) $validated['channel_id'])
-                ->value('default_language') ?: 'en';
-        }
 
             $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
                 ->parseMultiScene(

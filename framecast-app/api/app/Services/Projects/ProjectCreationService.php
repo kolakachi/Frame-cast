@@ -280,6 +280,12 @@ class ProjectCreationService
         if (empty($validated['platform_target'])) {
             $validated['platform_target'] = 'tiktok';
         }
+        // A brief written in Portuguese makes a Portuguese video unless the user chose otherwise (#11, 2026-10-12: a
+        // Portuguese script was made in English, failed its fidelity check three times, and the buyer left).
+        if (empty($validated['languages']) && in_array($validated['source_type'] ?? '', ['prompt', 'script'], true)) {
+            $detected = \App\Support\TextLanguage::detect((string) ($validated['source_content_raw'] ?? ''));
+            if ($detected) $validated['languages'] = [$detected];
+        }
         if (empty($validated['languages'])) {
             $validated['languages'] = ['en'];
         }
