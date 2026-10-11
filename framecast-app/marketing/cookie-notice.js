@@ -1,15 +1,18 @@
 /*
  * WyvStudio cookie notice — minimal GDPR-friendly banner.
  *
- * Shown until the user clicks "Got it". Dismissal stored in localStorage for
- * 180 days. Cookie footprint today is genuinely tiny (essential login + Kelviq
- * billing + anonymized Sentry errors), so this is a notice + acknowledgement
- * rather than a full Accept/Reject management platform.
+ * Shown until the visitor chooses. Essential cookies (login, Kelviq billing,
+ * anonymized Sentry errors) are always on. "Allow" also lets Google Ads and
+ * PostHog set cookies to measure our ads and visits; "Essential only" keeps
+ * them cookieless (google-ads.js applies the choice through Consent Mode).
+ * The choice is kept in localStorage for 180 days. v2 (2026-10-11): the
+ * notice became a choice when the Google Ads tag was added, so everyone is
+ * asked again.
  *
  * Drop in via <script src="/cookie-notice.js" defer></script>.
  */
 (function () {
-  var KEY = 'wyv_cookie_notice_v1';
+  var KEY = 'wyv_cookie_notice_v2';
   var TTL_DAYS = 180;
 
   function dismissed() {
@@ -23,8 +26,9 @@
     } catch (e) { return false; }
   }
 
-  function dismiss() {
-    try { localStorage.setItem(KEY, JSON.stringify({ ts: Date.now() })); } catch (e) {}
+  function dismiss(all) {
+    try { localStorage.setItem(KEY, JSON.stringify({ ts: Date.now(), choice: all ? 'all' : 'essential' })); } catch (e) {}
+    if (window.wyvConsent) window.wyvConsent(all);
     var el = document.getElementById('wyv-cookie-notice');
     if (el) el.remove();
   }
@@ -40,10 +44,13 @@
     host.innerHTML =
       '<div class="wcn-inner">' +
         '<div class="wcn-text">' +
-          'We use essential cookies for login and billing, plus anonymized error tracking via Sentry to keep WyvStudio working. ' +
-          'No marketing trackers, no analytics. See our <a href="/privacy">Privacy Policy</a> for details.' +
+          'We use essential cookies for login and billing, plus anonymized error tracking via Sentry. ' +
+          'With your OK, Google Ads and PostHog also use cookies to measure our ads and site visits. See our <a href="/privacy">Privacy Policy</a>.' +
         '</div>' +
-        '<button type="button" class="wcn-ok">Got it</button>' +
+        '<div class="wcn-btns">' +
+          '<button type="button" class="wcn-no">Essential only</button>' +
+          '<button type="button" class="wcn-ok">Allow</button>' +
+        '</div>' +
       '</div>';
 
     var style = document.createElement('style');
@@ -54,10 +61,14 @@
       '#wyv-cookie-notice .wcn-text a{color:#ff8055;text-decoration:underline;}' +
       '#wyv-cookie-notice .wcn-ok{background:#ff6b35;border:1px solid #ff6b35;color:#0a0a0f;font:600 13px "DM Sans",sans-serif;padding:9px 18px;border-radius:8px;cursor:pointer;flex-shrink:0;transition:.15s;}' +
       '#wyv-cookie-notice .wcn-ok:hover{background:#ff8055;border-color:#ff8055;}' +
-      '@media (max-width:640px){#wyv-cookie-notice .wcn-inner{flex-direction:column;align-items:stretch;}#wyv-cookie-notice .wcn-ok{align-self:flex-end;}}';
+      '#wyv-cookie-notice .wcn-btns{display:flex;gap:8px;flex-shrink:0;}' +
+      '#wyv-cookie-notice .wcn-no{background:transparent;border:1px solid #3a3a44;color:#ececf3;font:600 13px "DM Sans",sans-serif;padding:9px 14px;border-radius:8px;cursor:pointer;}' +
+      '#wyv-cookie-notice .wcn-no:hover{border-color:#ff8055;}' +
+      '@media (max-width:640px){#wyv-cookie-notice .wcn-inner{flex-direction:column;align-items:stretch;}#wyv-cookie-notice .wcn-btns{align-self:flex-end;}}';
     document.head.appendChild(style);
 
-    host.querySelector('.wcn-ok').addEventListener('click', dismiss);
+    host.querySelector('.wcn-ok').addEventListener('click', function () { dismiss(true); });
+    host.querySelector('.wcn-no').addEventListener('click', function () { dismiss(false); });
     document.body.appendChild(host);
   }
 
