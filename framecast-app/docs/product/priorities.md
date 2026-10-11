@@ -33,6 +33,7 @@ where they are; this file is the order to work in.
 | 7 | **Done (2026-10-11): Purchase conversion label.** | Purchases are not counted in Google Ads until then. | marketer (guide: `google-ads-conversions.md`) |
 | 8 | **Ship the /agencies page.** Mockup at `marketing/agencies.html`; link it from the footer and the Agency pricing card. | Gives agencies a page that speaks to them. | owner: feedback or "ship" |
 | 9 | **Queue timeouts (QUEUE-REAP).** Composed scenes waiting behind long one-takes are timed out at 10 minutes. | A real customer's video can fail for no reason. | build |
+| 9a | **Create builder rules (prompt only).** Into the builder's prompt: the HyperFrames trap list (a blend-mode overlay renders the film white, audio without an id is silent, a sub-timeline shorter than its slot flashes black) and the craft rules from the motion briefs in `skills/` (every frame a pure function of time, one camera container that never snaps back, shared-element handoffs, outgoing text gone before incoming, fonts loaded before measuring, no fade under 0.3 s, no opacity on 3D elements). | Prevents real failed or broken builds, at no cost. | build, then one test build (cost asked first) |
 | 10 | **A take delivered after the balance ran out (DEDUCT-FALSE).** Today it is not charged. | Revenue leak, small. | owner: decide |
 
 ## Next
@@ -40,7 +41,7 @@ where they are; this file is the order to work in.
 | # | Item | Why it matters | Who / next |
 |---|---|---|---|
 | 11 | **First session ends with a finished ad.** Review the sign-up to first video path and remove what stalls it. | The biggest lever on refunds. | build, after 1 |
-| 12 | **Create: a motion vocabulary and a "no slideshow" check.** The planner picks motion from a scene-purpose to effect table, tied to our 386 unused HyperFrames blocks (from awesome-ai-motion). The check rejects videos with almost no motion inside shots (from huashu's "anti-slideshow" gate). | More varied, more alive Create videos. | build (free) |
+| 12 | **Create: a motion vocabulary and a "no slideshow" check.** The planner picks motion from a scene-purpose to effect table, tied to our 386 unused HyperFrames blocks (from awesome-ai-motion). The check rejects videos with almost no motion inside shots (from huashu's "anti-slideshow" gate). Table sources (2026-10-12): product-launch-motion's 14-shot beat catalogue, cinetic's 273 measured techniques (review it first), the interface-morph recipes from motion-graphics-skills, animate's cut link types; plan-time storyboard lint (no text-only last shot, no empty gradient shots, no numbers floating in space). | More varied, more alive Create videos. | build (free) |
 | 13 | **Create: requirements about what is said (REQ-SPOKEN).** They are checked by sight today, so a correct voice-only version is blocked. | Wrongly failed builds. | build |
 | 14 | **Open Create to the two real customers (O9)** (ws 28, ws 27). | Real users on the flagship. | owner: decide |
 | 15 | **Every size from one video (P2-ASPECT)**, plus a warning when a 16:9 export of a vertical video gets side bars (EXP-WARN). | Ads need 9:16, 1:1, 4:5 and 16:9. | owner: decide, then build |
@@ -67,13 +68,13 @@ where they are; this file is the order to work in.
 
 | # | Item | Who |
 |---|---|---|
-| 28 | Create finishing checks: constant-speed motion, the same technique repeated, full-frame hits (FS3) | build |
+| 28 | Create finishing checks: constant-speed motion, the same technique repeated, full-frame hits (FS3). Added 2026-10-12: text under the phone's UI or cut off, one-frame pops, every sound cue present in the file, effects placed by their measured peak, the drop on the key line, voice about 9 dB over music, −14 LUFS, captions from per-phrase word timings, a contact sheet before delivery | build |
 | 29 | Create: pick the best seconds of a clip longer than its slot (D7) | build |
-| 30 | Create builder: WyvBear and the GSAP plugins (AB3); the art library for icons (AB4) | build |
+| 30 | Create builder: WyvBear and the GSAP plugins (AB3); the art library for icons (AB4); a seek-driven globe (cobe) and selected 3D helpers for product hero shots (drei) | build |
 | 31 | Create: pause to ask inside a step, then resume without re-approval (S10) | build |
-| 32 | Create: reconcile provider invoices with our cost records (HF-BILL); hard test briefs (HF-CASES) | build |
+| 32 | Create: reconcile provider invoices with our cost records (HF-BILL); hard test briefs (HF-CASES): use the motion briefs in `skills/` (launch film with voiceover, chat-to-result, typographic speech, product explainer template), adapted to our own brands; never the Spotify brief (a real brand) | build |
 | 33 | Create up to 60 seconds before falling back to Classic (WEAVE-60) | build |
-| 34 | Create explainer styles (whiteboard, kinetic type, finance chart and others), and a reference-timing breakdown for "make it like this" (from huashu). Don't market them as named channel looks (Kurzgesagt, Vox). | build |
+| 34 | Create explainer styles (whiteboard, kinetic type, finance chart and others), and a reference-timing breakdown for "make it like this" (from huashu). Don't market them as named channel looks (Kurzgesagt, Vox). Also from 2026-10-12: student-kit explainer cards (renamed), one working object that explains the idea (anatomy), shader backgrounds ported to WebGL (gradient, aurora, glass, grain; time each render first) | build |
 | 35 | Laban efforts: show them to users? Use them to direct takes? (LABAN) | owner |
 | 36 | Create test bench: budget cap (7,000 credits?), a consented photo of you, a UGC reference video, a product photo, 15 to 25 example videos (O1 to O6, then the bench rounds) | owner, then build |
 | 37 | UGC: ASMR as a silent one-take on Seedance | build |
@@ -84,6 +85,8 @@ where they are; this file is the order to work in.
 | 42 | Monthly plan for teams that need ads every week? (decide once about 10 teams buy a second pack) | owner |
 | 43 | 2 to 3 short ads about WyvStudio, made by the Creative Director itself (on hold) | owner |
 | 44 | ManimGX for math-style explainer shots, rendered on the worker and dropped into HyperFrames as footage: watch until it matures and runs on our ARM worker | watch |
+| 44a | Still-ad editor: put a logo or headline on a generated image and export 1.91:1 and 1:1 (fabric.js) | build |
+| 44b | Creative Director loop cost levers (harness study): trim old tool output by rule; re-test whether planning and the fixed tools earn their cost on Opus | build |
 | 45 | Pricing review rework, once everything above that does not depend on the marketer is done | build, last |
 
 ## Research repos we borrow from (2026-10-11)
@@ -100,4 +103,15 @@ Ideas only. We take no code unless the licence allows it and it fits.
 | ATH-MaaS/Pixelle-Video | Rewrite and retry on a moderation block (#27a) | UGC, Create | Apache-2.0. Stalled since June. |
 | academa-labs/manimgx | Math-style explainer shots (#44) | Create, later | MIT, but its packaged builds are GPL through x264: fine to run on our server, don't redistribute. 6 days old. |
 | waooAI/waoowaoo | Nothing new (we already handle reference images the same way) | — | Elastic License 2.0: no hosted use, so skip. |
+| AbubakrChan/product-launch-motion (2026-10-12) | 14-shot beat catalogue + launch-film rules (#12); HyperFrames trap index into the builder prompt; word-locked cues, audio-present check (#28) | Create | MIT; evals are write-ups, not benchmarks. |
+| nateherkai/hyperframes-student-kit | Black-flash fix (pad sub-timelines to their slot) into the builder prompt; explainer cards (#34); cut-silences/mistakes (My Footage, later) | Create, footage | MIT + commercial grant for the pipeline and styles; brand assets excluded; built on HyperFrames 0.7.109. Never market named channel looks. |
+| cth9191/animate, howseen-ai/claude-motion-design, huashu storyboard_lint | Measured checks: text under phone UI or cut off, one-frame pops, cues present, loudness; plan-time storyboard lint (#28, #12) | Create | MIT. claude-motion-design scrapes faces/memes and has a 1:1 remake mode: take checks only. |
+| charlie947/motion-graphics-skills | Interface-morph timing recipes (#12); 5-line reference breakdown (#34) | Create | MIT; take text only, no `npx skills add`. |
+| shuding/cobe, pmndrs/drei | Seek-driven globe for "worldwide" scenes; selected 3D helpers for product hero shots (#30) | Create | MIT; self-animating helpers banned; WebGL is software (SwiftShader) on the worker, keep to 1–3 beats. |
+| shader-effects-inc/shaders | Port a few effects' maths to WebGL (gradient/aurora backgrounds, glass reveals, grain) (#12, #34), later | Create | MIT engine, Pro presets are not; WebGPU-only, cannot render on our GPU-less worker; MCP/CLI send telemetry. |
+| fabricjs/fabric.js | Still-ad editor: logo/headline on a generated image, export 1.91:1 and 1:1 (new) | Images | MIT. |
+| arXiv 2609.20804 (harness study) | Rule-based trimming of old tool output; re-test planning and fixed tools on cost (harness goal) | Create loop | Coding benchmarks, not video. |
+| Leonxlnx/cinetic (in skills/rough.md) | 273 measured techniques with 60 fps timings and a "looks generated" ban linter (#12); three-concepts-first idea step | Create | MIT; supports HyperFrames; installs via npx: take text only. Review before use. |
+| skills/ (owner's motion briefs, 2026-10-12) | Builder rules (#9a), finishing checks (#28), bench briefs (#32) | Create | Briefs pull Unsplash/Pexels/Mixkit/ElevenLabs: we use only our own licensed assets. |
+| Skipped | motion, ffmpeg.wasm, deck.gl, canvas-confetti, twgl.js, rive-runtime, buildfast-skills, wheresryan anatomy (idea only for #34) | — | Not seekable, duplicate GSAP/server ffmpeg, too heavy, or need assets we can't author. |
 
