@@ -49,11 +49,13 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringContainsString('The next shot of the same presenter', $chunks[1]['prompt']);
         $this->assertSame([true, true, true], array_column($chunks, 'new_shot'));
         $this->assertStringNotContainsString('continues without a break', $chunks[0]['prompt']);
-        // ...a long shot split to fit carries on from the last frame.
+        // ...and so is each piece of a long shot split to fit (owner, 2026-10-12): a scene with its own statement, opening
+        // on a jump cut, never the same shot carrying on.
         $long = UgcOneShotCompiler::compile([['script_text' => 'One two three four five six. Seven eight nine ten eleven twelve. Thirteen fourteen fifteen sixteen.', 'seconds' => 14, 'visual_brief' => 'kitchen']]);
-        $this->assertSame(true, $long[0]['new_shot']);
-        $this->assertFalse($long[1]['new_shot']);
-        $this->assertStringContainsString('continues without a break', $long[1]['prompt']);
+        $this->assertSame(array_fill(0, count($long), true), array_column($long, 'new_shot'));
+        $this->assertStringContainsString('A jump cut to a slightly closer framing of the same moment: kitchen', $long[1]['prompt']);
+        $this->assertStringNotContainsString('continues without a break', $long[1]['prompt']);
+        $this->assertSame('Seven eight nine ten eleven twelve.', $long[1]['dialogue'], 'one statement per clip');
     }
 
     public function test_omni_clips_run_up_to_ten_seconds_unsnapped(): void

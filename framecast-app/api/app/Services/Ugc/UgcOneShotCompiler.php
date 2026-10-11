@@ -60,6 +60,10 @@ class UgcOneShotCompiler
                     // A cut between beats inside one generation — the only
                     // edit UGC permits, landing where a creator would cut.
                     $lines[] = 'Cut to '.self::framing($beat).'.';
+                } elseif ($i > 0 && ! empty($beat['continues'])) {
+                    // The next piece of a long talking shot is its own scene (owner, 2026-10-12): a jump cut, closer
+                    // and wider in turn, never the same shot carrying on (take 281 said its next line's words twice).
+                    $lines[] = 'A jump cut to a slightly '.($i % 2 ? 'closer' : 'wider').' framing of the same moment: '.self::framing($beat).'.';
                 } else {
                     // The chunk's opening framing — a continuation chunk
                     // needs it as much as the first (a beat's action lives
@@ -76,15 +80,15 @@ class UgcOneShotCompiler
                 }
             }
 
-            $newShot = $i === 0 || empty($chunk['beats'][0]['continues']);
+            // Every clip is a scene with its own statement (owner, 2026-10-12): each opens on a cut, so it can be cut back to
+            // exactly its words and the next clip says only its own.
+            $newShot = true;
             // Exactly the scripted words (2026-10-10: a listicle came back with "One, two, three." and an ad-libbed
             // line between its scripted ones, which sounded like repeats at the joins).
             $wordsOnly = $dialogue !== []
                 ? ' They say exactly these words, in this order, and nothing else: no added words, no ad-libs, no counting aloud. After the last word they stop talking and hold a natural, relaxed expression.'
                 : '';
-            $continuation = $i === 0 ? '' : ($newShot
-                ? 'The next shot of the same presenter: same hair, outfit, setting and light as the previous shot\'s frame in the references. '
-                : 'The same presenter — same outfit, same setting, same light — continues without a break. ');
+            $continuation = $i === 0 ? '' : 'The next shot of the same presenter: same hair, outfit, setting and light as the previous shot\'s frame in the references. ';
 
             $out[] = [
                 'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines).$wordsOnly

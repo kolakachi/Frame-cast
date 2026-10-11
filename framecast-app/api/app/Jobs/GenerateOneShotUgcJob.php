@@ -438,33 +438,67 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * clip never sounds like a repeat (owner, 2026-10-10). Speech in the middle is left alone. Any doubt (no words, a
      * placeholder transcript, lines that cannot be found) keeps the clip as made.
      */
+    /** A line's words for matching: lower case, split at anything not a letter or digit, "okay" read as "ok". */
+    public static function tokens(string $text): array
+    {
+        return array_values(array_filter(array_map(fn ($t) => $t === 'okay' ? 'ok' : $t, preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($text)) ?: []), fn ($t) => $t !== ''));
+    }
+
+    /**
+     * Where a clip's scripted line sits in its transcript: the first and last spoken word (indices into $said), or null
+     * when it cannot be found with confidence. Tolerant of what transcripts do to a line ("Okay" as "OK", "fragrance-free"
+     * as two words, a slightly misheard word); the earliest full reading wins, so a repeat after it is left out.
+     *
+     * @param  array<int, array{text?: string, word?: string, start: float, end: float}>  $said
+     * @return array{first: int, last: int}|null
+     */
+    public static function scriptSpan(array $said, string $dialogue): ?array
+    {
+        $want = self::tokens($dialogue);
+        $n = count($want);
+        if ($n < 2) return null;
+        $toks = [];
+        foreach ($said as $wi => $w) foreach (self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) as $t) $toks[] = [$t, $wi];
+        $m = count($toks);
+        $eq = fn (string $a, string $b) => $a === $b || (min(strlen($a), strlen($b)) >= 4 && levenshtein($a, $b) <= 1);
+        // Start on any of the line's first three words (the opening one may be misheard), then follow the line forward,
+        // allowing a couple of stray words between scripted ones.
+        for ($s = 0; $s < $m; $s++) {
+            for ($a = 0; $a < min(3, $n); $a++) {
+                if (! $eq($toks[$s][0], $want[$a])) continue;
+                $k = $s; $matched = 1; $lastWant = $a;
+                for ($w = $a + 1; $w < $n; $w++) {
+                    for ($j = $k + 1; $j <= min($m - 1, $k + 3); $j++) {
+                        if ($eq($toks[$j][0], $want[$w])) { $k = $j; $matched++; $lastWant = $w; break; }
+                    }
+                }
+                if ($matched < 0.8 * $n || $lastWant < $n - 2) continue;
+                $last = $toks[$k][1];
+                // The closing word misheard: the spoken word right after the last match is it.
+                if ($lastWant === $n - 2 && isset($said[$last + 1])) $last++;
+
+                // Started on a later word of the line: the words before it are its misheard opening, kept.
+                return ['first' => max(0, $toks[$s][1] - $a), 'last' => $last];
+            }
+        }
+
+        return null;
+    }
+
     private function trimToScript(string $path, string $dialogue, int $i, array &$temps, bool $leadIn = false, bool $ending = false): string
     {
-        $norm = fn (string $w) => preg_replace('/[^a-z0-9]+/', '', mb_strtolower($w));
-        $want = array_values(array_filter(array_map($norm, preg_split('/\s+/u', trim($dialogue)) ?: [])));
-        if (count($want) < 2) return $path;
+        if (count(self::tokens($dialogue)) < 2) return $path;
         try {
             $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
         } catch (\Throwable $e) {
             report($e);
             return $path;
         }
-        $said = array_values(array_filter($t['words'] ?? [], fn ($w) => $norm((string) ($w['text'] ?? $w['word'] ?? '')) !== ''));
+        $said = array_values(array_filter($t['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []));
         if (($t['provider_key'] ?? '') === 'local_fallback' || count($said) < 2) return $path;
-        $word = fn (int $k) => $norm((string) ($said[$k]['text'] ?? $said[$k]['word'] ?? ''));
-        $first = $last = null;
-        for ($k = 0; $k < count($said) - 1 && $first === null; $k++) {
-            if ($word($k) === $want[0] && $word($k + 1) === $want[1]) $first = $k;
-        }
-        $n = count($want);
-        for ($k = count($said) - 1; $k > 0 && $last === null; $k--) {
-            if ($word($k) === $want[$n - 1] && $word($k - 1) === $want[$n - 2]) $last = $k;
-        }
-        if ($first === null || $last === null || $last < $first) return $path;
-        // Only an unambiguous match is cut: the matched span holds nearly every scripted word, starts within the first
-        // few spoken words and ends within the last few. A mis-heard closing pair that also occurs earlier would
-        // otherwise cut real lines (review, 2026-10-10).
-        if ($last - $first + 1 < 0.85 * $n || $first > 6 || count($said) - 1 - $last > 6) return $path;
+        $span = self::scriptSpan($said, $dialogue);
+        if ($span === null) return $path;
+        [$first, $last] = [$span['first'], $span['last']];
 
         $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
         // Extra words before the first scripted one always go; a silent lead-in goes only where a cut hides it.
@@ -473,6 +507,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
         // Transcripts mark a word's end early, more so a trailing word ("softer."): 0.4 s clipped the last syllable
         // (2026-10-10). A join keeps 0.6 s, the ad's ending a full second.
         $to = min($length, (float) $said[$last]['end'] + ($ending ? 1.0 : 0.6));
+        // Never into a word said after the line (owner, 2026-10-12: each clip is a scene with its own statement): take
+        // 281 read "fragrance-free" off the label straight after its line, and the next clip said it again.
+        if (isset($said[$last + 1])) $to = min($to, max((float) $said[$last]['end'] + 0.08, (float) $said[$last + 1]['start'] - 0.05));
         if ($length <= 0 || ($from < 0.05 && $length - $to < 0.3) || $to - $from < 1.0) return $path;
 
         $out = tempnam(sys_get_temp_dir(), 'oneshot-trim-').'.mp4';

@@ -258,7 +258,8 @@ class UgcOneShotResumeTest extends TestCase
             $w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('dry', 0.8, 1.1), $w('skin.', 1.1, 1.5), $w('One,', 2.0, 2.3), $w('two,', 2.4, 2.7), $w('three.', 2.8, 3.2)]];
         $this->run_($this->job([['prompt' => 'p', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'It soothes dry skin.']]));
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
-        $this->assertEqualsWithDelta(2.5, (float) $video->duration_seconds, 0.15, 'the ad ends a second after "skin", the counting is gone');
+        // The second it keeps after its last word stops short of the next word said (owner, 2026-10-12): "One" starts at 2.0.
+        $this->assertEqualsWithDelta(1.95, (float) $video->duration_seconds, 0.15, 'the ad ends after "skin", before the counting');
         @unlink($long);
     }
 
