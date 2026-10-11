@@ -102,7 +102,7 @@ class ProductVision
             $what !== '' && $form !== '' ? $what.' ('.$form.')' : ($what ?: $form),
             trim((string) ($s['look'] ?? '')),
             trim((string) ($s['size'] ?? '')),
-            $label !== '' ? 'the label reads "'.$label.'"' : '',
+            $label !== '' ? 'the label is printed with "'.$label.'"' : '',
         ]);
 
         return mb_substr(implode('; ', $parts), 0, 400);

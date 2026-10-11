@@ -12,7 +12,7 @@ class ProductVisionTest extends TestCase
     {
         $sheet = ProductVision::parse('Here: {"kind":"product","what":"a face sunscreen","form":"squeeze tube","size":"about the length of a hand","look":"white with an orange flip cap","label":"Sunly SPF 50"}');
         $this->assertSame('product', $sheet['kind']);
-        $this->assertSame('a face sunscreen (squeeze tube); white with an orange flip cap; about the length of a hand; the label reads "Sunly SPF 50"', ProductVision::line($sheet));
+        $this->assertSame('a face sunscreen (squeeze tube); white with an orange flip cap; about the length of a hand; the label is printed with "Sunly SPF 50"', ProductVision::line($sheet));
         $this->assertSame('other', ProductVision::parse('{"kind":"poster","what":"a banner"}')['kind'], 'an unknown kind is never taken as a product shot');
         $this->assertNull(ProductVision::parse('{"kind":"product"}'), 'nothing said about the object is no sheet');
         $this->assertNull(ProductVision::parse('no json'));
@@ -46,5 +46,8 @@ class ProductVisionTest extends TestCase
             UgcOneShotCompiler::compileSingle($beats, $style)['prompt']);
         $this->assertStringContainsString('never turn it into a different kind of container', UgcOneShotCompiler::compile($beats, $style)[0]['prompt']);
         $this->assertStringNotContainsString('product reference photos', UgcOneShotCompiler::compile($beats, ['product' => 'Sunly'])[0]['prompt'], 'no photo read, no claim about one');
+        $prompt = UgcOneShotCompiler::compile($beats, $style)[0]['prompt'];
+        $this->assertStringContainsString('never said aloud', $prompt, 'label text is seen, not spoken (take 281 said "fragrance-free" twice)');
+        $this->assertStringNotContainsString('imperfect', $prompt);
     }
 }

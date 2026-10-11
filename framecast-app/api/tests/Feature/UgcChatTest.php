@@ -160,7 +160,7 @@ class UgcChatTest extends TestCase
         $this->assertSame([20, 60], array_column($state['attachments'], 'asset_id'));
         $this->assertTrue($state['attachments'][1]['from_link']);
         $materials = collect($this->prompts)->firstWhere(0, 'ugc_chat_turn')[1]['materials'];
-        $this->assertStringContainsString('serum.jpg showing a face serum (squeeze tube); white with a green flip cap; about the length of a hand; the label reads "Dewbloom Vitamin C"', $materials);
+        $this->assertStringContainsString('serum.jpg showing a face serum (squeeze tube); white with a green flip cap; about the length of a hand; the label is printed with "Dewbloom Vitamin C"', $materials);
         $this->assertStringContainsString('from their product page: dewbloom-front.jpg showing', $materials);
         $this->assertStringStartsWith('The product, exactly as its photos show: a face serum (squeeze tube)', $this->planned[0]['context'], 'the plan describes the product from its photo');
         $facts = collect($res['chat']['messages'])->firstWhere('kind', 'facts')['payload']['facts'][0];

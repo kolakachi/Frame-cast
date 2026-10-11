@@ -57,7 +57,7 @@ class ProductVisionImportTest extends TestCase
         DB::table('assets')->insert(['id' => 7, 'workspace_id' => 1, 'asset_type' => 'image', 'title' => 'IMG_2231.jpg', 'storage_url' => 'b2://x/7.jpg']);
         Http::fake(['api.anthropic.com/*' => Http::response(self::answer('product', 'squeeze tube'))]);
         $vision = app(ProductVision::class);
-        $this->assertSame('a face sunscreen (squeeze tube); white, orange cap; hand length; the label reads "Sunly"', $vision->look([7], 1));
+        $this->assertSame('a face sunscreen (squeeze tube); white, orange cap; hand length; the label is printed with "Sunly"', $vision->look([7], 1));
         $this->assertSame('squeeze tube', $vision->sheets([7], 1)[7]['form']);
         Http::assertSentCount(1);
         $this->assertSame([], $vision->sheets([7], 2), "another workspace's photo is never read");
