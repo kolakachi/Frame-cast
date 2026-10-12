@@ -235,14 +235,24 @@ final class UgcChatService
         if ($type === 'green_screen') $wardrobe = 'a charcoal grey top';
         $products = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'product')));
         $look = $products ? $this->vision->look($products, (int) $request->user()->workspace_id) : '';
-        $plan = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'plan'], ['request' => $r]), array_filter([
+        $planInput = array_filter([
             'avoid_character_ids' => empty($state['presenters']) && $recentFaces ? $recentFaces : null,
             'script' => mb_substr((string) ($d['script'] ?? ''), 0, 1500),
             'context' => mb_substr('UGC type: '.$type.'. '.(UgcTypes::contracts($request->user())[$type][3] ?? UgcTypes::direction($type)).' '.($look !== '' ? 'The product, exactly as its photos show: '.$look.'. Every shot that shows it shows this same object, at this size. ' : '').trim((string) ($d['context'] ?? $d['summary'])).($setting !== null ? ' Filmed in '.$settings[$setting]['place'].'.' : '').' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
             'product' => mb_substr((string) ($d['product'] ?? ($state['link']['facts']['product'] ?? '')), 0, 200), 'format' => $format,
             'duration_seconds' => $seconds, 'language' => 'en', 'footage_asset_ids' => $footage ?: null,
             'reference' => ! empty($state['sample']['reference']) ? array_intersect_key($state['sample']['reference'], ['duration' => 1, 'shape' => 1, 'beats' => 1]) : null,
-        ], fn ($v) => $v !== null && $v !== ''));
+        ], fn ($v) => $v !== null && $v !== '');
+        $makePlan = fn (array $input) => $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'plan'], ['request' => $r]), $input);
+        $plan = $makePlan($planInput);
+        // Every action the pitch names is in the plan (2026-10-12: a serum testimonial lost its dropper and its applying,
+        // a can unboxing its sip, as the planner kept takes simple). A plan that drops one is made once more, told which.
+        $missing = isset($plan['error']) ? [] : array_values(array_diff(UgcPlan::actionKinds(($d['summary'] ?? '').' '.($d['context'] ?? '')),
+            UgcPlan::actionKinds(implode(' ', array_map(fn ($s) => ($s['motion_prompt'] ?? '').' '.($s['visual_brief'] ?? ''), $plan['segments'] ?? [])))));
+        if ($missing !== []) {
+            $again = $makePlan(['context' => mb_substr('Show every one of these being done, in frame, in order, each at its own moment: '.implode(', ', array_map(fn ($k) => UgcPlan::ACTION_WORDS[$k] ?? $k, $missing)).'. '.$planInput['context'], 0, 1500)] + $planInput);
+            if (! isset($again['error'])) $plan = $again;
+        }
         if (isset($plan['error'])) return $this->say($id, 'error', $plan['error']['message'] ?? 'The plan could not be made. Try again.');
 
         $presenters = $state['presenters'] ?? [];

@@ -35,15 +35,18 @@ class UgcPhysicsTest extends TestCase
         $this->assertTrue(UgcOneShotCompiler::twoHanded('She tips a few peanuts into her palm.'));
     }
 
-    public function test_a_plan_shot_doing_three_things_goes_back_for_repair(): void
+    public function test_a_short_shot_doing_three_things_goes_back_for_repair_but_a_long_take_may_carry_them_in_order(): void
     {
+        $short = [['kind' => 'on_camera', 'seconds' => 6, 'visual_brief' => 'Desk.', 'script_text' => 'Okay, look at this.', 'motion_prompt' => 'She opens the pouch, pours some into her palm and takes a bite.']];
         try {
-            UgcPlan::normalise($this->take283(), 'direct_camera');
-            $this->fail('a shot that opens, pours and tastes should be refused');
+            UgcPlan::normalise($short, 'story');
+            $this->fail('a 6-second shot that opens, pours and tastes should be refused');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            $this->assertStringContainsString('Give each action its own short shot', collect($e->errors())->flatten()->first());
+            $this->assertStringContainsString('Give each action its own moment', collect($e->errors())->flatten()->first());
         }
+        $this->assertCount(1, UgcPlan::normalise($this->take283(), 'direct_camera'), 'a 22-second take carries its actions in order; the compiler spreads them over its pieces');
         $this->assertSame(['open', 'taste'], UgcPlan::actionKinds('In an open-plan office she opens the pouch and takes a bite.'));
+        $this->assertSame(['open', 'taste', 'apply'], UgcPlan::actionKinds('He cracks the can, takes a sip; she pats the serum in.'));
     }
 
     public function test_the_ready_check_puts_each_shots_staging_before_the_closing_rules(): void

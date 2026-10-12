@@ -52,12 +52,15 @@ final class UgcPlan
     }
 
     /** The distinct physical actions a shot asks for (open, pour, taste…), each named once. */
+    /** How each kind of action reads when the planner is told it is missing. */
+    public const ACTION_WORDS = ['open' => 'opening it', 'pour' => 'pouring it', 'taste' => 'tasting or drinking it', 'apply' => 'applying it', 'prepare' => 'preparing it', 'wear' => 'putting it on'];
+
     public static function actionKinds(string $text): array
     {
         // Places and phrases that only look like actions ("an open-plan office", "opens up about") are not.
         $text = (string) preg_replace(['/\bopen(s)?(-|\s)(plan|kitchen|shelv\w*|window\w*|air|space|up)\b/iu', '/\b(jump\s)?cuts?\s(to|away|back)\b|\bcutaway\b/iu'], '', $text);
-        $kinds = ['open' => 'open|peel|tear|rip|unscrew|unwrap|unbox|unseal', 'pour' => 'pour|sprinkle|scoop|tip(s|ped|ping)? [^.]{0,40}into', 'taste' => 'bite|taste|eat|chew|sip|drink',
-            'apply' => 'apply|rub|massage|spread|spray|squeeze', 'prepare' => 'cut|chop|mix|stir|shake|blend', 'wear' => 'put on|try on'];
+        $kinds = ['open' => 'open|peel|tear|rip|unscrew|unwrap|unbox|unseal|crack|uncap|pop(s|ped)? (it|the|open)|twist(s|ed)? (it |the [a-z]+ )?(off|open)', 'pour' => 'pour|sprinkle|scoop|tip(s|ped|ping)? [^.]{0,40}into', 'taste' => 'bite|taste|eat|chew|sip|drink',
+            'apply' => 'apply|rub|massage|spread|spray|squeeze|pat|dab', 'prepare' => 'cut|chop|mix|stir|shake|blend', 'wear' => 'put on|try on'];
         $found = [];
         foreach ($kinds as $kind => $verbs) if (preg_match('/\b('.$verbs.')(s|es|ed|ing|ping|ped)?\b/iu', $text)) $found[] = $kind;
 
@@ -115,8 +118,10 @@ final class UgcPlan
             // One shot, one action (take 283, 2026-10-12): a 22-second talking shot that held up, opened, poured, tasted
             // and showed the pack came out as the routine repeated in every clip, with three hands.
             $acts = self::actionKinds($motion.' '.(string) ($seg['visual_brief'] ?? ''));
-            if (count($acts) >= 3) {
-                self::invalid('One shot does '.count($acts).' things ('.implode(', ', $acts).'). Give each action its own short shot with its own line; a talking shot carries one simple action.');
+            // A long take may carry a few in order, one at a time (2026-10-12: a hard limit of two made the planner drop a
+            // testimonial's applying rather than spread it over an 18-second take); about one per four seconds.
+            if (count($acts) > max(2, (int) floor($seconds / 4))) {
+                self::invalid('One shot does '.count($acts).' things ('.implode(', ', $acts).') in '.$seconds.' seconds. Give each action its own moment: split it into shorter shots, each with its own line.');
             }
             if ($kind !== 'reaction') {
                 $seconds = max($seconds, round(count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY)) / 2.6, 1));
