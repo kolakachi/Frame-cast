@@ -64,4 +64,20 @@ class UgcPhysicsTest extends TestCase
         ], 'story');
         $this->assertSame(['generate', 'upload'], [$plan[1]['source'], $plan[2]['source']]);
     }
+
+    public function test_a_silent_shot_is_only_that_shot_and_later_clips_keep_the_room(): void
+    {
+        $clips = UgcOneShotCompiler::compile([
+            ['kind' => 'on_camera', 'seconds' => 3, 'script_text' => 'Listen to this crunch.', 'visual_brief' => 'Kitchen counter, waist-up.'],
+            ['kind' => 'b_roll', 'seconds' => 2, 'script_text' => '', 'visual_brief' => 'Extreme close-up on her mouth.', 'motion_prompt' => 'Teeth bite a peanut with a crunch.'],
+        ], ['presenter' => 'Aisha', 'setting' => 'a home kitchen', 'place_note' => 'If a reference image shows a place, choose your own spot.'], UgcOneShotCompiler::OMNI_SEGMENT_SECONDS);
+        $this->assertStringContainsString('choose your own spot', $clips[0]['prompt']);
+        $this->assertStringNotContainsString('choose your own spot', $clips[1]['prompt'], 'a later clip continues the room');
+        $this->assertStringContainsString('The next shot of the same presenter in the same room', $clips[1]['prompt']);
+        $this->assertStringContainsString('One silent shot from the first frame to the last', $clips[1]['prompt']);
+        $this->assertStringNotContainsString('talks directly', $clips[1]['prompt']);
+        $this->assertStringNotContainsString('The delivery is', $clips[1]['prompt']);
+        $this->assertSame(2, $clips[1]['seconds'], 'a 2-second action is not padded to 4');
+        $this->assertStringNotContainsString('never from the reference\'s own background', $clips[1]['prompt']);
+    }
 }

@@ -101,6 +101,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
         try {
             $segmentPaths = [];
             $startFrame = $this->initialStartFrame;
+            // The last frame of the latest clip the presenter talked in: the room the next shot continues (take 285's
+            // kitchen changed after a close-up of hands, whose last frame showed only the counter).
+            $roomFrame = null;
             $saved = $this->prepareParts($project, $scene, $storage);
             // Saved clips are reused only up to the first one that must be made again: a later saved clip started from
             // the old clip's last frame and would not join the new one.
@@ -149,7 +152,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $fromRefs = $i > 0 && (! empty($chunk['source_media']) || ! empty($chunk['new_shot'])) && $this->referenceImages !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
                 // The previous clip's last frame rides along as a reference for hair, clothes and setting; the
                 // presenter's photo alone re-imagined them (2026-10-10: tied hair came back loose after a cutaway).
-                $continuity = $fromRefs && empty($chunk['reference_images']) ? $startFrame : null;
+                $continuity = $fromRefs && empty($chunk['reference_images']) ? ($roomFrame ?? $startFrame) : null;
                 if ($fromRefs) $startFrame = null;
                 $fromTail[$i] = $i > 0 && ! $fromRefs && empty($chunk['source_media']) && empty($chunk['reference_images']);
                 // A segment saved by an earlier attempt is used as it is; the next one starts from its last frame.
@@ -222,6 +225,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         throw new \RuntimeException(sprintf('Could not read the handoff frame after segment %d.', $i + 1));
                     }
                     $startFrame = 'data:image/png;base64,'.base64_encode(file_get_contents($framePath));
+                    if (trim((string) ($chunk['dialogue'] ?? '')) !== '') $roomFrame = $startFrame;
                 }
             }
 
