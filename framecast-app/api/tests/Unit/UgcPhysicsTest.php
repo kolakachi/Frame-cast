@@ -191,4 +191,18 @@ class UgcPhysicsTest extends TestCase
         // The clip came out 9 s long against 6 planned: the silent block is scaled, the talking ones follow the words.
         $this->assertEqualsWithDelta([0.6, 4.5, 6.6], \App\Services\Ugc\UgcReview::moments($blocks, 9.0, $heard), 0.01);
     }
+
+    public function test_the_camera_library_never_puts_a_phone_in_the_picture_and_a_move_is_timed_in_its_block(): void
+    {
+        foreach (\App\Services\Ugc\UgcActionSheet::CAMERAS as $key => $camera) {
+            if ($key !== 'mirror_selfie') $this->assertStringNotContainsStringIgnoringCase('phone', $camera['shot'], $key);
+        }
+        $sheet = ['camera' => 'set_down', 'shot' => 'Kitchen counter', 'start' => 'Left hand: holds the camera', 'end' => '', 'blocks' => [
+            ['when' => '00:00-00:02', 'view' => '', 'left' => 'holds the camera, out of view', 'right' => 'holds the pouch', 'product' => 'sealed', 'face' => 'on the lens', 'says' => 'Watch this.', 'sound' => '', 'check' => ''],
+            ['when' => '00:02-00:03', 'view' => 'the view tips down and settles low on the counter', 'left' => 'sets the phone down facing her', 'right' => 'holds the pouch', 'product' => 'sealed', 'face' => 'on the lens', 'says' => '', 'sound' => '', 'check' => ''],
+        ]];
+        $prompt = \App\Services\Ugc\UgcActionSheet::prompt($sheet, 'Watch this.');
+        $this->assertStringStartsWith(\App\Services\Ugc\UgcActionSheet::CAMERAS['set_down']['shot'], $prompt);
+        $this->assertStringContainsString('[00:02-00:03] View: the view tips down and settles low on the counter. Left hand: sets the camera down facing her.', $prompt);
+    }
 }

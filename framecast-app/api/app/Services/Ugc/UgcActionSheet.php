@@ -21,24 +21,37 @@ class UgcActionSheet
      * propped on the desk", and every clip showed a second phone. Only the mirror selfie shows the phone, in the mirror.
      */
     public const CAMERAS = [
+        // Setups: the camera stays where it is for the whole clip.
         'selfie_arm' => ['use' => 'talking to camera, one hand free', 'shot' => 'Selfie video the presenter films at arm\'s length: the camera is in their left hand, so their left arm reaches toward the lens at the edge of the frame and their right hand is free.'],
         'selfie_close' => ['use' => 'a close reaction or a line, face and shoulders', 'shot' => 'Close selfie video the presenter films at arm\'s length: their face and shoulders fill the frame, their left arm reaching toward the lens at the edge of the frame.'],
-        'propped_front' => ['use' => 'talking or showing with both hands free', 'shot' => 'The camera stands on the desk facing the presenter at chest height, filming them from the waist up; both of their hands are free.'],
+        'selfie_stick' => ['use' => 'a wider selfie showing more of the place', 'shot' => 'Selfie video filmed from a selfie stick the presenter holds up and out in their left hand: a wider view from slightly above, more of the place behind them, the stick itself out of the frame, their right hand free.'],
+        'walk_talk' => ['use' => 'talking while walking somewhere', 'shot' => 'Selfie video the presenter films at arm\'s length while walking: their left arm reaches toward the lens, the picture bobs gently with each step, the place moving past behind them.'],
+        'propped_front' => ['use' => 'talking or showing with both hands free, seated', 'shot' => 'The camera stands on the desk facing the presenter at chest height, filming them from the waist up; both of their hands are free.'],
+        'stand_front' => ['use' => 'standing, both hands free, room to step back', 'shot' => 'The camera stands on a tripod at the presenter\'s eye height a few steps in front of them, filming them from the waist up; both hands are free.'],
         'propped_hands' => ['use' => 'a two-handed action: opening, pouring, applying', 'shot' => 'The camera stands on the desk close to the presenter\'s hands, looking slightly down: only their hands, forearms and the product are in the frame.'],
         'top_down' => ['use' => 'hands working on the desk, seen from above', 'shot' => 'The camera looks straight down at the desk from above: the presenter\'s hands and the product are in the frame.'],
+        'pov_hands' => ['use' => 'first person, their own hands using the product', 'shot' => 'First-person view: the presenter holds the camera at their chest looking down at their own hands, as they see them; their face is never in the frame.'],
+        'friend_filmed' => ['use' => 'filmed by someone else, the presenter free to move', 'shot' => 'Someone off camera films the presenter, holding the camera at the presenter\'s chest height a couple of steps away, with a slight natural sway; both of the presenter\'s hands are free.'],
+        'car_mount' => ['use' => 'in a parked car', 'shot' => 'The camera is clipped to the car\'s dashboard, facing the presenter in the driver\'s seat; both of their hands are free.'],
         'mirror_selfie' => ['use' => 'an outfit or a full-body look', 'shot' => 'A mirror selfie: the presenter holds their phone in front of a mirror, and the phone is seen in the mirror the whole clip.'],
+        // Moves: the camera changes once, at the moment the sheet's "view" says (owner, 2026-10-12: "they drop the phone
+        // and shift back"). A move lets one clip go from talking with one hand free to an action needing both, or back.
+        'set_down' => ['use' => 'starts a handheld selfie, then sets the camera down to free both hands', 'move' => true, 'shot' => 'Starts as a selfie the presenter films at arm\'s length, their left arm reaching toward the lens; then they set the camera down on the surface in front of them, facing them, and lean back, so the view tips once, settles still and low, and both of their hands are free.'],
+        'pick_up' => ['use' => 'starts on a camera standing on the desk, then they pick it up into a handheld selfie', 'move' => true, 'shot' => 'Starts with the camera standing on the desk facing the presenter; then they lean in, one hand comes toward the lens and lifts the camera, and the view rises into a selfie at arm\'s length, their left arm reaching toward the lens.'],
+        'step_back' => ['use' => 'on a stand, they step back to reveal more of themselves or the place', 'move' => true, 'shot' => 'The camera stands still on a tripod at eye height; the presenter starts close to the lens and steps back until they are seen from the waist up.'],
+        'step_in' => ['use' => 'on a stand, they walk into the frame', 'move' => true, 'shot' => 'The camera stands still on a tripod at eye height facing the place; the presenter walks in from the side and stops facing the lens, seen from the waist up.'],
     ];
 
     private const PROMPT = <<<'TXT'
 You direct a short creator video ad that a video model makes as separate clips, each from its own text and the reference photos of the presenter and the product. For every clip below, in order, write a complete timed sheet that leaves nothing to guess. It is the clip's whole prompt.
 
 Rules:
-- camera: one key from the camera list below. A two-handed action (opening, tearing, pouring into a hand, unscrewing, applying) uses propped_hands, top_down or propped_front.
+- camera: one key from the camera list below. A two-handed action (opening, tearing, pouring into a hand, unscrewing, applying) needs a camera no hand holds (propped_hands, top_down, propped_front, stand_front, friend_filmed, car_mount), or set_down before it. Vary the cameras across the clips the way a creator would; a move (set_down, pick_up, step_back, step_in) happens once in its clip, and the block where it happens says it in "view".
 - shot: one sentence after the camera: the framing within it, the place and its light, and the presenter's clothes, named exactly as given below (never "the outfit in the photo"). Call them "the presenter" and "the product"; never describe their looks: the photos show them.
-- The camera is the point of view and is never in the picture: never write "phone". In a selfie the left hand holds the camera the whole clip (write "left hand: holds the camera, out of view") and only the right hand is free; on a propped camera no hand touches it.
+- The camera is the point of view and is never in the picture: never write "phone". In a selfie (selfie_arm, selfie_close, selfie_stick, walk_talk, pov_hands) the left hand holds the camera the whole clip (write "left hand: holds the camera, out of view") and only the right hand is free; in set_down and pick_up the left hand holds it only while it is held; on a camera standing or mounted, no hand touches it.
 - For an opening, tearing or pouring action, each block says what is seen changing in the product (the seal parts, the top gapes open, peanuts show at the top), not only what the hands try.
 - start: the exact first frame: what the left hand and the right hand each hold and where, and the product's state, carried on from the end of the clip before (opened stays opened; eaten is gone; set down stays down).
-- blocks: timed blocks covering the clip from 00:00 to its length, each "00:00-00:02" style and 1 to 3 seconds long, each one simple visible movement. Every block states left (what the left hand holds and does), right (the same for the right hand), product (where it is and its state), face (where the eyes look and the expression, or "not in frame"), says (the exact words spoken in that block, copied from the clip's line in order; all of the line across the blocks, nothing added; empty when silent) and sound (only a sound the action makes).
+- blocks: timed blocks covering the clip from 00:00 to its length, each "00:00-00:02" style and 1 to 3 seconds long, each one simple visible movement. Every block states view (only when the camera moves in that block: what the picture does, e.g. "the view tips down and settles low on the desk"; else empty), left (what the left hand holds and does), right (the same for the right hand), product (where it is and its state), face (where the eyes look and the expression, or "not in frame"), says (the exact words spoken in that block, copied from the clip's line in order; all of the line across the blocks, nothing added; empty when silent) and sound (only a sound the action makes).
 - An action happens once, in its own clip, shown from its first movement to its result. A clip never starts an action a later clip performs.
 - end: the exact last frame, in the same terms as start.
 - check: per block, one yes/no question a single frame from that moment can answer about the hands and the product.
@@ -47,7 +60,7 @@ Rules:
 Cameras:
 {{cameras}}
 
-Answer JSON only: {"clips":[{"camera":"selfie_arm","shot":"...","start":"...","blocks":[{"when":"00:00-00:02","left":"...","right":"...","product":"...","face":"...","says":"","sound":"","check":"..."}],"end":"..."}]} with exactly one entry per clip, in order.
+Answer JSON only: {"clips":[{"camera":"selfie_arm","shot":"...","start":"...","blocks":[{"when":"00:00-00:02","view":"","left":"...","right":"...","product":"...","face":"...","says":"","sound":"","check":"..."}],"end":"..."}]} with exactly one entry per clip, in order.
 TXT;
 
     /**
@@ -135,7 +148,7 @@ TXT;
             foreach (array_slice((array) ($clip['blocks'] ?? []), 0, 5) as $bk) {
                 $field = fn (string $k, int $max = 200) => mb_substr(trim((string) ($bk[$k] ?? '')), 0, $max);
                 if ($field('left') === '' && $field('right') === '') continue;
-                $blocks[] = ['when' => $field('when', 40), 'left' => $field('left'), 'right' => $field('right'), 'product' => $field('product'),
+                $blocks[] = ['when' => $field('when', 40), 'view' => $field('view'), 'left' => $field('left'), 'right' => $field('right'), 'product' => $field('product'),
                     'face' => $field('face'), 'says' => $field('says', 600), 'sound' => $field('sound', 120), 'check' => $field('check')];
             }
             $start = mb_substr(trim((string) ($clip['start'] ?? '')), 0, 400);
@@ -184,7 +197,7 @@ TXT;
     {
         $say = fn (string $label, string $v) => $v !== '' ? $label.': '.rtrim($v, '.').'. ' : '';
 
-        return trim($say('Left hand', $b['left']).$say('Right hand', $b['right']).$say('Product', $b['product']).$say('Face', $b['face'])
+        return trim($say('View', $b['view'] ?? '').$say('Left hand', $b['left']).$say('Right hand', $b['right']).$say('Product', $b['product']).$say('Face', $b['face'])
             .(($b['says'] ?? '') !== '' ? 'The presenter says: "'.trim($b['says']).'" ' : '').(($b['sound'] ?? '') !== '' ? 'SFX: '.rtrim($b['sound'], '.').'.' : ''));
     }
 
