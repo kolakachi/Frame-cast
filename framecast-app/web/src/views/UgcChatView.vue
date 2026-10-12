@@ -23,25 +23,16 @@ const workspaceStore = useWorkspaceStore()
 const canUgc = computed(() => workspaceStore.capabilities?.ugc_ads !== false)
 const canOwnCharacter = computed(() => workspaceStore.capabilities?.custom_characters !== false)
 
-const TYPES = [
-  ['auto', 'Auto', 'We pick from your prompt, files and sample'],
-  ['testimonial', 'Testimonial', 'A customer talks about their results'],
-  ['problem_solution', 'Problem → Solution', 'Names the pain, then shows the fix'],
-  ['green_screen', 'Green screen', 'Talks over your page, a post or a screenshot'],
-  ['before_after', 'Before / After', 'Cuts or splits from before to after'],
-  ['unboxing', 'Unboxing', 'Opens the package, first impressions'],
-  ['comparison', 'Comparison', 'Yours next to the usual alternative'],
-  ['pov_hook', 'POV hook', 'An on-screen text hook: "POV: you finally…"'],
-  ['asmr', 'ASMR', 'Close, quiet, textures and sounds'],
-  ['day_in_life', 'Day in the life', 'The product inside a real routine'],
-  ['skit', 'Skit', 'A short scene with a twist'],
-  ['listicle', 'Listicle', '"3 reasons I switched…"'],
-  ['founder_story', 'Founder story', 'Why it was made, told by its maker'],
-  ['reaction', 'Reaction', 'A silent reaction with a headline'],
-]
-const TYPE_LABEL = Object.fromEntries(TYPES.map(([k, l]) => [k, l]))
-// Listed, not offered yet (the API refuses them): skit needs every person cast first; POV hook and reaction come next.
-const SOON = ['skit', 'pov_hook', 'reaction']
+// Type availability and descriptions come from the API's production contracts.
+const typeOptions = ref([{ key: 'auto', label: 'Auto', description: 'We pick from your prompt, files and sample', available: true }])
+const TYPES = computed(() => typeOptions.value.map(t => [t.key, t.label, t.description]))
+const TYPE_LABEL = computed(() => Object.fromEntries(TYPES.value.map(([k, l]) => [k, l])))
+const SOON = computed(() => typeOptions.value.filter(t => !t.available).map(t => t.key))
+const FILE_ROLES = [['product', 'Product reference'], ['footage', 'Footage'], ['sample', 'Sample UGC'], ['background', 'Background'], ['left', 'Left / Before'], ['right', 'Right / After']]
+const FILE_ROLE_LABEL = Object.fromEntries(FILE_ROLES)
+// Background and Left/Right only where compositing is open to this account (UGC_TYPES_LIVE, staff always).
+const isLive = key => typeOptions.value.find(t => t.key === key)?.live === true
+const fileRoles = computed(() => FILE_ROLES.filter(([key]) => key === 'background' ? isLive('green_screen') : ['left', 'right'].includes(key) ? isLive('before_after') || isLive('comparison') : true))
 const PACE = [['slower', 'Slower'], ['natural', 'Natural'], ['faster', 'Faster']]
 const DELIVERY = [['friendly', 'Friendly'], ['excited', 'Excited'], ['calm', 'Calm expert'], ['deadpan', 'Deadpan']]
 const LABEL = Object.fromEntries([...PACE, ...DELIVERY])
@@ -138,7 +129,7 @@ function addPresenter(c, setting = null) {
   if (c && !c.is_stock && !canOwnCharacter.value) { error.value = 'Casting your own character is a Creator feature. Pick one of our actors, or upgrade to use your own.'; return }
   if (c && presenters.value.some(p => p.character_id === c.id)) return
   if (!c && presenters.value.some(p => !p.character_id)) return
-  if (presenters.value.length >= 5) { error.value = 'Five presenters at most, one video each.'; return }
+  if (presenters.value.length >= 5) { error.value = 'Five presenters at most. Skits use exactly two in one video.'; return }
   const voice = sameVoice.value && presenters.value[0]?.voice ? { ...presenters.value[0].voice } : null
   presenters.value.push({ key: crypto.randomUUID(), character_id: c?.id ?? null, name: c ? c.name : 'Picked for you', image: imageOf(c), voice, setting })
 }
@@ -165,7 +156,7 @@ function setVoice(p, key, value) {
 }
 watch(sameVoice, on => { if (on && presenters.value[0]?.voice) presenters.value.forEach(x => { x.voice = { ...presenters.value[0].voice } }) })
 
-function toggleMenu(name) { menu.value = menu.value === name ? '' : name; previewing.value = null; if (menu.value === 'cast') { loadCharacters(); loadSettings() } }
+function toggleMenu(name) { menu.value = menu.value === name ? '' : name; previewing.value = null; if (name === 'type') loadSettings(); if (menu.value === 'cast') { loadCharacters(); loadSettings() } }
 function openCastModal() { menu.value = ''; previewing.value = null; castModal.value = true; loadCharacters(); loadSettings() }
 function setPlace(p, key) { presentersTouched = true; p.setting = key }
 function modalRemove(id) { const p = presenters.value.find(x => x.character_id === id); if (p) removePresenter(p) }
@@ -186,7 +177,7 @@ async function loadCharacters() {
 let settingsAt = 0
 async function loadSettings() {
   if (settings.value.length && Date.now() - settingsAt < 6 * 3600 * 1000) return
-  try { const { data } = await api.get('/ugc/settings'); settings.value = data?.data?.settings ?? []; settingsAt = Date.now() } catch { /* Auto only: the director picks the place */ }
+  try { const { data } = await api.get('/ugc/settings'); settings.value = data?.data?.settings ?? []; if (data?.data?.types?.length) typeOptions.value = data.data.types; settingsAt = Date.now() } catch { /* Auto only: the director picks the place */ }
 }
 async function loadBalance() {
   try { const { data } = await api.get('/me'); balance.value = data?.data?.credits?.balance ?? null } catch { /* cosmetic */ }
@@ -551,7 +542,7 @@ onMounted(async () => {
   if (workspaceStore.capabilities?.ugc_chat === false) return
   document.addEventListener('pointerdown', closeMenus)
   document.addEventListener('keydown', escMenus)
-  loadBalance(); loadCharacters(); loadRecent()
+  loadBalance(); loadCharacters(); loadRecent(); loadSettings()
   if (chatId.value) { await load(); scrollDown(); schedulePoll() }
 })
 onBeforeUnmount(() => {
@@ -595,7 +586,7 @@ onBeforeUnmount(() => {
           <template v-for="m in messages" :key="m.id">
             <div v-if="m.role === 'user'" class="uc-user">
               <div class="uc-bubble"><span v-if="m.payload?.attachments?.length || m.payload?.link" class="uc-sent">
-                  <span v-for="a in m.payload.attachments || []" :key="a.asset_id" class="uc-sent-pill" :title="a.title"><RefThumb :type="a.type" :url="a.url" /><span>{{ a.role === 'sample' ? 'Sample · ' : '' }}{{ a.title || 'File' }}</span></span>
+                  <span v-for="a in m.payload.attachments || []" :key="a.asset_id" class="uc-sent-pill" :title="a.title"><RefThumb :type="a.type" :url="a.url" /><span>{{ (FILE_ROLE_LABEL[a.role] || 'File') + ' · ' }}{{ a.title || 'File' }}</span></span>
                   <span v-if="m.payload?.link" class="uc-sent-pill" :title="m.payload.link"><RefThumb link /><span>{{ m.payload.link.replace(/^https?:\/\//, '') }}</span></span>
                 </span><span v-if="m.content && m.content.trim() !== m.payload?.link" class="uc-said">{{ m.content }}</span></div>
             </div>
@@ -705,6 +696,15 @@ onBeforeUnmount(() => {
         <p v-if="error" class="uc-error" role="alert">{{ error }} <button type="button" @click="error = ''">×</button></p>
         <div class="uc-box">
           <ComposerTray v-if="trayItems.length" :items="trayItems" :disabled="sending" @remove="removeTray" />
+          <div v-if="uploads.length" class="uc-file-roles">
+            <label v-for="u in uploads" :key="u.key"><span>{{ u.name }}</span>
+              <select v-model="u.role" :disabled="sending" :aria-label="`Use ${u.name} as`"><option v-for="[key, label] in fileRoles" :key="key" :value="key" :disabled="key === 'sample' && u.type !== 'video'">{{ label }}</option></select>
+            </label>
+          </div>
+          <p v-if="type === 'green_screen' && isLive('green_screen')" class="uc-type-help">Upload a screenshot or video and choose Background. Your presenter will appear over the original file.</p>
+          <p v-if="type === 'skit'" class="uc-type-help">Choose two presenters in speaking order: speaker 1, then speaker 2. Both appear in one video using alternating shots.</p>
+          <p v-if="['before_after', 'comparison'].includes(type) && isLive(type)" class="uc-type-help">For a split comparison, upload both files and choose Left / Before and Right / After.</p>
+
           <div v-if="linkOpen" class="uc-linkrow">
             <input id="uc-link" v-model="linkDraft" type="url" placeholder="https://yourstore.com/product" @keydown.enter.prevent="saveLink" @keydown.esc="linkOpen = false" />
             <button type="button" class="uc-btn" @click="linkOpen = false">Cancel</button>
@@ -806,12 +806,12 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </div>
-                <p class="uc-muted uc-pad">{{ presenters.length > 1 ? `One video per presenter: ${presenters.length} videos.` : 'One video. Add presenters to make one each.' }}</p>
+                <p class="uc-muted uc-pad">{{ type === 'skit' ? 'Two presenters, one skit. Selection order sets speaker 1 and speaker 2.' : presenters.length > 1 ? `One video per presenter: ${presenters.length} videos.` : 'One video. Add presenters to make one each.' }}</p>
               </div>
             </div>
 
             <div class="uc-pop-anchor">
-              <button type="button" class="uc-pill" @click="toggleMenu('type')"><span class="uc-muted">Type:</span> {{ TYPE_LABEL[type] }} <span class="uc-caret">▾</span></button>
+              <button type="button" class="uc-pill" @click="toggleMenu('type')"><span class="uc-muted">Type:</span> {{ TYPE_LABEL[type] || type }} <span class="uc-caret">▾</span></button>
               <div v-if="menu === 'type'" class="uc-pop uc-pop--type">
                 <span class="uc-label uc-pad">UGC type</span>
                 <button v-for="[k, l, d] in TYPES" :key="k" type="button" :class="['uc-type', { on: type === k, soon: SOON.includes(k) }]" :disabled="SOON.includes(k)" @click="type = k; menu = ''"><b>{{ l }}<template v-if="type === k"> ✓</template><em v-if="SOON.includes(k)" class="uc-soon">Soon</em></b><span>{{ d }}</span></button>
@@ -843,6 +843,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.uc-file-roles { display: grid; gap: 6px; padding: 8px 12px; }
+.uc-file-roles label { display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 12px; }
+.uc-file-roles label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-file-roles select { max-width: 180px; background: var(--color-bg-elevated); color: var(--color-text-primary); border: 1px solid var(--color-border); border-radius: 6px; padding: 5px; }
+.uc-type-help { font-size: 12px; padding: 0 12px; color: var(--color-text-secondary); }
+
 .uc-shell { display: flex; height: 100vh; height: 100dvh; background: var(--color-bg-deep); color: var(--color-text-primary); }
 .uc-main { margin-left: var(--sidebar-width, 220px); flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .uc-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--color-border); }

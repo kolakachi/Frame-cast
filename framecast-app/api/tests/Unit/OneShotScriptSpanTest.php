@@ -33,4 +33,23 @@ class OneShotScriptSpanTest extends TestCase
         $this->assertSame('perfune.', $misheard[GenerateOneShotUgcJob::scriptSpan($misheard, $line)['last']]['text'], 'a slightly misheard word still ends the line');
         $this->assertNull(GenerateOneShotUgcJob::scriptSpan(self::words('Something else entirely was said here today.'), $line));
     }
+    public function test_missing_final_word_does_not_authorize_trimming(): void
+    {
+        $line = 'This body lotion leaves my skin feeling soft all day.';
+        $this->assertNull(GenerateOneShotUgcJob::scriptSpan(
+            self::words('This body lotion leaves my skin feeling soft all'), $line));
+        $this->assertNull(GenerateOneShotUgcJob::scriptSpan(
+            self::words('This body lotion leaves my skin feeling soft all um'), $line));
+    }
+
+    public function test_completion_gate_rejects_missing_speech_and_placeholder_transcripts(): void
+    {
+        $line = 'This is the complete line.';
+        $this->assertNull(GenerateOneShotUgcJob::verifiedSpeechSpan(['provider_key' => 'local_fallback', 'words' => self::words($line)], $line));
+        $this->assertNull(GenerateOneShotUgcJob::verifiedSpeechSpan(['words' => []], $line));
+        $this->assertNull(GenerateOneShotUgcJob::verifiedSpeechSpan(['words' => self::words('This is the complete')], $line));
+        $this->assertSame(['first' => 0, 'last' => 4], GenerateOneShotUgcJob::verifiedSpeechSpan(['words' => self::words($line)], $line));
+        $this->assertSame(['first' => 0, 'last' => 0], GenerateOneShotUgcJob::verifiedSpeechSpan(['words' => self::words('Yes!')], 'Yes!'));
+    }
+
 }

@@ -36,7 +36,7 @@ class UgcChatController extends Controller
     public function settings(Request $request): JsonResponse
     {
         if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
-        return response()->json(['data' => ['settings' => \App\Services\Ugc\UgcSettings::listed()], 'meta' => []]);
+        return response()->json(['data' => ['settings' => \App\Services\Ugc\UgcSettings::listed(), 'types' => \App\Services\Ugc\UgcTypes::menu($request->user())], 'meta' => []]);
     }
 
     public function show(Request $request, string $id): JsonResponse
@@ -52,7 +52,7 @@ class UgcChatController extends Controller
             'text' => ['nullable', 'string', 'max:4000'],
             'attachments' => ['sometimes', 'array', 'max:20'],
             'attachments.*.asset_id' => ['required', 'integer'],
-            'attachments.*.role' => ['nullable', 'string', 'in:product,footage,sample'],
+            'attachments.*.role' => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Services\Ugc\UgcTypes::ROLES)],
             'link' => ['nullable', 'url', 'max:2000'],
             'presenters' => ['sometimes', 'array', 'max:5'],
             'presenters.*.character_id' => ['nullable', 'integer'],
@@ -62,7 +62,7 @@ class UgcChatController extends Controller
             'presenters.*.voice.pace' => ['nullable', 'string', 'in:slower,natural,faster'],
             'presenters.*.voice.delivery' => ['nullable', 'string', 'in:friendly,excited,calm,deadpan'],
             'presenters.*.voice.direction' => ['nullable', 'string', 'max:300'],
-            'type' => ['sometimes', 'string', 'in:auto,'.implode(',', array_diff(UgcChatService::TYPES, UgcChatService::SOON))],
+            'type' => ['sometimes', 'string', 'in:auto,'.implode(',', array_diff(UgcChatService::TYPES, \App\Services\Ugc\UgcTypes::unavailable($request->user())))],
             'aspect' => ['sometimes', 'string', 'in:9:16,1:1,16:9'],
             'length' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:60'],
         ]);

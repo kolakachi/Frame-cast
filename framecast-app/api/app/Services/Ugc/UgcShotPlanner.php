@@ -90,25 +90,8 @@ class UgcShotPlanner
                     }
                 }
             }
-            // Same coercion spirit for the silent-cutaway rule the small
-            // director keeps tripping: in demo/text_led a silent generated
-            // b-roll just needs its burned-in line — the shot's own visual
-            // direction stands in (footage planner precedent). In
-            // direct_camera/story a silent shot is a mistake by rule, so the
-            // shot is cut rather than the whole plan.
-            foreach ($raw as $i => $seg) {
-                if (! is_array($seg) || ($seg['kind'] ?? '') !== 'b_roll'
-                    || trim((string) ($seg['script_text'] ?? '')) !== ''
-                    || trim((string) ($seg['headline'] ?? '')) !== ''
-                    || (($seg['source'] ?? null) === 'upload' && ! empty($seg['asset_id']))) {
-                    continue;
-                }
-                if (in_array($chosen, ['demo', ...UgcPlan::STILL_ONLY_FORMATS], true)) {
-                    $raw[$i]['headline'] = mb_substr(trim((string) ($seg['visual_brief'] ?? '')), 0, 80);
-                } elseif (count($raw) > 1) {
-                    unset($raw[$i]);
-                }
-            }
+            // Never discard a requested scene or turn camera directions into visible copy.
+            // Invalid plans go through the repair pass with the original brief intact.
             $raw = array_values($raw);
             $segments = UgcPlan::normalise($raw, $chosen);
             // A model that names a clip we never offered would show the user

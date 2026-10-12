@@ -215,6 +215,7 @@ class UgcController extends Controller
             'script' => ['nullable', 'string', 'max:1500', 'required_without:context'],
             'product' => ['nullable', 'string', 'max:200'],
             'context' => ['nullable', 'string', 'max:1500', 'required_without:script'],
+            'ugc_type' => ['sometimes', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Ugc\UgcTypes::DEFINITIONS))],
             'format' => ['required', Rule::in(['auto', ...UgcPlan::FORMATS])],
             'duration_seconds' => ['required', 'integer', 'min:5', 'max:180'],
             'language' => ['sometimes', 'string', 'max:12'],
@@ -961,6 +962,14 @@ class UgcController extends Controller
         /** @var User $user */
         $user = $request->user();
         $v = $request->validate($this->planRules() + [
+            'composition' => ['sometimes', 'array:layout,background_asset_id,left_asset_id,right_asset_id'],
+            'composition.layout' => ['required_with:composition', 'in:green_screen,split'],
+            'composition.background_asset_id' => ['nullable', 'integer', 'min:1'],
+            'composition.left_asset_id' => ['nullable', 'integer', 'min:1'],
+            'composition.right_asset_id' => ['nullable', 'integer', 'min:1'],
+            'cast_character_ids' => ['sometimes', 'array', 'size:2'],
+            'cast_character_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_id' => ['nullable', 'integer', 'min:1'],
             // exact = Veo anchored to the character's real face; variant =
@@ -996,20 +1005,42 @@ class UgcController extends Controller
             'credits' => ['required', 'integer'],
         ]);
 
+        // A type whose new production route is not open to this user (#8) is made the way it was before it existed.
+        if (! empty($v['ugc_type']) && ! \App\Services\Ugc\UgcTypes::live($v['ugc_type'], $user)) {
+            if (in_array($v['ugc_type'], \App\Services\Ugc\UgcTypes::GATED, true)) {
+                throw ValidationException::withMessages(['ugc_type' => 'This kind of UGC video is not available yet.']);
+            }
+            unset($v['ugc_type'], $v['composition'], $v['cast_character_ids']);
+        }
         $segments = UgcPlan::normalise($v['segments'], $v['format']);
         // One-shot models synthesize every visual. Reused assets must go
         // through the composed lane, which attaches the actual file per scene.
+        $sourceMedia = [];
         foreach ($segments as $segment) {
             if ($segment['kind'] === 'b_roll' && $segment['source'] !== 'generate') {
+                if (\App\Services\Ugc\UgcTypes::native($v['ugc_type'] ?? '', $user)) {
+                    $resolved = \App\Services\Ugc\UgcComposition::resolve($user, ['layout' => 'green_screen', 'background_asset_id' => $segment['asset_id']]);
+                    $sourceMedia[$segment['asset_id']] = $resolved['assets'][0];
+                    continue;
+                }
                 throw ValidationException::withMessages(['segments' =>
                     'This plan uses existing footage. Generate it shot by shot to preserve the selected clips.']);
             }
         }
         $spoken = array_values(array_filter($segments, fn ($s) => trim((string) $s['script_text']) !== ''));
-        if ($spoken === []) {
+        if ($spoken === [] && ! in_array($v['ugc_type'] ?? '', ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison'], true)) {
             throw ValidationException::withMessages(['segments' => 'A one-take ad needs spoken beats. Silent card plans generate through the standard path.']);
         }
 
+        $composition = \App\Services\Ugc\UgcComposition::resolve($user, $v['composition'] ?? []);
+        if (($v['ugc_type'] ?? '') === 'green_screen' && ($composition['layout'] ?? '') !== 'green_screen') {
+            throw ValidationException::withMessages(['composition' => 'Green screen requires your uploaded background.']);
+        }
+        // Only spoken shots need a speaker: a product insert or a silent beat in a skit is nobody's line (#6).
+        $skitSpeakers = \App\Services\Ugc\UgcTypes::spokenSpeakers($segments);
+        if (($v['ugc_type'] ?? '') === 'skit' && (count($v['cast_character_ids'] ?? []) !== 2 || array_diff($skitSpeakers, [1, 2]) || count($skitSpeakers) !== 2)) {
+            throw ValidationException::withMessages(['segments' => 'A skit requires two cast presenters and shots assigned to both speaker 1 and speaker 2.']);
+        }
         // The pose sheet: the presenter's reference image and the real
         // product photo travel into the generation as reference_images, so
         // the person and the packaging match what the user approved.
@@ -1084,11 +1115,27 @@ class UgcController extends Controller
             }
         }
 
+        $speakerReferences = [];
+        $speakerDescriptions = [];
+        if (($v['ugc_type'] ?? '') === 'skit') {
+            foreach ($v['cast_character_ids'] as $index => $characterId) {
+                $actor = Character::query()->whereKey($characterId)->where('status', 'active')
+                    ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)->orWhere(fn ($q) => $q->whereNull('workspace_id')->where('is_stock', true)))->first();
+                if (! $actor || (! $actor->is_stock && ! $creditService->limitFor((int) $user->workspace_id, 'custom_characters')) || ! ($uri = $dataUri((int) $actor->reference_asset_id))) {
+                    throw ValidationException::withMessages(['cast_character_ids' => 'Each skit speaker needs an accessible presenter photo and the required plan access.']);
+                }
+                // Ids, not copies (#7): each clip carried its speaker's photo and two product photos inline, tens of MB
+                // in the queue and the saved recipe for a six-clip skit. The job loads them when it makes the clip.
+                $speakerReferences[$index + 1] = [(int) $actor->reference_asset_id];
+                foreach (array_slice($productIds, 0, 2) as $pid) if ($dataUri($pid)) $speakerReferences[$index + 1][] = (int) $pid;
+                $speakerDescriptions[$index + 1] = $actor->name.' — '.$actor->description;
+            }
+        }
         // The setting's background photo (owner, 2026-10-11): the kind of place, never a copy. It goes third, after the
         // presenter and the first product photo, so it is inside the three references a model takes; a later product
         // angle gives way to it.
         $placePhoto = false;
-        if (! empty($v['setting_key']) && ($plate = \App\Services\Ugc\UgcSettings::plate((string) $v['setting_key']))) {
+        if (! in_array($v['ugc_type'] ?? '', ['green_screen', 'asmr'], true) && ! empty($v['setting_key']) && ($plate = \App\Services\Ugc\UgcSettings::plate((string) $v['setting_key']))) {
             array_splice($referenceImages, min(2, count($referenceImages)), 0, [$plate]);
             $placePhoto = true;
         }
@@ -1116,13 +1163,14 @@ class UgcController extends Controller
             $engine = 'veo_hq';
         }
 
+        if (($v['ugc_type'] ?? '') === 'skit') $engine = 'omni';
         // The Test Pass defaults to Seedance, which is what makes 600 credits
         // buy a whole ad. Casting a character is the one thing that overrides
         // it: a real face cannot be rendered by Seedance at all, so the take
         // has to go to Veo HQ and cost what Veo HQ costs. The approval step
         // quotes that before a credit moves, so nobody is surprised — they are
         // simply told the take needs more than the pass grants.
-        if ($isTestPass && ! $presenterImageAttached) {
+        if ($isTestPass && ! $presenterImageAttached && ($v['ugc_type'] ?? '') !== 'skit') {
             $engine = 'seedance25';
         }
         // Demo-embed: a real screen recording spliced full-frame over a
@@ -1153,6 +1201,7 @@ class UgcController extends Controller
             true,
         )['pronunciations'] ?? '');
         $style = [
+            'ugc_type' => $v['ugc_type'] ?? '', 'speakers' => $speakerDescriptions,
             'presenter' => $presenter,
             'setting' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::direction((string) $v['setting_key']) : trim((string) ($v['setting'] ?? '')),
             'place_note' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::note((string) $v['setting_key'], $placePhoto) : '',
@@ -1164,9 +1213,16 @@ class UgcController extends Controller
             'pronunciations' => $pronNotes,
             'demo' => $demoStorageUrl !== null,
         ];
+        if (($composition['layout'] ?? '') === 'green_screen') {
+            $look = strtolower((string) $style['product_look']);
+            $greenProduct = preg_match('/\b(green|lime|sage|emerald|olive)\b/', $look);
+            $blueProduct = preg_match('/\b(blue|navy|cyan|teal)\b/', $look);
+            $composition['key_color'] = $greenProduct ? ($blueProduct ? '0xFF00FF' : '0x0000FF') : '0x00FF00';
+            $style['chroma_key'] = $composition['key_color'];
+        }
         // Seedance 2.5 makes the whole ad in one generation (≤30s) — the
         // purest one-take. Longer plans, or explicit choice, chain on Veo.
-        $single = $engine === 'seedance25'
+        $single = $engine === 'seedance25' && $sourceMedia === [] && ($v['ugc_type'] ?? '') !== 'skit'
             ? \App\Services\Ugc\UgcOneShotCompiler::compileSingle($segments, $style)
             : null;
         // A demo-embed ad can only be the single Seedance take (video_in has
@@ -1194,7 +1250,7 @@ class UgcController extends Controller
         // A demo take is a normal 720p Seedance render (the clip is spliced in
         // post, not sent to the model) — no video_in premium; draft is off.
         $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
-        $quote = (int) ($planSeconds * $perSecond);
+        $quote = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds($chunks, $segments, $engine) * $perSecond);
         // 15 seconds a take on the Test Pass — the length the offer promises,
         // and what keeps 600 credits worth one full-quality ad or two drafts.
         if ($isTestPass && $planSeconds > 15) {
@@ -1218,6 +1274,11 @@ class UgcController extends Controller
             }
         }
 
+        foreach ($chunks as &$chunk) {
+            if (isset($sourceMedia[$chunk['source_asset_id'] ?? 0])) $chunk['source_media'] = $sourceMedia[$chunk['source_asset_id']];
+            if (isset($speakerReferences[$chunk['speaker'] ?? 0])) $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
+        }
+        unset($chunk);
         $runId = (string) Str::uuid();
         $script = UgcPlan::script($segments);
         // Idempotency receipt: the unique (workspace_id, request_id) index
@@ -1294,7 +1355,7 @@ class UgcController extends Controller
         }
         \App\Jobs\GenerateOneShotUgcJob::dispatch(
             $project->id, $scene->id,
-            array_map(fn ($c) => ['prompt' => $c['prompt'], 'seconds' => $c['seconds'], 'new_shot' => (bool) ($c['new_shot'] ?? true), 'dialogue' => (string) ($c['dialogue'] ?? '')], $chunks),
+            $chunks,
             $quote,
             $engine,
             $referenceImages,
@@ -1304,6 +1365,7 @@ class UgcController extends Controller
             $demoStorageUrl,
             $runToken,
             $presenterImageAttached && in_array($engine, ['omni', 'veo_hq'], true),
+            $composition,
         )->afterCommit();
 
         $payload = ['data' => [
@@ -1330,12 +1392,14 @@ class UgcController extends Controller
     private function planRules(): array
     {
         return [
+            'ugc_type' => ['sometimes', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Ugc\UgcTypes::DEFINITIONS))],
             'format' => ['required', Rule::in(UgcPlan::FORMATS)],
             'segments' => ['required', 'array', 'min:1', 'max:12'],
             'segments.*.kind' => ['required', 'in:on_camera,b_roll,reaction'],
             'segments.*.script_text' => ['present', 'nullable', 'string', 'max:1500'],
             'segments.*.seconds' => ['required', 'numeric', 'min:1', 'max:60'],
             'segments.*.visual_brief' => ['required', 'string', 'max:1000'],
+            'segments.*.speaker' => ['nullable', 'integer', 'in:1,2'],
             'segments.*.voice_direction' => ['nullable', 'string', 'max:500'],
             'segments.*.speed' => ['nullable', 'numeric', 'min:0.5', 'max:2'],
             'segments.*.motion_prompt' => ['nullable', 'string', 'max:1000'],

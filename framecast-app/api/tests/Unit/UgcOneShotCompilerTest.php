@@ -84,6 +84,8 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringContainsString('"Line one."', $chunks[0]['prompt']);
         $this->assertSame('Line one.', $chunks[0]['dialogue']);
         $this->assertStringContainsString('doubtful', $chunks[0]['prompt']);
+        $this->assertStringContainsString('Finish each quoted line completely before any cut', $chunks[0]['prompt']);
+        $this->assertStringContainsString('for a full second', $chunks[0]['prompt']);
     }
 
     public function test_style_reaches_the_preamble_of_every_chunk(): void
@@ -131,4 +133,87 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertGreaterThan(1, count($chunks), '25 words do not fit 8 s');
         $this->assertSame($script, implode(' ', array_column($chunks, 'dialogue')));
     }
+    public function test_underestimated_short_beat_gets_enough_time_without_needing_a_split(): void
+    {
+        $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 3];
+        $this->assertSame(6, UgcOneShotCompiler::compile([$beat])[0]['seconds']);
+        $this->assertSame(5, UgcOneShotCompiler::compile([$beat], [], 10)[0]['seconds']);
+    }
+
+    public function test_underestimated_beats_are_not_packed_into_one_overfull_clip(): void
+    {
+        $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 2];
+        $chunks = UgcOneShotCompiler::compile([$beat, $beat]);
+        $this->assertCount(2, $chunks);
+        $this->assertSame([6, 6], array_column($chunks, 'seconds'));
+    }
+
+    public function test_each_split_clip_has_its_own_finishing_pause(): void
+    {
+        $script = implode(' ', array_fill(0, 42, 'word'));
+        foreach ([8, 10] as $cap) {
+            $chunks = UgcOneShotCompiler::compile([['script_text' => $script, 'seconds' => 5]], [], $cap);
+            $this->assertSame($script, implode(' ', array_column($chunks, 'dialogue')));
+            foreach ($chunks as $chunk) {
+                $minimum = count(explode(' ', $chunk['dialogue'])) / 2.5 + 1;
+                $this->assertGreaterThanOrEqual($minimum, $chunk['seconds']);
+                $this->assertLessThanOrEqual($cap, $chunk['seconds']);
+            }
+        }
+    }
+
+    public function test_slow_delivery_gets_additional_speaking_time(): void
+    {
+        $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 3, 'speed' => 0.5];
+        $chunks = UgcOneShotCompiler::compile([$beat], [], 10);
+        $this->assertSame(9, $chunks[0]['seconds']);
+    }
+
+    public function test_single_generation_uses_speech_budget_and_refuses_an_overfull_script(): void
+    {
+        $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 3];
+        $this->assertSame(5, UgcOneShotCompiler::compileSingle([$beat])['seconds']);
+        $this->assertNull(UgcOneShotCompiler::compileSingle([
+            ['script_text' => implode(' ', array_fill(0, 75, 'word')), 'seconds' => 15],
+        ]));
+    }
+
+    public function test_silent_native_action_is_not_shortened_or_turned_into_a_selfie(): void
+    {
+        $beat = ['kind' => 'b_roll', 'script_text' => '', 'seconds' => 23, 'motion_prompt' => 'Tap the glass, then slowly pour water.', 'visual_brief' => 'Macro view of the glass.'];
+        $chunks = UgcOneShotCompiler::compile([$beat], ['ugc_type' => 'asmr']);
+        $this->assertGreaterThanOrEqual(23, array_sum(array_column($chunks, 'seconds')));
+        foreach ($chunks as $chunk) {
+            $this->assertSame('', $chunk['dialogue']);
+            $this->assertStringContainsString('Tap the glass', $chunk['prompt']);
+            $this->assertStringContainsString('No speech', $chunk['prompt']);
+            $this->assertStringNotContainsString('selfie ad', $chunk['prompt']);
+        }
+        $single = UgcOneShotCompiler::compileSingle([$beat], ['ugc_type' => 'asmr']);
+        $this->assertSame(23, $single['seconds']);
+        $this->assertStringContainsString('Tap the glass', $single['prompt']);
+    }
+
+    public function test_skit_speakers_never_share_a_generation(): void
+    {
+        $chunks = UgcOneShotCompiler::compile([
+            ['script_text' => 'What is that?', 'seconds' => 3, 'speaker' => 1],
+            ['script_text' => 'Your new favourite.', 'seconds' => 3, 'speaker' => 2],
+        ], ['ugc_type' => 'skit', 'speakers' => [1 => 'Ada', 2 => 'Ben']], 10);
+        $this->assertCount(2, $chunks);
+        $this->assertSame([1, 2], array_column($chunks, 'speaker'));
+        $this->assertStringContainsString('Ada performs', $chunks[0]['prompt']);
+        $this->assertStringContainsString('Ben performs', $chunks[1]['prompt']);
+        $this->assertStringNotContainsString('same presenter', $chunks[1]['prompt']);
+    }
+
+    public function test_green_screen_has_a_keyable_background_and_lists_allow_scripted_numbers(): void
+    {
+        $beat = ['script_text' => 'One, it is useful. Two, it is simple.', 'seconds' => 8];
+        $green = UgcOneShotCompiler::compile([$beat], ['ugc_type' => 'green_screen'])[0];
+        $this->assertStringContainsString('#00FF00', $green['prompt']);
+        $this->assertStringContainsString('Say numbers only where they appear in the script', $green['prompt']);
+        $this->assertStringNotContainsString('no counting aloud', $green['prompt']);
+    }
+
 }

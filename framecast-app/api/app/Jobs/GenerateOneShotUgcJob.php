@@ -65,7 +65,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
         public readonly ?string $demoStorageUrl = null,
         ?string $runToken = null,
         ?bool $checkFace = null,
+        array $composition = [],
     ) {
+        $this->composition = $composition;
         $this->runToken = $runToken;
         $this->checkFace = (bool) $checkFace;
         // Its own queue and worker (worker-ugc): a 30-minute take held up every voiceover and image behind it (QUEUE-REAP).
@@ -81,6 +83,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** A cast presenter (the first reference image) whose face each clip is checked against, and made again once if it
      *  is someone else. A plain property for the same reason as runToken. */
     public bool $checkFace = false;
+
+    public array $composition = [];
 
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
@@ -133,16 +137,21 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $fromTail = [];
             $faceRetries = 0;
             foreach ($this->chunks as $i => $chunk) {
+                // A skit clip names its speaker's photos by id; they are read here, only from this workspace or stock.
+                if (! empty($chunk['reference_asset_ids']) && empty($chunk['reference_images'])) {
+                    $chunk['reference_images'] = $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
+                    if ($chunk['reference_images'] === []) throw new \RuntimeException('Segment '.($i + 1).': the speaker\'s photo could not be read. Nothing was charged; try again.');
+                }
                 // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
                 // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from
                 // clip to clip (2026-10-10: a face changed across a before/after). A clip carrying a shot on starts
                 // from the last frame, and that duplicate first frame is dropped when the clips are joined.
-                $fromRefs = $i > 0 && ! empty($chunk['new_shot']) && $this->referenceImages !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
+                $fromRefs = $i > 0 && (! empty($chunk['source_media']) || ! empty($chunk['new_shot'])) && $this->referenceImages !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
                 // The previous clip's last frame rides along as a reference for hair, clothes and setting; the
                 // presenter's photo alone re-imagined them (2026-10-10: tied hair came back loose after a cutaway).
-                $continuity = $fromRefs ? $startFrame : null;
+                $continuity = $fromRefs && empty($chunk['reference_images']) ? $startFrame : null;
                 if ($fromRefs) $startFrame = null;
-                $fromTail[$i] = $i > 0 && ! $fromRefs;
+                $fromTail[$i] = $i > 0 && ! $fromRefs && empty($chunk['source_media']) && empty($chunk['reference_images']);
                 // A segment saved by an earlier attempt is used as it is; the next one starts from its last frame.
                 if (isset($reuse[$i])) {
                     $path = tempnam(sys_get_temp_dir(), 'oneshot-').'.mp4';
@@ -150,28 +159,54 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     file_put_contents($path, $reuse[$i]);
                 } else {
                     if (! $this->owns($scene->refresh())) return; // superseded: the newer run makes the rest
-                    $path = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                    $sourceOnly = ! empty($chunk['source_media']) && trim((string) ($chunk['dialogue'] ?? '')) === '';
+                    $path = $sourceOnly
+                        ? app(\App\Services\Ugc\UgcComposition::class)->source($chunk['source_media'], $chunk['seconds'], (float) ($chunk['source_offset'] ?? 0), $storage, $temps, ! empty($chunk['requires_audio']))
+                        : $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                     if (! $this->owns($scene->refresh())) return; // superseded while this clip was made
                     // Resemblance (owner, 2026-10-11): each cast clip's face is scored against the presenter's photo. With
                     // remakes on (services.ugc.face_retry), a clip under the pass mark is made again once, at our cost, and
                     // the closer of the two is kept; at most two remakes a take. A remake whose check could not run is
                     // never preferred to a clip that was checked.
-                    if ($this->checkFace && $this->referenceImages !== []) {
+                    if (! $sourceOnly && $this->checkFace && $this->referenceImages !== []) {
                         $checker = app(\App\Services\Ugc\UgcFaceCheck::class);
-                        $score = $checker->score($this->referenceImages[0], $path);
+                        $faceReference = $chunk['reference_images'][0] ?? $this->referenceImages[0];
+                        $score = $checker->score($faceReference, $path);
                         if ($score !== null && $score < \App\Services\Ugc\UgcFaceCheck::PASS && $faceRetries < 2 && config('services.ugc.face_retry')) {
                             if (! $this->owns($scene->refresh())) return; // superseded while the check ran: no paid remake
                             $faceRetries++;
                             \Illuminate\Support\Facades\Log::info('one-shot: presenter did not match, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1, 'score' => $score]);
                             $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                             if (! $this->owns($scene->refresh())) return;
-                            $second = $checker->score($this->referenceImages[0], $again);
+                            $second = $checker->score($faceReference, $again);
                             if ($second !== null && $second > $score) { $path = $again; $score = $second; }
                         }
                         $this->noteFace($scene, $i, $score);
                     }
                     // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
                     $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
+                    $keyColour = $this->composition['key_color'] ?? '0x00FF00';
+                    if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
+                        // One remake at our cost when the model drew scenery instead of the backdrop (#5); a second miss
+                        // stops the take rather than leaving the customer to pay for the same failure again.
+                        if (! $this->owns($scene->refresh())) return;
+                        \Illuminate\Support\Facades\Log::info('one-shot: no key backdrop, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
+                        $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                        if (! $this->owns($scene->refresh())) return;
+                        $again = $this->trimToScript($again, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
+                        if (! \App\Services\Ugc\UgcComposition::hasGreenBackground($again, $keyColour)) {
+                            throw new \RuntimeException('Segment '.($i + 1).' came back without the plain backdrop twice, so the presenter cannot be placed over your page. Nothing was charged. Try again, or make it as a testimonial instead.');
+                        }
+                        $path = $again;
+                    }
+                    if (! empty($chunk['requires_audio'])) {
+                        $audio = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', $path]);
+                        if (! $audio->successful() || trim($audio->output()) === '') throw new \RuntimeException('The ASMR clip has no native audio. Retry this segment before delivery; nothing was charged.');
+                    }
+                    if (! $sourceOnly && ! empty($chunk['source_media'])) {
+                        $media = $chunk['source_media'] + ['offset' => $chunk['source_offset'] ?? 0];
+                        $path = app(\App\Services\Ugc\UgcComposition::class)->render($path, ['layout' => 'replace', 'assets' => [$media]], $storage, $temps);
+                    }
                     $this->savePart($project, $scene, $storage, $i, $path);
                 }
                 $segmentPaths[] = $path;
@@ -198,6 +233,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if ($this->demoStorageUrl !== null) {
                 $finalPath = $this->compositeDemo($finalPath, $this->demoStorageUrl, $storage, $temps);
             }
+
+            if ($this->composition !== []) $finalPath = app(\App\Services\Ugc\UgcComposition::class)->render($finalPath, $this->composition, $storage, $temps);
 
             $storagePath = sprintf('workspaces/%d/assets/ugc-oneshot/%s.mp4', $project->workspace_id, Str::uuid());
             $storageUrl = $storage->put($storagePath, file_get_contents($finalPath), ['ContentType' => 'video/mp4']);
@@ -388,6 +425,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $chunkRefs = ($this->engine === 'veo_hq' || $this->engine === 'omni' || $i === 0)
                 ? $this->referenceImages
                 : [];
+            if (! empty($chunk['reference_images'])) { $chunkRefs = $chunk['reference_images']; $startFrame = null; $continuity = null; }
             // A new shot: the presenter (first), the previous shot's last frame, then the product; the engine takes 3.
             if ($continuity !== null && $chunkRefs !== []) {
                 $chunkRefs = array_slice(array_merge([$chunkRefs[0], $continuity], array_slice($chunkRefs, 1)), 0, 3);
@@ -441,7 +479,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** A line's words for matching: lower case, split at anything not a letter or digit, "okay" read as "ok". */
     public static function tokens(string $text): array
     {
-        return array_values(array_filter(array_map(fn ($t) => $t === 'okay' ? 'ok' : $t, preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($text)) ?: []), fn ($t) => $t !== ''));
+        $text = mb_strtolower($text);
+        // Accents do not decide a match: "Nécessaire" is often heard as "Necessaire".
+        if (class_exists(\Normalizer::class)) $text = (string) preg_replace('/\p{Mn}+/u', '', (string) \Normalizer::normalize($text, \Normalizer::FORM_D));
+
+        return array_values(array_filter(array_map(fn ($t) => $t === 'okay' ? 'ok' : $t, preg_split('/[^\p{L}\p{N}]+/u', $text) ?: []), fn ($t) => $t !== ''));
     }
 
     /**
@@ -452,7 +494,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * @param  array<int, array{text?: string, word?: string, start: float, end: float}>  $said
      * @return array{first: int, last: int}|null
      */
-    public static function scriptSpan(array $said, string $dialogue): ?array
+    public static function scriptSpan(array $said, string $dialogue, float $minimumCoverage = 0.8): ?array
     {
         $want = self::tokens($dialogue);
         $n = count($want);
@@ -472,10 +514,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         if ($eq($toks[$j][0], $want[$w])) { $k = $j; $matched++; $lastWant = $w; break; }
                     }
                 }
-                if ($matched < 0.8 * $n || $lastWant < $n - 2) continue;
+                // Never infer a missing closing word: cutting on the penultimate word can clip the real ending.
+                if ($matched < $minimumCoverage * $n || $lastWant !== $n - 1) continue;
                 $last = $toks[$k][1];
-                // The closing word misheard: the spoken word right after the last match is it.
-                if ($lastWant === $n - 2 && isset($said[$last + 1])) $last++;
 
                 // Started on a later word of the line: the words before it are its misheard opening, kept.
                 return ['first' => max(0, $toks[$s][1] - $a), 'last' => $last];
@@ -485,19 +526,45 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return null;
     }
 
+    /** Never deliver a spoken clip based on a placeholder or an unfinished transcript. */
+    public static function verifiedSpeechSpan(array $transcript, string $dialogue): ?array
+    {
+        if (($transcript['provider_key'] ?? '') === 'local_fallback') return null;
+        $words = array_values(array_filter($transcript['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []));
+        foreach ($words as $word) {
+            if (! isset($word['start'], $word['end']) || ! is_numeric($word['start']) || ! is_numeric($word['end']) || $word['start'] < 0 || $word['end'] < $word['start']) return null;
+        }
+        $wanted = self::tokens($dialogue);
+        if (count($wanted) === 1) {
+            foreach ($words as $i => $word) if (self::tokens((string) ($word['text'] ?? $word['word'] ?? '')) === $wanted) return ['first' => $i, 'last' => $i];
+            return null;
+        }
+        return self::scriptSpan($words, $dialogue, 0.95);
+    }
+
     private function trimToScript(string $path, string $dialogue, int $i, array &$temps, bool $leadIn = false, bool $ending = false): string
     {
-        if (count(self::tokens($dialogue)) < 2) return $path;
+        if (self::tokens($dialogue) === []) return $path;
+        // A transcript is a check, not the truth (#1, 2026-10-12): an outage, a placeholder, or a line heard differently
+        // ("Nécessaire" as "Necessaire", "$29" as "twenty-nine dollars") keeps the clip as it was made and logs it; failing
+        // the take there meant paying for clips a retry would fail the same way. Only a clip with no speech at all fails.
         try {
             $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
         } catch (\Throwable $e) {
-            report($e);
+            \Illuminate\Support\Facades\Log::warning('one-shot: line not checked, transcription failed; clip kept uncut', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
             return $path;
         }
+        if (($t['provider_key'] ?? '') === 'local_fallback') return $path;
         $said = array_values(array_filter($t['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []));
-        if (($t['provider_key'] ?? '') === 'local_fallback' || count($said) < 2) return $path;
-        $span = self::scriptSpan($said, $dialogue);
-        if ($span === null) return $path;
+        if ($said === [] && trim((string) ($t['transcript'] ?? '')) === '') {
+            throw new \RuntimeException('Segment '.($i + 1).' came back with no speech although its line is scripted. Retry to remake this segment; the take has not been charged.');
+        }
+        $span = self::verifiedSpeechSpan($t, $dialogue) ?? self::scriptSpan($said, $dialogue);
+        if ($span === null) {
+            \Illuminate\Support\Facades\Log::warning('one-shot: line not matched in the transcript; clip kept uncut', ['project_id' => $this->projectId, 'segment' => $i + 1,
+                'line' => mb_substr($dialogue, 0, 200), 'heard' => mb_substr((string) ($t['transcript'] ?? ''), 0, 200)]);
+            return $path;
+        }
         [$first, $last] = [$span['first'], $span['last']];
 
         $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
@@ -538,11 +605,30 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return \Illuminate\Support\Facades\Storage::disk('local');
     }
 
+    /** Image assets as data URIs, in the order given; this workspace's own or stock ones only, images only. */
+    private function referenceUris(array $assetIds, int $workspaceId): array
+    {
+        $assets = Asset::query()->whereIn('id', array_map('intval', $assetIds))
+            ->where(fn ($q) => $q->where('workspace_id', $workspaceId)->orWhereNull('workspace_id'))->get()->keyBy('id');
+        $out = [];
+        foreach ($assetIds as $id) {
+            $asset = $assets->get((int) $id);
+            if (! $asset || ! str_starts_with((string) $asset->mime_type, 'image/') || ! $asset->storage_url) continue;
+            $bytes = app(StorageService::class)->get((string) $asset->storage_url);
+            if (is_string($bytes) && $bytes !== '' && strlen($bytes) <= 8 * 1024 * 1024) $out[] = 'data:'.$asset->mime_type.';base64,'.base64_encode($bytes);
+        }
+
+        return $out;
+    }
+
     /** What makes the segments: a saved one is reused only while all of this is unchanged. */
     private function recipeHash(): string
     {
-        return substr(hash('sha256', json_encode([$this->chunks, $this->engine, $this->seed, $this->resolution, $this->demoStorageUrl,
-            hash('sha256', (string) $this->initialStartFrame), hash('sha256', json_encode($this->referenceImages))])), 0, 16);
+        $recipe = [$this->chunks, $this->engine, $this->seed, $this->resolution, $this->demoStorageUrl,
+            hash('sha256', (string) $this->initialStartFrame), hash('sha256', json_encode($this->referenceImages))];
+        // Existing queued recipes keep their hash when no new composition is requested.
+        if ($this->composition !== []) $recipe[] = $this->composition;
+        return substr(hash('sha256', json_encode($recipe)), 0, 16);
     }
 
     /**
@@ -563,7 +649,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         self::parts()->put($recipe, json_encode([
             'projectId' => $this->projectId, 'sceneId' => $this->sceneId, 'chunks' => $this->chunks, 'credits' => $this->credits,
             'engine' => $this->engine, 'referenceImages' => $this->referenceImages, 'initialStartFrame' => $this->initialStartFrame,
-            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace,
+            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition,
         ]));
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
@@ -639,7 +725,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             self::dispatch(
                 (int) $recipe['projectId'], (int) $recipe['sceneId'], $recipe['chunks'], (int) $recipe['credits'], (string) $recipe['engine'],
                 $recipe['referenceImages'] ?? [], $recipe['initialStartFrame'] ?? null, $recipe['seed'] ?? null,
-                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false),
+                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [],
             )->afterCommit();
             return 'resumed';
         });

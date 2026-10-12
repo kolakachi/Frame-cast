@@ -76,18 +76,11 @@ final class UgcPlan
             if (! is_finite($seconds) || $seconds < 1 || $seconds > 60) {
                 self::invalid('Shots must be between 1 and 60 seconds. Split longer speech into intentional takes.');
             }
-            // A demo cutaway may be silent. Showing a screen recording or a
-            // product shot under a headline, with no voice over it, is the
-            // natural beat of a demo — requiring narration everywhere forced
-            // the director to invent words for a shot that works better
-            // without them. It stays disallowed in direct_camera and story,
-            // where a silent shot is a mistake rather than a choice.
-            // A text-led shot can carry a headline alone: the words on screen
-            // are the ad, and narration over them is a choice rather than the
-            // point. In demo it stays the exception it always was.
+            // Wordless action is valid in stories and demos. Text-led cards still need copy.
             $silentCutawayAllowed = $kind === 'b_roll'
                 && (
-                    (in_array($format, ['demo', ...self::STILL_ONLY_FORMATS], true) && $headlineFor($seg) !== '')
+                    in_array($format, ['demo', 'story'], true)
+                    || (in_array($format, self::STILL_ONLY_FORMATS, true) && $headlineFor($seg) !== '')
                     // Real footage carries itself: an uploaded clip is a scene
                     // without burned-in text, unlike a generated still.
                     || (($seg['source'] ?? null) === 'upload' && ! empty($seg['asset_id']))
@@ -101,7 +94,7 @@ final class UgcPlan
                 self::invalid('A reaction has one silent shot; it cannot contain spoken shots.');
             } elseif ($text === '' && ! $silentCutawayAllowed) {
                 self::invalid($kind === 'b_roll'
-                    ? 'A silent cutaway needs a headline, and only a demo can use one. Add narration or a headline.'
+                    ? 'A silent cutaway needs a story/demo format, or a headline for a text-led card.'
                     : 'Talking shots need narration.');
             } elseif (mb_strlen($text) > 1500) {
                 self::invalid('Keep each shot under 1,500 spoken characters.');
@@ -149,6 +142,7 @@ final class UgcPlan
                 'voice_direction' => $delivery, 'speed' => $speed,
                 'anchor' => $anchor, 'anchor_role' => $role,
                 'headline' => $headline, 'source' => $source,
+                'speaker' => isset($seg['speaker']) ? (int) $seg['speaker'] : null,
                 'asset_id' => $kind === 'b_roll' && $source !== 'generate' ? ((int) ($seg['asset_id'] ?? 0) ?: null) : null,
             ];
         }

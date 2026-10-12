@@ -99,25 +99,24 @@ class UgcPlanTest extends TestCase
         (new UgcShotPlanner($ai))->plan('Different words.', format: 'direct_camera');
     }
 
-    public function test_silent_cutaway_is_coerced_not_fatal(): void
+    public function test_silent_cutaway_is_preserved_without_invented_copy(): void
     {
-        // The live director (prod, 2026-09-19) twice wrote a silent generated
-        // b-roll where the rules forbid one and self-repair didn't save it —
-        // the shot gets coerced (demo: brief becomes the burned-in line;
-        // story: the shot is cut), never the whole plan.
+        // Wordless actions survive planning without turning camera notes into visible copy.
         $silent = $this->shot(['kind' => 'b_roll', 'script_text' => '', 'source' => 'generate']);
         $ai = $this->createMock(AIGenerationAdapter::class);
         $ai->method('generate')->willReturn(['content' => json_encode([
             'format' => 'demo', 'segments' => [$silent, $this->shot()]])]);
         $plan = (new UgcShotPlanner($ai))->plan('', 'My app', 'Show the product');
-        $this->assertSame(mb_substr($silent['visual_brief'], 0, 80), $plan['segments'][0]['headline']);
+        $this->assertSame('', $plan['segments'][0]['headline']);
+        $this->assertCount(2, $plan['segments']);
 
         $ai2 = $this->createMock(AIGenerationAdapter::class);
         $ai2->method('generate')->willReturn(['content' => json_encode([
             'format' => 'story', 'segments' => [$silent, $this->shot()]])]);
         $plan2 = (new UgcShotPlanner($ai2))->plan('', 'My app', 'Tell the story');
-        $this->assertCount(1, $plan2['segments']);
-        $this->assertSame('on_camera', $plan2['segments'][0]['kind']);
+        $this->assertCount(2, $plan2['segments']);
+        $this->assertSame('b_roll', $plan2['segments'][0]['kind']);
+        $this->assertSame('', $plan2['segments'][0]['script_text']);
     }
 
     public function test_director_presenter_choice_survives_into_the_plan(): void
@@ -201,14 +200,13 @@ class UgcPlanTest extends TestCase
         $this->assertSame('wyvstudio.com', $plan[1]['headline']);
     }
 
-    public function test_a_silent_cutaway_without_a_headline_is_rejected(): void
+    public function test_silent_action_shots_do_not_require_headlines(): void
     {
-        $this->expectException(ValidationException::class);
-        UgcPlan::normalise([
-            ['kind' => 'on_camera', 'script_text' => 'Words.', 'seconds' => 4, 'visual_brief' => 'Desk'],
-            ['kind' => 'b_roll', 'script_text' => '', 'seconds' => 5, 'source' => 'upload',
-             'visual_brief' => 'A screen, saying nothing at all'],
-        ], 'demo');
+        foreach (['story', 'demo'] as $format) {
+            $shots = UgcPlan::normalise([$this->shot(['kind' => 'b_roll', 'source' => 'generate', 'script_text' => '', 'headline' => '', 'motion_prompt' => 'Slowly open the package.'])], $format);
+            $this->assertSame('', $shots[0]['headline']);
+            $this->assertSame('Slowly open the package.', $shots[0]['motion_prompt']);
+        }
     }
 
     public function test_a_silent_shot_is_not_quoted_for_a_voice_it_never_uses(): void

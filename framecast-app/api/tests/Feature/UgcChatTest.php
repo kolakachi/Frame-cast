@@ -24,6 +24,7 @@ class UgcChatTest extends TestCase
     private array $prompts = [];
     private array $planned = [];
     private array $linkPhotos = [];
+    private ?array $planOverride = null;
 
     protected function setUp(): void
     {
@@ -34,6 +35,8 @@ class UgcChatTest extends TestCase
         DB::purge('ugc_chat_test');
         Bus::fake();
         config(['services.ugc.chat_open_to_all' => true]);
+        // These tests exercise each type's production route; the gate that holds them back from customers has its own test.
+        config(['services.ugc.types_live' => array_keys(\App\Services\Ugc\UgcTypes::DEFINITIONS)]);
         foreach (['scenes' => ['project_id', 'scene_order', 'image_generation_settings_json'], 'characters' => ['workspace_id', 'name', 'description', 'status', 'is_stock', 'reference_asset_id', 'gender'],
             'assets' => ['workspace_id', 'asset_type', 'title', 'storage_url', 'mime_type', 'duration_seconds', 'status', 'tags']] as $table => $cols) {
             Schema::create($table, function (Blueprint $t) use ($cols) { $t->id(); foreach ($cols as $c) $t->text($c)->nullable(); $t->timestamps(); });
@@ -66,7 +69,7 @@ class UgcChatTest extends TestCase
             'voice_direction' => 'Warm.', 'anchor' => 'This serum fixed my dull skin in a week.', 'anchor_role' => 'establish', 'source' => null, 'speed' => 1.0, 'headline' => null, 'motion_prompt' => '']];
         $ugc = Mockery::mock(UgcController::class)->makePartial();
         $ok = fn (array $data, int $status = 200) => new JsonResponse(['data' => $data, 'meta' => []], $status);
-        $ugc->shouldReceive('plan')->andReturnUsing(fn ($request) => ($this->planned[] = $request->all()) ? $ok(['format' => 'direct_camera', 'script' => $segments[0]['script_text'], 'segments' => $segments,
+        $ugc->shouldReceive('plan')->andReturnUsing(fn ($request) => ($this->planned[] = $request->all()) ? $ok($this->planOverride ?? ['format' => 'direct_camera', 'script' => $segments[0]['script_text'], 'segments' => $segments,
             'presenter' => 'A woman in her late twenties', 'presenter_character_id' => 5, 'credits_per_character' => 99]) : null);
         $ugc->shouldReceive('readLink')->andReturnUsing(fn () => $ok(['product' => 'Dewbloom serum', 'context' => 'Vitamin C, 30 ml', 'must_include' => '']));
         $ugc->shouldReceive('generateOneShot')->andReturnUsing(function ($request) use ($ok) {
@@ -114,7 +117,8 @@ class UgcChatTest extends TestCase
         $this->assertSame('pitch', $pitch['kind']);
         $this->assertCount(1, $pitch['payload']['takes'], 'one video unless the user asks for more');
         $this->assertSame(['one_shot', 'omni'], [$pitch['payload']['takes'][0]['mode'], $pitch['payload']['takes'][0]['engine']]);
-        $this->assertSame(15 * 22, $pitch['payload']['credits'], 'priced by the pipeline: 15 s of Omni');
+        // Billed for the seconds generated (#4): this 9-word line is made as 8 s of Omni, not the 15 s planned.
+        $this->assertSame(8 * 22, $pitch['payload']['credits'], 'priced by the pipeline: the seconds Omni actually makes');
         $this->assertArrayNotHasKey('request', $pitch['payload']['takes'][0], 'the internal request is never shown');
 
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-1111-4a2b-9c3d-123456789abc'])->assertStatus(422);
@@ -123,7 +127,7 @@ class UgcChatTest extends TestCase
         $this->assertSame('making', $made['reply']['kind']);
         $this->assertCount(1, $this->handed);
         $this->assertSame(5, (int) $this->handed[0]['character_id']);
-        $this->assertSame(330, (int) $this->handed[0]['credits']);
+        $this->assertSame(176, (int) $this->handed[0]['credits']);
         $this->assertStringContainsString('Excited', $this->handed[0]['segments'][0]['voice_direction'], "the presenter's voice reaches the take");
         $this->assertSame(1.12, (float) $this->handed[0]['segments'][0]['speed']);
         $this->assertSame([20], $this->handed[0]['product_asset_ids'], 'product photos are references');
@@ -162,7 +166,7 @@ class UgcChatTest extends TestCase
         $materials = collect($this->prompts)->firstWhere(0, 'ugc_chat_turn')[1]['materials'];
         $this->assertStringContainsString('serum.jpg showing a face serum (squeeze tube); white with a green flip cap; about the length of a hand; the label is printed with "Dewbloom Vitamin C"', $materials);
         $this->assertStringContainsString('from their product page: dewbloom-front.jpg showing', $materials);
-        $this->assertStringStartsWith('The product, exactly as its photos show: a face serum (squeeze tube)', $this->planned[0]['context'], 'the plan describes the product from its photo');
+        $this->assertStringContainsString('The product, exactly as its photos show: a face serum (squeeze tube)', $this->planned[0]['context'], 'the plan describes the product from its photo');
         $facts = collect($res['chat']['messages'])->firstWhere('kind', 'facts')['payload']['facts'][0];
         $this->assertSame(60, $facts['images'][0]['asset_id'], 'the page photos are shown under what we read there');
 
@@ -274,11 +278,80 @@ class UgcChatTest extends TestCase
         $this->actingAs($customer)->postJson('/api/v1/ugc/chats')->assertCreated();
     }
 
-    public function test_types_not_offered_yet_are_refused(): void
+    public function test_unknown_types_are_refused_and_all_menu_types_are_exposed(): void
     {
         $this->withoutMiddleware();
         $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'An ad', 'type' => 'unknown'])->assertStatus(422);
+        $types = $this->actingAs($this->user())->getJson('/api/v1/ugc/settings')->assertOk()->json('data.types');
+        $this->assertCount(14, $types);
+        $this->assertNotContains(false, array_column($types, 'available'));
+    }
+
+    public function test_new_type_routes_stay_staff_only_until_opened(): void
+    {
+        $this->withoutMiddleware();
+        config(['services.ugc.types_live' => []]);
+        $types = collect($this->actingAs($this->user())->getJson('/api/v1/ugc/settings')->assertOk()->json('data.types'))->keyBy('key');
+        $this->assertSame([false, false, false], [$types['skit']['available'], $types['pov_hook']['available'], $types['reaction']['available']], 'new types hidden from customers');
+        $this->assertSame([true, false], [$types['green_screen']['available'], $types['green_screen']['live']], 'older types stay, made the old way');
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A skit', 'type' => 'skit'])->assertStatus(422);
+        $staff = $this->user()->forceFill(['role' => 'super_admin']);
+        $this->assertTrue(collect($this->actingAs($staff)->getJson('/api/v1/ugc/settings')->json('data.types'))->firstWhere('key', 'skit')['available'], 'staff see everything');
+        config(['services.ugc.types_live' => ['skit']]);
+        $this->assertTrue(collect($this->actingAs($this->user())->getJson('/api/v1/ugc/settings')->json('data.types'))->firstWhere('key', 'skit')['available'], 'opened one type at a time');
+        $this->assertFalse(\App\Services\Ugc\UgcTypes::native('asmr', $this->user()));
+        $this->assertArrayNotHasKey('pov_hook', \App\Services\Ugc\UgcTypes::contracts($this->user()), 'the director is never offered a type the user cannot choose');
+        $this->assertStringContainsString('No compositing', \App\Services\Ugc\UgcTypes::contracts($this->user())['green_screen'][3]);
+    }
+
+    public function test_every_type_routes_to_its_production_contract(): void
+    {
+        $this->withoutMiddleware();
+        DB::table('characters')->insert(['id' => 6, 'workspace_id' => 1, 'name' => 'Maker', 'status' => 'active', 'is_stock' => false, 'reference_asset_id' => 10]);
+        foreach (\App\Services\Ugc\UgcTypes::DEFINITIONS as $type => $definition) {
+            if ($type === 'auto') continue;
+            $format = $definition[2];
+            $silent = in_array($type, ['asmr', 'pov_hook', 'reaction'], true);
+            $segment = ['kind' => $type === 'reaction' ? 'reaction' : ($silent ? 'b_roll' : 'on_camera'),
+                'script_text' => $silent ? '' : 'Here is the product.', 'seconds' => 5, 'visual_brief' => 'The product on a desk.',
+                'motion_prompt' => 'Open the package gently.', 'voice_direction' => 'Whisper this softly.', 'speed' => 1,
+                'source' => $silent && $type !== 'reaction' ? 'generate' : null, 'headline' => $silent ? 'A useful discovery' : '', 'speaker' => $type === 'skit' ? 1 : null];
+            $segments = [$segment];
+            if ($type === 'skit') $segments[] = array_replace($segment, ['speaker' => 2, 'script_text' => 'That looks useful.']);
+            $this->planOverride = ['format' => $format, 'script' => \App\Services\Ugc\UgcPlan::script($segments), 'segments' => $segments, 'presenter_character_id' => 5];
+            $this->replies[] = ['action' => 'pitch', 'type' => $type, 'format' => $format, 'summary' => 'A product video.', 'script' => $this->planOverride['script']];
+            $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+            $input = ['text' => 'Make this ad', 'type' => $type];
+            if ($type === 'green_screen') $input['attachments'] = [['asset_id' => 20, 'role' => 'background']];
+            if ($type === 'founder_story') $input['presenters'] = [['character_id' => 6]];
+            if ($type === 'skit') $input['presenters'] = [['character_id' => 5], ['character_id' => 6]];
+            $pitch = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", $input)->assertOk()->json('data.reply');
+            $this->assertSame('pitch', $pitch['kind'], $type);
+            $stored = json_decode(DB::table('ugc_chat_messages')->where('id', $pitch['id'])->value('payload_json'), true);
+            $take = $stored['takes'][0];
+            $this->assertSame($type, $take['request']['ugc_type']);
+            $this->assertSame($format, end($this->planned)['format']);
+            $this->assertSame(in_array($type, ['reaction', 'pov_hook'], true) ? 'composed' : 'one_shot', $take['mode'], $type);
+            if ($type === 'skit') {
+                $this->assertCount(1, $pitch['payload']['takes']);
+                $this->assertSame([5, 6], $take['request']['cast_character_ids']);
+            }
+            if ($type === 'green_screen') $this->assertSame(20, $take['request']['composition']['background_asset_id']);
+        }
+    }
+
+    public function test_green_screen_asks_for_a_background_and_skit_for_two_speakers(): void
+    {
+        $this->withoutMiddleware();
+        foreach (['green_screen', 'skit'] as $type) {
+            $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+            $this->replies[] = ['action' => 'pitch', 'type' => $type, 'summary' => 'A video.', 'script' => 'Try this.'];
+            $reply = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Make it', 'type' => $type])->assertOk()->json('data.reply');
+            $this->assertSame('question', $reply['kind']);
+        }
+        $this->assertSame([], $this->planned);
     }
 
     public function test_a_composed_video_retries_only_its_failed_shots_and_is_never_remade_whole(): void

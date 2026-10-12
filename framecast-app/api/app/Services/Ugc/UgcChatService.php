@@ -24,9 +24,8 @@ final class UgcChatService
 {
     public const TYPES = ['testimonial', 'problem_solution', 'green_screen', 'before_after', 'unboxing', 'comparison', 'pov_hook',
         'asmr', 'day_in_life', 'skit', 'listicle', 'founder_story', 'reaction'];
-    /** Types listed but not offered yet (owner, 2026-10-10 go-live): skit needs every person cast first; POV hook and
-     *  reaction are composed and not yet re-proven. The director never picks them and the API refuses them. */
-    public const SOON = ['skit', 'pov_hook', 'reaction'];
+    /** Superseded by UgcTypes::unavailable(), per user and opened by UGC_TYPES_LIVE (#8). Kept for older callers. */
+    public const SOON = [];
     private const NOT_FOUNDER = 'Make it a testimonial instead';
     /** Everyday outfits that suit any presenter; each ad gets one this workspace has not used lately. */
     private const WARDROBE = ['a rust ribbed knit sweater', 'a white cotton tee under an open light-wash denim shirt', 'a soft sage green hoodie',
@@ -78,7 +77,7 @@ final class UgcChatService
         foreach ($input['attachments'] ?? [] as $a) {
             $asset = DB::table('assets')->where('id', (int) $a['asset_id'])->where('workspace_id', $user->workspace_id)->first(['id', 'asset_type', 'title']);
             if (! $asset) continue;
-            $role = in_array($a['role'] ?? null, ['product', 'footage', 'sample'], true) ? $a['role'] : ($asset->asset_type === 'image' ? 'product' : 'footage');
+            $role = in_array($a['role'] ?? null, UgcTypes::ROLES, true) ? $a['role'] : ($asset->asset_type === 'image' ? 'product' : 'footage');
             $state['attachments'] = array_values(array_filter($state['attachments'] ?? [], fn ($x) => (int) $x['asset_id'] !== (int) $asset->id));
             $state['attachments'][] = ['asset_id' => (int) $asset->id, 'role' => $role, 'type' => $asset->asset_type, 'title' => (string) $asset->title];
             // A sample UGC: its structure (hook, beats, pacing), read once. Never its words, face or music.
@@ -148,7 +147,7 @@ final class UgcChatService
                 'transcript' => $this->transcript($id), 'materials' => $this->materials($state),
                 'presenters' => $this->presentersText($state, (int) $request->user()->workspace_id), 'type' => $state['type'] ?? 'auto',
                 'shape' => ($state['aspect'] ?? '9:16').(! empty($state['length']) ? ', '.$state['length'].' seconds' : ', length open'),
-                'settings' => $this->settingsText($request), 'previous_error' => $error,
+                'settings' => $this->settingsText($request), 'type_contracts' => json_encode(UgcTypes::contracts($request->user())), 'previous_error' => $error,
             ], 1500, 0.4);
             try { $d = UgcPlan::decodeModelJson((string) ($out['content'] ?? '')); } catch (\Throwable) { $d = []; }
             if (($d['action'] ?? null) === 'ask' && trim((string) ($d['question'] ?? '')) !== '') $decision = $d;
@@ -175,15 +174,32 @@ final class UgcChatService
     /** Turn the director's pitch into the existing UGC plan, one take per presenter, each priced by the pipeline's own rules. */
     private function pitch(Request $request, string $id, array $state, array $d): array
     {
-        $type = in_array($d['type'] ?? null, self::TYPES, true) && ! in_array($d['type'], self::SOON, true) ? $d['type'] : 'testimonial';
-        if (in_array($state['type'] ?? 'auto', self::TYPES, true)) $type = $state['type'];
+        $unavailable = UgcTypes::unavailable($request->user());
+        $type = in_array($d['type'] ?? null, self::TYPES, true) && ! in_array($d['type'], $unavailable, true) ? $d['type'] : 'testimonial';
+        if (in_array($state['type'] ?? 'auto', self::TYPES, true) && ! in_array($state['type'], $unavailable, true)) $type = $state['type'];
+        // Its new production route only where it is open to this user (#8); otherwise made the way it was before.
+        $live = UgcTypes::live($type, $request->user());
         // A founder story is told by the founder (owner, 2026-10-10): an actor saying "I made this" for a real brand
         // deceives. It needs the user's own face, an uploaded photo or a saved character, on every presenter.
         if ($type === 'founder_story' && ! $this->ownFaces($request, $state)) {
             return $this->say($id, 'question', 'A founder story is told by the founder, so it needs your own face. Add your photo (Presenters → upload) or pick your saved character, then send again. Or I can make it a testimonial instead.', ['chips' => [self::NOT_FOUNDER]]);
         }
-        $format = in_array($d['format'] ?? null, UgcPlan::FORMATS, true) ? $d['format'] : 'auto';
-        if ($format === 'reaction' && in_array('reaction', self::SOON, true)) $format = 'direct_camera';
+        $attachments = $state['attachments'] ?? [];
+        $roleAsset = fn ($role) => collect($attachments)->firstWhere('role', $role)['asset_id'] ?? null;
+        $composition = [];
+        if ($live && $type === 'green_screen') {
+            if (! $roleAsset('background')) return $this->say($id, 'question', 'Upload the page or screenshot to show behind the presenter, choose Background for that file, then send again.');
+            $composition = ['layout' => 'green_screen', 'background_asset_id' => $roleAsset('background')];
+        }
+        if ($live && in_array($type, ['before_after', 'comparison'], true) && ($roleAsset('left') || $roleAsset('right'))) {
+            if (! $roleAsset('left') || ! $roleAsset('right')) return $this->say($id, 'question', 'A split comparison needs both files. Assign one upload to Left / Before and the other to Right / After, then send again.');
+            $composition = ['layout' => 'split', 'left_asset_id' => $roleAsset('left'), 'right_asset_id' => $roleAsset('right')];
+        }
+        $castIds = array_values(array_filter(array_column($state['presenters'] ?? [], 'character_id')));
+        if ($type === 'skit' && (count($state['presenters'] ?? []) !== 2 || count($castIds) !== 2 || count(array_unique($castIds)) !== 2)) {
+            return $this->say($id, 'question', 'Choose exactly two different presenters for this skit. They will play speaker 1 and speaker 2 in one video.');
+        }
+        $format = (UgcTypes::contracts($request->user())[$type] ?? null)[2] ?? UgcTypes::format($type);
         $seconds = (int) max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15)));
         $footage = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'footage')));
         // A reaction is silent: its words are a headline, never a spoken script (the planner refuses one).
@@ -203,13 +219,15 @@ final class UgcChatService
         $everyone = $chosen && count($chosen) === 1 && count(array_filter($state['presenters'] ?? [], fn ($p) => empty($p['setting']))) === 0;
         $named = is_string($d['setting'] ?? null) ? $d['setting'] : '';
         $setting = $everyone ? $chosen[0] : (isset($settings[$named]) ? $named : $this->pickSetting($settings, $recentSettings));
+        if ($type === 'green_screen') $setting = null;
         $wardrobe = $this->pickWardrobe($recentOutfits, $setting !== null ? ($settings[$setting]['wardrobe'] ?? []) : []);
+        if ($type === 'green_screen') $wardrobe = 'a charcoal grey top';
         $products = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'product')));
         $look = $products ? $this->vision->look($products, (int) $request->user()->workspace_id) : '';
         $plan = $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'plan'], ['request' => $r]), array_filter([
             'avoid_character_ids' => empty($state['presenters']) && $recentFaces ? $recentFaces : null,
             'script' => mb_substr((string) ($d['script'] ?? ''), 0, 1500),
-            'context' => mb_substr(($look !== '' ? 'The product, exactly as its photos show: '.$look.'. Every shot that shows it shows this same object, at this size. ' : '').trim((string) ($d['context'] ?? $d['summary'])).($setting !== null ? ' Filmed in '.$settings[$setting]['place'].'.' : '').' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
+            'context' => mb_substr('UGC type: '.$type.'. '.(UgcTypes::contracts($request->user())[$type][3] ?? UgcTypes::direction($type)).' '.($look !== '' ? 'The product, exactly as its photos show: '.$look.'. Every shot that shows it shows this same object, at this size. ' : '').trim((string) ($d['context'] ?? $d['summary'])).($setting !== null ? ' Filmed in '.$settings[$setting]['place'].'.' : '').' Wardrobe for this ad: '.$wardrobe.'. Describe the presenter wearing exactly this in every shot; ignore any clothing in a presenter\'s saved description.', 0, 1500),
             'product' => mb_substr((string) ($d['product'] ?? ($state['link']['facts']['product'] ?? '')), 0, 200), 'format' => $format,
             'duration_seconds' => $seconds, 'language' => 'en', 'footage_asset_ids' => $footage ?: null,
             'reference' => ! empty($state['sample']['reference']) ? array_intersect_key($state['sample']['reference'], ['duration' => 1, 'shape' => 1, 'beats' => 1]) : null,
@@ -217,14 +235,22 @@ final class UgcChatService
         if (isset($plan['error'])) return $this->say($id, 'error', $plan['error']['message'] ?? 'The plan could not be made. Try again.');
 
         $presenters = $state['presenters'] ?? [];
+        if ($live && in_array($type, ['asmr', 'pov_hook'], true)) $presenters = [['character_id' => null, 'voice' => $type === 'asmr' ? ($presenters[0]['voice'] ?? null) : null]];
         if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? null, 'voice' => null, 'picked' => true]];
         $takes = [];
         $title = mb_substr(trim((string) ($d['title'] ?? 'UGC video')), 0, 120);
+        if ($type === 'skit') {
+            $speakers = UgcTypes::spokenSpeakers($plan['segments']);
+            if (array_diff($speakers, [1, 2]) || count($speakers) !== 2) {
+                return $this->say($id, 'error', 'The skit plan must assign each shot to speaker 1 or 2 and include both speakers. Ask for a revised plan; no credits were spent.');
+            }
+            $presenters = [array_merge($presenters[0], ['cast_character_ids' => $castIds, 'speaker_voices' => [1 => $presenters[0]['voice'] ?? null, 2 => $presenters[1]['voice'] ?? null]])];
+        }
         foreach ($presenters as $p) {
             // A presenter with their own place gets it, and clothes that suit it.
             $own = is_string($p['setting'] ?? null) && isset($settings[$p['setting']]) && $p['setting'] !== $setting ? $p['setting'] : null;
             $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type, $title,
-                $own ? $this->pickWardrobe($recentOutfits, $settings[$own]['wardrobe'] ?? []) : $wardrobe, $own ?? $setting);
+                $own ? $this->pickWardrobe($recentOutfits, $settings[$own]['wardrobe'] ?? []) : $wardrobe, $own ?? $setting, $composition);
         }
 
         // The director writes before anyone is cast: a single presenter it could not name is named now.
@@ -240,21 +266,25 @@ final class UgcChatService
     }
 
     /** One presenter's video: their voice applied to every spoken shot; one take when the pipeline can, composed otherwise. */
-    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null): array
+    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null, array $composition = []): array
     {
         $voice = $p['voice'] ?? null;
-        $segments = array_map(function ($s) use ($voice) {
+        $segments = array_map(function ($s) use ($voice, $p) {
+            if (isset($p['speaker_voices'])) $voice = $p['speaker_voices'][$s['speaker'] ?? 0] ?? null;
             if ($voice && trim((string) ($s['script_text'] ?? '')) !== '') {
                 $s['speed'] = self::PACE[$voice['pace'] ?? 'natural'] ?? 1.0;
-                $s['voice_direction'] = trim((self::DELIVERY[$voice['delivery'] ?? 'friendly'] ?? self::DELIVERY['friendly']).'. '.(string) ($voice['direction'] ?? ''), ' .').'.';
+                $s['voice_direction'] = trim((string) ($s['voice_direction'] ?? '').' '.(self::DELIVERY[$voice['delivery'] ?? 'friendly'] ?? self::DELIVERY['friendly']).'. '.(string) ($voice['direction'] ?? ''), ' .').'.';
             }
             return $s;
         }, $plan['segments']);
         $characterId = $p['character_id'] ?? null;
         $name = $characterId ? (string) self::castable($request->user())->where('id', $characterId)->value('name') : 'A fitting presenter';
-        $oneShot = self::oneShotEligible($plan['format'], $segments);
+        if ($type === 'skit') $name = implode(' + ', array_map(fn ($castId) => (string) self::castable($request->user())->where('id', $castId)->value('name'), $p['cast_character_ids'] ?? []));
+        $oneShot = $composition !== [] || self::oneShotEligible($plan['format'], $segments) || UgcTypes::native($type, $request->user());
+        // The type only travels where its route is open, so the compiler's per-type opening is not used before then.
+        $liveType = UgcTypes::live($type, $request->user()) ? $type : null;
         if ($oneShot) {
-            $v = array_filter(['format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_id' => $characterId,
+            $v = array_filter(['ugc_type' => $liveType, 'composition' => $composition ?: null, 'cast_character_ids' => $p['cast_character_ids'] ?? null, 'format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_id' => $characterId,
                 'engine' => $characterId ? 'omni' : 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null,
                 'product_asset_ids' => $products ?: null, 'product' => mb_substr($product, 0, 200), 'language' => 'en',
                 'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title, 'wardrobe' => $wardrobe,
@@ -265,7 +295,7 @@ final class UgcChatService
                 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'request' => $v];
         }
         $per = UgcPlan::quote($segments);
-        $v = array_filter(['format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_ids' => $characterId ? [$characterId] : null,
+        $v = array_filter(['ugc_type' => $liveType, 'format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_ids' => $characterId ? [$characterId] : null,
             'aspect_ratio' => '9:16', 'language' => 'en', 'product_asset_id' => $products[0] ?? null, 'credits_per_character' => $per,
             'title' => $title], fn ($x) => $x !== null && $x !== '');
         return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'composed',
@@ -367,6 +397,10 @@ final class UgcChatService
         foreach ($pitch['takes'] as $i => $t) {
             if (isset($pitch['started'][$i])) { $runs[] = $pitch['started'][$i]; continue; } // started by an earlier Make
             $products = array_values(array_filter(array_map('intval', (array) ($t['request']['product_asset_ids'] ?? array_filter([$t['request']['product_asset_id'] ?? null]))), fn ($p) => in_array($p, $kept, true)));
+            foreach (['background_asset_id', 'left_asset_id', 'right_asset_id'] as $key) {
+                $needed = $t['request']['composition'][$key] ?? null;
+                if ($needed && ! in_array((int) $needed, $kept, true)) return $this->say($id, 'error', 'A required background or comparison file was removed. Request a new plan before making this video.');
+            }
             unset($t['request']['product_asset_id'], $t['request']['product_asset_ids']);
             if ($products) $t['request'] += $t['mode'] === 'one_shot' ? ['product_asset_id' => $products[0], 'product_asset_ids' => $products] : ['product_asset_id' => $products[0]];
             // Keyed by the pitch, not the browser: a second Make after a reload is the same request (idempotent).

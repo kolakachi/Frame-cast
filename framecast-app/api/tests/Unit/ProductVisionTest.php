@@ -47,7 +47,10 @@ class ProductVisionTest extends TestCase
         $this->assertStringContainsString('never turn it into a different kind of container', UgcOneShotCompiler::compile($beats, $style)[0]['prompt']);
         $this->assertStringNotContainsString('product reference photos', UgcOneShotCompiler::compile($beats, ['product' => 'Sunly'])[0]['prompt'], 'no photo read, no claim about one');
         $prompt = UgcOneShotCompiler::compile($beats, $style)[0]['prompt'];
-        $this->assertStringContainsString('never said aloud', $prompt, 'label text is seen, not spoken (take 281 said "fragrance-free" twice)');
+        $this->assertStringContainsString('never reads the packaging aloud', $prompt, 'take 281 said "fragrance-free" twice');
+        $this->assertStringNotContainsString('words printed on its label', $prompt, 'that wording came back with burned-in subtitles (take 282)');
+        $this->assertStringContainsString('every spoken line is heard, never written', $prompt);
+        $this->assertStringContainsString('talks directly to the phone camera', $prompt, 'a testimonial keeps its selfie take');
         $this->assertStringNotContainsString('imperfect', $prompt);
     }
 }

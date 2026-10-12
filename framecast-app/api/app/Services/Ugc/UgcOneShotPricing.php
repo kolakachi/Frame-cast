@@ -18,6 +18,31 @@ use Illuminate\Validation\ValidationException;
  */
 class UgcOneShotPricing
 {
+    /** Reused silent footage needs no video generation; narration over footage still does. */
+    public static function billableSeconds(array $segments): int
+    {
+        $seconds = array_sum(array_map(fn ($s) => ($s['kind'] ?? '') === 'b_roll'
+            && in_array($s['source'] ?? '', ['upload', 'stock'], true) && ! empty($s['asset_id']) && trim((string) ($s['script_text'] ?? '')) === ''
+                ? 0 : max(1, (float) ($s['seconds'] ?? 0)), $segments));
+        return $seconds > 0 ? max(4, (int) ceil($seconds)) : 0;
+    }
+
+    /**
+     * What a take is billed for: the seconds actually generated, as the compiler cut them (#4, 2026-10-12): each clip's
+     * finishing second is real generation, and a 44-word line billed 17 s was made as 20 s. Clips that only replay the
+     * user's own footage are not generated, so they are free. Veo snaps clips to 4/6/8 s; that overage stays ours.
+     *
+     * @param  list<array<string, mixed>>  $chunks  UgcOneShotCompiler output
+     */
+    public static function quoteSeconds(array $chunks, array $segments, string $engine): int
+    {
+        $generated = array_values(array_filter($chunks, fn ($c) => empty($c['source_asset_id']) || trim((string) ($c['dialogue'] ?? '')) !== ''));
+        $seconds = array_sum(array_map(fn ($c) => (float) ($c['seconds'] ?? 0), $generated));
+        if (in_array($engine, ['veo', 'veo_hq'], true)) $seconds = min($seconds, self::billableSeconds($segments) + count($generated));
+
+        return $seconds > 0 ? max(4, (int) ceil($seconds)) : 0;
+    }
+
     /**
      * @param  array<string, mixed>  $v  the generate-one-shot input
      * @param  list<array<string, mixed>>  $segments  normalised
@@ -70,6 +95,7 @@ class UgcOneShotPricing
         }
 
         $style = [
+            'ugc_type' => $v['ugc_type'] ?? '',
             'presenter' => $presenter,
             'setting' => ! empty($v['setting_key']) ? UgcSettings::direction((string) $v['setting_key']) : trim((string) ($v['setting'] ?? '')),
             'place_note' => ! empty($v['setting_key']) ? UgcSettings::note((string) $v['setting_key'], true) : '',
@@ -78,7 +104,10 @@ class UgcOneShotPricing
             'pronunciations' => '',
             'demo' => $demo,
         ];
-        $single = $engine === 'seedance25' ? UgcOneShotCompiler::compileSingle($segments, $style) : null;
+        if (($v['ugc_type'] ?? '') === 'skit') $engine = 'omni';
+        \App\Services\Ugc\UgcComposition::resolve($user, $v['composition'] ?? []);
+        $hasSources = collect($segments)->contains(fn ($s) => ($s['kind'] ?? '') === 'b_roll' && ($s['source'] ?? '') !== 'generate');
+        $single = $engine === 'seedance25' && ! $hasSources ? UgcOneShotCompiler::compileSingle($segments, $style) : null;
         if ($demo && $single === null) {
             throw ValidationException::withMessages(['demo_asset_id' => 'A demo-embed ad must be 30 seconds or under — shorten the plan to include the demo clip.']);
         }
@@ -89,6 +118,9 @@ class UgcOneShotPricing
         $draft = $engine === 'seedance25' && ! $demo && ($v['quality'] ?? 'full') === 'draft';
         $perSecond = $draft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
 
-        return ['engine' => $engine, 'quote' => (int) ($planSeconds * $perSecond), 'plan_seconds' => $planSeconds, 'draft' => $draft, 'presenter_attached' => $presenterAttached];
+        $chunks = $single !== null ? [$single] : UgcOneShotCompiler::compile($segments, $style,
+            $engine === 'omni' ? UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : UgcOneShotCompiler::MAX_SEGMENT_SECONDS);
+
+        return ['engine' => $engine, 'quote' => (int) (self::quoteSeconds($chunks, $segments, $engine) * $perSecond), 'plan_seconds' => $planSeconds, 'draft' => $draft, 'presenter_attached' => $presenterAttached];
     }
 }

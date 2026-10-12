@@ -33,6 +33,7 @@ class UgcExecutionTest extends TestCase
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false,
         ]]);
         DB::purge('ugc_test');
+        config(['services.ugc.types_live' => array_keys(\App\Services\Ugc\UgcTypes::DEFINITIONS)]);
         Bus::fake();
         Event::fake();
         Http::preventStrayRequests();
@@ -444,6 +445,48 @@ class UgcExecutionTest extends TestCase
         $this->assertSame(0, UgcController::passTakesUsed(1));
         $this->assertSame(0, DB::table('ugc_run_requests')->count());
         Bus::assertNothingDispatched();
+    }
+
+    public function test_native_types_dispatch_their_composition_cast_and_silent_media(): void
+    {
+        Schema::create('client_profiles', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('brief')->nullable(); });
+        Schema::table('assets', function (Blueprint $t) { $t->string('mime_type')->nullable(); });
+        DB::table('assets')->where('id', 10)->update(['mime_type' => 'image/png']);
+        DB::table('assets')->insert(['id' => 11, 'workspace_id' => 1, 'asset_type' => 'video', 'storage_url' => 'source.mp4', 'mime_type' => 'video/mp4']);
+        Character::query()->create(['workspace_id' => 1, 'name' => 'Second speaker', 'status' => 'active', 'is_stock' => false, 'reference_asset_id' => 10]);
+        $storage = $this->createMock(\App\Services\Media\StorageService::class);
+        $storage->method('readStream')->willReturnCallback(function () { $stream = fopen('php://temp', 'r+'); fwrite($stream, 'image-bytes'); rewind($stream); return $stream; });
+        $this->app->instance(\App\Services\Media\StorageService::class, $storage);
+        foreach (['asmr', 'green_screen', 'skit'] as $type) {
+            $shots = [$this->shot()];
+            $extra = ['ugc_type' => $type, 'character_id' => 1, 'engine' => 'omni'];
+            $format = $type === 'green_screen' ? 'direct_camera' : 'story';
+            if ($type === 'asmr') $shots = [$this->shot(['kind' => 'b_roll', 'source' => 'upload', 'asset_id' => 11, 'script_text' => '', 'motion_prompt' => 'Listen to the pouring.'])];
+            if ($type === 'green_screen') $extra['composition'] = ['layout' => 'green_screen', 'background_asset_id' => 10];
+            if ($type === 'skit') {
+                $shots = [$this->shot(['speaker' => 1]), $this->shot(['speaker' => 2])];
+                $extra['cast_character_ids'] = [1, 2];
+            }
+            // Billed for the seconds generated (#4); the ASMR take only replays uploaded footage, so it is free.
+            $segments = \App\Services\Ugc\UgcPlan::normalise($shots, $format);
+            $extra['credits'] = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds(\App\Services\Ugc\UgcOneShotCompiler::compile($segments, ['ugc_type' => $type], \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS), $segments, 'omni') * CreditService::VIDEO_ONESHOT_PER_SECOND['omni']);
+            $response = (new UgcController)->generateOneShot($this->request($shots, $format, $extra), app(CreditService::class));
+            $this->assertSame(201, $response->getStatusCode(), $type.' '.json_encode($response->getData(true)));
+            Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class, function ($job) use ($type) {
+                if ($type === 'asmr') return ($job->chunks[0]['source_media']['url'] ?? '') === 'source.mp4' && $job->chunks[0]['requires_audio'] && $job->chunks[0]['dialogue'] === '';
+                if ($type === 'green_screen') return ($job->composition['assets'][0]['id'] ?? null) === 10;
+                // Each speaker's photos travel as ids, read by the job (#7), never inline copies.
+                return count($job->chunks) === 2 && ($job->chunks[0]['reference_asset_ids'][0] ?? null) === 10 && ! empty($job->chunks[1]['reference_asset_ids'])
+                    && empty($job->chunks[0]['reference_images']);
+            });
+        }
+    }
+
+    public function test_composition_assets_cannot_cross_workspaces(): void
+    {
+        DB::table('assets')->insert(['id' => 20, 'workspace_id' => 2, 'asset_type' => 'image', 'storage_url' => 'private.png']);
+        $this->expectException(ValidationException::class);
+        \App\Services\Ugc\UgcComposition::resolve((new User)->forceFill(['workspace_id' => 1]), ['layout' => 'split', 'left_asset_id' => 10, 'right_asset_id' => 20]);
     }
 
 }

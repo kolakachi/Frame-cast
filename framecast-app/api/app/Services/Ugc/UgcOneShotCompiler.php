@@ -20,14 +20,14 @@ class UgcOneShotCompiler
 
     public const MIN_SEGMENT_SECONDS = 4;
 
-    /** Omni takes any length up to 10 s, so its clips need neither snapping nor the Veo 8-second cap. */
+    /** Omni uses a prompt duration target up to 10 s, without the Veo 4/6/8-second snapping. */
     public const OMNI_SEGMENT_SECONDS = 10;
 
     /**
      * What every take is told about the people and things in it. The hands rules came from the 2026-10-10 sweep: a box
      * floated in mid-air while one hand held the phone, so a second hand only joins once the phone is set down.
      */
-    private const CLOSING = 'Casual creator energy, natural relaxed delivery with no repeated words, false starts or stammering. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter\'s face and identity from the reference image — the setting, framing, clothing and action come from this description, never from the reference\'s own background or outfit. The presenter matches the reference person\'s face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. The phone is the camera filming this and never appears in the frame, except in a shot the description calls a mirror selfie: there the phone stays in one hand the whole shot and only the other hand moves or holds anything. To demonstrate something up close, a mirror selfie switches to the front camera: a cut to a handheld front-camera shot where the phone is no longer seen. Talking shots are handheld, so only one arm and hand are free and visible; anything that needs both hands (applying, opening, pouring) is filmed from the camera propped on the counter or a shelf, both hands free, phone out of sight. When the product, a box, a plate or anything else is not in a hand it rests on a counter, table or shelf. Nothing floats or hovers; anything held shows a real grip and weight, fingers relaxed, at a natural distance from the camera. No counting on fingers and no holding up a number of fingers (models miscount them). No studio lighting. No words, captions, titles, graphics or watermarks anywhere on screen (text is added later, never by you) — the product\'s own packaging, label and branding stay visible and legible. There is exactly one of the product: never a second box, bottle or pack beside the one being held or used, unless the description asks for several. No other brand appears anywhere: no logos, brand names or packaging from any other company, on the product or in the room; anything else on screen is plain and unbranded. Natural room tone.';
+    private const CLOSING = 'Casual creator energy, natural relaxed delivery with no repeated words, false starts or stammering. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the presenter\'s face and identity from the reference image — the setting, framing, clothing and action come from this description, never from the reference\'s own background or outfit. The presenter matches the reference person\'s face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. The phone is the camera filming this and never appears in the frame, except in a shot the description calls a mirror selfie: there the phone stays in one hand the whole shot and only the other hand moves or holds anything. To demonstrate something up close, a mirror selfie switches to the front camera: a cut to a handheld front-camera shot where the phone is no longer seen. Talking shots are handheld, so only one arm and hand are free and visible; anything that needs both hands (applying, opening, pouring) is filmed from the camera propped on the counter or a shelf, both hands free, phone out of sight. When the product, a box, a plate or anything else is not in a hand it rests on a counter, table or shelf. Nothing floats or hovers; anything held shows a real grip and weight, fingers relaxed, at a natural distance from the camera. No counting on fingers and no holding up a number of fingers (models miscount them). No studio lighting. No words, subtitles, captions, titles, graphics or watermarks anywhere on screen: every spoken line is heard, never written (text is added later, never by you) — the product\'s own packaging, label and branding stay visible and legible. There is exactly one of the product: never a second box, bottle or pack beside the one being held or used, unless the description asks for several. No other brand appears anywhere: no logos, brand names or packaging from any other company, on the product or in the room; anything else on screen is plain and unbranded. Natural room tone.';
 
     /**
      * @param  array<int, array{script_text: string, seconds: float|int, visual_brief: string, voice_direction?: string}>  $beats
@@ -53,6 +53,10 @@ class UgcOneShotCompiler
         foreach ($chunks as $i => $chunk) {
             $lines = [];
             $dialogue = [];
+            $speaker = $chunk['beats'][0]['speaker'] ?? null;
+            $chunkStyle = $style;
+            if ($speaker && isset($style['speakers'][$speaker])) $chunkStyle['presenter'] = $style['speakers'][$speaker];
+            $preamble = self::preamble($chunkStyle);
             foreach ($chunk['beats'] as $j => $beat) {
                 if ($j > 0 && ! empty($beat['continues'])) {
                     // The same shot carrying on (a long shot split to fit): no cut, they keep talking.
@@ -71,6 +75,7 @@ class UgcOneShotCompiler
                     $lines[] = ucfirst(self::framing($beat)).'.';
                 }
                 // Respell only what the voice model hears; stored text stays.
+                if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.trim($beat['motion_prompt']).'.';
                 $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
                 if ($said !== '') {
                     $delivery = trim((string) ($beat['voice_direction'] ?? ''));
@@ -86,16 +91,20 @@ class UgcOneShotCompiler
             // Exactly the scripted words (2026-10-10: a listicle came back with "One, two, three." and an ad-libbed
             // line between its scripted ones, which sounded like repeats at the joins).
             $wordsOnly = $dialogue !== []
-                ? ' They say exactly these words, in this order, and nothing else: no added words, no ad-libs, no counting aloud. After the last word they stop talking and hold a natural, relaxed expression.'
+                ? ' They say exactly these words, in this order, and nothing else: no added words or ad-libs. Say numbers only where they appear in the script. Finish each quoted line completely before any cut or change of shot. Never cut away mid-word or mid-sentence. After the last word they stop talking and hold a natural, relaxed expression for a full second.'
                 : '';
-            $continuation = $i === 0 ? '' : 'The next shot of the same presenter: same hair, outfit, setting and light as the previous shot\'s frame in the references. ';
+            $continuation = $i === 0 || $speaker ? '' : 'The next shot of the same presenter: same hair, outfit, setting and light as the previous shot\'s frame in the references. ';
 
             $out[] = [
-                'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines).$wordsOnly
+                'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines).$wordsOnly.($dialogue === [] ? ' No speech, narration, singing or music. Preserve the described physical sounds.' : '')
                     ."\n\n".self::CLOSING,
                 'seconds' => $chunk['seconds'],
                 'dialogue' => implode(' ', $dialogue),
                 'new_shot' => $newShot,
+                'requires_audio' => ($style['ugc_type'] ?? '') === 'asmr',
+                'speaker' => $speaker,
+                'source_asset_id' => $chunk['beats'][0]['asset_id'] ?? null,
+                'source_offset' => $chunk['beats'][0]['source_offset'] ?? 0,
             ];
         }
 
@@ -115,7 +124,7 @@ class UgcOneShotCompiler
         if ($beats === []) {
             return null;
         }
-        $total = (int) ceil(array_sum(array_map(fn ($b) => max(1.0, (float) ($b['seconds'] ?? 3)), $beats)));
+        $total = (int) ceil(array_sum(array_map(fn ($b) => max(1.0, (float) ($b['seconds'] ?? 3), self::speechSeconds($b)), $beats)));
         if ($total > $maxSeconds) {
             return null;
         }
@@ -126,6 +135,7 @@ class UgcOneShotCompiler
         $dialogue = [];
         foreach ($beats as $j => $beat) {
             $lines[] = ($j === 0 ? ucfirst(self::framing($beat)) : 'Cut to '.self::framing($beat)).'.';
+            if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.trim($beat['motion_prompt']).'.';
             // Respell brand/product names only in the copy the voice model
             // reads — the stored script and captions keep real spelling.
             $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
@@ -150,11 +160,12 @@ class UgcOneShotCompiler
         return [
             'prompt' => self::preamble($style)."
 
-".implode(' ', $lines).$demoLine
+".implode(' ', $lines).$demoLine.($dialogue === [] ? ' No speech, narration, singing or music. Preserve the described physical sounds.' : ' Say exactly the quoted words, including scripted numbers, and no others. Finish each line before cutting. Hold for a full second after the final word.')
                 ."
 
 ".self::CLOSING,
             'seconds' => max(4, $total),
+            'requires_audio' => ($style['ugc_type'] ?? '') === 'asmr',
             'dialogue' => implode(' ', $dialogue),
         ];
     }
@@ -172,10 +183,19 @@ class UgcOneShotCompiler
             $text = trim((string) ($beat['script_text'] ?? ''));
             $words = self::words($text);
             // A beat is as long as its words need, whatever was planned: 25 words planned at 8 s still need ~11 s.
-            $seconds = max(1.0, (float) ($beat['seconds'] ?? 3), $words > 0 ? $words / 2.5 + 1 : 0);
+            $seconds = max(1.0, (float) ($beat['seconds'] ?? 3), self::speechSeconds($beat));
+            $beat['seconds'] = $seconds;
+            if ($words === 0 && $seconds > $maxSeconds) {
+                for ($remaining = $seconds; $remaining > 0; $remaining -= $maxSeconds) {
+                    $out[] = ['seconds' => min($remaining, $maxSeconds), 'source_offset' => $seconds - $remaining] + $beat;
+                }
+                continue;
+            }
+
             if ($seconds <= $maxSeconds || $words < 2) { $out[] = $beat; continue; }
-            $perWord = $seconds / $words;
-            $limit = max(1, (int) floor($maxSeconds / $perWord));
+            // Every generated clip needs its own finishing pause; do not divide one pause across the whole ad.
+            $perWord = ($seconds - 1.0) / $words;
+            $limit = max(1, (int) floor(($maxSeconds - 1.0) / $perWord));
             $pieces = [];
             foreach (preg_split('/(?<=[.!?…])\s+/u', $text) ?: [$text] as $sentence) {
                 if (self::words($sentence) <= $limit) { $pieces[] = $sentence; continue; }
@@ -192,11 +212,22 @@ class UgcOneShotCompiler
                 else $current = $joined;
             }
             if ($current !== '') $groups[] = $current;
+            $offset = 0.0;
             foreach ($groups as $i => $group) {
-                $out[] = ['script_text' => $group, 'seconds' => round(self::words($group) * $perWord, 2), 'continues' => $i > 0] + $beat;
+                $out[] = ['script_text' => $group, 'seconds' => min($maxSeconds, self::words($group) * $perWord + 1.0), 'continues' => $i > 0, 'source_offset' => $offset] + $beat;
+                $offset += self::words($group) * $perWord + 1.0;
             }
         }
         return $out;
+    }
+
+    /** Allow natural speech plus a full second to finish each generated clip. */
+    private static function speechSeconds(array $beat): float
+    {
+        $words = self::words(trim((string) ($beat['script_text'] ?? '')));
+        $speed = max(0.5, min(2.0, (float) ($beat['speed'] ?? 1)));
+
+        return $words > 0 ? $words / (2.5 * $speed) + 1.0 : 0.0;
     }
 
     /** Words in any script (str_word_count counts none in non-Latin text, so such lines were never split). */
@@ -212,7 +243,7 @@ class UgcOneShotCompiler
         $current = ['beats' => [], 'seconds' => 0.0];
         foreach ($beats as $beat) {
             $s = max(1.0, (float) ($beat['seconds'] ?? 3));
-            if ($current['beats'] !== [] && $current['seconds'] + $s > $maxSeconds) {
+            if ($current['beats'] !== [] && ($current['seconds'] + $s > $maxSeconds || ! empty($beat['asset_id']) || ! empty($current['beats'][0]['asset_id']) || ($current['beats'][0]['speaker'] ?? null) !== ($beat['speaker'] ?? null) || trim((string) ($beat['script_text'] ?? '')) === '' || trim((string) ($current['beats'][0]['script_text'] ?? '')) === '')) {
                 $chunks[] = $current;
                 $current = ['beats' => [], 'seconds' => 0.0];
             }
@@ -238,7 +269,8 @@ class UgcOneShotCompiler
         // seconds were filled with ad-libs and repeats.
         return array_map(function ($c) use ($snap) {
             $words = array_sum(array_map(fn ($b) => self::words((string) ($b['script_text'] ?? '')), $c['beats']));
-            $seconds = $words > 0 ? min($c['seconds'], (float) ceil($words / 2.5) + 1) : $c['seconds'];
+            $speech = array_sum(array_map(fn ($b) => max(0.0, self::speechSeconds($b) - 1.0), $c['beats'])) + 1.0;
+            $seconds = $words > 0 ? $speech : $c['seconds'];
             return ['beats' => $c['beats'], 'seconds' => $snap($seconds)];
         }, $chunks);
     }
@@ -252,16 +284,31 @@ class UgcOneShotCompiler
 
         $wardrobe = trim((string) ($style['wardrobe'] ?? ''));
 
-        return 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. '
-            .ucfirst($presenter).($wardrobe !== '' ? ', wearing '.$wardrobe.',' : '').' talks directly to the phone camera in '.$setting
+        $type = (string) ($style['ugc_type'] ?? 'testimonial');
+        $scenes = in_array($type, ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'skit'], true);
+        // A presenter talking to camera keeps the selfie take it was proven on (#2, 2026-10-12): "appears as directed"
+        // left the direct-to-camera delivery to each shot's wording.
+        $opening = $scenes
+            ? 'A vertical 9:16 creator video. Follow each shot\'s framing and action exactly, including product-only close-ups. '
+            : 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. ';
+        if ($type === 'asmr') $opening .= 'ASMR: quiet close-up physical sounds, no music; speech only when explicitly scripted, always whispered. ';
+        if ($type === 'skit') $opening .= 'Shot/reverse-shot dialogue. Only the selected speaker appears and speaks in this shot, looking toward the other person off camera. ';
+        if ($type === 'green_screen') {
+            $wardrobe = 'a charcoal grey top';
+            $key = match ($style['chroma_key'] ?? '') { '0x0000FF' => 'blue (#0000FF)', '0xFF00FF' => 'magenta (#FF00FF)', default => 'green (#00FF00)' };
+            $setting = 'a completely flat evenly lit pure chroma '.$key.' background, no shadows or scenery';
+            $opening .= 'Locked camera, waist-up presenter fully inside frame. The presenter wears neutral grey. Use this exact chroma colour even if a shot description names a different backdrop. Preserve the product colours. The chroma backdrop must fill every background pixel for compositing. ';
+        }
+        return $opening
+            .ucfirst($presenter).($wardrobe !== '' ? ', wearing '.$wardrobe.',' : '').($type === 'asmr' ? ' supplies only hands when the shot calls for hands, in ' : ($type === 'skit' ? ' performs the scripted speaker in ' : ($scenes ? ' appears as directed in ' : ($type === 'green_screen' ? ' talks directly to the camera in ' : ' talks directly to the phone camera in ')))).$setting
             .($product !== '' ? ', featuring '.$product : '')
             .'. The delivery is '.$tone.', unpolished and believable.'
             // The product as its photos show it (VISION, 2026-10-11): a squeeze tube came out as a pump bottle in 3 of 6.
-            // Its label text is printed, never spoken: take 281's presenter read "fragrance-free" off it in the spare
-            // second after her line, then said it again as the next clip's first words.
+            // Never read aloud: take 281's presenter read "fragrance-free" off the label in a spare second. Worded without
+            // "words seen on the pack": that version came back with burned-in subtitles (take 282, 2026-10-12).
             .(trim((string) ($style['product_look'] ?? '')) !== '' ? ' The product is exactly the one in the product reference photos: '.rtrim(trim((string) $style['product_look']), '.')
-                .'. Keep its exact form, size, colours, cap and label in every shot; never turn it into a different kind of container or package. The words printed on its label are only seen on the pack, never said aloud.' : '')
-            .(trim((string) ($style['place_note'] ?? '')) !== '' ? ' '.trim((string) $style['place_note']) : '');
+                .'. Keep its exact form, size, colours, cap and label in every shot; never turn it into a different kind of container or package. The presenter only says their quoted lines and never reads the packaging aloud.' : '')
+            .($type !== 'green_screen' && trim((string) ($style['place_note'] ?? '')) !== '' ? ' '.trim((string) $style['place_note']) : '');
     }
 
     private static function framing(array $beat): string

@@ -291,4 +291,75 @@ class UgcOneShotResumeTest extends TestCase
         DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(['last_error' => 'late timeout', 'oneshot_recipe' => 'x'] + $this->settings())]);
         $this->assertSame('not_resumable', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
     }
+    public function test_a_line_heard_differently_is_kept_but_a_clip_without_speech_fails(): void
+    {
+        // #1 (2026-10-12): a transcript that does not match the line ("$29" heard as "twenty-nine dollars", a cut-off
+        // ending) keeps the clip as made; failing it meant paying for clips a retry would fail the same way.
+        $this->clipWords = ['provider_key' => 'test', 'words' => [
+            ['text' => 'Try', 'start' => 0, 'end' => .2], ['text' => 'this', 'start' => .2, 'end' => .4],
+        ]];
+        $this->assertNull($this->run_($this->job([['prompt' => 'test', 'seconds' => 4, 'dialogue' => 'Try this product today.']])));
+        $this->assertNotNull(Scene::find(70)->visual_asset_id, 'delivered uncut');
+    }
+
+    public function test_a_clip_without_speech_for_a_scripted_line_is_not_delivered_or_charged(): void
+    {
+        $this->clipWords = ['provider_key' => 'test', 'transcript' => '', 'words' => []];
+        $error = $this->run_($this->job([['prompt' => 'test', 'seconds' => 4, 'dialogue' => 'Try this product today.']]));
+        $this->assertNotNull($error);
+        $this->assertStringContainsString('no speech', $error->getMessage());
+        $this->assertSame([], $this->charged);
+        $this->assertNull(Scene::find(70)->visual_asset_id);
+    }
+
+    public function test_a_clip_that_ignores_the_green_backdrop_is_remade_once_then_the_take_stops_uncharged(): void
+    {
+        // #5: the test clip is blue, never the green backdrop asked for.
+        $job = new GenerateOneShotUgcJob(7, 70, [['prompt' => 'p', 'seconds' => 4, 'new_shot' => true]], 396, 'omni', ['data:image/png;base64,AAAA'], null, null, '720p', null, null, false,
+            ['layout' => 'green_screen', 'key_color' => '0x00FF00']);
+        $error = $this->run_($job);
+        $this->assertStringContainsString('without the plain backdrop twice', (string) $error?->getMessage());
+        $this->assertSame(2, $this->starts, 'one remake at our cost, then it stops instead of paying again');
+        $this->assertSame([], $this->charged);
+    }
+
+    public function test_skit_photos_travel_as_ids_and_are_read_only_from_the_workspace(): void
+    {
+        Storage::disk('minio')->put('ada.png', 'ada-bytes');
+        DB::table('assets')->insert([['id' => 5, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ada.png', 'mime_type' => 'image/png'],
+            ['id' => 6, 'workspace_id' => 99, 'asset_type' => 'image', 'storage_url' => 'minio://ada.png', 'mime_type' => 'image/png']]);
+        $this->assertNull($this->run_($this->job([['prompt' => 'Ada', 'seconds' => 4, 'new_shot' => true, 'speaker' => 1, 'reference_asset_ids' => [5, 6]]])));
+        $this->assertSame([['data:image/png;base64,'.base64_encode('ada-bytes')]], $this->refs, 'its own photo only; another workspace\'s is never read');
+    }
+
+    public function test_skit_uses_each_speakers_own_reference_without_the_other_speakers_tail(): void
+    {
+        $this->assertNull($this->run_($this->job([
+            ['prompt' => 'Ada', 'seconds' => 4, 'new_shot' => true, 'reference_images' => ['ada-photo']],
+            ['prompt' => 'Ben', 'seconds' => 4, 'new_shot' => true, 'reference_images' => ['ben-photo']],
+        ])));
+        $this->assertSame([['ada-photo'], ['ben-photo']], $this->refs);
+        $this->assertSame([null, null], $this->startFrames);
+    }
+
+    public function test_uploaded_silent_footage_does_not_call_the_video_provider(): void
+    {
+        Storage::disk('minio')->put('source.mp4', file_get_contents($this->clip));
+        $error = $this->run_($this->job([['prompt' => '', 'seconds' => 1, 'dialogue' => '',
+            'source_media' => ['url' => 'minio://source.mp4', 'type' => 'video'], 'source_offset' => 0, 'requires_audio' => true]]));
+        $this->assertNull($error, $error?->getMessage() ?? '');
+        $this->assertSame(0, $this->starts);
+        $this->assertSame('ready_for_review', Project::find(7)->status);
+    }
+
+    public function test_retry_keeps_the_composition_recipe(): void
+    {
+        $job = $this->job();
+        $job->composition = ['layout' => 'split', 'assets' => [['id' => 1, 'url' => 'minio://left.png', 'type' => 'image'], ['id' => 2, 'url' => 'minio://right.png', 'type' => 'image']]];
+        $this->failOn = 2;
+        $this->assertNotNull($this->run_($job));
+        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::find(70)));
+        Bus::assertDispatched(GenerateOneShotUgcJob::class, fn ($resumed) => $resumed->composition === $job->composition);
+    }
+
 }

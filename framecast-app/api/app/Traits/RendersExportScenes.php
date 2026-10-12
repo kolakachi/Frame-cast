@@ -210,6 +210,15 @@ trait RendersExportScenes
                 );
             }
 
+            // UGC clips (including silent ASMR footage) carry their own sound when there is no separate narration.
+            $voiceInput = 1;
+            if ($isVideo && ! $audioAsset && data_get($scene->image_generation_settings_json, 'ugc_kind')) {
+                $audioProbe = new Process(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', $visualPath]);
+                $audioProbe->setTimeout(30);
+                $audioProbe->run();
+                if ($audioProbe->isSuccessful() && trim($audioProbe->getOutput()) !== '') $voiceInput = 0;
+            }
+
             // Voice and sound volume (0-100 → 0.0-1.0)
             $voiceVolume = max(0, min(200, (int) data_get($scene->voice_settings_json, 'volume', 100))) / 100.0;
             $soundVolume = max(0, min(200, (int) data_get($scene->sound_settings_json, 'volume', 100))) / 100.0;
@@ -238,8 +247,8 @@ trait RendersExportScenes
             $complexFilters = [
                 $videoGraph,
                 sprintf(
-                    '[1:a]atrim=duration=%s,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,volume=%.4f[a_voice]',
-                    $durationForFilter, $voiceVolume,
+                    '[%d:a]apad,atrim=duration=%s,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,volume=%.4f[a_voice]',
+                    $voiceInput, $durationForFilter, $voiceInput === 0 ? $soundVolume : $voiceVolume,
                 ),
             ];
             $audioMapLabel = '[a_voice]';

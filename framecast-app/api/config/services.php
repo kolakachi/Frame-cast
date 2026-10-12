@@ -109,6 +109,9 @@ return [
     // MUST stay off this list — the Replicate text adapter has no vision path.
     // The UGC chat (2026-10-10): staff-only until this is on; everyone else keeps the step-by-step form.
     'ugc' => [
+        // UGC types whose new production route (native generation, composition, skits, POV hook, reaction) customers get;
+        // staff always do. Open one at a time as each passes its reviewed sample sweep (owner, 2026-10-12).
+        'types_live' => array_values(array_filter(array_map('trim', explode(',', (string) env('UGC_TYPES_LIVE', ''))))),
         'chat_open_to_all' => (bool) env('UGC_CHAT_OPEN_TO_ALL', false),
         // Named accounts that get the chat while it is staff-only (comma-separated), e.g. the canary account.
         'chat_allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('UGC_CHAT_ALLOWED_EMAILS', ''))))),
