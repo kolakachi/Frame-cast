@@ -83,14 +83,26 @@ class UgcPhysicsTest extends TestCase
 
     public function test_a_storyboard_still_is_asked_for_the_shot_without_its_words_and_later_ones_keep_the_first_room(): void
     {
-        $clip = "Preamble.\n\nThe next shot of the same presenter in the same room. Kitchen counter, waist-up. Action and sound: Tilts the pouch. The presenter says: \"It is roasted peanuts.\" They say exactly these words, in this order, and nothing else.\n\nPhysical staging, follow exactly: Phone propped. Left hand holds the open pouch.\n\nClosing rules.";
-        $first = \App\Services\Ugc\UgcStoryboard::prompt($clip, 0, true, true);
-        $later = \App\Services\Ugc\UgcStoryboard::prompt($clip, 2, true, false);
+        $clip = "Preamble.\n\nThe next shot of the same presenter in the same room: same furniture. One silent shot from the first frame to the last, nothing before or after it: phone propped on the desk, framed on Aisha's hands and the open pouch over her empty palm. Action and sound: She tips the pouch and peanuts pour into her palm. Rattle sound, no speech. Staging: the phone is propped on the desk.\n\nPhysical staging, follow exactly: Phone propped. Left hand holds the open pouch.\n\nClosing rules.";
+        $talk = "Preamble.\n\nKitchen counter, waist-up. Action and sound: Holds the pouch up. The presenter says: \"It is roasted peanuts.\" They say exactly these words, in this order, and nothing else.\n\nClosing rules.";
+        $first = \App\Services\Ugc\UgcStoryboard::prompt($talk, 0, true, true);
+        $this->assertStringStartsWith('One frame from a vertical 9:16', $first);
+        $this->assertStringContainsString('Image 1 is the product: copy its packaging exactly as printed', $first, 'the product photo leads');
+        $this->assertStringContainsString('Image 2 is the presenter: keep their face', $first);
+        $this->assertStringContainsString('Image 3 shows only the kind of place', $first);
         $this->assertStringNotContainsString('roasted peanuts', $first, 'a still has no words to say');
         $this->assertStringNotContainsString('They say exactly', $first);
-        $this->assertStringContainsString('Physical staging, follow exactly: Phone propped.', $first);
-        $this->assertStringContainsString('Image 3 shows only the kind of place', $first);
-        $this->assertStringContainsString('Image 2 is the opening frame of this same video: keep its exact room', $later);
+
+        $this->assertTrue(\App\Services\Ugc\UgcStoryboard::handsOnly($clip));
+        $this->assertFalse(\App\Services\Ugc\UgcStoryboard::handsOnly($talk));
+        $later = \App\Services\Ugc\UgcStoryboard::prompt($clip, 2, true, false, false);
+        $this->assertStringContainsString('only their hands and sleeves', $later);
+        $this->assertStringContainsString('Image 3 is the opening frame of this same video: keep its exact room', $later);
+        $this->assertStringContainsString('Right after this frame: She tips the pouch and peanuts pour into her palm. This frame is the moment before it', $later);
+        $this->assertStringNotContainsString('Action and sound', $later);
+        $this->assertStringNotContainsString('The next shot of the same presenter', $later);
+        $this->assertStringContainsString('Physical staging, follow exactly: Phone propped.', $later);
+        $this->assertStringContainsString('Staging: the phone is propped on the desk.', $later);
         $this->assertStringNotContainsString('Closing rules', $later);
     }
 }

@@ -59,7 +59,11 @@ TXT;
             return [];
         }
 
-        return self::parse($text, count($chunks));
+        $lines = self::parse($text, count($chunks));
+        // A dropped answer leaves the take as compiled; it is logged so it is never silent (take 287 had no staging).
+        if ($lines === []) Log::warning('ugc staging: the answer was not one line per shot', ['shots' => count($chunks), 'answer' => mb_substr($text, 0, 300)]);
+
+        return $lines;
     }
 
     /** The staging lines from the model's answer; [] unless there is exactly one per shot. */
