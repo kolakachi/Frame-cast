@@ -55,6 +55,8 @@ class Workspace extends Model
 
     protected $casts = [
         'acquisition_json' => 'array',
+        // What owned Launchpad products and bumps add on top of plan_tier (LaunchpadService::recompute).
+        'plan_addons' => 'array',
         'subscription_ends_at' => 'datetime',
         'billing_state_version' => 'datetime',
         'plan_renews_at'    => 'datetime',

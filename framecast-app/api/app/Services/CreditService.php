@@ -399,6 +399,11 @@ class CreditService
         'lifetime_starter' => 0,
         'lifetime_creator' => 0,
         'lifetime_agency'  => 0,
+        // Launchpad launch tiers: credits are granted once per product bought (LaunchCatalogue), never refilled.
+        'launch_fe'     => 0,
+        'launch_pro'    => 0,
+        'launch_bundle' => 0,
+        'launch_agency' => 0,
         // Legacy tier aliases
         'studio'     => 3000,   // mirrors creator
         'scale'      => 6500,   // mirrors pro
@@ -481,7 +486,48 @@ class CreditService
         'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => true],
         'lifetime_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         'lifetime_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
+        // Launchpad launch tiers (owner-approved offers, 2026-10-12). Set only by LaunchpadService; bumps and stacked
+        // purchases reach a workspace through workspaces.plan_addons, merged in limitsFor(). They spell out every gate,
+        // including the ones other tiers take from GATE_DEFAULTS. Agency is deliberately weaker than the Bundle.
+        'launch_fe'     => ['max_duration_seconds' => 60,  'max_characters' => 0,  'max_brand_kits' => 1, 'max_channels' => 0,    'social_publishing' => false, 'pdf_page_limit' => 20,   'ugc_takes_month' => 0,   'custom_characters' => false, 'ugc_ads' => false, 'api_access' => false, 'create' => false, 'reference_style' => false, 'series' => false, 'batch_variations' => 0, 'sample_vault' => 0,  'max_client_workspaces' => 0,  'priority_render' => false],
+        'launch_pro'    => ['max_duration_seconds' => 90,  'max_characters' => 1,  'max_brand_kits' => 1, 'max_channels' => 1,    'social_publishing' => true,  'pdf_page_limit' => 50,   'ugc_takes_month' => 30,  'custom_characters' => true,  'ugc_ads' => true,  'api_access' => true,  'create' => true,  'reference_style' => true,  'series' => false, 'batch_variations' => 0, 'sample_vault' => 0,  'max_client_workspaces' => 0,  'priority_render' => false],
+        'launch_bundle' => ['max_duration_seconds' => 90,  'max_characters' => 10, 'max_brand_kits' => 5, 'max_channels' => null, 'social_publishing' => true,  'pdf_page_limit' => 150,  'ugc_takes_month' => 150, 'custom_characters' => true,  'ugc_ads' => true,  'api_access' => true,  'create' => true,  'reference_style' => true,  'series' => true,  'batch_variations' => 3, 'sample_vault' => 10, 'max_client_workspaces' => 50, 'priority_render' => true],
+        'launch_agency' => ['max_duration_seconds' => 300, 'max_characters' => 50, 'max_brand_kits' => 1, 'max_channels' => null, 'social_publishing' => true,  'pdf_page_limit' => null, 'ugc_takes_month' => 150, 'custom_characters' => true,  'ugc_ads' => true,  'api_access' => false, 'create' => true,  'reference_style' => false, 'series' => false, 'batch_variations' => 0, 'sample_vault' => 0,  'max_client_workspaces' => 30, 'priority_render' => true],
     ];
+
+    /**
+     * Gates added for the Launchpad launch, at what every tier that does not name them gets: exactly today's
+     * behaviour. null = not limited here (the feature's existing rule applies: e.g. priority rendering still follows
+     * PRIORITY_EXPORT_TIERS, client workspaces still follow canOwnClients).
+     */
+    public const GATE_DEFAULTS = [
+        'create'                => true,
+        'reference_style'       => true,
+        'series'                => true,
+        'batch_variations'      => null,
+        'sample_vault'          => null,
+        'max_client_workspaces' => null,
+        'priority_render'       => null,
+    ];
+
+    /**
+     * Every plan limit and flag a workspace has: its tier's row (gates it does not name at GATE_DEFAULTS), with what
+     * its owned Launchpad products add (plan_addons) merged in generously. A client workspace has its agency's.
+     */
+    public static function limitsFor(?Workspace $workspace): array
+    {
+        if ($workspace?->parent_workspace_id && $workspace->parent) {
+            $workspace = $workspace->parent;
+        }
+        $tier = (string) ($workspace?->plan_tier ?? 'free');
+        $limits = array_replace(self::GATE_DEFAULTS, self::PLAN_LIMITS[$tier] ?? self::PLAN_LIMITS['free']);
+        $addons = (array) ($workspace?->plan_addons ?? []);
+        if ($addons !== []) {
+            $limits = \App\Services\Launch\LaunchCatalogue::generous($limits, array_intersect_key($addons, $limits));
+        }
+
+        return $limits;
+    }
 
     /**
      * Resolve a plan-level limit/flag for a workspace by id. Falls back to
@@ -491,10 +537,7 @@ class CreditService
      */
     public function limitFor(int $workspaceId, string $key): mixed
     {
-        $workspace = Workspace::find($workspaceId);
-        $tier = $workspace?->plan_tier ?? 'free';
-        $limits = self::PLAN_LIMITS[$tier] ?? self::PLAN_LIMITS['free'];
-        return $limits[$key] ?? null;
+        return self::limitsFor(Workspace::find($workspaceId))[$key] ?? null;
     }
 
     public function maxDurationSeconds(int $workspaceId): ?int
@@ -1008,6 +1051,36 @@ class CreditService
      * were missed the anchor is walked forward to the next future date, so one
      * run always grants exactly one allocation.
      */
+    /**
+     * Take back credits a refunded purchase granted, from the one-time bucket only and never below zero: what was
+     * already spent stays spent. A `forfeit:` row (positive, the credits left) keeps the ledger's last row equal to the
+     * balance. Returns the credits taken.
+     */
+    public function forfeitTopup(Workspace $workspace, int $amount, string $reason, array $metadata = []): int
+    {
+        if ($amount <= 0) {
+            return 0;
+        }
+
+        return (int) DB::transaction(function () use ($workspace, $amount, $reason, $metadata): int {
+            $ws = Workspace::query()->whereKey($workspace->creditRootId())->lockForUpdate()->firstOrFail();
+            $take = min($amount, max(0, (int) $ws->credits_topup));
+            if ($take <= 0) {
+                return 0;
+            }
+            $ws->decrement('credits_topup', $take);
+            CreditLedgerEntry::query()->create([
+                'workspace_id' => $ws->getKey(),
+                'operation' => mb_substr('forfeit:'.$reason, 0, 64),
+                'credits' => $take,
+                'balance_after' => $ws->fresh()->creditsBalance(),
+                'metadata' => $metadata + ['requested' => $amount],
+            ]);
+
+            return $take;
+        });
+    }
+
     /**
      * Record the end of a paid period that was not renewed. The model already
      * treats such a workspace as free and its monthly bucket as unspendable;

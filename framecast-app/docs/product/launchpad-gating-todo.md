@@ -38,10 +38,10 @@ buyer with FE + Bundle + bumps gets the union (the larger of each limit) and the
 | IN-IPN | Launchpad IPN spec: fields, transaction types (sale, refund, chargeback), signature / secret key, retries, test mode | blocked | marketer to get from Launchpad |
 | IN-IDS | Launchpad product IDs for FE, each OTO, each bump | blocked | marketer |
 | IN-DATE | Launch date and campaign end (sets the build deadline and when the redirect comes off) | blocked | marketer / owner |
-| D-CHAN | Bundle: "5 publishing channels" and "unlimited publishing channels" are both listed | decide | marketer |
-| D-FE-LEN | FE and Bundle base video length (the Bundle sells a "up to 3 min" bump, Agency says 3–5 min) | decide | proposal: FE 60 s, Pro 90 s, Bundle 90 s (+bump 180 s), Agency 300 s |
-| D-REFUND | Refund or chargeback: revoke that product's features and unspent credits (recommended), suspend if FE itself is refunded? | decide | owner |
-| D-TOPUP | How launch buyers top up later (our Kelviq top-ups, or Launchpad offers) | decide | owner |
+| D-CHAN | Bundle channels | done | unlimited (owner, 2026-10-12) |
+| D-FE-LEN | Base video length | done | FE 60 s, Pro 90 s, Bundle 90 s (+bump 180 s), Agency 300 s (owner approved the values table, 2026-10-12) |
+| D-REFUND | Refund or chargeback | done | revoke that product's features and unspent credits; an FE refund with nothing else owned suspends the account (owner, 2026-10-12) |
+| D-TOPUP | How launch buyers top up later | done | our Kelviq top-ups (owner, 2026-10-12) |
 | D-UPSELL-UI | Locked features in the app link to the Launchpad offer pages (needs their URLs) | decide | marketer |
 | D-HOOKS | "100 Hooks & CTAs" and the agency toolkit are content: delivered on the thank-you page by the marketer | decide | marketer |
 
@@ -50,19 +50,19 @@ buyer with FE + Bundle + bumps gets the union (the larger of each limit) and the
 | ID | Item | Status |
 |---|---|---|
 | IPN-ROUTE | `POST /api/v1/webhooks/launchpad`: verify the signature, log every call (BillingWebhookLog, provider `launchpad`), idempotent per receipt and type (processed_webhook_events), always answer 200 once logged | open |
-| IPN-STORE | `launch_purchases` table: receipt, product key, buyer email and name, amount, status, raw payload | open |
+| IPN-STORE | `launch_purchases` table: receipt, product, source, email, status, credits granted/revoked, amount, payload | done |
 | IPN-MAP | `config/launchpad.php`: Launchpad product id → product key (fe, bundle, pro, agency, bumps) | open |
-| IPN-PROVISION | On a sale: find or create the user by email, create the workspace (`acquisition_channel = launchpad`, `plan_source = launchpad`), grant the product's credits once (bucket per receipt), welcome email with a set-password link (copy Kelviq's provisionFromEvent / WelcomeMail) | open |
-| IPN-REFUND | On a refund or chargeback: revoke that product's entitlement and its unspent credits (per D-REFUND) | open |
-| IPN-ADMIN | Admin: launch purchases per workspace, webhook log filter `launchpad` | open |
+| IPN-PROVISION | LaunchpadService::grant(email, product, receipt): finds or creates the account, sets the tier, grants credits once per receipt, sends the welcome; `php artisan launch:grant` until the IPN calls it | partly (IPN parsing waits on IN-IPN) |
+| IPN-REFUND | LaunchpadService::revoke(receipt, product, status): features off, unspent credits forfeited (`forfeit:launch_*`), FE refund suspends | partly (IPN parsing waits on IN-IPN) |
+| IPN-ADMIN | Admin: grant/revoke button and launch purchases per workspace in God Mode, webhook log filter `launchpad` (the artisan command covers it today) | open |
 
 ## 2. Tiers and entitlements
 
 | ID | Item | Status |
 |---|---|---|
-| ENT-TIERS | Tier rows `launch_fe`, `launch_pro`, `launch_bundle`, `launch_agency` in PLAN_LIMITS, PLAN_CREDITS (0 monthly) and WorkspaceUsageService::plans (render, voice, cloning, channel, watermark) | open |
-| ENT-STACK | Entitlements (plan-wide design): owned products + add-ons merged into one set of limits (largest of each, add-ons add); the workspace tier is the highest launch tier owned | open |
-| ENT-GUARD | Tests proving appsumo_*, lifetime_*, subscription and free tiers resolve exactly as before | open |
+| ENT-TIERS | Tier rows in PLAN_LIMITS (every gate spelled out), PLAN_CREDITS (0) and WorkspaceUsageService (LAUNCH_USAGE, no watermark) | done |
+| ENT-STACK | LaunchCatalogue::combine → workspaces.plan_addons, merged generously in CreditService::limitsFor and WorkspaceUsageService::planFor (clients get their agency's); free/ugc_pass/launch tiers move to the highest launch tier, any other plan keeps its tier and only gains | done |
+| ENT-GUARD | LaunchpadGatingTest: every non-launch tier resolves exactly as before; stacking, bumps, redelivery, refunds, LTD holders, agency clients | done |
 
 ## 3. Gates (new ones built plan-wide, default = today's behaviour)
 
@@ -112,6 +112,8 @@ buyer with FE + Bundle + bumps gets the union (the larger of each limit) and the
 | L-WATCH | Launch day: IPN log, provisioning errors, support inbox | open |
 
 ## Done
+
+- 2026-10-12 Decisions D-CHAN, D-FE-LEN, D-REFUND, D-TOPUP; entitlements core (tiers, launch_purchases, plan_addons, grant/revoke, `launch:grant`, guard tests).
 
 - 2026-10-12 Code map of plans and gates (where the tier lives, AppSumo and Kelviq provisioning, webhook patterns,
   every gate and what is missing).

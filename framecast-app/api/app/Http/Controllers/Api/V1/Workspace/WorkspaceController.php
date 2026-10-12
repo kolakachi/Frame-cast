@@ -159,8 +159,8 @@ class WorkspaceController extends Controller
             'plan_tier' => $workspace->plan_tier,
             // Plan capabilities so the UI can gate features up front (e.g.
             // lock custom characters for Starter) instead of failing at spend.
-            'capabilities' => (\App\Services\CreditService::PLAN_LIMITS[$workspace->plan_tier]
-                ?? \App\Services\CreditService::PLAN_LIMITS['free'])
+            // With what owned Launchpad products add (CreditService::limitsFor).
+            'capabilities' => \App\Services\CreditService::limitsFor($workspace)
                 // The UGC chat while it is staff-only (UGC_CHAT_OPEN_TO_ALL); others keep the step-by-step form.
                 + ['ugc_chat' => ($user = request()->user()) ? \App\Services\Ugc\UgcChatService::allowed($user) : false],
             'status' => $workspace->status,

@@ -22,6 +22,20 @@ class WorkspaceUsageService
     public const VOICE_CLONING_LIMIT = 2;
 
     /**
+     * The usage allowances of the Launchpad launch tiers (owner-approved offers, 2026-10-12), numbers only so
+     * LaunchCatalogue::combine() can merge them; name and watermark are set in plans(). Cloned voices: FE none,
+     * Pro 1 (+2 with the bump), Bundle 5, Agency 100.
+     */
+    public const LAUNCH_USAGE = [
+        'launch_fe'     => ['render_limit' => 50,    'voice_minutes_limit' => 100,  'voice_cloning_limit' => 0],
+        'launch_pro'    => ['render_limit' => 200,   'voice_minutes_limit' => 120,  'voice_cloning_limit' => 1],
+        'launch_bundle' => ['render_limit' => 1000,  'voice_minutes_limit' => 600,  'voice_cloning_limit' => 5],
+        'launch_agency' => ['render_limit' => 10000, 'voice_minutes_limit' => 5000, 'voice_cloning_limit' => 100],
+    ];
+
+    private const LAUNCH_NAMES = ['launch_fe' => 'Launch', 'launch_pro' => 'Launch Pro', 'launch_bundle' => 'Launch Bundle', 'launch_agency' => 'Launch Agency'];
+
+    /**
      * Per-tier allowances.
      *
      * Two keys here are deliberately NOT enforced, and are no longer shown to
@@ -155,6 +169,9 @@ class WorkspaceUsageService
                 'ai_image_quality'    => ['medium', 'high'],
             ],
         ];
+        foreach (self::LAUNCH_USAGE as $tier => $usage) {
+            $plans[$tier] = array_merge($plans['starter'], $usage, ['name' => self::LAUNCH_NAMES[$tier], 'watermark' => false]);
+        }
         // Resolve shared entitlements from the same catalogue as the API/UI.
         foreach (CreditService::PLAN_LIMITS as $tier => $limits) {
             $base = preg_replace('/^(appsumo|lifetime)_/', '', $tier);
@@ -165,6 +182,24 @@ class WorkspaceUsageService
                 ? $plans[$tier]['channel_limit'] : $limits['max_channels'];
         }
         return $plans;
+    }
+
+    /**
+     * A workspace's allowances: its tier's row, with what its owned Launchpad products add (plan_addons) merged in
+     * generously, and its channel limit from CreditService::limitsFor() so both agree.
+     */
+    public static function planFor(?Workspace $workspace): array
+    {
+        $plan = self::plans()[(string) ($workspace?->plan_tier ?: 'free')] ?? self::plans()['free'];
+        $owner = $workspace?->parent_workspace_id && $workspace->parent ? $workspace->parent : $workspace;
+        $addons = (array) ($owner?->plan_addons ?? []);
+        if ($addons === []) {
+            return $plan;
+        }
+        $plan = \App\Services\Launch\LaunchCatalogue::generous($plan, array_intersect_key($addons, array_flip(['render_limit', 'voice_minutes_limit', 'voice_cloning_limit'])));
+        $plan['channel_limit'] = CreditService::limitsFor($workspace)['max_channels'];
+
+        return $plan;
     }
 
     /**
@@ -259,7 +294,10 @@ class WorkspaceUsageService
 
     private function buildSummary(int $workspaceId, string $planTier): array
     {
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $workspace = Workspace::find($workspaceId);
+        $plan = $workspace && (string) ($workspace->plan_tier ?: 'free') === $planTier
+            ? self::planFor($workspace)
+            : (self::plans()[$planTier] ?? self::plans()['free']);
 
         $voiceSeconds = $this->voiceSecondsThisMonth($workspaceId);
 
@@ -268,8 +306,6 @@ class WorkspaceUsageService
             ->whereNotNull('primary_language')
             ->distinct('primary_language')
             ->count('primary_language');
-
-        $workspace = Workspace::find($workspaceId);
 
         return [
             'plan' => $plan['name'],
@@ -322,8 +358,7 @@ class WorkspaceUsageService
             return false;
         }
 
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
 
         if ($plan['channel_limit'] === null) {
             return false;
@@ -341,8 +376,7 @@ class WorkspaceUsageService
             return false;
         }
 
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
 
         $used = ExportJob::query()
             ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
@@ -365,8 +399,7 @@ class WorkspaceUsageService
             return false;
         }
 
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
         $budget = (float) $plan['api_budget_usd'];
 
         $monthSpend = (float) ApiUsageEvent::query()
@@ -387,8 +420,7 @@ class WorkspaceUsageService
             return null;
         }
 
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
         $used = ExportJob::query()
             ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
             ->where('status', 'completed')
@@ -400,8 +432,7 @@ class WorkspaceUsageService
 
     public function exportLimitContext(User $user): array
     {
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
         $used = ExportJob::query()
             ->whereHas('project', fn ($q) => $q->where('workspace_id', $user->workspace_id))
             ->where('status', 'completed')
@@ -421,8 +452,7 @@ class WorkspaceUsageService
             return false;
         }
 
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
 
         $voiceSeconds = $this->voiceSecondsThisMonth((int) $user->workspace_id);
 
@@ -434,8 +464,7 @@ class WorkspaceUsageService
      */
     public function voiceLimitContext(User $user): array
     {
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
 
         $voiceSeconds = $this->voiceSecondsThisMonth((int) $user->workspace_id);
 
@@ -451,8 +480,7 @@ class WorkspaceUsageService
      */
     public function apiBudgetContext(User $user): array
     {
-        $planTier = (string) ($user->workspace?->plan_tier ?: 'free');
-        $plan = self::plans()[$planTier] ?? self::plans()['free'];
+        $plan = self::planFor($user->workspace);
 
         $spent = (float) ApiUsageEvent::query()
             ->where('workspace_id', $user->workspace_id)

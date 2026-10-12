@@ -46,7 +46,11 @@ class OnboardingDay0Welcome extends Mailable implements ShouldQueue
         // signup never receives and a paying customer has long passed.
         $recurring = (int) ($workspace->credits_monthly ?? 0) > 0;
         $credits = $recurring ? (int) $workspace->credits_monthly : (int) ($workspace->credits_topup ?? 0);
-        $planName = $tier === 'ugc_pass' ? 'UGC Test Pass' : ucwords(str_replace('_', ' ', $tier));
+        $planName = match (true) {
+            $tier === 'ugc_pass' => 'UGC Test Pass',
+            \App\Services\Launch\LaunchCatalogue::isLaunchTier($tier) => \App\Services\WorkspaceUsageService::plans()[$tier]['name'],
+            default => ucwords(str_replace('_', ' ', $tier)),
+        };
 
         return new Content(view: 'mail.onboarding.day0-welcome', with: [
             'planName' => $planName ?: null,

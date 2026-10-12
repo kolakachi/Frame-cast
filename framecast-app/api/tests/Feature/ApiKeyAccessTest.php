@@ -90,7 +90,12 @@ class ApiKeyAccessTest extends TestCase
     {
         // Opened to every tier on 26 September 2026: the API grants nothing the
         // plan does not already allow in the app, so the gate was only friction.
+        // Except the Launchpad offers that do not sell it (owner, 2026-10-12): the front end and the Agency decoy.
         foreach (\App\Services\CreditService::PLAN_LIMITS as $tier => $limits) {
+            if (in_array($tier, ['launch_fe', 'launch_agency'], true)) {
+                $this->assertFalse($limits['api_access'], "$tier is sold without the API");
+                continue;
+            }
             $this->assertTrue($limits['api_access'] ?? false, "$tier should have API access");
         }
     }

@@ -67,6 +67,11 @@ class PlanCapabilityFloorTest extends TestCase
      */
     private const DELIBERATE_EXCEPTIONS = [
         ['ugc_pass', 'social_publishing'],
+        // Launchpad offers (owner, 2026-10-12): the $7 front end is the classic composer only, publishing and the
+        // API are what Pro and the Bundle sell; Agency is the decoy beside the Bundle and leaves the API out.
+        ['launch_fe', 'social_publishing'],
+        ['launch_fe', 'api_access'],
+        ['launch_agency', 'api_access'],
     ];
 
     /**
