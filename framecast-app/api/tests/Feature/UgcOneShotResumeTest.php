@@ -363,26 +363,27 @@ class UgcOneShotResumeTest extends TestCase
         Bus::assertDispatched(GenerateOneShotUgcJob::class, fn ($resumed) => $resumed->composition === $job->composition);
     }
 
-    public function test_a_storyboard_take_pauses_uncharged_for_review_then_starts_each_clip_from_its_still(): void
+    public function test_a_storyboard_take_starts_each_clip_from_its_still_and_a_faulted_clip_is_made_once_more(): void
     {
         $board = Mockery::mock(\App\Services\Ugc\UgcStoryboard::class);
+        $board->notes = [0 => ['first' => ['ok' => true, 'problems' => []]]];
         $board->shouldReceive('make')->once()->andReturn(['data:image/png;base64,S0', 'data:image/png;base64,S1', 'data:image/png;base64,S2']);
         $this->app->instance(\App\Services\Ugc\UgcStoryboard::class, $board);
+        $review = Mockery::mock(\App\Services\Ugc\UgcReview::class);
+        // Clip 2 never opened the pouch; its remake did.
+        $review->shouldReceive('clip')->andReturn(['ok' => true, 'problems' => []], ['ok' => false, 'problems' => ['the pouch must be opened']], ['ok' => true, 'problems' => []], ['ok' => true, 'problems' => []]);
+        $this->app->instance(\App\Services\Ugc\UgcReview::class, $review);
         $chunks = [['prompt' => 'one', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'two', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'three', 'seconds' => 6, 'new_shot' => true]];
         $job = new GenerateOneShotUgcJob(7, 70, $chunks, 396, 'omni', ['data:image/png;base64,AAAA'], null, null, '720p', null, null, false, [], true);
 
         $this->assertNull($this->run_($job));
-        $this->assertSame(0, $this->starts, 'no clip is made before the stills are reviewed');
-        $this->assertSame([], $this->charged);
-        $this->assertCount(3, $this->settings()['storyboard_stills']);
-        $this->assertStringContainsString('storyboard is ready', $this->settings()['last_error']);
-
-        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
-        $resumed = null;
-        Bus::assertDispatched(GenerateOneShotUgcJob::class, function ($j) use (&$resumed) { $resumed = $j; return true; });
-        $this->assertTrue($resumed->storyboard);
-        $this->assertNull($this->run_($resumed));
-        $this->assertSame(['data:image/png;base64,S0', 'data:image/png;base64,S1', 'data:image/png;base64,S2'], $this->startFrames, 'each clip starts from its own still, made once');
-        $this->assertSame([396], $this->charged);
+        $this->assertSame(['data:image/png;base64,S0', 'data:image/png;base64,S1', 'data:image/png;base64,S1', 'data:image/png;base64,S2'], $this->startFrames,
+            'each clip starts from its own still, and the faulted clip is made again from the same still');
+        $this->assertSame([396], $this->charged, 'the remake is ours: the take is charged its quote once');
+        $s = $this->settings();
+        $this->assertCount(3, $s['storyboard_stills']);
+        $this->assertSame(['the pouch must be opened'], $s['clip_reviews']['2']['first']['problems']);
+        $this->assertTrue($s['clip_reviews']['2']['remade']['ok']);
+        $this->assertNull($s['last_error'] ?? null, 'no pause: the take runs straight through');
     }
 }

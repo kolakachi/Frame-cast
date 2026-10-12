@@ -1,0 +1,139 @@
+<?php
+
+namespace App\Services\Ugc;
+
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Process;
+
+/**
+ * The reviewer (owner, 2026-10-12: "Omni again with a reviewer"): a cheap vision pass that checks a storyboard still
+ * before it is animated, and each clip after it is made, against what the shot asked for. It names what is wrong as
+ * short fixes, so one remake can be told what to change. Take 287 is why: its pouch was never opened in the clip, and
+ * its first clip changed clothes. Null when the check could not run: that is never a pass or a fail.
+ */
+class UgcReview
+{
+    /**
+     * @param  array{scene: string, action: string, staging: string}  $shot  UgcStoryboard::shot()
+     * @return array{ok: bool, problems: list<string>}|null
+     */
+    public function still(array $shot, string $wardrobe, string $still, ?string $product, ?string $presenter, ?string $opening, bool $face): ?array
+    {
+        $images = [];
+        $list = [];
+        $n = 0;
+        if ($product !== null) { $images[] = $product; $list[] = 'Image '.(++$n).': the product photo.'; }
+        if ($presenter !== null && $face) { $images[] = $presenter; $list[] = 'Image '.(++$n).': the presenter\'s photo.'; }
+        if ($opening !== null) { $images[] = $opening; $list[] = 'Image '.(++$n).': the opening frame of this video.'; }
+        $images[] = $still;
+        $list[] = 'Image '.(++$n).': THE FRAME TO REVIEW.';
+
+        $checks = array_values(array_filter([
+            $product !== null ? 'The pack is the product photo\'s exact printed packaging: same logo, lettering, illustration and colours, never redrawn or retyped; exactly one pack.' : null,
+            $face && $presenter !== null ? 'It is the same person as the presenter\'s photo.' : null,
+            $wardrobe !== '' ? 'The presenter wears '.$wardrobe.' (not the clothes in their photo).' : null,
+            $opening !== null ? 'The room, furniture and light are the opening frame\'s.' : null,
+            $shot['action'] !== '' ? 'It shows the moment BEFORE this action, with nothing of it done yet: '.$shot['action'] : null,
+            $shot['staging'] !== '' ? 'The hands, phone and product follow: '.$shot['staging'] : null,
+            'Physics: two hands at most, a hand holding the phone holds nothing else, nothing floats, no phone in a hand when both hands are busy.',
+        ]));
+
+        return $this->ask(implode(' ', $list)."\n\nThe shot: ".$shot['scene']."\n\nCheck:\n- ".implode("\n- ", $checks), $images);
+    }
+
+    /**
+     * @param  array{scene: string, action: string, staging: string}  $shot
+     * @return array{ok: bool, problems: list<string>}|null
+     */
+    public function clip(array $shot, string $wardrobe, string $clipPath, ?string $still, ?string $product): ?array
+    {
+        $frames = $this->frames($clipPath, 4);
+        if ($frames === []) return null;
+        $images = array_merge($frames, array_values(array_filter([$still, $product])));
+        $list = 'Images 1 to '.count($frames).': frames from a generated video clip, in order.'
+            .($still !== null ? ' Image '.(count($frames) + 1).': the frame the clip started from.' : '')
+            .($product !== null ? ' Image '.(count($images)).': the product photo.' : '');
+        $checks = array_values(array_filter([
+            $shot['action'] !== '' ? 'The action happens in the clip, once, and is completed: '.$shot['action'] : null,
+            $wardrobe !== '' ? 'The presenter wears '.$wardrobe.' in every frame: no change of clothes.' : ($still !== null ? 'The presenter wears the same clothes as the starting frame in every frame.' : null),
+            'The same person and the same room in every frame: no cut to another place.',
+            $product !== null ? 'The pack keeps the product photo\'s printed packaging; exactly one pack.' : null,
+            'Physics: two hands at most, nothing floats, objects keep their size.',
+        ]));
+
+        return $this->ask($list."\n\nThe clip was asked for: ".$shot['scene']."\n\nCheck:\n- ".implode("\n- ", $checks), $images);
+    }
+
+    /** One vision call; the images are sent small. */
+    private function ask(string $text, array $images): ?array
+    {
+        $key = (string) config('services.anthropic.key');
+        if ($key === '') return null;
+        $content = [['type' => 'text', 'text' => "You review frames for a short creator video ad. Be strict about what a viewer would notice, and ignore anything else.\n\n".$text
+            ."\n\nAnswer JSON only: {\"ok\": true or false, \"problems\": [\"each problem as a short fix to make, e.g. 'the pouch must be opened: her fingers tear the top open'\"]}; problems is empty when ok."]];
+        foreach ($images as $img) {
+            $jpeg = self::jpeg($img);
+            if ($jpeg === null) return null;
+            $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($jpeg)]];
+        }
+        try {
+            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(60)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'),
+                    'max_tokens' => 600, 'messages' => [['role' => 'user', 'content' => $content]]]);
+            if (! $r->successful()) {
+                Log::warning('ugc review: the vision call failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 200)]);
+                return null;
+            }
+            $answer = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+        } catch (\Throwable $e) {
+            Log::warning('ugc review: could not run', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+            return null;
+        }
+        $verdict = self::parse($answer);
+        if ($verdict === null) Log::warning('ugc review: the answer was not a verdict', ['answer' => mb_substr($answer, 0, 300)]);
+
+        return $verdict;
+    }
+
+    /** @return array{ok: bool, problems: list<string>}|null */
+    public static function parse(string $text): ?array
+    {
+        $a = strpos($text, '{'); $b = strrpos($text, '}');
+        $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
+        if (! is_array($json) || ! is_bool($json['ok'] ?? null)) return null;
+        $problems = array_values(array_filter(array_map(fn ($p) => mb_substr(trim((string) $p), 0, 200), (array) ($json['problems'] ?? []))));
+
+        return ['ok' => $json['ok'] && $problems === [], 'problems' => array_slice($problems, 0, 5)];
+    }
+
+    /** A data URI or raw image bytes as a small JPEG. */
+    private static function jpeg(string $image): ?string
+    {
+        $bytes = str_starts_with($image, 'data:') ? base64_decode(substr($image, strpos($image, ',') + 1)) : $image;
+        $in = tempnam(sys_get_temp_dir(), 'rv-');
+        $out = $in.'.jpg';
+        file_put_contents($in, $bytes);
+        Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-y', '-i', $in, '-vf', 'scale=640:-2', '-q:v', '4', $out]);
+        $jpeg = is_file($out) ? (string) file_get_contents($out) : '';
+        @unlink($in); @unlink($out);
+
+        return $jpeg !== '' ? $jpeg : null;
+    }
+
+    /** Frames spread across the clip, as JPEG bytes. */
+    private function frames(string $clipPath, int $count): array
+    {
+        $len = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $clipPath])->output());
+        if ($len <= 0) return [];
+        $out = [];
+        for ($k = 0; $k < $count; $k++) {
+            $file = tempnam(sys_get_temp_dir(), 'rvf-').'.jpg';
+            Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-y', '-ss', sprintf('%.2f', $len * ($k + 0.5) / $count), '-i', $clipPath, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', $file]);
+            if (is_file($file) && filesize($file)) $out[] = (string) file_get_contents($file);
+            @unlink($file);
+        }
+
+        return $out;
+    }
+}

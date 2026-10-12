@@ -88,8 +88,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
     public array $composition = [];
 
-    /** The storyboard pilot (UgcStoryboard): the first run makes a still per clip and pauses for review, uncharged; the
-     *  resumed run starts each clip from its still. A plain property for the same reason as runToken. */
+    /** The storyboard (UgcStoryboard, staff pilot): a reviewed still per clip, each clip starting from its still and
+     *  reviewed in turn. Internal: the user never sees the stills. A plain property for the same reason as runToken. */
     public bool $storyboard = false;
 
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
@@ -120,7 +120,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $reuse[$i] = $bytes;
             }
             $stills = $this->storyboard ? $this->stills($project, $scene, $storage) : [];
-            if ($this->storyboard && $stills === []) return; // made and paused for review
+            $reviewRemakes = 0;
             // veo-3.1-fast has no reference-image inputs, so packaging can
             // only reach an exact take through the start frame itself:
             // composite the character holding the product (same /edits
@@ -199,6 +199,28 @@ class GenerateOneShotUgcJob implements ShouldQueue
                             if ($second !== null && $second > $score) { $path = $again; $score = $second; }
                         }
                         $this->noteFace($scene, $i, $score);
+                    }
+                    // The reviewer (storyboard takes): did the clip do what its shot asked, in the same clothes, with the
+                    // same pack? A faulted clip is made once more, told what to fix, at our cost; at most two a take.
+                    if (! $sourceOnly && isset($stills[$i])) {
+                        $review = app(\App\Services\Ugc\UgcReview::class);
+                        $shot = \App\Services\Ugc\UgcStoryboard::shot((string) $chunk['prompt']);
+                        $wardrobe = (string) ($chunk['wardrobe'] ?? '');
+                        $verdict = $review->clip($shot, $wardrobe, $path, $stills[$i], $this->referenceImages[1] ?? null);
+                        $note = ['first' => $verdict];
+                        if ($verdict !== null && ! $verdict['ok'] && $reviewRemakes < 2) {
+                            if (! $this->owns($scene->refresh())) return;
+                            $reviewRemakes++;
+                            \Illuminate\Support\Facades\Log::info('one-shot: the reviewer faulted a clip, made again', ['project_id' => $this->projectId, 'segment' => $i + 1, 'problems' => $verdict['problems']]);
+                            $fixed = $chunk + [];
+                            $fixed['prompt'] = (string) $chunk['prompt']."\n\nFix these from the last attempt: ".implode(' ', $verdict['problems']);
+                            $again = $this->generateSegment($veo, $scene, $i, $fixed, $startFrame, $temps, $continuity);
+                            if (! $this->owns($scene->refresh())) return;
+                            $second = $review->clip($shot, $wardrobe, $again, $stills[$i], $this->referenceImages[1] ?? null);
+                            $note['remade'] = $second;
+                            if ($second === null || count($second['problems']) <= count($verdict['problems'])) $path = $again;
+                        }
+                        $this->noteReview($scene, 'clip_reviews', $i, $note);
                     }
                     // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
                     $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
@@ -329,8 +351,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
     }
 
     /**
-     * The storyboard's stills (pilot): the saved ones when this take already made them, else they are made, saved, put
-     * where they can be viewed, and the take pauses uncharged for review ([] returned); resuming the take uses them.
+     * The storyboard's stills: the saved ones when this take already made them (a resumed run), else they are made,
+     * each reviewed and remade once if faulted, then saved. Internal only (owner, 2026-10-12: the user never sees it).
      *
      * @return list<string> data URIs, one per clip
      */
@@ -345,19 +367,29 @@ class GenerateOneShotUgcJob implements ShouldQueue
         }
         if ($saved !== []) return $saved;
 
-        $stills = app(\App\Services\Ugc\UgcStoryboard::class)->make($this->chunks, $this->referenceImages);
+        $board = app(\App\Services\Ugc\UgcStoryboard::class);
+        $stills = $board->make($this->chunks, $this->referenceImages);
         $paths = [];
         foreach ($stills as $i => $uri) {
             self::parts()->put($dir.'/'.$i.'.txt', $uri);
+            // A copy the team can look at; never shown to the user.
             $path = sprintf('workspaces/%d/assets/ugc-storyboard/%d/%s-%d.png', $project->workspace_id, $this->sceneId, $this->recipeHash(), $i);
             $storage->put($path, base64_decode(substr($uri, strpos($uri, ',') + 1)), ['ContentType' => 'image/png']);
             $paths[] = $path;
         }
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
-            ['in_progress' => false, 'storyboard_stills' => $paths, 'last_error' => 'The storyboard is ready for review. Nothing was charged; resume the take to make the video from it.'])])->save();
-        $project->forceFill(['status' => 'failed'])->save();
+            ['storyboard_stills' => $paths, 'storyboard_reviews' => $board->notes])])->save();
 
-        return [];
+        return $stills;
+    }
+
+    /** A reviewer's verdict on one clip, on the take's record. */
+    private function noteReview(Scene $scene, string $key, int $i, array $note): void
+    {
+        $settings = $scene->refresh()->image_generation_settings_json ?? [];
+        $all = (array) ($settings[$key] ?? []);
+        $all[(string) ($i + 1)] = $note;
+        $scene->forceFill(['image_generation_settings_json' => array_merge($settings, [$key => $all])])->save();
     }
 
     public function failed(\Throwable $e): void

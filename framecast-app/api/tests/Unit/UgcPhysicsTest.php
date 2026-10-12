@@ -105,4 +105,29 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringContainsString('Staging: the phone is propped on the desk.', $later);
         $this->assertStringNotContainsString('Closing rules', $later);
     }
+
+    public function test_the_reviewer_reads_a_verdict_and_a_still_carries_the_takes_clothes(): void
+    {
+        $this->assertSame(['ok' => false, 'problems' => ['open the pouch']], \App\Services\Ugc\UgcReview::parse('```json {"ok": false, "problems": ["open the pouch"]} ```'));
+        $this->assertSame(['ok' => false, 'problems' => ['x']], \App\Services\Ugc\UgcReview::parse('{"ok": true, "problems": ["x"]}'), 'a named problem is never a pass');
+        $this->assertNull(\App\Services\Ugc\UgcReview::parse('looks fine'));
+        $prompt = \App\Services\Ugc\UgcStoryboard::prompt("Pre.\n\nDesk, waist-up.\n\nClosing.", 0, true, false, true, 'a rust ribbed knit sweater');
+        $this->assertStringContainsString('The presenter wears a rust ribbed knit sweater, never the clothes in their photo.', $prompt);
+    }
+
+    public function test_a_faulted_still_is_made_once_more_with_its_fixes(): void
+    {
+        \Illuminate\Support\Facades\Http::fake(['img.test/*' => \Illuminate\Support\Facades\Http::response('png-bytes')]);
+        $asked = [];
+        $images = \Mockery::mock(\App\Services\Generation\Image\NanoBananaProImageAdapter::class);
+        $images->shouldReceive('generate')->twice()->andReturnUsing(function ($prompt) use (&$asked) { $asked[] = $prompt; return ['image_url' => 'https://img.test/'.count($asked)]; });
+        $review = \Mockery::mock(\App\Services\Ugc\UgcReview::class);
+        $review->shouldReceive('still')->twice()->andReturn(['ok' => false, 'problems' => ['The label is redrawn: copy the logo.']], ['ok' => true, 'problems' => []]);
+        $board = new \App\Services\Ugc\UgcStoryboard($images, $review);
+
+        $still = $board->one([['prompt' => "Pre.\n\nDesk, waist-up. Action and sound: Holds the pouch up.\n\nClosing.", 'wardrobe' => 'a rust sweater']], ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB'], 0, null);
+        $this->assertStringStartsWith('data:image/png;base64,', $still);
+        $this->assertStringContainsString('Fix these in this frame: The label is redrawn: copy the logo.', $asked[1]);
+        $this->assertTrue($board->notes[0]['remade']['ok']);
+    }
 }

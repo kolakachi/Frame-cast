@@ -1279,7 +1279,10 @@ class UgcController extends Controller
         // The ready check (2026-10-12): every shot's hands, phone and product state written out before anything is made.
         $chunks = \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)
             ->stage($chunks, trim($style['product'].($style['product_look'] !== '' ? ' — '.$style['product_look'] : ''))));
+        $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
         foreach ($chunks as &$chunk) {
+            // The storyboard and its reviewer need the take's clothes (take 287's stills copied the presenter's photo).
+            if ($storyboard && $style['wardrobe'] !== '') $chunk['wardrobe'] = $style['wardrobe'];
             if (isset($sourceMedia[$chunk['source_asset_id'] ?? 0])) $chunk['source_media'] = $sourceMedia[$chunk['source_asset_id']];
             if (isset($speakerReferences[$chunk['speaker'] ?? 0])) $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
         }
@@ -1371,7 +1374,7 @@ class UgcController extends Controller
             $runToken,
             $presenterImageAttached && in_array($engine, ['omni', 'veo_hq'], true),
             $composition,
-            ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1,
+            $storyboard,
         )->afterCommit();
 
         $payload = ['data' => [
