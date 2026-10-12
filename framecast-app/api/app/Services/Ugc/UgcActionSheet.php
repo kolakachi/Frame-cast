@@ -53,6 +53,7 @@ Rules:
 - This is footage from an ordinary person's own phone, not a production: framing a little off-center or tilted, the camera leaned against whatever is near, real pauses and small fumbles (a cap that sticks, a second try). Actions happen in frame with the presenter, never as tidy product-only shots.
 - For an opening, tearing or pouring action, each block says what is seen changing in the product (the seal parts, the cap comes off, the tab cracks open, the contents show), not only what the hands try.
 - A product keeps its state: it changes only through an action shown in a block, and the product picked up is always the same one, never a second one.
+- Every object is always somewhere: in a named hand, or resting on a named surface. Each block's "product" says where it is ("in her left hand", "standing on the nightstand"). A hand only lets go of something by setting it down on a surface in a block that says so, and a hand that takes something new has set down what it held first (take 296: the left hand turned to catch drops and the bottle it held hung in the air).
 - When the product is an app or a website, the phone or laptop showing it is the product and may be seen; the camera filming never is.
 - start: the exact first frame: what the left hand and the right hand each hold and where, and the product's state, carried on from the end of the clip before (opened stays opened; eaten is gone; set down stays down).
 - A clip longer than 10 seconds is one continuous take: its camera may change more than once (set down, picked up), each change said in the "view" of the block where it happens.
@@ -109,6 +110,12 @@ TXT;
                 $faults[] = 'Clip '.($i + 1).': the blocks\' "says" together must be exactly "'.trim($line).'", in order, nothing added or left out.';
             }
             if (($sheet['camera'] ?? '') === '') $faults[] = 'Clip '.($i + 1).': camera must be one key from the camera list.';
+            foreach ($sheet['blocks'] as $b => $block) {
+                $where = (string) ($block['product'] ?? '');
+                if ($where !== '' && ! preg_match('/\b(hand|hands|held|holds?|holding|grip(s|ped)?|lap|resting|rests|stands|standing|lies|lying|sits|sitting|leans|leaning|pocket|desk|table|counter|shelf|nightstand|dresser|floor|bed|ledge|bench|sink|vanity|seat|dashboard)\b|\b(on|against|inside|in) (the|a|her|his|their) \w+/iu', $where)) {
+                    $faults[] = 'Clip '.($i + 1).', block '.($b + 1).': say where the product is, in which hand or on which surface ("'.mb_substr($where, 0, 60).'" does not).';
+                }
+            }
             $last = end($sheet['blocks']);
             $ends = preg_match('/-\s*(\d+):(\d+(?:\.\d+)?)\s*$/', (string) ($last['when'] ?? ''), $m) ? (int) $m[1] * 60 + (float) $m[2] : null;
             $seconds = (float) ($c['seconds'] ?? 0);
@@ -200,6 +207,7 @@ TXT;
             .($spoken && ! $verbatim ? 'The presenter says: "'.trim($dialogue).'"'."\n" : '')
             .'Ambient noise: quiet room tone.'."\n"
             .'Throughout: '.($described !== '' ? 'the same person as described, ' : 'the same person as in the presenter photo, ').'in the same clothes, in the same room; exactly one product, its packaging exactly as in the product photo. '
+            .'Everything is either held in a hand or resting on a surface, with real weight. '
             .($spoken ? 'The presenter speaks only the quoted words, naturally and once, then stays quiet. ' : 'The clip is silent apart from the sounds named. ')
             .'The only writing in the picture is the product\'s own label.'
             .($mirror ? '' : ($shows ? ' The only phone in the picture is the one showing the product.' : ' The picture shows only the presenter, the product and the place.'));

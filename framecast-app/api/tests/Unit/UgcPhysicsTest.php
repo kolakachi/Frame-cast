@@ -268,4 +268,14 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringContainsString('Throughout: the same person as described', $prompt);
         $this->assertStringNotContainsString('presenter photo', $prompt);
     }
+
+    public function test_a_sheet_that_leaves_the_product_nowhere_is_sent_back(): void
+    {
+        $block = fn ($product) => ['when' => '00:00-00:02', 'view' => '', 'left' => 'palm up', 'right' => 'squeezes the dropper', 'product' => $product, 'face' => '', 'says' => 'Look.', 'sound' => '', 'check' => ''];
+        $chunks = [['dialogue' => 'Look.', 'seconds' => 2]];
+        $floating = [['camera' => 'propped_front', 'shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('open, serum drops falling onto the left fingertips')]]];
+        $this->assertStringContainsString('say where the product is', implode(' ', \App\Services\Ugc\UgcActionSheet::faults($floating, $chunks)));
+        $placed = [['camera' => 'propped_front', 'shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('open, standing on the nightstand')]]];
+        $this->assertSame([], \App\Services\Ugc\UgcActionSheet::faults($placed, $chunks));
+    }
 }
