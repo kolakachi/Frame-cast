@@ -20,11 +20,11 @@ You check the physical staging of a short creator video before it is generated s
 For every shot, in order, decide:
 - what the left hand and the right hand hold or do. A person has two hands. When the phone is handheld (a selfie), one hand holds the phone and only the other is free.
 - whether the phone is handheld or propped on a surface. It must be propped whenever the action needs both hands (opening, tearing, pouring into a hand, unscrewing, applying, preparing).
-- the product's state at the start of the shot, carried from the end of the shot before (a pouch opened in shot 1 is still open in shot 2; peanuts eaten are gone), and at its end.
+- the product's state at the start of the shot, carried from the end of the shot before (a bottle opened in shot 1 is still open in shot 2; anything eaten or used up is gone), and at its end.
 - the one main action. Never repeat an action an earlier shot already did; continue from where it ended.
 - an action happens in its own shot only, and that shot shows it being done. The shot before it never starts it: no raising food toward the mouth before the bite shot, no hand on the seal before the opening shot; there the staging says so plainly ("She does not bite in this shot.").
 
-Write each shot's staging as one or two plain sentences a video model can follow, for example: "Phone propped on the desk. Left hand holds the open orange pouch, right hand tips a few peanuts into the left palm. The pouch starts open and stays open."
+Write each shot's staging as one or two plain sentences a video model can follow, for example: "Phone propped against the laptop. Left hand holds the open bottle, right hand squeezes two drops onto the fingertips. The bottle starts open and stays open."
 Do not change the spoken words, the place or the product. Answer JSON only: {"shots":[{"staging":"..."}]} with exactly one entry per shot, in the same order.
 TXT;
 

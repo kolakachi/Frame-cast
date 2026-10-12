@@ -213,4 +213,14 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringContainsString('They wear a rust ribbed knit sweater.', $prompt);
         $this->assertStringContainsString('They are in a home desk with a laptop, the same kind of place as image 2 with the same feel, but your own version of it', $prompt);
     }
+
+    public function test_a_phone_showing_an_app_stays_in_the_picture_and_the_filming_one_never_is(): void
+    {
+        $sheet = ['camera' => 'propped_front', 'shot' => 'At the desk', 'start' => 'She holds her phone showing the app', 'end' => '', 'blocks' => [
+            ['when' => '00:00-00:03', 'view' => '', 'left' => 'holds her phone screen toward the lens', 'right' => 'taps the app', 'product' => 'the app open on the phone screen', 'face' => 'on the lens', 'says' => 'Look.', 'sound' => '', 'check' => ''],
+        ]];
+        $prompt = \App\Services\Ugc\UgcActionSheet::prompt($sheet, 'Look.');
+        $this->assertStringContainsString('holds her phone screen toward the lens', $prompt);
+        $this->assertStringContainsString('the only phone in the picture is the one showing the product', $prompt);
+    }
 }

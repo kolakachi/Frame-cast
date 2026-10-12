@@ -95,6 +95,7 @@ class UgcReview
         $all = count($frames);
         $questions[] = 'Across all images: is it the same place in every image (no cut to another room or setting)?';
         $questions[] = 'Across all images: is the picture free of added words, subtitles, a recording dot or any camera or phone interface (the product\'s own label is fine)?';
+        $questions[] = 'Across all images: is there exactly one of the product in each image where it is seen?';
         $questions[] = 'Across all images: '.($wardrobe !== '' ? 'does the presenter wear '.$wardrobe.' in every image where they are seen?' : 'does the presenter wear the same clothes in every image where they are seen?');
 
         $content = [['type' => 'text', 'text' => 'Images 1 to '.$all.' are frames, in order, from one generated video clip. Answer each question with yes or no, judging only what is visible; when the thing asked about is not in the frame, answer no.'
@@ -207,7 +208,7 @@ class UgcReview
         $key = (string) config('services.anthropic.key');
         if ($key === '') return null;
         $content = [['type' => 'text', 'text' => "You review frames for a short creator video ad. Be strict about what a viewer would notice, and ignore anything else.\n\n".$text
-            ."\n\nAnswer JSON only: {\"ok\": true or false, \"problems\": [\"each problem as a short fix to make, e.g. 'the pouch must be opened: her fingers tear the top open'\"]}; problems is empty when ok."]];
+            ."\n\nAnswer JSON only: {\"ok\": true or false, \"problems\": [\"each problem as a short fix to make, e.g. 'the cap must come off: her fingers twist it open'\"]}; problems is empty when ok."]];
         foreach ($images as $img) {
             $jpeg = self::jpeg($img);
             if ($jpeg === null) return null;
