@@ -1261,6 +1261,16 @@ class ProjectController extends Controller
      * estimates the cost of just the failed re-dispatch (not the whole
      * project) and 402s if the user still can't afford it.
      */
+    /** Whether a scene has a still image to animate: its picture, or the original still kept when it was animated before. */
+    private function hasStillToAnimate(Scene $scene): bool
+    {
+        $isStill = fn (?int $id) => $id && ($a = \App\Models\Asset::query()->find($id))
+            && $a->asset_type !== 'video' && ! str_starts_with((string) $a->mime_type, 'video/');
+
+        return $isStill((int) ($scene->visual_asset_id ?? 0))
+            || $isStill((int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0));
+    }
+
     public function resumeFailed(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */
@@ -1272,6 +1282,10 @@ class ProjectController extends Controller
         if (! $project) {
             return $this->error('not_found', 'Project not found.', 404);
         }
+
+        // One resume at a time per project: a double click sent every failed animation twice (ws45, 2026-10-05).
+        $lock = \Illuminate\Support\Facades\Cache::lock('resume-failed:'.$project->getKey(), 30);
+        if (! $lock->get()) return $this->error('already_resuming', 'This video is already being resumed.', 409);
 
         $scenes = Scene::query()
             ->where('project_id', $project->getKey())
@@ -1290,9 +1304,14 @@ class ProjectController extends Controller
                 || (! empty($cfg['last_error']) && empty($scene->visual_asset_id));
             $animationBroken =
                 ! empty($cfg['animation_last_error'])
-                && empty($cfg['animation_video_asset_id']);
+                && empty($cfg['animation_video_asset_id'])
+                && empty($cfg['animation_in_progress']);
             if ($imageBroken) {
                 $needsImage[] = $scene;
+            } elseif ($animationBroken && ! $this->hasStillToAnimate($scene)) {
+                // Nothing to animate (its picture is a video and no original still is kept): resending it failed, charged
+                // and refunded on every click (ws45 scene 920, 6 times on 2026-10-05 and again 10-12). Its stale error goes.
+                $scene->forceFill(['image_generation_settings_json' => array_merge($cfg, ['animation_last_error' => null])])->save();
             } elseif ($animationBroken) {
                 $needsAnimate[] = $scene;
             }
