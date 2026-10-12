@@ -1274,6 +1274,9 @@ class UgcController extends Controller
             }
         }
 
+        // The ready check (2026-10-12): every shot's hands, phone and product state written out before anything is made.
+        $chunks = \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)
+            ->stage($chunks, trim($style['product'].($style['product_look'] !== '' ? ' — '.$style['product_look'] : ''))));
         foreach ($chunks as &$chunk) {
             if (isset($sourceMedia[$chunk['source_asset_id'] ?? 0])) $chunk['source_media'] = $sourceMedia[$chunk['source_asset_id']];
             if (isset($speakerReferences[$chunk['speaker'] ?? 0])) $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];

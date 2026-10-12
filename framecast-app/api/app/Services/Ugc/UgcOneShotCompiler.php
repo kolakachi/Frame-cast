@@ -74,8 +74,9 @@ class UgcOneShotCompiler
                     // here; dropping it lost "holds up the bottle").
                     $lines[] = ucfirst(self::framing($beat)).'.';
                 }
+                if (! empty($beat['done_before'])) $lines[] = 'Already done in the earlier shots, so never repeat it: '.trim($beat['done_before']).' Continue from exactly that state.';
                 // Respell only what the voice model hears; stored text stays.
-                if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.trim($beat['motion_prompt']).'.';
+                if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.rtrim(trim($beat['motion_prompt']), '.').'.';
                 $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
                 if ($said !== '') {
                     $delivery = trim((string) ($beat['voice_direction'] ?? ''));
@@ -93,7 +94,16 @@ class UgcOneShotCompiler
             $wordsOnly = $dialogue !== []
                 ? ' They say exactly these words, in this order, and nothing else: no added words or ad-libs. Say numbers only where they appear in the script. Finish each quoted line completely before any cut or change of shot. Never cut away mid-word or mid-sentence. After the last word they stop talking and hold a natural, relaxed expression for a full second.'
                 : '';
-            $continuation = $i === 0 || $speaker ? '' : 'The next shot of the same presenter: same hair, outfit, setting and light as the previous shot\'s frame in the references. ';
+            // The same room, not a re-imagined one (take 283's office changed between clips).
+            $continuation = $i === 0 || $speaker ? '' : 'The next shot of the same presenter in the same room: same furniture, walls, window, hair, outfit and light as the previous shot\'s frame in the references. ';
+            // Two hands for the action means the phone is not in one of them (take 283 held the phone, the pouch and the
+            // peanuts at once): the phone is propped for this shot, whatever the shot's own wording says.
+            $actionText = implode(' ', array_map(fn ($b) => ($b['motion_prompt'] ?? '').' '.($b['visual_brief'] ?? ''), $chunk['beats']));
+            if (self::twoHanded($actionText)) {
+                $preamble = str_replace(['one continuous handheld take', 'talks directly to the phone camera'], ['filmed on a phone propped on a surface', 'talks directly to the propped phone camera'], $preamble);
+                $lines = array_map(fn ($l) => (string) preg_replace('/\bhand-?held\s*/iu', '', $l), $lines);
+                $lines[] = 'Staging: the phone is propped on the desk, table or counter for this shot, so both hands are free; no hand holds a phone.';
+            }
 
             $out[] = [
                 'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines).$wordsOnly.($dialogue === [] ? ' No speech, narration, singing or music. Preserve the described physical sounds.' : '')
@@ -135,7 +145,9 @@ class UgcOneShotCompiler
         $dialogue = [];
         foreach ($beats as $j => $beat) {
             $lines[] = ($j === 0 ? ucfirst(self::framing($beat)) : 'Cut to '.self::framing($beat)).'.';
-            if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.trim($beat['motion_prompt']).'.';
+            if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.rtrim(trim($beat['motion_prompt']), '.').'.';
+            // Two hands for the action: the phone is propped for this shot (take 283).
+            if (self::twoHanded(($beat['motion_prompt'] ?? '').' '.($beat['visual_brief'] ?? ''))) $lines[] = 'For this shot the phone is propped on a surface, so both hands are free; no hand holds a phone.';
             // Respell brand/product names only in the copy the voice model
             // reads — the stored script and captions keep real spelling.
             $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
@@ -213,12 +225,50 @@ class UgcOneShotCompiler
             }
             if ($current !== '') $groups[] = $current;
             $offset = 0.0;
+            // The shot's actions are shared out over its pieces, in order (take 283: every piece got the whole routine,
+            // so the pouch was opened and poured three times). Later pieces start where the last one ended.
+            $actions = self::actions((string) ($beat['motion_prompt'] ?? ''));
+            $n = count($groups);
             foreach ($groups as $i => $group) {
-                $out[] = ['script_text' => $group, 'seconds' => min($maxSeconds, self::words($group) * $perWord + 1.0), 'continues' => $i > 0, 'source_offset' => $offset] + $beat;
+                $mine = array_slice($actions, intdiv($i * count($actions), $n), intdiv(($i + 1) * count($actions), $n) - intdiv($i * count($actions), $n));
+                $done = array_slice($actions, 0, intdiv($i * count($actions), $n));
+                $piece = ['script_text' => $group, 'seconds' => min($maxSeconds, self::words($group) * $perWord + 1.0), 'continues' => $i > 0, 'source_offset' => $offset,
+                    'motion_prompt' => implode(' ', $mine), 'done_before' => implode(' ', $done)] + $beat;
+                // A later piece keeps the place and framing, never the actions the brief may narrate.
+                if ($i > 0) $piece['visual_brief'] = self::settingOnly((string) ($beat['visual_brief'] ?? '')) ?: 'the same setup as the previous shot';
+                $out[] = $piece;
                 $offset += self::words($group) * $perWord + 1.0;
             }
         }
         return $out;
+    }
+
+    /** A brief without its sentences about doing things: the place, framing and light only. */
+    private static function settingOnly(string $brief): string
+    {
+        $keep = array_filter(preg_split('/(?<=[.;])\s+/u', trim($brief)) ?: [], fn ($sentence) => UgcPlan::actionKinds($sentence) === []
+            && ! self::twoHanded($sentence) && ! preg_match('/\b(holds?|holding|lifts?|shows?|reaches?|grabs?|starts by|then)\b/iu', $sentence));
+
+        return trim(implode(' ', $keep));
+    }
+
+    /** A shot's actions, one per sentence or "then", in order. */
+    private static function actions(string $motion): array
+    {
+        $parts = preg_split('/(?<=[.!?;])\s+|,?\s+then\s+/iu', trim($motion)) ?: [];
+
+        return array_values(array_filter(array_map(fn ($p) => rtrim(trim($p), '.;').'.', $parts), fn ($p) => mb_strlen($p) > 2));
+    }
+
+    /** Actions that need both hands: the phone cannot be in one of them. */
+    public const TWO_HANDED = '/\b(open(s|ed|ing)?|peel(s|ed|ing)?|tear(s|ing)?|rip(s|ping)?|pour(s|ed|ing)?|unscrew(s|ing)?|unwrap(s|ping)?|unbox(es|ing)?|appl(y|ies|ying)|squeez(e|es|ing)|scoop(s|ing)?|spread(s|ing)?|cut(s|ting)?|mix(es|ing)?|shak(e|es|ing)|tips? [^.]{0,40}into (her|his|their) (hand|palm))\b/iu';
+
+    public static function twoHanded(string $text): bool
+    {
+        // "An open-plan office" or "opens up about" is not opening anything.
+        $text = (string) preg_replace(['/\bopen(s)?(-|\s)(plan|kitchen|shelv\w*|window\w*|air|space|up)\b/iu', '/\b(jump\s)?cuts?\s(to|away|back)\b|\bcutaway\b/iu'], '', $text);
+
+        return (bool) preg_match(self::TWO_HANDED, $text);
     }
 
     /** Allow natural speech plus a full second to finish each generated clip. */

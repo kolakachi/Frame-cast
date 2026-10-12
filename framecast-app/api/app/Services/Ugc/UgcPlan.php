@@ -51,6 +51,19 @@ final class UgcPlan
         return trim(implode(' ', array_filter(array_column($segments, 'script_text'), fn ($text) => $text !== '')));
     }
 
+    /** The distinct physical actions a shot asks for (open, pour, taste…), each named once. */
+    public static function actionKinds(string $text): array
+    {
+        // Places and phrases that only look like actions ("an open-plan office", "opens up about") are not.
+        $text = (string) preg_replace(['/\bopen(s)?(-|\s)(plan|kitchen|shelv\w*|window\w*|air|space|up)\b/iu', '/\b(jump\s)?cuts?\s(to|away|back)\b|\bcutaway\b/iu'], '', $text);
+        $kinds = ['open' => 'open|peel|tear|rip|unscrew|unwrap|unbox|unseal', 'pour' => 'pour|sprinkle|scoop|tip(s|ped|ping)? [^.]{0,40}into', 'taste' => 'bite|taste|eat|chew|sip|drink',
+            'apply' => 'apply|rub|massage|spread|spray|squeeze', 'prepare' => 'cut|chop|mix|stir|shake|blend', 'wear' => 'put on|try on'];
+        $found = [];
+        foreach ($kinds as $kind => $verbs) if (preg_match('/\b('.$verbs.')(s|es|ed|ing|ping|ped)?\b/iu', $text)) $found[] = $kind;
+
+        return $found;
+    }
+
     public static function normalise(mixed $raw, string $format): array
     {
         if (! in_array($format, self::FORMATS, true) || ! is_array($raw) || count($raw) < 1 || count($raw) > 12) {
@@ -98,6 +111,12 @@ final class UgcPlan
                     : 'Talking shots need narration.');
             } elseif (mb_strlen($text) > 1500) {
                 self::invalid('Keep each shot under 1,500 spoken characters.');
+            }
+            // One shot, one action (take 283, 2026-10-12): a 22-second talking shot that held up, opened, poured, tasted
+            // and showed the pack came out as the routine repeated in every clip, with three hands.
+            $acts = self::actionKinds($motion.' '.(string) ($seg['visual_brief'] ?? ''));
+            if (count($acts) >= 3) {
+                self::invalid('One shot does '.count($acts).' things ('.implode(', ', $acts).'). Give each action its own short shot with its own line; a talking shot carries one simple action.');
             }
             if ($kind !== 'reaction') {
                 $seconds = max($seconds, round(count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY)) / 2.6, 1));
