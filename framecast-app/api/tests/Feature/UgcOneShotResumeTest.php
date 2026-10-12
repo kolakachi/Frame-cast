@@ -426,7 +426,11 @@ class UgcOneShotResumeTest extends TestCase
         Bus::assertDispatched(GenerateOneShotUgcJob::class, function ($j) use (&$resumed) { $resumed = $j; return true; });
         $this->assertSame(['wardrobe' => 'a rust sweater', 'place' => 'a home desk', 'plate_at' => 2], $resumed->look);
         $this->assertNull($this->run_($resumed));
-        $this->assertSame(['data:image/png;base64,DRESSED', 'data:image/png;base64,PACK'], end($this->refs), 'the resumed clip uses the same picture, made once');
+        $last = end($this->refs);
+        $this->assertSame('data:image/png;base64,DRESSED', $last[0], 'the resumed clip uses the same picture, made once');
+        $this->assertStringStartsWith('data:image/png;base64,', $last[1]);
+        $this->assertNotSame('data:image/png;base64,PACK', $last[1], 'then the last frame of the clip before: the room and hands as they are now');
+        $this->assertSame('data:image/png;base64,PACK', $last[2], 'then the product');
         $this->assertSame([396], $this->charged);
     }
 
@@ -465,6 +469,7 @@ class UgcOneShotResumeTest extends TestCase
         $this->clipWords = ['transcript' => 'Okay so', 'provider_key' => 'openai', 'words' => [['text' => 'Okay', 'start' => 0.1, 'end' => 0.4], ['text' => 'so', 'start' => 0.4, 'end' => 0.6]]];
         $chunks = [['prompt' => 'one', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'Okay so', 'sheet' => $sheet('Okay so')],
             ['prompt' => 'two', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'Okay so', 'sheet' => $sheet('Okay so')]];
+        config(['services.ugc.follow_on' => 'record']);
 
         $e = $this->run_($this->job($chunks));
         $this->assertNull($e, (string) $e?->getMessage());

@@ -185,8 +185,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $fromRefs = $i > 0 && (! empty($chunk['source_media']) || ! empty($chunk['new_shot'])) && $this->refs !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
                 // The previous clip's last frame rides along as a reference for hair, clothes and setting; the
                 // presenter's photo alone re-imagined them (2026-10-10: tied hair came back loose after a cutaway).
-                // With a look the room travels in the dressed presenter's picture; the last frame would only crowd out the product.
-                $continuity = $fromRefs && empty($chunk['reference_images']) && $this->look === [] ? ($roomFrame ?? $startFrame) : null;
+                // With a look, the last frame of the clip just made rides between the dressed presenter and the product: it is
+                // the only picture of the room and the hands as they are now (take 295: the curtains opened between clips and
+                // the bottle changed hands). Without one, the last frame of the latest talking clip carries the room.
+                $continuity = $fromRefs && empty($chunk['reference_images']) ? ($this->look !== [] ? $startFrame : ($roomFrame ?? $startFrame)) : null;
                 if ($fromRefs) $startFrame = null;
                 // The storyboard's still is the clip's first frame: the room, outfit and starting pose are already in it.
                 if (isset($stills[$i]) && empty($chunk['source_media']) && empty($chunk['reference_images'])) {
