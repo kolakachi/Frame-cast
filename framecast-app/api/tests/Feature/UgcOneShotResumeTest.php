@@ -397,6 +397,10 @@ class UgcOneShotResumeTest extends TestCase
 
         $this->assertNull($this->run_($this->job([['prompt' => 'one', 'seconds' => 6, 'new_shot' => true, 'sheet' => $sheet]])));
         $this->assertSame(1, $this->starts, 'no remake while the reviewer only records');
+        $trace = $this->settings()['trace']['1'];
+        $this->assertSame('one', $trace['prompt'], 'the trace keeps what the clip was asked');
+        $this->assertStringContainsString('/ugc-trace/70/', $trace['raw_clip']);
+        $this->assertNotNull($trace['seconds_kept']);
         $this->assertSame(['Show this happening: Right hand: pulls the seal open.'], $this->settings()['clip_reviews']['1']['first']['problems']);
         $this->assertSame([396], $this->charged);
     }

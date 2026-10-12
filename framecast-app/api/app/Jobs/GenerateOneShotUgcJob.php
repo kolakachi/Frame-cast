@@ -237,6 +237,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         $this->noteReview($scene, 'clip_reviews', $i, $note);
                     }
                     // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
+                    // The trace (owner, 2026-10-12: "keep results of each step"): the clip as the model returned it, before
+                    // any trim, with the exact prompt it was given.
+                    if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['prompt' => (string) $chunk['prompt'], 'sheet' => $chunk['sheet'] ?? null,
+                        'seconds_asked' => $chunk['seconds'] ?? null, 'seconds_made' => self::seconds($path)], $path);
                     $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
                     $keyColour = $this->composition['key_color'] ?? '0x00FF00';
                     if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
@@ -261,6 +265,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         $path = app(\App\Services\Ugc\UgcComposition::class)->render($path, ['layout' => 'replace', 'assets' => [$media]], $storage, $temps);
                     }
                     $this->savePart($project, $scene, $storage, $i, $path);
+                    if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['seconds_kept' => self::seconds($path)]);
                 }
                 $segmentPaths[] = $path;
 
@@ -427,6 +432,38 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $refs[0] = $uri;
 
         return array_values($refs);
+    }
+
+    /** Staff pilots keep a trace of every step; customer takes do not. */
+    private function tracing(array $chunk): bool
+    {
+        return $this->look !== [] || $this->storyboard || ! empty($chunk['sheet']);
+    }
+
+    /**
+     * One step of the take on its record, kept after delivery (the working files are deleted then): what a clip was asked
+     * and what came back, so a weak take shows where it went wrong. A raw clip is copied where the team can watch it.
+     */
+    private function trace(Project $project, Scene $scene, StorageService $storage, int $i, array $data, ?string $clip = null): void
+    {
+        try {
+            if ($clip !== null && is_file($clip)) {
+                $data['raw_clip'] = sprintf('workspaces/%d/assets/ugc-trace/%d/%s/clip-%d.mp4', $project->workspace_id, $this->sceneId, $this->recipeHash(), $i + 1);
+                $storage->put($data['raw_clip'], (string) file_get_contents($clip), ['ContentType' => 'video/mp4']);
+            }
+            $settings = $scene->refresh()->image_generation_settings_json ?? [];
+            $trace = (array) ($settings['trace'] ?? []);
+            $trace[(string) ($i + 1)] = array_merge((array) ($trace[(string) ($i + 1)] ?? []), $data);
+            $scene->forceFill(['image_generation_settings_json' => array_merge($settings, ['trace' => $trace])])->save();
+        } catch (\Throwable $e) {
+            report($e); // the trace never stops a take
+        }
+    }
+
+    private static function seconds(string $path): ?float
+    {
+        $s = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
+        return $s > 0 ? round($s, 2) : null;
     }
 
     /** A reviewer's verdict on one clip, on the take's record. */
