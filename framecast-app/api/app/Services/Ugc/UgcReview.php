@@ -78,12 +78,12 @@ class UgcReview
         $len = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $clipPath])->output());
         if ($len <= 0) return null;
         $blocks = array_values(array_filter($sheet['blocks'], fn ($b) => $b['check'] !== ''));
+        $times = self::moments($blocks, $len, $this->heard($clipPath));
         $frames = [];
         $questions = [];
         $actions = [];
         foreach ($blocks as $k => $b) {
-            $at = preg_match('/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*s/', $b['when'], $m) ? min($len - 0.1, ((float) $m[1] + (float) $m[2]) / 2) : $len * ($k + 0.5) / max(1, count($blocks));
-            $frame = $this->frameAt($clipPath, max(0.0, $at));
+            $frame = $this->frameAt($clipPath, max(0.0, min($len - 0.1, $times[$k])));
             if ($frame === null) continue;
             $frames[] = $frame;
             $questions[] = 'Image '.count($frames).': '.$b['check'];
@@ -137,6 +137,58 @@ class UgcReview
         }
 
         return ['ok' => $problems === [], 'problems' => $problems, 'answers' => $answers];
+    }
+
+    /**
+     * When each block happens in the made clip: a block with words at the middle of those words as heard (take 289's
+     * evenly spaced frames missed the bite between two lines), else its timestamps scaled to the clip's real length
+     * (Omni picks its own length).
+     *
+     * @param  list<array{text: string, start: float, end: float}>  $heard
+     * @return list<float>
+     */
+    public static function moments(array $blocks, float $len, array $heard): array
+    {
+        $norm = fn ($t) => preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower((string) $t));
+        $spans = [];
+        foreach ($blocks as $b) {
+            $spans[] = preg_match('/(\d+):(\d+(?:\.\d+)?)\s*-\s*(\d+):(\d+(?:\.\d+)?)/', (string) $b['when'], $m)
+                ? [(int) $m[1] * 60 + (float) $m[2], (int) $m[3] * 60 + (float) $m[4]] : null;
+        }
+        $planned = max(1.0, (float) max(array_map(fn ($s) => $s[1] ?? 0, $spans) ?: [0]));
+        $scale = $planned > 1.0 ? $len / $planned : 1.0;
+        $times = [];
+        $cursor = 0;
+        foreach ($blocks as $k => $b) {
+            $at = $spans[$k] !== null ? ($spans[$k][0] + $spans[$k][1]) / 2 * $scale : $len * ($k + 0.5) / max(1, count($blocks));
+            $said = array_values(array_filter(array_map($norm, preg_split('/\s+/u', (string) ($b['says'] ?? ''), -1, PREG_SPLIT_NO_EMPTY))));
+            if ($said !== []) {
+                $first = $last = null;
+                for ($j = $cursor; $j < count($heard); $j++) {
+                    if ($first === null && $norm($heard[$j]['text'] ?? '') === $said[0]) $first = $j;
+                    if ($first !== null && $norm($heard[$j]['text'] ?? '') === end($said)) { $last = $j; break; }
+                }
+                if ($first !== null) {
+                    $last ??= $first;
+                    $at = ((float) $heard[$first]['start'] + (float) $heard[$last]['end']) / 2;
+                    $cursor = $last + 1;
+                }
+            }
+            $times[] = max(0.0, min($len - 0.1, $at));
+        }
+
+        return $times;
+    }
+
+    /** The clip's words with their times, or [] when it could not be transcribed. */
+    private function heard(string $clipPath): array
+    {
+        try {
+            $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($clipPath, 'video/mp4');
+            return ($t['provider_key'] ?? '') === 'local_fallback' ? [] : array_values(array_filter((array) ($t['words'] ?? []), fn ($w) => isset($w['start'], $w['end'])));
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function frameAt(string $clipPath, float $at): ?string

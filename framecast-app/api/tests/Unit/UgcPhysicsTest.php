@@ -133,7 +133,7 @@ class UgcPhysicsTest extends TestCase
 
     public function test_a_timed_sheet_is_the_clips_whole_short_prompt_with_the_scripts_words(): void
     {
-        $answer = '{"clips":[{"shot":"Phone propped on the desk, close on the presenter\'s hands, soft window light, rust sweater sleeves.","start":"Pouch sealed, upright on the desk; both hands beside it.","blocks":['
+        $answer = '{"clips":[{"camera":"propped_hands","shot":"Soft window light at the desk, rust sweater sleeves.","start":"Pouch sealed, upright on the desk; both hands beside it, the phone on its stand.","blocks":['
             .'{"when":"00:00-00:02","left":"Holds the pouch at its base","right":"Pinches the top of the seal","product":"Sealed, upright","face":"Not in frame","says":"Okay, look.","sound":"","check":"Is her right hand pinching the seal?"},'
             .'{"when":"00:02-00:04","left":"Keeps holding the base","right":"Pulls the seal open","product":"Top open, peanuts visible","face":"Not in frame","says":"It opens easy.","sound":"Crisp zip tear","check":"Is the pouch open?"}],'
             .'"end":"Pouch open on the desk."}]}';
@@ -144,13 +144,15 @@ class UgcPhysicsTest extends TestCase
         $long = "Pre with a long rulebook.\n\nDesk. Action and sound: Both hands pull it open.\n\nNo subtitles, no second pack, never cut mid-word.";
         $chunks = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => $long, 'dialogue' => 'Okay, look. It opens easy.']], $sheets);
         $prompt = $chunks[0]['prompt'];
-        $this->assertStringStartsWith("Phone propped on the desk, close on the presenter's hands, soft window light, rust sweater sleeves.\nFirst frame: Pouch sealed, upright on the desk; both hands beside it.\n"
+        $this->assertStringStartsWith(\App\Services\Ugc\UgcActionSheet::CAMERAS['propped_hands']['shot']." Soft window light at the desk, rust sweater sleeves.\nFirst frame: Pouch sealed, upright on the desk; both hands beside it, the camera on its stand.\n"
             ."[00:00-00:02] Left hand: Holds the pouch at its base. Right hand: Pinches the top of the seal. Product: Sealed, upright. Face: Not in frame. The presenter says: \"Okay, look.\"\n"
             ."[00:02-00:04] Left hand: Keeps holding the base. Right hand: Pulls the seal open. Product: Top open, peanuts visible. Face: Not in frame. The presenter says: \"It opens easy.\" SFX: Crisp zip tear.\n"
             ."Last frame: Pouch open on the desk.\nAmbient noise: quiet room tone.\n", $prompt);
         $this->assertStringContainsString('The only writing in the picture is the product\'s own label.', $prompt);
+        $this->assertStringContainsString('so no phone is ever seen in the picture', $prompt);
+        $this->assertStringNotContainsString('the phone on its stand', $prompt, 'the camera is never an object in the picture');
         foreach (['rulebook', 'subtitles', 'Action and sound', 'second pack'] as $gone) $this->assertStringNotContainsString($gone, $prompt, 'the sheet replaces the old prompt');
-        $this->assertLessThan(1100, mb_strlen($prompt), 'short');
+        $this->assertLessThan(1300, mb_strlen($prompt), 'short');
         $this->assertSame($sheets[0], $chunks[0]['sheet'], 'kept for the reviewer');
 
         // Words that are not the script's are dropped from the blocks and the line is said whole.
@@ -172,12 +174,21 @@ class UgcPhysicsTest extends TestCase
     {
         $block = fn ($when, $says) => ['when' => $when, 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => $says, 'sound' => '', 'check' => ''];
         $chunks = [['dialogue' => 'Listen to this. Okay, really crunchy.', 'seconds' => 9]];
-        $good = [['shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('00:00-00:04', 'Listen to this.'), $block('00:04-00:09', 'Okay, really crunchy.')]]];
+        $good = [['camera' => 'selfie_arm', 'shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('00:00-00:04', 'Listen to this.'), $block('00:04-00:09', 'Okay, really crunchy.')]]];
         $this->assertSame([], \App\Services\Ugc\UgcActionSheet::faults($good, $chunks));
-        $bad = [['shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('00:00-00:03', 'Listen.'), $block('00:03-00:07', 'Okay, really crunchy.')]]];
+        $bad = [['camera' => 'selfie_arm', 'shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('00:00-00:03', 'Listen.'), $block('00:03-00:07', 'Okay, really crunchy.')]]];
         $faults = \App\Services\Ugc\UgcActionSheet::faults($bad, $chunks);
         $this->assertCount(2, $faults);
         $this->assertStringContainsString('must be exactly "Listen to this. Okay, really crunchy."', $faults[0]);
         $this->assertStringContainsString('must run to 00:09', $faults[1]);
+    }
+
+    public function test_the_reviewer_looks_at_a_talking_block_while_its_words_are_said(): void
+    {
+        $blocks = [['when' => '00:00-00:02', 'says' => 'Listen to this.'], ['when' => '00:02-00:04', 'says' => ''], ['when' => '00:04-00:06', 'says' => 'Okay, really crunchy.']];
+        $heard = [['text' => 'Listen', 'start' => 0.2, 'end' => 0.5], ['text' => 'to', 'start' => 0.5, 'end' => 0.6], ['text' => 'this', 'start' => 0.6, 'end' => 1.0],
+            ['text' => 'Okay', 'start' => 6.0, 'end' => 6.3], ['text' => 'really', 'start' => 6.4, 'end' => 6.7], ['text' => 'crunchy', 'start' => 6.7, 'end' => 7.2]];
+        // The clip came out 9 s long against 6 planned: the silent block is scaled, the talking ones follow the words.
+        $this->assertEqualsWithDelta([0.6, 4.5, 6.6], \App\Services\Ugc\UgcReview::moments($blocks, 9.0, $heard), 0.01);
     }
 }

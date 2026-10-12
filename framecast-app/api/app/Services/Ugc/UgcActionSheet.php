@@ -15,12 +15,28 @@ use Illuminate\Support\Facades\Log;
  */
 class UgcActionSheet
 {
+    /**
+     * The camera setups a clip may use (owner, 2026-10-12: a library of camera angles). Each is worded so the camera is
+     * the point of view, never an object in the picture: take 289's sheets said "left hand holds the phone" and "phone
+     * propped on the desk", and every clip showed a second phone. Only the mirror selfie shows the phone, in the mirror.
+     */
+    public const CAMERAS = [
+        'selfie_arm' => ['use' => 'talking to camera, one hand free', 'shot' => 'Selfie video the presenter films at arm\'s length: the camera is in their left hand, so their left arm reaches toward the lens at the edge of the frame and their right hand is free.'],
+        'selfie_close' => ['use' => 'a close reaction or a line, face and shoulders', 'shot' => 'Close selfie video the presenter films at arm\'s length: their face and shoulders fill the frame, their left arm reaching toward the lens at the edge of the frame.'],
+        'propped_front' => ['use' => 'talking or showing with both hands free', 'shot' => 'The camera stands on the desk facing the presenter at chest height, filming them from the waist up; both of their hands are free.'],
+        'propped_hands' => ['use' => 'a two-handed action: opening, pouring, applying', 'shot' => 'The camera stands on the desk close to the presenter\'s hands, looking slightly down: only their hands, forearms and the product are in the frame.'],
+        'top_down' => ['use' => 'hands working on the desk, seen from above', 'shot' => 'The camera looks straight down at the desk from above: the presenter\'s hands and the product are in the frame.'],
+        'mirror_selfie' => ['use' => 'an outfit or a full-body look', 'shot' => 'A mirror selfie: the presenter holds their phone in front of a mirror, and the phone is seen in the mirror the whole clip.'],
+    ];
+
     private const PROMPT = <<<'TXT'
 You direct a short creator video ad that a video model makes as separate clips, each from its own text and the reference photos of the presenter and the product. For every clip below, in order, write a complete timed sheet that leaves nothing to guess. It is the clip's whole prompt.
 
 Rules:
-- shot: one sentence: where the camera is (a handheld selfie, or a phone propped on the desk, or close on the hands), the framing, the place and its light, and the presenter's clothes, named exactly as given below (never "the outfit in the photo"). Call them "the presenter" and "the product"; never describe their looks: the photos show them.
-- A person has two hands. In a handheld selfie one hand holds the phone the whole clip and only the other is free. The phone is propped whenever an action needs both hands (opening, tearing, pouring into a hand, unscrewing, applying), and then no hand touches it.
+- camera: one key from the camera list below. A two-handed action (opening, tearing, pouring into a hand, unscrewing, applying) uses propped_hands, top_down or propped_front.
+- shot: one sentence after the camera: the framing within it, the place and its light, and the presenter's clothes, named exactly as given below (never "the outfit in the photo"). Call them "the presenter" and "the product"; never describe their looks: the photos show them.
+- The camera is the point of view and is never in the picture: never write "phone". In a selfie the left hand holds the camera the whole clip (write "left hand: holds the camera, out of view") and only the right hand is free; on a propped camera no hand touches it.
+- For an opening, tearing or pouring action, each block says what is seen changing in the product (the seal parts, the top gapes open, peanuts show at the top), not only what the hands try.
 - start: the exact first frame: what the left hand and the right hand each hold and where, and the product's state, carried on from the end of the clip before (opened stays opened; eaten is gone; set down stays down).
 - blocks: timed blocks covering the clip from 00:00 to its length, each "00:00-00:02" style and 1 to 3 seconds long, each one simple visible movement. Every block states left (what the left hand holds and does), right (the same for the right hand), product (where it is and its state), face (where the eyes look and the expression, or "not in frame"), says (the exact words spoken in that block, copied from the clip's line in order; all of the line across the blocks, nothing added; empty when silent) and sound (only a sound the action makes).
 - An action happens once, in its own clip, shown from its first movement to its result. A clip never starts an action a later clip performs.
@@ -28,7 +44,10 @@ Rules:
 - check: per block, one yes/no question a single frame from that moment can answer about the hands and the product.
 - State everything positively, as what is seen and heard. Plain words; one steady camera; no style labels.
 
-Answer JSON only: {"clips":[{"shot":"...","start":"...","blocks":[{"when":"00:00-00:02","left":"...","right":"...","product":"...","face":"...","says":"","sound":"","check":"..."}],"end":"..."}]} with exactly one entry per clip, in order.
+Cameras:
+{{cameras}}
+
+Answer JSON only: {"clips":[{"camera":"selfie_arm","shot":"...","start":"...","blocks":[{"when":"00:00-00:02","left":"...","right":"...","product":"...","face":"...","says":"","sound":"","check":"..."}],"end":"..."}]} with exactly one entry per clip, in order.
 TXT;
 
     /**
@@ -47,7 +66,7 @@ TXT;
             $clips[] = 'Clip '.($i + 1).' ('.(int) ($c['seconds'] ?? 0).' seconds'.(trim((string) ($c['dialogue'] ?? '')) !== '' ? ', its line: "'.trim((string) $c['dialogue']).'"' : ', silent').'). As planned: '
                 .mb_substr(trim((string) preg_replace('/\s*(The presenter says[^"]*"[^"]*"\.?|They say exactly these words.*$|No speech, narration.*$)/su', '', $scene)), 0, 1200);
         }
-        $content = self::PROMPT."\n\nProduct: ".($product !== '' ? $product : 'the product')
+        $content = str_replace('{{cameras}}', implode("\n", array_map(fn ($k, $c) => $k.': '.$c['use'], array_keys(self::CAMERAS), self::CAMERAS)), self::PROMPT)."\n\nProduct: ".($product !== '' ? $product : 'the product')
             .($wardrobe !== '' ? "\nThe presenter wears: ".$wardrobe : '').($place !== '' ? "\nThe place: ".$place : '')."\n\n".implode("\n\n", $clips);
         $sheets = $this->ask($content, count($chunks));
         // One more try, told exactly what was wrong (2026-10-12: a run split a clip's line with altered words).
@@ -71,6 +90,7 @@ TXT;
             if (trim($line) !== '' && self::words(implode(' ', array_column($sheet['blocks'], 'says'))) !== self::words($line)) {
                 $faults[] = 'Clip '.($i + 1).': the blocks\' "says" together must be exactly "'.trim($line).'", in order, nothing added or left out.';
             }
+            if (($sheet['camera'] ?? '') === '') $faults[] = 'Clip '.($i + 1).': camera must be one key from the camera list.';
             $last = end($sheet['blocks']);
             $ends = preg_match('/-\s*(\d+):(\d+(?:\.\d+)?)\s*$/', (string) ($last['when'] ?? ''), $m) ? (int) $m[1] * 60 + (float) $m[2] : null;
             $seconds = (float) ($c['seconds'] ?? 0);
@@ -120,7 +140,8 @@ TXT;
             }
             $start = mb_substr(trim((string) ($clip['start'] ?? '')), 0, 400);
             if ($blocks === [] || $start === '') return [];
-            $out[] = ['shot' => mb_substr(trim((string) ($clip['shot'] ?? '')), 0, 400), 'start' => $start, 'blocks' => $blocks, 'end' => mb_substr(trim((string) ($clip['end'] ?? '')), 0, 300)];
+            $camera = (string) ($clip['camera'] ?? '');
+            $out[] = ['camera' => isset(self::CAMERAS[$camera]) ? $camera : '', 'shot' => mb_substr(trim((string) ($clip['shot'] ?? '')), 0, 400), 'start' => $start, 'blocks' => $blocks, 'end' => mb_substr(trim((string) ($clip['end'] ?? '')), 0, 300)];
         }
 
         return count($out) === $count ? $out : [];
@@ -138,18 +159,24 @@ TXT;
         // The words are the script's: when the blocks do not say exactly the line, it is said whole instead.
         $verbatim = self::words(implode(' ', array_column($blocks, 'says'))) === self::words($dialogue);
         if (! $verbatim) $blocks = array_map(fn ($b) => ['says' => ''] + $b, $blocks);
-        $lines = array_map(fn ($b) => '['.$b['when'].'] '.self::block($b), $blocks);
         $spoken = trim($dialogue) !== '';
+        $camera = ($sheet['camera'] ?? '') !== '' ? $sheet['camera'] : ($spoken ? 'selfie_arm' : 'propped_hands');
+        $mirror = $camera === 'mirror_selfie';
+        // The camera is never an object in the picture (take 289): "phone" in the sheet becomes the camera, out of view.
+        $unseen = fn (string $t) => $mirror ? $t : (string) preg_replace('/\b(?:the |a |her |his |their )?phone\b/iu', 'the camera', $t);
+        $blocks = array_map(fn ($b) => array_combine(array_keys($b), array_map(fn ($k, $v) => $k !== 'says' && is_string($v) ? $unseen($v) : $v, array_keys($b), $b)), $blocks);
+        $lines = array_map(fn ($b) => '['.$b['when'].'] '.self::block($b), $blocks);
 
-        return trim(rtrim($sheet['shot'], '.').'.')."\n"
-            .'First frame: '.rtrim($sheet['start'], '.').".\n"
+        return self::CAMERAS[$camera]['shot'].' '.trim($unseen(rtrim($sheet['shot'], '.')).'.')."\n"
+            .'First frame: '.$unseen(rtrim($sheet['start'], '.')).".\n"
             .implode("\n", $lines)."\n"
-            .($sheet['end'] !== '' ? 'Last frame: '.rtrim($sheet['end'], '.').".\n" : '')
+            .($sheet['end'] !== '' ? 'Last frame: '.$unseen(rtrim($sheet['end'], '.')).".\n" : '')
             .($spoken && ! $verbatim ? 'The presenter says: "'.trim($dialogue).'"'."\n" : '')
             .'Ambient noise: quiet room tone.'."\n"
             .'Throughout: the same person as in the presenter photo, in the same clothes, in the same room; exactly one product, its packaging exactly as in the product photo. '
             .($spoken ? 'The presenter speaks only the quoted words, naturally and once, then stays quiet. ' : 'The clip is silent apart from the sounds named. ')
-            .'The only writing in the picture is the product\'s own label.';
+            .'The only writing in the picture is the product\'s own label.'
+            .($mirror ? '' : ' The camera filming this is the presenter\'s own phone, so no phone is ever seen in the picture.');
     }
 
     /** One block in plain words: each hand, the product, the face, the words and the sound. */
