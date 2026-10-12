@@ -86,8 +86,9 @@ class UgcChatController extends Controller
     public function make(Request $request, string $id): JsonResponse
     {
         if ($gate = $this->gate($request)) return $gate;
-        $v = $request->validate(['message_id' => ['required', 'integer'], 'request_id' => ['required', 'uuid'], 'consent' => ['accepted']]);
-        $reply = $this->chats->make($request, $id, (int) $v['message_id'], (string) $v['request_id']);
+        $v = $request->validate(['message_id' => ['required', 'integer'], 'request_id' => ['required', 'uuid'], 'consent' => ['accepted'],
+            'engine' => ['sometimes', 'nullable', 'string', 'in:auto,omni,seedance25,veo']]);
+        $reply = $this->chats->make($request, $id, (int) $v['message_id'], (string) $v['request_id'], ($v['engine'] ?? 'auto') === 'auto' ? null : $v['engine']);
         return response()->json(['data' => ['reply' => $reply, 'chat' => $this->chats->show($request, $id)], 'meta' => []]);
     }
 

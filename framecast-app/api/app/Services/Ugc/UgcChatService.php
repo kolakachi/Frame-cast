@@ -287,6 +287,31 @@ final class UgcChatService
     }
 
     /** One presenter's video: their voice applied to every spoken shot; one take when the pipeline can, composed otherwise. */
+    /**
+     * The video models this take can be made with, each priced as it would really be made (owner, 2026-10-12: users know
+     * the trade-offs, so they pick). A model that cannot make it (Seedance over 30 seconds, a skit off Omni, the Test
+     * Pass off Seedance) is listed as unavailable with the reason; a composed video has no choice.
+     *
+     * @return list<array{key: string, engine: string, credits: int, available: bool, note: string}>
+     */
+    private function engineChoices(Request $request, array $v, array $segments, string $type, array $composition): array
+    {
+        if ($composition !== [] || $type === 'skit' || $this->credits->planTier((int) $request->user()->workspace_id) === 'ugc_pass') return [];
+        $choices = [];
+        foreach (['omni', 'seedance25', 'veo'] as $key) {
+            try {
+                $price = UgcOneShotPricing::price($request->user(), ['engine' => $key] + $v, $segments, $this->credits);
+            } catch (\Throwable) {
+                continue;
+            }
+            $fits = ! ($key === 'seedance25' && $price['engine'] !== 'seedance25');
+            $choices[] = ['key' => $key, 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'available' => $fits,
+                'note' => $fits ? '' : 'Seedance makes one take of up to 30 seconds; this plan is longer.'];
+        }
+
+        return $choices;
+    }
+
     private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null, array $composition = []): array
     {
         $voice = $p['voice'] ?? null;
@@ -313,7 +338,7 @@ final class UgcChatService
             $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
             $v['credits'] = (int) $price['quote'];
             return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'one_shot', 'wardrobe' => $wardrobe, 'setting' => $setting,
-                'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'request' => $v];
+                'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'request' => $v, 'engines' => $this->engineChoices($request, $v, $segments, $type, $composition)];
         }
         $per = UgcPlan::quote($segments);
         $v = array_filter(['ugc_type' => $liveType, 'format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_ids' => $characterId ? [$characterId] : null,
@@ -410,20 +435,20 @@ final class UgcChatService
     }
 
     /** "Make it": the pitch's takes go to the pipeline, which checks the price again and spends the credits. */
-    public function make(Request $request, string $id, int $messageId, string $requestId): array
+    public function make(Request $request, string $id, int $messageId, string $requestId, ?string $engine = null): array
     {
         $chat = $this->chat($request->user(), $id);
         // One "Make it" at a time per pitch: a double click never starts it twice.
         $lock = \Illuminate\Support\Facades\Cache::lock('ugc-chat-make:'.$messageId, 120);
         if (! $lock->get()) abort(409, 'This video is already being made.');
         try {
-            return $this->makeLocked($request, $chat, $id, $messageId, $requestId);
+            return $this->makeLocked($request, $chat, $id, $messageId, $requestId, $engine);
         } finally {
             $lock->release();
         }
     }
 
-    private function makeLocked(Request $request, object $chat, string $id, int $messageId, string $requestId): array
+    private function makeLocked(Request $request, object $chat, string $id, int $messageId, string $requestId, ?string $engine = null): array
     {
         $msg = DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', $messageId)->where('kind', 'pitch')->first() ?? abort(404, 'Pitch not found.');
         $pitch = json_decode((string) $msg->payload_json, true);
@@ -440,8 +465,11 @@ final class UgcChatService
             }
             unset($t['request']['product_asset_id'], $t['request']['product_asset_ids']);
             if ($products) $t['request'] += $t['mode'] === 'one_shot' ? ['product_asset_id' => $products[0], 'product_asset_ids' => $products] : ['product_asset_id' => $products[0]];
-            // Keyed by the pitch, not the browser: a second Make after a reload is the same request (idempotent).
-            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$messageId.':'.$i)->toString()];
+            // The model the user picked, at that model's own price; "auto" (or none) keeps the pitch's.
+            $chosen = collect($t['engines'] ?? [])->first(fn ($e) => $e['key'] === $engine && $e['available']);
+            if ($chosen !== null && $t['mode'] === 'one_shot') { $t['request']['engine'] = $chosen['key']; $t['request']['credits'] = $chosen['credits']; }
+            // Keyed by the pitch and the model, not the browser: a second Make after a reload is the same request (idempotent).
+            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$messageId.':'.$i.($chosen !== null ? ':'.$chosen['key'] : ''))->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) { $failed = $out['error']['message'] ?? 'One video could not be started.'; break; }

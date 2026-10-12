@@ -379,7 +379,22 @@ let restoredPresenters = false
 
 function canMake(m) { return m.kind === 'pitch' && !m.payload?.made && m.id === lastPitchId.value }
 const lastPitchId = computed(() => [...messages.value].reverse().find(m => m.kind === 'pitch')?.id)
-function short(m) { return balance.value !== null && balance.value < (m.payload?.credits ?? 0) }
+// The video model the user picked for a pitch (owner, 2026-10-12: users know the trade-offs). "auto" keeps ours.
+const engineFor = ref({})
+const ENGINE_INFO = {
+  auto: ['Auto', 'We pick the best fit for this video'],
+  omni: ['Omni', 'Your exact presenter, filmed in shots'],
+  seedance25: ['Seedance 2.5', 'One smooth take, up to 30 s; the presenter is a close look-alike'],
+  veo: ['Veo HQ', 'Premium quality, your exact presenter, in shots'],
+}
+function engineChoices(m) { return m.payload?.takes?.[0]?.engines ?? [] }
+function chosenEngine(m) { return engineFor.value[m.id] ?? 'auto' }
+function pitchCredits(m) {
+  const key = chosenEngine(m)
+  if (key === 'auto') return m.payload?.credits ?? 0
+  return (m.payload?.takes ?? []).reduce((sum, t) => sum + ((t.engines ?? []).find(e => e.key === key)?.credits ?? t.credits ?? 0), 0)
+}
+function short(m) { return balance.value !== null && balance.value < pitchCredits(m) }
 function startMake(m) { confirmFor.value = m.id; consent.value = false }
 async function make(m) {
   if (!consent.value || making.value) return
@@ -387,7 +402,7 @@ async function make(m) {
   error.value = ''
   try {
     if (sending.value) return
-    const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true }, { timeout: 120000 })
+    const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true, engine: chosenEngine(m) }, { timeout: 120000 })
     chat.value = data.data.chat
     confirmFor.value = null
     loadBalance()
@@ -634,8 +649,17 @@ onBeforeUnmount(() => {
                     <p v-if="canMake(m) && !m.payload.product_asset_ids?.length" class="uc-tip">No product photo yet, so it will be a generic one. Add a photo with + and send it to show yours at its real size.</p>
                   </div>
                 </div>
+                <div v-if="canMake(m) && engineChoices(m).length" class="uc-engines" role="radiogroup" aria-label="Video model">
+                  <button type="button" role="radio" :aria-checked="chosenEngine(m) === 'auto'" :class="['uc-engine', { on: chosenEngine(m) === 'auto' }]" @click="engineFor[m.id] = 'auto'">
+                    <b>{{ ENGINE_INFO.auto[0] }} · {{ m.payload.credits }}</b><span>{{ ENGINE_INFO.auto[1] }}</span>
+                  </button>
+                  <button v-for="e in engineChoices(m)" :key="e.key" type="button" role="radio" :aria-checked="chosenEngine(m) === e.key" :disabled="!e.available" :title="e.note || ''"
+                    :class="['uc-engine', { on: chosenEngine(m) === e.key }]" @click="engineFor[m.id] = e.key">
+                    <b>{{ ENGINE_INFO[e.key]?.[0] ?? e.key }} · {{ e.credits }}</b><span>{{ e.available ? ENGINE_INFO[e.key]?.[1] : e.note }}</span>
+                  </button>
+                </div>
                 <div class="uc-pitch-foot">
-                  <span><b>{{ m.payload.takes.length }} video{{ m.payload.takes.length === 1 ? '' : 's' }}</b> · <b>{{ m.payload.credits }}</b> credits</span>
+                  <span><b>{{ m.payload.takes.length }} video{{ m.payload.takes.length === 1 ? '' : 's' }}</b> · <b>{{ pitchCredits(m) }}</b> credits</span>
                   <template v-if="canMake(m)">
                     <router-link v-if="short(m)" class="uc-btn" :to="{ name: 'plans' }">Top up · you have {{ balance }}</router-link>
                     <button v-else-if="confirmFor !== m.id" type="button" class="uc-btn uc-btn--primary" :disabled="sending" @click="startMake(m)">Make it</button>
@@ -646,7 +670,7 @@ onBeforeUnmount(() => {
                   <label><input v-model="consent" type="checkbox" /> I have the right to use {{ pitchNames(m) === 'A fitting presenter' ? "the presenter's" : pitchNames(m) + "'s" }} likeness and voice in this ad, and the product facts I gave are accurate.</label>
                   <div class="uc-consent-row">
                     <button type="button" class="uc-btn" @click="confirmFor = null">Not yet</button>
-                    <button type="button" class="uc-btn uc-btn--primary" :disabled="!consent || making" @click="make(m)">{{ making ? 'Starting…' : `Make it · ${m.payload.credits} credits` }}</button>
+                    <button type="button" class="uc-btn uc-btn--primary" :disabled="!consent || making" @click="make(m)">{{ making ? 'Starting…' : `Make it · ${pitchCredits(m)} credits` }}</button>
                   </div>
                 </div>
               </div>
@@ -913,6 +937,12 @@ onBeforeUnmount(() => {
 .uc-tip { margin: 10px 0 0 !important; font-size: 12.5px; color: #e8b26a !important; }
 .uc-script summary { cursor: pointer; color: var(--color-text-muted); }
 .uc-script p { margin-top: 6px; white-space: pre-wrap; }
+.uc-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+.uc-engine { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.uc-engine b { font-size: 13px; }
+.uc-engine span { font-size: 12px; color: var(--color-text-muted, #8b8b9a); line-height: 1.35; }
+.uc-engine.on { border-color: var(--color-accent, #ff6b35); box-shadow: 0 0 0 1px var(--color-accent, #ff6b35) inset; }
+.uc-engine:disabled { opacity: .5; cursor: not-allowed; }
 .uc-pitch-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); }
 .uc-pitch-state { font-size: 13px; color: var(--color-text-muted); }
 .uc-pitch-state.is-making { color: var(--color-accent); }

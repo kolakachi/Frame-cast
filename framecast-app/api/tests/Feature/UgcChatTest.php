@@ -399,4 +399,20 @@ class UgcChatTest extends TestCase
         $state = json_decode(DB::table('ugc_chats')->where('id', $chat)->value('state_json'), true);
         $this->assertSame([5], array_column($state['presenters'], 'character_id'));
     }
+
+    public function test_the_user_picks_the_video_model_and_it_is_made_at_that_models_price(): void
+    {
+        $this->withoutMiddleware();
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->assertCreated()->json('data.id');
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Dewbloom review', 'summary' => 'Yara holds the bottle and tells you what changed.',
+            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Dull skin', 'duration_seconds' => 15];
+        $pitch = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Go', 'presenters' => [['character_id' => 5]]])->assertOk()->json('data.reply');
+        $engines = collect($pitch['payload']['takes'][0]['engines'])->keyBy('key');
+        $this->assertSame(['omni', 'seedance25', 'veo'], $engines->keys()->all(), 'each model the take can be made with, priced');
+        $this->assertTrue($engines['seedance25']['available']);
+        $this->assertGreaterThan($engines['omni']['credits'], $engines['seedance25']['credits'], 'Seedance costs more a second than Omni');
+
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-2222-4a2b-9c3d-123456789abc', 'consent' => true, 'engine' => 'seedance25'])->assertOk();
+        $this->assertSame(['seedance25', $engines['seedance25']['credits']], [$this->handed[0]['engine'], (int) $this->handed[0]['credits']], 'made with the picked model, at its own price');
+    }
 }
