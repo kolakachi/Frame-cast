@@ -67,9 +67,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
         ?bool $checkFace = null,
         array $composition = [],
         bool $storyboard = false,
+        array $look = [],
     ) {
         $this->composition = $composition;
         $this->storyboard = $storyboard;
+        $this->look = $look;
         $this->runToken = $runToken;
         $this->checkFace = (bool) $checkFace;
         // Its own queue and worker (worker-ugc): a 30-minute take held up every voiceover and image behind it (QUEUE-REAP).
@@ -91,6 +93,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** The storyboard (UgcStoryboard, staff pilot): a reviewed still per clip, each clip starting from its still and
      *  reviewed in turn. Internal: the user never sees the stills. A plain property for the same reason as runToken. */
     public bool $storyboard = false;
+
+    /** The take's look (UgcLook): wardrobe, place text and whether the place photo rides in the references (at index 2),
+     *  so the job dresses the cast presenter once and uses that picture in every clip. Empty: the cast photo as it is. */
+    public array $look = [];
+
+    /** The references the clips get: the take's own, with the dressed presenter in place of the cast photo when there is a look. */
+    private array $refs = [];
 
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
@@ -119,6 +128,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if (! is_string($bytes) || $bytes === '') break;
                 $reuse[$i] = $bytes;
             }
+            $this->refs = $this->look !== [] ? $this->dressed($project, $scene, $storage) : $this->referenceImages;
             $stills = $this->storyboard ? $this->stills($project, $scene, $storage) : [];
             $reviewRemakes = 0;
             // veo-3.1-fast has no reference-image inputs, so packaging can
@@ -157,10 +167,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from
                 // clip to clip (2026-10-10: a face changed across a before/after). A clip carrying a shot on starts
                 // from the last frame, and that duplicate first frame is dropped when the clips are joined.
-                $fromRefs = $i > 0 && (! empty($chunk['source_media']) || ! empty($chunk['new_shot'])) && $this->referenceImages !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
+                $fromRefs = $i > 0 && (! empty($chunk['source_media']) || ! empty($chunk['new_shot'])) && $this->refs !== [] && in_array($this->engine, ['omni', 'veo_hq'], true);
                 // The previous clip's last frame rides along as a reference for hair, clothes and setting; the
                 // presenter's photo alone re-imagined them (2026-10-10: tied hair came back loose after a cutaway).
-                $continuity = $fromRefs && empty($chunk['reference_images']) ? ($roomFrame ?? $startFrame) : null;
+                // With a look the room travels in the dressed presenter's picture; the last frame would only crowd out the product.
+                $continuity = $fromRefs && empty($chunk['reference_images']) && $this->look === [] ? ($roomFrame ?? $startFrame) : null;
                 if ($fromRefs) $startFrame = null;
                 // The storyboard's still is the clip's first frame: the room, outfit and starting pose are already in it.
                 if (isset($stills[$i]) && empty($chunk['source_media']) && empty($chunk['reference_images'])) {
@@ -371,7 +382,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if ($saved !== []) return $saved;
 
         $board = app(\App\Services\Ugc\UgcStoryboard::class);
-        $stills = $board->make($this->chunks, $this->referenceImages);
+        $stills = $board->make($this->chunks, $this->refs);
         $paths = [];
         foreach ($stills as $i => $uri) {
             self::parts()->put($dir.'/'.$i.'.txt', $uri);
@@ -384,6 +395,38 @@ class GenerateOneShotUgcJob implements ShouldQueue
             ['storyboard_stills' => $paths, 'storyboard_reviews' => $board->notes])])->save();
 
         return $stills;
+    }
+
+    /**
+     * The take's references with the cast photo replaced by the presenter dressed for this ad in its own version of the
+     * place (UgcLook), made once and saved with the take, so a resumed run uses the same picture; the place photo then
+     * leaves the references, since the room is in the picture. Without a look that could be made, the take's own.
+     *
+     * @return list<string>
+     */
+    private function dressed(Project $project, Scene $scene, StorageService $storage): array
+    {
+        $refs = $this->referenceImages;
+        $plateAt = isset($this->look['plate_at']) ? (int) $this->look['plate_at'] : null;
+        $plate = $plateAt !== null ? ($refs[$plateAt] ?? null) : null;
+        if ($refs === []) return $refs;
+        $file = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/look.txt';
+        $uri = self::parts()->exists($file) ? (string) self::parts()->get($file) : '';
+        if ($uri === '') {
+            $made = app(\App\Services\Ugc\UgcLook::class)->make($refs[0], $plate, (string) ($this->look['wardrobe'] ?? ''), (string) ($this->look['place'] ?? ''));
+            if ($made === null) return $refs;
+            $uri = $made['uri'];
+            self::parts()->put($file, $uri);
+            // A copy the team can look at; never shown to the user.
+            $path = sprintf('workspaces/%d/assets/ugc-look/%d/%s.png', $project->workspace_id, $this->sceneId, $this->recipeHash());
+            $storage->put($path, base64_decode(substr($uri, strpos($uri, ',') + 1)), ['ContentType' => 'image/png']);
+            $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
+                ['look' => ['path' => $path, 'face_score' => $made['score']]])])->save();
+        }
+        if ($plateAt !== null) unset($refs[$plateAt]);
+        $refs[0] = $uri;
+
+        return array_values($refs);
     }
 
     /** A reviewer's verdict on one clip, on the take's record. */
@@ -508,7 +551,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // the presenter recognisable from one chunk to the next —
             // it rides every chunk, as veo_hq's does.
             $chunkRefs = ($this->engine === 'veo_hq' || $this->engine === 'omni' || $i === 0)
-                ? $this->referenceImages
+                ? $this->refs
                 : [];
             if (! empty($chunk['reference_images'])) { $chunkRefs = $chunk['reference_images']; $startFrame = null; $continuity = null; }
             // A new shot: the presenter (first), the previous shot's last frame, then the product; the engine takes 3.
@@ -713,6 +756,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         // Existing queued recipes keep their hash when no new composition is requested.
         if ($this->composition !== []) $recipe[] = $this->composition;
         if ($this->storyboard) $recipe[] = 'storyboard';
+        if ($this->look !== []) $recipe[] = $this->look;
         return substr(hash('sha256', json_encode($recipe)), 0, 16);
     }
 
@@ -734,7 +778,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         self::parts()->put($recipe, json_encode([
             'projectId' => $this->projectId, 'sceneId' => $this->sceneId, 'chunks' => $this->chunks, 'credits' => $this->credits,
             'engine' => $this->engine, 'referenceImages' => $this->referenceImages, 'initialStartFrame' => $this->initialStartFrame,
-            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition, 'storyboard' => $this->storyboard,
+            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition, 'storyboard' => $this->storyboard, 'look' => $this->look,
         ]));
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
@@ -810,7 +854,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             self::dispatch(
                 (int) $recipe['projectId'], (int) $recipe['sceneId'], $recipe['chunks'], (int) $recipe['credits'], (string) $recipe['engine'],
                 $recipe['referenceImages'] ?? [], $recipe['initialStartFrame'] ?? null, $recipe['seed'] ?? null,
-                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [], (bool) ($recipe['storyboard'] ?? false),
+                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [], (bool) ($recipe['storyboard'] ?? false), (array) ($recipe['look'] ?? []),
             )->afterCommit();
             return 'resumed';
         });

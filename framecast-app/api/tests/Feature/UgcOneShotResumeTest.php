@@ -400,4 +400,29 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['Show this happening: Right hand: pulls the seal open.'], $this->settings()['clip_reviews']['1']['first']['problems']);
         $this->assertSame([396], $this->charged);
     }
+
+    public function test_a_take_with_a_look_dresses_the_presenter_once_and_every_clip_uses_that_picture(): void
+    {
+        $look = Mockery::mock(\App\Services\Ugc\UgcLook::class);
+        $look->shouldReceive('make')->once()->with('data:image/png;base64,FACE', 'data:image/png;base64,PLACE', 'a rust sweater', 'a home desk')
+            ->andReturn(['uri' => 'data:image/png;base64,DRESSED', 'score' => 88]);
+        $this->app->instance(\App\Services\Ugc\UgcLook::class, $look);
+        $chunks = [['prompt' => 'one', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'two', 'seconds' => 6, 'new_shot' => true]];
+        $refs = ['data:image/png;base64,FACE', 'data:image/png;base64,PACK', 'data:image/png;base64,PLACE'];
+        $this->failOn = 2;
+        $job = new GenerateOneShotUgcJob(7, 70, $chunks, 396, 'omni', $refs, null, null, '720p', null, null, false, [], false, ['wardrobe' => 'a rust sweater', 'place' => 'a home desk', 'plate_at' => 2]);
+
+        $this->assertNotNull($this->run_($job), 'clip 2 fails the first run');
+        $this->assertSame(['data:image/png;base64,DRESSED', 'data:image/png;base64,PACK'], $this->refs[0], 'the dressed presenter in place of the cast photo, the place photo gone');
+        $this->assertSame(88, $this->settings()['look']['face_score']);
+
+        $this->failOn = null;
+        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
+        $resumed = null;
+        Bus::assertDispatched(GenerateOneShotUgcJob::class, function ($j) use (&$resumed) { $resumed = $j; return true; });
+        $this->assertSame(['wardrobe' => 'a rust sweater', 'place' => 'a home desk', 'plate_at' => 2], $resumed->look);
+        $this->assertNull($this->run_($resumed));
+        $this->assertSame(['data:image/png;base64,DRESSED', 'data:image/png;base64,PACK'], end($this->refs), 'the resumed clip uses the same picture, made once');
+        $this->assertSame([396], $this->charged);
+    }
 }

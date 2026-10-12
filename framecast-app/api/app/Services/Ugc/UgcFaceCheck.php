@@ -22,6 +22,27 @@ class UgcFaceCheck
         if ($key === '' || ! preg_match('#^data:(image/[a-z+]+);base64,(.+)$#s', $presenterDataUri, $m)) return null;
         $frame = $this->middleFrame($clipPath);
         if ($frame === null) return null;
+        return $this->compare($presenterDataUri, $frame);
+    }
+
+    /** The same check for a still image (a data URI), such as the take's dressed reference (UgcLook). */
+    public function scoreImage(string $presenterDataUri, string $imageDataUri): ?int
+    {
+        if (! preg_match('#^data:image/[a-z+]+;base64,(.+)$#s', $imageDataUri, $m)) return null;
+        $in = tempnam(sys_get_temp_dir(), 'facecheck-img-');
+        $out = $in.'.jpg';
+        file_put_contents($in, base64_decode($m[1]));
+        Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-y', '-i', $in, '-vf', 'scale=640:-2', '-q:v', '4', $out]);
+        $frame = is_file($out) ? (string) file_get_contents($out) : '';
+        @unlink($in); @unlink($out);
+
+        return $frame !== '' ? $this->compare($presenterDataUri, $frame) : null;
+    }
+
+    private function compare(string $presenterDataUri, string $frame): ?int
+    {
+        $key = (string) config('services.anthropic.key');
+        if ($key === '' || ! preg_match('#^data:(image/[a-z+]+);base64,(.+)$#s', $presenterDataUri, $m)) return null;
         $content = [
             ['type' => 'text', 'text' => 'Image 1 is a reference photo of a person. Image 2 is a frame from a video that should show that same person. '
                 .'Judge identity only: face shape, eyes, nose, mouth, skin tone, age, hairline and hair. Ignore clothes, lighting, angle, expression and background. '

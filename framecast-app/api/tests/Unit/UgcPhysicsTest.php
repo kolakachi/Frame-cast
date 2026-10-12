@@ -205,4 +205,12 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringStartsWith(\App\Services\Ugc\UgcActionSheet::CAMERAS['set_down']['shot'], $prompt);
         $this->assertStringContainsString('[00:02-00:03] View: the view tips down and settles low on the counter. Left hand: sets the camera down facing her.', $prompt);
     }
+
+    public function test_the_look_keeps_the_person_dresses_them_and_makes_its_own_version_of_the_place(): void
+    {
+        $prompt = \App\Services\Ugc\UgcLook::prompt('a rust ribbed knit sweater', 'this kind of place: a home desk with a laptop', true);
+        $this->assertStringContainsString('exactly the same face, skin tone, hair, any head covering and age', $prompt);
+        $this->assertStringContainsString('They wear a rust ribbed knit sweater.', $prompt);
+        $this->assertStringContainsString('They are in a home desk with a laptop, the same kind of place as image 2 with the same feel, but your own version of it', $prompt);
+    }
 }

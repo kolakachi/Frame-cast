@@ -1137,8 +1137,10 @@ class UgcController extends Controller
         // presenter and the first product photo, so it is inside the three references a model takes; a later product
         // angle gives way to it.
         $placePhoto = false;
+        $plateAt = null;
         if (! in_array($v['ugc_type'] ?? '', ['green_screen', 'asmr'], true) && ! empty($v['setting_key']) && ($plate = \App\Services\Ugc\UgcSettings::plate((string) $v['setting_key']))) {
-            array_splice($referenceImages, min(2, count($referenceImages)), 0, [$plate]);
+            $plateAt = min(2, count($referenceImages));
+            array_splice($referenceImages, $plateAt, 0, [$plate]);
             $placePhoto = true;
         }
 
@@ -1381,6 +1383,11 @@ class UgcController extends Controller
             $presenterImageAttached && in_array($engine, ['omni', 'veo_hq'], true),
             $composition,
             $storyboard,
+            // The take's look (UgcLook, owner 2026-10-12; staff until its test takes pass): the cast presenter dressed
+            // for this ad in its own version of the place, made once in the job and used in every clip.
+            $presenterImageAttached && $style['wardrobe'] !== '' && in_array($engine, ['omni', 'veo_hq'], true)
+                && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true) && in_array($user->role, ['super_admin', 'platform_admin'], true)
+                ? array_filter(['wardrobe' => $style['wardrobe'], 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
         )->afterCommit();
 
         $payload = ['data' => [
