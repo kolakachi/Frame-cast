@@ -199,4 +199,20 @@ class ScriptRefusalTest extends TestCase
         Bus::assertDispatchedTimes(BreakdownScenesJob::class, 1);
     }
 
+    public function test_a_pasted_script_that_cannot_fill_the_length_says_so_and_keeps_what_the_check_found(): void
+    {
+        $project = $this->project();
+        $project->forceFill(['duration_target_seconds' => 180, 'source_content_raw' => "Welcome back to the program! Now that you've completed Session One, it's time to move into Session Two. This is where things get interesting, because now we're going to talk about marketing, outreach, and building relationships with the people who can help you fill your beds. I always tell people you don't have to wait until you have a house to start building relationships. In this session I'm going to show you where to find partners, what to say, and how to track referrals. So grab your notebook, pay attention, and let's get into it!"])->save();
+        $ai = $this->createMock(AIGenerationAdapter::class);
+        $ai->method('generate')->willReturnCallback(fn ($template) => ['content' => $template === 'content_fidelity_review'
+            ? json_encode(['decision' => 'repair', 'issues' => ['Adds referral sources the brief never names.']]) : 'A longer script with invented detail.']);
+        (new GenerateScriptJob($project->id))->handle($ai, $this->createMock(MediaTranscriptionService::class));
+
+        $stage = $project->fresh()->generation_status_json['stages']['script'];
+        $this->assertSame('attempts_exhausted', $stage['validation_reason']);
+        $this->assertTrue($stage['looks_like_script']);
+        $this->assertSame(['Adds referral sources the brief never names.'], $stage['findings'], 'what the check found is kept');
+        $this->assertStringContainsString('This reads like a finished script', $stage['message']);
+        $this->assertStringContainsString('Make it from your words as written', $stage['message']);
+    }
 }

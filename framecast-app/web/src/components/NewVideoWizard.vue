@@ -1,4 +1,5 @@
 <script setup>
+import { looksLikeScript, spokenSeconds } from '../utils/scriptText.js'
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
@@ -55,6 +56,23 @@ function aspectIcon(ratio) {
 const brandKitId = ref('')
 const title = ref('')
 const durationTargetSeconds = ref('60')
+// A finished script pasted as an idea, and a length the text cannot fill (2026-10-12, workspace 45): said before anything is made.
+const promptIsScript = computed(() => wizardSourceType.value === 'prompt' && looksLikeScript(promptText.value))
+function usePromptAsScript() {
+  scriptText.value = promptText.value
+  allowScriptEdit.value = false
+  setWizardSourceType('script')
+}
+const lengthNote = computed(() => {
+  const text = wizardSourceType.value === 'script' ? scriptText.value : (promptIsScript.value ? promptText.value : '')
+  if (!text.trim()) return ''
+  const runs = spokenSeconds(text)
+  const chosen = Number(durationTargetSeconds.value || 60)
+  if (Math.abs(runs - chosen) < Math.max(15, chosen * 0.35)) return ''
+  return `Your text runs about ${runs} seconds spoken; you chose ${chosen}. ` + (wizardSourceType.value === 'script'
+    ? 'Your words are kept as written, so the video follows their length.'
+    : runs < chosen ? 'To fill the rest the script would need more than your text says: use it as written, or pick a shorter length.' : 'It will be shortened to fit: pick a longer length to keep it all.')
+})
 const contentGoal = ref('')
 const promptText = ref('')
 const scriptText = ref('')
@@ -592,6 +610,12 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   promptText.value = ''
   scriptText.value = ''
   allowScriptEdit.value = false
+  // A script handed over from Create ("Make a video with my words as written") lands in Paste a Script.
+  try {
+    const prefill = JSON.parse(sessionStorage.getItem('wyv_wizard_prefill') || 'null')
+    sessionStorage.removeItem('wyv_wizard_prefill')
+    if (prefill?.source === 'script' && initialSourceType === 'script' && prefill.text) { scriptText.value = String(prefill.text); wizardStep.value = 1 }
+  } catch { /* nothing to carry over */ }
   urlText.value = ''
   audioFile.value = null
   videoFile.value = null
@@ -1778,6 +1802,10 @@ defineExpose({ open })
         <div v-else-if="wizardSourceType === 'prompt'" class="input-group">
           <label class="input-label">What's your video about?</label>
           <textarea v-model="promptText" class="field-input textarea" rows="5" placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966…"></textarea>
+          <div v-if="promptIsScript" class="script-detect">
+            <span>This looks like your own script (about {{ spokenSeconds(promptText) }} seconds spoken). Keep your exact words?</span>
+            <button type="button" class="script-detect-btn" @click="usePromptAsScript">Use it as my script</button>
+          </div>
         </div>
         <div v-else-if="wizardSourceType === 'script'" class="input-group">
           <label class="input-label">Paste your script</label>
@@ -2156,6 +2184,7 @@ defineExpose({ open })
               {{ option.label }}
             </div>
           </div>
+          <div v-if="lengthNote" class="anim-cost-warn">{{ lengthNote }}</div>
         </div>
 
         <label class="input-label-wrap mt">
@@ -2533,6 +2562,8 @@ defineExpose({ open })
 .anim-cost-line { margin-top: 10px; font-size: 12px; color: var(--color-text-muted); }
 .anim-cost-line strong { color: var(--color-text-primary); }
 .anim-cost-short { color: #f87171; }
+.script-detect { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border-active, rgba(255,107,53,.4)); border-radius: 8px; font-size: 12.5px; line-height: 1.45; }
+.script-detect-btn { padding: 6px 12px; border-radius: 7px; border: 0; background: var(--color-accent, #ff6b35); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .anim-cost-warn { margin-top: 8px; padding: 8px 10px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25); border-radius: 7px; font-size: 11.5px; color: #fbbf24; line-height: 1.45; }
 .ai-broll-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .custom-style-panel { padding: 12px; border-radius: 8px; background: rgba(255,107,53,0.04); border: 1px solid rgba(255,107,53,0.2); margin: -6px 0 14px; }

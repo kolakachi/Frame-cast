@@ -115,6 +115,8 @@ class GenerationProgressed implements ShouldBroadcastNow
             }
 
             if (isset($this->meta['validation_reason'])) $stageEntry['validation_reason'] = $this->meta['validation_reason'];
+            // Why a script step stopped, kept with it so the failure page can say it and offer the right way on.
+            foreach (['looks_like_script', 'script_seconds', 'findings'] as $key) if (isset($this->meta[$key])) $stageEntry[$key] = $this->meta[$key];
 
             // Persist done/total counts from meta so page-refresh can restore them.
             if (isset($this->meta['done']))  $stageEntry['done']  = $this->meta['done'];

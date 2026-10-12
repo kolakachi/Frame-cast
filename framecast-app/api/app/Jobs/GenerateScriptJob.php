@@ -149,7 +149,7 @@ class GenerateScriptJob implements ShouldQueue
                 $issues = $review['issues'];
             }
             if (! $accepted) {
-                $this->pauseForReview($project, 'attempts_exhausted', 3);
+                $this->pauseForReview($project, 'attempts_exhausted', 3, $issues);
                 return;
             }
 
@@ -189,7 +189,7 @@ class GenerateScriptJob implements ShouldQueue
         BreakdownScenesJob::dispatch($project->getKey());
     }
 
-    private function pauseForReview(Project $project, string $reason, int $attempt): void
+    private function pauseForReview(Project $project, string $reason, int $attempt, array $issues = []): void
     {
         $project->forceFill(['status' => 'failed'])->save();
         \App\Services\Generation\AI\ContentReview::logDecision('paused', $reason, [
@@ -202,7 +202,18 @@ class GenerateScriptJob implements ShouldQueue
             'unavailable' => "We couldn't verify that the script matches your brief. Production is paused before images and narration. Please try again later.",
             default => "We couldn't create a script that matched your brief after three attempts. Production stopped before images and narration. Please revise the brief before retrying.",
         };
-        GenerationProgressed::dispatch($this->projectId, 'script', 'failed', $message, ['validation_reason' => $reason]);
+        // A finished script pasted as an idea (workspace 45, 2026-10-12): say so, and how long it really runs, so the way
+        // forward is "make it from my words", not "revise the brief". The reviewer's findings are kept with the failure.
+        $source = (string) $project->source_content_raw;
+        $script = $project->source_type === 'prompt' && \App\Support\ScriptText::looksLikeScript($source);
+        $seconds = \App\Support\ScriptText::spokenSeconds($source);
+        if ($script && $reason === 'attempts_exhausted') {
+            $message = 'This reads like a finished script (about '.$seconds.' seconds spoken). We could not stretch it to '.(int) ($project->duration_target_seconds ?: 60)
+                .' seconds without inventing what it does not say. Make it from your words as written, or add more to it. Nothing was charged.';
+        }
+        GenerationProgressed::dispatch($this->projectId, 'script', 'failed', $message, array_filter(['validation_reason' => $reason,
+            'looks_like_script' => $script ?: null, 'script_seconds' => $script ? $seconds : null,
+            'findings' => $issues !== [] ? array_slice(array_values(array_map(fn ($i) => mb_substr(is_string($i) ? $i : json_encode($i), 0, 240), $issues)), 0, 3) : null]));
     }
 
     private function buildSeriesContext(Project $project): string

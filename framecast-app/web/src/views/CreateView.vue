@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
+import { looksLikeScript, spokenSeconds } from '../utils/scriptText.js'
 import { useAuthStore } from '../stores/auth'
 import AppSidebar from '../components/AppSidebar.vue'
 import FinishedVideoPlayer from '../components/FinishedVideoPlayer.vue'
@@ -643,6 +644,13 @@ async function blobMessage(e) {
   return e?.response ? message(e) : 'The video could not be loaded. Check your connection and retry.'
 }
 const base = value => `/create/conversations/${value || id.value}`
+// A finished script typed into Create (2026-10-12, workspace 45): Create makes short videos and condenses it, so the
+// person is offered the narrated video that keeps every word, with their text carried over.
+const promptIsScript = computed(() => looksLikeScript(prompt.value))
+function makeAsWritten() {
+  try { sessionStorage.setItem('wyv_wizard_prefill', JSON.stringify({ source: 'script', text: prompt.value })) } catch { /* the wizard opens empty */ }
+  router.push({ name: 'dashboard', query: { new_video: '1', source: 'script' } })
+}
 const draftKey = value => `create.draft.${auth.user?.id}.${auth.user?.workspace_id}.${value || 'new'}`
 function persistDraft(value, text) { try { text ? sessionStorage.setItem(draftKey(value),text) : sessionStorage.removeItem(draftKey(value)); return (sessionStorage.getItem(draftKey(value)) || '') === text } catch { return false } }
 function readDraft(value) { try { return sessionStorage.getItem(draftKey(value)) || '' } catch { return '' } }
@@ -1777,6 +1785,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
               </div>
               <label for="create-prompt" class="sr-only">Describe what you want to create or change</label>
               <textarea ref="composer" id="create-prompt" v-model="prompt" rows="2" maxlength="10000" placeholder="Describe what you want to create or change…" @input="sendingKey = null" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send" />
+              <p v-if="promptIsScript" class="tray-note script-note">This looks like a finished script (about {{ spokenSeconds(prompt) }} seconds spoken). Create makes short videos and shortens it to fit. <button type="button" class="quiet quiet--sm" @click="makeAsWritten">Make a video with my words as written</button></p>
               <div class="composer-bottom">
                 <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV, up to 20 files, 100 MB each and 200 MB total. PDF, Word or PowerPoint up to 20 MB (the first 50 pages are read)." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>

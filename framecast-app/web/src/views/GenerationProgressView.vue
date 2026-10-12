@@ -1,4 +1,5 @@
 <script setup>
+import { looksLikeScript } from '../utils/scriptText.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
@@ -222,7 +223,10 @@ function applyStoredGenerationState(project) {
   const scriptStage = project?.generation_status_json?.stages?.script
   if (project?.status === 'failed' && scriptStage?.status === 'failed' && ['prompt', 'script', 'url', 'pdf_upload'].includes(project.source_type)) {
     if (!failedBrief.value) briefText.value = project.source_type === 'url' ? '' : (project.source_content_raw || '')
-    failedBrief.value = { reason: scriptStage.validation_reason || 'failed', sourceType: project.source_type }
+    failedBrief.value = { reason: scriptStage.validation_reason || 'failed', sourceType: project.source_type,
+      // A finished script pasted as an idea (2026-10-12): the way on is "make it from my words", said first.
+      looksLikeScript: !!scriptStage.looks_like_script || (project.source_type === 'prompt' && looksLikeScript(project.source_content_raw || '')),
+      findings: Array.isArray(scriptStage.findings) ? scriptStage.findings : [] }
   } else if (project?.status !== 'failed') failedBrief.value = null
   const storedStages = project?.generation_status_json?.stages ?? {}
 
@@ -576,7 +580,12 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
           <template v-else>
             <label class="gen-way-label" for="gen-brief">{{ failedBrief.reason === 'unreadable_link' ? 'Paste what the page says instead: the product, what it does and the facts to use' : 'Your brief' }}</label>
             <textarea id="gen-brief" v-model="briefText" class="gen-way-text" rows="5" :placeholder="failedBrief.reason === 'unreadable_link' ? 'e.g. Northside Roasters, a coffee subscription: fresh beans roasted weekly, delivered every two weeks, from $18.' : ''"></textarea>
-            <div class="gen-way-actions">
+            <p v-if="!failedBrief.looksLikeScript && failedBrief.findings.length" class="gen-way-note">What the check found: {{ failedBrief.findings[0] }}</p>
+            <div v-if="failedBrief.looksLikeScript" class="gen-way-actions">
+              <button class="gen-download" :disabled="retrying || !briefText.trim()" @click="retryBrief({ source_content_raw: briefText, source_type: 'script' })">{{ retrying ? 'Starting…' : 'Make it from my words as written' }}</button>
+              <button class="gen-foot-btn" :disabled="retrying || !briefText.trim()" @click="retryBrief({ source_content_raw: briefText })">Write a new script from it</button>
+            </div>
+            <div v-else class="gen-way-actions">
               <button class="gen-download" :disabled="retrying || !briefText.trim()" @click="retryBrief(failedBrief.sourceType === 'url' || failedBrief.sourceType === 'pdf_upload' ? { source_content_raw: briefText, source_type: 'prompt' } : { source_content_raw: briefText })">{{ retrying ? 'Starting…' : failedBrief.reason === 'unreadable_link' ? 'Make it from this text' : 'Try again' }}</button>
               <button v-if="failedBrief.sourceType === 'prompt' && briefText.trim().split(/\s+/).length >= 25" class="gen-foot-btn" :disabled="retrying" @click="retryBrief({ source_content_raw: briefText, source_type: 'script' })">Use my words as the script</button>
             </div>

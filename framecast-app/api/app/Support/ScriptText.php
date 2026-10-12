@@ -92,6 +92,30 @@ final class ScriptText
      * help but notice…" or "I can't believe this works" is left alone — the
      * pattern requires "help with", not a bare "help".
      */
+    /**
+     * Is this a finished script someone pasted, rather than an idea for one? (2026-10-12: a coach pasted their 232-word
+     * session intro into "Write a Prompt" at 180 seconds; the writer had to invent the rest, the reviewer refused it three
+     * times, and the project failed.) A script runs on: many sentences, spoken to someone ("you", "I", "we", "let's"),
+     * and it does not ask for a video.
+     */
+    public static function looksLikeScript(string $text): bool
+    {
+        $text = trim($text);
+        $words = str_word_count($text);
+        if ($words < 60) return false;
+        if (preg_match('/^\W*(please\s+)?(make|create|write|generate|produce|turn|i want|i need|can you|a video|video about)\b/iu', $text)) return false;
+        $sentences = preg_match_all('/[.!?](\s|$)/u', $text);
+        $spoken = preg_match_all("/\b(i|i'm|i've|i'll|my|me|you|you're|you've|your|we|we're|let's|our|us)\b/iu", $text);
+
+        return $sentences >= 4 && $spoken / max(1, $words) >= 0.04;
+    }
+
+    /** About how long a text takes to say aloud, in seconds (a natural 2.6 words a second). */
+    public static function spokenSeconds(string $text): int
+    {
+        return (int) round(str_word_count(trim($text)) / 2.6);
+    }
+
     public static function looksLikeRefusal(string $script): bool
     {
         $out = ltrim($script);
