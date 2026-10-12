@@ -44,6 +44,12 @@ const place = computed({
   },
 })
 const count = computed(() => props.presenters.length)
+// The background is one row that opens its grid (owner, 2026-10-12): 24 places pushed the Add button out of sight, and
+// nobody saw they could choose a place without scrolling past the presenter.
+const placeOpen = ref(false)
+const placeInfo = computed(() => props.settings.find(s => s.key === place.value) || null)
+function pickPlace(key) { place.value = key; placeOpen.value = false }
+watch(viewing, () => { placeOpen.value = false })
 
 function open(c) { viewing.value = c }
 function toggle(c) {
@@ -96,21 +102,32 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
           </div>
 
           <aside v-if="viewing" class="upm-detail" aria-label="Presenter details">
-            <button type="button" class="upm-back" @click="viewing = null">‹ All presenters</button>
-            <img v-if="imageOf(viewing)" :src="imageOf(viewing)" :alt="viewing.name" class="upm-photo" />
-            <div class="upm-detail-t">
-              <b>{{ viewing.name }}</b>
-              <p v-if="viewing.description">{{ viewing.description }}</p>
-              <span class="upm-tags"><span v-for="t in tags(viewing)" :key="t">{{ t }}</span></span>
+            <div class="upm-detail-scroll">
+              <button type="button" class="upm-back" @click="viewing = null">‹ All presenters</button>
+              <img v-if="imageOf(viewing) && !placeOpen" :src="imageOf(viewing)" :alt="viewing.name" class="upm-photo" />
+              <div class="upm-detail-t">
+                <b>{{ viewing.name }}</b>
+                <p v-if="viewing.description && !placeOpen">{{ viewing.description }}</p>
+                <span v-if="!placeOpen" class="upm-tags"><span v-for="t in tags(viewing)" :key="t">{{ t }}</span></span>
+              </div>
+              <div v-if="settings.length" class="upm-place">
+                <button type="button" class="upm-place-row" :aria-expanded="placeOpen" aria-controls="upm-place-grid" @click="placeOpen = !placeOpen">
+                  <img v-if="placeInfo" :src="placeInfo.image_url" alt="" class="upm-place-thumb" />
+                  <span v-else class="upm-place-thumb upm-place-auto" aria-hidden="true">✦</span>
+                  <span class="upm-place-t"><small>Background</small><b>{{ placeInfo ? placeInfo.label : 'Auto: we pick' }}</b></span>
+                  <span class="upm-place-chev" aria-hidden="true">{{ placeOpen ? '▴' : 'Change ▾' }}</span>
+                </button>
+                <div v-if="placeOpen" id="upm-place-grid" class="upm-place-grid">
+                  <small class="upm-muted">The kind of place. We choose the exact spot and light.</small>
+                  <UgcBackgroundPicker :model-value="place" :settings="settings" @update:model-value="pickPlace" />
+                </div>
+              </div>
             </div>
-            <div v-if="settings.length" class="upm-place">
-              <span class="upm-label">Background</span>
-              <small class="upm-muted">The kind of place. We choose the exact spot and light.</small>
-              <UgcBackgroundPicker v-model="place" :settings="settings" />
+            <div class="upm-detail-foot">
+              <button type="button" :class="['upm-add', { on: !!chosen(viewing.id) }]" @click="toggle(viewing)">
+                {{ chosen(viewing.id) ? `Remove ${viewing.name}` : `Add ${viewing.name}` }}<template v-if="!chosen(viewing.id) && placeInfo"> · {{ placeInfo.label }}</template>
+              </button>
             </div>
-            <button type="button" :class="['upm-add', { on: !!chosen(viewing.id) }]" @click="toggle(viewing)">
-              {{ chosen(viewing.id) ? `Remove ${viewing.name}` : `Add ${viewing.name}` }}
-            </button>
           </aside>
           <aside v-else class="upm-detail upm-detail--hint" aria-hidden="true">
             <p>Pick someone to see them up close and choose where they are filmed.</p>
@@ -147,7 +164,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .upm-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 320px; }
 /* Rows as tall as their cards: a clipped card with a fixed shape has no minimum height, so the grid squeezed the rows
    to the window and the cards overlapped (owner's screenshot, 2026-10-11). */
-.upm-grid { overflow-y: auto; padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); grid-auto-rows: max-content; gap: 10px; align-content: start; }
+.upm-grid { overflow-y: auto; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); mask-image: linear-gradient(to bottom, transparent 0, #000 14px); padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); grid-auto-rows: max-content; gap: 10px; align-content: start; }
 .upm-card { position: relative; padding: 0; border-radius: 10px; border: 1px solid var(--color-border-active); background: var(--color-bg-soft); color: var(--color-text-primary); cursor: pointer; overflow: hidden; aspect-ratio: 9 / 14; font: inherit; }
 .upm-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .upm-card:hover, .upm-card.viewing { border-color: var(--color-accent); }
@@ -160,11 +177,22 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 .upm-card--action small { font-size: 11px; color: var(--color-text-secondary); line-height: 1.3; }
 .upm-action-i { font-size: 20px; color: var(--color-accent); }
 .upm-empty { grid-column: 1 / -1; color: var(--color-text-secondary); font-size: 13px; }
-.upm-detail { border-left: 1px solid var(--color-border); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.upm-detail > * { flex-shrink: 0; }
+.upm-detail { border-left: 1px solid var(--color-border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.upm-detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.upm-detail-scroll > * { flex-shrink: 0; }
+.upm-detail-foot { padding: 12px 16px; border-top: 1px solid var(--color-border); background: var(--color-bg-panel, var(--color-bg-card)); display: grid; }
+.upm-place-row { display: flex; align-items: center; gap: 10px; width: 100%; font: inherit; text-align: left; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--color-border-active); background: var(--color-bg-soft); color: var(--color-text-primary); cursor: pointer; }
+.upm-place-row:hover, .upm-place-row[aria-expanded="true"] { border-color: var(--color-accent); }
+.upm-place-thumb { width: 34px; height: 44px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; }
+.upm-place-auto { display: inline-flex; align-items: center; justify-content: center; background: var(--color-bg-card); color: var(--color-accent); border: 1px solid var(--color-border); }
+.upm-place-t { display: grid; flex: 1; min-width: 0; }
+.upm-place-t small { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-secondary); }
+.upm-place-t b { font-size: 14px; }
+.upm-place-chev { font-size: 12.5px; color: var(--color-accent); white-space: nowrap; }
+.upm-place-grid { display: grid; gap: 8px; }
 .upm-detail--hint { align-items: center; justify-content: center; text-align: center; color: var(--color-text-secondary); font-size: 13px; padding: 24px; }
 .upm-back { display: none; }
-.upm-photo { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; }
+.upm-photo { width: 100%; aspect-ratio: 3 / 4; max-height: 44vh; object-fit: cover; border-radius: 10px; }
 .upm-detail-t { display: grid; gap: 6px; }
 .upm-detail-t b { font-size: 16px; }
 .upm-detail-t p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--color-text-secondary); }
