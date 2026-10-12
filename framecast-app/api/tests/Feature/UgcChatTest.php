@@ -199,9 +199,18 @@ class UgcChatTest extends TestCase
         $this->assertSame('beach', $made['setting']);
         $this->assertContains($made['wardrobe'], config('ugc_settings.beach.wardrobe'), 'beach clothes, never swimwear');
 
-        // A setting with no photo yet is never sent; one with a photo is picked instead.
+        // A revision stays where the last pitch was, in the same clothes; the director is told so.
+        $first = $made;
         $this->replies[] = $pitch + ['setting' => 'boutique'];
-        $made = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Another', 'presenters' => [['character_id' => 5]]])
+        $made = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Shorter', 'presenters' => [['character_id' => 5]]])
+            ->assertOk()->json('data.reply.payload.takes.0');
+        $this->assertSame(['beach', $first['wardrobe']], [$made['setting'], $made['wardrobe']], 'a revision keeps its place and outfit');
+        $this->assertStringContainsString('This video is already filmed in: beach', end($this->prompts)[1]['settings']);
+
+        // A new video never names a setting without a photo; one with a photo not used lately is picked instead.
+        $other = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->assertCreated()->json('data.id');
+        $this->replies[] = $pitch + ['setting' => 'boutique'];
+        $made = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$other}/messages", ['text' => 'Another', 'presenters' => [['character_id' => 5]]])
             ->assertOk()->json('data.reply.payload.takes.0');
         $this->assertSame('car', $made['setting'], 'the beach was just used, so the other setting with a photo');
     }

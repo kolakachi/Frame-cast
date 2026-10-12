@@ -147,7 +147,7 @@ final class UgcChatService
                 'transcript' => $this->transcript($id), 'materials' => $this->materials($state),
                 'presenters' => $this->presentersText($state, (int) $request->user()->workspace_id), 'type' => $state['type'] ?? 'auto',
                 'shape' => ($state['aspect'] ?? '9:16').(! empty($state['length']) ? ', '.$state['length'].' seconds' : ', length open'),
-                'settings' => $this->settingsText($request), 'type_contracts' => json_encode(UgcTypes::contracts($request->user())), 'previous_error' => $error,
+                'settings' => $this->settingsText($request).$this->placeNote($id), 'type_contracts' => json_encode(UgcTypes::contracts($request->user())), 'previous_error' => $error,
                         // Room to finish (2026-10-12): the model's thinking shares the budget, and at 1,500 a long brief's pitch was
             // cut off mid-sentence, not JSON, three times running ("I could not work that out").
             ], 4000, 0.4);
@@ -224,9 +224,14 @@ final class UgcChatService
         $chosen = array_values(array_unique(array_filter(array_map(fn ($p) => is_string($p['setting'] ?? null) && isset($settings[$p['setting']]) ? $p['setting'] : null, $state['presenters'] ?? []))));
         $everyone = $chosen && count($chosen) === 1 && count(array_filter($state['presenters'] ?? [], fn ($p) => empty($p['setting']))) === 0;
         $named = is_string($d['setting'] ?? null) ? $d['setting'] : '';
-        $setting = $everyone ? $chosen[0] : (isset($settings[$named]) ? $named : $this->pickSetting($settings, $recentSettings));
+        // A revised pitch stays where the last one was, in the same clothes, unless the director moves it because the user
+        // asked (owner, 2026-10-12: a revision moved a "desk snack" ad from the home desk to a café).
+        $before = $this->lastTake($id);
+        $kept = is_string($before['setting'] ?? null) && isset($settings[$before['setting']]) ? $before['setting'] : null;
+        $setting = $everyone ? $chosen[0] : (isset($settings[$named]) ? $named : ($kept ?? $this->pickSetting($settings, $recentSettings)));
         if ($type === 'green_screen') $setting = null;
-        $wardrobe = $this->pickWardrobe($recentOutfits, $setting !== null ? ($settings[$setting]['wardrobe'] ?? []) : []);
+        $wardrobe = $setting !== null && $setting === $kept && trim((string) ($before['wardrobe'] ?? '')) !== '' ? (string) $before['wardrobe']
+            : $this->pickWardrobe($recentOutfits, $setting !== null ? ($settings[$setting]['wardrobe'] ?? []) : []);
         if ($type === 'green_screen') $wardrobe = 'a charcoal grey top';
         $products = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'product')));
         $look = $products ? $this->vision->look($products, (int) $request->user()->workspace_id) : '';
@@ -343,6 +348,22 @@ final class UgcChatService
     }
 
     /** The settings list the director picks from, with the ones used lately. */
+    /** The first take of this chat's latest pitch, or [] before the first pitch. */
+    private function lastTake(string $id): array
+    {
+        $payload = DB::table('ugc_chat_messages')->where('chat_id', $id)->where('kind', 'pitch')->orderByDesc('id')->value('payload_json');
+        return (array) ((json_decode((string) $payload, true) ?: [])['takes'][0] ?? []);
+    }
+
+    /** Where this chat's video is already filmed, for the director to keep (the "used lately" list counts this chat too). */
+    private function placeNote(string $id): string
+    {
+        $setting = $this->lastTake($id)['setting'] ?? null;
+        return is_string($setting) && $setting !== ''
+            ? "\nThis video is already filmed in: ".$setting.". Keep that setting unless the user asks for another place; \"used lately\" never applies to it."
+            : '';
+    }
+
     private function settingsText(Request $request): string
     {
         $settings = UgcSettings::available();
