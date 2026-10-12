@@ -226,4 +226,13 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringContainsString('holds her phone screen toward the lens', $prompt);
         $this->assertStringContainsString('the only phone in the picture is the one showing the product', $prompt);
     }
+
+    public function test_a_plan_counts_an_action_only_when_a_shot_does_it(): void
+    {
+        $plan = 'Static propped camera. He turns the can so the label faces the lens, then both hands go to the can as he gets ready to open it. '
+            .'Faint can-open fizz sound at the start, then he takes one sip. He raises the open can toward the camera. The bottle is already open.';
+        $this->assertSame(['taste'], UgcPlan::performedKinds($plan), 'only the sip is done; the opening is only mentioned');
+        $this->assertSame(['open', 'taste'], UgcPlan::performedKinds('He cracks the can open with a click and fizz, then takes a sip.'));
+        $this->assertSame(['open', 'apply'], UgcPlan::performedKinds('She unscrews the cap and pats the serum onto her cheek.'));
+    }
 }

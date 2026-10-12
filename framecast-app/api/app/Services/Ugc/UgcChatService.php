@@ -248,7 +248,7 @@ final class UgcChatService
         // Every action the pitch names is in the plan (2026-10-12: a serum testimonial lost its dropper and its applying,
         // a can unboxing its sip, as the planner kept takes simple). A plan that drops one is made once more, told which.
         $missing = isset($plan['error']) ? [] : array_values(array_diff(UgcPlan::actionKinds(($d['summary'] ?? '').' '.($d['context'] ?? '')),
-            UgcPlan::actionKinds(implode(' ', array_map(fn ($s) => ($s['motion_prompt'] ?? '').' '.($s['visual_brief'] ?? ''), $plan['segments'] ?? [])))));
+            UgcPlan::performedKinds(implode(' ', array_map(fn ($s) => ($s['motion_prompt'] ?? '').' '.($s['visual_brief'] ?? ''), $plan['segments'] ?? [])))));
         if ($missing !== []) {
             $again = $makePlan(['context' => mb_substr('Show every one of these being done, in frame, in order, each at its own moment: '.implode(', ', array_map(fn ($k) => UgcPlan::ACTION_WORDS[$k] ?? $k, $missing)).'. '.$planInput['context'], 0, 1500)] + $planInput);
             if (! isset($again['error'])) $plan = $again;

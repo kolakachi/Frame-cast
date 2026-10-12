@@ -55,6 +55,24 @@ final class UgcPlan
     /** How each kind of action reads when the planner is told it is missing. */
     public const ACTION_WORDS = ['open' => 'opening it', 'pour' => 'pouring it', 'taste' => 'tasting or drinking it', 'apply' => 'applying it', 'prepare' => 'preparing it', 'wear' => 'putting it on'];
 
+    /**
+     * The actions a shot shows being done, not only mentions (2026-10-12: a can unboxing planned "gets ready to open it"
+     * and then "the open can", and the opening itself was never filmed): an action someone is about to do, a product
+     * already in that state, and "open" used of a thing ("the open can", "a can-open fizz") are not actions done.
+     */
+    public static function performedKinds(string $text): array
+    {
+        $text = (string) preg_replace([
+            '/\b(ready|about|going|preparing|getting ready|gets ready|get ready)\s+to\s+\w+(\s+(it|the|its|her|his|their|them|a|an)\b(\s+\w+)?)?/iu',
+            '/\b(already|still|now)\s+(open(ed)?|peeled|unwrapped|unscrewed|poured|applied|eaten)\b/iu',
+            '/\b(the|an|its|this|that)\s+open(ed)?\b/iu',
+            '/\b\w+-open(ed)?\b/iu',
+            '/\bopen(ed)?\s+(can|bottle|pouch|jar|box|tube|bag|lid|top|pack|package|carton|container)\b/iu',
+        ], ' ', $text);
+
+        return self::actionKinds($text);
+    }
+
     public static function actionKinds(string $text): array
     {
         // Places and phrases that only look like actions ("an open-plan office", "opens up about") are not.
