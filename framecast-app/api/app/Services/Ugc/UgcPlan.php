@@ -125,6 +125,11 @@ final class UgcPlan
                 }
             }
             $source = $kind === 'b_roll' ? ($seg['source'] ?? '') : null;
+            // The director often leaves a silent action cutaway's source empty (2026-10-12, 2 of 3 Crunchy Pea plans
+            // refused): with a clip id it is their footage, without one it is a shot to generate.
+            if ($kind === 'b_roll' && in_array($source, ['', null], true)) {
+                $source = ! empty($seg['asset_id']) ? 'upload' : 'generate';
+            }
             if ($kind === 'b_roll' && ! in_array($source, ['upload', 'stock', 'generate'], true)) {
                 self::invalid('Choose upload, stock or generate for each cutaway.');
             }

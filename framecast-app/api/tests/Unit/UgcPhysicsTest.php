@@ -54,4 +54,14 @@ class UgcPhysicsTest extends TestCase
         $this->assertSame("pre\n\nscene one\n\nPhysical staging, follow exactly: Phone propped. Left hand holds the open pouch.\n\nclosing", $chunks[0]['prompt']);
         $this->assertSame([['prompt' => 'x']], UgcStaging::apply([['prompt' => 'x']], []), 'no check, no change');
     }
+
+    public function test_a_silent_cutaway_with_no_source_is_generated_or_their_footage(): void
+    {
+        $plan = UgcPlan::normalise([
+            ['kind' => 'on_camera', 'seconds' => 3, 'script_text' => 'Okay, this is my new snack.', 'visual_brief' => 'Kitchen counter.'],
+            ['kind' => 'b_roll', 'seconds' => 2, 'script_text' => '', 'source' => null, 'visual_brief' => 'Close-up of her mouth.', 'motion_prompt' => 'Teeth bite a peanut with a crunch.', 'headline' => 'Crunch'],
+            ['kind' => 'b_roll', 'seconds' => 2, 'script_text' => '', 'asset_id' => 77, 'visual_brief' => 'Product on the counter.', 'motion_prompt' => 'The pouch on the counter.', 'headline' => 'Crunch'],
+        ], 'story');
+        $this->assertSame(['generate', 'upload'], [$plan[1]['source'], $plan[2]['source']]);
+    }
 }
