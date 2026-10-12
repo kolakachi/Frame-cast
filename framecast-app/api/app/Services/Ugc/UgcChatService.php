@@ -200,6 +200,9 @@ final class UgcChatService
             return $this->say($id, 'question', 'Choose exactly two different presenters for this skit. They will play speaker 1 and speaker 2 in one video.');
         }
         $format = (UgcTypes::contracts($request->user())[$type] ?? null)[2] ?? UgcTypes::format($type);
+        // A pitch that shows a routine (open, pour, taste…) needs its shots apart (take 283, 2026-10-12): as one talking
+        // take the planner can only cram it into a single shot, which the one-action rule refuses every time.
+        if ($format === 'direct_camera' && count(UgcPlan::actionKinds(($d['summary'] ?? '').' '.($d['context'] ?? ''))) >= 3) $format = 'story';
         $seconds = (int) max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15)));
         $footage = array_values(array_map(fn ($a) => $a['asset_id'], array_filter($state['attachments'] ?? [], fn ($a) => $a['role'] === 'footage')));
         // A reaction is silent: its words are a headline, never a spoken script (the planner refuses one).

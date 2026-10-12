@@ -288,6 +288,18 @@ class UgcChatTest extends TestCase
         $this->assertNotContains(false, array_column($types, 'available'));
     }
 
+    public function test_a_testimonial_that_shows_a_routine_is_planned_as_separate_shots(): void
+    {
+        // Take 283: open, pour and taste as one talking take could only be one overloaded shot.
+        $this->withoutMiddleware();
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Snack', 'summary' => 'She holds up the pouch, opens it, pours peanuts into her hand and takes a crunchy bite.',
+            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Crunchy Pea', 'context' => 'Snack break', 'duration_seconds' => 15];
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A UGC ad', 'attachments' => [['asset_id' => 20]],
+            'presenters' => [['character_id' => 5, 'voice' => null]]])->assertOk();
+        $this->assertSame('story', $this->planned[0]['format']);
+    }
+
     public function test_new_type_routes_stay_staff_only_until_opened(): void
     {
         $this->withoutMiddleware();
