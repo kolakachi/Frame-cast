@@ -55,12 +55,13 @@ Rules:
 - A product keeps its state: it changes only through an action shown in a block, and the product picked up is always the same one, never a second one.
 - Every object is always somewhere: in a named hand, or resting on a named surface. Each block's "product" says where it is ("in her left hand", "standing on the nightstand"). A hand only lets go of something by setting it down on a surface in a block that says so, and a hand that takes something new has set down what it held first (take 296: the left hand turned to catch drops and the bottle it held hung in the air).
 - When the product is an app or a website, the phone or laptop showing it is the product and may be seen; the camera filming never is.
-- start: the exact first frame: what the left hand and the right hand each hold and where, and the product's state, carried on from the end of the clip before (opened stays opened; eaten is gone; set down stays down).
+- start: the exact first frame: what the left hand and the right hand each hold, where and how they grip it; the product's state; and the body: sitting, standing or leaning and on what, where the legs and feet are, which way the shoulders face, how the head is turned and tilted, and how far from the lens and where in the frame. All carried on from the end of the clip before (opened stays opened; eaten is gone; set down stays down; seated stays seated).
 - A clip longer than 10 seconds is one continuous take: its camera may change more than once (set down, picked up), each change said in the "view" of the block where it happens.
-- blocks: timed blocks covering the clip from 00:00 to its length, each "00:00-00:02" style and 1 to 3 seconds long, each one simple visible movement. Every block states view (only when the camera moves in that block: what the picture does, e.g. "the view tips down and settles low on the desk"; else empty), left (what the left hand holds and does), right (the same for the right hand), product (where it is and its state), face (where the eyes look and the expression, or "not in frame"), says (the exact words spoken in that block, copied from the clip's line in order; all of the line across the blocks, nothing added; empty when silent) and sound (only a sound the action makes).
+- blocks: timed blocks covering the clip from 00:00 to its length, each "00:00-00:02" style and 1 to 3 seconds long, each one simple visible movement. Every block states view (only when the camera moves in that block: what the picture does, e.g. "the view tips down and settles low on the desk"; else empty), left (what the left hand holds, how it grips it: which fingers and the thumb touch it and where, e.g. "fingers wrapped around the can, thumb on the tab"; and what it does), right (the same for the right hand), product (where it is and its state), face (where the eyes look and what the face visibly does: "eyebrows lift, lips press together", "a short laugh through the nose"; never a mood word like excited or happy; or "not in frame"), says (the exact words spoken in that block, copied from the clip's line in order; all of the line across the blocks, nothing added; empty when silent) and sound (only a sound the action makes).
 - An action happens once, in its own clip, shown from its first movement to its result. A clip never starts an action a later clip performs.
-- end: the exact last frame, in the same terms as start.
+- end: the exact last frame, in the same terms as start (hands and grip, the product, the body). The next clip may only see it as a reference picture, so every position is written out.
 - check: per block, one yes/no question a single frame from that moment can answer about the hands and the product (e.g. "Is the cap off the bottle?").
+- Show pace through what is seen (the cap comes off in one turn, the wrist flicks), never with the words fast, quick, quickly, rapid or slowly on their own.
 - State everything positively, as what is seen and heard. Plain words; one steady camera; no style labels.
 
 Cameras:
@@ -133,7 +134,7 @@ TXT;
         try {
             $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(90)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('services.ai.direct_model', 'claude-sonnet-5-5'),
-                    'max_tokens' => 6000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
+                    'max_tokens' => 8000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $content]]]);
             if (! $r->successful()) {
                 Log::warning('ugc action sheet: the call failed', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 200)]);
                 return [];
@@ -163,10 +164,10 @@ TXT;
                 $blocks[] = ['when' => $field('when', 40), 'view' => $field('view'), 'left' => $field('left'), 'right' => $field('right'), 'product' => $field('product'),
                     'face' => $field('face'), 'says' => $field('says', 600), 'sound' => $field('sound', 120), 'check' => $field('check')];
             }
-            $start = mb_substr(trim((string) ($clip['start'] ?? '')), 0, 400);
+            $start = mb_substr(trim((string) ($clip['start'] ?? '')), 0, 600);
             if ($blocks === [] || $start === '') return [];
             $camera = (string) ($clip['camera'] ?? '');
-            $out[] = ['camera' => isset(self::CAMERAS[$camera]) ? $camera : '', 'shot' => mb_substr(trim((string) ($clip['shot'] ?? '')), 0, 400), 'start' => $start, 'blocks' => $blocks, 'end' => mb_substr(trim((string) ($clip['end'] ?? '')), 0, 300)];
+            $out[] = ['camera' => isset(self::CAMERAS[$camera]) ? $camera : '', 'shot' => mb_substr(trim((string) ($clip['shot'] ?? '')), 0, 400), 'start' => $start, 'blocks' => $blocks, 'end' => mb_substr(trim((string) ($clip['end'] ?? '')), 0, 600)];
         }
 
         return count($out) === $count ? $out : [];

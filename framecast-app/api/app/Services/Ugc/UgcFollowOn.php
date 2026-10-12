@@ -20,10 +20,10 @@ class UgcFollowOn
 You continue a short creator video that a video model films clip by clip. A clip was just made. Below are its plan, the words heard in it, and its last frame (the image), then the plan for the next clip.
 
 1. close: did the clip broadly keep to its plan (its line was said and its main action done)? Small differences in wording, gesture or framing still count as close.
-2. ended: how it really ended, as seen in the last frame: what the left hand and the right hand hold, the product's state and place, the camera (handheld selfie, or standing or leaned against something), the face and mood, and the background as it is (curtains open or closed, lights on or off, the light, objects on the surfaces).
-3. next: only when close, the next clip's timed sheet rewritten to continue from how this clip really ended: its first frame matches the last frame, with each object in the same hand and the background exactly as it is (the same curtains, light and objects), the energy follows the delivery, small action details adjust to where things really are. Keep exactly: its words ("says", in order, all of them, nothing added), its camera, the product, the clothes, the place and the order of its actions. Same fields as the plan. When not close, next is null.
+2. ended: how it really ended, as seen in the last frame: what the left hand and the right hand hold and how they grip it, the product's state and place, the body (sitting, standing or leaning and on what, legs and feet, which way the shoulders face, the head's turn and tilt, distance from the lens and place in the frame), the camera (handheld selfie, or standing or leaned against something), the face and mood, and the background as it is (curtains open or closed, lights on or off, the light, objects on the surfaces).
+3. next: only when close, the next clip's timed sheet rewritten to continue from how this clip really ended: its first frame matches the last frame, with each object in the same hand and grip, the body in the same posture and place in the frame, and the background exactly as it is (the same curtains, light and objects), the energy follows the delivery, small action details adjust to where things really are. Keep exactly: its words ("says", in order, all of them, nothing added), its camera, the product, the clothes, the place and the order of its actions. Same fields as the plan. When not close, next is null.
 
-Answer JSON only: {"close": true or false, "why": "one sentence", "ended": {"left": "", "right": "", "product": "", "camera": "", "face": "", "background": ""}, "next": {"camera": "", "shot": "", "start": "", "blocks": [{"when": "00:00-00:02", "view": "", "left": "", "right": "", "product": "", "face": "", "says": "", "sound": "", "check": ""}], "end": ""} or null}
+Answer JSON only: {"close": true or false, "why": "one sentence", "ended": {"left": "", "right": "", "product": "", "body": "", "camera": "", "face": "", "background": ""}, "next": {"camera": "", "shot": "", "start": "", "blocks": [{"when": "00:00-00:02", "view": "", "left": "", "right": "", "product": "", "face": "", "says": "", "sound": "", "check": ""}], "end": ""} or null}
 TXT;
 
     /**
@@ -47,7 +47,7 @@ TXT;
         try {
             $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(90)
                 ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('services.ai.direct_model', 'claude-sonnet-5-5'),
-                    'max_tokens' => 3000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => [
+                    'max_tokens' => 4000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => [
                         ['type' => 'text', 'text' => $text],
                         ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($frame)]],
                     ]]]]);
