@@ -234,5 +234,6 @@ class UgcPhysicsTest extends TestCase
         $this->assertSame(['taste'], UgcPlan::performedKinds($plan), 'only the sip is done; the opening is only mentioned');
         $this->assertSame(['open', 'taste'], UgcPlan::performedKinds('He cracks the can open with a click and fizz, then takes a sip.'));
         $this->assertSame(['open', 'apply'], UgcPlan::performedKinds('She unscrews the cap and pats the serum onto her cheek.'));
+        $this->assertSame([], UgcPlan::performedKinds('He holds the can. He has just taken a sip, so he looks pleased. She just opened it.'), 'done before the shot');
     }
 }

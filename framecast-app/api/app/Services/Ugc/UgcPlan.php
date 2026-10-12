@@ -65,6 +65,9 @@ final class UgcPlan
         $text = (string) preg_replace([
             '/\b(ready|about|going|preparing|getting ready|gets ready|get ready)\s+to\s+\w+(\s+(it|the|its|her|his|their|them|a|an)\b(\s+\w+)?)?/iu',
             '/\b(already|still|now)\s+(open(ed)?|peeled|unwrapped|unscrewed|poured|applied|eaten)\b/iu',
+            // Done before the shot ("He has just taken a sip"): not filmed.
+            '/\b(has|have|had|having)\s+(just\s+|already\s+)?\w+(ed|en|t)\b[^.]*/iu',
+            '/\bjust\s+(took|tasted|ate|drank|opened|applied|poured|sipped)\b[^.]*/iu',
             '/\b(the|an|its|this|that)\s+open(ed)?\b/iu',
             '/\b\w+-open(ed)?\b/iu',
             '/\bopen(ed)?\s+(can|bottle|pouch|jar|box|tube|bag|lid|top|pack|package|carton|container)\b/iu',
