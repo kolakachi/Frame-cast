@@ -66,8 +66,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
         ?string $runToken = null,
         ?bool $checkFace = null,
         array $composition = [],
+        bool $storyboard = false,
     ) {
         $this->composition = $composition;
+        $this->storyboard = $storyboard;
         $this->runToken = $runToken;
         $this->checkFace = (bool) $checkFace;
         // Its own queue and worker (worker-ugc): a 30-minute take held up every voiceover and image behind it (QUEUE-REAP).
@@ -85,6 +87,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
     public bool $checkFace = false;
 
     public array $composition = [];
+
+    /** The storyboard pilot (UgcStoryboard): the first run makes a still per clip and pauses for review, uncharged; the
+     *  resumed run starts each clip from its still. A plain property for the same reason as runToken. */
+    public bool $storyboard = false;
 
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
@@ -113,6 +119,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if (! is_string($bytes) || $bytes === '') break;
                 $reuse[$i] = $bytes;
             }
+            $stills = $this->storyboard ? $this->stills($project, $scene, $storage) : [];
+            if ($this->storyboard && $stills === []) return; // made and paused for review
             // veo-3.1-fast has no reference-image inputs, so packaging can
             // only reach an exact take through the start frame itself:
             // composite the character holding the product (same /edits
@@ -154,6 +162,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 // presenter's photo alone re-imagined them (2026-10-10: tied hair came back loose after a cutaway).
                 $continuity = $fromRefs && empty($chunk['reference_images']) ? ($roomFrame ?? $startFrame) : null;
                 if ($fromRefs) $startFrame = null;
+                // The storyboard's still is the clip's first frame: the room, outfit and starting pose are already in it.
+                if (isset($stills[$i]) && empty($chunk['source_media']) && empty($chunk['reference_images'])) {
+                    $startFrame = $stills[$i];
+                    $continuity = null;
+                    $fromRefs = true;
+                }
                 $fromTail[$i] = $i > 0 && ! $fromRefs && empty($chunk['source_media']) && empty($chunk['reference_images']);
                 // A segment saved by an earlier attempt is used as it is; the next one starts from its last frame.
                 if (isset($reuse[$i])) {
@@ -312,6 +326,38 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 @unlink($t);
             }
         }
+    }
+
+    /**
+     * The storyboard's stills (pilot): the saved ones when this take already made them, else they are made, saved, put
+     * where they can be viewed, and the take pauses uncharged for review ([] returned); resuming the take uses them.
+     *
+     * @return list<string> data URIs, one per clip
+     */
+    private function stills(Project $project, Scene $scene, StorageService $storage): array
+    {
+        $dir = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/stills';
+        $saved = [];
+        foreach (array_keys($this->chunks) as $i) {
+            $bytes = self::parts()->exists($dir.'/'.$i.'.txt') ? self::parts()->get($dir.'/'.$i.'.txt') : null;
+            if (! is_string($bytes) || $bytes === '') { $saved = []; break; }
+            $saved[] = $bytes;
+        }
+        if ($saved !== []) return $saved;
+
+        $stills = app(\App\Services\Ugc\UgcStoryboard::class)->make($this->chunks, $this->referenceImages);
+        $paths = [];
+        foreach ($stills as $i => $uri) {
+            self::parts()->put($dir.'/'.$i.'.txt', $uri);
+            $path = sprintf('workspaces/%d/assets/ugc-storyboard/%d/%s-%d.png', $project->workspace_id, $this->sceneId, $this->recipeHash(), $i);
+            $storage->put($path, base64_decode(substr($uri, strpos($uri, ',') + 1)), ['ContentType' => 'image/png']);
+            $paths[] = $path;
+        }
+        $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
+            ['in_progress' => false, 'storyboard_stills' => $paths, 'last_error' => 'The storyboard is ready for review. Nothing was charged; resume the take to make the video from it.'])])->save();
+        $project->forceFill(['status' => 'failed'])->save();
+
+        return [];
     }
 
     public function failed(\Throwable $e): void
@@ -631,6 +677,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             hash('sha256', (string) $this->initialStartFrame), hash('sha256', json_encode($this->referenceImages))];
         // Existing queued recipes keep their hash when no new composition is requested.
         if ($this->composition !== []) $recipe[] = $this->composition;
+        if ($this->storyboard) $recipe[] = 'storyboard';
         return substr(hash('sha256', json_encode($recipe)), 0, 16);
     }
 
@@ -652,7 +699,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         self::parts()->put($recipe, json_encode([
             'projectId' => $this->projectId, 'sceneId' => $this->sceneId, 'chunks' => $this->chunks, 'credits' => $this->credits,
             'engine' => $this->engine, 'referenceImages' => $this->referenceImages, 'initialStartFrame' => $this->initialStartFrame,
-            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition,
+            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition, 'storyboard' => $this->storyboard,
         ]));
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
@@ -728,7 +775,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             self::dispatch(
                 (int) $recipe['projectId'], (int) $recipe['sceneId'], $recipe['chunks'], (int) $recipe['credits'], (string) $recipe['engine'],
                 $recipe['referenceImages'] ?? [], $recipe['initialStartFrame'] ?? null, $recipe['seed'] ?? null,
-                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [],
+                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [], (bool) ($recipe['storyboard'] ?? false),
             )->afterCommit();
             return 'resumed';
         });

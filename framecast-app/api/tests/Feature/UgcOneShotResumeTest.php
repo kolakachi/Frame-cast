@@ -363,4 +363,26 @@ class UgcOneShotResumeTest extends TestCase
         Bus::assertDispatched(GenerateOneShotUgcJob::class, fn ($resumed) => $resumed->composition === $job->composition);
     }
 
+    public function test_a_storyboard_take_pauses_uncharged_for_review_then_starts_each_clip_from_its_still(): void
+    {
+        $board = Mockery::mock(\App\Services\Ugc\UgcStoryboard::class);
+        $board->shouldReceive('make')->once()->andReturn(['data:image/png;base64,S0', 'data:image/png;base64,S1', 'data:image/png;base64,S2']);
+        $this->app->instance(\App\Services\Ugc\UgcStoryboard::class, $board);
+        $chunks = [['prompt' => 'one', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'two', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'three', 'seconds' => 6, 'new_shot' => true]];
+        $job = new GenerateOneShotUgcJob(7, 70, $chunks, 396, 'omni', ['data:image/png;base64,AAAA'], null, null, '720p', null, null, false, [], true);
+
+        $this->assertNull($this->run_($job));
+        $this->assertSame(0, $this->starts, 'no clip is made before the stills are reviewed');
+        $this->assertSame([], $this->charged);
+        $this->assertCount(3, $this->settings()['storyboard_stills']);
+        $this->assertStringContainsString('storyboard is ready', $this->settings()['last_error']);
+
+        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
+        $resumed = null;
+        Bus::assertDispatched(GenerateOneShotUgcJob::class, function ($j) use (&$resumed) { $resumed = $j; return true; });
+        $this->assertTrue($resumed->storyboard);
+        $this->assertNull($this->run_($resumed));
+        $this->assertSame(['data:image/png;base64,S0', 'data:image/png;base64,S1', 'data:image/png;base64,S2'], $this->startFrames, 'each clip starts from its own still, made once');
+        $this->assertSame([396], $this->charged);
+    }
 }

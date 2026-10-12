@@ -981,6 +981,8 @@ class UgcController extends Controller
             'fidelity' => ['sometimes', 'string', 'in:standard,high'],
             // draft = Seedance 480p at half the rate; full = 720p.
             'quality' => ['sometimes', 'string', 'in:draft,full'],
+            // The storyboard pilot (UgcStoryboard): staff only for now.
+            'storyboard' => ['sometimes', 'boolean'],
             'request_id' => ['sometimes', 'uuid'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
@@ -1369,6 +1371,7 @@ class UgcController extends Controller
             $runToken,
             $presenterImageAttached && in_array($engine, ['omni', 'veo_hq'], true),
             $composition,
+            ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1,
         )->afterCommit();
 
         $payload = ['data' => [

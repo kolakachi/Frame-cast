@@ -80,4 +80,17 @@ class UgcPhysicsTest extends TestCase
         $this->assertSame(2, $clips[1]['seconds'], 'a 2-second action is not padded to 4');
         $this->assertStringNotContainsString('never from the reference\'s own background', $clips[1]['prompt']);
     }
+
+    public function test_a_storyboard_still_is_asked_for_the_shot_without_its_words_and_later_ones_keep_the_first_room(): void
+    {
+        $clip = "Preamble.\n\nThe next shot of the same presenter in the same room. Kitchen counter, waist-up. Action and sound: Tilts the pouch. The presenter says: \"It is roasted peanuts.\" They say exactly these words, in this order, and nothing else.\n\nPhysical staging, follow exactly: Phone propped. Left hand holds the open pouch.\n\nClosing rules.";
+        $first = \App\Services\Ugc\UgcStoryboard::prompt($clip, 0, true, true);
+        $later = \App\Services\Ugc\UgcStoryboard::prompt($clip, 2, true, false);
+        $this->assertStringNotContainsString('roasted peanuts', $first, 'a still has no words to say');
+        $this->assertStringNotContainsString('They say exactly', $first);
+        $this->assertStringContainsString('Physical staging, follow exactly: Phone propped.', $first);
+        $this->assertStringContainsString('Image 3 shows only the kind of place', $first);
+        $this->assertStringContainsString('Image 2 is the opening frame of this same video: keep its exact room', $later);
+        $this->assertStringNotContainsString('Closing rules', $later);
+    }
 }
