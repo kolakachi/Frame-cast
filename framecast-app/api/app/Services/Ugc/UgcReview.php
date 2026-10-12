@@ -65,6 +65,90 @@ class UgcReview
         return $this->ask($list."\n\nThe clip was asked for: ".$shot['scene']."\n\nCheck:\n- ".implode("\n- ", $checks), $images);
     }
 
+    /**
+     * A clip checked against its timed sheet: one frame from each block's moment, each asked its yes/no question, plus
+     * the same three questions for every clip (another place, words or camera UI on screen, a change of clothes).
+     * Narrow questions, not "find problems": take 288's open review faulted every clip and missed what was wrong.
+     *
+     * @param  array{start: string, blocks: list<array<string, string>>, end: string}  $sheet
+     * @return array{ok: bool, problems: list<string>, answers: list<array{q: string, yes: bool}>}|null
+     */
+    public function sheet(array $sheet, string $clipPath, string $wardrobe = ''): ?array
+    {
+        $len = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $clipPath])->output());
+        if ($len <= 0) return null;
+        $blocks = array_values(array_filter($sheet['blocks'], fn ($b) => $b['check'] !== ''));
+        $frames = [];
+        $questions = [];
+        $actions = [];
+        foreach ($blocks as $k => $b) {
+            $at = preg_match('/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*s/', $b['when'], $m) ? min($len - 0.1, ((float) $m[1] + (float) $m[2]) / 2) : $len * ($k + 0.5) / max(1, count($blocks));
+            $frame = $this->frameAt($clipPath, max(0.0, $at));
+            if ($frame === null) continue;
+            $frames[] = $frame;
+            $questions[] = 'Image '.count($frames).': '.$b['check'];
+            $actions[] = \App\Services\Ugc\UgcActionSheet::block($b);
+        }
+        $last = $this->frameAt($clipPath, max(0.0, $len - 0.3));
+        if ($last !== null) $frames[] = $last;
+        if ($frames === []) return null;
+        $all = count($frames);
+        $questions[] = 'Across all images: is it the same place in every image (no cut to another room or setting)?';
+        $questions[] = 'Across all images: is the picture free of added words, subtitles, a recording dot or any camera or phone interface (the product\'s own label is fine)?';
+        $questions[] = 'Across all images: '.($wardrobe !== '' ? 'does the presenter wear '.$wardrobe.' in every image where they are seen?' : 'does the presenter wear the same clothes in every image where they are seen?');
+
+        $content = [['type' => 'text', 'text' => 'Images 1 to '.$all.' are frames, in order, from one generated video clip. Answer each question with yes or no, judging only what is visible; when the thing asked about is not in the frame, answer no.'
+            ."\n\n".implode("\n", array_map(fn ($q, $n) => ($n + 1).'. '.$q, $questions, array_keys($questions)))
+            ."\n\nAnswer JSON only: {\"answers\": [true or false, one per question, in order]}"]];
+        foreach ($frames as $f) $content[] = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode($f)]];
+        $key = (string) config('services.anthropic.key');
+        if ($key === '') return null;
+        try {
+            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(60)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'),
+                    'max_tokens' => 300, 'messages' => [['role' => 'user', 'content' => $content]]]);
+            if (! $r->successful()) { Log::warning('ugc review: the sheet check failed', ['status' => $r->status()]); return null; }
+            $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+        } catch (\Throwable $e) {
+            Log::warning('ugc review: the sheet check could not run', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+            return null;
+        }
+
+        return self::answers($text, $questions, $actions);
+    }
+
+    /**
+     * The verdict from yes/no answers: every "no" is a problem, a block's "no" named by the action it should show.
+     *
+     * @return array{ok: bool, problems: list<string>, answers: list<array{q: string, yes: bool}>}|null
+     */
+    public static function answers(string $text, array $questions, array $actions): ?array
+    {
+        $a = strpos($text, '{'); $b = strrpos($text, '}');
+        $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
+        $said = is_array($json['answers'] ?? null) ? array_values($json['answers']) : null;
+        if ($said === null || count($said) !== count($questions)) return null;
+        $answers = [];
+        $problems = [];
+        foreach ($questions as $k => $q) {
+            $yes = $said[$k] === true || (is_string($said[$k]) && strtolower($said[$k]) === 'yes');
+            $answers[] = ['q' => $q, 'yes' => $yes];
+            if (! $yes) $problems[] = isset($actions[$k]) ? 'Show this happening: '.$actions[$k] : 'No to: '.preg_replace('/^Across all images:\s*/', '', $q);
+        }
+
+        return ['ok' => $problems === [], 'problems' => $problems, 'answers' => $answers];
+    }
+
+    private function frameAt(string $clipPath, float $at): ?string
+    {
+        $file = tempnam(sys_get_temp_dir(), 'rvs-').'.jpg';
+        Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-y', '-ss', sprintf('%.2f', $at), '-i', $clipPath, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', $file]);
+        $bytes = is_file($file) ? (string) file_get_contents($file) : '';
+        @unlink($file);
+
+        return $bytes !== '' ? $bytes : null;
+    }
+
     /** One vision call; the images are sent small. */
     private function ask(string $text, array $images): ?array
     {

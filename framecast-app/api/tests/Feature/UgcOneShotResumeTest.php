@@ -375,6 +375,7 @@ class UgcOneShotResumeTest extends TestCase
         $this->app->instance(\App\Services\Ugc\UgcReview::class, $review);
         $chunks = [['prompt' => 'one', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'two', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'three', 'seconds' => 6, 'new_shot' => true]];
         $job = new GenerateOneShotUgcJob(7, 70, $chunks, 396, 'omni', ['data:image/png;base64,AAAA'], null, null, '720p', null, null, false, [], true);
+        config(['services.ugc.review_remake' => true]);
 
         $this->assertNull($this->run_($job));
         $this->assertSame(['data:image/png;base64,S0', 'data:image/png;base64,S1', 'data:image/png;base64,S1', 'data:image/png;base64,S2'], $this->startFrames,
@@ -385,5 +386,18 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['the pouch must be opened'], $s['clip_reviews']['2']['first']['problems']);
         $this->assertTrue($s['clip_reviews']['2']['remade']['ok']);
         $this->assertNull($s['last_error'] ?? null, 'no pause: the take runs straight through');
+    }
+
+    public function test_a_clip_with_a_timed_sheet_is_reviewed_and_by_default_only_recorded(): void
+    {
+        $review = Mockery::mock(\App\Services\Ugc\UgcReview::class);
+        $review->shouldReceive('sheet')->once()->andReturn(['ok' => false, 'problems' => ['Show this happening: Right hand: pulls the seal open.'], 'answers' => []]);
+        $this->app->instance(\App\Services\Ugc\UgcReview::class, $review);
+        $sheet = ['start' => 'Sealed', 'blocks' => [['when' => '0-2s', 'left' => 'Holds the base', 'right' => 'Pulls the seal open', 'product' => 'Opening', 'face' => 'Not in frame', 'sound' => '', 'check' => 'Is it open?']], 'end' => ''];
+
+        $this->assertNull($this->run_($this->job([['prompt' => 'one', 'seconds' => 6, 'new_shot' => true, 'sheet' => $sheet]])));
+        $this->assertSame(1, $this->starts, 'no remake while the reviewer only records');
+        $this->assertSame(['Show this happening: Right hand: pulls the seal open.'], $this->settings()['clip_reviews']['1']['first']['problems']);
+        $this->assertSame([396], $this->charged);
     }
 }

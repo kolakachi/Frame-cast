@@ -1276,9 +1276,14 @@ class UgcController extends Controller
             }
         }
 
-        // The ready check (2026-10-12): every shot's hands, phone and product state written out before anything is made.
-        $chunks = \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)
-            ->stage($chunks, trim($style['product'].($style['product_look'] !== '' ? ' — '.$style['product_look'] : ''))));
+        // The timed action sheet (owner, 2026-10-12; staff until its test take passes, or everyone once services.ugc.action_sheet
+        // is on): each clip's hands and product at each moment, written by the director's model. Without one, the ready
+        // check (2026-10-12) writes every shot's hands, phone and product state instead.
+        $productNote = trim($style['product'].($style['product_look'] !== '' ? ' — '.$style['product_look'] : ''));
+        $sheets = config('services.ugc.action_sheet') || in_array($user->role, ['super_admin', 'platform_admin'], true)
+            ? app(\App\Services\Ugc\UgcActionSheet::class)->write($chunks, $productNote) : [];
+        $chunks = $sheets !== [] ? \App\Services\Ugc\UgcActionSheet::apply($chunks, $sheets)
+            : \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)->stage($chunks, $productNote));
         $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
         foreach ($chunks as &$chunk) {
             // The storyboard and its reviewer need the take's clothes (take 287's stills copied the presenter's photo).

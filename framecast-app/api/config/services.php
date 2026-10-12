@@ -120,6 +120,10 @@ return [
         // A cast clip whose face scores under the check's pass mark is made again (at our cost) only when this is on.
         // Off until the scores are calibrated on real takes; the scores are recorded either way.
         'face_retry' => (bool) env('UGC_FACE_RETRY', false),
+        // The timed action sheet for every account (staff always get it); and whether the reviewer may remake a clip it
+        // faults (off: it only records its verdicts until it is calibrated, owner 2026-10-12).
+        'action_sheet' => (bool) env('UGC_ACTION_SHEET', false),
+        'review_remake' => (bool) env('UGC_REVIEW_REMAKE', false),
     ],
 
     'ai' => [

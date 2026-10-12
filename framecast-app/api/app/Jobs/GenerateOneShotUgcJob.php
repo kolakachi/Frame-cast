@@ -200,23 +200,26 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         }
                         $this->noteFace($scene, $i, $score);
                     }
-                    // The reviewer (storyboard takes): did the clip do what its shot asked, in the same clothes, with the
-                    // same pack? A faulted clip is made once more, told what to fix, at our cost; at most two a take.
-                    if (! $sourceOnly && isset($stills[$i])) {
+                    // The reviewer: a clip with a timed sheet is asked each block's yes/no question; a storyboard clip without
+                    // one is checked against its still. It records its verdict; it remakes a faulted clip once, told what to
+                    // fix, at our cost and at most two a take, only when services.ugc.review_remake is on (take 288: an
+                    // uncalibrated reviewer faulted every clip and spent both remakes for nothing).
+                    if (! $sourceOnly && (! empty($chunk['sheet']) || isset($stills[$i]))) {
                         $review = app(\App\Services\Ugc\UgcReview::class);
-                        $shot = \App\Services\Ugc\UgcStoryboard::shot((string) $chunk['prompt']);
                         $wardrobe = (string) ($chunk['wardrobe'] ?? '');
-                        $verdict = $review->clip($shot, $wardrobe, $path, $stills[$i], $this->referenceImages[1] ?? null);
+                        $check = fn (string $clip) => ! empty($chunk['sheet']) ? $review->sheet($chunk['sheet'], $clip, $wardrobe)
+                            : $review->clip(\App\Services\Ugc\UgcStoryboard::shot((string) $chunk['prompt']), $wardrobe, $clip, $stills[$i], $this->referenceImages[1] ?? null);
+                        $verdict = $check($path);
                         $note = ['first' => $verdict];
-                        if ($verdict !== null && ! $verdict['ok'] && $reviewRemakes < 2) {
+                        if ($verdict !== null && ! $verdict['ok'] && $reviewRemakes < 2 && config('services.ugc.review_remake')) {
                             if (! $this->owns($scene->refresh())) return;
                             $reviewRemakes++;
                             \Illuminate\Support\Facades\Log::info('one-shot: the reviewer faulted a clip, made again', ['project_id' => $this->projectId, 'segment' => $i + 1, 'problems' => $verdict['problems']]);
-                            $fixed = $chunk + [];
+                            $fixed = $chunk;
                             $fixed['prompt'] = (string) $chunk['prompt']."\n\nFix these from the last attempt: ".implode(' ', $verdict['problems']);
                             $again = $this->generateSegment($veo, $scene, $i, $fixed, $startFrame, $temps, $continuity);
                             if (! $this->owns($scene->refresh())) return;
-                            $second = $review->clip($shot, $wardrobe, $again, $stills[$i], $this->referenceImages[1] ?? null);
+                            $second = $check($again);
                             $note['remade'] = $second;
                             if ($second === null || count($second['problems']) <= count($verdict['problems'])) $path = $again;
                         }

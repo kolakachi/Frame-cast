@@ -130,4 +130,35 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringContainsString('Fix these in this frame: The label is redrawn: copy the logo.', $asked[1]);
         $this->assertTrue($board->notes[0]['remade']['ok']);
     }
+
+    public function test_a_timed_sheet_names_both_hands_the_product_and_the_face_and_replaces_the_action_sentence(): void
+    {
+        $answer = '{"clips":[{"start":"Phone propped on the desk. Pouch sealed, standing on the desk; both hands rest beside it.","blocks":['
+            .'{"when":"0-2s","left":"Holds the pouch steady at its base","right":"Pinches the top edge of the seal","product":"Sealed, upright on the desk","face":"Not in frame","sound":"","check":"Is her right hand pinching the top of the pouch?"},'
+            .'{"when":"2-4s","left":"Keeps holding the base","right":"Pulls the seal open toward her","product":"Top open, peanuts visible","face":"Not in frame","sound":"Crisp zip tear","check":"Is the pouch open with peanuts visible?"}],'
+            .'"end":"Pouch open on the desk, left hand at its base."}]}';
+        $sheets = \App\Services\Ugc\UgcActionSheet::parse($answer, 1);
+        $this->assertCount(2, $sheets[0]['blocks']);
+        $this->assertSame([], \App\Services\Ugc\UgcActionSheet::parse($answer, 2), 'one sheet per clip or none');
+
+        $chunks = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => "Pre.\n\nDesk close-up on hands. Action and sound: Both hands pull it open in one smooth motion. Crisp zip sound. No speech, narration, singing or music.\n\nClosing."]], $sheets);
+        $prompt = $chunks[0]['prompt'];
+        $this->assertStringNotContainsString('Action and sound', $prompt, 'the sheet replaces the action sentence');
+        $this->assertStringContainsString("Timed action, follow exactly:\nFirst frame: Phone propped on the desk. Pouch sealed, standing on the desk; both hands rest beside it.\n"
+            ."[0-2s] Left hand: Holds the pouch steady at its base. Right hand: Pinches the top edge of the seal. Product: Sealed, upright on the desk. Face: Not in frame.\n"
+            ."[2-4s] Left hand: Keeps holding the base. Right hand: Pulls the seal open toward her. Product: Top open, peanuts visible. Face: Not in frame. Sound: Crisp zip tear.\n"
+            ."Last frame: Pouch open on the desk, left hand at its base.", $prompt);
+        $this->assertStringContainsString('No speech, narration', $prompt);
+        $this->assertStringEndsWith('Closing.', $prompt);
+        $this->assertSame($sheets[0], $chunks[0]['sheet'], 'kept for the reviewer');
+    }
+
+    public function test_the_sheet_reviewer_turns_each_no_into_the_moment_to_show(): void
+    {
+        $qs = ['Image 1: Is her right hand on the seal?', 'Image 2: Is the pouch open?', 'Across all images: same place?', 'Across all images: free of words?', 'Across all images: same clothes?'];
+        $v = \App\Services\Ugc\UgcReview::answers('{"answers":[true,false,true,true,false]}', $qs, ['Right hand: pinches the seal.', 'Right hand: pulls the seal open.']);
+        $this->assertFalse($v['ok']);
+        $this->assertSame(['Show this happening: Right hand: pulls the seal open.', 'No to: same clothes?'], $v['problems']);
+        $this->assertNull(\App\Services\Ugc\UgcReview::answers('{"answers":[true]}', $qs, []), 'an answer per question or no verdict');
+    }
 }
