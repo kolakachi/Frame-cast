@@ -4,7 +4,7 @@ Only what is still open. Add new items here and nowhere else; when one is done, 
 (date and commit). Mockup the build must match: https://claude.ai/artifact/E9eE41WsjNVscrRS3aBHzP (look:
 https://claude.ai/artifact/3rF2EVivGciqqgfD6e2bA4).
 
-Last updated: 2026-10-11.
+Last updated: 2026-10-12.
 
 **Status:** `open` not started · `partly` some built · `ready` built, needs a real run or a look · `blocked` waiting
 on the owner or another item · `proposed` not yet approved.
@@ -22,14 +22,22 @@ assembly stays simple, motion graphics stay in Create.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| WARDROBE-HOLD | The planned outfit is often ignored: the presenter's photo outfit wins (prod take 280: fleece planned, her white shirt shown) | open | try naming the outfit in every clip prompt and in the first-clip reference order; check on the next takes |
+| PIPE-ON | Turn the new pipeline on for everyone: timed action sheet + follow-on (UGC_ACTION_SHEET), the take's look (dressed presenter; staff gate in UgcController), trace | ready | after the Omni (prod take 297) and Seedance (298) checks of 2026-10-12 |
+| SWEEP | Varied briefs before UGC_TYPES_LIVE: skincare, app demo, try-on, drink outdoors, plain testimonial, problem/solution (~2,500–3,500 cr) | open | after PIPE-ON |
+| SECTIONS | Videos in components: keep a take's clips after delivery (deleted today), a take bible (face, clothes, background, product state, camera) read by every clip and edit, "remake this section" in the editor (folds in P4-CHANGE) | proposed | owner OK on the plan |
+| SEEDANCE-CONT | Does Seedance accept its own earlier video (continue / video edit) with a face in it? One call; a refusal is free | proposed | test |
+| BYTEPLUS | BytePlus trusted-asset library so Seedance takes the exact cast face (no filter tricks) | proposed | check account and region requirements |
+| FACE-STRICT | The face check is too lenient (take 296: a different woman scored 75–85); stricter model and several frames before the 85–90% target can be measured | open | build |
+| REVIEWER | The yes/no reviewer only records (UGC_REVIEW_REMAKE off): noisy on clothes and on talking blocks | open | calibrate on the sweep |
+| WIDE-ID | Identity slips in wider shots (take 294: glasses gone in the propped clip, face 72) | open | face remakes (FACE-RETRY) or keep propped shots waist-up |
+| VOICE-MATCH | Each Omni clip makes its own voice; nothing checks they match across clips | open | decide |
+| LEAN-SHEET | Is the full sheet over-directing the model? A/B a lean sheet (only what changes) | proposed | after the sweep |
 | FACE-RETRY | Face scores are recorded on every cast clip (take 128: 85/85, prod take 280: 92/85); remakes are behind UGC_FACE_RETRY, off | open | turn on once ~10 takes show where real mismatches score |
 | P2-ASPECT | Only 9:16 offered: one-take always renders 9:16; composed takes accept 1:1 and 16:9 but the chat sends 9:16 | open | decide, then pass aspect through |
 | P2-POLISH | Small: a picked presenter is named in the pitch only when the summary starts "A presenter/creator…" | open | build |
 | OLD-FORM-CHANGES | Old-form one-takes change on deploy: captions on by default, cuts at shot changes re-anchored on photos, shorter job timeout (resumable) | review | owner OK |
 | ORPHAN-PARTS | Saved one-take segments of projects removed by a query-builder delete (VariantController) are not cleaned up | open | small |
 | DEDUCT-FALSE | Existing: a one-take delivered when deduct() returns false (balance gone) is not charged | open | decide |
-| QUEUE-REAP | Built 2026-10-12: work is timed from when its job starts (SceneRun), queued work waits up to 2 h with a "nothing was charged" message, one-takes run on their own worker (worker-ugc, 2 at a time) | ready | push, then check worker-ugc is up |
 | ASMR | ASMR as a silent one-take on Seedance 2.5 (hands + product, native close-up sound, product refs) instead of stills + text | proposed | build next |
 | CAST-ALL | Multi-person ads (skit): cast every role from the presenter library (or the user's picks) before making; every person's photo as a reference; a voice per person; chosen presenters = one video's cast for a skit | open | build next |
 | P3-TYPES | Assembly for new types: green screen cutout over the product page, before/after and comparison splits, ASMR, skit | open | after P2 |
@@ -57,6 +65,20 @@ assembly stays simple, motion graphics stay in Create.
 | UNDO-GAPS | "Re-record all voices" not busy-guarded; a failing step can't be discarded; voice re-record not undoable; history not deleted with the workspace | open |
 
 ## Done
+
+- 2026-10-12 The UGC pipeline rebuilt around the take (staff first; prod takes 283–298, Crunchy Pea, Lumora serum, Volt
+  Rush can). Director and planner on Sonnet 5.5 (direct); every action the pitch names is planned and filmed
+  (completeness check counts only actions shown being done); a long take carries a few actions in order. The timed
+  action sheet is each clip's whole prompt: one camera from a library of setups and moves (selfie, propped, tripod,
+  stick, walking, first person, set down, pick up…) described only as a view, timestamped blocks naming each hand, the
+  product's place and state, the face and the words, positive throughout, references never re-described, nothing left
+  floating. The take's look: the cast presenter dressed for the ad in its own version of the place, face-checked, used
+  in every clip (WARDROBE-HOLD done). No clip is trimmed; the next clip's words follow what the last one said; the
+  follow-on rewrites the next clip from how the last really ended (hands, product, background); the last frame rides
+  as a reference. A trace keeps every step (prompt, sheet, raw clip, look, reviews). Users pick the model on the pitch
+  (Auto, Omni, Seedance 2.5, Veo HQ, each priced); Seedance takes a cast presenter as Opus's identity description
+  opening with their casting line. QUEUE-REAP pushed (worker-ugc). Storyboard pilot tried and dropped (owner: stills not
+  needed; the dressed look replaces them). Commits b4584e8a…a491428e.
 
 - 2026-10-11 `911eb0b5` Places (24, director-picked or per presenter, loose reference photo), Presenters window with
   background picker, face scores (remakes off), light matched at continued joins, one-product and no-other-brand rules,
