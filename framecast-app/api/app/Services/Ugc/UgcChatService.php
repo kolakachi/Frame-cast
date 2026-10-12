@@ -271,7 +271,8 @@ final class UgcChatService
             // A presenter with their own place gets it, and clothes that suit it.
             $own = is_string($p['setting'] ?? null) && isset($settings[$p['setting']]) && $p['setting'] !== $setting ? $p['setting'] : null;
             $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type, $title,
-                $own ? $this->pickWardrobe($recentOutfits, $settings[$own]['wardrobe'] ?? []) : $wardrobe, $own ?? $setting, $composition);
+                $own ? $this->pickWardrobe($recentOutfits, $settings[$own]['wardrobe'] ?? []) : $wardrobe, $own ?? $setting, $composition,
+                mb_substr(trim((string) ($d['pronunciations'] ?? '')), 0, 600));
         }
 
         // The director writes before anyone is cast: a single presenter it could not name is named now.
@@ -298,7 +299,7 @@ final class UgcChatService
     {
         if ($composition !== [] || $type === 'skit' || $this->credits->planTier((int) $request->user()->workspace_id) === 'ugc_pass') return [];
         $choices = [];
-        foreach (['omni', 'seedance25', 'veo'] as $key) {
+        foreach (['seedance25', 'omni', 'veo', 'veo_hq'] as $key) {
             try {
                 $price = UgcOneShotPricing::price($request->user(), ['engine' => $key] + $v, $segments, $this->credits);
             } catch (\Throwable) {
@@ -312,7 +313,7 @@ final class UgcChatService
         return $choices;
     }
 
-    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null, array $composition = []): array
+    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null, array $composition = [], string $pronunciations = ''): array
     {
         $voice = $p['voice'] ?? null;
         $segments = array_map(function ($s) use ($voice, $p) {
@@ -331,11 +332,17 @@ final class UgcChatService
         $liveType = UgcTypes::live($type, $request->user()) ? $type : null;
         if ($oneShot) {
             $v = array_filter(['ugc_type' => $liveType, 'composition' => $composition ?: null, 'cast_character_ids' => $p['cast_character_ids'] ?? null, 'format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_id' => $characterId,
-                'engine' => $characterId ? 'omni' : 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null,
+                'engine' => 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null, 'pronunciations' => $pronunciations !== '' ? $pronunciations : null,
                 'product_asset_ids' => $products ?: null, 'product' => mb_substr($product, 0, 200), 'language' => 'en',
                 'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title, 'wardrobe' => $wardrobe,
                 'setting_key' => $setting], fn ($x) => $x !== null && $x !== '');
+            // Seedance 2.5 by default (owner, 2026-10-12: "the best I have seen"); a plan longer than its 30-second take goes to
+            // Omni, which keeps a cast presenter's photo, rather than to Veo Fast.
             $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
+            if ($price['engine'] !== 'seedance25') {
+                $v['engine'] = 'omni';
+                $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
+            }
             $v['credits'] = (int) $price['quote'];
             return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'one_shot', 'wardrobe' => $wardrobe, 'setting' => $setting,
                 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'request' => $v, 'engines' => $this->engineChoices($request, $v, $segments, $type, $composition)];

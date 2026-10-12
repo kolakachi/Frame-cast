@@ -382,10 +382,11 @@ const lastPitchId = computed(() => [...messages.value].reverse().find(m => m.kin
 // The video model the user picked for a pitch (owner, 2026-10-12: users know the trade-offs). "auto" keeps ours.
 const engineFor = ref({})
 const ENGINE_INFO = {
-  auto: ['Auto', 'We pick the best fit for this video'],
-  omni: ['Omni', 'Your exact presenter, filmed in shots'],
+  auto: ['Auto', 'Seedance 2.5 when it fits; Omni for longer videos'],
   seedance25: ['Seedance 2.5', 'One smooth take, up to 30 s; the presenter is a close look-alike'],
-  veo: ['Veo HQ', 'Premium quality, your exact presenter, in shots'],
+  omni: ['Omni', 'Your exact presenter, filmed in shots'],
+  veo: ['Veo 3.1 Fast', 'Google\'s fast model, starting from your presenter\'s look, in shots'],
+  veo_hq: ['Veo 3.1 HQ', 'Premium quality, your exact presenter, in shots'],
 }
 function engineChoices(m) { return m.payload?.takes?.[0]?.engines ?? [] }
 function chosenEngine(m) { return engineFor.value[m.id] ?? 'auto' }

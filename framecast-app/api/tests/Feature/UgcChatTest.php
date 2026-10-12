@@ -116,9 +116,8 @@ class UgcChatTest extends TestCase
             'presenters' => [['character_id' => 5, 'voice' => ['pace' => 'faster', 'delivery' => 'excited']]]])->assertOk()->json('data.reply');
         $this->assertSame('pitch', $pitch['kind']);
         $this->assertCount(1, $pitch['payload']['takes'], 'one video unless the user asks for more');
-        $this->assertSame(['one_shot', 'omni'], [$pitch['payload']['takes'][0]['mode'], $pitch['payload']['takes'][0]['engine']]);
-        // Billed for the seconds generated (#4): this 9-word line is made as 8 s of Omni, not the 15 s planned.
-        $this->assertSame(8 * 22, $pitch['payload']['credits'], 'priced by the pipeline: the seconds Omni actually makes');
+        $this->assertSame(['one_shot', 'seedance25'], [$pitch['payload']['takes'][0]['mode'], $pitch['payload']['takes'][0]['engine']], 'Seedance 2.5 by default (owner, 2026-10-12)');
+        $this->assertSame(0, $pitch['payload']['credits'] % 33, 'priced by the pipeline at Seedance\'s rate');
         $this->assertArrayNotHasKey('request', $pitch['payload']['takes'][0], 'the internal request is never shown');
 
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-1111-4a2b-9c3d-123456789abc'])->assertStatus(422);
@@ -127,7 +126,7 @@ class UgcChatTest extends TestCase
         $this->assertSame('making', $made['reply']['kind']);
         $this->assertCount(1, $this->handed);
         $this->assertSame(5, (int) $this->handed[0]['character_id']);
-        $this->assertSame(176, (int) $this->handed[0]['credits']);
+        $this->assertSame($pitch['payload']['credits'], (int) $this->handed[0]['credits']);
         $this->assertStringContainsString('Excited', $this->handed[0]['segments'][0]['voice_direction'], "the presenter's voice reaches the take");
         $this->assertSame(1.12, (float) $this->handed[0]['segments'][0]['speed']);
         $this->assertSame([20], $this->handed[0]['product_asset_ids'], 'product photos are references');
@@ -405,14 +404,15 @@ class UgcChatTest extends TestCase
         $this->withoutMiddleware();
         $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->assertCreated()->json('data.id');
         $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'title' => 'Dewbloom review', 'summary' => 'Yara holds the bottle and tells you what changed.',
-            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Dull skin', 'duration_seconds' => 15];
-        $pitch = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Go', 'presenters' => [['character_id' => 5]]])->assertOk()->json('data.reply');
+            'script' => 'This serum fixed my dull skin in a week.', 'product' => 'Dewbloom serum', 'context' => 'Dull skin', 'duration_seconds' => 15, 'pronunciations' => 'Dewbloom: DOO-bloom'];
+        $pitch = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Go, and pronounce Dewbloom as DOO-bloom', 'presenters' => [['character_id' => 5]]])->assertOk()->json('data.reply');
         $engines = collect($pitch['payload']['takes'][0]['engines'])->keyBy('key');
-        $this->assertSame(['omni', 'seedance25', 'veo'], $engines->keys()->all(), 'each model the take can be made with, priced');
+        $this->assertSame(['seedance25', 'omni', 'veo', 'veo_hq'], $engines->keys()->all(), 'each model the take can be made with, priced');
         $this->assertTrue($engines['seedance25']['available']);
         $this->assertGreaterThan($engines['omni']['credits'], $engines['seedance25']['credits'], 'Seedance costs more a second than Omni');
 
-        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-2222-4a2b-9c3d-123456789abc', 'consent' => true, 'engine' => 'seedance25'])->assertOk();
-        $this->assertSame(['seedance25', $engines['seedance25']['credits']], [$this->handed[0]['engine'], (int) $this->handed[0]['credits']], 'made with the picked model, at its own price');
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-2222-4a2b-9c3d-123456789abc', 'consent' => true, 'engine' => 'omni'])->assertOk();
+        $this->assertSame(['omni', $engines['omni']['credits']], [$this->handed[0]['engine'], (int) $this->handed[0]['credits']], 'made with the picked model, at its own price');
+        $this->assertSame('Dewbloom: DOO-bloom', $this->handed[0]['pronunciations'], 'a pronunciation said in the chat reaches the video');
     }
 }

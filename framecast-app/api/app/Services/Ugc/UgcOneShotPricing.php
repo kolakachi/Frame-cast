@@ -54,7 +54,7 @@ class UgcOneShotPricing
         // Mirror the controller's own first move. This used to hardcode
         // seedance25, so any caller asking for another engine was quoted at
         // Seedance's rate and then refused by the credits cross-check.
-        $engine = in_array($v['engine'] ?? null, ['seedance25', 'veo', 'omni'], true)
+        $engine = in_array($v['engine'] ?? null, ['seedance25', 'veo', 'veo_hq', 'omni'], true)
             ? (string) $v['engine']
             : 'seedance25';
         $isTestPass = $credits->planTier($workspaceId) === 'ugc_pass';
@@ -73,7 +73,7 @@ class UgcOneShotPricing
                 $presenterAttached = (bool) ($ref && str_starts_with((string) $ref->mime_type, 'image/') && $ref->storage_url);
             }
         }
-        if ($presenterAttached && $engine !== 'omni') {
+        if ($presenterAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq'], true)) {
             $engine = 'veo_hq';
         }
         if ($isTestPass && ! $presenterAttached) {

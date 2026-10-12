@@ -153,9 +153,10 @@ class UgcPhysicsTest extends TestCase
             ."Last frame: Pouch open on the desk.\nAmbient noise: quiet room tone.\n", $prompt);
         $this->assertStringContainsString('The only writing in the picture is the product\'s own label.', $prompt);
         $this->assertStringContainsString('The picture shows only the presenter, the product and the place.', $prompt);
+        $this->assertStringContainsString("The product's label reads the right way round", $prompt, 'take 298 mirrored LUMORA');
         $this->assertStringNotContainsString('the phone on its stand', $prompt, 'the camera is never an object in the picture');
         foreach (['rulebook', 'subtitles', 'Action and sound', 'second pack'] as $gone) $this->assertStringNotContainsString($gone, $prompt, 'the sheet replaces the old prompt');
-        $this->assertLessThan(1300, mb_strlen($prompt), 'short');
+        $this->assertLessThan(1450, mb_strlen($prompt), 'short');
         $this->assertSame($sheets[0], $chunks[0]['sheet'], 'kept for the reviewer');
 
         // Words that are not the script's are dropped from the blocks and the line is said whole.

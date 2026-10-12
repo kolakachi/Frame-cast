@@ -22,7 +22,8 @@ assembly stays simple, motion graphics stay in Create.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| PIPE-ON | Turn the new pipeline on for everyone: timed action sheet + follow-on (UGC_ACTION_SHEET), the take's look (dressed presenter; staff gate in UgcController), trace | ready | after the Omni (prod take 297) and Seedance (298) checks of 2026-10-12 |
+| VEO-TEST | Veo 3.1 Fast (starts from the dressed look) and Veo 3.1 HQ are in the model picker; not yet tested on the new pipeline | open | test takes, then judge |
+| LEARN | An agent that watches every UGC take (traces, raw clips, final), lists the pitfalls and keeps a lessons document the director and sheet writer read | proposed | later (owner, 2026-10-12) |
 | SWEEP | Varied briefs before UGC_TYPES_LIVE: skincare, app demo, try-on, drink outdoors, plain testimonial, problem/solution (~2,500–3,500 cr) | open | after PIPE-ON |
 | SECTIONS | Videos in components: keep a take's clips after delivery (deleted today), a take bible (face, clothes, background, product state, camera) read by every clip and edit, "remake this section" in the editor (folds in P4-CHANGE) | proposed | owner OK on the plan |
 | SEEDANCE-CONT | Does Seedance accept its own earlier video (continue / video edit) with a face in it? One call; a refusal is free | proposed | test |
@@ -79,6 +80,12 @@ assembly stays simple, motion graphics stay in Create.
   (Auto, Omni, Seedance 2.5, Veo HQ, each priced); Seedance takes a cast presenter as Opus's identity description
   opening with their casting line. QUEUE-REAP pushed (worker-ugc). Storyboard pilot tried and dropped (owner: stills not
   needed; the dressed look replaces them). Commits b4584e8a…a491428e.
+
+- 2026-10-12 PIPE-ON: after the Omni (prod take 297, passed: one room, continuous hands, nothing floating, no phone
+  drawn) and Seedance (298) checks, the timed sheet, follow-on and the dressed look are on for every account (trace stays
+  staff-only). Seedance 2.5 is the default model (owner: "the best I have seen"; Omni when a plan is over 30 s); the
+  picker offers Seedance, Omni, Veo 3.1 Fast and Veo 3.1 HQ. Pronunciations the user gives in the chat reach the video;
+  the label is asked to read the right way round (298 mirrored it).
 
 - 2026-10-11 `911eb0b5` Places (24, director-picked or per presenter, loose reference photo), Presenters window with
   background picker, face scores (remakes off), light matched at continued joins, one-product and no-other-brand rules,

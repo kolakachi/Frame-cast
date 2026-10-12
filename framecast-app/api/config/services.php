@@ -122,7 +122,7 @@ return [
         'face_retry' => (bool) env('UGC_FACE_RETRY', false),
         // The timed action sheet for every account (staff always get it); and whether the reviewer may remake a clip it
         // faults (off: it only records its verdicts until it is calibrated, owner 2026-10-12).
-        'action_sheet' => (bool) env('UGC_ACTION_SHEET', false),
+        'action_sheet' => (bool) env('UGC_ACTION_SHEET', true),
         'review_remake' => (bool) env('UGC_REVIEW_REMAKE', false),
         // Follow the take, not the plan (UgcFollowOn): 'record' keeps the next clip's rewrite in the trace only, 'apply'
         // uses it, 'off' skips the step. Applied since take 295's rewrites read every clip right (owner, 2026-10-12).

@@ -983,6 +983,8 @@ class UgcController extends Controller
             'quality' => ['sometimes', 'string', 'in:draft,full'],
             // The storyboard pilot (UgcStoryboard): staff only for now.
             'storyboard' => ['sometimes', 'boolean'],
+            // How to say names the user spelled out in the chat ("pronounce Lumora as loo-MOR-ah"), one per line.
+            'pronunciations' => ['sometimes', 'nullable', 'string', 'max:600'],
             'request_id' => ['sometimes', 'uuid'],
             'presenter_description' => ['nullable', 'string', 'max:400'],
             'product_asset_id' => ['nullable', 'integer', 'min:1'],
@@ -1148,7 +1150,7 @@ class UgcController extends Controller
         // Pricing below is mirrored in App\Services\Ugc\UgcOneShotPricing for the
         // developer API's quotes; change both, or the API's quote will not match
         // the credits check further down and every create will be refused.
-        $engine = in_array($request->input('engine'), ['seedance25', 'veo', 'omni'], true) ? $request->input('engine') : 'seedance25';
+        $engine = in_array($request->input('engine'), ['seedance25', 'veo', 'veo_hq', 'omni'], true) ? $request->input('engine') : 'seedance25';
 
         // The $9 Test Pass buys a look at the product, not the whole catalogue:
         // Seedance only (Veo HQ costs nearly twice as much per second and would
@@ -1164,7 +1166,8 @@ class UgcController extends Controller
         // Omni also carries a face in reference_images, at 22cr/s against
         // veo_hq's 58, so an explicit choice of it stands. veo_hq stays the
         // default for a cast presenter until Omni has production mileage.
-        if ($presenterImageAttached && $engine !== 'omni') {
+        // Veo 3.1 Fast takes a cast presenter too (owner, 2026-10-12): it starts from the take's dressed look, since it takes no photos.
+        if ($presenterImageAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq'], true)) {
             $engine = 'veo_hq';
         }
 
@@ -1201,10 +1204,10 @@ class UgcController extends Controller
         }
         // Pronunciation notes from the client brief respell brand/product
         // names in the spoken dialogue only (the voice model reads them).
-        $pronNotes = (string) (json_decode(
+        $pronNotes = trim((string) (json_decode(
             (string) (DB::table('client_profiles')->where('workspace_id', $user->workspace_id)->value('brief') ?? '{}'),
             true,
-        )['pronunciations'] ?? '');
+        )['pronunciations'] ?? '')."\n".trim((string) ($v['pronunciations'] ?? '')));
         $style = [
             'ugc_type' => $v['ugc_type'] ?? '', 'speakers' => $speakerDescriptions,
             'presenter' => $presenter,
@@ -1297,6 +1300,8 @@ class UgcController extends Controller
         foreach ($chunks as &$chunk) {
             // The storyboard and its reviewer need the take's clothes (take 287's stills copied the presenter's photo).
             if ($storyboard && $style['wardrobe'] !== '') $chunk['wardrobe'] = $style['wardrobe'];
+            // The trace (every step's prompt, raw clip and verdict) is kept for the team's takes only.
+            if (in_array($user->role, ['super_admin', 'platform_admin'], true)) $chunk['trace'] = true;
             if (isset($sourceMedia[$chunk['source_asset_id'] ?? 0])) $chunk['source_media'] = $sourceMedia[$chunk['source_asset_id']];
             if (isset($speakerReferences[$chunk['speaker'] ?? 0])) $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
         }
@@ -1391,8 +1396,8 @@ class UgcController extends Controller
             $storyboard,
             // The take's look (UgcLook, owner 2026-10-12; staff until its test takes pass): the cast presenter dressed
             // for this ad in its own version of the place, made once in the job and used in every clip.
-            $presenterImageAttached && $style['wardrobe'] !== '' && in_array($engine, ['omni', 'veo_hq'], true)
-                && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true) && in_array($user->role, ['super_admin', 'platform_admin'], true)
+            $presenterImageAttached && $style['wardrobe'] !== '' && in_array($engine, ['omni', 'veo', 'veo_hq'], true)
+                && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
                 ? array_filter(['wardrobe' => $style['wardrobe'], 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
         )->afterCommit();
 

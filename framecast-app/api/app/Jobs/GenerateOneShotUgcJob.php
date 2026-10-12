@@ -137,7 +137,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // pipeline the multi-scene lane uses). Runs on the worker, its
             // small image cost is absorbed, and any failure falls back to
             // the plain character frame.
-            if (! isset($reuse[0]) && $startFrame !== null && $this->referenceImages !== [] && $this->engine === 'veo') {
+            // Veo 3.1 Fast takes no photos: a take with a look starts from the dressed presenter, face, clothes and room in one.
+            if ($this->engine === 'veo' && $this->look !== [] && $this->refs !== [] && $startFrame === null) $startFrame = $this->refs[0];
+            if (! isset($reuse[0]) && $startFrame !== null && $this->referenceImages !== [] && $this->engine === 'veo' && $this->look === []) {
                 try {
                     $composite = app(\App\Services\Generation\Image\CharacterImageAdapter::class)->generate(
                         'Vertical 9:16 selfie-framing still of the person from the first reference image naturally holding the product shown in the other reference images at chest height, label facing the camera, casual lived-in setting, soft daylight, authentic phone-camera feel',
@@ -467,7 +469,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** Staff pilots keep a trace of every step; customer takes do not. */
     private function tracing(array $chunk): bool
     {
-        return $this->look !== [] || $this->storyboard || ! empty($chunk['sheet']);
+        return ! empty($chunk['trace']) || $this->storyboard;
     }
 
     /**

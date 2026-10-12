@@ -191,7 +191,7 @@ The product photos are references for the product's real look, shape and size in
 
 Return JSON only, one of:
 {"action":"ask","question":"...","chips":["...","..."]}  (chips may be [] when they only need to paste or attach something)
-{"action":"pitch","type":"<type>","format":"direct_camera|demo|story|reaction|text_led","title":"a short name for the video","summary":"one or two plain sentences: who says what, where, and how the product appears (e.g. held at its real size)","script":"the exact words to speak","product":"the product name","context":"audience, goal, facts and must-say lines for the director","setting":"one key from the settings list","duration_seconds":15}
+{"action":"pitch","type":"<type>","format":"direct_camera|demo|story|reaction|text_led","title":"a short name for the video","summary":"one or two plain sentences: who says what, where, and how the product appears (e.g. held at its real size)","script":"the exact words to speak","pronunciations":"how to say names the user spelled out, one per line, e.g. Lumora: loo-MOR-ah (empty when none)","product":"the product name","context":"audience, goal, facts and must-say lines for the director","setting":"one key from the settings list","duration_seconds":15}
 PROMPT,
                 'user' => "Production contracts:\n{{type_contracts}}\n\nConversation so far:\n{{transcript}}\n\nWhat the user has given:\n{{materials}}\n\nPresenters chosen: {{presenters}}\nUGC type chosen: {{type}}\nShape and length chosen: {{shape}}\nSettings you can film in:\n{{settings}}\n{{previous_error}}",
             ],

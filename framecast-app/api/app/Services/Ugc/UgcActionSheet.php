@@ -208,6 +208,7 @@ TXT;
             .'Ambient noise: quiet room tone.'."\n"
             .'Throughout: '.($described !== '' ? 'the same person as described, ' : 'the same person as in the presenter photo, ').'in the same clothes, in the same room; exactly one product, its packaging exactly as in the product photo. '
             .'Everything is either held in a hand or resting on a surface, with real weight. '
+            .'The product\'s label reads the right way round, left to right, exactly as in the product photo. '
             .($spoken ? 'The presenter speaks only the quoted words, naturally and once, then stays quiet. ' : 'The clip is silent apart from the sounds named. ')
             .'The only writing in the picture is the product\'s own label.'
             .($mirror ? '' : ($shows ? ' The only phone in the picture is the one showing the product.' : ' The picture shows only the presenter, the product and the place.'));
