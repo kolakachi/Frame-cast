@@ -236,4 +236,22 @@ class UgcPhysicsTest extends TestCase
         $this->assertSame(['open', 'apply'], UgcPlan::performedKinds('She unscrews the cap and pats the serum onto her cheek.'));
         $this->assertSame([], UgcPlan::performedKinds('He holds the can. He has just taken a sip, so he looks pleased. She just opened it.'), 'done before the shot');
     }
+
+    public function test_a_follow_on_keeps_the_next_clips_words_and_camera_or_is_not_used(): void
+    {
+        $next = ['dialogue' => 'Two weeks in, my skin looks brighter.', 'seconds' => 4, 'sheet' => ['camera' => 'pick_up', 'shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => []]];
+        $block = fn ($says) => ['when' => '00:00-00:04', 'view' => '', 'left' => 'rests on her lap', 'right' => 'touches her cheek', 'product' => 'open on the nightstand', 'face' => 'on the lens', 'says' => $says, 'sound' => '', 'check' => ''];
+        $good = json_encode(['close' => true, 'why' => 'she applied it', 'ended' => ['left' => 'on her lap', 'right' => 'at her cheek', 'product' => 'open, standing', 'camera' => 'leaned on books', 'face' => 'smiling'],
+            'next' => ['camera' => 'selfie_arm', 'shot' => 'Bedroom', 'start' => 'Right hand at her cheek', 'blocks' => [$block('Two weeks in, my skin looks brighter.')], 'end' => 'smiling']]);
+        $v = \App\Services\Ugc\UgcFollowOn::parse($good, $next);
+        $this->assertTrue($v['close'] && $v['valid']);
+        $this->assertSame('pick_up', $v['next']['camera'], 'the camera is the plan\'s, whatever the rewrite says');
+        $this->assertSame('Right hand at her cheek', $v['next']['start']);
+
+        $changed = json_encode(['close' => true, 'why' => '', 'ended' => [], 'next' => ['shot' => 'x', 'start' => 'y', 'blocks' => [$block('Two weeks in, my skin is great.')], 'end' => '']]);
+        $this->assertFalse(\App\Services\Ugc\UgcFollowOn::parse($changed, $next)['valid'], 'other words: not used');
+        $off = \App\Services\Ugc\UgcFollowOn::parse(json_encode(['close' => false, 'why' => 'never opened it', 'ended' => [], 'next' => null]), $next);
+        $this->assertFalse($off['close']);
+        $this->assertNull($off['next'], 'an off-plan clip is not followed');
+    }
 }

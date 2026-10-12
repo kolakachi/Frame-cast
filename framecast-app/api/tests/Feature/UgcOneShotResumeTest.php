@@ -24,6 +24,8 @@ class UgcOneShotResumeTest extends TestCase
     private int $balance = 100000;
     private ?\Closure $onPoll = null;
     private array $startFrames = [];
+
+    private array $sentPrompts = [];
     private array $refs = [];
     private array $clipWords = ['transcript' => '', 'provider_key' => 'test', 'words' => []];
 
@@ -53,7 +55,7 @@ class UgcOneShotResumeTest extends TestCase
                 '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
         }
         $veo = Mockery::mock(ReplicateVeoAdapter::class);
-        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = []) { $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
+        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = []) { $this->sentPrompts[] = $prompt; $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
             if ($this->onPoll) ($this->onPoll)();
@@ -448,5 +450,32 @@ class UgcOneShotResumeTest extends TestCase
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
         $this->assertEqualsWithDelta(4.0, (float) $video->duration_seconds, 0.15, 'the setting down after the words is kept');
         @unlink($long);
+    }
+
+    public function test_the_follow_on_is_recorded_and_only_applied_in_apply_mode(): void
+    {
+        $review = Mockery::mock(\App\Services\Ugc\UgcReview::class);
+        $review->shouldReceive('sheet')->andReturn(null);
+        $this->app->instance(\App\Services\Ugc\UgcReview::class, $review);
+        $sheet = fn ($says) => ['camera' => 'selfie_arm', 'shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [['when' => '00:00-00:04', 'view' => '', 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => $says, 'sound' => '', 'check' => '']]];
+        $adapted = ['camera' => 'selfie_arm', 'shot' => 'ADAPTED SHOT', 'start' => 'as it really ended', 'end' => '', 'blocks' => [['when' => '00:00-00:04', 'view' => '', 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => 'Okay so', 'sound' => '', 'check' => '']]];
+        $follow = Mockery::mock(\App\Services\Ugc\UgcFollowOn::class);
+        $follow->shouldReceive('follow')->andReturn(['close' => true, 'why' => 'kept to plan', 'ended' => [], 'next' => $adapted, 'valid' => true]);
+        $this->app->instance(\App\Services\Ugc\UgcFollowOn::class, $follow);
+        $this->clipWords = ['transcript' => 'Okay so', 'provider_key' => 'openai', 'words' => [['text' => 'Okay', 'start' => 0.1, 'end' => 0.4], ['text' => 'so', 'start' => 0.4, 'end' => 0.6]]];
+        $chunks = [['prompt' => 'one', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'Okay so', 'sheet' => $sheet('Okay so')],
+            ['prompt' => 'two', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'Okay so', 'sheet' => $sheet('Okay so')]];
+
+        $e = $this->run_($this->job($chunks));
+        $this->assertNull($e, (string) $e?->getMessage());
+        $this->assertSame('two', $this->sentPrompts[1], 'recording only: the next clip is made as planned');
+        $this->assertSame('record', $this->settings()['trace']['1']['follow_on']['mode']);
+
+        config(['services.ugc.follow_on' => 'apply']);
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode([])]);
+        $this->sentPrompts = [];
+        $this->run_($this->job($chunks));
+        $this->assertStringContainsString('ADAPTED SHOT', $this->sentPrompts[1], 'apply: the next clip continues from how this one really ended');
+        $this->assertSame('kept to plan', $this->settings()['trace']['1']['follow_on']['why']);
     }
 }

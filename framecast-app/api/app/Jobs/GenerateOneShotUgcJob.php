@@ -158,12 +158,20 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $fromTail = [];
             $faceRetries = 0;
             $carry = null;
+            $adapt = null;
             foreach ($this->chunks as $i => $chunk) {
+                $clipVerdict = null;
                 // What the clip before actually said decides this one's words (carry()); recorded in the trace.
                 if ($carry !== null) {
                     $chunk = self::carryOver($chunk, $carry);
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['carried' => $carry + ['line' => $chunk['dialogue']]]);
                     $carry = null;
+                }
+                // How the clip before really ended decides how this one starts (UgcFollowOn, "apply" mode only).
+                if ($adapt !== null) {
+                    $chunk['sheet'] = $adapt;
+                    $chunk['prompt'] = \App\Services\Ugc\UgcActionSheet::prompt($adapt, (string) ($chunk['dialogue'] ?? ''));
+                    $adapt = null;
                 }
                 // A skit clip names its speaker's photos by id; they are read here, only from this workspace or stock.
                 if (! empty($chunk['reference_asset_ids']) && empty($chunk['reference_images'])) {
@@ -242,6 +250,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                             if ($second === null || count($second['problems']) <= count($verdict['problems'])) $path = $again;
                         }
                         $this->noteReview($scene, 'clip_reviews', $i, $note);
+                        $clipVerdict = $note['remade'] ?? $verdict;
                     }
                     // A new shot (or the opening) may lose its dead air at the start: a cut hides it.
                     // The trace (owner, 2026-10-12: "keep results of each step"): the clip as the model returned it, before
@@ -273,6 +282,16 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     }
                     $this->savePart($project, $scene, $storage, $i, $path);
                     if (isset($heard) && $heard !== null && isset($this->chunks[$i + 1])) $carry = self::carry($heard, (string) ($chunk['dialogue'] ?? ''), (string) ($this->chunks[$i + 1]['dialogue'] ?? ''));
+                    // Follow the take, not the plan: how this clip really went, and the next clip rewritten to continue from it.
+                    $mode = (string) config('services.ugc.follow_on', 'record');
+                    if ($mode !== 'off' && ! empty($chunk['sheet']) && ! empty($this->chunks[$i + 1]['sheet']) && ! $sourceOnly) {
+                        $next = $carry !== null ? self::carryOver($this->chunks[$i + 1], $carry) : $this->chunks[$i + 1];
+                        $follow = app(\App\Services\Ugc\UgcFollowOn::class)->follow($chunk, $heard ?? null, $path, $clipVerdict, $next);
+                        if ($follow !== null) {
+                            $this->trace($project, $scene, $storage, $i, ['follow_on' => $follow + ['mode' => $mode]]);
+                            if ($mode === 'apply' && $follow['close'] && $follow['valid']) $adapt = $follow['next'];
+                        }
+                    }
                     $heard = null;
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['seconds_kept' => self::seconds($path)]);
                 }

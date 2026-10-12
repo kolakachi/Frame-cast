@@ -124,6 +124,9 @@ return [
         // faults (off: it only records its verdicts until it is calibrated, owner 2026-10-12).
         'action_sheet' => (bool) env('UGC_ACTION_SHEET', false),
         'review_remake' => (bool) env('UGC_REVIEW_REMAKE', false),
+        // Follow the take, not the plan (UgcFollowOn): 'record' keeps the next clip's rewrite in the trace only, 'apply'
+        // uses it, 'off' skips the step. Recording until the rewrites are trusted (owner, 2026-10-12).
+        'follow_on' => env('UGC_FOLLOW_ON', 'record'),
     ],
 
     'ai' => [
