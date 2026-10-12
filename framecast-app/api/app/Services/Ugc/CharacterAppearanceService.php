@@ -88,9 +88,12 @@ TXT;
         if ($sheet === null) {
             return trim($character->name.($character->description ? ' — '.$character->description : ''));
         }
-        // Written as sentences, not fragments: video models weight fluent descriptions better.
-        $lead = trim(implode(', ', array_filter([$sheet['gender_presentation'] ?? 'person', $sheet['age'] ?? null])), ', ');
-        $parts = ['A '.$lead.(isset($sheet['skin']) ? ' with '.$sheet['skin'].' skin' : '')];
+        // Written as sentences, not fragments: video models weight fluent descriptions better. It opens with the casting
+        // line we wrote for them ("South Asian woman in her mid thirties"): take 296's description of the features alone
+        // came back as a different-looking woman.
+        $casting = trim((string) preg_split('/[,;]/', (string) $character->description)[0]);
+        $lead = $casting !== '' ? $casting : trim(implode(', ', array_filter([$sheet['gender_presentation'] ?? 'person', $sheet['age'] ?? null])), ', ');
+        $parts = [ucfirst($casting !== '' ? $lead : 'A '.$lead).(isset($sheet['skin']) ? ', with '.$sheet['skin'].' skin' : '')];
         $labels = ['face_shape' => 'face', 'eyes' => 'eyes', 'brows' => 'brows', 'nose' => 'nose', 'lips' => 'lips', 'jaw_cheeks' => 'jaw and cheeks',
             'hair' => 'hair', 'facial_hair' => 'facial hair', 'head_covering' => 'head covering', 'glasses' => 'glasses', 'build' => 'build', 'distinctive' => 'distinctive'];
         foreach ($labels as $field => $label) {

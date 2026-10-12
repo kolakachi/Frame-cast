@@ -22,25 +22,25 @@ class UgcActionSheet
      */
     public const CAMERAS = [
         // Setups: the camera stays where it is for the whole clip.
-        'selfie_arm' => ['use' => 'talking to camera, one hand free', 'shot' => 'Selfie video the presenter films at arm\'s length: the camera is in their left hand, so their left arm reaches toward the lens at the edge of the frame and their right hand is free.'],
+        'selfie_arm' => ['use' => 'talking to camera, one hand free', 'shot' => 'Selfie video the presenter films at arm\'s length: their left arm reaches toward the lens at the edge of the frame and their right hand is free.'],
         'selfie_close' => ['use' => 'a close reaction or a line, face and shoulders', 'shot' => 'Close selfie video the presenter films at arm\'s length: their face and shoulders fill the frame, their left arm reaching toward the lens at the edge of the frame.'],
-        'selfie_stick' => ['use' => 'a wider selfie showing more of the place', 'shot' => 'Selfie video filmed from a selfie stick the presenter holds up and out in their left hand: a wider view from slightly above, more of the place behind them, the stick itself out of the frame, their right hand free.'],
+        'selfie_stick' => ['use' => 'a wider selfie showing more of the place', 'shot' => 'Selfie video filmed from the end of a selfie stick the presenter holds up and out in their left hand: a wider view from slightly above, more of the place behind them, their right hand free.'],
         'walk_talk' => ['use' => 'talking while walking somewhere', 'shot' => 'Selfie video the presenter films at arm\'s length while walking: their left arm reaches toward the lens, the picture bobs gently with each step, the place moving past behind them.'],
-        'propped_front' => ['use' => 'talking or showing with both hands free, seated', 'shot' => 'The camera leans against a mug or the laptop on the desk, facing the presenter, slightly tilted and a little off-center, filming them from the waist up; both of their hands are free.'],
-        'stand_front' => ['use' => 'standing, both hands free, room to step back', 'shot' => 'The camera stands on a tripod at the presenter\'s eye height a few steps in front of them, filming them from the waist up; both hands are free.'],
-        'propped_hands' => ['use' => 'a two-handed action: opening, pouring, applying', 'shot' => 'The camera leans against something on the desk close to the presenter\'s hands, a little tilted: their hands, forearms, part of their body and the product are in the frame, framed the way a person sets it up quickly.'],
-        'handheld_close' => ['use' => 'a close look at the product, filmed by the presenter themselves', 'shot' => 'The presenter brings the camera close to the product in their other hand to show it, slightly shaky, the focus catching up for a moment.'],
-        'top_down' => ['use' => 'hands working on the desk, seen from above', 'shot' => 'The camera looks straight down at the desk from above: the presenter\'s hands and the product are in the frame.'],
-        'pov_hands' => ['use' => 'first person, their own hands using the product', 'shot' => 'First-person view: the presenter holds the camera at their chest looking down at their own hands, as they see them; their face is never in the frame.'],
-        'friend_filmed' => ['use' => 'filmed by someone else, the presenter free to move', 'shot' => 'Someone off camera films the presenter, holding the camera at the presenter\'s chest height a couple of steps away, with a slight natural sway; both of the presenter\'s hands are free.'],
-        'car_mount' => ['use' => 'in a parked car', 'shot' => 'The camera is clipped to the car\'s dashboard, facing the presenter in the driver\'s seat; both of their hands are free.'],
+        'propped_front' => ['use' => 'talking or showing with both hands free, seated', 'shot' => 'Filmed from a fixed spot on the desk, facing the presenter at chest height, slightly tilted and a little off-center, from the waist up; both of their hands are free.'],
+        'stand_front' => ['use' => 'standing, both hands free, room to step back', 'shot' => 'Filmed from a fixed spot at the presenter\'s eye height a few steps in front of them, from the waist up; both hands are free.'],
+        'propped_hands' => ['use' => 'a two-handed action: opening, pouring, applying', 'shot' => 'Filmed from a fixed spot on the desk close to the presenter\'s hands, looking slightly down, a little tilted: their hands, forearms, part of their body and the product are in the frame.'],
+        'handheld_close' => ['use' => 'a close look at the product, filmed by the presenter themselves', 'shot' => 'The presenter films the product close up in their other hand, slightly shaky, the focus catching up for a moment.'],
+        'top_down' => ['use' => 'hands working on the desk, seen from above', 'shot' => 'Filmed looking straight down at the desk from above: the presenter\'s hands and the product are in the frame.'],
+        'pov_hands' => ['use' => 'first person, their own hands using the product', 'shot' => 'First-person view from the presenter\'s chest, looking down at their own hands, as they see them; their face is never in the frame.'],
+        'friend_filmed' => ['use' => 'filmed by someone else, the presenter free to move', 'shot' => 'Filmed by someone off camera at the presenter\'s chest height a couple of steps away, with a slight natural sway; both of the presenter\'s hands are free.'],
+        'car_mount' => ['use' => 'in a parked car', 'shot' => 'Filmed from the car\'s dashboard, facing the presenter in the driver\'s seat; both of their hands are free.'],
         'mirror_selfie' => ['use' => 'an outfit or a full-body look', 'shot' => 'A mirror selfie: the presenter holds their phone in front of a mirror, and the phone is seen in the mirror the whole clip.'],
         // Moves: the camera changes once, at the moment the sheet's "view" says (owner, 2026-10-12: "they drop the phone
         // and shift back"). A move lets one clip go from talking with one hand free to an action needing both, or back.
-        'set_down' => ['use' => 'starts a handheld selfie, then sets the camera down to free both hands', 'move' => true, 'shot' => 'Starts as a selfie the presenter films at arm\'s length, their left arm reaching toward the lens; then they lean the camera against something in front of them (a mug, a book, the laptop), the view wobbles and settles slightly tilted, and both of their hands are free while they keep going.'],
-        'pick_up' => ['use' => 'starts on a camera standing on the desk, then they pick it up into a handheld selfie', 'move' => true, 'shot' => 'Starts with the camera standing on the desk facing the presenter; then they lean in, their hand comes close and briefly covers the lens as they lift it, and the view rises into a selfie at arm\'s length, their left arm reaching toward the lens.'],
-        'step_back' => ['use' => 'on a stand, they step back to reveal more of themselves or the place', 'move' => true, 'shot' => 'The camera stands still on a tripod at eye height; the presenter starts close to the lens and steps back until they are seen from the waist up.'],
-        'step_in' => ['use' => 'on a stand, they walk into the frame', 'move' => true, 'shot' => 'The camera stands still on a tripod at eye height facing the place; the presenter walks in from the side and stops facing the lens, seen from the waist up.'],
+        'set_down' => ['use' => 'starts a handheld selfie, then sets the camera down to free both hands', 'move' => true, 'shot' => 'Starts as a selfie the presenter films at arm\'s length, their left arm reaching toward the lens; then the view tips and drops as they set it down on the surface in front of them, settles low and slightly tilted, and both of their hands are free while they keep going.'],
+        'pick_up' => ['use' => 'starts on a camera standing on the desk, then they pick it up into a handheld selfie', 'move' => true, 'shot' => 'Starts filmed from a fixed spot on the desk facing the presenter; then they lean in, their hand covers the lens for a moment, and the view rises into a selfie at arm\'s length, their left arm reaching toward the lens.'],
+        'step_back' => ['use' => 'on a stand, they step back to reveal more of themselves or the place', 'move' => true, 'shot' => 'Filmed from a fixed spot at eye height; the presenter starts close to the lens and steps back until they are seen from the waist up.'],
+        'step_in' => ['use' => 'on a stand, they walk into the frame', 'move' => true, 'shot' => 'Filmed from a fixed spot at eye height facing the place; the presenter walks in from the side and stops facing the lens, seen from the waist up.'],
     ];
 
     private const PROMPT = <<<'TXT'
@@ -49,7 +49,7 @@ You direct a short creator video ad that a video model makes as separate clips, 
 Rules:
 - camera: one key from the camera list below. A two-handed action (opening, tearing, pouring into a hand, unscrewing, applying) needs a camera no hand holds (propped_hands, top_down, propped_front, stand_front, friend_filmed, car_mount), or set_down before it. Vary the cameras across the clips the way a creator would; a move (set_down, pick_up, step_back, step_in) happens once in its clip, and the block where it happens says it in "view".
 - shot: one sentence after the camera: the framing within it, the place and its light, and the presenter's clothes, named exactly as given below (never "the outfit in the photo"). Call them "the presenter" and "the product"; never describe their looks: the photos show them.
-- The camera is the point of view and is never in the picture: never write "phone" for it. In a selfie (selfie_arm, selfie_close, selfie_stick, walk_talk, pov_hands, handheld_close) the left hand holds the camera the whole clip (write "left hand: holds the camera, out of view") and only the right hand is free; in set_down and pick_up the left hand holds it only while it is held; on a camera standing or mounted, no hand touches it.
+- The filming is only a point of view, never a thing in the picture: never write "phone" or "camera" as an object anyone holds, sets down or picks up; say what the view does ("the view drops and settles low", "the view rises into a selfie"). In a selfie (selfie_arm, selfie_close, selfie_stick, walk_talk, pov_hands, handheld_close) the left hand is the one filming the whole clip (write "left hand: reaching toward the lens, out of frame") and only the right hand is free; in set_down and pick_up the left hand films only until the view is set down or after it is lifted; from a fixed spot, both hands are free.
 - This is footage from an ordinary person's own phone, not a production: framing a little off-center or tilted, the camera leaned against whatever is near, real pauses and small fumbles (a cap that sticks, a second try). Actions happen in frame with the presenter, never as tidy product-only shots.
 - For an opening, tearing or pouring action, each block says what is seen changing in the product (the seal parts, the cap comes off, the tab cracks open, the contents show), not only what the hands try.
 - A product keeps its state: it changes only through an action shown in a block, and the product picked up is always the same one, never a second one.
@@ -183,7 +183,9 @@ TXT;
         // The camera is never an object in the picture (take 289): "phone" in the sheet becomes the camera, out of view.
         // A phone that shows the product (an app, a website) stays a phone; only the filming one becomes the camera.
         $shows = (bool) preg_match('/\b(app|screen|website|display)\b/iu', json_encode($sheet));
-        $unseen = fn (string $t) => $mirror ? $t : (string) preg_replace('/\b(?:the |a |her |his |their )?phone\b(?!\s*(?:screen|showing|displaying|with the app|that shows|\x27s screen))/iu', 'the camera', $t);
+        $unseen = fn (string $t) => $mirror ? $t : (string) preg_replace(
+            ['/\b(holds|holding|grips|gripping)\s+(?:the |a |her |his |their )?(?:phone|camera)\b(?!\s*(?:screen|showing|displaying))/iu', '/\b(?:the |a |her |his |their )?(?:phone|camera)\b(?!\s*(?:screen|showing|displaying|with the app|that shows|\x27s screen))/iu'],
+            ['reaches toward the lens', 'the view'], $t);
         $blocks = array_map(fn ($b) => array_combine(array_keys($b), array_map(fn ($k, $v) => $k !== 'says' && is_string($v) ? $unseen($v) : $v, array_keys($b), $b)), $blocks);
         $lines = array_map(fn ($b) => '['.$b['when'].'] '.self::block($b), $blocks);
 
@@ -200,7 +202,7 @@ TXT;
             .'Throughout: '.($described !== '' ? 'the same person as described, ' : 'the same person as in the presenter photo, ').'in the same clothes, in the same room; exactly one product, its packaging exactly as in the product photo. '
             .($spoken ? 'The presenter speaks only the quoted words, naturally and once, then stays quiet. ' : 'The clip is silent apart from the sounds named. ')
             .'The only writing in the picture is the product\'s own label.'
-            .($mirror ? '' : ($shows ? ' The camera filming this is never seen; the only phone in the picture is the one showing the product.' : ' The camera filming this is the presenter\'s own phone, so no phone is ever seen in the picture.'));
+            .($mirror ? '' : ($shows ? ' The only phone in the picture is the one showing the product.' : ' The picture shows only the presenter, the product and the place.'));
     }
 
     /** One block in plain words: each hand, the product, the face, the words and the sound. */

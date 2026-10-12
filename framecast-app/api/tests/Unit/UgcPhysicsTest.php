@@ -147,12 +147,12 @@ class UgcPhysicsTest extends TestCase
         $long = "Pre with a long rulebook.\n\nDesk. Action and sound: Both hands pull it open.\n\nNo subtitles, no second pack, never cut mid-word.";
         $chunks = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => $long, 'dialogue' => 'Okay, look. It opens easy.']], $sheets);
         $prompt = $chunks[0]['prompt'];
-        $this->assertStringStartsWith(\App\Services\Ugc\UgcActionSheet::CAMERAS['propped_hands']['shot']." Soft window light at the desk, rust sweater sleeves.\nFirst frame: Pouch sealed, upright on the desk; both hands beside it, the camera on its stand.\n"
+        $this->assertStringStartsWith(\App\Services\Ugc\UgcActionSheet::CAMERAS['propped_hands']['shot']." Soft window light at the desk, rust sweater sleeves.\nFirst frame: Pouch sealed, upright on the desk; both hands beside it, the view on its stand.\n"
             ."[00:00-00:02] Left hand: Holds the pouch at its base. Right hand: Pinches the top of the seal. Product: Sealed, upright. Face: Not in frame. The presenter says: \"Okay, look.\"\n"
             ."[00:02-00:04] Left hand: Keeps holding the base. Right hand: Pulls the seal open. Product: Top open, peanuts visible. Face: Not in frame. The presenter says: \"It opens easy.\" SFX: Crisp zip tear.\n"
             ."Last frame: Pouch open on the desk.\nAmbient noise: quiet room tone.\n", $prompt);
         $this->assertStringContainsString('The only writing in the picture is the product\'s own label.', $prompt);
-        $this->assertStringContainsString('so no phone is ever seen in the picture', $prompt);
+        $this->assertStringContainsString('The picture shows only the presenter, the product and the place.', $prompt);
         $this->assertStringNotContainsString('the phone on its stand', $prompt, 'the camera is never an object in the picture');
         foreach (['rulebook', 'subtitles', 'Action and sound', 'second pack'] as $gone) $this->assertStringNotContainsString($gone, $prompt, 'the sheet replaces the old prompt');
         $this->assertLessThan(1300, mb_strlen($prompt), 'short');
@@ -198,7 +198,7 @@ class UgcPhysicsTest extends TestCase
     public function test_the_camera_library_never_puts_a_phone_in_the_picture_and_a_move_is_timed_in_its_block(): void
     {
         foreach (\App\Services\Ugc\UgcActionSheet::CAMERAS as $key => $camera) {
-            if ($key !== 'mirror_selfie') $this->assertStringNotContainsStringIgnoringCase('phone', $camera['shot'], $key);
+            if ($key !== 'mirror_selfie') $this->assertDoesNotMatchRegularExpression('/\b(phone|camera)\b(?! \w*\s*(view|off))/i', str_replace('off camera', '', $camera['shot']), $key.': the filming is a view, never a thing (take 296 drew a camera)');
         }
         $sheet = ['camera' => 'set_down', 'shot' => 'Kitchen counter', 'start' => 'Left hand: holds the camera', 'end' => '', 'blocks' => [
             ['when' => '00:00-00:02', 'view' => '', 'left' => 'holds the camera, out of view', 'right' => 'holds the pouch', 'product' => 'sealed', 'face' => 'on the lens', 'says' => 'Watch this.', 'sound' => '', 'check' => ''],
@@ -206,7 +206,7 @@ class UgcPhysicsTest extends TestCase
         ]];
         $prompt = \App\Services\Ugc\UgcActionSheet::prompt($sheet, 'Watch this.');
         $this->assertStringStartsWith(\App\Services\Ugc\UgcActionSheet::CAMERAS['set_down']['shot'], $prompt);
-        $this->assertStringContainsString('[00:02-00:03] View: the view tips down and settles low on the counter. Left hand: sets the camera down facing her.', $prompt);
+        $this->assertStringContainsString('[00:02-00:03] View: the view tips down and settles low on the counter. Left hand: sets the view down facing her.', $prompt);
     }
 
     public function test_the_look_keeps_the_person_dresses_them_and_makes_its_own_version_of_the_place(): void
@@ -224,7 +224,7 @@ class UgcPhysicsTest extends TestCase
         ]];
         $prompt = \App\Services\Ugc\UgcActionSheet::prompt($sheet, 'Look.');
         $this->assertStringContainsString('holds her phone screen toward the lens', $prompt);
-        $this->assertStringContainsString('the only phone in the picture is the one showing the product', $prompt);
+        $this->assertStringContainsString('The only phone in the picture is the one showing the product.', $prompt);
     }
 
     public function test_a_plan_counts_an_action_only_when_a_shot_does_it(): void
@@ -257,14 +257,14 @@ class UgcPhysicsTest extends TestCase
 
     public function test_a_presenter_with_no_photo_is_described_in_every_sheet_and_never_by_clothes(): void
     {
-        $c = new \App\Models\Character(['name' => 'Priya', 'appearance_json' => ['v' => 2, 'gender_presentation' => 'woman', 'age' => 'mid-thirties',
+        $c = new \App\Models\Character(['name' => 'Priya', 'description' => 'South Asian woman in her mid thirties, straight black hair, linen shirt', 'appearance_json' => ['v' => 2, 'gender_presentation' => 'woman', 'age' => 'mid-thirties',
             'skin' => 'warm medium-brown with golden undertone', 'eyes' => 'almond, dark brown', 'hair' => 'straight black, shoulder length, centre parting', 'distinctive' => 'small mole above the left lip']]);
         $text = app(\App\Services\Ugc\CharacterAppearanceService::class)->text($c);
-        $this->assertSame('A woman, mid-thirties with warm medium-brown with golden undertone skin. Eyes: almond, dark brown. Hair: straight black, shoulder length, centre parting. Distinctive: small mole above the left lip.', $text);
+        $this->assertSame('South Asian woman in her mid thirties, with warm medium-brown with golden undertone skin. Eyes: almond, dark brown. Hair: straight black, shoulder length, centre parting. Distinctive: small mole above the left lip.', $text, 'the casting line first, never the clothes in it');
 
         $sheet = ['camera' => 'selfie_arm', 'shot' => 'Bedroom, sage hoodie', 'start' => 'a', 'end' => '', 'blocks' => [['when' => '00:00-00:03', 'view' => '', 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => 'Hi.', 'sound' => '', 'check' => '']]];
         $prompt = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => 'old', 'dialogue' => 'Hi.', 'presenter_text' => $text]], [$sheet])[0]['prompt'];
-        $this->assertStringContainsString("The presenter: A woman, mid-thirties", $prompt);
+        $this->assertStringContainsString("The presenter: South Asian woman in her mid thirties", $prompt);
         $this->assertStringContainsString('Throughout: the same person as described', $prompt);
         $this->assertStringNotContainsString('presenter photo', $prompt);
     }
