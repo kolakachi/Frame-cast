@@ -157,7 +157,14 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
             $fromTail = [];
             $faceRetries = 0;
+            $carry = null;
             foreach ($this->chunks as $i => $chunk) {
+                // What the clip before actually said decides this one's words (carry()); recorded in the trace.
+                if ($carry !== null) {
+                    $chunk = self::carryOver($chunk, $carry);
+                    if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['carried' => $carry + ['line' => $chunk['dialogue']]]);
+                    $carry = null;
+                }
                 // A skit clip names its speaker's photos by id; they are read here, only from this workspace or stock.
                 if (! empty($chunk['reference_asset_ids']) && empty($chunk['reference_images'])) {
                     $chunk['reference_images'] = $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
@@ -241,7 +248,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // any trim, with the exact prompt it was given.
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['prompt' => (string) $chunk['prompt'], 'sheet' => $chunk['sheet'] ?? null,
                         'seconds_asked' => $chunk['seconds'] ?? null, 'seconds_made' => self::seconds($path)], $path);
-                    $this->checkSpeech($path, (string) ($chunk['dialogue'] ?? ''), $i);
+                    $heard = $this->checkSpeech($path, (string) ($chunk['dialogue'] ?? ''), $i);
                     $keyColour = $this->composition['key_color'] ?? '0x00FF00';
                     if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
                         // One remake at our cost when the model drew scenery instead of the backdrop (#5); a second miss
@@ -250,7 +257,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         \Illuminate\Support\Facades\Log::info('one-shot: no key backdrop, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
                         $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                         if (! $this->owns($scene->refresh())) return;
-                        $this->checkSpeech($again, (string) ($chunk['dialogue'] ?? ''), $i);
+                        $heard = $this->checkSpeech($again, (string) ($chunk['dialogue'] ?? ''), $i);
                         if (! \App\Services\Ugc\UgcComposition::hasGreenBackground($again, $keyColour)) {
                             throw new \RuntimeException('Segment '.($i + 1).' came back without the plain backdrop twice, so the presenter cannot be placed over your page. Nothing was charged. Try again, or make it as a testimonial instead.');
                         }
@@ -265,6 +272,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         $path = app(\App\Services\Ugc\UgcComposition::class)->render($path, ['layout' => 'replace', 'assets' => [$media]], $storage, $temps);
                     }
                     $this->savePart($project, $scene, $storage, $i, $path);
+                    if (isset($heard) && $heard !== null && isset($this->chunks[$i + 1])) $carry = self::carry($heard, (string) ($chunk['dialogue'] ?? ''), (string) ($this->chunks[$i + 1]['dialogue'] ?? ''));
+                    $heard = null;
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['seconds_kept' => self::seconds($path)]);
                 }
                 $segmentPaths[] = $path;
@@ -712,9 +721,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * last word cut take 293's camera being set down, which the timed sheet had planned in that silence. The transcript
      * only checks the line: a clip with no speech for a scripted line fails uncharged; a line heard differently is logged.
      */
-    private function checkSpeech(string $path, string $dialogue, int $i): void
+    private function checkSpeech(string $path, string $dialogue, int $i): ?array
     {
-        if (self::tokens($dialogue) === []) return;
+        if (self::tokens($dialogue) === []) return null;
         // A transcript is a check, not the truth (#1, 2026-10-12): an outage, a placeholder, or a line heard differently
         // ("Nécessaire" as "Necessaire", "$29" as "twenty-nine dollars") keeps the clip as it was made and logs it; failing
         // the take there meant paying for clips a retry would fail the same way. Only a clip with no speech at all fails.
@@ -722,9 +731,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('one-shot: line not checked, transcription failed', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
-            return;
+            return null;
         }
-        if (($t['provider_key'] ?? '') === 'local_fallback') return;
+        if (($t['provider_key'] ?? '') === 'local_fallback') return null;
         $said = array_values(array_filter($t['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []));
         if ($said === [] && trim((string) ($t['transcript'] ?? '')) === '') {
             throw new \RuntimeException('Segment '.($i + 1).' came back with no speech although its line is scripted. Retry to remake this segment; the take has not been charged.');
@@ -733,6 +742,101 @@ class GenerateOneShotUgcJob implements ShouldQueue
             \Illuminate\Support\Facades\Log::warning('one-shot: line not matched in the transcript; kept as spoken', ['project_id' => $this->projectId, 'segment' => $i + 1,
                 'line' => mb_substr($dialogue, 0, 200), 'heard' => mb_substr((string) ($t['transcript'] ?? ''), 0, 200)]);
         }
+
+        return $t;
+    }
+
+    /**
+     * What the next clip should say, given what this one actually said (owner, 2026-10-12: nothing is trimmed, so each
+     * clip is read and the next one adjusted instead). When this clip ran on into the next line, those words leave the
+     * next line, so nothing is said twice; when it left the end of its own line unsaid, those words open the next line.
+     * Only clear matches count (two or more words in a row): a transcript mishears words, and a doubt changes nothing.
+     *
+     * @return array{drop: int, add: string}|null  tokens to drop from the start of the next line, words to add before it
+     */
+    public static function carry(array $transcript, string $line, string $next): ?array
+    {
+        $words = array_values(array_filter($transcript['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []));
+        $heard = [];
+        foreach ($words as $w) foreach (self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) as $t) $heard[] = $t;
+        $planned = self::tokens($line);
+        if ($heard === [] || count($planned) < 2) return null;
+        $eq = fn (string $a, string $b) => $a === $b || (min(strlen($a), strlen($b)) >= 4 && levenshtein($a, $b) <= 1);
+
+        // Follow the line through what was heard, a few words of slack each step; note where it ends and what went unsaid.
+        $j = 0;
+        $matched = [];
+        foreach ($planned as $pi => $p) {
+            $found = null;
+            for ($k = $j; $k < min(count($heard), $j + 4); $k++) if ($eq($p, $heard[$k])) { $found = $k; break; }
+            $matched[$pi] = $found !== null;
+            if ($found !== null) $j = $found + 1;
+        }
+        if (count(array_filter($matched)) < max(2, (int) ceil(count($planned) * 0.6))) return null; // not this line: unsure
+
+        $tail = 0;
+        for ($pi = count($planned) - 1; $pi >= 0 && ! $matched[$pi]; $pi--) $tail++;
+        $add = '';
+        if ($tail >= 2) {
+            $lineWords = preg_split('/\s+/u', trim($line), -1, PREG_SPLIT_NO_EMPTY);
+            $count = 0;
+            $kept = [];
+            for ($w = count($lineWords) - 1; $w >= 0 && $count < $tail; $w--) { $count += count(self::tokens($lineWords[$w])); array_unshift($kept, $lineWords[$w]); }
+            $add = implode(' ', $kept);
+        }
+
+        $after = array_slice($heard, $j);
+        $nextToks = self::tokens($next);
+        $drop = 0;
+        for ($k = min(count($after), count($nextToks) - 1); $k >= 2; $k--) {
+            if (array_slice($after, 0, $k) === array_slice($nextToks, 0, $k)) { $drop = $k; break; }
+        }
+
+        return $drop > 0 || $add !== '' ? ['drop' => $drop, 'add' => $add] : null;
+    }
+
+    /** The next clip with its line adjusted by carry(): its words, its timed sheet and its prompt. */
+    public static function carryOver(array $chunk, array $carry): array
+    {
+        $line = trim((string) ($chunk['dialogue'] ?? ''));
+        $cut = function (string $text, int $tokens): array {
+            $words = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+            $gone = [];
+            while ($tokens > 0 && $words !== []) { $w = array_shift($words); $tokens -= count(self::tokens($w)); $gone[] = $w; }
+            return [implode(' ', $words), implode(' ', $gone), max(0, $tokens)];
+        };
+        [$rest, $gone] = $cut($line, (int) $carry['drop']);
+        $newLine = trim(trim((string) $carry['add']).' '.$rest);
+        if (self::tokens($newLine) === []) return $chunk;
+
+        if (! empty($chunk['sheet'])) {
+            $sheet = $chunk['sheet'];
+            $left = (int) $carry['drop'];
+            foreach ($sheet['blocks'] as $b => $block) {
+                if ($left <= 0) break;
+                if (trim((string) ($block['says'] ?? '')) === '') continue;
+                [$sheet['blocks'][$b]['says'], , $left] = $cut((string) $block['says'], $left);
+            }
+            if ($carry['add'] !== '') {
+                $first = null;
+                foreach ($sheet['blocks'] as $b => $block) if (trim((string) ($block['says'] ?? '')) !== '') { $first = $b; break; }
+                $first ??= 0;
+                $sheet['blocks'][$first]['says'] = trim($carry['add'].' '.($sheet['blocks'][$first]['says'] ?? ''));
+            }
+            $chunk['sheet'] = $sheet;
+            $chunk['prompt'] = \App\Services\Ugc\UgcActionSheet::prompt($sheet, $newLine);
+        } else {
+            $prompt = (string) ($chunk['prompt'] ?? '');
+            if ($gone !== '' && ($at = mb_strpos($prompt, '"'.$gone)) !== false) $prompt = mb_substr($prompt, 0, $at + 1).ltrim(mb_substr($prompt, $at + 1 + mb_strlen($gone)));
+            if ($carry['add'] !== '' && preg_match('/says[^"]*"/u', $prompt, $m, PREG_OFFSET_CAPTURE)) {
+                $pos = $m[0][1] + strlen($m[0][0]);
+                $prompt = substr($prompt, 0, $pos).$carry['add'].' '.substr($prompt, $pos);
+            }
+            $chunk['prompt'] = $prompt;
+        }
+        $chunk['dialogue'] = $newLine;
+
+        return $chunk;
     }
 
     /** Where a take's saved segments and recipe live until it is delivered. */

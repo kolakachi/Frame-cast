@@ -52,4 +52,39 @@ class OneShotScriptSpanTest extends TestCase
         $this->assertSame(['first' => 0, 'last' => 0], GenerateOneShotUgcJob::verifiedSpeechSpan(['words' => self::words('Yes!')], 'Yes!'));
     }
 
+    private static function heard(string $text): array
+    {
+        $words = [];
+        foreach (preg_split('/\s+/', $text) as $k => $w) $words[] = ['text' => $w, 'start' => $k * 0.3, 'end' => $k * 0.3 + 0.25];
+        return ['transcript' => $text, 'provider_key' => 'openai', 'words' => $words];
+    }
+
+    public function test_a_clip_that_ran_into_the_next_line_takes_those_words_off_it(): void
+    {
+        $carry = GenerateOneShotUgcJob::carry(self::heard('First try of Volt Rush. Okay, cracking it'), 'First try of Volt Rush.', 'Okay, cracking it open. Mm, real citrus.');
+        $this->assertSame(['drop' => 3, 'add' => ''], $carry);
+        $chunk = GenerateOneShotUgcJob::carryOver(['dialogue' => 'Okay, cracking it open. Mm, real citrus.', 'prompt' => 'Scene. The presenter says: "Okay, cracking it open. Mm, real citrus." Rest.'], $carry);
+        $this->assertSame('open. Mm, real citrus.', $chunk['dialogue']);
+        $this->assertStringContainsString('says: "open. Mm, real citrus."', $chunk['prompt']);
+    }
+
+    public function test_a_clip_that_left_its_line_unfinished_hands_the_rest_to_the_next(): void
+    {
+        $carry = GenerateOneShotUgcJob::carry(self::heard('My skin looks brighter and way'), 'My skin looks brighter and way less blotchy now.', 'I am really happy with it.');
+        $this->assertSame(['drop' => 0, 'add' => 'less blotchy now.'], $carry);
+        $sheet = ['shot' => 's', 'start' => 'a', 'end' => '', 'camera' => 'selfie_arm', 'blocks' => [
+            ['when' => '00:00-00:02', 'view' => '', 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => 'I am really happy', 'sound' => '', 'check' => ''],
+            ['when' => '00:02-00:04', 'view' => '', 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => 'with it.', 'sound' => '', 'check' => '']]];
+        $chunk = GenerateOneShotUgcJob::carryOver(['dialogue' => 'I am really happy with it.', 'prompt' => 'old', 'sheet' => $sheet], $carry);
+        $this->assertSame('less blotchy now. I am really happy with it.', $chunk['dialogue']);
+        $this->assertSame('less blotchy now. I am really happy', $chunk['sheet']['blocks'][0]['says']);
+        $this->assertStringContainsString('The presenter says: "less blotchy now. I am really happy"', $chunk['prompt']);
+    }
+
+    public function test_a_doubtful_transcript_changes_nothing(): void
+    {
+        $this->assertNull(GenerateOneShotUgcJob::carry(self::heard('First try of Volt Rush.'), 'First try of Volt Rush.', 'Okay, cracking it open.'), 'said as planned');
+        $this->assertNull(GenerateOneShotUgcJob::carry(self::heard('Something else entirely was said here.'), 'First try of Volt Rush today.', 'Okay, cracking it open.'), 'not the line: unsure');
+        $this->assertNull(GenerateOneShotUgcJob::carry(self::heard('First try of Volt Rush. Okay then.'), 'First try of Volt Rush.', 'Okay, cracking it open.'), 'one word in common is not a run-on');
+    }
 }
