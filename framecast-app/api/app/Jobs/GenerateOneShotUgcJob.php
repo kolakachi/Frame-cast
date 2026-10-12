@@ -563,24 +563,23 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if ($said === [] && trim((string) ($t['transcript'] ?? '')) === '') {
             throw new \RuntimeException('Segment '.($i + 1).' came back with no speech although its line is scripted. Retry to remake this segment; the take has not been charged.');
         }
-        $span = self::verifiedSpeechSpan($t, $dialogue) ?? self::scriptSpan($said, $dialogue);
-        if ($span === null) {
-            \Illuminate\Support\Facades\Log::warning('one-shot: line not matched in the transcript; clip kept uncut', ['project_id' => $this->projectId, 'segment' => $i + 1,
+        // The voice always plays out (owner, 2026-10-12): a clip is cut only in its silence, before the first word heard
+        // and after the last, never inside speech, so no line or word is ever clipped. A line that does not match the
+        // script is kept and logged; the prompt's "exactly these words" is what keeps ad-libs out.
+        if ((self::verifiedSpeechSpan($t, $dialogue) ?? self::scriptSpan($said, $dialogue)) === null) {
+            \Illuminate\Support\Facades\Log::warning('one-shot: line not matched in the transcript; kept as spoken', ['project_id' => $this->projectId, 'segment' => $i + 1,
                 'line' => mb_substr($dialogue, 0, 200), 'heard' => mb_substr((string) ($t['transcript'] ?? ''), 0, 200)]);
-            return $path;
         }
-        [$first, $last] = [$span['first'], $span['last']];
+        if ($said === []) return $path; // heard, but no word timings: kept as made
+        $first = (float) $said[0]['start'];
+        $last = (float) $said[count($said) - 1]['end'];
 
         $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
-        // Extra words before the first scripted one always go; a silent lead-in goes only where a cut hides it.
-        $from = $first > 0 ? max(0.0, (float) $said[$first]['start'] - 0.12)
-            : ($leadIn && (float) $said[$first]['start'] > 0.6 ? (float) $said[$first]['start'] - 0.25 : 0.0);
+        // A silent lead-in goes only where a cut hides it.
+        $from = $leadIn && $first > 0.6 ? $first - 0.25 : 0.0;
         // Transcripts mark a word's end early, more so a trailing word ("softer."): 0.4 s clipped the last syllable
         // (2026-10-10). A join keeps 0.6 s, the ad's ending a full second.
-        $to = min($length, (float) $said[$last]['end'] + ($ending ? 1.0 : 0.6));
-        // Never into a word said after the line (owner, 2026-10-12: each clip is a scene with its own statement): take
-        // 281 read "fragrance-free" off the label straight after its line, and the next clip said it again.
-        if (isset($said[$last + 1])) $to = min($to, max((float) $said[$last]['end'] + 0.08, (float) $said[$last + 1]['start'] - 0.05));
+        $to = min($length, $last + ($ending ? 1.0 : 0.6));
         if ($length <= 0 || ($from < 0.05 && $length - $to < 0.3) || $to - $from < 1.0) return $path;
 
         $out = tempnam(sys_get_temp_dir(), 'oneshot-trim-').'.mp4';

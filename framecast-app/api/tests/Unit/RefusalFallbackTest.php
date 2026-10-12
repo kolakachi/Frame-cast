@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\Generation\AI\AnthropicClaudeAdapter;
 use App\Services\Generation\AI\OpenAIGenerationAdapter;
 use App\Services\Generation\AI\ReplicateClaudeAdapter;
 use App\Services\Generation\AI\RoutingTextAdapter;
@@ -26,7 +27,7 @@ class RefusalFallbackTest extends TestCase
         $cheap = $this->createMock(OpenAIGenerationAdapter::class);
         $cheap->expects($this->never())->method('generate')->willReturn(['content' => $cheapSays]);
 
-        return (new RoutingTextAdapter($cheap, $premium))->generate('script_from_prompt', []);
+        return (new RoutingTextAdapter($cheap, $premium, $this->createMock(AnthropicClaudeAdapter::class)))->generate('script_from_prompt', []);
     }
 
     public function test_a_decline_is_returned_without_trying_another_model(): void
@@ -66,8 +67,21 @@ class RefusalFallbackTest extends TestCase
         $premium->method('generate')->willThrowException(new \RuntimeException('timeout'));
         $cheap = $this->createMock(OpenAIGenerationAdapter::class);
         $cheap->expects($this->once())->method('generate')->willReturn(['content' => 'A supported script.']);
-        $result = (new RoutingTextAdapter($cheap, $premium))->generate('script_from_prompt', []);
+        $result = (new RoutingTextAdapter($cheap, $premium, $this->createMock(AnthropicClaudeAdapter::class)))->generate('script_from_prompt', []);
         $this->assertSame('A supported script.', $result['content']);
     }
 
+    public function test_the_ugc_director_goes_straight_to_anthropic_and_falls_back_to_the_premium_route(): void
+    {
+        config(['services.anthropic.key' => 'k', 'services.replicate.api_token' => 't', 'services.ai.premium_templates' => ['ugc_chat_turn']]);
+        $calls = 0;
+        $direct = $this->createMock(AnthropicClaudeAdapter::class);
+        $direct->expects($this->exactly(2))->method('generate')->willReturnCallback(function () use (&$calls) { if (++$calls > 1) throw new \RuntimeException('down'); return ['content' => 'direct']; });
+        $premium = $this->createMock(ReplicateClaudeAdapter::class);
+        $premium->expects($this->once())->method('generate')->willReturn(['content' => 'premium']);
+        $router = new RoutingTextAdapter($this->createMock(OpenAIGenerationAdapter::class), $premium, $direct);
+
+        $this->assertSame('direct', $router->generate('ugc_chat_turn', [])['content']);
+        $this->assertSame('premium', $router->generate('ugc_chat_turn', [])['content']);
+    }
 }

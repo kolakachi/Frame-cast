@@ -246,20 +246,21 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertEqualsWithDelta(3 - 1 / 24, (float) $video->duration_seconds, 0.15, 'the duplicated first frame of the carried-on clip is dropped');
     }
 
-    public function test_a_clip_is_cut_after_its_last_scripted_word_so_joins_never_repeat(): void
+    public function test_the_voice_plays_out_and_a_clip_is_cut_only_in_its_silence(): void
     {
-        // The model said its line, then ad-libbed "one two three" (2026-10-10 listicle): the clip ends after "skin".
+        // The voice always plays out (owner, 2026-10-12): words said after the line are kept, and the clip ends in the
+        // silence after the last word heard.
         $long = sys_get_temp_dir().'/oneshot-test-long.mp4';
         Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=green:s=64x112:r=24:d=4', '-f', 'lavfi', '-i', 'sine=frequency=300:sample_rate=48000',
             '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $long])->throw();
         $this->clip = $long;
         $w = fn ($text, $start, $end) => ['text' => $text, 'start' => $start, 'end' => $end];
         $this->clipWords = ['transcript' => 'x', 'provider_key' => 'openai', 'words' => [
-            $w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('dry', 0.8, 1.1), $w('skin.', 1.1, 1.5), $w('One,', 2.0, 2.3), $w('two,', 2.4, 2.7), $w('three.', 2.8, 3.2)]];
+            $w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('dry', 0.8, 1.1), $w('skin.', 1.1, 1.5), $w('One,', 1.7, 1.9), $w('two,', 1.9, 2.1), $w('three.', 2.1, 2.4)]];
         $this->run_($this->job([['prompt' => 'p', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'It soothes dry skin.']]));
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
-        // The second it keeps after its last word stops short of the next word said (owner, 2026-10-12): "One" starts at 2.0.
-        $this->assertEqualsWithDelta(1.95, (float) $video->duration_seconds, 0.15, 'the ad ends after "skin", before the counting');
+        // The ending keeps a full second after "three." (2.4 s), never cutting into a word.
+        $this->assertEqualsWithDelta(3.4, (float) $video->duration_seconds, 0.15, 'the ad ends a second after the last word heard');
         @unlink($long);
     }
 

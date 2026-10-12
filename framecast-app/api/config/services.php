@@ -125,6 +125,9 @@ return [
     'ai' => [
         'premium_model'  => env('AI_PREMIUM_MODEL', 'anthropic/claude-sonnet-5'),
         'premium_effort' => env('AI_PREMIUM_EFFORT', 'medium'),
+        // Straight from Anthropic (owner, 2026-10-12): the UGC director and its shot planner on Sonnet 5.5.
+        'direct_model' => env('AI_DIRECT_MODEL', 'claude-sonnet-5-5'),
+        'direct_templates' => ['ugc_chat_turn', 'ugc_shot_plan', 'ugc_shot_reanchor'],
         'premium_templates' => [
             'script_from_prompt', 'script_from_url', 'script_from_product',
             'script_from_pdf', 'script_from_csv', 'script_from_audio_reference',

@@ -154,8 +154,9 @@ final class UgcChatService
             try { $d = UgcPlan::decodeModelJson((string) ($out['content'] ?? '')); } catch (\Throwable) { $d = []; }
             if (($d['action'] ?? null) === 'ask' && trim((string) ($d['question'] ?? '')) !== '') $decision = $d;
             elseif (($d['action'] ?? null) === 'pitch' && trim((string) ($d['summary'] ?? '')) !== '') {
-                // Its own words must fit the length; a script the user wrote is kept whatever its length (it wins).
-                $budget = (int) floor(2.6 * max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15))));
+                // The length is a guide (owner, 2026-10-12: the voice plays out, users are told it is approximate): only a script
+                // half again longer than the length is sent back. A script the user wrote is kept whatever its length (it wins).
+                $budget = (int) floor(1.5 * 2.6 * max(5, min(60, (int) ($state['length'] ?? $d['duration_seconds'] ?? 15))));
                 $words = str_word_count((string) ($d['script'] ?? ''));
                 if ($try < 2 && $words > $budget && ! $this->userWrote($id, (string) $d['script'])) {
                     $error = "Your script is {$words} words; at this length it can be at most {$budget}. Write it again, shorter, keeping the hook.";

@@ -112,7 +112,7 @@ const presenterLabel = computed(() => {
   if (!presenters.value.length) return 'Let us pick'
   return presenters.value.map(p => p.name).join(' + ') + (presenters.value.length === 1 && presenters.value[0].voice ? ' · ' + (LABEL[presenters.value[0].voice.delivery] || 'friendly').toLowerCase() : '')
 })
-const shapeLabel = computed(() => '9:16 · ' + (length.value ? `${length.value} s` : 'auto length'))
+const shapeLabel = computed(() => '9:16 · ' + (length.value ? `about ${length.value} s` : 'auto length'))
 // A few faces in the prompt box, the chosen ones first; the rest are behind More.
 const filteredStock = computed(() => {
   const on = id => presenters.value.some(p => p.character_id === id)
@@ -627,7 +627,7 @@ onBeforeUnmount(() => {
                     <div class="uc-tags">
                       <span class="uc-tag uc-tag--type">{{ TYPE_LABEL[m.payload.type] || m.payload.type }}</span>
                       <span class="uc-tag">{{ pitchNames(m) }}<template v-if="m.payload.takes.some(t => t.picked)"> · picked for you</template></span>
-                      <span class="uc-tag">{{ pitchSeconds(m) }} s</span>
+                      <span class="uc-tag" title="The length follows the voice: every line plays out in full, so the video may run a little shorter or longer.">about {{ pitchSeconds(m) }} s</span>
                       <span class="uc-tag">{{ m.payload.aspect }}</span>
                     </div>
                     <details class="uc-script"><summary>The script</summary><p>{{ m.payload.plan?.script }}</p></details>
@@ -822,7 +822,7 @@ onBeforeUnmount(() => {
               <button type="button" class="uc-pill" @click="toggleMenu('shape')">{{ shapeLabel }} <span class="uc-caret">▾</span></button>
               <div v-if="menu === 'shape'" class="uc-pop uc-pop--shape">
                 <span class="uc-label uc-pad">Length</span>
-                <button v-for="l in LENGTHS" :key="String(l)" type="button" :class="['uc-type', { on: length === l }]" @click="length = l; menu = ''"><b>{{ l ? `${l} seconds` : 'Auto' }}</b><span>{{ l ? '' : 'From your script, or what fits the type' }}</span></button>
+                <button v-for="l in LENGTHS" :key="String(l)" type="button" :class="['uc-type', { on: length === l }]" @click="length = l; menu = ''"><b>{{ l ? `About ${l} seconds` : 'Auto' }}</b><span>{{ l ? 'A guide: every line plays out in full' : 'From your script, or what fits the type' }}</span></button>
                 <p class="uc-muted uc-pad">Vertical 9:16 for now.</p>
               </div>
             </div>
