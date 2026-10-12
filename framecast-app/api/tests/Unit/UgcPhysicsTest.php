@@ -131,26 +131,32 @@ class UgcPhysicsTest extends TestCase
         $this->assertTrue($board->notes[0]['remade']['ok']);
     }
 
-    public function test_a_timed_sheet_names_both_hands_the_product_and_the_face_and_replaces_the_action_sentence(): void
+    public function test_a_timed_sheet_is_the_clips_whole_short_prompt_with_the_scripts_words(): void
     {
-        $answer = '{"clips":[{"start":"Phone propped on the desk. Pouch sealed, standing on the desk; both hands rest beside it.","blocks":['
-            .'{"when":"0-2s","left":"Holds the pouch steady at its base","right":"Pinches the top edge of the seal","product":"Sealed, upright on the desk","face":"Not in frame","sound":"","check":"Is her right hand pinching the top of the pouch?"},'
-            .'{"when":"2-4s","left":"Keeps holding the base","right":"Pulls the seal open toward her","product":"Top open, peanuts visible","face":"Not in frame","sound":"Crisp zip tear","check":"Is the pouch open with peanuts visible?"}],'
-            .'"end":"Pouch open on the desk, left hand at its base."}]}';
+        $answer = '{"clips":[{"shot":"Phone propped on the desk, close on the presenter\'s hands, soft window light, rust sweater sleeves.","start":"Pouch sealed, upright on the desk; both hands beside it.","blocks":['
+            .'{"when":"00:00-00:02","left":"Holds the pouch at its base","right":"Pinches the top of the seal","product":"Sealed, upright","face":"Not in frame","says":"Okay, look.","sound":"","check":"Is her right hand pinching the seal?"},'
+            .'{"when":"00:02-00:04","left":"Keeps holding the base","right":"Pulls the seal open","product":"Top open, peanuts visible","face":"Not in frame","says":"It opens easy.","sound":"Crisp zip tear","check":"Is the pouch open?"}],'
+            .'"end":"Pouch open on the desk."}]}';
         $sheets = \App\Services\Ugc\UgcActionSheet::parse($answer, 1);
         $this->assertCount(2, $sheets[0]['blocks']);
         $this->assertSame([], \App\Services\Ugc\UgcActionSheet::parse($answer, 2), 'one sheet per clip or none');
 
-        $chunks = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => "Pre.\n\nDesk close-up on hands. Action and sound: Both hands pull it open in one smooth motion. Crisp zip sound. No speech, narration, singing or music.\n\nClosing."]], $sheets);
+        $long = "Pre with a long rulebook.\n\nDesk. Action and sound: Both hands pull it open.\n\nNo subtitles, no second pack, never cut mid-word.";
+        $chunks = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => $long, 'dialogue' => 'Okay, look. It opens easy.']], $sheets);
         $prompt = $chunks[0]['prompt'];
-        $this->assertStringNotContainsString('Action and sound', $prompt, 'the sheet replaces the action sentence');
-        $this->assertStringContainsString("Timed action, follow exactly:\nFirst frame: Phone propped on the desk. Pouch sealed, standing on the desk; both hands rest beside it.\n"
-            ."[0-2s] Left hand: Holds the pouch steady at its base. Right hand: Pinches the top edge of the seal. Product: Sealed, upright on the desk. Face: Not in frame.\n"
-            ."[2-4s] Left hand: Keeps holding the base. Right hand: Pulls the seal open toward her. Product: Top open, peanuts visible. Face: Not in frame. Sound: Crisp zip tear.\n"
-            ."Last frame: Pouch open on the desk, left hand at its base.", $prompt);
-        $this->assertStringContainsString('No speech, narration', $prompt);
-        $this->assertStringEndsWith('Closing.', $prompt);
+        $this->assertStringStartsWith("Phone propped on the desk, close on the presenter's hands, soft window light, rust sweater sleeves.\nFirst frame: Pouch sealed, upright on the desk; both hands beside it.\n"
+            ."[00:00-00:02] Left hand: Holds the pouch at its base. Right hand: Pinches the top of the seal. Product: Sealed, upright. Face: Not in frame. The presenter says: \"Okay, look.\"\n"
+            ."[00:02-00:04] Left hand: Keeps holding the base. Right hand: Pulls the seal open. Product: Top open, peanuts visible. Face: Not in frame. The presenter says: \"It opens easy.\" SFX: Crisp zip tear.\n"
+            ."Last frame: Pouch open on the desk.\nAmbient noise: quiet room tone.\n", $prompt);
+        $this->assertStringContainsString('The only writing in the picture is the product\'s own label.', $prompt);
+        foreach (['rulebook', 'subtitles', 'Action and sound', 'second pack'] as $gone) $this->assertStringNotContainsString($gone, $prompt, 'the sheet replaces the old prompt');
+        $this->assertLessThan(1100, mb_strlen($prompt), 'short');
         $this->assertSame($sheets[0], $chunks[0]['sheet'], 'kept for the reviewer');
+
+        // Words that are not the script's are dropped from the blocks and the line is said whole.
+        $altered = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => $long, 'dialogue' => 'Okay, look at this. It opens easy.']], $sheets)[0]['prompt'];
+        $this->assertStringNotContainsString('says: "Okay, look."', $altered);
+        $this->assertStringContainsString('The presenter says: "Okay, look at this. It opens easy."', $altered);
     }
 
     public function test_the_sheet_reviewer_turns_each_no_into_the_moment_to_show(): void

@@ -1280,7 +1280,8 @@ class UgcController extends Controller
         // is on): each clip's hands and product at each moment, written by the director's model. Without one, the ready
         // check (2026-10-12) writes every shot's hands, phone and product state instead.
         $productNote = trim($style['product'].($style['product_look'] !== '' ? ' — '.$style['product_look'] : ''));
-        $sheets = config('services.ugc.action_sheet') || in_array($user->role, ['super_admin', 'platform_admin'], true)
+        // Green screen and skits keep their own rules (the chroma backdrop, the speaker's photos), so they keep the ready check.
+        $sheets = (config('services.ugc.action_sheet') || in_array($user->role, ['super_admin', 'platform_admin'], true)) && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
             ? app(\App\Services\Ugc\UgcActionSheet::class)->write($chunks, $productNote) : [];
         $chunks = $sheets !== [] ? \App\Services\Ugc\UgcActionSheet::apply($chunks, $sheets)
             : \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)->stage($chunks, $productNote));
