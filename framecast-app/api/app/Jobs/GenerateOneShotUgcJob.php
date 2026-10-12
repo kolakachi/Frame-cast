@@ -241,7 +241,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // any trim, with the exact prompt it was given.
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['prompt' => (string) $chunk['prompt'], 'sheet' => $chunk['sheet'] ?? null,
                         'seconds_asked' => $chunk['seconds'] ?? null, 'seconds_made' => self::seconds($path)], $path);
-                    $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
+                    $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1, self::actsAfterWords($chunk));
                     $keyColour = $this->composition['key_color'] ?? '0x00FF00';
                     if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
                         // One remake at our cost when the model drew scenery instead of the backdrop (#5); a second miss
@@ -250,7 +250,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         \Illuminate\Support\Facades\Log::info('one-shot: no key backdrop, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
                         $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                         if (! $this->owns($scene->refresh())) return;
-                        $again = $this->trimToScript($again, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1);
+                        $again = $this->trimToScript($again, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1, self::actsAfterWords($chunk));
                         if (! \App\Services\Ugc\UgcComposition::hasGreenBackground($again, $keyColour)) {
                             throw new \RuntimeException('Segment '.($i + 1).' came back without the plain backdrop twice, so the presenter cannot be placed over your page. Nothing was charged. Try again, or make it as a testimonial instead.');
                         }
@@ -707,7 +707,16 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return self::scriptSpan($words, $dialogue, 0.95);
     }
 
-    private function trimToScript(string $path, string $dialogue, int $i, array &$temps, bool $leadIn = false, bool $ending = false): string
+    /** A clip whose sheet goes on after its last words (setting the camera down, applying in silence) keeps its tail. */
+    public static function actsAfterWords(array $chunk): bool
+    {
+        $blocks = (array) ($chunk['sheet']['blocks'] ?? []);
+        $last = end($blocks);
+
+        return is_array($last) && trim((string) ($last['says'] ?? '')) === '' && (trim((string) ($last['view'] ?? '')) !== '' || trim((string) ($last['left'] ?? '').($last['right'] ?? '')) !== '');
+    }
+
+    private function trimToScript(string $path, string $dialogue, int $i, array &$temps, bool $leadIn = false, bool $ending = false, bool $keepTail = false): string
     {
         if (self::tokens($dialogue) === []) return $path;
         // A transcript is a check, not the truth (#1, 2026-10-12): an outage, a placeholder, or a line heard differently
@@ -740,7 +749,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $from = $leadIn && $first > 0.6 ? $first - 0.25 : 0.0;
         // Transcripts mark a word's end early, more so a trailing word ("softer."): 0.4 s clipped the last syllable
         // (2026-10-10). A join keeps 0.6 s, the ad's ending a full second.
-        $to = min($length, $last + ($ending ? 1.0 : 0.6));
+        // The tail stays when the clip acts after its words (take 293: the trim cut the camera being set down).
+        $to = $keepTail ? $length : min($length, $last + ($ending ? 1.0 : 0.6));
         if ($length <= 0 || ($from < 0.05 && $length - $to < 0.3) || $to - $from < 1.0) return $path;
 
         $out = tempnam(sys_get_temp_dir(), 'oneshot-trim-').'.mp4';

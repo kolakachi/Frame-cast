@@ -429,4 +429,26 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['data:image/png;base64,DRESSED', 'data:image/png;base64,PACK'], end($this->refs), 'the resumed clip uses the same picture, made once');
         $this->assertSame([396], $this->charged);
     }
+
+    public function test_a_clip_that_acts_after_its_last_words_keeps_its_tail(): void
+    {
+        $long = sys_get_temp_dir().'/oneshot-test-tail.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=green:s=64x112:r=24:d=4', '-f', 'lavfi', '-i', 'sine=frequency=300:sample_rate=48000',
+            '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $long])->throw();
+        $this->clip = $long;
+        $w = fn ($text, $start, $end) => ['text' => $text, 'start' => $start, 'end' => $end];
+        $this->clipWords = ['transcript' => 'x', 'provider_key' => 'openai', 'words' => [$w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('skin.', 0.8, 1.2)]];
+        $sheet = ['start' => 's', 'end' => '', 'blocks' => [
+            ['when' => '00:00-00:02', 'view' => '', 'left' => 'holds the camera', 'right' => 'holds the bottle', 'says' => 'It soothes skin.'],
+            ['when' => '00:02-00:04', 'view' => 'the view tips down and settles on the desk', 'left' => 'sets the camera down', 'right' => 'holds the bottle', 'says' => ''],
+        ]];
+        $review = Mockery::mock(\App\Services\Ugc\UgcReview::class);
+        $review->shouldReceive('sheet')->andReturn(null);
+        $this->app->instance(\App\Services\Ugc\UgcReview::class, $review);
+        $e = $this->run_($this->job([['prompt' => 'p', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'It soothes skin.', 'sheet' => $sheet]]));
+        $this->assertNull($e, (string) $e?->getMessage());
+        $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
+        $this->assertEqualsWithDelta(4.0, (float) $video->duration_seconds, 0.15, 'the setting down after the words is kept');
+        @unlink($long);
+    }
 }
