@@ -246,10 +246,9 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertEqualsWithDelta(3 - 1 / 24, (float) $video->duration_seconds, 0.15, 'the duplicated first frame of the carried-on clip is dropped');
     }
 
-    public function test_the_voice_plays_out_and_a_clip_is_cut_only_in_its_silence(): void
+    public function test_a_clip_is_kept_exactly_as_made_with_every_word_and_its_silences(): void
     {
-        // The voice always plays out (owner, 2026-10-12): words said after the line are kept, and the clip ends in the
-        // silence after the last word heard.
+        // Nothing is trimmed (owner, 2026-10-12): words after the line and the silence after the last word both stay.
         $long = sys_get_temp_dir().'/oneshot-test-long.mp4';
         Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=green:s=64x112:r=24:d=4', '-f', 'lavfi', '-i', 'sine=frequency=300:sample_rate=48000',
             '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $long])->throw();
@@ -259,8 +258,7 @@ class UgcOneShotResumeTest extends TestCase
             $w('It', 0.1, 0.3), $w('soothes', 0.3, 0.8), $w('dry', 0.8, 1.1), $w('skin.', 1.1, 1.5), $w('One,', 1.7, 1.9), $w('two,', 1.9, 2.1), $w('three.', 2.1, 2.4)]];
         $this->run_($this->job([['prompt' => 'p', 'seconds' => 4, 'new_shot' => true, 'dialogue' => 'It soothes dry skin.']]));
         $video = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
-        // The ending keeps a full second after "three." (2.4 s), never cutting into a word.
-        $this->assertEqualsWithDelta(3.4, (float) $video->duration_seconds, 0.15, 'the ad ends a second after the last word heard');
+        $this->assertEqualsWithDelta(4.0, (float) $video->duration_seconds, 0.15, 'the whole clip, as made');
         @unlink($long);
     }
 

@@ -241,7 +241,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // any trim, with the exact prompt it was given.
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['prompt' => (string) $chunk['prompt'], 'sheet' => $chunk['sheet'] ?? null,
                         'seconds_asked' => $chunk['seconds'] ?? null, 'seconds_made' => self::seconds($path)], $path);
-                    $path = $this->trimToScript($path, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1, self::actsAfterWords($chunk));
+                    $this->checkSpeech($path, (string) ($chunk['dialogue'] ?? ''), $i);
                     $keyColour = $this->composition['key_color'] ?? '0x00FF00';
                     if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
                         // One remake at our cost when the model drew scenery instead of the backdrop (#5); a second miss
@@ -250,7 +250,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         \Illuminate\Support\Facades\Log::info('one-shot: no key backdrop, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
                         $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                         if (! $this->owns($scene->refresh())) return;
-                        $again = $this->trimToScript($again, (string) ($chunk['dialogue'] ?? ''), $i, $temps, $i === 0 || $fromRefs, $i === count($this->chunks) - 1, self::actsAfterWords($chunk));
+                        $this->checkSpeech($again, (string) ($chunk['dialogue'] ?? ''), $i);
                         if (! \App\Services\Ugc\UgcComposition::hasGreenBackground($again, $keyColour)) {
                             throw new \RuntimeException('Segment '.($i + 1).' came back without the plain backdrop twice, so the presenter cannot be placed over your page. Nothing was charged. Try again, or make it as a testimonial instead.');
                         }
@@ -707,60 +707,32 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return self::scriptSpan($words, $dialogue, 0.95);
     }
 
-    /** A clip whose sheet goes on after its last words (setting the camera down, applying in silence) keeps its tail. */
-    public static function actsAfterWords(array $chunk): bool
+    /**
+     * Every clip is kept exactly as it was made (owner, 2026-10-12: "we aren't meant to trim anything"): the trim after the
+     * last word cut take 293's camera being set down, which the timed sheet had planned in that silence. The transcript
+     * only checks the line: a clip with no speech for a scripted line fails uncharged; a line heard differently is logged.
+     */
+    private function checkSpeech(string $path, string $dialogue, int $i): void
     {
-        $blocks = (array) ($chunk['sheet']['blocks'] ?? []);
-        $last = end($blocks);
-
-        return is_array($last) && trim((string) ($last['says'] ?? '')) === '' && (trim((string) ($last['view'] ?? '')) !== '' || trim((string) ($last['left'] ?? '').($last['right'] ?? '')) !== '');
-    }
-
-    private function trimToScript(string $path, string $dialogue, int $i, array &$temps, bool $leadIn = false, bool $ending = false, bool $keepTail = false): string
-    {
-        if (self::tokens($dialogue) === []) return $path;
+        if (self::tokens($dialogue) === []) return;
         // A transcript is a check, not the truth (#1, 2026-10-12): an outage, a placeholder, or a line heard differently
         // ("Nécessaire" as "Necessaire", "$29" as "twenty-nine dollars") keeps the clip as it was made and logs it; failing
         // the take there meant paying for clips a retry would fail the same way. Only a clip with no speech at all fails.
         try {
             $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('one-shot: line not checked, transcription failed; clip kept uncut', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
-            return $path;
+            \Illuminate\Support\Facades\Log::warning('one-shot: line not checked, transcription failed', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            return;
         }
-        if (($t['provider_key'] ?? '') === 'local_fallback') return $path;
+        if (($t['provider_key'] ?? '') === 'local_fallback') return;
         $said = array_values(array_filter($t['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []));
         if ($said === [] && trim((string) ($t['transcript'] ?? '')) === '') {
             throw new \RuntimeException('Segment '.($i + 1).' came back with no speech although its line is scripted. Retry to remake this segment; the take has not been charged.');
         }
-        // The voice always plays out (owner, 2026-10-12): a clip is cut only in its silence, before the first word heard
-        // and after the last, never inside speech, so no line or word is ever clipped. A line that does not match the
-        // script is kept and logged; the prompt's "exactly these words" is what keeps ad-libs out.
         if ((self::verifiedSpeechSpan($t, $dialogue) ?? self::scriptSpan($said, $dialogue)) === null) {
             \Illuminate\Support\Facades\Log::warning('one-shot: line not matched in the transcript; kept as spoken', ['project_id' => $this->projectId, 'segment' => $i + 1,
                 'line' => mb_substr($dialogue, 0, 200), 'heard' => mb_substr((string) ($t['transcript'] ?? ''), 0, 200)]);
         }
-        if ($said === []) return $path; // heard, but no word timings: kept as made
-        $first = (float) $said[0]['start'];
-        $last = (float) $said[count($said) - 1]['end'];
-
-        $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
-        // A silent lead-in goes only where a cut hides it.
-        $from = $leadIn && $first > 0.6 ? $first - 0.25 : 0.0;
-        // Transcripts mark a word's end early, more so a trailing word ("softer."): 0.4 s clipped the last syllable
-        // (2026-10-10). A join keeps 0.6 s, the ad's ending a full second.
-        // The tail stays when the clip acts after its words (take 293: the trim cut the camera being set down).
-        $to = $keepTail ? $length : min($length, $last + ($ending ? 1.0 : 0.6));
-        if ($length <= 0 || ($from < 0.05 && $length - $to < 0.3) || $to - $from < 1.0) return $path;
-
-        $out = tempnam(sys_get_temp_dir(), 'oneshot-trim-').'.mp4';
-        $temps[] = $out;
-        $run = Process::timeout(300)->run(['ffmpeg', '-y', '-ss', sprintf('%.3f', $from), '-to', sprintf('%.3f', $to), '-i', $path,
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', $out]);
-        if (! $run->successful() || ! filesize($out)) return $path;
-        \Illuminate\Support\Facades\Log::info('one-shot: clip trimmed to its script', ['project_id' => $this->projectId, 'segment' => $i + 1,
-            'from' => round($from, 2), 'to' => round($to, 2), 'was' => round($length, 2)]);
-        return $out;
     }
 
     /** Where a take's saved segments and recipe live until it is delivered. */
