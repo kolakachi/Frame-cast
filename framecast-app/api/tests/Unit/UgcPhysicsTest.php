@@ -167,4 +167,17 @@ class UgcPhysicsTest extends TestCase
         $this->assertSame(['Show this happening: Right hand: pulls the seal open.', 'No to: same clothes?'], $v['problems']);
         $this->assertNull(\App\Services\Ugc\UgcReview::answers('{"answers":[true]}', $qs, []), 'an answer per question or no verdict');
     }
+
+    public function test_a_sheet_whose_words_or_length_are_off_is_sent_back_with_its_faults(): void
+    {
+        $block = fn ($when, $says) => ['when' => $when, 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => $says, 'sound' => '', 'check' => ''];
+        $chunks = [['dialogue' => 'Listen to this. Okay, really crunchy.', 'seconds' => 9]];
+        $good = [['shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('00:00-00:04', 'Listen to this.'), $block('00:04-00:09', 'Okay, really crunchy.')]]];
+        $this->assertSame([], \App\Services\Ugc\UgcActionSheet::faults($good, $chunks));
+        $bad = [['shot' => 's', 'start' => 'a', 'end' => '', 'blocks' => [$block('00:00-00:03', 'Listen.'), $block('00:03-00:07', 'Okay, really crunchy.')]]];
+        $faults = \App\Services\Ugc\UgcActionSheet::faults($bad, $chunks);
+        $this->assertCount(2, $faults);
+        $this->assertStringContainsString('must be exactly "Listen to this. Okay, really crunchy."', $faults[0]);
+        $this->assertStringContainsString('must run to 00:09', $faults[1]);
+    }
 }

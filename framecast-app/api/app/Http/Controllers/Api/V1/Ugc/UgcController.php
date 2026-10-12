@@ -1282,7 +1282,7 @@ class UgcController extends Controller
         $productNote = trim($style['product'].($style['product_look'] !== '' ? ' — '.$style['product_look'] : ''));
         // Green screen and skits keep their own rules (the chroma backdrop, the speaker's photos), so they keep the ready check.
         $sheets = (config('services.ugc.action_sheet') || in_array($user->role, ['super_admin', 'platform_admin'], true)) && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
-            ? app(\App\Services\Ugc\UgcActionSheet::class)->write($chunks, $productNote) : [];
+            ? app(\App\Services\Ugc\UgcActionSheet::class)->write($chunks, $productNote, $style['wardrobe'], (string) $style['setting']) : [];
         $chunks = $sheets !== [] ? \App\Services\Ugc\UgcActionSheet::apply($chunks, $sheets)
             : \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)->stage($chunks, $productNote));
         $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
