@@ -550,15 +550,7 @@ class AnimateSceneJob implements ShouldQueue
     /** The source image uploaded to Replicate's own file store, for a model that could not fetch it from ours. */
     private function providerCopy(Asset $asset): string
     {
-        $bytes = app(StorageService::class)->get((string) $asset->storage_url);
-        if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The scene image could not be read to retry the animation.');
-        $mime = (string) ($asset->mime_type ?: 'image/png');
-        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)
-            ->attach('content', $bytes, 'image.'.(str_contains($mime, 'jpeg') ? 'jpg' : (str_contains($mime, 'webp') ? 'webp' : 'png')), ['Content-Type' => $mime])
-            ->post('https://api.replicate.com/v1/files');
-        $url = $r->json('urls.get');
-        if (! $r->successful() || ! is_string($url)) throw new RuntimeException('The scene image could not be handed to the video model.');
-        return $url;
+        return \App\Services\Generation\ReplicateFiles::copy($asset, 'scene image');
     }
 
     private function stampAnimationState(Scene $scene, array $delta): void

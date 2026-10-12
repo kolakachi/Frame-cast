@@ -169,19 +169,26 @@ class GenerateTalkingVideoJob implements ShouldQueue
             // The scene carries the chosen engine when the user picked one in
             // the editor; otherwise the configured default runs.
             $engineKey = data_get($scene->image_generation_settings_json, 'lipsync_engine');
-            $predictionId = $adapter->start(
-                $this->publicUrl($imageAsset),
-                $this->publicUrl($audioAsset),
-                is_string($engineKey) ? $engineKey : null,
-            );
-            $this->stamp($scene, [
-                'animation_prediction_id' => $predictionId,
-                // Record what actually ran, so a later look at the scene says
-                // which model produced the clip rather than which is default now.
-                'lipsync_engine_used' => array_key_exists((string) $engineKey, (array) config('services.lipsync.engines', [])) ? $engineKey : 'fabric',
-            ]);
+            $run = function (string $imageUrl, string $audioUrl) use ($adapter, $engineKey, $scene) {
+                $predictionId = $adapter->start($imageUrl, $audioUrl, is_string($engineKey) ? $engineKey : null);
+                $this->stamp($scene, [
+                    'animation_prediction_id' => $predictionId,
+                    // Record what actually ran, so a later look at the scene says
+                    // which model produced the clip rather than which is default now.
+                    'lipsync_engine_used' => array_key_exists((string) $engineKey, (array) config('services.lipsync.engines', [])) ? $engineKey : 'fabric',
+                ]);
 
-            $videoUrl = $adapter->pollUntilDone($predictionId);
+                return $adapter->pollUntilDone($predictionId);
+            };
+            try {
+                $videoUrl = $run($this->publicUrl($imageAsset), $this->publicUrl($audioAsset));
+            } catch (RuntimeException $e) {
+                // The model could not fetch our image or voice (first-session review, 2026-10-12: a buyer's lip-sync
+                // failed on "Network is unreachable" from our storage and they refunded): hand it copies in its own
+                // file store and try once more, instead of failing the clip.
+                if (! AnimateSceneJob::inputFetchFailed($e->getMessage())) throw $e;
+                $videoUrl = $run(\App\Services\Generation\ReplicateFiles::copy($imageAsset, 'image'), \App\Services\Generation\ReplicateFiles::copy($audioAsset, 'voice'));
+            }
             if ($videoUrl === null) {
                 // Still rendering at Replicate after the poll window — leave it
                 // in-progress (prediction id stashed) and let a retry/reaper
