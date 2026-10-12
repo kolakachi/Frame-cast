@@ -148,7 +148,9 @@ final class UgcChatService
                 'presenters' => $this->presentersText($state, (int) $request->user()->workspace_id), 'type' => $state['type'] ?? 'auto',
                 'shape' => ($state['aspect'] ?? '9:16').(! empty($state['length']) ? ', '.$state['length'].' seconds' : ', length open'),
                 'settings' => $this->settingsText($request), 'type_contracts' => json_encode(UgcTypes::contracts($request->user())), 'previous_error' => $error,
-            ], 1500, 0.4);
+                        // Room to finish (2026-10-12): the model's thinking shares the budget, and at 1,500 a long brief's pitch was
+            // cut off mid-sentence, not JSON, three times running ("I could not work that out").
+            ], 4000, 0.4);
             try { $d = UgcPlan::decodeModelJson((string) ($out['content'] ?? '')); } catch (\Throwable) { $d = []; }
             if (($d['action'] ?? null) === 'ask' && trim((string) ($d['question'] ?? '')) !== '') $decision = $d;
             elseif (($d['action'] ?? null) === 'pitch' && trim((string) ($d['summary'] ?? '')) !== '') {
