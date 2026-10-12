@@ -41,13 +41,15 @@ class ConversationService
             || in_array(substr(strrchr($email, '@') ?: '', 1), (array) config('create.allowed_domains', []), true));
     }
 
-    public function authorize(User $user, bool $write = false): void
+    public function authorize(User $user, bool $write = false, bool $plan = true): void
     {
         // On wherever CREATE_ENABLED is set; the workspace list narrows it when given, and only allowed people see it.
         abort_unless(config('create.enabled') && self::workspaceAllowed((int) $user->workspace_id) && self::personAllowed($user), 404);
         abort_if($write && ! in_array($user->role, ['owner', 'admin', 'editor', 'super_admin', 'platform_admin', 'client_admin', 'client_editor', 'collaborator'], true), 403);
         $workspace = Workspace::findOrFail($user->workspace_id);
         abort_if($workspace->status !== 'active', 403);
+        // The plan includes the Creative Director (every plan but the Launchpad front end).
+        if ($plan) \App\Support\PlanGate::require((int) $user->workspace_id, 'create');
     }
 
     public function conversation(User $user, string $id, bool $lock = false): object
@@ -132,6 +134,7 @@ class ConversationService
     public function attach(User $user, string $id, int $assetId, string $purpose, int $version): void
     {
         $this->authorize($user, true);
+        if ($purpose === 'reference') \App\Support\PlanGate::require((int) $user->workspace_id, 'reference_style');
         DB::transaction(function () use ($user, $id, $assetId, $purpose, $version) {
             $c = $this->conversation($user, $id, true);
             abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Refresh first.');

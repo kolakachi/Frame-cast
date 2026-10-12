@@ -44,7 +44,7 @@ class ClientWorkspaceController extends Controller
 
         return response()->json(['data' => [
             'can_own_clients' => $home->canOwnClients(),
-            'max_clients' => (int) config('workspaces.max_clients', 50),
+            'max_clients' => $home->maxClients(),
             // One balance, named once. A per-client figure would be a fiction.
             'shared_credits' => app(CreditService::class)->balance((int) $home->getKey()),
             'agency' => $this->shape($home, true),
@@ -61,7 +61,7 @@ class ClientWorkspaceController extends Controller
 
         if (! $home || ! $home->canOwnClients()) {
             return $this->error('not_available',
-                'Client workspaces are part of the Agency plan.', 403);
+                'Client workspaces are not included in your plan.', 403);
         }
 
         $v = $request->validate([
@@ -72,7 +72,7 @@ class ClientWorkspaceController extends Controller
         return DB::transaction(function () use ($home, $user, $v) {
             Workspace::whereKey($home->id)->lockForUpdate()->firstOrFail();
             $count = Workspace::query()->where('parent_workspace_id', $home->getKey())->where('status', '!=', 'archived')->count();
-            if ($count >= (int) config('workspaces.max_clients', 50)) {
+            if ($count >= $home->maxClients()) {
                 return $this->error('limit_reached',
                     'You have reached the maximum number of client workspaces.', 422);
             }

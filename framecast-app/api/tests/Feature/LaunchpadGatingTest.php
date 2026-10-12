@@ -194,4 +194,48 @@ class LaunchpadGatingTest extends TestCase
         $caps = CreditService::limitsFor($client->fresh());
         $this->assertSame([40, false, true], [$caps['max_client_workspaces'], $caps['api_access'], $caps['ugc_ads']]);
     }
+
+    public function test_the_new_gates_refuse_only_what_a_launch_plan_leaves_out(): void
+    {
+        $fe = $this->launch()->grant('gate-fe@example.com', null, 'fe', 'LP-11')['purchase']->workspace_id;
+        $ltd = $this->account('gate-ltd@example.com', 'appsumo_starter', 'appsumo')->id;
+        foreach (['create', 'reference_style', 'series'] as $gate) {
+            $this->assertFalse(\App\Support\PlanGate::allows($fe, $gate), $gate);
+            $this->assertTrue(\App\Support\PlanGate::allows($ltd, $gate), $gate);
+        }
+        $user = fn (int $ws) => (new User)->forceFill(['workspace_id' => $ws]);
+        $this->assertSame([], \App\Services\Create\SampleLibrary::catalogueFor($user($fe)));
+        $this->assertSame(\App\Services\Create\SampleLibrary::catalogue(), \App\Services\Create\SampleLibrary::catalogueFor($user($ltd)));
+        $this->launch()->grant('gate-fe@example.com', null, 'bundle', 'LP-12');
+        $this->assertCount(10, \App\Services\Create\SampleLibrary::catalogueFor($user($fe)));
+
+        try {
+            \App\Support\PlanGate::require($ltd, 'series');
+            \App\Support\PlanGate::require($this->launch()->grant('gate-pro@example.com', null, 'pro', 'LP-13')['purchase']->workspace_id, 'series');
+            $this->fail('Pro is sold without Series');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(402, $e->getResponse()->getStatusCode());
+            $this->assertSame('series', $e->getResponse()->getData(true)['error']['feature']);
+        }
+    }
+
+    public function test_client_workspaces_and_priority_follow_the_launch_plan_and_nothing_else_changes(): void
+    {
+        $agency = Workspace::query()->findOrFail($this->launch()->grant('own@example.com', null, 'agency', 'LP-14')['purchase']->workspace_id);
+        $this->assertSame([true, 30], [$agency->canOwnClients(), $agency->maxClients()]);
+        $this->assertSame('exports-priority', CreditService::exportQueueFor($agency->plan_tier));
+        $pro = Workspace::query()->findOrFail($this->launch()->grant('own-pro@example.com', null, 'pro', 'LP-15')['purchase']->workspace_id);
+        $this->assertSame([false, 'exports'], [$pro->canOwnClients(), CreditService::exportQueueFor($pro->plan_tier)]);
+
+        foreach (['appsumo_agency' => true, 'agency' => true, 'appsumo_starter' => false, 'creator' => false] as $tier => $can) {
+            $w = $this->account("own-{$tier}@example.com", $tier, 'kelviq');
+            $this->assertSame([$can, (int) config('workspaces.max_clients', 50)], [$w->canOwnClients(), $w->maxClients()], $tier);
+        }
+        $ltd = $this->account('own-ltd@example.com', 'appsumo_creator', 'appsumo');
+        $this->launch()->grant('own-ltd@example.com', null, 'bundle', 'LP-16');
+        $ltd->refresh();
+        $this->assertTrue($ltd->canOwnClients());
+        $this->assertSame('exports-priority', CreditService::exportQueueFor($ltd->plan_tier, $ltd->plan_addons));
+        $this->assertSame('exports', CreditService::exportQueueFor('appsumo_creator'));
+    }
 }

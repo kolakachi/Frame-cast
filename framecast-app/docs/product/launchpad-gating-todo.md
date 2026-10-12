@@ -68,20 +68,20 @@ buyer with FE + Bundle + bumps gets the union (the larger of each limit) and the
 
 | ID | Gate | Today | Status |
 |---|---|---|---|
-| G-CREATE | Creative Director (Create) by plan | env only (CREATE_OPEN_TO_ALL), no plan check | open |
-| G-UGC | UGC chat by plan | env only (UGC_CHAT_OPEN_TO_ALL); ugc_ads exists | open |
-| G-REF | Reference-video style matching | inside Create | open |
-| G-CHAR | Characters count | exists (max_characters) | open (values) |
-| G-VOICE | Cloned voices count | exists (voice_cloning_limit) | open (values) |
-| G-MCP | ChatGPT/Claude MCP and API keys | exists (api_access, true everywhere) | open (values) |
-| G-PUB | Publishing and scheduling (YouTube, Facebook, Instagram, TikTok) | exists (social_publishing); check each platform end to end | open |
-| G-KITS / G-CHAN | Brand kits, channels | exist (max_brand_kits, channel limit) | open (values) |
-| G-SERIES | Series mode | missing | open |
-| G-BATCH | Batch generation, up to 3 variations | missing (CSV batch and variants ungated) | open |
-| G-DFY | DFY template vault = Create's example videos (SampleLibrary, 32 today): 10 for the Bundle, +20 bump | missing | open |
-| G-CLIENTS | Client workspaces count (30 / 50, +10 bump) | partly (canOwnClients by tier list, no count) | open |
-| G-PRIORITY | Priority rendering | exports only (PRIORITY_EXPORT_TIERS) | open |
-| G-LEN | Video length | exists (max_duration_seconds) | open (values) |
+| G-CREATE | Creative Director (Create) by plan | `create` gate in ConversationService::authorize (402 upgrade_required); /create/capabilities answers `enabled:false, locked:plan` | done (backend) |
+| G-UGC | UGC chat by plan | `ugc_ads` (false on launch_fe), already read by the chat, wizard and API | done |
+| G-REF | Reference-video style matching | `reference_style`: refused on reference upload/attach; auto roles become footage instead | done (backend) |
+| G-CHAR | Characters count | max_characters via limitFor (Pro bump adds 2) | done |
+| G-VOICE | Cloned voices count | voice_cloning_limit via WorkspaceUsageService::planFor (Pro bump adds 2) | done |
+| G-MCP | ChatGPT/Claude MCP and API keys | api_access false on launch_fe and launch_agency | done |
+| G-PUB | Publishing and scheduling (YouTube, Facebook, Instagram, TikTok) | social_publishing false on launch_fe; check each platform end to end | partly (end-to-end check open) |
+| G-KITS / G-CHAN | Brand kits, channels | values set; channels via planFor (Bundle unlimited) | done |
+| G-SERIES | Series mode | `series` gate on SeriesController::store | done |
+| G-BATCH | Batch generation, up to 3 variations | `batch_variations` caps Create variations and project variants (0 = none); the CSV source makes one project, so it is not gated | done |
+| G-DFY | DFY template vault = Create's example videos | `sample_vault`: SampleLibrary::catalogueFor shows the first N (Bundle 10, +20 bump), using another is refused | done |
+| G-CLIENTS | Client workspaces count (30 / 50, +10 bump) | Workspace::canOwnClients / maxClients read `max_client_workspaces`; client tiers keep at least the 50 guard | done |
+| G-PRIORITY | Priority rendering | launch_bundle/launch_agency in PRIORITY_EXPORT_TIERS; a bought Bundle on another plan reads plan_addons | done (exports; Create builds and UGC have no priority lane) |
+| G-LEN | Video length | max_duration_seconds via limitFor (Classic composer and API quotes); Create and UGC have their own caps | done |
 | G-WM | No watermark | free tier only today | done (launch tiers are not free) |
 
 ## 4. App (web)
@@ -112,6 +112,8 @@ buyer with FE + Bundle + bumps gets the union (the larger of each limit) and the
 | L-WATCH | Launch day: IPN log, provisioning errors, support inbox | open |
 
 ## Done
+
+- 2026-10-12 Gates (backend): Create, reference style, Series, batch, DFY vault, client workspaces, priority exports; PlanGate (402 upgrade_required with the feature).
 
 - 2026-10-12 Decisions D-CHAN, D-FE-LEN, D-REFUND, D-TOPUP; entitlements core (tiers, launch_purchases, plan_addons, grant/revoke, `launch:grant`, guard tests).
 

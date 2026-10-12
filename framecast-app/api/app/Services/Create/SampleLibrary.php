@@ -65,10 +65,21 @@ class SampleLibrary
             array_keys(self::SAMPLES), self::SAMPLES);
     }
 
+    /**
+     * The examples this workspace's plan opens: all of them, unless the plan names a vault size (the Launchpad Bundle's
+     * done-for-you templates: the first 10, 30 with the bump; none on the other launch plans).
+     */
+    public static function catalogueFor(User $user): array
+    {
+        $vault = app(\App\Services\CreditService::class)->limitFor((int) $user->workspace_id, 'sample_vault');
+        return $vault === null ? self::catalogue() : array_slice(self::catalogue(), 0, max(0, (int) $vault));
+    }
+
     /** Attaches the sample as the conversation's style reference: a copy made once per workspace, studied like any reference. */
     public function attach(User $user, string $conversationId, string $sampleId, int $version): Asset
     {
         abort_unless(isset(self::SAMPLES[$sampleId]), 422, 'That example is no longer available.');
+        if (! in_array($sampleId, array_column(self::catalogueFor($user), 'id'), true)) \App\Support\PlanGate::deny('sample_vault');
         $conversations = app(ConversationService::class);
         $conversations->authorize($user, true);
         $kept = Asset::where('workspace_id', $user->workspace_id)->where('status', '!=', 'archived')->where('metadata_json->create_sample_id', $sampleId)->first();

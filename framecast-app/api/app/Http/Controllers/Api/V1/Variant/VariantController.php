@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Variant;
 use App\Models\VariantSet;
 use App\Models\VoiceProfile;
+use App\Services\CreditService;
 use App\Services\Media\StorageService;
 use App\Services\VariantGeneration\VariantGenerationService;
 use App\Services\WorkspaceUsageService;
@@ -148,6 +149,13 @@ class VariantController extends Controller
 
         if (count($plan) > 20) {
             return $this->error('variant_limit_exceeded', 'Variant requests are limited to 20 per batch in the current build.', 422);
+        }
+
+        // A plan that names a batch allowance makes at most that many variants at once (0: none).
+        $batch = app(CreditService::class)->limitFor((int) $user->workspace_id, 'batch_variations');
+        if ($batch !== null && count($plan) > (int) $batch) {
+            return response()->json(['error' => ['code' => 'upgrade_required', 'feature' => 'batch_variations',
+                'message' => (int) $batch > 0 ? "Your plan makes up to {$batch} variants at a time." : 'Batch variants are not included in your plan. Upgrade to unlock them.']], 402);
         }
 
         if ($this->usageService->hasExceededApiBudget($user)) {

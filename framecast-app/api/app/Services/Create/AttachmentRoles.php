@@ -51,6 +51,10 @@ class AttachmentRoles
                 $roles[$id] = $r === 'unsure' ? 'unsure' : ($r ?? self::fallback($files->get($id)?->asset_type, $kind));
             }
         }
+        // A plan without reference-style matching puts every file in the video instead of asking or studying it.
+        if (! \App\Support\PlanGate::allows((int) $user->workspace_id, 'reference_style')) {
+            $roles = array_map(fn ($r) => in_array($r, ['reference', 'unsure'], true) ? 'source' : $r, $roles);
+        }
         $settled = array_filter($roles, fn ($r) => $r !== 'unsure');
         foreach ($settled as $id => $purpose) DB::table('create_attachments')->where('conversation_id', $c->id)->where('asset_id', $id)->where('purpose', 'auto')
             ->update(['purpose' => $purpose, 'updated_at' => now()] + (($n = array_diff_key($notes[$id] ?? [], ['role' => 1])) ? ['notes_json' => json_encode($n)] : []));

@@ -170,8 +170,19 @@ class Workspace extends Model
     /** Tiers that may own client workspaces. */
     public function canOwnClients(): bool
     {
+        if ($this->parent_workspace_id) return false;   // a client cannot have clients
+        // The client tiers, or a plan that names a client allowance (the Launchpad Bundle and Agency).
         return in_array((string) $this->plan_tier, (array) config('workspaces.client_tiers', []), true)
-            && ! $this->parent_workspace_id;   // a client cannot have clients
+            || (int) (\App\Services\CreditService::limitsFor($this)['max_client_workspaces'] ?? 0) > 0;
+    }
+
+    /** How many active client workspaces it may hold: the plan's allowance when it names one (never below the guard a client tier already had), else the guard. */
+    public function maxClients(): int
+    {
+        $guard = (int) config('workspaces.max_clients', 50);
+        $allowance = \App\Services\CreditService::limitsFor($this)['max_client_workspaces'];
+        if ($allowance === null) return $guard;
+        return in_array((string) $this->plan_tier, (array) config('workspaces.client_tiers', []), true) ? max($guard, (int) $allowance) : (int) $allowance;
     }
 
     public function owner(): BelongsTo

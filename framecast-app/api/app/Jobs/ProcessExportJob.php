@@ -51,12 +51,12 @@ class ProcessExportJob implements ShouldQueue
     public static function queueForExport(int $exportJobId): string
     {
         return rescue(function () use ($exportJobId) {
-            $tier = ExportJob::query()
+            $row = ExportJob::query()
                 ->whereKey($exportJobId)
                 ->join('workspaces', 'workspaces.id', '=', 'export_jobs.workspace_id')
-                ->value('workspaces.plan_tier');
+                ->first(['workspaces.plan_tier', 'workspaces.plan_addons']);
 
-            return \App\Services\CreditService::exportQueueFor($tier);
+            return \App\Services\CreditService::exportQueueFor($row?->plan_tier, json_decode((string) $row?->plan_addons, true) ?: null);
         }, 'exports', false);
     }
 

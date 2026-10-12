@@ -36,6 +36,7 @@ class AttachmentUploadService
             $path = $mp4; $size = (int) filesize($path); $mime = 'video/mp4';
         }
         abort_unless(in_array($purpose,['source','reference','auto'],true),422);
+        if ($purpose === 'reference') \App\Support\PlanGate::require((int) $user->workspace_id, 'reference_style');
         // Footage the video will cut from is made renderable once, here (references are only studied). A file whose
         // role is not decided yet is prepared too, so it is ready if the brief puts it in the video.
         if ($purpose !== 'reference' && $type[0] === 'video') {

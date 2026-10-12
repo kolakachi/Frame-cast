@@ -34,6 +34,7 @@ class SeriesController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        \App\Support\PlanGate::require((int) $user->workspace_id, 'series');
 
         $validated = $request->validate($this->rules());
 

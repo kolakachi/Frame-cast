@@ -11,6 +11,9 @@ class VariantService
     public function quote(User $user,string $id,int $version,int $count, ?string $buildStage = null, ?array $assume = null): ApiQuote
     {
         abort_unless($count>=1 && $count<=3,422,'Choose at most three variations.');
+        // A plan that names a batch allowance makes at most that many (0: one video, no variations).
+        $batch=app(\App\Services\CreditService::class)->limitFor((int)$user->workspace_id,'batch_variations');
+        if($batch!==null && $count>max(1,(int)$batch)) \App\Support\PlanGate::deny('batch_variations');
         $service=app(ConversationService::class);
         $first=$service->quote($user,$id,$version,$buildStage,$assume);
         if($assume) return $first;

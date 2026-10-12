@@ -63,7 +63,7 @@ class CreditService
      * PRD.md ("Higher tier jobs are dequeued first"), but was never built:
      * every export was created with priority 0 and nothing ordered by it.
      */
-    public const PRIORITY_EXPORT_TIERS = ['pro', 'agency', 'enterprise', 'scale', 'appsumo_agency', 'lifetime_agency'];
+    public const PRIORITY_EXPORT_TIERS = ['pro', 'agency', 'enterprise', 'scale', 'appsumo_agency', 'lifetime_agency', 'launch_bundle', 'launch_agency'];
 
     /**
      * Queue an export should run on.
@@ -73,9 +73,10 @@ class CreditService
      * logic, no polling, nothing to keep in sync. The workers list
      * exports-priority ahead of exports.
      */
-    public static function exportQueueFor(?string $planTier): string
+    public static function exportQueueFor(?string $planTier, ?array $addons = null): string
     {
-        return in_array((string) $planTier, self::PRIORITY_EXPORT_TIERS, true)
+        // Or a Launchpad product that includes priority rendering, bought on top of another plan.
+        return in_array((string) $planTier, self::PRIORITY_EXPORT_TIERS, true) || ($addons['priority_render'] ?? null) === true
             ? 'exports-priority'
             : 'exports';
     }
@@ -520,10 +521,15 @@ class CreditService
             $workspace = $workspace->parent;
         }
         $tier = (string) ($workspace?->plan_tier ?? 'free');
-        $limits = array_replace(self::GATE_DEFAULTS, self::PLAN_LIMITS[$tier] ?? self::PLAN_LIMITS['free']);
+        $base = array_replace(self::GATE_DEFAULTS, self::PLAN_LIMITS[$tier] ?? self::PLAN_LIMITS['free']);
+        $limits = $base;
         $addons = (array) ($workspace?->plan_addons ?? []);
         if ($addons !== []) {
-            $limits = \App\Services\Launch\LaunchCatalogue::generous($limits, array_intersect_key($addons, $limits));
+            $limits = \App\Services\Launch\LaunchCatalogue::generous($base, array_intersect_key($addons, $base));
+            // Here null is "today's rule" (the client tiers), not "no limit": an allowance bought on top is the number.
+            if ($base['max_client_workspaces'] === null && (int) ($addons['max_client_workspaces'] ?? 0) > 0) {
+                $limits['max_client_workspaces'] = $addons['max_client_workspaces'];
+            }
         }
 
         return $limits;
