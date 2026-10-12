@@ -461,6 +461,21 @@ class DeveloperApiTest extends TestCase
         $this->assertSame('one_shot', data_get($p->visual_brief, 'ugc_format'));
     }
 
+    public function test_ugc_one_shot_takes_the_apps_model_clothes_place_and_pronunciations(): void
+    {
+        [$ws, , $key] = $this->tenant();
+        $base = ['mode' => 'one_shot', 'format' => 'direct_camera', 'segments' => $this->ugcSegments(), 'presenter_description' => 'A cheerful thirty-something', 'consent' => true];
+        $default = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base)->assertStatus(201);
+        $this->assertSame('seedance25', $default->json('data.credits.engine'), 'Seedance 2.5 by default, as in the app');
+
+        $omni = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base + ['engine' => 'omni', 'wardrobe' => 'a rust sweater', 'setting_key' => 'home_desk', 'pronunciations' => 'Lumora: loo-MOR-ah'])->assertStatus(201);
+        $this->assertSame('omni', $omni->json('data.credits.engine'), 'a named model is honoured');
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', $base + ['setting_key' => 'moon'])->assertStatus(422);
+
+        $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $omni->json('data.quote_id'), 'idempotency_key' => 'os-omni'])->assertStatus(202);
+        Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class, fn ($job) => $job->engine === 'omni');
+    }
+
     public function test_characters_are_created_updated_and_imaged_through_the_dashboard_path(): void
     {
         [$ws, , $key] = $this->tenant();

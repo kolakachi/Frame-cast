@@ -23,6 +23,7 @@ assembly stays simple, motion graphics stay in Create.
 | ID | Item | Status | Next |
 |---|---|---|---|
 | VEO-TEST | Veo 3.1 Fast (starts from the dressed look) and Veo 3.1 HQ are in the model picker; not yet tested on the new pipeline | open | test takes, then judge |
+| MCP-BRIEF | A `ugc_brief` MCP tool that runs the Creative Director chat (brief in, pitch and price out, then make), so assistants get the director, the completeness check and pronunciations; API/MCP already take engine, wardrobe, place and pronunciations (2026-10-12) | proposed | after the API expansion order (owner) |
 | LEARN | An agent that watches every UGC take (traces, raw clips, final), lists the pitfalls and keeps a lessons document the director and sheet writer read | proposed | later (owner, 2026-10-12) |
 | SWEEP | Varied briefs before UGC_TYPES_LIVE: skincare, app demo, try-on, drink outdoors, plain testimonial, problem/solution (~2,500–3,500 cr) | open | after PIPE-ON |
 | SECTIONS | Videos in components: keep a take's clips after delivery (deleted today), a take bible (face, clothes, background, product state, camera) read by every clip and edit, "remake this section" in the editor (folds in P4-CHANGE) | proposed | owner OK on the plan |

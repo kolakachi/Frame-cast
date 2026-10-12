@@ -186,10 +186,16 @@ class UgcController extends DeveloperController
             'voice_key' => ['nullable', 'string', 'max:64'],
             'title' => ['nullable', 'string', 'max:120'],
             'consent' => ['required', 'boolean'],
+            // The app's choices (owner, 2026-10-12): the video model (Seedance 2.5 by default, Omni past its 30 seconds), the
+            // presenter's clothes and the place (which together dress a cast presenter for the ad), and how to say names.
+            'engine' => ['nullable', Rule::in(['seedance25', 'omni', 'veo', 'veo_hq'])],
+            'wardrobe' => ['nullable', 'string', 'max:160'],
+            'setting_key' => ['nullable', Rule::in(array_keys(\App\Services\Ugc\UgcSettings::all()))],
+            'pronunciations' => ['nullable', 'string', 'max:600'],
         ]);
 
         $unsupported = $input['mode'] === 'composed'
-            ? ['character_id', 'cast_style', 'fidelity', 'quality', 'presenter_description', 'product_asset_ids', 'demo_asset_id', 'setting', 'product', 'tone']
+            ? ['character_id', 'cast_style', 'fidelity', 'quality', 'presenter_description', 'product_asset_ids', 'demo_asset_id', 'setting', 'product', 'tone', 'engine', 'wardrobe', 'setting_key', 'pronunciations']
             : ['character_ids', 'variants', 'voice_key'];
         foreach ($unsupported as $field) {
             if (isset($input[$field]) && $input[$field] !== []) return $this->fail('unsupported_mode_setting', "{$field} is not used by {$input['mode']} UGC. Remove it.", 422);
@@ -245,7 +251,14 @@ class UgcController extends DeveloperController
             $pricing = ['credits_per_character' => $perCharacter, 'takes' => $takes, 'plans' => count($plans), 'cast' => $castCount, 'warnings' => UgcPlan::warnings($segments, $input['format'])];
         } else {
             try {
+                // Seedance 2.5 unless the caller names a model; a plan longer than its 30-second take goes to Omni.
+                $explicit = ! empty($input['engine']);
+                $input['engine'] = $input['engine'] ?? 'seedance25';
                 $one = UgcOneShotPricing::price($user, $input, $segments, $this->credits);
+                if (! $explicit && $one['engine'] !== 'seedance25') {
+                    $input['engine'] = 'omni';
+                    $one = UgcOneShotPricing::price($user, $input, $segments, $this->credits);
+                }
             } catch (ValidationException $e) {
                 return $this->fail('invalid_plan', collect($e->errors())->flatten()->first() ?? 'Invalid plan.', 422, ['errors' => $e->errors()]);
             }
@@ -327,6 +340,8 @@ class UgcController extends DeveloperController
                 'quality' => $f['quality'] ?? 'full', 'presenter_description' => $f['presenter_description'] ?? null,
                 'product_asset_ids' => $f['product_asset_ids'] ?? [], 'demo_asset_id' => $f['demo_asset_id'] ?? null,
                 'setting' => $f['setting'] ?? null, 'product' => $f['product'] ?? null, 'tone' => $f['tone'] ?? null,
+                'engine' => $f['engine'] ?? null, 'wardrobe' => $f['wardrobe'] ?? null, 'setting_key' => $f['setting_key'] ?? null,
+                'pronunciations' => $f['pronunciations'] ?? null,
                 'credits' => $quote->credits_max,
             ];
             $result = $this->delegate($request, fn (AppUgcController $c, Request $r) => $c->generateOneShot($r, $this->credits), $payload);
