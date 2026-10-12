@@ -55,6 +55,7 @@ Rules:
 - A product keeps its state: it changes only through an action shown in a block, and the product picked up is always the same one, never a second one.
 - When the product is an app or a website, the phone or laptop showing it is the product and may be seen; the camera filming never is.
 - start: the exact first frame: what the left hand and the right hand each hold and where, and the product's state, carried on from the end of the clip before (opened stays opened; eaten is gone; set down stays down).
+- A clip longer than 10 seconds is one continuous take: its camera may change more than once (set down, picked up), each change said in the "view" of the block where it happens.
 - blocks: timed blocks covering the clip from 00:00 to its length, each "00:00-00:02" style and 1 to 3 seconds long, each one simple visible movement. Every block states view (only when the camera moves in that block: what the picture does, e.g. "the view tips down and settles low on the desk"; else empty), left (what the left hand holds and does), right (the same for the right hand), product (where it is and its state), face (where the eyes look and the expression, or "not in frame"), says (the exact words spoken in that block, copied from the clip's line in order; all of the line across the blocks, nothing added; empty when silent) and sound (only a sound the action makes).
 - An action happens once, in its own clip, shown from its first movement to its result. A clip never starts an action a later clip performs.
 - end: the exact last frame, in the same terms as start.
@@ -149,7 +150,7 @@ TXT;
         $out = [];
         foreach ((array) ($json['clips'] ?? []) as $clip) {
             $blocks = [];
-            foreach (array_slice((array) ($clip['blocks'] ?? []), 0, 5) as $bk) {
+            foreach (array_slice((array) ($clip['blocks'] ?? []), 0, 15) as $bk) {
                 $field = fn (string $k, int $max = 200) => mb_substr(trim((string) ($bk[$k] ?? '')), 0, $max);
                 if ($field('left') === '' && $field('right') === '') continue;
                 $blocks[] = ['when' => $field('when', 40), 'view' => $field('view'), 'left' => $field('left'), 'right' => $field('right'), 'product' => $field('product'),
@@ -186,13 +187,17 @@ TXT;
         $blocks = array_map(fn ($b) => array_combine(array_keys($b), array_map(fn ($k, $v) => $k !== 'says' && is_string($v) ? $unseen($v) : $v, array_keys($b), $b)), $blocks);
         $lines = array_map(fn ($b) => '['.$b['when'].'] '.self::block($b), $blocks);
 
+        // A presenter with no photo (Seedance refuses faces) is described in words, read from their photo (owner, 2026-10-12).
+        $described = trim((string) ($sheet['presenter_text'] ?? ''));
+
         return self::CAMERAS[$camera]['shot'].' '.trim($unseen(rtrim($sheet['shot'], '.')).'.')."\n"
+            .($described !== '' ? 'The presenter: '.rtrim($described, '.').".\n" : '')
             .'First frame: '.$unseen(rtrim($sheet['start'], '.')).".\n"
             .implode("\n", $lines)."\n"
             .($sheet['end'] !== '' ? 'Last frame: '.$unseen(rtrim($sheet['end'], '.')).".\n" : '')
             .($spoken && ! $verbatim ? 'The presenter says: "'.trim($dialogue).'"'."\n" : '')
             .'Ambient noise: quiet room tone.'."\n"
-            .'Throughout: the same person as in the presenter photo, in the same clothes, in the same room; exactly one product, its packaging exactly as in the product photo. '
+            .'Throughout: '.($described !== '' ? 'the same person as described, ' : 'the same person as in the presenter photo, ').'in the same clothes, in the same room; exactly one product, its packaging exactly as in the product photo. '
             .($spoken ? 'The presenter speaks only the quoted words, naturally and once, then stays quiet. ' : 'The clip is silent apart from the sounds named. ')
             .'The only writing in the picture is the product\'s own label.'
             .($mirror ? '' : ($shows ? ' The camera filming this is never seen; the only phone in the picture is the one showing the product.' : ' The camera filming this is the presenter\'s own phone, so no phone is ever seen in the picture.'));
@@ -217,6 +222,7 @@ TXT;
     {
         if (count($sheets) !== count($chunks)) return $chunks;
         foreach (array_values($chunks) as $i => $c) {
+            if (trim((string) ($c['presenter_text'] ?? '')) !== '') $sheets[$i]['presenter_text'] = (string) $c['presenter_text'];
             $chunks[$i]['prompt'] = self::prompt($sheets[$i], (string) ($c['dialogue'] ?? ''));
             $chunks[$i]['sheet'] = $sheets[$i];
         }

@@ -65,7 +65,7 @@ class UgcOneShotPricing
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $workspaceId)->orWhere(fn ($sq) => $sq->whereNull('workspace_id')->where('is_stock', true)))
                 ->first();
-            if ($c && ($v['cast_style'] ?? 'exact') === 'variant') {
+            if ($c && (($v['engine'] ?? null) === 'seedance25' || ($v['cast_style'] ?? 'exact') === 'variant')) {
                 $presenter = $presenter ?: (string) $c->name;
             } elseif ($c) {
                 $presenter = $presenter ?: trim($c->name.($c->description ? ' — '.$c->description : ''));

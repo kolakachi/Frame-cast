@@ -254,4 +254,18 @@ class UgcPhysicsTest extends TestCase
         $this->assertFalse($off['close']);
         $this->assertNull($off['next'], 'an off-plan clip is not followed');
     }
+
+    public function test_a_presenter_with_no_photo_is_described_in_every_sheet_and_never_by_clothes(): void
+    {
+        $c = new \App\Models\Character(['name' => 'Priya', 'appearance_json' => ['v' => 2, 'gender_presentation' => 'woman', 'age' => 'mid-thirties',
+            'skin' => 'warm medium-brown with golden undertone', 'eyes' => 'almond, dark brown', 'hair' => 'straight black, shoulder length, centre parting', 'distinctive' => 'small mole above the left lip']]);
+        $text = app(\App\Services\Ugc\CharacterAppearanceService::class)->text($c);
+        $this->assertSame('A woman, mid-thirties with warm medium-brown with golden undertone skin. Eyes: almond, dark brown. Hair: straight black, shoulder length, centre parting. Distinctive: small mole above the left lip.', $text);
+
+        $sheet = ['camera' => 'selfie_arm', 'shot' => 'Bedroom, sage hoodie', 'start' => 'a', 'end' => '', 'blocks' => [['when' => '00:00-00:03', 'view' => '', 'left' => 'x', 'right' => 'y', 'product' => '', 'face' => '', 'says' => 'Hi.', 'sound' => '', 'check' => '']]];
+        $prompt = \App\Services\Ugc\UgcActionSheet::apply([['prompt' => 'old', 'dialogue' => 'Hi.', 'presenter_text' => $text]], [$sheet])[0]['prompt'];
+        $this->assertStringContainsString("The presenter: A woman, mid-thirties", $prompt);
+        $this->assertStringContainsString('Throughout: the same person as described', $prompt);
+        $this->assertStringNotContainsString('presenter photo', $prompt);
+    }
 }

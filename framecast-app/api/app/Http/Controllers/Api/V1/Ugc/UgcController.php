@@ -1093,7 +1093,8 @@ class UgcController extends Controller
                 throw ValidationException::withMessages(['character_id' =>
                     'Casting your own character in a UGC ad is a Creator feature. On your '.$planTier.' plan, pick one of the stock presenters — or upgrade to Creator to use your own.']);
             }
-            if ($c && ($v['cast_style'] ?? 'exact') === 'variant') {
+            // Seedance refuses a face photo, so a cast presenter goes to it as words (owner, 2026-10-12: the user picks the model).
+            if ($c && ($request->input('engine') === 'seedance25' || ($v['cast_style'] ?? 'exact') === 'variant')) {
                 // No face image goes anywhere: the cached casting sheet
                 // describes the character in text, and Seedance renders a
                 // close look-alike. Disclosed in the UI as a variant.
@@ -1285,6 +1286,11 @@ class UgcController extends Controller
         // Green screen and skits keep their own rules (the chroma backdrop, the speaker's photos), so they keep the ready check.
         $sheets = (config('services.ugc.action_sheet') || in_array($user->role, ['super_admin', 'platform_admin'], true)) && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
             ? app(\App\Services\Ugc\UgcActionSheet::class)->write($chunks, $productNote, $style['wardrobe'], (string) $style['setting']) : [];
+        // A cast presenter whose photo does not travel (Seedance, owner 2026-10-12) goes into every sheet as words.
+        if ($sheets !== [] && ! $presenterImageAttached && ! empty($v['character_id']) && $presenter !== '') {
+            foreach ($chunks as &$ck) $ck['presenter_text'] = $presenter;
+            unset($ck);
+        }
         $chunks = $sheets !== [] ? \App\Services\Ugc\UgcActionSheet::apply($chunks, $sheets)
             : \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)->stage($chunks, $productNote));
         $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
