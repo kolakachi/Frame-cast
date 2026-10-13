@@ -97,10 +97,13 @@ buyer with FE + Bundle + bumps gets the union (the larger of each limit) and the
 
 | ID | Item | Status |
 |---|---|---|
-| WEB-SALES | sales.wyvstudio.com: DNS (Cloudflare) + a server block in nginx/default.conf + the page | open |
-| WEB-REDIRECT | wyvstudio.com → sales.wyvstudio.com during the campaign only (nginx-marketing), easy to undo | open |
+| WEB-SALES | launchpad.wyvstudio.com: server blocks built (marketing/launchpad/, noindex, closed funnel, blocked on wyvstudio.com); FE, Bundle, Pro, Agency and thank-you shells live with the shared frame; copy per page from the owner; Cloudflare DNS record `launchpad` (proxied) to add | partly |
+| WEB-REDIRECT | Dropped (2026-10-13): each audience has its own front door; wyvstudio.com is never redirected | done |
+| WEB-LEGAL | The funnel's own terms, privacy and refund pages (Launchpad as retailer, not Kelviq) at launchpad.wyvstudio.com | open (needs the Launchpad disclaimer) |
+| WEB-CHECKOUT | Launchpad checkout and decline links in marketing/launchpad/launch.js (CHECKOUT, DECLINE); buttons stay disabled until set | open (needs IN-IDS) |
+| WEB-ATTRIB | Affiliate protection: closed funnel (done), a .wyvstudio.com cookie with the affiliate, main-site buy buttons to the launch offer during the campaign, direct sales credited to the affiliate | proposed |
 | WEB-ADS | A separate Google Ads landing page (keeps google-ads.js tracking and acquisition), not redirected | open |
-| WEB-TY | Thank-you / access page (marketing/ty.html exists for JVZoo): how to log in, where the bonuses are | open |
+| WEB-TY | launchpad.wyvstudio.com/thank-you: sign-in steps (magic link) built; bonus links and lede pending | partly |
 
 ## 6. Test and launch
 

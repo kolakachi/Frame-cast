@@ -1,0 +1,38 @@
+/* launchpad.wyvstudio.com: the Launchpad funnel (FE, OTOs, thank-you). Built on the main site's /styles.css (same
+   tokens, type and buttons); only what a sales funnel adds lives here. Dark only: one look for the whole campaign. */
+.lp-nav { display: flex; align-items: center; justify-content: space-between; min-height: 68px; }
+.lp-nav .brand { cursor: default; }
+.lp-step { font: 600 .8rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+
+.lp-hero { padding-block: 72px 56px; text-align: center; border-bottom: 1px solid var(--line); }
+.lp-hero h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.08; letter-spacing: -.02em; max-width: 18ch; margin: 0 auto 18px; text-wrap: balance; }
+.lp-hero .lede { color: var(--dim); font-size: 1.15rem; max-width: 60ch; margin: 0 auto 28px; }
+.lp-alert { display: inline-block; margin-bottom: 18px; padding: 6px 14px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-text); font-weight: 600; font-size: .9rem; }
+
+.lp-section { padding-block: 72px; }
+.lp-section h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); letter-spacing: -.01em; margin-bottom: 14px; text-wrap: balance; }
+.lp-section p { color: var(--dim); max-width: 65ch; }
+
+/* The offer: what they get, the price, one button. */
+.lp-offer { max-width: 640px; margin: 0 auto; padding: 32px; border: 1px solid var(--line-2); border-radius: 20px; background: var(--bg-2); text-align: center; }
+.lp-offer ul { list-style: none; text-align: left; margin: 20px 0 24px; display: grid; gap: 10px; }
+.lp-offer li { padding-left: 28px; position: relative; }
+.lp-offer li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+.lp-price { font-size: 2.6rem; font-weight: 700; letter-spacing: -.02em; }
+.lp-price s { color: var(--dim); font-size: 1.2rem; font-weight: 500; margin-right: 10px; }
+.lp-price small { display: block; font-size: .9rem; font-weight: 500; color: var(--dim); letter-spacing: 0; }
+.lp-buy { width: 100%; max-width: 420px; margin-top: 20px; }
+.lp-buy[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+.lp-decline { display: block; margin-top: 16px; color: var(--dim); font-size: .92rem; text-decoration: underline; }
+
+.lp-steps { counter-reset: s; display: grid; gap: 16px; max-width: 640px; }
+.lp-steps li { list-style: none; counter-increment: s; padding-left: 44px; position: relative; }
+.lp-steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: .9rem; }
+
+/* Copy not dropped in yet: visible on the page so nothing ships half-written. */
+.lp-pending { display: block; border: 1px dashed var(--line-2); border-radius: 14px; padding: 18px; color: var(--dim); font-style: italic; }
+
+.lp-foot { border-top: 1px solid var(--line); padding-block: 32px 48px; color: var(--dim); font-size: .85rem; }
+.lp-foot nav { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; }
+.lp-foot a { color: var(--dim); }
+.lp-disclaimer { margin-top: 16px; font-size: .95rem; }
