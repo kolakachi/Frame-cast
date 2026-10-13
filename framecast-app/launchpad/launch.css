@@ -1,7 +1,8 @@
 /* launchpad.wyvstudio.com: the Launchpad funnel (FE, OTOs, thank-you). Built on the main site's /styles.css (same
-   tokens, type and buttons); only what a sales funnel adds lives here. Dark only: one look for the whole campaign. */
+   tokens, type and buttons, light and dark); only what a sales funnel adds lives here, in tokens only. */
 .lp-nav { display: flex; align-items: center; justify-content: space-between; min-height: 68px; }
 .lp-nav .brand { cursor: default; }
+.lp-nav-end { display: flex; align-items: center; gap: 16px; }
 .lp-step { font: 600 .8rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 
 .lp-hero { padding-block: 72px 56px; text-align: center; border-bottom: 1px solid var(--line); }

@@ -27,6 +27,29 @@
   });
   document.querySelectorAll('[data-decline]').forEach(function (a) { a.href = DECLINE[a.getAttribute('data-decline')] || '/thank-you'; });
 
+  // Light or dark: follows the device until the visitor picks one with the toggle, which is remembered.
+  var root = document.documentElement, toggle = document.getElementById('theme-toggle');
+  if (toggle) {
+    var media = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
+    var label = function () {
+      var light = root.getAttribute('data-theme') === 'light';
+      toggle.setAttribute('aria-checked', light ? 'true' : 'false');
+      toggle.title = 'Switch to ' + (light ? 'dark' : 'light') + ' mode';
+    };
+    var chosen = function () { try { return localStorage.getItem('wyv_theme'); } catch (e) { return null; } };
+    toggle.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('wyv_theme', next); } catch (e) {}
+      label();
+    });
+    if (media && media.addEventListener) media.addEventListener('change', function (e) {
+      if (chosen()) return;
+      root.setAttribute('data-theme', e.matches ? 'light' : 'dark'); label();
+    });
+    label();
+  }
+
   // Sample videos play while on screen.
   var vids = document.querySelectorAll('video[data-autoplay]');
   if ('IntersectionObserver' in window) {
