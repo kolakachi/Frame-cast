@@ -229,7 +229,7 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
       if(action.type==='read'){
         // A guide asked for with a fragment ("kit/motion-kit.md#page=2") is the whole guide: guides have no pages.
         if(/#/.test(action.path)&&/^(kit|skills|references|style-example|cards)\//.test(action.path))action.path=action.path.replace(/#.*$/,'');
-        const guide=(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/reference-moves.html'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path==='kit/three.md'||action.path==='kit/three-example.html'||action.path.startsWith('cards/'))&&tools.guidance;
+        const guide=(action.path.startsWith('skills/')||action.path.startsWith('references/')||action.path.startsWith('style-example/')||action.path==='kit/motion-kit.md'||action.path==='kit/reference-moves.html'||action.path==='kit/registry.md'||action.path==='kit/barty.md'||action.path==='kit/mascot.md'||action.path==='kit/remotion.md'||action.path==='kit/remotion-hero-launch.js'||action.path==='kit/three.md'||action.path==='kit/three-example.html'||action.path.startsWith('cards/'))&&tools.guidance;
         // A file that isn't there is the builder's mistake to correct, not the end of the run.
         try{result={text:guide?await tools.guidance(action.path):await workspace.read(action.path)};}
         // Reading cannot change anything, so a path it may not read is the builder's mistake to correct, not a stop.

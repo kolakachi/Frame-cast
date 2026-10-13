@@ -34,6 +34,14 @@ inspect internal React text for claims, contrast or speech alignment. Keep check
 in the final composition and inspect rendered frames before finishing.
 
 
+## Type in motion (no jitter)
+- Put `textRendering: 'geometricPrecision'` on any text you scale or move; scale it with a `transformOrigin` on its measured baseline (a zero-size inline-block at the end of the line, measured behind `delayRender`), never the centre.
+- No `willChange`, `translateZ(0)` or `backfaceVisibility` on text in a render: they turn type into a resampled bitmap that shimmers between frames.
+- Animate `transform` and `opacity` only, never `fontSize`. Text moves over about 0.5 s ease with `Easing.bezier(0.2, 0.6, 0.35, 1)`; quint/expo-out curves crawl at the end and render as frozen frames.
+
+## Worked example: hero launch
+`kit/remotion-hero-launch.js` (read it when a launch, product or app promo wants two screens or clips presented as a reveal): the first card holds full-frame, recedes and tilts on its inner edge, the second slides in, both float, fall away, and the headline rises. It fits any aspect (side by side in landscape, stacked in portrait) and any length. Copy it as project/<name>.js, set MEDIA to the project's files, HEADING to approved words and THEME to the brand's colours, then render it.
+
 ## 3D characters (wyv-mascot3d.js)
 For a mascot or object that fills a slot, draw it inside the composition instead (kit/three.md): it stays in its slot, needs no matching background and is measured by the layout check. Remotion clips are for 3D that fills no slot.
 When plan.mascot3d is present (or a reference's mascot is a 3D render), render the character with the parametric mascot: it is rigged by construction (head turn, tilt and nod on the neck, blink, wink, gaze, mouth shapes on the narration's words, expressions) and needs no image generation.

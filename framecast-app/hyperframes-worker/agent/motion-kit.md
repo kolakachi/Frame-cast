@@ -75,6 +75,14 @@ Moves bring their own sound: before the render each move's effect from the built
 - `data-sounds="off"` on the root composition turns all of it off: when the user asks for no effects, or the reference has none.
 - Do not buy sound effects or place your own for these; they would double up.
 
+## Type in motion (no jitter)
+Measured on rendered frames (snapcn's motion rules): moving text looks cheap when it shakes or sticks, and these stop it.
+- The kit draws all text with `text-rendering: geometricPrecision` and keeps GSAP off compositor layers (`force3D: false`), so scaled type stays type instead of a shimmering bitmap. Do not undo either: no `will-change`, `translateZ(0)`, `translate3d`, `backface-visibility` or `force3D: true` on text (they are the same layer trick and bring the shimmer back).
+- Scale a headline from its baseline: `WM.baseline('#title')` before tweening its `scale`; never pass your own `transformOrigin` to that tween. A centre pivot makes the letters climb the pixel grid in jumps.
+- Animate `scale`, `x`, `y` and opacity, never `fontSize`, `letterSpacing` or `lineHeight` (they reflow every frame and still snap).
+- Slow type moves (over about 0.5 s) use `WM.ease.heavy` or `cubic-bezier(.2,.6,.35,1)`, not `expo.out`/`power4.out`: those finish their travel early and then crawl, which renders as identical frames where the words stop dead. Fast punches and UI may keep them.
+- Counting numbers use `font-variant-numeric: tabular-nums`, so the width does not wobble as digits change.
+
 ## Good habits
 - One idea per interaction: move, then press, then show the result; leave about 0.3 s between them.
 - Use `WM.ease.heavy` for headlines and `WM.ease.snappy` for UI, so type feels weighty and UI feels quick.

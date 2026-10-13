@@ -302,6 +302,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
    // A worked example of every reference move on one timeline (the offline fixture the moves are proven on).
    if(name==='kit/reference-moves.html')return readFile(guidanceDirectory+'/../../fixtures/reference-moves/index.html','utf8');
    if(name==='kit/remotion.md')return readFile(guidanceDirectory+'/../remotion-kit.md','utf8');
+   if(name==='kit/remotion-hero-launch.js')return readFile(guidanceDirectory+'/../remotion-examples/hero-launch.js','utf8');
    // 3D drawn inside the composition, and a full worked example (a reference copied with a 3D mascot and props).
    if(name==='kit/three.md')return readFile(guidanceDirectory+'/../three-kit.md','utf8');
    if(name==='kit/three-example.html')return readFile(guidanceDirectory+'/../../fixtures/wyv-promo/index.html','utf8');

@@ -23,12 +23,43 @@
   ease.default = ease['default'];
 
   function $(el) { return typeof el === 'string' ? document.querySelector(el) : el; }
+
+  // Type that moves must stay type (measured by snapcn, MIT: github.com/shadcn-labs/snapcn). Hinting re-snaps each
+  // glyph's stems to whole pixels as its size changes, so scaled letters boil (3.4% shape drift; 0.2% without it), and
+  // at a device scale of 1 glyphs also snap vertically. geometricPrecision turns both off.
+  if (document.createElement) {
+    var textStyle = document.createElement('style');
+    textStyle.textContent = 'html{text-rendering:geometricPrecision}';
+    var into = document.head || document.documentElement;
+    if (into) into.appendChild(textStyle);
+  }
+  // GSAP's default promotes a moving element to a compositor layer (translate3d) and resamples it as a bitmap: type
+  // turns into a rescaled texture and shimmers in a frame-by-frame render. Draw every frame as real type instead.
+  if (window.gsap.config) window.gsap.config({ force3D: false });
   // Seeded randomness (mulberry32): the same seed gives the same torn edge, tilt or confetti on every render.
   var gradeCount = 0;
   function seeded(seed) { var a = (seed | 0) || 1; return function () { a = (a + 0x6D2B79F5) | 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
   var WM = {
     ease: ease,
+
+    /* baseline: pivots each element's scale on its measured text baseline. A scale that moves the baseline makes the
+       type climb the pixel grid in whole-pixel jumps (stuck, then jump); pivoting on it measured 0.014 px judder
+       against 0.284 px from the centre. Call it before tweening scale on a headline; remeasures once fonts load. */
+    baseline: function (els) {
+      (els && els.nodeType ? [els] : all(els)).forEach(function (el) {
+        var mark = document.createElement('span');
+        mark.style.cssText = 'display:inline-block;width:0;height:0';
+        el.appendChild(mark);
+        var measure = function () {
+          var keep = el.style.transform; el.style.transform = 'none';
+          el.style.transformOrigin = '50% ' + (mark.getBoundingClientRect().top - el.getBoundingClientRect().top) + 'px';
+          el.style.transform = keep;
+        };
+        measure();
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+      });
+    },
 
     /* Cursor: moves along points, pressing where click is true.
        points: [{x, y, at, click}] in px of the stage; at in seconds. */
