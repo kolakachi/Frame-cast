@@ -250,7 +250,7 @@ services:
       - api
       - reverb
 
-  # The Launchpad funnel (launchpad.wyvstudio.com) at http://localhost:8090; edits show on refresh.
+  # The Launchpad funnel (special.wyvstudio.com) at http://localhost:8090; edits show on refresh.
   launchpad:
     image: nginx:1.27-alpine
     volumes:

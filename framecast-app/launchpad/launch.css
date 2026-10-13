@@ -1,4 +1,4 @@
-/* launchpad.wyvstudio.com: the Launchpad funnel (FE, OTOs, thank-you). Built on the main site's /styles.css (same
+/* special.wyvstudio.com: the Launchpad funnel (FE, OTOs, thank-you). Built on the main site's /styles.css (same
    tokens, type and buttons, light and dark); only what a sales funnel adds lives here, in tokens only. */
 .lp-nav { display: flex; align-items: center; justify-content: space-between; min-height: 68px; }
 .lp-nav .brand { cursor: default; }
