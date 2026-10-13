@@ -75,6 +75,7 @@ jobs:
                   framecast-app/docs/product/*) ;;                       # internal notes, nothing serves them
                   framecast-app/docs/*) NEED_DOCS=1 ;;                   # Docusaurus site container
                   framecast-app/marketing/*) NEED_MARKETING=1 ;;         # bind-mounted static site
+                  framecast-app/launchpad/*) NEED_MARKETING=1 ;;         # launchpad.wyvstudio.com, same container
                   framecast-app/*) MODE=full ;;                          # app, api, mcp, nginx, compose
                   *) ;;                                                  # repo root: notes, mockups, .github
                 esac

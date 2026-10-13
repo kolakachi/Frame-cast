@@ -13,6 +13,8 @@ services:
     image: nginx:1.27-alpine
     volumes:
       - ./marketing:/usr/share/nginx/html:ro
+      # launchpad.wyvstudio.com only (nginx-marketing/default.conf): kept out of the main site's files.
+      - ./launchpad:/usr/share/nginx/launchpad:ro
       - ./nginx-marketing/default.conf:/etc/nginx/conf.d/default.conf:ro
       # Shared with the app's nginx — lets the marketing site serve the public
       # changelog feed same-origin instead of widening CORS. api is php-fpm
