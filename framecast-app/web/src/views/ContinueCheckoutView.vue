@@ -22,7 +22,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
-const LIFETIME = ['lifetime_starter', 'lifetime_creator', 'lifetime_agency']
+const LIFETIME = ['lifetime_entry', 'lifetime_starter', 'lifetime_creator', 'lifetime_agency']
 const MONTHLY = ['starter', 'creator', 'pro', 'agency']
 
 const state = ref('working') // 'working' | 'failed'

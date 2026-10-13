@@ -397,6 +397,7 @@ class CreditService
         // one-time bucket in credits_topup, same as the AppSumo LTDs — a
         // recurring refill would both undercut the subscriptions and make the
         // per-licence cost unbounded.
+        'lifetime_entry'   => 0,
         'lifetime_starter' => 0,
         'lifetime_creator' => 0,
         'lifetime_agency'  => 0,
@@ -487,6 +488,10 @@ class CreditService
         'lifetime_starter' => ['max_duration_seconds' => 180, 'max_characters' => 2,  'max_brand_kits' => 1,    'max_channels' => 1,    'social_publishing' => true, 'pdf_page_limit' => 20, 'ugc_takes_month' => 30, 'custom_characters' => true , 'ugc_ads' => true, 'api_access' => true],
         'lifetime_creator' => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         'lifetime_agency'  => ['max_duration_seconds' => 600, 'max_characters' => 10, 'max_brand_kits' => null, 'max_channels' => null, 'social_publishing' => true, 'pdf_page_limit' => null, 'ugc_takes_month' => 150, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
+        // The sales.wyvstudio.com entry offer ($69 once, 4,000 credits; owner, 2026-10-13): the lifetime Creator's access
+        // with a smaller bucket. Its own key so the one-time bucket swap (KelviqService::lifetimeBucket) and reporting
+        // never confuse it with the $199 Creator.
+        'lifetime_entry'   => ['max_duration_seconds' => 300, 'max_characters' => 5,  'max_brand_kits' => 5,    'max_channels' => 3,    'social_publishing' => true, 'pdf_page_limit' => 50, 'ugc_takes_month' => 60, 'custom_characters' => true, 'ugc_ads' => true, 'api_access' => true],
         // Launchpad launch tiers (owner-approved offers, 2026-10-12). Set only by LaunchpadService; bumps and stacked
         // purchases reach a workspace through workspaces.plan_addons, merged in limitsFor(). They spell out every gate,
         // including the ones other tiers take from GATE_DEFAULTS. Agency is deliberately weaker than the Bundle.

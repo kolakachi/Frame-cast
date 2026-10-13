@@ -18,7 +18,7 @@ class PlanCapabilityFloorTest extends TestCase
     private const PAID_TIERS = [
         'starter', 'creator', 'pro', 'agency', 'enterprise', 'studio', 'scale',
         'appsumo_starter', 'appsumo_creator', 'appsumo_agency',
-        'lifetime_starter', 'lifetime_creator', 'lifetime_agency',
+        'lifetime_starter', 'lifetime_creator', 'lifetime_agency', 'lifetime_entry',
     ];
 
     public function test_no_paid_tier_offers_less_than_the_nine_dollar_pass(): void

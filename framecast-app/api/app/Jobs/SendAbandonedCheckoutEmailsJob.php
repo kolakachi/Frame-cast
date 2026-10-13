@@ -54,6 +54,7 @@ class SendAbandonedCheckoutEmailsJob implements ShouldQueue, ShouldBeUnique
 
     /** Plan key -> the name a human would recognise on their invoice. */
     private const PLAN_NAMES = [
+        'lifetime_entry'   => 'WyvStudio — $69 one-time',
         'lifetime_starter' => 'Starter — $89 one-time',
         'lifetime_creator' => 'Creator — $199 one-time',
         'lifetime_agency'  => 'Agency — $399 one-time',

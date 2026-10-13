@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<!-- Google tag (AW-18506583015) with Consent Mode: loads first, cookieless until the visitor allows it -->
+<script src="/google-ads.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<script>
+/* The theme before the first paint: the visitor's own choice (the nav toggle), else their device setting. */
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem('wyv_theme'); } catch (e) {}
+  var system = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', saved === 'light' || saved === 'dark' ? saved : system);
+})();
+</script>
+<title>WyvStudio — Ad and social videos for lean marketing teams</title>
+<meta name="description" content="WyvStudio makes short videos for your ads and social posts from your product, with or without a presenter. You approve the plan and price first, and every video is checked before you see it.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <meta property="og:title" content="WyvStudio: the creative director your marketing team is missing" />
+    <meta property="og:description"
+        content="Short videos for your ads and social posts, with or without a presenter. You approve the plan and price first, and every video is checked before you see it." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://sales.wyvstudio.com/" />
+    <meta property="og:image"
+        content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="WyvStudio: the creative director your marketing team is missing" />
+    <meta name="twitter:description"
+        content="Short videos for your ads and social posts, with or without a presenter. You approve the plan and price first, and every video is checked before you see it." />
+    <meta name="twitter:image"
+        content="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/og/og-default-v1.jpg" />
+    <link rel="canonical" href="https://sales.wyvstudio.com/" />
+    <meta name="robots" content="noindex" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <meta name="theme-color" content="#ff6b35" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=6">
+</head>
+<body>
+
+<div class="nav-bar">
+  <nav class="wrap nav" aria-label="Main">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">W</span>WyvStudio</a>
+    <div class="nav-links">
+      <div class="nav-menu-links" id="nav-menu">
+        <a href="#week">See it work</a>
+        <a href="#examples">Examples</a>
+        <a href="#pricing">Pricing</a>
+        <a href="https://app.wyvstudio.com/login">Sign in</a>
+      </div>
+      <button type="button" class="theme-toggle" id="theme-toggle" role="switch" aria-checked="false" aria-label="Dark mode" title="Switch to light mode">
+        <svg class="tt-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.8v2.4M12 19.8v2.4M4.8 4.8l1.7 1.7M17.5 17.5l1.7 1.7M1.8 12h2.4M19.8 12h2.4M4.8 19.2l1.7-1.7M17.5 6.5l1.7-1.7M8.1 2.6l.6 1.5M15.3 19.9l.6 1.5M2.6 15.9l1.5-.6M19.9 8.7l1.5-.6M2.6 8.1l1.5.6M19.9 15.3l1.5.6M8.1 21.4l.6-1.5M15.3 4.1l.6-1.5"/></svg>
+        <svg class="tt-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.6 3.2a8.6 8.6 0 1 0 7.2 13.2A7.4 7.4 0 0 1 13.6 3.2z"/><path fill="currentColor" d="M18.6 2.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55zM21.4 7.6l.35 1.05 1.05.35-1.05.35-.35 1.05-.35-1.05-1.05-.35 1.05-.35z"/></svg>
+        <span class="tt-knob" aria-hidden="true"></span>
+      </button>
+      <a class="btn btn-primary" href="#start">Make a video</a>
+      <button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-expanded="false" aria-controls="nav-menu" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path class="nm-a" d="M4 7h16"/><path class="nm-b" d="M4 12h16"/><path class="nm-c" d="M4 17h16"/></svg>
+      </button>
+    </div>
+  </nav>
+</div>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" id="start">
+  <div class="wrap hero-inner">
+    <div class="hero-copy">
+      <span class="hero-badge"><b>New</b> Your Creative Director: start from a video you love</span>
+      <h1>The creative director your marketing team is missing.</h1>
+      <p class="lede">WyvStudio makes short videos for your ads and social posts from your product, with or without a presenter. You approve the plan and price first, and every video is checked before you see it.</p>
+
+      <form class="composer" action="#pricing" id="composer">
+        <div class="tabs" role="tablist" aria-label="How do you want to start?">
+          <button type="button" class="tab" role="tab" id="t-idea" aria-controls="p-idea" aria-selected="true" data-mode="describe">Type an idea</button>
+          <button type="button" class="tab" role="tab" id="t-ref" aria-controls="p-ref" aria-selected="false" data-mode="reference">Show us one you love</button>
+          <button type="button" class="tab" role="tab" id="t-ugc" aria-controls="p-ugc" aria-selected="false" data-mode="ugc">UGC ad</button>
+        </div>
+        <input type="hidden" name="mode" value="describe" id="mode">
+
+        <div class="panel" role="tabpanel" id="p-idea" aria-labelledby="t-idea">
+          <label for="f-idea">What's it for, who's it for, and how long?</label>
+          <textarea class="field" id="f-idea" name="prompt" maxlength="1500" rows="3" placeholder="A 20-second ad for my candle shop's autumn offer. Warm and slow, ending on 20% off."></textarea>
+          <div class="chips">
+            <button type="button" class="chip" data-fill="f-idea">Launch promo in bold kinetic type</button>
+            <button type="button" class="chip" data-fill="f-idea">Product ad for a skincare serum</button>
+            <button type="button" class="chip" data-fill="f-idea">3 hooks that stop the scroll</button>
+          </div>
+        </div>
+
+        <div class="panel" role="tabpanel" id="p-ref" aria-labelledby="t-ref" hidden>
+          <label for="f-url">Paste a TikTok, Reel or YouTube link</label>
+          <div class="row">
+            <input class="field" id="f-url" name="ref_url" type="url" placeholder="https://www.tiktok.com/@creator/video/…" disabled>
+          </div>
+          <p class="hint">Have the clip as a file? You'll add it right after sign-up.</p>
+          <label for="f-refbrief">What's your version about?</label>
+          <input class="field" id="f-refbrief" name="prompt" maxlength="1500" type="text" placeholder="Same pacing, for my candle shop's autumn offer" disabled>
+          <p class="hint">Works best with short social videos, under a minute, built from type, graphics, product shots or one person talking to camera.</p>
+        </div>
+
+        <div class="panel" role="tabpanel" id="p-ugc" aria-labelledby="t-ugc" hidden>
+          <label for="f-ugc">Your product, and who should be talking about it</label>
+          <textarea class="field" id="f-ugc" name="prompt" maxlength="1500" rows="3" placeholder="A creator unboxing my wireless earbuds, talking to gym-goers who hate cables." disabled></textarea>
+          <div class="chips">
+            <button type="button" class="chip" data-fill="f-ugc">Creator testimonial</button>
+            <button type="button" class="chip" data-fill="f-ugc">Unboxing with close-ups</button>
+            <button type="button" class="chip" data-fill="f-ugc">Split-screen reaction ad</button>
+          </div>
+        </div>
+
+        <div class="composer-foot">
+          <p class="hint"><strong>You approve the plan first.</strong> Script, voice, music and look, before the video is made.</p>
+          <span class="count" id="brief-count" aria-live="polite">0 / 1,500</span>
+          <button type="submit" class="btn btn-primary">Save my brief and see prices</button>
+        </div>
+      </form>
+      <p class="ways-in">Type an idea, paste a script, drop a product link, upload a reference video, upload your own footage, or ask ChatGPT/Claude.</p>
+    </div>
+
+    <div class="wall" aria-label="Videos made in WyvStudio"><div class="wall-col"><div class="wall-track"><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Launch promo in bold kinetic type</span></div><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Illustrated story, from a reference</span></div><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Creator testimonial, UGC ad</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Launch promo in bold kinetic type</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Illustrated story, from a reference</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Creator testimonial, UGC ad</span></div></div></div><div class="wall-col"><div class="wall-track"><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Dewbloom serum product ad</span></div><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">$100 a month for 30 years</span></div><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">App demo, told as a POV</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Dewbloom serum product ad</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">$100 a month for 30 years</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">App demo, told as a POV</span></div></div></div><div class="wall-col"><div class="wall-track"><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Unboxing with close-ups</span></div><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Ember &amp; Oak candle offer</span></div><div class="clip" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Flat-colour explainer</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Unboxing with close-ups</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Ember &amp; Oak candle offer</span></div><div class="clip" aria-hidden="true" data-autoplay><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.jpg" preload="none" muted loop playsinline></video><span class="clip-tag">Flat-colour explainer</span></div></div></div></div>
+  </div>
+</section>
+
+<!-- PROOF: real ads made in WyvStudio: one with a presenter, one without, one from a reference. -->
+<section class="wrap section proof" id="proof" style="padding-bottom: 0">
+  <div class="head">
+    <h2>Real ads, made in WyvStudio.</h2>
+    <p class="lede">With a presenter, without one, or in the style of an ad they loved. Each started as a product and a sentence, with the plan shown first. No shoot and no editing.</p>
+  </div>
+  <div class="proof-row"><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/morning-routine.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/morning-routine.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Morning routine, with a presenter"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Morning routine, with a presenter<span>UGC ad, 20s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Coffee subscription, no presenter"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Coffee subscription, no presenter<span>Product ad, 15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Explainer, from an ad they loved"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Explainer, from an ad they loved<span>Same style, their words, 30s</span></figcaption></figure></div>
+</section>
+
+<!-- A WEEK OF CONTENT -->
+<section class="wrap section" id="week">
+  <div class="head">
+    <h2>A week of ads and posts. Made in an afternoon.</h2>
+    <p class="lede">A typical video is ready in about 10 minutes. Make the week's videos, then schedule them to YouTube, TikTok and Instagram from the same place. No downloading, re-uploading or rewriting captions three times.</p>
+  </div>
+  <div class="week-shell">
+    <div class="week-top">
+      <div><div class="week-title">Your content calendar</div><div class="week-sub">Example week: one brand, fresh creative every day</div></div>
+      <div class="legend"><span><i class="dot dot-done"></i>Posted</span><span><i class="dot dot-next"></i>Scheduled</span></div>
+    </div>
+    <div class="week" tabindex="0" aria-label="Example week of scheduled videos"><div class="day"><div class="day-name">Mon <span>6</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: 3 hooks that stop the scroll"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">3 hooks that stop the scroll</div>
+<div class="post-meta"><span class="platform">TikTok, 9:00</span><span class="status status-done">Posted</span></div></article></div><div class="day"><div class="day-name">Tue <span>7</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Dewbloom serum product ad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">Dewbloom serum product ad</div>
+<div class="post-meta"><span class="platform">Reels, 12:30</span><span class="status status-done">Posted</span></div></article></div><div class="day"><div class="day-name">Wed <span>8</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: $100 a month, as a data story"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">$100 a month, as a data story</div>
+<div class="post-meta"><span class="platform">Shorts, 18:00</span><span class="status status-next">Scheduled</span></div></article></div><div class="day"><div class="day-name">Thu <span>9</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Unboxing with close-ups"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">Unboxing with close-ups</div>
+<div class="post-meta"><span class="platform">TikTok, 19:00</span><span class="status status-next">Scheduled</span></div></article></div><div class="day"><div class="day-name">Fri <span>10</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le55486c6.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Ember &amp; Oak candle offer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">Ember &amp; Oak candle offer</div>
+<div class="post-meta"><span class="platform">Reels, 11:00</span><span class="status status-next">Scheduled</span></div></article></div><div class="day"><div class="day-name">Sat <span>11</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l60f51590.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l60f51590.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Day-in-the-life, same format"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">Day-in-the-life, same format</div>
+<div class="post-meta"><span class="platform">Shorts, 10:00</span><span class="status status-next">Scheduled</span></div></article></div><div class="day"><div class="day-name">Sun <span>12</span></div>
+<article class="post"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Northside Roasters subscription"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><div class="post-title">Northside Roasters subscription</div>
+<div class="post-meta"><span class="platform">Reels, 17:30</span><span class="status status-next">Scheduled</span></div></article></div></div>
+    <div class="week-foot">
+      <p>Every video here was made in WyvStudio from a sentence or a reference. Press play on any of them.</p>
+      <a class="btn btn-ghost" href="#start">Plan my week</a>
+    </div>
+  </div>
+</section>
+
+<!-- STATEMENT (kept copy) -->
+<section class="wrap section statement" style="padding-top: 24px">
+  <h2>You don't need a bigger team. <em>You need fresh creative every week.</em></h2>
+  <p>Ads tire fast. New hooks, new angles and new formats keep them working, and that used to mean a shoot or an agency.</p>
+</section>
+
+<!-- TWO WAYS IN (kept copy) -->
+<section class="wrap section" style="padding-top: 0">
+  <div class="head">
+    <h2>Describe it. Or show us one you love.</h2>
+    <p class="lede">Your Creative Director plans the video, writes and voices the script, animates it in your brand and checks it before you see it.</p>
+  </div>
+  <div class="lanes">
+    <article class="lane">
+      <div class="lane-copy">
+        <h3>Start with a sentence</h3>
+        <p>Say what it's for, who it's for and how long it should run. The Creative Director shows you the plan first and builds the video once you approve it.</p>
+        <div class="lane-input"><small>You type</small>"15-second ad for Dewbloom serum. Calm, clean, one clear benefit."</div>
+      </div>
+      <div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b03.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Dewbloom serum product ad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
+    </article>
+    <article class="lane">
+      <div class="lane-copy">
+        <h3>Start with a video you love</h3>
+        <p>Add a clip whose pacing, type or motion you like. The Creative Director studies how it's made and builds yours in that style, with your brand and your words.</p>
+        <div class="lane-input"><small>You add</small><div class="ref"><span class="ref-thumb" aria-hidden="true"></span>An illustrated story you saved, plus "do this for my brand"</div></div>
+      </div>
+      <div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Illustrated story, drawing style kept"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
+    </article>
+  </div>
+  <p class="fine">It borrows the style, never the footage, faces or words.</p>
+</section>
+
+<!-- HOW IT HAPPENS (kept heading) -->
+<section class="wrap section" style="padding-top: 0">
+  <div class="head"><h2>From brief to finished video. Here's what happens.</h2></div>
+  <div class="steps"><div class="step"><div class="vid"><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/steps/step-1-plan.mp4?v=1" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/steps/step-1-plan.jpg?v=1" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Drop in your starting point"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><h3>Drop in your starting point</h3><p>Paste your offer, add a product link, or type a rough idea. The Creative Director builds a scene-by-scene plan and shows it to you first: script, voice, music and look.</p></div><div class="step"><div class="vid"><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/steps/step-2-generate.mp4?v=1" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/steps/step-2-generate.jpg?v=1" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: The Creative Director builds it"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><h3>The Creative Director builds it</h3><p>Voice narrates your message, visuals tell the story and captions help viewers follow along. Then it checks the result before you see it.</p></div><div class="step"><div class="vid"><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/steps/step-3-edit-post.mp4?v=1" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/steps/step-3-edit-post.jpg?v=1" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Edit, then post"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><h3>Edit, then post</h3><p>Swap a scene or tighten the call to action by asking. When you&#x27;re happy, export it or schedule it to YouTube, TikTok or Instagram.</p></div></div>
+</section>
+
+<!-- SHELVES (kept heading) -->
+<section class="section" id="examples" style="background: var(--bg-2); border-block: 1px solid var(--line)">
+  <div class="wrap">
+    <div class="head">
+      <h2>Real videos. No shoot, no editor.</h2>
+      <p class="lede">Product ads, launch teasers, explainers, UGC-style ads and cuts of existing footage. Scroll each row.</p>
+    </div>
+    <div class="shelf"><div class="shelf-head"><h3>Started from a sentence</h3><span>A line about the offer, the audience and the length</span></div><div class="shelf-row" tabindex="0" aria-label="Started from a sentence"><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b01.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Launch promo in bold kinetic type"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Launch promo in bold kinetic type<span>20s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: 3 hooks that stop the scroll"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>3 hooks that stop the scroll<span>30s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/s100.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: $100 a month for 30 years, as a data story"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>$100 a month for 30 years, as a data story<span>20s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l30703d4a.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Northside Roasters coffee subscription"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Northside Roasters coffee subscription<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le0c668f6.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/le0c668f6.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: For small shop owners, with 3D icons"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>For small shop owners, with 3D icons<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l540.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l540.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Kinetic launch teaser"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Kinetic launch teaser<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/led2.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/led2.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Three steps to a product ad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Three steps to a product ad<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l1c4.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l1c4.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: One-line brief to video"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>One-line brief to video<span>15s</span></figcaption></figure></div></div><div class="shelf"><div class="shelf-head"><h3>Started from a video they loved</h3><span>Same style, their product and words</span></div><div class="shelf-row" tabindex="0" aria-label="Started from a video they loved"><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l3461c7aa.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Illustrated story, drawing style kept"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Illustrated story, drawing style kept<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l21287e12.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Flat-colour explainer with a chart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Flat-colour explainer with a chart<span>30s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l0f70e0d0.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: App demo, told as a POV"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>App demo, told as a POV<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lc809947b.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lc809947b.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Creator explainer, same format"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Creator explainer, same format<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf23a856a.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf23a856a.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Dark product promo, same style"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Dark product promo, same style<span>30s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l36b53c6d.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/l36b53c6d.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Talking-head creator ad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Talking-head creator ad<span>30s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf7bd88af.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/lf7bd88af.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Your character in a new scene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Your character in a new scene<span>5s</span></figcaption></figure></div></div><div class="shelf" id="ugc"><div class="shelf-head"><h3>UGC ads</h3><span>A presenter, a product and one spoken take</span></div><div class="shelf-row" tabindex="0" aria-label="UGC ads"><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/water-bottle-park.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/water-bottle-park.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Water bottle, filmed on a park walk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Water bottle, filmed on a park walk<span>17s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/unboxing-phone.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/unboxing-phone.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Unboxing, filmed on a phone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Unboxing, filmed on a phone<span>18s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/asmr-hands.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/asmr-hands.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: ASMR, hands only"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>ASMR, hands only<span>16s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Creator testimonial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Creator testimonial<span>20s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b06.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Unboxing with close-ups"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Unboxing with close-ups<span>20s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b07.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b07.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Split-screen reaction ad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Split-screen reaction ad<span>15s</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-1.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/ugc-1.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Direct-to-camera ad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Direct-to-camera ad<span>UGC</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/stock-presenter.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/stock-presenter.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Presenter we cast for you"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Presenter we cast for you<span>UGC</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/any-scene.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/any-scene.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Your character, any scene"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Your character, any scene<span>UGC</span></figcaption></figure><figure class="tile"><div class="vid "><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/app-demo.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/ugc/app-demo.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Embed a real app or product demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Embed a real app or product demo<span>UGC</span></figcaption></figure></div></div><div class="shelf"><div class="shelf-head"><h3>Started from their own footage</h3><span>Long recordings cut into short promos</span></div><div class="shelf-row" style="grid-auto-columns:max-content" tabindex="0" aria-label="Started from their own footage"><figure class="tile" style="width:210px"><div class="vid" style="aspect-ratio:9 / 16"><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b08.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b08.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: Screen recording to a 30s promo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>Screen recording to a 30s promo<span>9:16, 30s</span></figcaption></figure><figure class="tile" style="width:360px"><div class="vid" style="aspect-ratio:16 / 9"><video src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b09.mp4" poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b09.jpg" preload="none" playsinline></video><button type="button" class="play" aria-label="Play: 2-minute video to a 30s cut"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div><figcaption>2-minute video to a 30s cut<span>16:9, 30s</span></figcaption></figure></div></div>
+  </div>
+</section>
+
+<!-- PROOF: what every video is checked for before you see it -->
+<section class="wrap section">
+  <div class="head">
+    <h2>Checked before you see it.</h2>
+    <p class="lede">Your Creative Director doesn't hand you a first draft. Before a video reaches you, it's watched and listened to against the plan you approved.</p>
+  </div>
+  <div class="quotes">
+    <figure class="quote"><blockquote>Every approved line is listened for in the finished audio, names said the way you saved them.</blockquote><figcaption><span class="avatar" aria-hidden="true"></span><span><strong>The script</strong>Your words, as approved</span></figcaption></figure>
+    <figure class="quote"><blockquote>Each thing the plan promised on screen, a price, a product, a closing line, is found in the frames at its moment.</blockquote><figcaption><span class="avatar" aria-hidden="true"></span><span><strong>The picture</strong>What you asked to see</span></figcaption></figure>
+    <figure class="quote"><blockquote>Text that leaves too fast to read, empty frames and music that drowns the voice are checked for and sent back for fixing before delivery.</blockquote><figcaption><span class="avatar" aria-hidden="true"></span><span><strong>The finish</strong>Pacing, timing and mix</span></figcaption></figure>
+  </div>
+</section>
+
+
+
+<!-- WORKS WHERE YOU ALREADY WORK: scheduling and the ChatGPT/Claude connectors, folded into one strip -->
+<section class="wrap" id="assistants" style="padding-bottom: 112px">
+  <div class="works">
+    <h2>Works where you already work.</h2>
+    <div class="works-grid">
+      <div class="works-item">
+        <h3>Post from one calendar</h3>
+        <p>Connect YouTube, TikTok and Instagram, then schedule every video from the same place. For ads, download the file and upload it to your ads manager.</p>
+      </div>
+      <div class="works-item">
+        <h3>Ask ChatGPT or Claude</h3>
+        <p>The assistant you already use can make, edit and publish your videos from a chat, with the same credits and limits as the app. <a href="https://docs.wyvstudio.com/api-and-connectors/connect-an-ai-assistant">How to connect</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING (kept heading) -->
+<section class="wrap section" id="pricing" style="padding-top: 0">
+  <div class="head">
+    <h2>One price. Yours to keep.</h2>
+    <p class="lede">One payment, no subscription. Top up only when you need more.</p>
+  </div>
+  <div class="brief-saved" id="brief-saved" role="status" hidden>
+    <span class="tick" aria-hidden="true">&#10003;</span>
+    <p><strong>Your brief is saved.</strong> Get WyvStudio, and it's waiting for your Creative Director after sign-up.
+      <a id="brief-open" href="https://app.wyvstudio.com/create">Already have an account? Open it in WyvStudio &rarr;</a></p>
+  </div>
+  <div class="pass">
+    <div class="pass-copy">
+      <span class="pass-name">WyvStudio, one-time</span>
+      <div class="price-line"><span class="price">$69</span><span class="per">4,000 credits, one time</span></div>
+      <p>About 17 twenty-second videos, or a mix of videos and UGC ads with a presenter. Credits never expire.</p>
+      <ul class="feat"><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>The Creative Director, UGC ads and the composer</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Publishing to YouTube, TikTok and Instagram</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>5 characters</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>2 cloned voices</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>3 brand channels</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Videos up to 5 minutes, no watermark</li></ul>
+    </div>
+    <div class="pass-cta"><a class="btn btn-primary btn-lg" href="https://app.wyvstudio.com/register?plan=lifetime_entry">Get WyvStudio for $69</a><span class="guarantee">14-day money-back guarantee</span></div>
+  </div>
+  <p class="price-note">Top up any time from $8 for 500 credits. No per-seat fees.</p>
+</section>
+
+<!-- FAQ (kept heading) -->
+<section class="wrap section faq" style="padding-top: 0">
+  <h2>Questions you'll have before you sign up.</h2>
+  <details><summary>Do I need editing experience?</summary><p>None. If you can describe what you want in a sentence, you can make a video. You change things by asking, not by editing a timeline.</p></details>
+  <details><summary>Can I start from a video I already like?</summary><p>Yes. Paste a link or upload the clip, and the Creative Director builds yours in its pacing, type and motion, with your brand and your words. It never reuses the original's footage, characters, logos or words.</p></details>
+  <details><summary>Can I use my own face and voice?</summary><p>Yes. Upload one photo and your character stays the same across every scene and every video. Clone your own voice once and use it in any video. Both are included.</p></details>
+  <details><summary>Will it say my brand name right?</summary><p>Yes. Tell it once how your name is said, and every voice says it that way. The finished audio is checked for it before you see the video.</p></details>
+  <details><summary>Can I change one part without starting over?</summary><p>Yes. Ask for a new voice, a different line or a tighter ending, and only that part changes; the rest stays exactly as you approved it. Every earlier version is kept, so you can go back to any of them.</p></details>
+  <details><summary>What kind of video can I bring as a reference?</summary><p><strong>Works great:</strong> ads, launch teasers, explainers, data stories, kinetic type, product promos, illustrated styles, presenter UGC ads, and cuts of your own footage.</p><p><strong>Not a fit yet:</strong> film or live-action scenes with several people acting; detailed character or body movement, such as dance or sport; recreating an app's screens from scratch (send a screen recording instead and we'll use the real thing); exact copies of someone else's video; and people or brands you don't have the rights to.</p></details>
+  <details><summary>Will it look AI-generated?</summary><p>Not the way you might fear. Most WyvStudio videos are built like an editor would build them: motion design, type, product shots and footage you supply, not one generated clip stretched to fit. Where a scene needs a generated shot or a presenter, you see it in the plan and approve it first. Every video on this page was made this way.</p></details>
+  <details><summary>How long does it take?</summary><p>A typical video is ready about 10 minutes after you approve its plan. So a week of posts fits in an afternoon.</p></details>
+  <details><summary>Do I own the videos?</summary><p>Yes. You keep ownership of everything you make with WyvStudio, including the scripts and the videos, and you can post them anywhere. Anything you upload, such as footage, photos, a voice or a face, has to be yours or used with permission.</p></details>
+  <details><summary>Does it work for apps and services, not just physical products?</summary><p>Yes. Start with your app, your service or a single offer. Add who it's for, and the Creative Director builds the video around one clear message and call to action. For apps, send a screen recording and we'll use the real screens.</p></details>
+  <details><summary>Can I post straight to my accounts?</summary><p>Yes. Connect YouTube, TikTok and Instagram (Reels and Feed), then schedule from one calendar that tracks every channel. Included.</p></details>
+  <details><summary>What do credits pay for?</summary><p>Making the video: the plan, the script and voice, the visuals and the render. A typical 20-second video uses about 230 credits, plan included; a UGC ad with a presenter uses more. You see the price in the plan before anything is made, and you can top up any time from $8.</p></details>
+  <details><summary>What's the refund policy?</summary><p>Backed by a 14-day money-back guarantee. Full terms are in our <a href="/refund">Refund Policy</a>.</p></details>
+</section>
+
+<!-- FINAL (kept heading) -->
+<section class="wrap">
+  <div class="final">
+    <h2>Next week's creative starts here.</h2>
+    <p>Type one sentence. See the plan before you build. Post it this week.</p>
+    <a class="btn btn-lg" href="#start">Make my video</a>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <span>© 2026 Kollignton Kay Technologies Limited. Payments processed by Kelviq, our Merchant of Record.</span>
+    <nav aria-label="Legal">
+      <a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/refund">Refunds</a><a href="/acceptable-use">Acceptable use</a><a href="/synthetic-media">Synthetic media</a><a href="https://app.wyvstudio.com/affiliates">Affiliates</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // The prompt box saves the brief into the links to the app and leads to pricing. The brief rides after # (never
+  // sent to any server); the app keeps it through sign-up and checkout and fills it into Create.
+  var MAX = 1500, count = document.getElementById('brief-count');
+  function brief() {
+    var mode = document.getElementById('mode').value;
+    var val = function (id) { var f = document.getElementById(id); return f ? f.value.trim() : ''; };
+    var text = mode === 'reference' ? val('f-refbrief') : mode === 'ugc' ? val('f-ugc') : val('f-idea');
+    if (mode === 'reference' && val('f-url')) text = (text ? text + '\n\n' : '') + 'Reference: ' + val('f-url');
+    if (mode === 'ugc' && text) text = 'A UGC ad: ' + text;
+    return text.slice(0, MAX);
+  }
+  function showCount() { var n = brief().length; count.textContent = n.toLocaleString() + ' / 1,500'; }
+  document.querySelector('.composer').addEventListener('input', showCount);
+  document.querySelectorAll('[role="tab"]').forEach(function (t) { t.addEventListener('click', showCount); });
+  document.getElementById('composer').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = brief();
+    if (text) {
+      // No link on the reference tab: they'll upload the clip in Create, which asks for it (attach=1).
+      var clip = document.getElementById('mode').value === 'reference' && !document.getElementById('f-url').value.trim();
+      var hash = '#brief=' + encodeURIComponent(text) + (clip ? '&attach=1' : '');
+      document.querySelectorAll('a[href^="https://app.wyvstudio.com/register"], #brief-open').forEach(function (a) {
+        var u = new URL(a.href); u.hash = hash.slice(1); a.href = u.toString();
+      });
+      document.getElementById('brief-saved').hidden = false;
+      // Brief started (Google Ads, secondary), once per visit.
+      if (window.wyvConversion && !window.__wyvBriefSent) { window.__wyvBriefSent = true; window.wyvConversion('brief_started'); }
+    }
+    var target = document.getElementById('pricing');
+    target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    if (history.replaceState) history.replaceState(null, '', '#pricing');
+  });
+
+  // Composer tabs: only the active panel's fields submit
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  var modeInput = document.getElementById('mode');
+  function select(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab, panel = document.getElementById(t.getAttribute('aria-controls'));
+      t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; panel.hidden = !on;
+      panel.querySelectorAll('input, textarea').forEach(function (f) { f.disabled = !on; });
+    });
+    modeInput.value = tab.dataset.mode;
+  }
+  tabs.forEach(function (tab, i) {
+    tab.tabIndex = i === 0 ? 0 : -1;
+    tab.addEventListener('click', function () { select(tab); });
+    tab.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; select(n); n.focus();
+    });
+  });
+  document.querySelectorAll('[data-fill]').forEach(function (chip) {
+    chip.addEventListener('click', function () { var f = document.getElementById(chip.dataset.fill); f.value = chip.textContent.trim(); f.focus(); });
+  });
+
+  // Ambient videos (hero wall): play muted only while on screen
+  var ambient = document.querySelectorAll('[data-autoplay] video');
+  if (!reduce && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var v = e.target;
+        if (e.isIntersecting) { v.preload = 'auto'; var p = v.play(); if (p) p.catch(function () {}); }
+        else v.pause();
+      });
+    }, { threshold: 0.25 });
+    ambient.forEach(function (v) { io.observe(v); });
+  }
+
+  // Click-to-play videos (calendar, lanes, steps, shelves): play with sound, one at a time, to the end.
+  // Browsers allow sound only after the visitor has clicked, tapped or typed on the page once, so a hover before
+  // that previews muted; a click always plays with sound.
+  var hoverable = window.matchMedia('(hover: hover)').matches && !reduce;
+  var interacted = false;
+  ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function () { interacted = true; }, { capture: true, once: true }); });
+  function canSound() { return navigator.userActivation ? navigator.userActivation.hasBeenActive : interacted; }
+  var boxes = document.querySelectorAll('.vid:not([data-autoplay])');
+  boxes.forEach(function (box) {
+    var v = box.querySelector('video'), btn = box.querySelector('.play');
+    if (!v || !btn) return;
+    var label = btn.getAttribute('aria-label'), held = false;
+    function play(sound) {
+      boxes.forEach(function (o) { var ov = o.querySelector('video'); if (ov && ov !== v && !ov.paused) ov.pause(); });
+      v.muted = !sound;
+      var p = v.play();
+      // If the browser refuses sound, keep the preview going silently rather than not at all.
+      if (p) p.catch(function () { if (!v.muted) { v.muted = true; v.play().catch(function () {}); } });
+    }
+    function toggle() { if (v.paused || v.muted) { held = true; play(true); } else { held = false; v.pause(); } }
+    btn.addEventListener('click', toggle);
+    v.addEventListener('click', toggle);
+    if (hoverable) {
+      box.addEventListener('mouseenter', function () { if (v.paused) { held = false; play(canSound()); } });
+      // A video someone clicked keeps playing when the pointer leaves; a hover preview stops.
+      box.addEventListener('mouseleave', function () { if (!held) v.pause(); });
+    }
+    v.addEventListener('play', function () { box.classList.add('is-playing'); btn.setAttribute('aria-label', label.replace('Play', 'Pause')); });
+    v.addEventListener('pause', function () { box.classList.remove('is-playing'); btn.setAttribute('aria-label', label); });
+    v.addEventListener('ended', function () { held = false; v.currentTime = 0; });
+  });
+
+  // Light motion: the calendar's days and the shelves' tiles rise in as they come into view; the calendar then posts
+  // Wednesday's video and moves Today on, and each shelf nudges once to show it scrolls. Off for reduced motion.
+  if (!reduce && 'IntersectionObserver' in window) {
+    document.documentElement.classList.add('anim');
+    var groups = [];
+    var week = document.querySelector('.week');
+    if (week) groups.push({ el: week, items: week.querySelectorAll('.day'), step: 70, after: playWeek });
+    document.querySelectorAll('.shelf-row').forEach(function (row) { groups.push({ el: row, items: row.querySelectorAll('.tile'), step: 60, after: function () { nudge(row); } }); });
+    groups.forEach(function (g) { g.items.forEach(function (it, i) { it.classList.add('reveal'); it.style.setProperty('--d', Math.min(i, 6) * g.step + 'ms'); }); });
+    var seen = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var g = groups.filter(function (x) { return x.el === e.target; })[0];
+        seen.unobserve(e.target);
+        g.items.forEach(function (it) { it.classList.add('in'); });
+        setTimeout(g.after, 900);
+      });
+    }, { threshold: 0.2 });
+    groups.forEach(function (g) { seen.observe(g.el); });
+  }
+  function nudge(row) {
+    if (row.scrollWidth <= row.clientWidth + 8 || row.scrollLeft > 0) return;
+    row.scrollBy({ left: 56, behavior: 'smooth' });
+    setTimeout(function () { if (row.scrollLeft <= 60) row.scrollBy({ left: -56, behavior: 'smooth' }); }, 650);
+  }
+  function playWeek() {
+    var days = Array.prototype.slice.call(document.querySelectorAll('.week .day'));
+    var i = days.findIndex(function (d) { return d.querySelector('.status-next'); });
+    if (i < 0) return;
+    var today = function (d) { var old = document.querySelector('.today-pill'); if (old) old.remove(); if (!d) return; var p = document.createElement('span'); p.className = 'today-pill'; p.textContent = 'Today'; d.querySelector('.day-name').firstChild.after(p); };
+    today(days[i]);
+    var chip = days[i].querySelector('.status-next');
+    setTimeout(function () {
+      chip.classList.add('posting'); chip.textContent = 'Posting…';
+      setTimeout(function () {
+        chip.classList.remove('posting', 'status-next'); chip.classList.add('status-done', 'flip'); chip.textContent = 'Posted ✓';
+        setTimeout(function () { today(days[i + 1]); }, 500);
+      }, 1400);
+    }, 700);
+  }
+})();
+</script>
+
+
+    <script>
+    /* Menu jumps land with the heading just below the sticky menu (its height changes when it wraps on a phone),
+       and land again once the page settles: posters and the calendar above can grow the page mid-scroll. */
+    (function () {
+      var root = document.documentElement, bar = document.querySelector('.nav-bar');
+      function measure() { if (bar) root.style.setProperty('--nav-h', bar.offsetHeight + 'px'); }
+      measure(); window.addEventListener('resize', measure);
+      function land(target, smooth) {
+        var top = target.getBoundingClientRect().top + window.scrollY - ((bar ? bar.offsetHeight : 72) + 16);
+        window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+      }
+      document.addEventListener('click', function (e) {
+        var link = e.target.closest && e.target.closest('a[href^="#"]');
+        if (!link || link.getAttribute('href').length < 2) return;
+        var target = document.getElementById(link.getAttribute('href').slice(1));
+        if (!target) return;
+        e.preventDefault(); measure();
+        var smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+        land(target, smooth);
+        if (history.pushState) history.pushState(null, '', link.getAttribute('href'));
+        // Once the scroll ends (and again a moment later, for late layout), land again if the target moved.
+        function check() { var off = target.getBoundingClientRect().top - ((bar ? bar.offsetHeight : 72) + 16); if (Math.abs(off) > 4) land(target, false); }
+        var done = false;
+        function settle() { if (done) return; done = true; window.removeEventListener('scrollend', settle); check(); setTimeout(check, 400); }
+        window.addEventListener('scrollend', settle);
+        setTimeout(settle, 1200);
+      });
+    })();
+    </script>
+    <script>
+    /* On a phone the menu's links fold under a Menu button; a link, Escape or a tap outside folds them again. */
+    (function () {
+      var bar = document.querySelector('.nav-bar'), btn = document.getElementById('nav-menu-btn'), menu = document.getElementById('nav-menu');
+      if (!bar || !btn || !menu) return;
+      function set(open) { bar.classList.toggle('open', open); btn.setAttribute('aria-expanded', open ? 'true' : 'false'); btn.setAttribute('aria-label', open ? 'Close menu' : 'Menu'); }
+      btn.addEventListener('click', function () { set(!bar.classList.contains('open')); });
+      menu.addEventListener('click', function (e) { if (e.target.closest('a')) set(false); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') set(false); });
+      document.addEventListener('click', function (e) { if (bar.classList.contains('open') && !bar.contains(e.target)) set(false); });
+    })();
+    </script>
+    <script>
+    /* Light or dark: follows the device until the visitor picks one with the toggle, which is remembered. */
+    (function () {
+      var root = document.documentElement, btn = document.getElementById('theme-toggle');
+      var media = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
+      function label() {
+        var light = root.getAttribute('data-theme') === 'light';
+        // A switch for light mode: on in light, off in dark.
+        btn.setAttribute('aria-checked', light ? 'true' : 'false');
+        btn.setAttribute('aria-label', 'Light mode'); btn.title = 'Switch to ' + (light ? 'dark' : 'light') + ' mode';
+      }
+      function chosen() { try { return localStorage.getItem('wyv_theme'); } catch (e) { return null; } }
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('wyv_theme', next); } catch (e) {}
+        label();
+      });
+      if (media && media.addEventListener) media.addEventListener('change', function (e) {
+        if (chosen()) return;
+        root.setAttribute('data-theme', e.matches ? 'light' : 'dark'); label();
+      });
+      label();
+    })();
+    </script>
+    <script src="/posthog-init.js" defer></script>
+    <script src="/cookie-notice.js" defer></script>
+    <script src="/affiliate-ref.js" defer></script>
+    <script>window.__CRISP_WEBSITE_ID__="5f6d22e6-97de-4660-8a8f-baf6d9b0deea";</script><script src="/crisp-chat.js" defer></script>
+</body>
+</html>

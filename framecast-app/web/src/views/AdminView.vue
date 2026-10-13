@@ -965,6 +965,7 @@ const PLAN_TIER_FALLBACK = [
   "pro",
   "agency",
   "enterprise",
+  "lifetime_entry",
   "lifetime_starter",
   "lifetime_creator",
   "lifetime_agency",

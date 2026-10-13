@@ -730,7 +730,7 @@ class KelviqService
     {
         return match (true) {
             str_ends_with($tier, '_agency')  => 3,
-            str_ends_with($tier, '_creator') => 2,
+            str_ends_with($tier, '_creator'), $tier === 'lifetime_entry' => 2,
             str_ends_with($tier, '_starter') => 1,
             default                          => 0,
         };

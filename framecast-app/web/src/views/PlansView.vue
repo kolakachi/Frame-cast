@@ -48,7 +48,7 @@ const hasOneTimePlan = computed(
 const currentRank = computed(() => {
   const t = planTier.value;
   if (t.endsWith("_agency")) return 3;
-  if (t.endsWith("_creator")) return 2;
+  if (t.endsWith("_creator") || t === "lifetime_entry") return 2;
   if (t.endsWith("_starter")) return 1;
   return 0;
 });
@@ -69,6 +69,7 @@ const atTopTier = computed(() => hasOneTimePlan.value && oneTimePlans.value.leng
 const planLabel = computed(() => {
   const t = planTier.value;
   if (t === "free") return "Free plan";
+  if (t === "lifetime_entry") return "WyvStudio (one-time)";
   return t.replace(/^appsumo_/, "AppSumo ").replace(/^lifetime_/, "One-time ").replace(/^\w/, (c) => c.toUpperCase());
 });
 

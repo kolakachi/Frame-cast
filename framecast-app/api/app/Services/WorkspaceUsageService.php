@@ -169,6 +169,8 @@ class WorkspaceUsageService
                 'ai_image_quality'    => ['medium', 'high'],
             ],
         ];
+        // The $69 entry offer has the lifetime Creator's allowances.
+        $plans['lifetime_entry'] = array_merge($plans['creator'], ['name' => 'WyvStudio']);
         foreach (self::LAUNCH_USAGE as $tier => $usage) {
             $plans[$tier] = array_merge($plans['starter'], $usage, ['name' => self::LAUNCH_NAMES[$tier], 'watermark' => false]);
         }

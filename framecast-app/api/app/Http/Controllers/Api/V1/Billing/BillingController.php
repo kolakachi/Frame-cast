@@ -120,7 +120,7 @@ class BillingController extends Controller
         $validated = $request->validate([
             'plan'     => ['sometimes', 'string', 'in:starter,creator,pro,agency'],
             'topup'    => ['sometimes', 'string', 'in:small,medium,large,xl'],
-            'lifetime' => ['sometimes', 'string', 'in:lifetime_starter,lifetime_creator,lifetime_agency'],
+            'lifetime' => ['sometimes', 'string', 'in:lifetime_entry,lifetime_starter,lifetime_creator,lifetime_agency'],
             'pass'     => ['sometimes', 'boolean'],
         ]);
 

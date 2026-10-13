@@ -48,6 +48,7 @@ class OnboardingDay0Welcome extends Mailable implements ShouldQueue
         $credits = $recurring ? (int) $workspace->credits_monthly : (int) ($workspace->credits_topup ?? 0);
         $planName = match (true) {
             $tier === 'ugc_pass' => 'UGC Test Pass',
+            $tier === 'lifetime_entry' => 'WyvStudio',
             \App\Services\Launch\LaunchCatalogue::isLaunchTier($tier) => \App\Services\WorkspaceUsageService::plans()[$tier]['name'],
             default => ucwords(str_replace('_', ' ', $tier)),
         };

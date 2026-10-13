@@ -41,6 +41,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         // Bought one-time through Kelviq. Their absence here was why a
         // lifetime customer's sidebar read 'Free Plan'.
         lifetime_starter: 'Starter (Lifetime)', lifetime_creator: 'Creator (Lifetime)', lifetime_agency: 'Agency (Lifetime)',
+        lifetime_entry: 'WyvStudio (Lifetime)',
         // legacy tier aliases
         studio: 'Studio', scale: 'Scale',
       }

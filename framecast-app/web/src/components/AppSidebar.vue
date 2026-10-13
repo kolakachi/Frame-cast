@@ -131,6 +131,7 @@ const planColors = {
   // Kelviq one-time tiers — same product, same colors.
   lifetime_starter: "#34d399",
   lifetime_creator: "#60a5fa",
+  lifetime_entry: "#60a5fa",
   lifetime_agency: "#f59e0b",
   // legacy tier aliases
   studio: "#7c3aed",

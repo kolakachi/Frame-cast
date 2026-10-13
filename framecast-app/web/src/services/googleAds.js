@@ -12,7 +12,7 @@ const LABELS = {
 // What each purchase is worth, for the conversion's value: the list price in USD (the amount actually paid replaces it
 // once purchases record their amounts).
 export const PLAN_VALUE_USD = {
-  ugc_pass: 9, lifetime_starter: 59, lifetime_creator: 199, lifetime_agency: 399,
+  ugc_pass: 9, lifetime_entry: 69, lifetime_starter: 59, lifetime_creator: 199, lifetime_agency: 399,
   // Top-ups and the monthly plans shown in the app to a buyer with no plan yet.
   small: 8, medium: 18, large: 36, xl: 70, starter: 29, creator: 59, pro: 99, agency: 199,
 }

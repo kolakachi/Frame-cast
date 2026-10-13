@@ -896,7 +896,7 @@ class AdminController extends Controller
     {
         $known = array_keys((array) (new \ReflectionClass(CreditService::class))->getConstant('PLAN_LIMITS'));
         $order = ['free', 'starter', 'creator', 'pro', 'agency', 'enterprise',
-            'lifetime_starter', 'lifetime_creator', 'lifetime_agency',
+            'lifetime_entry', 'lifetime_starter', 'lifetime_creator', 'lifetime_agency',
             'appsumo_starter', 'appsumo_creator', 'appsumo_agency'];
 
         $sorted = array_values(array_intersect($order, $known));
