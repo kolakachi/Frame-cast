@@ -77,3 +77,11 @@
 .lp-addon input { margin-top: 4px; accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
 .lp-ps { max-width: 70ch; color: var(--text); }
 @media (max-width: 560px) { .lp-reel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lp-offer { padding: 22px; } }
+
+/* Visuals (v4): the hero video, app screenshots */
+.lp-hero-video { max-width: 520px; margin: 8px auto 0; }
+.lp-hero-video video { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 18px; border: 1px solid var(--line-2); background: var(--bg-2); box-shadow: 0 24px 60px -30px rgba(0,0,0,.5); }
+.lp-hero-video figcaption, .lp-shot figcaption { color: var(--dim); font-size: .85rem; margin-top: 8px; text-align: center; }
+.lp-shot { margin: 16px 0 4px; max-width: 760px; }
+.lp-shot img { width: 100%; height: auto; display: block; border-radius: 14px; border: 1px solid var(--line-2); box-shadow: 0 20px 50px -30px rgba(0,0,0,.45); }
+.lp-steps li .lp-shot { margin-top: 14px; }
