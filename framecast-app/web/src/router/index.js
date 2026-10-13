@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { readBriefHash, saveBrief } from '../services/pendingBrief.js'
+import { checkoutGate } from '../composables/resumeCheckout'
 // The Weave onboarding (2026-10-09) replaced the Classic first-video wizard (OnboardingView.vue, kept unrouted).
 import WelcomeView from '../views/WelcomeView.vue'
 import DashboardView from '../views/DashboardView.vue'
@@ -125,6 +126,10 @@ export function isSafeRedirect(value) {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
 }
 
+function impersonating() {
+  try { return Boolean(localStorage.getItem('framecast.impersonating')) } catch { return false }
+}
+
 router.beforeEach(async function (to) {
   const authStore = useAuthStore()
 
@@ -164,6 +169,20 @@ router.beforeEach(async function (to) {
     if (!authStore.user?.is_internal) {
       return { name: 'dashboard' }
     }
+  }
+
+  // An unpaid account that registered for a plan goes to checkout from any app page, not only at sign-in: a session
+  // that outlived an abandoned checkout used to open the dashboard (owner, 2026-10-13). Not for staff, client team
+  // members or an admin impersonating someone; the checkout and plan pages themselves stay open.
+  if (
+    authStore.isAuthenticated &&
+    to.meta.requiresAuth &&
+    !['continue-checkout', 'payment-confirmation', 'plans'].includes(to.name) &&
+    !['super_admin', 'platform_admin', 'client', 'client_editor', 'client_admin', 'collaborator'].includes(authStore.user?.role) &&
+    !impersonating()
+  ) {
+    const gate = await checkoutGate()
+    if (gate?.required) return gate.plan ? { name: 'continue-checkout', query: { plan: gate.plan } } : { name: 'plans' }
   }
 
   if (["client", "client_editor", "client_admin"].includes(authStore.user?.role) && to.name === "dashboard") return { name: "client-home" };

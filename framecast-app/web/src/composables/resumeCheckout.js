@@ -47,3 +47,22 @@ export async function resumePendingCheckout() {
   }
   return true
 }
+
+// Whether the signed-in account must still pay before using the app: a free account that registered for a plan and
+// never finished checkout (the server's checkout_required, which exempts paid tiers, staff and grandfathered free
+// accounts). Asked on every app page, so a session that outlived an abandoned checkout is sent back to pay instead of
+// opening the dashboard (owner, 2026-10-13). Cached for 30 s; on any error the app opens as usual.
+let gateCache = null
+export function forgetCheckoutGate() { gateCache = null }
+export async function checkoutGate() {
+  if (gateCache && Date.now() - gateCache.at < 30000) return gateCache.value
+  try {
+    const { data } = await api.get('/billing/status')
+    const billing = data?.data?.billing
+    const value = billing ? { required: Boolean(billing.checkout_required), plan: billing.checkout_plan || billing.pending_checkout?.plan || '' } : null
+    gateCache = { at: Date.now(), value }
+    return value
+  } catch {
+    return null
+  }
+}

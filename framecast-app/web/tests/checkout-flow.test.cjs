@@ -21,7 +21,7 @@ function harness(file, exposed, overrides = {}) {
   })
   let code = fs.readFileSync(path.join(src, file), 'utf8')
   if (file.endsWith('.vue')) code = code.match(/<script setup>([\s\S]*?)<\/script>/)[1]
-  code = code.replace(/^import .*$/gm, '').replace(/export async function/g, 'async function')
+  code = code.replace(/^import .*$/gm, '').replace(/export (async )?function/g, (m, a) => (a ? 'async ' : '') + 'function')
   vm.runInContext(code + `\nglobalThis.exposed = { ${exposed} };`, context)
   return { context, api: context.exposed, store, redirects, callbacks }
 }
@@ -156,4 +156,22 @@ test('required checkout uses account plan and ignores another account confirmati
   assert.equal(await h.api.resumePendingCheckout(), true)
   assert.equal(h.context.window.location.href, '/continue?plan=creator')
   assert.equal(h.store.has('wyv_pending_confirmation'), false)
+})
+
+test('an unpaid account is sent to checkout from any app page, asking the server once per 30 s', async () => {
+  let calls = 0
+  const h = harness('composables/resumeCheckout.js', 'checkoutGate, forgetCheckoutGate', {
+    api: { get: async () => { calls++; return { data: { data: { billing: { checkout_required: true, checkout_plan: 'lifetime_entry' } } } } } },
+  })
+  assert.deepEqual({ ...(await h.api.checkoutGate()) }, { required: true, plan: 'lifetime_entry' })
+  await h.api.checkoutGate()
+  assert.equal(calls, 1)
+  h.api.forgetCheckoutGate()
+  await h.api.checkoutGate()
+  assert.equal(calls, 2)
+})
+
+test('the checkout gate opens the app when billing cannot be read', async () => {
+  const h = harness('composables/resumeCheckout.js', 'checkoutGate', { api: { get: async () => { throw new Error('down') } } })
+  assert.equal(await h.api.checkoutGate(), null)
 })

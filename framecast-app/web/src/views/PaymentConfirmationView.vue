@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import { peekBrief } from '../services/pendingBrief.js'
+import { forgetCheckoutGate } from '../composables/resumeCheckout'
 import { conversion, PLAN_VALUE_USD } from '../services/googleAds.js'
 
 const route = useRoute()
@@ -25,6 +26,8 @@ async function checkPayment() {
       await auth.refreshUser()
       if (stopped) return
       try { localStorage.removeItem('wyv_pending_plan'); localStorage.removeItem('wyv_pending_confirmation') } catch { /* optional cache */ }
+      // Paid: the app is open now, without waiting for the cached "must pay" answer to expire.
+      forgetCheckoutGate()
       // Bought with a brief from wyvstudio.com: straight to Create, where it is waiting (onboarding offers the same).
       // Otherwise to making a video, never Settings (#11, 2026-10-12): the $9 pass to the UGC chat it pays for, every
       // other plan to the dashboard, whose first box makes their first ad.
