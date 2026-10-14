@@ -23,6 +23,9 @@ deploys drain Create around the restart.
 | ID | Item | Status | Next |
 |---|---|---|---|
 | REQ-SPOKEN | A requirement about what is said ("ends on Start at WyvStudio", from a re-voice request) is checked by sight, so brief 2's voice-only version is marked blocked though it says it. Requirements need a spoken/on-screen kind, and spoken ones are checked by ear | open | build |
+| CLAIM-CHECK | The builder's closing message says "the check now passes" / "I fixed both problems" while the stored final checks are blocked (run 5768a13a, versions 1 and 2, 2026-10-14). The message must be written from the stored result: name what passed and what is still open (verify-don't-claim, 2026-10-05) | open | build |
+| CHECK-SWITCH | "Must appear: paper and charcoal hard switches on hits" failed as "not seen" on version 2 of 5768a13a, though the frames switch cream/charcoal on every beat. A requirement about change over time (switches, flips, cuts) can't be judged from single frames: compare neighbouring frames, or mark it unclear and check it another way | open | build |
+| CHANGE-LOCAL | Change… always queues its plan as a durable job; locally CREATE_DURABLE_PLANNING is off, so the plan never runs (prod has it on). Follow the flag as CreateController::plan does, or turn it on locally | open | build |
 | FS3 | Finishing checks still to add: constant-speed motion, the same technique repeated, full-frame hit count (the Laban plan covers the first two) | partly | build |
 | ASK-FILE | No product photo: a generated product image is the fallback, the photo is still asked for | ready | prove on a product brief |
 | D7 | Pick the best seconds of a clip that is longer than its slot | partly | build |
@@ -59,7 +62,7 @@ deploys drain Create around the restart.
 | API-BAL | Turn on Anthropic auto-reload; give the current balance so it can be recorded (`create:model-balance`) | the low-balance warning |
 | O9 | Open Create to the two real customers (ws 28, ws 27) | L8 |
 | O10 | Customer acceptance: the GTM-1 round covered motion graphics, UGC and footage edits; confirm it counts | O9 |
-| S9 | Browser check of "Change…" from the video | S9 done |
+| S9 | Browser check of "Change…" from the video (2026-10-14: "Change this moment" never showed until 264d444d; a moment's frame failed the build until de44b9ed; both fixed locally, not yet pushed) | S9 done |
 | O8 | Browser checks: a tab left open across a deploy (L3), the directions drawer (FS1), Details (FS9) | L3, FS1, FS9 |
 | O1 | A consented photo of yourself | E2; bench B6, B7, B9 |
 | O2 | A UGC reference video | bench B9 |
