@@ -125,3 +125,19 @@ the example by its stored check result, not by its message.
 
 *For Create:* a demo's example must be picked by its stored result; a screen recording needs a visible pointer, and
 every frame is checked for real identities before it is used.
+
+## 11. Replay real creations instead of making new ones; let the camera follow the clicks (done)
+
+- Owner's call: the demo replays how two finished creations were made, with no new runs and no edits. Northside
+  Roasters (a short real brief, 15 s ad, voice and music) is followed end to end; the Laban explainer (30 s, 16:9) opens
+  beside it. Both were copied read-only from prod (the owner's test workspace) into the local app (rows, plan media,
+  video files; asset ids remapped), so the replay shows today's UI and nothing changes on prod.
+- The replay types the creation's exact brief, picks the style it really used (Editorial frame), opens its plan and
+  directions, plays its result card, opens Change… with a request typed but not sent, and points at Download and
+  Schedule. Its closing message and blocked checks stay framed out or folded, never shown as passed.
+- Screens are recorded at 2× (3840×2160) with every pointer move, click and typing burst logged. The edit's camera
+  eases to ~1.5–2× on each click, typing burst and resting point and back out between them; each click draws an orange
+  ring. (Zooming by scaling each frame to a new size broke ffmpeg's crop; a fixed-size zoompan over a 4K frame works.)
+
+*For Create:* a demo is a replay of a real creation's own history; on screen recordings the camera follows the
+pointer, and every click is visible.
