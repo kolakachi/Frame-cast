@@ -66,7 +66,7 @@ face from the audio. Always transcript-check a take for missing and repeated wor
 
 ## 6. Build the video around one voice (planned)
 
-- The master narration is generated first, one call per beat with the beats before and after as context, then joined.
+- The master narration is generated first, as one continuous read (see 7).
 - Presenter clips are made from each presenter beat's own audio and placed muted at that beat's start in the master
   track. Product screens play under the same voice: L-cuts out of the presenter, J-cuts back in. Music under everything,
   lowered while she speaks; captions follow the master track.
@@ -74,3 +74,14 @@ face from the audio. Always transcript-check a take for missing and repeated wor
   sample gallery), with the test account's identity replaced by demo labels and test-run warnings hidden.
 
 *For Create:* the voice track is the backbone of a presenter-led video; pictures are cut to it, not the other way round.
+
+## 7. Record the narration (done)
+
+- ElevenLabs v3 on Replicate lists previous/next-text context but rejects it ("not yet supported with eleven_v3"), so
+  beat-by-beat generation can't be kept continuous. Instead: **the whole script in one call** (one read, one session,
+  54.8 s, 154 words), then **split at the beat boundaries from Whisper word timings** (~a cent), with a little air at
+  each edge. Whisper also confirms the brand name is said right ("Weave Studio").
+- The alternative close (YouTube) is a separate short call with the same voice settings.
+
+*For Create:* generate a presenter-led video's narration as one take and cut it by word timings; never stitch
+separately generated lines when the model can't carry context.

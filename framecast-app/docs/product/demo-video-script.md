@@ -1,32 +1,35 @@
-# WyvStudio demo video: script v3 (2026-10-14)
+# WyvStudio demo video: script v4 (2026-10-14)
 
-About 85 seconds, 16:9, for small brand and marketing teams. One core demo, with separate closing lines for YouTube/the website and an active AppSumo listing. Timings are edit targets; lock them after the voice track and screen captures exist.
+About 80 seconds, 16:9, for small brand and marketing teams. Made by hand outside Create (owner and Claude); every step is
+logged in [demo-video-production-log.md](demo-video-production-log.md) to teach Create. Timings are edit targets; lock
+them after the voice track and screen captures exist.
 
-**Story:** finished ad → product brief → plan and cost → result → specific revision → download → presenter option → next step.
+**Story:** finished film → short brief → plan and cost → checked result → ask for a change → download or schedule →
+presenter option → next step.
 
-**Cast (owner, 2026-10-14):** presenter **Layla** (WyvStudio cast) in a new look made with image generation (outfit and place per the presenter principles below); voice **ElevenLabs v3 "Sarah"** for the whole read.
+**Cast (owner, 2026-10-14):** presenter **Layla** (WyvStudio cast) in her studio look; voice **ElevenLabs v3 "Sarah"**.
 
-**Main promise:** turn your product into a short video, with a plan and cost you can review first. The demonstration supplies the proof.
+**The example followed:** one real Create run, the 15-second WyvStudio motion-graphics film ("A finished video ad.
+Without a shoot."), from its brief to its checked result. Nothing in the app is staged: every screen is captured from that
+run or from the real app, with the test account's identity replaced by demo labels.
 
 ## Script
 
-Use one coffee subscription throughout. The existing Northside Roasters sample is a candidate, not evidence that this proposed capture has been completed. Use a product page, reference, plan, output and revision from the same actual run. Substitute another product throughout if it produces a stronger demonstration.
-
 | # | Target time | Picture / edit | Spoken words | Purpose |
 |---|---|---|---|---|
-| 1 | 0–10 | **Presenter** for the first two seconds; carry her voice over the strongest moment from the actual demo ad by second 3. Show WyvStudio's name. Let the output fill the available frame without distorting its proportions. | Your next ad doesn't need another shoot. No creator to wait for, no editor to book. This one started with a product page. | Show the outcome before explaining it. |
-| 2 | 10–21 | Real **Create** screen. Paste the coffee product URL and a short brief for a 15-second vertical ad. Add the reference used for this run; show a recognisable moment from it. | This is WyvStudio. Paste your product link and describe the ad you need. Have a style in mind? Add a reference video. | Establish one concrete starting point and creative direction. |
-| 3 | 21–33 | Zoom into the actual plan: opening, visual direction and credit estimate/limit. Hold the cost long enough to read, then approve. Use a simple product/motion-graphics example; retain any separate design or storyboard approval the run requires. | Your Creative Director plans the script and the look, then shows the estimated cost in credits. Review the plan before you approve. | Show control over the direction and spending. |
-| 4 | 33–45 | Briefly show real generation progress and the actual check summary. Label the time jump **Generation shortened**. Show the finished ad, with a brief reference/result comparison if the connection is clear. Give the output at least three uninterrupted seconds without narration. | WyvStudio makes the video and checks things like speech and text timing. Here's how it turned out. | Prove the brief becomes a result the viewer can inspect. |
-| 5 | 45–60 | On the same project, type **Change only the end-card text to “Find your morning favourite.”** Show the real change flow, including any cost/approval it requests. Compare the original and revised end cards, labelled **Before / After**; hold both for at least two seconds. | Want a different ending? Ask: “Change the end-card text to Find your morning favourite.” Now compare the original with the update. | Demonstrate a specific, visible revision. |
-| 6 | 60–65 | Download the revised version; show the resulting file opening. | Happy with it? Download your finished video. | Complete the workflow with a usable deliverable. |
-| 7 | 65–73 | Show presenter selection, then a strong, actual in-app presenter output, using the same product if available. Label it **AI presenter**. Give the face and lip-sync time to register. | Want someone on camera? Choose an AI presenter to deliver your script. | Show the presenter option without introducing another full workflow. |
-| 8 | 73–85 | Return to the **presenter**, in the same frame as beat 1. End card: logo, one action, one destination. Hold it for at least two seconds after the last word. | And yes, I'm one of WyvStudio's AI presenters. Your next ad doesn't need a shoot. Make your first video at wyvstudio dot com. | Pay off the presenter reveal and give one next step. |
+| 1 | 0–9 | **Presenter** for the first two seconds; by second 3 her voice carries over the finished film playing full frame. WyvStudio's name on screen. | Your next ad doesn't need another shoot. No creator to wait for, no editor to book. This one started with a short brief. | Show the outcome before explaining it. |
+| 2 | 9–19 | Real **Create** screen: the brief from that run appears in the box (with the logo attached), then the style and effort pickers. | This is WyvStudio. Describe the video you need, or paste a product link. Have a style in mind? Pick one, or add a video you love. | One concrete starting point and the ways in. |
+| 3 | 19–31 | The real plan from that run: the shots, the look ("Ways to make it"), and the credits it will cost; hold the cost long enough to read. | Your Creative Director plans the shots and the look, and shows what it will cost in credits before anything is made. Review it, then approve. | Control over the direction and the spend. |
+| 4 | 31–44 | The real result card: "I fixed the reading-time problems; the check now passes." Then the finished film plays, at least three seconds with no narration over it. Label any time jump **Generation shortened**. | WyvStudio makes the video, then checks it, like whether every line on screen stays up long enough to read. Here's how it turned out. | Proof the brief becomes a checked result. |
+| 5 | 44–53 | The same card: **Change…** opens and a request is typed ("Make the end card say Start your first video."). The typing only; nothing is shown as changed. | Want something different? Just say what to change. | Changes by asking, shown honestly. |
+| 6 | 53–59 | **Download video** and **Schedule** on the same card; the downloaded file opens. | Happy with it? Download it, or schedule it to your channels. | A usable deliverable. |
+| 7 | 59–67 | UGC chat: a presenter picked for a product, then a real presenter video from the sample gallery playing. Label it **AI presenter**. | Want someone on camera? Pick an AI presenter to deliver your lines. | The presenter option, briefly. |
+| 8 | 67–80 | **Presenter**, same frame as beat 1. End card: logo, one action, one destination; held two seconds after the last word. | And yes, I'm one of WyvStudio's AI presenters. Your next ad doesn't need a shoot. See what's included in the deal below. | The reveal, then one next step (AppSumo close). |
 
 ### Closing variants
 
-- **YouTube / website:** use beat 8 as written. End card: **Make your first video · wyvstudio.com**.
-- **AppSumo listing (live; made first):** replace beat 8 with **“And yes, I'm one of WyvStudio's AI presenters. Your next ad doesn't need a shoot. See what's included in the deal below.”** End card: **Explore the WyvStudio deal**.
+- **AppSumo listing (live; made first):** beat 8 as written. End card: **Explore the WyvStudio deal**.
+- **YouTube / website:** beat 8 ends **“…Your next ad doesn't need a shoot. Make your first video at wyvstudio dot com.”** End card: **Make your first video · wyvstudio.com**.
 
 ## Production notes
 
@@ -80,4 +83,4 @@ Local references: [positioning](positioning-roadmap.md), [Create UI](../../web/s
   (for gestures), room on one side for captions and the logo.
 
 
-_Supersedes v1 (commit 56e41cf6) and folds in the v2 review._
+_v4 follows a real past run instead of a new coffee run (owner: the video is made by hand outside Create). Supersedes v1–v3._
