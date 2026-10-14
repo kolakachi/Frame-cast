@@ -36,6 +36,8 @@ const showHistory = ref(false), details = ref(false), libraryOpen = ref(false), 
 const data = ref(null), prompt = ref(''), quote = ref(null), selectedRevision = ref(null), outputKind = ref('video')
 const rename = ref(''), uploads = ref([])
 const fileInput = ref(null), composer = ref(null), end = ref(null)
+// A function ref: the player sits inside the message loop, where a plain ref="player" becomes an array and
+// player.playing / player.current read undefined (the "Change this moment" button never showed).
 const player = ref(null), changeDrawer = ref(null), changeOpen = ref(false)
 const media = ref(''), compareMedia = ref(''), artifactLoading = ref(false), artifactGone = ref(''), historyLoading = ref(false), dragging = ref(false)
 const clock = ref(Date.now()), providerApproved = ref(false), variantCount = ref(1)
@@ -1639,7 +1641,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
                   <StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Generated image" />
-                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer ref="player" :src="media" capture @stale="renewMedia" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /><button v-if="canChange && player && !player.playing && player.current > 0" type="button" class="moment-btn" @click="changeMoment">Change this moment · {{ clockTime(player.current) }}</button></div>
+                  <div v-else-if="media" class="player-wrap"><FinishedVideoPlayer :ref="el => { player = el }" :src="media" capture @stale="renewMedia" /><div v-if="safeZones" class="safe-zones" aria-hidden="true" /><button v-if="canChange && player && !player.playing && player.current > 0" type="button" class="moment-btn" @click="changeMoment">Change this moment · {{ clockTime(player.current) }}</button></div>
                   <p v-if="artifactGone && !artifactLoading" class="muted">{{ artifactGone }}</p>
                   <button v-if="!media && !artifactLoading && !artifactGone" type="button" class="btn btn--ghost btn--sm" @click="loadArtifact">Retry preview</button>
                 </div>
