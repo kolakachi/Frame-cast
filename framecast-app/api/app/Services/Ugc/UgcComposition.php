@@ -95,9 +95,35 @@ final class UgcComposition
         return $green / (32 * 32) >= 0.25;
     }
 
+    /**
+     * The colour the video model actually filmed behind the presenter, as 0xRRGGBB: the median of small patches at the
+     * frame's edges (top corners and the middle of each side) at three moments, keeping only patches of the same hue
+     * family as the key asked for. Null when no patch qualifies (then the asked-for key is used).
+     */
+    public static function backdropColour(string $path, string $asked = '0x00FF00'): ?string
+    {
+        $length = (float) trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $path])->output());
+        if ($length <= 0) return null;
+        [$ar, $ag, $ab] = sscanf(strtoupper(substr($asked, 2)), '%02X%02X%02X');
+        $family = fn ($r, $g, $b) => $ag >= max($ar, $ab) ? ($g > $r + 40 && $g > $b + 40) : ($ab >= max($ar, $ag) ? ($b > $r + 40 && $b > $g + 40) : ($r > $g + 40 && $b > $g + 40));
+        $samples = [];
+        foreach ([0.2, 0.5, 0.8] as $at) {
+            foreach (['crop=24:24:8:8', 'crop=24:24:iw-32:8', 'crop=24:24:8:ih/2', 'crop=24:24:iw-32:ih/2'] as $crop) {
+                $px = Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-ss', (string) round($length * $at, 2), '-i', $path, '-frames:v', '1',
+                    '-vf', $crop.',scale=1:1:flags=area', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])->output();
+                if (strlen($px) < 3) continue;
+                [$r, $g, $b] = array_values(unpack('C3', $px));
+                if ($family($r, $g, $b)) $samples[] = [$r, $g, $b];
+            }
+        }
+        if (count($samples) < 3) return null;
+        $median = function (int $i) use ($samples) { $v = array_column($samples, $i); sort($v); return $v[intdiv(count($v), 2)]; };
+        return sprintf('0x%02X%02X%02X', $median(0), $median(1), $median(2));
+    }
+
     public static function graph(string $layout, float $seconds = 0, string $key = '0x00FF00', string $placement = 'bottom_right', string $size = 'medium', ?float $bgAspect = null): string
     {
-        if (! in_array($key, ['0x00FF00', '0x0000FF', '0xFF00FF'], true)) throw new \InvalidArgumentException('Unsupported chroma key.');
+        if (! preg_match('/^0x[0-9A-F]{6}$/i', $key)) throw new \InvalidArgumentException('Unsupported chroma key.');
         $fit = fn ($w, $h) => "scale={$w}:{$h}:force_original_aspect_ratio=decrease,pad={$w}:{$h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={$seconds}";
         if ($layout === 'green_screen') {
             $hold = "fps=24,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={$seconds}";
@@ -108,7 +134,12 @@ final class UgcComposition
                 ? "[1:v]split[bwide][bfit];[bwide]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=20:2,eq=brightness=-0.06[bblur];"
                     ."[bfit]scale=720:1280:force_original_aspect_ratio=decrease[bfront];[bblur][bfront]overlay=(W-w)/2:(H-h)/2,setsar=1,{$hold}[bg]"
                 : "[1:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,{$hold}[bg]";
-            $keyed = "[0:v]setpts=PTS-STARTPTS,chromakey={$key}:0.18:0.08";
+            // Keyed on the backdrop's measured colour (take 303: asked for #00FF00, filmed lime #6AE027, and keying the
+            // asked-for green left a see-through green veil and outlines). A light despill takes the green or blue tint
+            // off hair and shoulders without shifting clothes or skin (checked within about 1%).
+            [$r, $g, $b] = sscanf(strtoupper(substr($key, 2)), '%02X%02X%02X');
+            $despill = $g > $r && $g > $b ? ',despill=type=green:mix=0.25:expand=0' : ($b > $r && $b > $g ? ',despill=type=blue:mix=0.25:expand=0' : '');
+            $keyed = "[0:v]setpts=PTS-STARTPTS,chromakey={$key}:0.14:0.05{$despill}";
             if (str_starts_with($placement, 'bubble')) {
                 // Head and shoulders in a circle above the captions, like a screen recording with a camera bubble.
                 $x = $placement === 'bubble_left' ? '28' : 'W-w-28';
@@ -172,7 +203,8 @@ final class UgcComposition
         }
         $out = tempnam(sys_get_temp_dir(), 'ugc-composite-').'.mp4';
         $temps[] = $out;
-        $run = Process::timeout(600)->run(['ffmpeg', '-y', ...$inputs, '-filter_complex', self::graph($composition['layout'], $seconds, $composition['key_color'] ?? '0x00FF00', (string) ($composition['placement'] ?? 'bottom_right'), (string) ($composition['size'] ?? 'medium'), $bgAspect),
+        $run = Process::timeout(600)->run(['ffmpeg', '-y', ...$inputs, '-filter_complex', self::graph($composition['layout'], $seconds, $composition['layout'] === 'green_screen'
+                ? (self::backdropColour($base, $composition['key_color'] ?? '0x00FF00') ?? ($composition['key_color'] ?? '0x00FF00')) : ($composition['key_color'] ?? '0x00FF00'), (string) ($composition['placement'] ?? 'bottom_right'), (string) ($composition['size'] ?? 'medium'), $bgAspect),
             '-map', '[outv]', '-map', '0:a?', '-t', sprintf('%.3f', $seconds), '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'aac', '-movflags', '+faststart', $out]);
         if (! $run->successful() || ! filesize($out)) throw new \RuntimeException('The UGC composition failed. Retry to reuse the finished generation.');
         return $out;

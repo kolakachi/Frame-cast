@@ -44,6 +44,21 @@ class UgcGreenScreenPlacementTest extends TestCase
         $this->assertStringContainsString('boxblur', $wide, 'a wide page sits whole over a blurred copy of itself');
     }
 
+    public function test_the_key_is_the_backdrop_colour_actually_filmed(): void
+    {
+        // Take 303: green was asked for, lime #6AE027 was filmed. A presenter-shaped box sits in the middle.
+        $clip = tempnam(sys_get_temp_dir(), 'key-').'.mp4';
+        \Illuminate\Support\Facades\Process::run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x6AE027:s=360x640:d=2:r=12',
+            '-vf', 'drawbox=x=110:y=120:w=140:h=520:color=0x3a3a44:t=fill', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', '-crf', '0', $clip]);
+        $key = UgcComposition::backdropColour($clip);
+        @unlink($clip);
+        [$r, $g, $b] = sscanf(substr((string) $key, 2), '%02X%02X%02X');
+        $this->assertEqualsWithDelta(0x6A, $r, 6); $this->assertEqualsWithDelta(0xE0, $g, 6); $this->assertEqualsWithDelta(0x27, $b, 6);
+        $graph = UgcComposition::graph('green_screen', 4, (string) $key);
+        $this->assertStringContainsString('chromakey='.$key.':0.14:0.05,despill=type=green:mix=0.25', $graph, 'keyed on what was filmed, the green tint lifted from the edges');
+        $this->assertStringNotContainsString('despill', UgcComposition::graph('green_screen', 4, '0xFF00FF'), 'no despill for a magenta key');
+    }
+
     public function test_an_unknown_position_is_refused(): void
     {
         $this->expectException(\Illuminate\Validation\ValidationException::class);
