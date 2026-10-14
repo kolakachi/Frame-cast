@@ -56,7 +56,10 @@ class VariantService
         $run=DB::table('composition_runs')->where('conversation_id',$id)->where('workspace_id',$user->workspace_id)->where('id',$runId)->firstOrFail();
         abort_unless($run->status==='failed' && !AttemptService::unresolved($runId),409,'Only a confirmed failed result can be retried. Recover uncertain work first.');
         abort_if(DB::table('composition_runs')->where('input_json->retry_of',$runId)->exists(),409,'This failed result already has a retry. Inspect that result instead.');
-        $p=json_decode($run->input_json,true);app(InputSnapshotService::class)->verify($p['input_files']??[]);
+        $p=json_decode($run->input_json,true);
+        // Only source and reference files reach the worker; a run that failed on a "current" frame retries without it.
+        $p['input_files']=array_values(array_filter($p['input_files']??[],fn($f)=>in_array($f['purpose']??'',['source','reference'],true)));
+        app(InputSnapshotService::class)->verify($p['input_files']);
         $p['source_revision_id']=$p['base_revision_id'];$p['base_revision_id']=$c->head_revision_id;$p['version']=$version;$p['retry_of']=$runId;
         abort_unless($p['mode']===config('create.mode'),409);
         // A run that started on a short balance kept limits shrunk to that balance (room, per-call ceiling, reviewer
