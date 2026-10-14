@@ -32,6 +32,8 @@ deploys drain Create around the restart.
 | S10 | Pause and ask inside a step (at most 2 questions), resume without re-approval | open | build |
 | HF-BILL | Reconcile real provider invoices against our cost records | open | compare a week |
 | HF-CASES | Hard test briefs: mismatched product photo, long text, missing claims, contradictory ask, footage too short, a new spoken hook | open | add to tests and the bench |
+| TASTE-CREATE | taste-skill (github.com/Leonxlnx/taste-skill, MIT, 2026-10-14): its AI-tells list (eyebrow chips, mono labels, gradient blobs, glass cards, styled accent words) as a critic checklist; the idea sentence + competitor test ("On this video, [something only this product has] becomes [the device]") in the planner's creative approach; its type laws (2–3 sizes, display tracking -0.02 to -0.05em, headlines ≤ 2 lines). Defaults only: a chosen style or a reference always wins | open | add to guidance, then 2 builds before/after (paid, owner OK) |
+| TASTE-SITE | taste-skill review of our own pages (wyvstudio.com, sales., special.): the hero "New ·" pill, mono uppercase labels in the funnel, accent words in headlines, icon cards | open | run the review (free), owner picks the fixes |
 | I2 | Local stack: rebuild reverb (api, queue workers and scheduler rebuilt 2026-10-08) | partly | rebuild |
 
 ## 2. Needs a real run or a look
