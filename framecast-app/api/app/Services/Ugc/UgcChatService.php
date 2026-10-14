@@ -286,6 +286,8 @@ final class UgcChatService
         return $this->say($id, 'pitch', mb_substr((string) $d['summary'], 0, 600), [
             'type' => $type, 'title' => $title, 'plan' => ['format' => $plan['format'], 'script' => $plan['script'], 'segments' => $plan['segments']],
             'takes' => $takes, 'credits' => $total, 'aspect' => $state['aspect'] ?? '9:16', 'product_asset_ids' => $products, 'made' => false,
+            // "No product photo yet" only where a product would be invented: not over a background or split of the user's files, nor their footage.
+            'product_photo_tip' => $products === [] && $composition === [] && $footage === [],
         ]);
     }
 

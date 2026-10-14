@@ -669,7 +669,7 @@ onBeforeUnmount(() => {
                       <span class="uc-tag">{{ m.payload.aspect }}</span>
                     </div>
                     <details class="uc-script"><summary>The script</summary><p>{{ m.payload.plan?.script }}</p></details>
-                    <p v-if="canMake(m) && !m.payload.product_asset_ids?.length" class="uc-tip">No product photo yet, so it will be a generic one. Add a photo with + and send it to show yours at its real size.</p>
+                    <p v-if="canMake(m) && (m.payload.product_photo_tip ?? (!m.payload.product_asset_ids?.length && m.payload.type !== 'green_screen'))" class="uc-tip">No product photo yet, so it will be a generic one. Add a photo with + and send it to show yours at its real size.</p>
                   </div>
                 </div>
                 <div v-if="position(m)" class="uc-position">
