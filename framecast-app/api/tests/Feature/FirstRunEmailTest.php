@@ -60,7 +60,7 @@ class FirstRunEmailTest extends TestCase
 
         $this->assertStringContainsString('Welcome to WyvStudio', $body);
         $this->assertStringContainsString('auth/magic?token=abc', $body);
-        $this->assertStringContainsString('Creator — $199 one-time', $body);
+        $this->assertStringContainsString('Creator — $157 one-time', $body);
         $this->assertStringContainsString('straight to checkout', $body);
     }
 
@@ -122,7 +122,7 @@ class FirstRunEmailTest extends TestCase
 
         $this->assertStringContainsString('/continue?plan=lifetime_creator', $body);
         $this->assertStringContainsString('Finish checkout for', $body);
-        $this->assertStringContainsString('Creator — $199 one-time', $body);
+        $this->assertStringContainsString('Creator — $157 one-time', $body);
         // The opening has to agree with the button: they did pick a plan.
         $this->assertStringContainsString('never finished paying', $body);
         $this->assertStringNotContainsString("haven't picked a plan", $body);

@@ -34,7 +34,7 @@ class EntryOfferTest extends TestCase
         $this->assertSame($rank->invoke(null, 'appsumo_creator'), $rank->invoke(null, 'lifetime_entry'));
         $this->assertGreaterThan($rank->invoke(null, 'appsumo_starter'), $rank->invoke(null, 'lifetime_entry'));
         $this->assertSame(4000, $bucket->invoke(null, 'lifetime_entry'));
-        $this->assertSame(12000, $bucket->invoke(null, 'lifetime_creator'));
+        $this->assertSame(9000, $bucket->invoke(null, 'lifetime_creator'));
     }
 
     public function test_entry_is_sold_through_the_one_time_checkout(): void

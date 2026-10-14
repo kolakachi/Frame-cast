@@ -24,9 +24,9 @@ async function logout() { await authStore.logout(); router.push({ name: "login" 
 
 // ── Catalogue ─────────────────────────────────────────────
 const ONE_TIME = [
-  { key: "lifetime_starter", rank: 1, name: "Starter", price: "$59",  credits: 4000, blurb: "Enough to find your footing.", feats: ["1 channel", "2 characters", "All visual modes", "No watermark"] },
-  { key: "lifetime_creator", rank: 2, name: "Creator", price: "$199", credits: 12000, blurb: "The one most people need.", feats: ["3 channels", "5 characters", "Series mode", "Social publishing", "API & ChatGPT/Claude access"], popular: true },
-  { key: "lifetime_agency",  rank: 3, name: "Agency",  price: "$399", credits: 30000, blurb: "For running several brands.", feats: ["Unlimited channels", "Up to 50 active client workspaces", "10 characters", "Priority export", "Everything included"] },
+  { key: "lifetime_starter", rank: 1, name: "Starter", price: "$47",  credits: 2500, blurb: "Enough to find your footing.", feats: ["1 channel", "2 characters", "All visual modes", "No watermark"] },
+  { key: "lifetime_creator", rank: 2, name: "Creator", price: "$157", credits: 9000, blurb: "The one most people need.", feats: ["3 channels", "5 characters", "Social publishing", "API & ChatGPT/Claude access"], popular: true },
+  { key: "lifetime_agency",  rank: 3, name: "Agency",  price: "$299", credits: 20000, blurb: "For running several brands.", feats: ["Unlimited channels", "Up to 50 active client workspaces", "10 characters", "Priority export", "Everything included"] },
 ];
 
 const MONTHLY = [

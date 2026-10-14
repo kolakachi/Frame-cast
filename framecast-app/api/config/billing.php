@@ -101,9 +101,9 @@ return [
             // free account instead of Kelviq.
             'ugc_pass'         => 'UGC Test Pass — $9 one-time, 600 credits',
             'lifetime_entry'   => 'WyvStudio — $69 one-time, 4,000 credits',
-            'lifetime_starter' => 'Starter — $59 one-time, 4,000 credits',
-            'lifetime_creator' => 'Creator — $199 one-time, 12,000 credits',
-            'lifetime_agency'  => 'Agency — $399 one-time, 30,000 credits',
+            'lifetime_starter' => 'Starter — $47 one-time, 2,500 credits',
+            'lifetime_creator' => 'Creator — $157 one-time, 9,000 credits',
+            'lifetime_agency'  => 'Agency — $299 one-time, 20,000 credits',
             'starter' => 'Starter — $29/month',
             'creator' => 'Creator — $59/month',
             'pro'     => 'Pro — $99/month',
@@ -117,18 +117,18 @@ return [
         'ugc_pass_credits' => 600,
 
         'lifetime_plans' => [
-            env('KELVIQ_PLAN_LIFETIME_STARTER', 'wyvstudio-lifetime-starter') => ['tier' => 'lifetime_starter', 'credits' => 4000],
+            env('KELVIQ_PLAN_LIFETIME_STARTER', 'wyvstudio-lifetime-starter') => ['tier' => 'lifetime_starter', 'credits' => 2500],
             // The sales.wyvstudio.com entry offer (owner, 2026-10-13): Creator features, 4,000 credits, $69.
             env('KELVIQ_PLAN_LIFETIME_ENTRY',   'wyvstudio-lifetime-entry')   => ['tier' => 'lifetime_entry',   'credits' => 4000],
-            env('KELVIQ_PLAN_LIFETIME_CREATOR', 'wyvstudio-lifetime-creator') => ['tier' => 'lifetime_creator', 'credits' => 12000],
-            env('KELVIQ_PLAN_LIFETIME_AGENCY',  'wyvstudio-lifetime-agency')  => ['tier' => 'lifetime_agency',  'credits' => 30000],
+            env('KELVIQ_PLAN_LIFETIME_CREATOR', 'wyvstudio-lifetime-creator') => ['tier' => 'lifetime_creator', 'credits' => 9000],
+            env('KELVIQ_PLAN_LIFETIME_AGENCY',  'wyvstudio-lifetime-agency')  => ['tier' => 'lifetime_agency',  'credits' => 20000],
         ],
 
         'lifetime_packs' => [
             ['key' => 'lifetime_entry',   'name' => 'WyvStudio', 'credits' => 4000, 'price_usd' => 69],
-            ['key' => 'lifetime_starter', 'name' => 'Starter',  'credits' => 4000,  'price_usd' => 59],
-            ['key' => 'lifetime_creator', 'name' => 'Creator',  'credits' => 12000, 'price_usd' => 199],
-            ['key' => 'lifetime_agency',  'name' => 'Agency',   'credits' => 30000, 'price_usd' => 399],
+            ['key' => 'lifetime_starter', 'name' => 'Starter',  'credits' => 2500,  'price_usd' => 47],
+            ['key' => 'lifetime_creator', 'name' => 'Creator',  'credits' => 9000,  'price_usd' => 157],
+            ['key' => 'lifetime_agency',  'name' => 'Agency',   'credits' => 20000, 'price_usd' => 299],
         ],
 
         // Top-up pack display metadata for the Settings grid (key drives the
