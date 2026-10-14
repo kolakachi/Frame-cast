@@ -191,8 +191,10 @@ final class UgcChatService
         $roleAsset = fn ($role) => collect($attachments)->firstWhere('role', $role)['asset_id'] ?? null;
         $composition = [];
         if ($live && $type === 'green_screen') {
-            if (! $roleAsset('background')) return $this->say($id, 'question', 'Upload the page or screenshot to show behind the presenter, choose Background for that file, then send again.');
-            $composition = ['layout' => 'green_screen', 'background_asset_id' => $roleAsset('background')];
+            if (! $roleAsset('background')) return $this->say($id, 'question', 'Upload your own page, screenshot or screen recording to show behind the presenter, choose Background for that file, then send again.');
+            // Where the presenter sits, read from what the user wrote ("on the left", "a small bubble"); adjustable on the pitch.
+            $said = DB::table('ugc_chat_messages')->where('chat_id', $id)->where('role', 'user')->orderByDesc('id')->limit(4)->pluck('content')->implode(' ');
+            $composition = ['layout' => 'green_screen', 'background_asset_id' => $roleAsset('background')] + UgcComposition::placementFrom($said);
         }
         if ($live && in_array($type, ['before_after', 'comparison'], true) && ($roleAsset('left') || $roleAsset('right'))) {
             if (! $roleAsset('left') || ! $roleAsset('right')) return $this->say($id, 'question', 'A split comparison needs both files. Assign one upload to Left / Before and the other to Right / After, then send again.');
@@ -446,20 +448,20 @@ final class UgcChatService
     }
 
     /** "Make it": the pitch's takes go to the pipeline, which checks the price again and spends the credits. */
-    public function make(Request $request, string $id, int $messageId, string $requestId, ?string $engine = null): array
+    public function make(Request $request, string $id, int $messageId, string $requestId, ?string $engine = null, array $position = []): array
     {
         $chat = $this->chat($request->user(), $id);
         // One "Make it" at a time per pitch: a double click never starts it twice.
         $lock = \Illuminate\Support\Facades\Cache::lock('ugc-chat-make:'.$messageId, 120);
         if (! $lock->get()) abort(409, 'This video is already being made.');
         try {
-            return $this->makeLocked($request, $chat, $id, $messageId, $requestId, $engine);
+            return $this->makeLocked($request, $chat, $id, $messageId, $requestId, $engine, $position);
         } finally {
             $lock->release();
         }
     }
 
-    private function makeLocked(Request $request, object $chat, string $id, int $messageId, string $requestId, ?string $engine = null): array
+    private function makeLocked(Request $request, object $chat, string $id, int $messageId, string $requestId, ?string $engine = null, array $position = []): array
     {
         $msg = DB::table('ugc_chat_messages')->where('chat_id', $chat->id)->where('id', $messageId)->where('kind', 'pitch')->first() ?? abort(404, 'Pitch not found.');
         $pitch = json_decode((string) $msg->payload_json, true);
@@ -473,6 +475,11 @@ final class UgcChatService
             foreach (['background_asset_id', 'left_asset_id', 'right_asset_id'] as $key) {
                 $needed = $t['request']['composition'][$key] ?? null;
                 if ($needed && ! in_array((int) $needed, $kept, true)) return $this->say($id, 'error', 'A required background or comparison file was removed. Request a new plan before making this video.');
+            }
+            // The presenter's position as the user left it on the pitch (green screen only), kept on the pitch too.
+            if (($t['request']['composition']['layout'] ?? '') === 'green_screen' && $position !== []) {
+                $t['request']['composition'] = array_intersect_key($position, ['placement' => 1, 'size' => 1]) + $t['request']['composition'];
+                $pitch['takes'][$i]['request']['composition'] = $t['request']['composition'];
             }
             unset($t['request']['product_asset_id'], $t['request']['product_asset_ids']);
             if ($products) $t['request'] += $t['mode'] === 'one_shot' ? ['product_asset_id' => $products[0], 'product_asset_ids' => $products] : ['product_asset_id' => $products[0]];
@@ -581,13 +588,20 @@ final class UgcChatService
         $rows = DB::table('ugc_chat_messages')->where('chat_id', $id)->orderBy('id')->get();
         $ids = $rows->where('role', 'user')->flatMap(fn ($m) => array_column(json_decode((string) $m->payload_json, true)['attachments'] ?? [], 'asset_id'))->unique()->all();
         $assets = $ids ? DB::table('assets')->where('workspace_id', $chat->workspace_id)->whereIn('id', $ids)->get(['id', 'title', 'asset_type'])->keyBy('id') : collect();
-        $messages = $rows->map(function ($m) use ($request, $assets) {
+        $messages = $rows->map(function ($m) use ($request, $assets, $chat) {
             $payload = json_decode((string) $m->payload_json, true) ?: [];
             if ($m->role === 'user') foreach ($payload['attachments'] ?? [] as $i => $a) {
                 $asset = $assets->get((int) $a['asset_id']);
                 if (! $asset) continue;
                 $payload['attachments'][$i] += ['title' => (string) $asset->title, 'type' => $asset->asset_type,
                     'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addHours(2), ['assetId' => $asset->id])];
+            }
+            // A green screen pitch shows where the presenter will sit over the background, adjustable before Make.
+            $comp = $m->kind === 'pitch' ? ($payload['takes'][0]['request']['composition'] ?? null) : null;
+            if (($comp['layout'] ?? '') === 'green_screen') {
+                $bg = DB::table('assets')->where('workspace_id', $chat->workspace_id)->where('id', (int) ($comp['background_asset_id'] ?? 0))->first(['id', 'asset_type']);
+                $payload['composition'] = ['layout' => 'green_screen', 'placement' => $comp['placement'] ?? 'bottom_right', 'size' => $comp['size'] ?? 'medium',
+                    'background' => $bg ? ['type' => $bg->asset_type, 'url' => \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addHours(2), ['assetId' => $bg->id])] : null];
             }
             if ($m->kind === 'pitch') foreach ($payload['takes'] ?? [] as $i => $t) unset($payload['takes'][$i]['request']);
             // Photos brought from their product page, shown under what we read there.

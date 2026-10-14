@@ -11,6 +11,30 @@ use Illuminate\Validation\ValidationException;
 /** Real uploaded pixels, composited only after native speech/video generation. */
 final class UgcComposition
 {
+    /** Where the presenter sits over a green-screen background (2026-10-14), and how large. Side and bubble ignore size. */
+    public const PLACEMENTS = ['bottom_right', 'bottom_left', 'bottom_center', 'side_left', 'side_right', 'bubble_right', 'bubble_left'];
+    public const SIZES = ['small', 'medium', 'large'];
+
+    /**
+     * The placement a brief asks for in plain words ("put me on the left", "small in the corner", "half the screen"),
+     * so nobody fills a form. Nothing said: bottom right, medium (what every take had before).
+     *
+     * @return array{placement: string, size: string}
+     */
+    public static function placementFrom(string $text): array
+    {
+        $t = ' '.mb_strtolower($text).' ';
+        $side = preg_match('/\bleft\b/', $t) ? 'left' : 'right';
+        $placement = match (true) {
+            (bool) preg_match('/\b(bubble|circle|round|loom)\b/', $t) => 'bubble_'.$side,
+            (bool) preg_match('/\b(half (of )?the (screen|frame)|side by side|on the side|one side)\b/', $t) => 'side_'.$side,
+            (bool) preg_match('/\b(cent(er|re)|middle)\b/', $t) && ! preg_match('/\b(left|right)\b/', $t) => 'bottom_center',
+            default => 'bottom_'.$side,
+        };
+        $size = preg_match('/\b(small|smaller|tiny|little)\b/', $t) ? 'small' : (preg_match('/\b(large|larger|big|bigger)\b/', $t) ? 'large' : 'medium');
+        return ['placement' => $placement, 'size' => $size];
+    }
+
     public static function resolve(User $user, array $input): array
     {
         if ($input === []) return [];
@@ -21,6 +45,13 @@ final class UgcComposition
             default => throw ValidationException::withMessages(['composition' => 'Choose a supported composition.']),
         };
         $out = ['layout' => $layout, 'assets' => []];
+        if ($layout === 'green_screen') {
+            $placement = (string) ($input['placement'] ?? 'bottom_right'); $size = (string) ($input['size'] ?? 'medium');
+            if (! in_array($placement, self::PLACEMENTS, true) || ! in_array($size, self::SIZES, true)) {
+                throw ValidationException::withMessages(['composition.placement' => 'Choose a supported presenter position and size.']);
+            }
+            $out += ['placement' => $placement, 'size' => $size];
+        }
         foreach ($keys as $key) {
             $asset = Asset::query()->whereKey((int) ($input[$key] ?? 0))->where('workspace_id', $user->workspace_id)
                 ->whereIn('asset_type', ['image', 'video'])->whereNotNull('storage_url')->first();
@@ -64,12 +95,31 @@ final class UgcComposition
         return $green / (32 * 32) >= 0.25;
     }
 
-    public static function graph(string $layout, float $seconds = 0, string $key = '0x00FF00'): string
+    public static function graph(string $layout, float $seconds = 0, string $key = '0x00FF00', string $placement = 'bottom_right', string $size = 'medium', ?float $bgAspect = null): string
     {
         if (! in_array($key, ['0x00FF00', '0x0000FF', '0xFF00FF'], true)) throw new \InvalidArgumentException('Unsupported chroma key.');
         $fit = fn ($w, $h) => "scale={$w}:{$h}:force_original_aspect_ratio=decrease,pad={$w}:{$h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={$seconds}";
         if ($layout === 'green_screen') {
-            return '[1:v]'.$fit(720, 1280).'[bg];[0:v]setpts=PTS-STARTPTS,chromakey='.$key.':0.18:0.08,scale=432:768:force_original_aspect_ratio=decrease[person];[bg][person]overlay=W-w:H-h:shortest=1,format=yuv420p[outv]';
+            $hold = "fps=24,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={$seconds}";
+            // The background fills the frame: cropped to 9:16 when it is near that shape (a phone recording loses its
+            // status bar, not its middle); a wide page or desktop recording sits whole over a blurred copy of itself,
+            // never between black bars.
+            $bg = $bgAspect !== null && $bgAspect > 0.75
+                ? "[1:v]split[bwide][bfit];[bwide]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=20:2,eq=brightness=-0.06[bblur];"
+                    ."[bfit]scale=720:1280:force_original_aspect_ratio=decrease[bfront];[bblur][bfront]overlay=(W-w)/2:(H-h)/2,setsar=1,{$hold}[bg]"
+                : "[1:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,{$hold}[bg]";
+            $keyed = "[0:v]setpts=PTS-STARTPTS,chromakey={$key}:0.18:0.08";
+            if (str_starts_with($placement, 'bubble')) {
+                // Head and shoulders in a circle above the captions, like a screen recording with a camera bubble.
+                $x = $placement === 'bubble_left' ? '28' : 'W-w-28';
+                return $bg.';'.$keyed.",crop=iw*0.62:iw*0.62:(iw-ow)/2:ih*0.06,scale=300:300[face];color=c=0x1c1c22:s=300x300:r=24[disc];"
+                    ."[disc][face]overlay=0:0:shortest=1,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(hypot(X-150,Y-150),148),255,0)'[bubble];"
+                    ."[bg][bubble]overlay={$x}:H-h-170:shortest=1,format=yuv420p[outv]";
+            }
+            $f = str_starts_with($placement, 'side') ? 0.8 : (['small' => 0.4, 'medium' => 0.6, 'large' => 0.75][$size] ?? 0.6);
+            $w = 2 * (int) round(360 * $f); $h = 2 * (int) round(640 * $f);
+            $x = match ($placement) { 'bottom_left', 'side_left' => '0', 'bottom_center' => '(W-w)/2', default => 'W-w' };
+            return $bg.';'.$keyed.",scale={$w}:{$h}:force_original_aspect_ratio=decrease[person];[bg][person]overlay={$x}:H-h:shortest=1,format=yuv420p[outv]";
         }
         if ($layout === 'replace') return '[1:v]'.$fit(720, 1280).',format=yuv420p[outv]';
         if ($layout === 'split') {
@@ -106,6 +156,7 @@ final class UgcComposition
         $seconds = (float) trim($probe->output());
         if (! $probe->successful() || $seconds <= 0) throw new \RuntimeException('Could not measure the UGC take for compositing.');
         $inputs = ['-i', $base];
+        $bgAspect = null;
         foreach ($composition['assets'] as $asset) {
             $path = tempnam(sys_get_temp_dir(), 'ugc-panel-');
             $temps[] = $path;
@@ -113,11 +164,15 @@ final class UgcComposition
             if (! is_resource($stream)) throw new \RuntimeException('A composition file could not be read. Retry after restoring the file.');
             try { file_put_contents($path, $stream); } finally { fclose($stream); }
             if (! filesize($path)) throw new \RuntimeException('A composition file was empty.');
+            if ($bgAspect === null) {
+                [$bw, $bh] = array_map('intval', explode(',', trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', $path])->output()).',0'));
+                if ($bw > 0 && $bh > 0) $bgAspect = $bw / $bh;
+            }
             $inputs = [...$inputs, ...($asset['type'] === 'image' ? ['-loop', '1'] : []), ...(! empty($asset['offset']) && $asset['type'] === 'video' ? ['-ss', (string) $asset['offset']] : []), '-i', $path];
         }
         $out = tempnam(sys_get_temp_dir(), 'ugc-composite-').'.mp4';
         $temps[] = $out;
-        $run = Process::timeout(600)->run(['ffmpeg', '-y', ...$inputs, '-filter_complex', self::graph($composition['layout'], $seconds, $composition['key_color'] ?? '0x00FF00'),
+        $run = Process::timeout(600)->run(['ffmpeg', '-y', ...$inputs, '-filter_complex', self::graph($composition['layout'], $seconds, $composition['key_color'] ?? '0x00FF00', (string) ($composition['placement'] ?? 'bottom_right'), (string) ($composition['size'] ?? 'medium'), $bgAspect),
             '-map', '[outv]', '-map', '0:a?', '-t', sprintf('%.3f', $seconds), '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'aac', '-movflags', '+faststart', $out]);
         if (! $run->successful() || ! filesize($out)) throw new \RuntimeException('The UGC composition failed. Retry to reuse the finished generation.');
         return $out;

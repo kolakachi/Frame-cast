@@ -358,6 +358,11 @@ class UgcOneShotCompiler
             $key = match ($style['chroma_key'] ?? '') { '0x0000FF' => 'blue (#0000FF)', '0xFF00FF' => 'magenta (#FF00FF)', default => 'green (#00FF00)' };
             $setting = 'a completely flat evenly lit pure chroma '.$key.' background, no shadows or scenery';
             $opening .= 'Locked camera, waist-up presenter fully inside frame. The presenter wears neutral grey. Use this exact chroma colour even if a shot description names a different backdrop. Preserve the product colours. The chroma backdrop must fill every background pixel for compositing. ';
+            // Where they will sit over the page (2026-10-14): turned a little toward it, so a gesture points at what is there.
+            $placement = (string) ($style['placement'] ?? 'bottom_right');
+            $toward = str_ends_with($placement, '_right') ? 'left' : (str_ends_with($placement, '_left') ? 'right' : null);
+            if (str_starts_with($placement, 'bubble')) $opening .= 'Head and shoulders, centred, facing the lens. ';
+            elseif ($toward !== null) $opening .= 'The page they talk about will be to the '.$toward.' of the frame: they turn slightly toward the '.$toward.' edge and, when a line refers to the page, gesture toward it. ';
         }
         return $opening
             .ucfirst($presenter).($wardrobe !== '' ? ', wearing '.$wardrobe.',' : '').($type === 'asmr' ? ' supplies only hands when the shot calls for hands, in ' : ($type === 'skit' ? ' performs the scripted speaker in ' : ($scenes ? ' appears as directed in ' : ($type === 'green_screen' ? ' talks directly to the camera in ' : ' talks directly to the phone camera in ')))).$setting

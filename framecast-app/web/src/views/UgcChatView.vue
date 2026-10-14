@@ -389,6 +389,21 @@ const ENGINE_INFO = {
   veo_hq: ['Veo 3.1 HQ', 'Premium quality, your exact presenter, in shots'],
 }
 function engineChoices(m) { return m.payload?.takes?.[0]?.engines ?? [] }
+// Green screen: where the presenter sits over the background. The director reads it from the brief; the user can move it
+// here before Make, and the preview shows the result.
+const PLACEMENTS = [['bottom_right', 'Bottom right'], ['bottom_left', 'Bottom left'], ['bottom_center', 'Bottom centre'], ['side_right', 'Side, right'], ['side_left', 'Side, left'], ['bubble_right', 'Bubble, right'], ['bubble_left', 'Bubble, left']]
+const SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]
+const positionFor = ref({})
+function position(m) { const c = m.payload?.composition; return c ? { placement: c.placement, size: c.size, ...(positionFor.value[m.id] ?? {}) } : null }
+function setPosition(m, key, value) { positionFor.value = { ...positionFor.value, [m.id]: { ...(positionFor.value[m.id] ?? {}), [key]: value } } }
+function presenterBox(m) {
+  const { placement, size } = position(m)
+  if (placement.startsWith('bubble')) return { width: '42%', aspectRatio: '1', bottom: '13%', [placement === 'bubble_left' ? 'left' : 'right']: '4%', borderRadius: '50%' }
+  const w = placement.startsWith('side') ? 80 : ({ small: 40, medium: 60, large: 75 }[size] ?? 60)
+  const h = { width: `${w}%`, aspectRatio: '9 / 16', bottom: '0' }
+  if (placement.endsWith('_center')) return { ...h, left: `${(100 - w) / 2}%` }
+  return { ...h, [placement.endsWith('_left') ? 'left' : 'right']: '0' }
+}
 function chosenEngine(m) { return engineFor.value[m.id] ?? 'auto' }
 function pitchCredits(m) {
   const key = chosenEngine(m)
@@ -403,7 +418,7 @@ async function make(m) {
   error.value = ''
   try {
     if (sending.value) return
-    const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true, engine: chosenEngine(m) }, { timeout: 120000 })
+    const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true, engine: chosenEngine(m), ...(position(m) ? { placement: position(m).placement, size: position(m).size } : {}) }, { timeout: 120000 })
     chat.value = data.data.chat
     confirmFor.value = null
     loadBalance()
@@ -655,6 +670,25 @@ onBeforeUnmount(() => {
                     </div>
                     <details class="uc-script"><summary>The script</summary><p>{{ m.payload.plan?.script }}</p></details>
                     <p v-if="canMake(m) && !m.payload.product_asset_ids?.length" class="uc-tip">No product photo yet, so it will be a generic one. Add a photo with + and send it to show yours at its real size.</p>
+                  </div>
+                </div>
+                <div v-if="position(m)" class="uc-position">
+                  <div class="uc-position-preview" aria-hidden="true">
+                    <video v-if="m.payload.composition.background?.type === 'video'" :src="m.payload.composition.background.url" muted loop autoplay playsinline />
+                    <img v-else-if="m.payload.composition.background" :src="m.payload.composition.background.url" alt="" />
+                    <div class="uc-position-person" :style="presenterBox(m)"><img v-if="pitchImage(m)" :src="pitchImage(m)" alt="" /><span v-else>Presenter</span></div>
+                  </div>
+                  <div class="uc-position-controls">
+                    <span class="uc-label">Presenter</span>
+                    <div class="uc-position-chips" role="radiogroup" aria-label="Presenter position">
+                      <button v-for="[k, l] in PLACEMENTS" :key="k" type="button" role="radio" :aria-checked="position(m).placement === k" :disabled="!canMake(m)"
+                        :class="['uc-chip', { on: position(m).placement === k }]" @click="setPosition(m, 'placement', k)">{{ l }}</button>
+                    </div>
+                    <div v-if="!/^(side|bubble)/.test(position(m).placement)" class="uc-position-chips" role="radiogroup" aria-label="Presenter size">
+                      <button v-for="[k, l] in SIZES" :key="k" type="button" role="radio" :aria-checked="position(m).size === k" :disabled="!canMake(m)"
+                        :class="['uc-chip', { on: position(m).size === k }]" @click="setPosition(m, 'size', k)">{{ l }}</button>
+                    </div>
+                    <p class="uc-muted">Tell me in words too, like "small, on the left".</p>
                   </div>
                 </div>
                 <div v-if="canMake(m) && engineChoices(m).length" class="uc-engines" role="radiogroup" aria-label="Video model">
@@ -947,6 +981,16 @@ onBeforeUnmount(() => {
 .uc-tip { margin: 10px 0 0 !important; font-size: 12.5px; color: #e8b26a !important; }
 .uc-script summary { cursor: pointer; color: var(--color-text-muted); }
 .uc-script p { margin-top: 6px; white-space: pre-wrap; }
+.uc-position { display: grid; grid-template-columns: 112px 1fr; gap: 14px; margin-top: 12px; align-items: start; }
+.uc-position-preview { position: relative; width: 112px; aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden; background: #111; border: 1px solid var(--color-border); }
+.uc-position-preview > video, .uc-position-preview > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.uc-position-person { position: absolute; overflow: hidden; display: grid; place-items: center; background: rgba(255, 255, 255, .14); border: 1.5px solid var(--color-accent, #ff6b35); border-radius: 8px 8px 0 0; transition: all .2s ease; }
+.uc-position-person img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.uc-position-person span { font-size: 10px; color: #fff; }
+.uc-position-controls { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.uc-position-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.uc-position-chips .uc-chip.on { border-color: var(--color-accent, #ff6b35); color: var(--color-accent, #ff6b35); }
+@media (prefers-reduced-motion: reduce) { .uc-position-person { transition: none; } }
 .uc-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
 .uc-engine { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
 .uc-engine b { font-size: 13px; }

@@ -87,8 +87,11 @@ class UgcChatController extends Controller
     {
         if ($gate = $this->gate($request)) return $gate;
         $v = $request->validate(['message_id' => ['required', 'integer'], 'request_id' => ['required', 'uuid'], 'consent' => ['accepted'],
-            'engine' => ['sometimes', 'nullable', 'string', 'in:auto,omni,seedance25,veo']]);
-        $reply = $this->chats->make($request, $id, (int) $v['message_id'], (string) $v['request_id'], ($v['engine'] ?? 'auto') === 'auto' ? null : $v['engine']);
+            'engine' => ['sometimes', 'nullable', 'string', 'in:auto,omni,seedance25,veo'],
+            'placement' => ['sometimes', 'string', 'in:'.implode(',', \App\Services\Ugc\UgcComposition::PLACEMENTS)],
+            'size' => ['sometimes', 'string', 'in:'.implode(',', \App\Services\Ugc\UgcComposition::SIZES)]]);
+        $reply = $this->chats->make($request, $id, (int) $v['message_id'], (string) $v['request_id'], ($v['engine'] ?? 'auto') === 'auto' ? null : $v['engine'],
+            array_intersect_key($v, ['placement' => 1, 'size' => 1]));
         return response()->json(['data' => ['reply' => $reply, 'chat' => $this->chats->show($request, $id)], 'meta' => []]);
     }
 

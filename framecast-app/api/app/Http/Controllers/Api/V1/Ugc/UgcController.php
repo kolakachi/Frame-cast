@@ -962,7 +962,9 @@ class UgcController extends Controller
         /** @var User $user */
         $user = $request->user();
         $v = $request->validate($this->planRules() + [
-            'composition' => ['sometimes', 'array:layout,background_asset_id,left_asset_id,right_asset_id'],
+            'composition' => ['sometimes', 'array:layout,background_asset_id,left_asset_id,right_asset_id,placement,size'],
+            'composition.placement' => ['nullable', 'string', 'in:'.implode(',', \App\Services\Ugc\UgcComposition::PLACEMENTS)],
+            'composition.size' => ['nullable', 'string', 'in:'.implode(',', \App\Services\Ugc\UgcComposition::SIZES)],
             'composition.layout' => ['required_with:composition', 'in:green_screen,split'],
             'composition.background_asset_id' => ['nullable', 'integer', 'min:1'],
             'composition.left_asset_id' => ['nullable', 'integer', 'min:1'],
@@ -1227,6 +1229,7 @@ class UgcController extends Controller
             $blueProduct = preg_match('/\b(blue|navy|cyan|teal)\b/', $look);
             $composition['key_color'] = $greenProduct ? ($blueProduct ? '0xFF00FF' : '0x0000FF') : '0x00FF00';
             $style['chroma_key'] = $composition['key_color'];
+            $style['placement'] = $composition['placement'] ?? 'bottom_right';
         }
         // Seedance 2.5 makes the whole ad in one generation (≤30s) — the
         // purest one-take. Longer plans, or explicit choice, chain on Veo.
