@@ -186,7 +186,9 @@ class ConversationService
         }
         // A file still undecided by the time a price is asked for takes its usual role.
         app(AttachmentRoles::class)->resolve($user, $c, null, true);
-        $attachments = DB::table('create_attachments')->where('conversation_id', $id)->orderBy('id')->get(['asset_id', 'purpose'])->all();
+        // Only what goes in the video or guides its look. A "current" file is a frame of the video being changed (Change this
+        // moment): the planner read it already, and the worker refuses any other purpose, which failed the whole build.
+        $attachments = DB::table('create_attachments')->where('conversation_id', $id)->whereIn('purpose', ['source', 'reference'])->orderBy('id')->get(['asset_id', 'purpose'])->all();
         if(config('create.mode')==='agent' && ($settings['output_kind']??'video')==='image' && $c->head_revision_id) {
             $base=DB::table('composition_revisions')->where('conversation_id',$id)->where('id',$c->head_revision_id)->firstOrFail();
             abort_unless($base->output_asset_id,422,'Save this image to Assets before editing it.');

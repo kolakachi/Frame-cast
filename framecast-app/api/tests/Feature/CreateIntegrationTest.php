@@ -2319,6 +2319,21 @@ class CreateIntegrationTest extends TestCase
         return app(\App\Services\Create\CreateStorage::class);
     }
 
+    public function test_a_frame_of_the_current_video_is_not_sent_to_the_worker(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $this->privateCreateStorage();
+        $c = $this->conversations->create($this->owner, []);
+        $uploads = app(\App\Services\Create\AttachmentUploadService::class);
+        $logo = $uploads->upload($this->owner, $c->id, $this->uploadPng(), 'source', 'frame-logo', 0);
+        $frame = $uploads->upload($this->owner, $c->id, $this->uploadPng(), 'source', 'frame-moment', 1);
+        // "Change this moment" files the paused frame as "current"; the worker accepts only source and reference.
+        DB::table('create_attachments')->where('conversation_id', $c->id)->where('asset_id', $frame->id)->update(['purpose' => 'current']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Make a short product video', 'expected_version' => 2, 'idempotency_key' => 'frame-brief']);
+        $q = $this->conversations->quote($this->owner, $c->id, 3);
+        $this->assertSame([(int) $logo->id], array_column($q->payload_json['input_files'], 'asset_id'));
+    }
+
     public function test_private_bucket_upload_and_worker_input_survive_a_fresh_local_disk(): void
     {
         \Illuminate\Support\Facades\Storage::fake('local');
