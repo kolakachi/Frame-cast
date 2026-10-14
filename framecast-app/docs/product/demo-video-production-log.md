@@ -106,3 +106,22 @@ irrelevant; retry E004 once before failing the shot.
 
 *For Create:* a reply must never say checks pass when the stored result says otherwise; for a demo or showcase, pick
 the example by its stored check result, not by its message.
+
+## 10. Make the example pass, then record it (done)
+
+- The change went through the real app: paused on the moment, typed the request, planned (72 credits), approved
+  (230 credits, $1.97). Version 2 holds every step card ~1.5 s and switches paper/charcoal on each beat; its stored
+  check still says blocked (a few words 0.2 s short, and a "not seen" on the switches, which are plainly visible), so
+  the result is shown with its folded "2 things I'd still improve", never as "passed".
+- On the way it exposed three app bugs, fixed before recording: "Change this moment" never appeared; a moment's frame
+  failed the build; the "Not ready yet" banner made a finished video look broken (now a folded opinion).
+- Screens are recorded from the real page in headless Chrome (CDP screencast, 1920×1080, resampled to 30 fps), signed in
+  as the test account with its name, email, avatar initials, balance and admin items swapped for demo labels on every
+  render, and checked by OCR afterwards. A drawn cursor glides to each control before it is pressed. Framing hides what
+  isn't true on screen (the build's "I fixed both problems" message sits under the header).
+- Footage per beat: 2 the brief typed and a style picked (not sent); 3 "Ways to make it" and the plan panel, with the
+  Change drawer's "About 271–544 credits · Nothing is charged until you approve the plan" as the cost shot; 4 the
+  result card and the film; 5 pause on the end card, Change this moment, the request typed (not sent); 6 Download.
+
+*For Create:* a demo's example must be picked by its stored result; a screen recording needs a visible pointer, and
+every frame is checked for real identities before it is used.
