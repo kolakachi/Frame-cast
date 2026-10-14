@@ -85,3 +85,24 @@ face from the audio. Always transcript-check a take for missing and repeated wor
 
 *For Create:* generate a presenter-led video's narration as one take and cut it by word timings; never stitch
 separately generated lines when the model can't carry context.
+
+## 8. Make the presenter clips (done)
+
+- Beat 8: Sarah's beat-8 read lip-synced onto the 10 s Omni motion from test 2 (`cut_off`, so the clip ends with the
+  last word; the end card holds the two seconds after). Beat 1: a new Omni clip (asked for ~9 s, same image, a gesture on
+  the second sentence), trimmed to the read plus 0.4 s, then lip-synced. About $2.70 for both.
+- Once the voice is lip-synced on, Omni's own speech doesn't matter, so its motion clip can run a little long; trim it to
+  the read before lip-syncing, because lip-sync is billed by length.
+- Omni returned a transient E004 once; a retry a minute later worked.
+
+*For Create:* when a lip-sync pass replaces the mouth, size the motion clip to the read and treat Omni's spoken words as
+irrelevant; retry E004 once before failing the shot.
+
+## 9. Check the example before recording it
+
+- Before capturing the run we planned to follow, we read its stored final checks: **blocked** (one "must appear" item
+  not seen, and three words still on screen too briefly), while its last message says "the check now passes". The demo
+  cannot show that message as proof, and the brief is ~150 words, not "short".
+
+*For Create:* a reply must never say checks pass when the stored result says otherwise; for a demo or showcase, pick
+the example by its stored check result, not by its message.
