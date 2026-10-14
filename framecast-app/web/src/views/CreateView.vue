@@ -723,6 +723,7 @@ function referenceTally(plan) {
 // The final checks on the delivered video: what failed (with times) and what could not be checked.
 const finalFails = computed(() => (outputMeta.value.final_checks?.checks || []).filter(c => c.status === 'fail').sort((a, b) => Number(b.blocking) - Number(a.blocking)))
 const finalUnverified = computed(() => (outputMeta.value.final_checks?.checks || []).filter(c => c.status === 'unverified'))
+const improveLabel = computed(() => (finalFails.value.length === 1 ? 'One thing' : finalFails.value.length + ' things') + " I'd still improve")
 function checkTime(c) { return (c.times || []).length ? (c.times.length > 1 ? 'At ' + c.times.slice(0, 3).map(t => t.toFixed(1) + ' s').join(', ') : 'At ' + c.times[0].toFixed(1) + ' s') + ': ' : '' }
 // A shot a model declined: the user picks the suggested engine for it, and a new version is quoted (C3).
 async function useEngineFor(sg) {
@@ -1635,7 +1636,11 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
               <p class="result-lead"><strong>{{ summarySections(currentRevision.summary).lead }}</strong></p>
               <p v-if="currentRevision.conflict" class="notice">{{ outputMeta.variant_group ? 'An alternative variation. Inspect it, then restore it as a new version to make it current.' : 'Your brief changed while this was being made. This draft is kept; your current version did not change.' }}</p>
               <p v-if="isOldRevision" class="notice">You are viewing version {{ currentRevision.number }}. Version {{ currentNumber }} is still current. Download uses the version shown here.</p>
-              <p v-if="outputMeta.final_checks?.status === 'blocked' && !outputMeta.look" class="notice">Not ready yet: this version misses something you approved. <button type="button" class="quiet quiet--sm" @click="versionOpen = true">See what</button></p>
+              <!-- An opinion, folded under a caret, not a warning banner: the video is finished; these are what the check would still improve. -->
+              <PlanNote v-if="outputMeta.final_checks?.status === 'blocked' && !outputMeta.look && finalFails.length" class="improve-note" :label="improveLabel">
+                <ul class="improve-note__list"><li v-for="c in finalFails" :key="c.id + c.label">{{ checkTime(c) }}{{ c.label }}<template v-if="c.message">: {{ c.message }}</template></li></ul>
+                <p>Use “Keep improving” to fix these in a new version; this one stays saved.</p>
+              </PlanNote>
               <div :class="['result-card', 'result-card--' + playerShape]">
                 <div class="result__stage">
                   <p v-if="artifactLoading" class="muted">Loading your result…</p>
@@ -2251,8 +2256,8 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                   </ul>
                 </div>
                 <p v-if="outputMeta.creative_review?.status === 'ready' && !outputMeta.look" class="muted" role="status">Checks passed. It's ready for your review: tell us anything you'd like changed.</p>
-                <div v-if="outputMeta.final_checks && !outputMeta.look && (finalFails.length || finalUnverified.length)" :class="['checks', outputMeta.final_checks.status === 'blocked' ? 'checks--blocked' : '']" role="status">
-                  <b>{{ outputMeta.final_checks.status === 'blocked' ? 'Not ready yet: this version misses something you approved' : 'Checked against your plan' }}</b>
+                <div v-if="outputMeta.final_checks && !outputMeta.look && (finalFails.length || finalUnverified.length)" class="checks" role="status">
+                  <b>{{ outputMeta.final_checks.status === 'blocked' ? improveLabel : 'Checked against your plan' }}</b>
                   <ul>
                     <li v-for="c in finalFails" :key="c.id + c.label" :class="c.blocking ? 'checks__warn' : ''">{{ checkTime(c) }}{{ c.label }}<template v-if="c.message">: {{ c.message }}</template></li>
                     <li v-for="c in finalUnverified" :key="'u' + c.id + c.label" class="muted">Not checked automatically: {{ c.label }}<template v-if="c.message"> ({{ c.message }})</template></li>
@@ -2531,6 +2536,9 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .safe-zones{position:absolute;inset:14% 6% 35%;border:1px dashed #fff9;pointer-events:none;box-shadow:0 0 0 1px #0005}
 .player-wrap .safe-zones:after{content:"Keep essential content inside";position:absolute;top:4px;left:4px;font-size:10px;color:#fff;text-shadow:0 1px 2px #000}
 .created-image{display:block;max-width:100%;max-height:60vh;object-fit:contain;border-radius:10px}
+.improve-note{margin:0}
+.improve-note__list{margin:4px 0 0 15px;padding-left:14px;line-height:1.5}
+.improve-note :deep(p){margin:4px 0 0 15px}
 .notice{background:var(--warn-soft);color:#e8d29b!important;border:1px solid var(--warn-line);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.55;margin:0}
 .next-step{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .next-step p{margin:0;font-size:13px}
