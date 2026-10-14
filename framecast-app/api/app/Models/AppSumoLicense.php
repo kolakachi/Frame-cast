@@ -24,6 +24,7 @@ class AppSumoLicense extends Model
         'appsumo_tier',
         'status',
         'granted_credits',
+        'credit_schedule',
         'last_payload',
     ];
 

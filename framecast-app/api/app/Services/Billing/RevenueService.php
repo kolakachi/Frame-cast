@@ -99,7 +99,8 @@ class RevenueService
     public function fromAppSumoLicense(object $license): void
     {
         $tier = (int) ($license->appsumo_tier ?? 0);
-        $list = (float) (((array) config('pricing.revenue.appsumo_price_usd', []))[$tier] ?? 0);
+        $prices = ($license->credit_schedule ?? null) === 'v2' ? 'pricing.revenue.appsumo_price_usd_v2' : 'pricing.revenue.appsumo_price_usd';
+        $list = (float) (((array) config($prices, []))[$tier] ?? 0);
         // Bought during an AppSumo campaign: the list price less its discount.
         $bought = strtotime((string) ($license->created_at ?? 'now')) ?: time();
         $discount = 0.0;

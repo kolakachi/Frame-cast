@@ -44,15 +44,18 @@ return [
     | per license into credits_topup (the non-expiring pool) — LTD buckets never
     | refresh; when they run out the buyer buys top-ups at the normal rate.
     |
-    | Pricing (AppSumo LTD):
-    |   Tier 1 — Starter — $49  — 4,000 credits — 1 channel  / 1 workspace  / 2 characters
-    |   Tier 2 — Creator — $139 — 9,000 credits — 3 channels / 5 workspaces / 5 characters
-    |   Tier 3 — Agency  — $299 — 30,000 credits — ∞ channels / ∞ workspaces / 10 characters
+    | Pricing (AppSumo LTD). Each licence keeps the terms it was bought on
+    | (appsumo_licenses.credit_schedule): null = the original terms, 'v2' = the
+    | listing approved 2026-10-14, for new purchases and any upgrade/downgrade.
+    |   Tier 1 — Starter — v2 $45  — 2,500 credits  (original 4,000)
+    |   Tier 2 — Creator — v2 $147 — 9,000 credits  (original 9,000)
+    |   Tier 3 — Agency  — v2 $297 — 20,000 credits (original 30,000)
+    | Limits are unchanged: 1 / 3 / ∞ channels, 1 / 5 / ∞ brand kits, 2 / 5 / 10 characters.
     |
     */
     'tiers' => [
-        1 => ['plan_tier' => 'appsumo_starter', 'credits' => 4000],
-        2 => ['plan_tier' => 'appsumo_creator', 'credits' => 9000],
-        3 => ['plan_tier' => 'appsumo_agency',  'credits' => 30000],
+        1 => ['plan_tier' => 'appsumo_starter', 'credits' => 2500,  'legacy_credits' => 4000],
+        2 => ['plan_tier' => 'appsumo_creator', 'credits' => 9000,  'legacy_credits' => 9000],
+        3 => ['plan_tier' => 'appsumo_agency',  'credits' => 20000, 'legacy_credits' => 30000],
     ],
 ];

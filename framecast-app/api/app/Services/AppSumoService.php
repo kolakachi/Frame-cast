@@ -148,6 +148,8 @@ class AppSumoService
         $mapped  = config('appsumo.tiers')[$tierNum] ?? null;
 
         $license = AppSumoLicense::firstOrNew(['license_key' => $key]);
+        // A licence first seen now was bought on the current listing; one already on file keeps its terms.
+        if (! $license->exists) $license->credit_schedule = 'v2';
         $license->fill([
             'tier'         => $mapped['plan_tier'] ?? $license->tier,
             'appsumo_tier' => $tierNum ?: $license->appsumo_tier,
@@ -177,6 +179,8 @@ class AppSumoService
         $mapped  = config('appsumo.tiers')[$tierNum] ?? null;
 
         $license = AppSumoLicense::firstOrNew(['license_key' => $prevKey]);
+        // An upgrade or downgrade is bought on the current listing, whatever the original licence was.
+        $license->credit_schedule = 'v2';
         $license->fill([
             'license_key'  => $newKey,
             'tier'         => $mapped['plan_tier'] ?? $license->tier,
@@ -334,7 +338,10 @@ class AppSumoService
         if (! $workspace) {
             return;
         }
-        $target = (int) (config('appsumo.tiers')[$license->appsumo_tier]['credits'] ?? 0);
+        // The licence's own terms: the original bucket for licences bought before the 2026-10-14 listing. Only the
+        // difference up to the target is ever granted, so a holder already above it keeps what they have.
+        $tier = config('appsumo.tiers')[$license->appsumo_tier] ?? [];
+        $target = (int) ($license->credit_schedule === 'v2' ? ($tier['credits'] ?? 0) : ($tier['legacy_credits'] ?? $tier['credits'] ?? 0));
 
         // A licence event must never walk back a purchase made since.
         //
