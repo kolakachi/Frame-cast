@@ -4,7 +4,7 @@ Only what is still open. Add new items here and nowhere else; when one is done, 
 (date and commit). Mockup the build must match: https://claude.ai/artifact/E9eE41WsjNVscrRS3aBHzP (look:
 https://claude.ai/artifact/3rF2EVivGciqqgfD6e2bA4).
 
-Last updated: 2026-10-12.
+Last updated: 2026-10-14.
 
 **Status:** `open` not started · `partly` some built · `ready` built, needs a real run or a look · `blocked` waiting
 on the owner or another item · `proposed` not yet approved.
@@ -22,6 +22,9 @@ assembly stays simple, motion graphics stay in Create.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
+| TYPES-LIVE | Open each type to customers once its reviewed test passes (UGC_TYPES_LIVE on prod). Live: problem_solution (2026-10-14, take 302). Next: green_screen, then before_after, comparison, unboxing, day_in_life, asmr; skit, pov_hook, reaction last | partly | green screen test |
+| END-ACTION | The last action a plan names can be skipped in a single take (take 302: "gets back to work" never happens, the reviewer flagged the right hand not on the keys). Hold the final action long enough, or remake when the reviewer says no | open | build |
+| UGC-COST | ugc_oneshot charges record no upstream cost (take 302: 627 cr, upstream_cost_usd null; real about $4.39 at $0.2312/s), so God Mode economics miss UGC video spend | open | build |
 | VEO-TEST | Veo 3.1 Fast (starts from the dressed look) and Veo 3.1 HQ are in the model picker; not yet tested on the new pipeline | open | test takes, then judge |
 | MCP-BRIEF | A `ugc_brief` MCP tool that runs the Creative Director chat (brief in, pitch and price out, then make), so assistants get the director, the completeness check and pronunciations; API/MCP already take engine, wardrobe, place and pronunciations (2026-10-12) | proposed | after the API expansion order (owner) |
 | LEARN | An agent that watches every UGC take (traces, raw clips, final), lists the pitfalls and keeps a lessons document the director and sheet writer read | proposed | later (owner, 2026-10-12) |
