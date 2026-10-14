@@ -95,8 +95,8 @@ class UgcChatController extends Controller
     public function retry(Request $request, string $id): JsonResponse
     {
         if ($gate = $this->gate($request)) return $gate;
-        $v = $request->validate(['message_id' => ['required', 'integer'], 'run' => ['required', 'integer', 'min:0']]);
-        return response()->json(['data' => ['chat' => $this->chats->retry($request, $id, (int) $v['message_id'], (int) $v['run'])], 'meta' => []]);
+        $v = $request->validate(['message_id' => ['required', 'integer'], 'run' => ['required', 'integer', 'min:0'], 'engine' => ['sometimes', 'string', 'in:seedance25,omni,veo,veo_hq']]);
+        return response()->json(['data' => ['chat' => $this->chats->retry($request, $id, (int) $v['message_id'], (int) $v['run'], $v['engine'] ?? null)], 'meta' => []]);
     }
 
     public function rewrite(Request $request, string $id): JsonResponse

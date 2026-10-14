@@ -48,6 +48,15 @@ class UgcOneShotPricing
      * @param  list<array<string, mixed>>  $segments  normalised
      * @return array{engine: string, quote: int, plan_seconds: int, draft: bool, presenter_attached: bool}
      */
+    public const VEO_PRESENTER = 'Veo 3.1 Fast can only start from a still of the presenter, and it often declines a real face there. Choose Seedance or Omni for a take with a presenter.';
+
+    /** A person on camera: a cast or picked presenter, or a shot that films one (ASMR and POV hook have none). */
+    public static function hasPresenter(array $v, array $segments): bool
+    {
+        return ! empty($v['character_id']) || ! empty($v['cast_character_ids']) || trim((string) ($v['presenter_description'] ?? '')) !== ''
+            || collect($segments)->contains(fn ($s) => in_array($s['kind'] ?? '', ['on_camera', 'reaction'], true));
+    }
+
     public static function price(User $user, array $v, array $segments, CreditService $credits): array
     {
         $workspaceId = (int) $user->workspace_id;
@@ -113,6 +122,16 @@ class UgcOneShotPricing
         }
         if ($engine === 'seedance25' && $single === null) {
             $engine = 'veo';
+        }
+        // Veo 3.1 Fast takes no reference photos, so a presenter can only reach it as the first frame, and it declines a
+        // real-looking face there (E005; owner, 2026-10-14: "if veo is rejecting presenters…"). A take with a presenter
+        // is never made on it: asked for by name it is refused, and the longer-than-Seedance fallback goes to Omni,
+        // which takes the presenter as references (what the menu's "Auto" already promised).
+        if ($engine === 'veo' && self::hasPresenter($v, $segments)) {
+            if (($v['engine'] ?? null) === 'veo') {
+                throw ValidationException::withMessages(['engine' => self::VEO_PRESENTER]);
+            }
+            $engine = 'omni';
         }
         $planSeconds = max(4, (int) ceil(array_sum(array_map(fn ($s) => max(1, (float) $s['seconds']), $segments))));
         $draft = $engine === 'seedance25' && ! $demo && ($v['quality'] ?? 'full') === 'draft';

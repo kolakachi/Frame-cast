@@ -482,6 +482,26 @@ class UgcExecutionTest extends TestCase
         }
     }
 
+    public function test_veo_fast_never_makes_a_take_with_a_presenter(): void
+    {
+        $credits = app(CreditService::class);
+        $user = (new User)->forceFill(['id' => 1, 'workspace_id' => 1]);
+        $talking = UgcPlan::normalise([$this->shot()], 'direct_camera');
+        // Asked for by name, with a presenter on camera: refused, with the reason.
+        try {
+            \App\Services\Ugc\UgcOneShotPricing::price($user, ['engine' => 'veo', 'character_id' => 1], $talking, $credits);
+            $this->fail('Veo 3.1 Fast must refuse a take with a presenter');
+        } catch (ValidationException $e) {
+            $this->assertSame(\App\Services\Ugc\UgcOneShotPricing::VEO_PRESENTER, $e->errors()['engine'][0]);
+        }
+        // Too long for one Seedance take: a presenter goes to Omni (references), not Veo Fast (a start frame).
+        $long = UgcPlan::normalise([$this->shot(['seconds' => 35, 'script_text' => str_repeat('Here is one more useful idea for you today. ', 12)])], 'direct_camera');
+        $this->assertSame('omni', \App\Services\Ugc\UgcOneShotPricing::price($user, ['engine' => 'seedance25', 'character_id' => 1], $long, $credits)['engine']);
+        // Nobody on camera (hands and product only): Veo Fast is still a choice.
+        $this->assertFalse(\App\Services\Ugc\UgcOneShotPricing::hasPresenter([], [['kind' => 'b_roll', 'source' => 'generate']]));
+        $this->assertTrue(\App\Services\Ugc\UgcOneShotPricing::hasPresenter([], $talking));
+    }
+
     public function test_composition_assets_cannot_cross_workspaces(): void
     {
         DB::table('assets')->insert(['id' => 20, 'workspace_id' => 2, 'asset_type' => 'image', 'storage_url' => 'private.png']);

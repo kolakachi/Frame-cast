@@ -300,6 +300,10 @@ final class UgcChatService
         if ($composition !== [] || $type === 'skit' || $this->credits->planTier((int) $request->user()->workspace_id) === 'ugc_pass') return [];
         $choices = [];
         foreach (['seedance25', 'omni', 'veo', 'veo_hq'] as $key) {
+            if ($key === 'veo' && UgcOneShotPricing::hasPresenter($v, $segments)) {
+                $choices[] = ['key' => 'veo', 'engine' => 'veo', 'credits' => 0, 'available' => false, 'note' => 'Can\'t start from a presenter\'s face. Use Seedance or Omni.'];
+                continue;
+            }
             try {
                 $price = UgcOneShotPricing::price($request->user(), ['engine' => $key] + $v, $segments, $this->credits);
             } catch (\Throwable) {
@@ -480,7 +484,8 @@ final class UgcChatService
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) { $failed = $out['error']['message'] ?? 'One video could not be started.'; break; }
-            $runs[] = $pitch['started'][$i] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $t['name'], 'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i];
+            $runs[] = $pitch['started'][$i] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $t['name'], 'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i,
+                'engine' => $t['mode'] === 'one_shot' ? (string) ($t['request']['engine'] ?? 'seedance25') : null];
             // Saved per take, so a failure on a later take never loses track of one already started.
             DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($pitch)]);
         }
@@ -497,7 +502,7 @@ final class UgcChatService
      * otherwise the same pitch is made again and the failed take removed. A failed take was never charged (charge on
      * success), so a retry costs only what is delivered.
      */
-    public function retry(Request $request, string $id, int $messageId, int $runIndex): array
+    public function retry(Request $request, string $id, int $messageId, int $runIndex, ?string $engine = null): array
     {
         $chat = $this->chat($request->user(), $id);
         $lock = \Illuminate\Support\Facades\Cache::lock('ugc-chat-retry:'.$messageId.':'.$runIndex, 120);
@@ -510,7 +515,8 @@ final class UgcChatService
             if (! $takes || collect($takes)->contains(fn ($t) => ($t['status'] ?? '') !== 'needs_attention')) abort(409, 'Only a video that failed can be made again.');
             // A one-take video picks up from the clip that failed: same take, only the rest is made.
             $attempt = (int) ($run['attempt'] ?? 0) + 1;
-            if (count($run['take_ids'] ?? []) === 1 && ($takes[0]['format'] ?? '') === 'one_shot') {
+            // Another model (a take the first one declined) is made afresh; resuming would ask the same model again.
+            if ($engine === null && count($run['take_ids'] ?? []) === 1 && ($takes[0]['format'] ?? '') === 'one_shot') {
                 $scene = \App\Models\Scene::query()->where('project_id', (int) $run['take_ids'][0])->orderBy('scene_order')->first();
                 $resumed = $scene ? \App\Jobs\GenerateOneShotUgcJob::resume($scene) : 'not_resumable';
                 if ($resumed === 'running') abort(409, 'This video is already being made.');
@@ -543,7 +549,12 @@ final class UgcChatService
             $i = $run['take'] ?? collect($pitch['takes'] ?? [])->search(fn ($t) => $t['name'] === $run['name']);
             if ($i === false || $i === null) abort(404, 'The pitch for this video is gone.');
             $t = $pitch['takes'][$i] ?? abort(404, 'The pitch for this video is gone.');
-            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt)->toString()];
+            if ($engine !== null) {
+                $chosen = collect($t['engines'] ?? [])->first(fn ($e) => $e['key'] === $engine && $e['available']);
+                if ($chosen === null || $t['mode'] !== 'one_shot') abort(422, 'That video model can\'t make this video.');
+                $t['request']['engine'] = $chosen['key']; $t['request']['credits'] = $chosen['credits'];
+            }
+            $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat-retry:'.$messageId.':'.$runIndex.':'.$attempt.($engine !== null ? ':'.$engine : ''))->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) abort(422, $out['error']['message'] ?? 'It could not be started again.');
@@ -553,7 +564,8 @@ final class UgcChatService
                 catch (\Throwable $e) { report($e); }
             }
             $making['runs'][$runIndex] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $run['name'],
-                'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i, 'attempt' => $attempt];
+                'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i, 'attempt' => $attempt,
+                'engine' => $t['mode'] === 'one_shot' ? (string) ($t['request']['engine'] ?? 'seedance25') : null];
             DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($making)]);
             return $this->show($request, $id);
         } finally {
@@ -587,6 +599,9 @@ final class UgcChatService
                 foreach ($payload['runs'] ?? [] as $i => $run) {
                     $takes = $run['run_id'] ? $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET') : [];
                     $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'credits', 'format', 'revision_export_id'])), $takes['takes'] ?? []);
+                    // Refused by the video model's moderation (not a fault of ours): the chat offers another model for it.
+                    $payload['runs'][$i]['declined'] = collect($takes['takes'] ?? [])->contains(fn ($t) => ($t['status'] ?? '') === 'needs_attention'
+                        && str_contains((string) (\App\Models\Scene::query()->where('project_id', (int) $t['id'])->orderBy('scene_order')->first()?->image_generation_settings_json['last_error'] ?? ''), 'declined'));
                 }
             }
             return ['id' => (int) $m->id, 'role' => $m->role, 'kind' => $m->kind, 'content' => $m->content, 'payload' => $payload, 'at' => $m->created_at];

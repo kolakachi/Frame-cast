@@ -385,7 +385,7 @@ const ENGINE_INFO = {
   auto: ['Auto', 'Seedance 2.5 when it fits; Omni for longer videos'],
   seedance25: ['Seedance 2.5', 'One smooth take, up to 30 s; the presenter is a close look-alike'],
   omni: ['Omni', 'Your exact presenter, filmed in shots'],
-  veo: ['Veo 3.1 Fast', 'Google\'s fast model, starting from your presenter\'s look, in shots'],
+  veo: ['Veo 3.1 Fast', 'Google\'s fast model, for takes without a presenter, in shots'],
   veo_hq: ['Veo 3.1 HQ', 'Premium quality, your exact presenter, in shots'],
 }
 function engineChoices(m) { return m.payload?.takes?.[0]?.engines ?? [] }
@@ -430,12 +430,19 @@ function pitchState(m) {
 }
 function isMaking(m) { return m.kind === 'making' && (m.payload?.runs ?? []).some(r => runState(r) === 'generating') }
 const retrying = ref('')
-async function retryRun(m, ri) {
+// A take the video model declined: the other model this pitch can use, Seedance first (Omni when Seedance declined).
+function switchFor(m, run) {
+  if (!run.declined) return null
+  const pitch = messages.value.find(x => x.id === m.payload?.pitch_id)
+  const engines = pitch?.payload?.takes?.[run.take ?? 0]?.engines ?? []
+  return ['seedance25', 'omni'].map(k => engines.find(e => e.key === k && e.available && k !== run.engine)).find(Boolean) ?? null
+}
+async function retryRun(m, ri, engine = null) {
   if (retrying.value) return
   retrying.value = `${m.id}:${ri}`
   error.value = ''
   try {
-    const { data } = await api.post(`/ugc/chats/${chatId.value}/retry`, { message_id: m.id, run: ri }, { timeout: 120000 })
+    const { data } = await api.post(`/ugc/chats/${chatId.value}/retry`, { message_id: m.id, run: ri, ...(engine ? { engine } : {}) }, { timeout: 120000 })
     chat.value = data.data.chat
   } catch (err) {
     error.value = apiErrorMessage(err, 'Could not start it again.')
@@ -699,9 +706,11 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-else class="uc-card uc-failed">
                     <b>{{ run.name === 'A fitting presenter' ? 'Your' : `${run.name}'s` }} video didn't come out.</b>
-                    <p class="uc-muted">Nothing was charged for it. Try again picks up where it stopped.</p>
+                    <p v-if="run.declined" class="uc-muted">{{ ENGINE_INFO[run.engine]?.[0] ?? 'The video model' }} declined this presenter. Nothing was charged.<template v-if="switchFor(m, run)"> {{ ENGINE_INFO[switchFor(m, run).key][0] }} can make it instead.</template></p>
+                    <p v-else class="uc-muted">Nothing was charged for it. Try again picks up where it stopped.</p>
                     <div class="uc-ready-btns">
-                      <button type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : 'Try again' }}</button>
+                      <button v-if="switchFor(m, run)" type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri, switchFor(m, run).key)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : `Make it on ${ENGINE_INFO[switchFor(m, run).key][0]} · ${switchFor(m, run).credits} credits` }}</button>
+                      <button type="button" :class="['uc-btn', 'uc-btn--sm', switchFor(m, run) ? '' : 'uc-btn--primary']" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` && !switchFor(m, run) ? 'Starting…' : 'Try again' }}</button>
                       <button type="button" class="uc-link-btn" @click="openRun(run)">Details</button>
                     </div>
                   </div>
