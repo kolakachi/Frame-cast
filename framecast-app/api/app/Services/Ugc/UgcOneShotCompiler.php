@@ -351,7 +351,7 @@ class UgcOneShotCompiler
         $opening = $scenes
             ? 'A vertical 9:16 creator video. Follow each shot\'s framing and action exactly, including product-only close-ups. '
             : 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. ';
-        if ($type === 'asmr') $opening .= 'ASMR: quiet close-up physical sounds, no music; speech only when explicitly scripted, always whispered. ';
+        if ($type === 'asmr') $opening .= 'ASMR: macro close-ups of hands and the product only, never a face; slow, deliberate movements, each shot built around one clear, crisp physical sound close to the microphone (the crack, pour, fizz, crunch, peel, tap or spray it names); a quiet room, no music, no voiceover; speech only when explicitly scripted, always whispered. ';
         if ($type === 'skit') $opening .= 'Shot/reverse-shot dialogue. Only the selected speaker appears and speaks in this shot, looking toward the other person off camera. ';
         if ($type === 'green_screen') {
             $wardrobe = 'a charcoal grey top';

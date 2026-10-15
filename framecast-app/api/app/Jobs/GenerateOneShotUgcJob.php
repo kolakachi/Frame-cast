@@ -279,6 +279,18 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     if (! empty($chunk['requires_audio'])) {
                         $audio = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', $path]);
                         if (! $audio->successful() || trim($audio->output()) === '') throw new \RuntimeException('The ASMR clip has no native audio. Retry this segment before delivery; nothing was charged.');
+                        // ASMR is its sound (2026-10-15): a clip that came back near-silent, or talking when nobody scripted words,
+                        // is made once more at our cost; a second miss stops the take, uncharged, like the green backdrop.
+                        if (! $sourceOnly && ($fault = $this->asmrFault($path, (string) ($chunk['dialogue'] ?? ''), $i)) !== null) {
+                            if (! $this->owns($scene->refresh())) return;
+                            \Illuminate\Support\Facades\Log::info('one-shot: ASMR sound wrong, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1, 'fault' => $fault]);
+                            $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                            if (! $this->owns($scene->refresh())) return;
+                            if (($second = $this->asmrFault($again, (string) ($chunk['dialogue'] ?? ''), $i)) !== null) {
+                                throw new \RuntimeException('Segment '.($i + 1).' came back '.$second.' twice, so it is not an ASMR clip. Nothing was charged. Try again, or add a short whispered line.');
+                            }
+                            $path = $again;
+                        }
                     }
                     if (! $sourceOnly && ! empty($chunk['source_media'])) {
                         $media = $chunk['source_media'] + ['offset' => $chunk['source_offset'] ?? 0];
@@ -326,6 +338,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
 
             if ($this->composition !== []) $finalPath = app(\App\Services\Ugc\UgcComposition::class)->render($finalPath, $this->composition, $storage, $temps);
+            // ASMR's quiet sounds raised to one steady level for phones, gently (no pumping of room hiss).
+            if (! empty($this->chunks[0]['requires_audio'])) $finalPath = self::levelAsmr($finalPath, $temps);
 
             $storagePath = sprintf('workspaces/%d/assets/ugc-oneshot/%s.mp4', $project->workspace_id, Str::uuid());
             $storageUrl = $storage->put($storagePath, file_get_contents($finalPath), ['ContentType' => 'video/mp4']);
@@ -744,6 +758,33 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * last word cut take 293's camera being set down, which the timed sheet had planned in that silence. The transcript
      * only checks the line: a clip with no speech for a scripted line fails uncharged; a line heard differently is logged.
      */
+    /** What is wrong with an ASMR clip's sound, or null: near-silent, or words nobody scripted (a whisper that is scripted is fine). */
+    private function asmrFault(string $path, string $dialogue, int $i): ?string
+    {
+        $level = Process::timeout(60)->run(['ffmpeg', '-v', 'info', '-i', $path, '-vn', '-af', 'volumedetect', '-f', 'null', '-']);
+        if (! preg_match('/mean_volume:\s*(-?[\d.]+) dB/', $level->errorOutput().$level->output(), $m)) return 'with no sound';
+        if ((float) $m[1] < -55) return 'nearly silent';
+        if (self::tokens($dialogue) !== []) return null;
+        try {
+            $t = app(\App\Services\Media\MediaTranscriptionService::class)->transcribeLocalMediaWithTimestamps($path, 'video/mp4');
+        } catch (\Throwable $e) {
+            return null; // a transcript is a check, not the truth: an outage keeps the clip
+        }
+        if (($t['provider_key'] ?? '') === 'local_fallback') return null;
+        // A few words can be a transcriber hearing texture as speech ("Thank you."); four or more is someone talking.
+        $words = array_filter($t['words'] ?? [], fn ($w) => self::tokens((string) ($w['text'] ?? $w['word'] ?? '')) !== []);
+        return count($words) >= 4 ? 'with someone talking' : null;
+    }
+
+    /** One steady level for ASMR (-20 LUFS, gentle range), video untouched. Any failure keeps the take as made. */
+    private static function levelAsmr(string $path, array &$temps): string
+    {
+        $out = tempnam(sys_get_temp_dir(), 'asmr-level-').'.mp4';
+        $temps[] = $out;
+        $run = Process::timeout(300)->run(['ffmpeg', '-y', '-i', $path, '-c:v', 'copy', '-af', 'loudnorm=I=-20:TP=-2:LRA=11', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', $out]);
+        return $run->successful() && filesize($out) ? $out : $path;
+    }
+
     private function checkSpeech(string $path, string $dialogue, int $i): ?array
     {
         if (self::tokens($dialogue) === []) return null;

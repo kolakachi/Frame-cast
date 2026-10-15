@@ -324,6 +324,27 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([], $this->charged);
     }
 
+    public function test_an_asmr_clip_that_comes_back_silent_is_remade_once_then_stops_uncharged(): void
+    {
+        // The test clip's sound track is silence: ASMR is its sound, so it is made once more, then the take stops.
+        $error = $this->run_($this->job([['prompt' => 'Macro: the can cracks open.', 'seconds' => 4, 'requires_audio' => true, 'dialogue' => '']]));
+        $this->assertStringContainsString('nearly silent twice', (string) $error?->getMessage());
+        $this->assertSame(2, $this->starts, 'one remake at our cost, then it stops instead of paying again');
+        $this->assertSame([], $this->charged);
+    }
+
+    public function test_an_asmr_clip_with_its_sound_and_nobody_talking_is_delivered(): void
+    {
+        $this->clip = sys_get_temp_dir().'/oneshot-asmr-clip.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=64x112:r=24:d=2', '-f', 'lavfi', '-i', 'anoisesrc=d=2:c=pink:a=0.2',
+            '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', $this->clip])->throw();
+        $this->clipWords = ['transcript' => '', 'words' => [], 'segments' => [], 'provider_key' => 'test'];
+        $error = $this->run_($this->job([['prompt' => 'Macro: the can cracks open.', 'seconds' => 2, 'requires_audio' => true, 'dialogue' => '']]));
+        $this->assertNull($error, (string) $error?->getMessage());
+        $this->assertSame(1, $this->starts);
+        $this->assertSame([396], $this->charged);
+    }
+
     public function test_skit_photos_travel_as_ids_and_are_read_only_from_the_workspace(): void
     {
         Storage::disk('minio')->put('ada.png', 'ada-bytes');
