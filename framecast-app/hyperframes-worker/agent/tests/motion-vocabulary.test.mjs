@@ -70,9 +70,11 @@ test('specialty kits ride only on the videos that use them; the core kit lists t
  assert.deepEqual(await pins({},[],{slug:'collage-zine'}),['kit/motion-kit.md','kit/collage.md']);
  assert.deepEqual(await pins({scenes:[{transition_out:{move:'tear'}}]}),['kit/motion-kit.md','kit/collage.md'],'a collage move brings its kit');
  assert.deepEqual(await pins({},[{kind:'document_page'}]),['kit/motion-kit.md','kit/documents.md']);
+ assert.deepEqual(await pins({scenes:[{uses:['yt-comment-card']}]}),['kit/motion-kit.md','kit/social.md'],'a feed piece brings the social kit');
+ assert.deepEqual(await pins({scenes:[{transition_out:{move:'stitch'}}]}),['kit/motion-kit.md','kit/social.md']);
  const core=await pinnedKits(dir,{scratch_guide:'x'});
  assert.ok(!core.includes('WM.tear(')&&!core.includes('WM.book('),'the core kit no longer carries the specialty kits');
- assert.ok(core.includes('kit/collage.md')&&core.includes('kit/documents.md'),'but names them so the builder can read one');
+ assert.ok(core.includes('kit/collage.md')&&core.includes('kit/documents.md')&&core.includes('kit/social.md'),'but names them so the builder can read one');
 });
 
 test('the focus and letter moves: blurIn sharpens, letters splits once and rises each letter, rackFocus and glow record', () => {
@@ -89,4 +91,18 @@ test('the focus and letter moves: blurIn sharpens, letters splits once and rises
  WM.rackFocus(tl,[mk(),mk()],mk(),4,{});WM.glow(tl,mk(),5,{});
  const used=WM.movesUsed().map(m=>m.move);
  for(const n of ['letters','blurIn','rackFocus','glow'])assert.ok(used.includes(n),n);
+});
+
+test('the social moves: hearts are seeded and fade, the reply sticker settles tilted, stitch shrinks the quote to a corner', () => {
+ const {WM,tl,calls,mk}=kit();
+ for(const id of ['heart_burst','reply_sticker','stitch'])assert.equal(typeof WM[RECIPES[id]],'function',id);
+ const stage={offsetWidth:1080,offsetHeight:1920};
+ const fx=mk();WM.heartBurst(tl,fx,2,{count:4,stage});
+ assert.equal(fx.children.length,4);
+ const first=JSON.stringify(calls.filter(c=>c[0]==='fromTo').map(c=>c[3].y));
+ const {WM:WM2,tl:tl2,calls:calls2,mk:mk2}=kit();WM2.heartBurst(tl2,mk2(),2,{count:4,stage});
+ assert.equal(JSON.stringify(calls2.filter(c=>c[0]==='fromTo').map(c=>c[3].y)),first,'same hearts every render');
+ WM.replySticker(tl,mk(),1,{});assert.equal(calls.filter(c=>c[0]==='fromTo').at(-1)[3].rotation,-3);
+ WM.stitch(tl,mk(),mk(),5,{corner:'top-right'});
+ const s=calls.filter(c=>c[0]==='fromTo').at(-1)[3];assert.equal(s.scale,0.3);assert.equal(s.transformOrigin,'100% 0%');
 });

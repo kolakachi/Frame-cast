@@ -58,6 +58,9 @@ class MotionMoves
         'letters' => 'a short headline\'s letters rise one by one out of a mask line',
         'rack_focus' => 'focus pulls from one thing to another: the rest goes soft, the thing that matters sharpens',
         'glow' => 'a key word, price or button flashes with light and settles',
+        'heart_burst' => 'hearts float up from the like button and fade, as when a video is liked',
+        'reply_sticker' => 'the "Reply to @name\'s comment" card pops on with a tilt to open a reply video',
+        'stitch' => 'the clip being answered shrinks into a corner thumbnail while the reply fills the frame',
         'custom' => 'none of these: built by hand from the description',
     ];
 
@@ -72,6 +75,7 @@ class MotionMoves
         'odometer' => ['mid', 1.0], 'gauge' => ['mid', 1.2], 'streak' => ['high', 0.35],
         'smash' => ['high', 0.05], 'split' => ['mid', 0.7], 'stack' => ['mid', 0.4], 'parallax' => ['low', 3.0],
         'blur_in' => ['low', 0.7], 'letters' => ['mid', 0.8], 'rack_focus' => ['low', 0.6], 'glow' => ['mid', 0.5],
+        'heart_burst' => ['mid', 1.6], 'reply_sticker' => ['mid', 0.5], 'stitch' => ['high', 0.55],
         'tear' => ['high', 0.7], 'sticker' => ['mid', 0.45], 'cards' => ['high', 1.0], 'confetti' => ['high', 1.6], 'circle_text' => ['low', 4.0],
         'book' => ['mid', 1.1], 'slides' => ['mid', 0.6], 'page_focus' => ['low', 2.9],
     ];
@@ -96,6 +100,7 @@ class MotionMoves
         'a change of topic' => ['whip', 'push', 'wipe', 'hidden_cut', 'streak'],
         'an emphasis word' => ['write_on', 'rise', 'text_mask', 'field', 'glow'],
         'a calm or premium hold' => ['push_in', 'parallax', 'pull_back', 'blur_in', 'rack_focus'],
+        'feed-native social proof (a reply to a comment, a stitch, likes)' => ['reply_sticker', 'stitch', 'heart_burst'],
         'the close and call to action' => ['stamp', 'sticker', 'circle_text', 'field'],
     ];
 

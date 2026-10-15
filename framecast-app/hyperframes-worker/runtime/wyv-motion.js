@@ -620,6 +620,54 @@
       return tl;
     },
 
+    /* ---- Social-native (RD-15): what a feed looks like from inside it. ---- */
+
+    /* heartBurst: seeded hearts float up from the like button and fade, as when a video is liked. el is a full-frame
+       layer above the content. opts: count (10), from ({x, y} stage px; default the right rail), colors, rise (px, 520),
+       size (px, 76), duration (1.6), seed. */
+    heartBurst: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight, rnd = seeded(opts.seed || 9), d = opts.duration || 1.6;
+      var cols = opts.colors || ['#ff2d55', '#ff4d6d', '#ff7a93'], o = opts.from || { x: W * 0.86, y: H * 0.62 }, rise = opts.rise || 520, sz = opts.size || 76;
+      for (var k = 0; k < (opts.count || 10); k++) {
+        var h = document.createElement('div'), s = sz * (0.7 + rnd() * 0.6), t0 = at + k * 0.07;
+        h.style.cssText = 'position:absolute;left:' + (o.x - s / 2) + 'px;top:' + (o.y - s / 2) + 'px;width:' + s + 'px;height:' + s + 'px';
+        h.innerHTML = '<svg viewBox="0 0 24 24" width="100%" height="100%"><path fill="' + cols[k % cols.length] + '" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
+        el.appendChild(h);
+        var drift = (rnd() * 2 - 1) * 120;
+        tl.set(h, { autoAlpha: 0 }, 0).set(h, { autoAlpha: 1 }, t0)
+          .fromTo(h, { y: 0, scale: 0.4 }, { y: -rise * (0.6 + rnd() * 0.4), scale: 1, duration: d, ease: 'power2.out', immediateRender: false }, t0)
+          .fromTo(h, { x: 0, rotation: 0 }, { keyframes: [{ x: drift * 0.5, rotation: drift * 0.08, duration: d * 0.5, ease: 'sine.inOut' }, { x: drift, rotation: -drift * 0.05, duration: d * 0.5, ease: 'sine.inOut' }], immediateRender: false }, t0)
+          .to(h, { autoAlpha: 0, duration: d * 0.35, ease: 'power1.in' }, t0 + d * 0.65);
+      }
+      return tl;
+    },
+
+    /* replySticker: the "Reply to @name's comment" sticker that opens a reply video: a white card with the avatar,
+       the label and the comment, popping on with a tilt and settling. el is the card (built in HTML, see the social
+       kit). opts: rotate (final degrees, -3), duration (.5). */
+    replySticker: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var r = opts.rotate == null ? -3 : opts.rotate;
+      tl.set(el, { autoAlpha: 0 }, 0).set(el, { autoAlpha: 1 }, at)
+        .fromTo(el, { scale: 0.55, rotation: r - 9, y: 30 }, { scale: 1, rotation: r, y: 0, duration: opts.duration || 0.5, ease: ease.playful, immediateRender: false }, at);
+      return tl;
+    },
+
+    /* stitch: the clip being answered plays full frame, then on the cut it shrinks into a rounded corner thumbnail
+       while the reply fills the frame behind it (picture in picture). quote and reply are full-frame layers; reply sits
+       under quote. opts: corner ('top-left'), scale (.3), duration (.55), hold (s the thumbnail stays; 0 = to the end),
+       radius (px, 28). */
+    stitch: function (tl, quote, reply, at, opts) {
+      quote = $(quote); reply = $(reply); opts = opts || {};
+      var sc = opts.scale || 0.3, corner = opts.corner || 'top-left', d = opts.duration || 0.55, inset = 0.04;
+      var ox = /right/.test(corner) ? '100%' : '0%', oy = /bottom/.test(corner) ? '100%' : '0%';
+      tl.set(reply, { autoAlpha: 1 }, at)
+        .fromTo(quote, { scale: 1, xPercent: 0, yPercent: 0, borderRadius: 0 }, { scale: sc, xPercent: (/right/.test(corner) ? -1 : 1) * inset * 100, yPercent: (/bottom/.test(corner) ? -1 : 1) * inset * 100 * 0.56,
+          borderRadius: (opts.radius || 28) / sc, transformOrigin: ox + ' ' + oy, duration: d, ease: ease['default'], immediateRender: false }, at);
+      if (opts.hold) tl.to(quote, { autoAlpha: 0, scale: sc * 0.8, duration: 0.3, ease: 'power2.in' }, at + d + opts.hold);
+      return tl;
+    },
+
     /* circleText: a line of text set around a circle (a stamp, a badge, "MADE TO MOVE · "), turning. el is an empty
        square box; opts: text, size (font px, 34), spin (degrees over duration, 120), duration (4), font. */
     circleText: function (tl, el, at, opts) {
@@ -976,6 +1024,9 @@
   var CUES = {
     pop: function (a) { return [['pop', a[2] + 0.04]]; },
     glow: function (a) { return [['chime', a[2] + 0.05]]; },
+    heartBurst: function (a) { return [['pop', a[2] + 0.02]]; },
+    replySticker: function (a) { return [['pop', a[2] + 0.06]]; },
+    stitch: function (a) { return [['whoosh-fast', a[3] + 0.05]]; },
     stamp: function (a) { return [['thud', a[2] + 0.1]]; },
     press: function (a) { return [['click', a[2] + 0.09]]; },
     toss: function (a) { return [['swish', a[2] + 0.1]]; },
@@ -1015,7 +1066,7 @@
     stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
   var OPTS = { tear: 3, sticker: 3, cards: 3, confetti: 3, book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
-    glow: 3, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
+    glow: 3, heartBurst: 3, replySticker: 3, stitch: 4, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {
     var fn = WM[name];

@@ -49,6 +49,8 @@ export function trimInstruction(text,flags){
 // them: the 3D guide for a 3D mascot or objects, the motion kit for reference moves. The long worked examples stay
 // readable on demand.
 export const COLLAGE_MOVES=['tear','sticker','cards','confetti','circle_text'],DOCUMENT_MOVES=['book','slides','page_focus'];
+// RD-15: the social-native kit rides on a plan that uses its moves or the registry's feed pieces.
+export const SOCIAL_MOVES=['heart_burst','reply_sticker','stitch'],SOCIAL_ITEMS=['yt-comment-card','message-thread-reveal','chat-thread','chat-message','typing-indicator','notes-reveal','reddit-post','tiktok-follow','instagram-follow','caption-highlight'];
 /** Every move the plan names (reference systems, decisions, and each beat's transition out). */
 function planMoves(plan){
  return [...(plan?.reference_decisions||[]).map(d=>d?.move),...(plan?.reference_systems||[]).map(x=>x?.move),...(plan?.scenes||[]).map(s=>s?.transition_out?.move)].filter(Boolean);
@@ -59,12 +61,14 @@ export async function pinnedKits(guidanceDirectory,plan,manifest=[],stylePack=nu
  // build carries the core kit plus at most what it needs, however many kits there are.
  const collage=stylePack?.slug==='collage-zine'||moves.some(m=>COLLAGE_MOVES.includes(m));
  const documents=(manifest||[]).some(f=>f?.kind==='document_page')||moves.some(m=>DOCUMENT_MOVES.includes(m));
+ const social=moves.some(m=>SOCIAL_MOVES.includes(m))||(plan?.scenes||[]).some(s=>(s?.uses||[]).some(u=>SOCIAL_ITEMS.includes(u)));
  if(plan?.mascot3d||plan?.props3d?.length)kits.push(['kit/three.md','three-kit.md']);
  // From scratch the kit is the vocabulary (camera, rhythm and readout moves with their energy), so it is pinned too.
  // A page or slide the user chose to show as it looks is presented with the kit's book, slides and pageFocus.
- if((plan?.reference_decisions||[]).some(d=>d?.move)||(plan?.reference_systems||[]).some(x=>x?.move)||typeof plan?.scratch_guide==='string'||collage||documents)kits.push(['kit/motion-kit.md','motion-kit.md']);
+ if((plan?.reference_decisions||[]).some(d=>d?.move)||(plan?.reference_systems||[]).some(x=>x?.move)||typeof plan?.scratch_guide==='string'||collage||documents||social)kits.push(['kit/motion-kit.md','motion-kit.md']);
  if(collage)kits.push(['kit/collage.md','collage-kit.md']);
  if(documents)kits.push(['kit/documents.md','documents-kit.md']);
+ if(social)kits.push(['kit/social.md','social-kit.md']);
  let out='';
  for(const [name,file] of kits)try{out+='\n\n# '+name+' (pinned; do not read it again)\n'+await readFile(guidanceDirectory+'/../'+file,'utf8');}catch{/* readable on demand */}
  if(out)out+='\n\nThe worked examples (kit/three-example.html, kit/reference-moves.html) are long: read one only when something you built does not work.';
@@ -302,6 +306,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
    if(name==='kit/motion-kit.md')return readFile(guidanceDirectory+'/../motion-kit.md','utf8');
    if(name==='kit/collage.md')return readFile(guidanceDirectory+'/../collage-kit.md','utf8');
    if(name==='kit/documents.md')return readFile(guidanceDirectory+'/../documents-kit.md','utf8');
+   if(name==='kit/social.md')return readFile(guidanceDirectory+'/../social-kit.md','utf8');
    // A worked example of every reference move on one timeline (the offline fixture the moves are proven on).
    if(name==='kit/reference-moves.html')return readFile(guidanceDirectory+'/../../fixtures/reference-moves/index.html','utf8');
    if(name==='kit/remotion.md')return readFile(guidanceDirectory+'/../remotion-kit.md','utf8');

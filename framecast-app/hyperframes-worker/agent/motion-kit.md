@@ -67,6 +67,7 @@ When the plan names a move (plan.reference_systems[].move, reference_decisions[]
 ## More kits (attached when a video needs them; read one with the guidance action when it fits)
 - `kit/collage.md`: torn-paper cuts, die-cut stickers, rapid card montages, silver/ink/duotone/halftone prints, sunburst, confetti, circular badge text (a zine or sticker ad).
 - `kit/documents.md`: the user's own pages and slides shown as they look: pages turning like a book, a deck's slides, a camera move to the part being said.
+- `kit/social.md`: feed-native ads: a reply-to-comment card, a stitch into a corner thumbnail, hearts from the like button, POV captions, and the registry's comment, chat, notes and notification pieces.
 
 ## Sound
 Moves bring their own sound: before the render each move's effect from the built-in library is laid under it, its peak on the hit, quieter under the voice, no closer than 0.25 s to another (the stronger hit wins). pop → pop, stamp → thud, press and cursor clicks → click, whip → whoosh-fast, wipe and push → whoosh, giantWipe, flood and through → whoosh-big, toss, iris and fly → swish, device, camera, layout, morph and pageFocus → slide, edges → tick, type → keys, count → blip, book → page (one per turn), slides → whoosh (slide for a fade); tear → swish, sticker and confetti → pop, cards → a tick every quarter second; words, writeOn, rise and field are silent.
@@ -81,6 +82,9 @@ Type that arrives like a lens finding it. Premium and calm work; use one of thes
 - `WM.letters(tl, '#title', at, {stagger: .03})` (mid · ~.6 s + .03 s a letter): the letters rise one by one out of a mask line. Plain text in `#title`; wrap the line in a container with `data-layout-allow-overlap`. Short headlines (up to ~24 letters).
 - `WM.rackFocus(tl, '.rest', '#panel', at, {blur: 8, dim: .55})` (low · .6 s): focus pulls from the rest to the thing that matters (a UI panel, a product, a figure).
 - `WM.glow(tl, '#price', at, {color: accent, size: 22})` (mid · .5 s): a key word, price or button flashes with light and settles. Once or twice a video.
+
+## Social-native (read kit/social.md)
+- `WM.replySticker`, `WM.stitch`, `WM.heartBurst`: a reply-to-comment card, a stitch into a corner thumbnail, hearts from the like button. The card patterns, the registry's feed pieces and the safe zones are in kit/social.md.
 
 ## Type in motion (no jitter)
 Measured on rendered frames (snapcn's motion rules): moving text looks cheap when it shakes or sticks, and these stop it.
