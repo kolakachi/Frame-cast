@@ -25,7 +25,19 @@ class PruneOneShotParts extends Command
                 GenerateOneShotUgcJob::forgetParts($scene, (int) $scene->project->workspace_id);
                 $pruned++;
             });
-        $this->info("Pruned saved segments of {$pruned} take(s).");
+        // Segments whose take no longer exists at all (removed by a delete that skipped the cleanup, ORPHAN-PARTS).
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        $orphans = 0;
+        foreach ($disk->directories('ugc-oneshot-parts') as $workspaceDir) {
+            foreach ($disk->directories($workspaceDir) as $sceneDir) {
+                $sceneId = (int) basename($sceneDir);
+                if ($sceneId > 0 && ! Scene::query()->whereKey($sceneId)->exists()) {
+                    $disk->deleteDirectory($sceneDir);
+                    $orphans++;
+                }
+            }
+        }
+        $this->info("Pruned saved segments of {$pruned} take(s) and {$orphans} deleted take(s).");
         return self::SUCCESS;
     }
 }

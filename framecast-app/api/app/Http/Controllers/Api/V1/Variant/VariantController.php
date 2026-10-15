@@ -726,6 +726,10 @@ class VariantController extends Controller
             ExportJob::query()->where('variant_id', $variant->getKey())->delete();
 
             if ($variant->derived_project_id) {
+                // A query delete skips Project's deleting hook, so the take's saved one-take segments are removed here (ORPHAN-PARTS).
+                $workspaceId = (int) Project::query()->whereKey($variant->derived_project_id)->value('workspace_id');
+                Scene::query()->where('project_id', $variant->derived_project_id)->whereNotNull('image_generation_settings_json->oneshot_recipe')->get()
+                    ->each(fn (Scene $scene) => \App\Jobs\GenerateOneShotUgcJob::forgetParts($scene, $workspaceId));
                 Scene::query()->where('project_id', $variant->derived_project_id)->delete();
                 Project::query()->whereKey($variant->derived_project_id)->delete();
             }

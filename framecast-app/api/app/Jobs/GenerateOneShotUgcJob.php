@@ -410,6 +410,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $charged = $credits->deduct($project->workspace_id, $this->credits, 'ugc_oneshot', [
                     'project_id' => $this->projectId, 'scene_id' => $this->sceneId,
                     'segments' => count($this->chunks),
+                    // What the take really cost us (UGC-COST, 2026-10-15): every paid call recorded for this project, remakes,
+                    // voice reads, lip-sync, the dressed picture and checks included, so the charge line shows its margin.
+                    'upstream_cost_usd' => self::realCost($this->projectId),
                 ]);
                 if ($charged === false) {
                     // Delivered but not paid (the balance went between start and finish): the team hears of it.
@@ -776,6 +779,14 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $run = Process::timeout(600)->run(['ffmpeg', '-y', '-i', $path, '-vf', 'subtitles='.$ass, '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'copy', '-movflags', '+faststart', $out]);
         if (! $run->successful() || ! filesize($out)) throw new \RuntimeException('The headline could not be added to the video. Nothing was charged; try again.');
         return $out;
+    }
+
+    /** The recorded cost of every paid call made for this take's project, in dollars; null when nothing was recorded. */
+    public static function realCost(int $projectId): ?float
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('api_usage_events')) return null;
+        $usd = DB::table('api_usage_events')->where('project_id', $projectId)->sum('estimated_cost_usd');
+        return (float) $usd > 0 ? round((float) $usd, 6) : null;
     }
 
     /** Whether this job's run still owns the take. */

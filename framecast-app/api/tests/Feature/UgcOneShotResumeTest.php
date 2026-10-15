@@ -431,6 +431,23 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertStringContainsString('close-up of the presenter\'s face', $this->sentPrompts[0]);
     }
 
+    public function test_saved_clips_of_a_take_that_no_longer_exists_are_swept(): void
+    {
+        Storage::disk('local')->put(GenerateOneShotUgcJob::partsDir(3, 999).'/abc/0.mp4', 'clip');
+        Storage::disk('local')->put(GenerateOneShotUgcJob::partsDir(3, 70).'/abc/0.mp4', 'clip');
+        $this->artisan('ugc:prune-oneshot-parts')->assertSuccessful();
+        $this->assertSame([], Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 999)), 'scene 999 is gone');
+        $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'a take that exists keeps its clips');
+    }
+
+    public function test_the_charge_carries_what_the_take_really_cost(): void
+    {
+        Schema::create('api_usage_events', function (Blueprint $t) { $t->id(); $t->integer('project_id')->nullable(); $t->decimal('estimated_cost_usd', 12, 6)->default(0); });
+        DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);
+        $this->assertSame(1.86, GenerateOneShotUgcJob::realCost(7));
+        $this->assertNull(GenerateOneShotUgcJob::realCost(99));
+    }
+
     public function test_skit_speakers_carry_the_place_photo_after_their_own(): void
     {
         Storage::disk('minio')->put('ada.png', 'ada-bytes');
