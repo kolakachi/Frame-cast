@@ -420,7 +420,6 @@ class ConversationService
                     'build_stage'=>$step ?? ($lookFirst ? 'storyboard' : 'full_video'), 'step'=>$step, 'media_only'=>$step !== null, 'assumed'=>(bool) $assume, 'look_first'=>$lookFirst, 'from_look'=>$step ? false : $fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
                     // RD-14: approved checks from faults users found that the checks had missed; the visual reviewer runs them.
                     'house_checks'=>MissedDefects::approved(),
-                    'taste_rules'=>(bool) config('create.taste_rules', false),
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
                     'style_pack'=>$resolvedPack,

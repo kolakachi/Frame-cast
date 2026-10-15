@@ -9,7 +9,6 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 
 | ID | Area | Item | From | Status | Note |
 |----|------|------|------|--------|------|
-| RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | next | 2026-10-15: ready to run. The rules not yet in the design card are cards/taste.md plus an AI-look checklist for the reviewer, behind one switch (off by default; CREATE_TASTE_RULES, or taste_rules on a run). Waits for the owner's OK on the paid A/B (2 briefs x on/off, about $5-8). |
 | RD-43 | Platform | My Footage Tighten: retake and false-start detection, phrase-safe filler cuts, pauses that keep a breath | herk-edit-kit | idea | From the RD-33 review; ideas only, our own code. |
 | RD-44 | Create | Stutter and freeze check on the finished file: unique fps, worst hitch, frozen tail; frame 0 opens on content | designer-stack | idea | From the designer-stack review; S. |
 | RD-45 | Create | Hook and copy cliche lint: Introducing, Unlock the power of, Game changer, placeholder names | designer-stack | idea | From the designer-stack review; S. |
@@ -40,8 +39,8 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-39 | Create | Onboarding: three questions, site to brand kit, first brief ready | Higgsfield onboarding | done |  |
 | RD-40 | UGC | Outfits that hold: the presenter dressed once and that picture in every clip, skit speakers too | Jellyfish | done | 2026-10-15 |
 | RD-41 | UGC | Skit speakers keep one side of the frame (180-degree rule) | OpenMontage | done | 2026-10-15 |
-| RD-42 | Create | Taste rules written into the builder's doctrine | Anthropic skills, taste-skill | done | A/B is RD-12. |
 | RD-04 | UGC | Two-shot opener or Seedance multi-shot, if skit rooms still split | OpenMontage | skipped | Skipped 2026-10-15 (owner): reopen only if a skit take shows two rooms. |
+| RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | skipped | 2026-10-15 A/B (same plan, rules on vs off): with them the builder still put a styled accent word in every headline and clipped one line, at 318 vs 235 credits ($1.24 vs $0.92). Owner: we don't need taste. Card, reviewer checklist and switch removed; the design card's existing rules stay. |
 | RD-17 | Create | UI morph kit: blur hand-off, drawn chart with tooltip, palette, 60 fps option | UI motion study | skipped | Skipped 2026-10-15 (owner): not our customer's need yet. |
 | RD-18 | Create | Data and infographic kit | Kit planning | skipped | Skipped 2026-10-15 (owner): not our customer's need yet. |
 | RD-20 | Create | Spinning globe and 3D product-hero helpers | cobe, drei | skipped | Skipped 2026-10-15 (owner): WebGL is software-rendered on the worker. |
@@ -55,6 +54,7 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-28 | Create | Text behind the subject: cut out the person, type between layers | Barty object separation | skipped | Skipped 2026-10-15 (owner). |
 | RD-29 | Create | Math-style explainer shots | manimgx | skipped | Skipped 2026-10-15 (owner): watch only. |
 | RD-32 | Platform | Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1 | fabric.js | skipped | Skipped 2026-10-15 (owner): a separate product. |
+| RD-42 | Create | Taste rules written into the builder's doctrine | Anthropic skills, taste-skill | skipped | Dropped with RD-12 (owner, 2026-10-15). |
 
 Notes per topic: [higgsfield-claude-motion.md](higgsfield-claude-motion.md), [kits-roadmap.md](kits-roadmap.md), [motion-skill-repos.md](motion-skill-repos.md), [opus-motion-harness.md](opus-motion-harness.md), [higgsfield-onboarding.md](higgsfield-onboarding.md), [follow-ups.md](follow-ups.md); repo licences in `docs/product/priorities.md` (Research repos we borrow from).
 

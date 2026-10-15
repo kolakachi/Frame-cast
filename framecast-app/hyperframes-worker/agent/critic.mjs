@@ -23,12 +23,11 @@ Reply with one JSON object and nothing else: {"scores":{"hook":n,"hierarchy":n,"
 const clip=(s,n)=>{s=String(s??'');return s.length>n?s.slice(0,n)+'…':s;};
 const img=data=>{const m=/^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(String(data||''));return m?{type:'image',source:{type:'base64',media_type:m[1],data:m[2]}}:null;};
 // The one user turn the critic gets.
-export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint,round=1,houseChecks=[],taste=false}){
+export function criticMessages({brief,plan,lookOnly=false,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint,round=1,houseChecks=[]}){
  const beats=(plan?.scenes||[]).map(s=>`${s.start}-${s.end}s ${s.label}: ${s.idea||''}${s.uses?.length?' [uses '+s.uses.join(', ')+']':''}`).join('\n');
  const text=[
   `Brief: ${clip(brief,900)}`,
   // RD-14: faults users found that earlier checks missed, each approved once as a check for every video.
-  taste?'Generic AI looks are findings unless the approved style, reference or brand chose them: cream with terracotta, near-black with one neon pop, purple-blue gradients, gradient blobs, glass cards, decorative all-caps eyebrow chips or mono labels with middle dots, a styled accent word in every headline, rows of identical icon cards, headlines over two lines.':'',
   Array.isArray(houseChecks)&&houseChecks.length?`House checks (faults users caught in earlier videos; each one you can see in these frames is a finding to fix):\n${houseChecks.slice(0,20).map(c=>'- '+clip(c,300)).join('\n')}`:'',
   plan?.creative_intent?`Approved creative intent (planner interpretation of the user brief): ${JSON.stringify(plan.creative_intent)}`:'',
   strip?`Strip coverage: ${stripEvidence?JSON.stringify(stripEvidence):'Unknown timestamps/coverage. Do not assume it spans the full video.'}`:'',

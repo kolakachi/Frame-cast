@@ -192,10 +192,6 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  // Doctrine cards by the kind of video: pinned into the guidance; the others readable as cards/<name>.md.
  const route=cardRoute({stylePack:input.style_pack,plan:input.plan,brief:messages.at(-1).content,settings:input.settings??{}});
  const cards=await loadCards(guidanceDirectory,route);
- // RD-12: the taste rules (cards/taste.md and the reviewer's AI-look checklist): off until the A/B shows they help;
- // the app turns them on with CREATE_TASTE_RULES, and an A/B run sets taste_rules itself.
- const taste=input.taste_rules===true;
- if(taste)try{cards.text+='\n\nCARD taste\n'+(await readCard(guidanceDirectory,'taste')).trim();cards.names.push('taste');}catch{/* not installed: no taste card */}
  const otherCards=(await availableCards(guidanceDirectory)).filter(n=>!cards.names.includes(n));
  // An answered upload request points at its file in the project by name.
  const planWithFiles=input.plan?{...input.plan,asks:(input.plan.asks||[]).map(a=>a.asset_id?{...a,file:manifest.find(f=>f.asset_id===a.asset_id)?.name??null}:a)}:null;
@@ -207,7 +203,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const busyNote=()=>{try{onProgress?.({...lastProgress,doing:'The model is busy, trying again in a moment'});}catch{/* reporting never stops a build */}};
  let busy=0;
  const critic=paid&&criticPolicy&&provider.complete?async({sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,round,signal})=>{busy=0;
-  const messages=criticMessages({taste,houseChecks:input.house_checks,brief:messages0.at(-1).content,plan:planWithFiles,lookOnly:input.look_first===true,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint:input.style_pack?.fingerprint??null,round});
+  const messages=criticMessages({houseChecks:input.house_checks,brief:messages0.at(-1).content,plan:planWithFiles,lookOnly:input.look_first===true,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint:input.style_pack?.fingerprint??null,round});
   const args={prompt:'critic call '+(++criticCall),system:criticSystem,maxTokens:Number(criticPolicy.max_output_tokens)||4096,messages,tools:[],signal};
   const out=await whenModelFree(async()=>{
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
