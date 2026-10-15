@@ -351,9 +351,11 @@ class UgcOneShotCompiler
         $scenes = in_array($type, ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'skit'], true);
         // A presenter talking to camera keeps the selfie take it was proven on (#2, 2026-10-12): "appears as directed"
         // left the direct-to-camera delivery to each shot's wording.
+        // The shape the user chose (P2-ASPECT, owner 2026-10-15): square and landscape are filmed on a phone too.
+        $shape = match ($style['aspect'] ?? '9:16') { '1:1' => 'square 1:1', '16:9' => 'landscape 16:9', default => 'vertical 9:16' };
         $opening = $scenes
-            ? 'A vertical 9:16 creator video. Follow each shot\'s framing and action exactly, including product-only close-ups. '
-            : 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. ';
+            ? 'A '.$shape.' creator video. Follow each shot\'s framing and action exactly, including product-only close-ups. '
+            : 'A '.$shape.' UGC-style selfie ad, one continuous handheld take'.(($style['aspect'] ?? '9:16') === '16:9' ? ', the phone held sideways' : '').'. ';
         if ($type === 'asmr') $opening .= 'ASMR: macro close-ups of hands and the product only, never a face; slow, deliberate movements, each shot built around one clear, crisp physical sound close to the microphone (the crack, pour, fizz, crunch, peel, tap or spray it names); a quiet room, no music, no voiceover; speech only when explicitly scripted, always whispered. ';
         if ($type === 'pov_hook') $opening .= 'A POV moment: nobody speaks and no lips move as if talking; natural room sound only. Keep the top quarter of the frame free of faces and important detail, and no text, captions or graphics anywhere in the picture: a headline is added on top afterwards. ';
         if ($type === 'reaction') $opening .= 'A silent reaction: one continuous shot of the presenter reacting with restrained, natural movement (a raised eyebrow, a slow nod, a knowing half-smile), never talking and no lips moving as if speaking; natural room sound only. Keep the top quarter of the frame free of faces and important detail, and no text, captions or graphics anywhere in the picture: a headline is added on top afterwards. ';

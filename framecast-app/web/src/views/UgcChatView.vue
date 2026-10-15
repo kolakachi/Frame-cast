@@ -38,6 +38,12 @@ const PACE = [['slower', 'Slower'], ['natural', 'Natural'], ['faster', 'Faster']
 const DELIVERY = [['friendly', 'Friendly'], ['excited', 'Excited'], ['calm', 'Calm expert'], ['deadpan', 'Deadpan']]
 const LABEL = Object.fromEntries([...PACE, ...DELIVERY])
 const LENGTHS = [null, 15, 30, 45, 60]
+// The shape (P2-ASPECT, owner 2026-10-15). Square is made on Seedance only; green screen and splits stay vertical.
+const SHAPES = [
+  { key: '9:16', label: 'Vertical 9:16', note: 'Reels, TikTok, Shorts' },
+  { key: '1:1', label: 'Square 1:1', note: 'Feeds. Up to 30 seconds' },
+  { key: '16:9', label: 'Landscape 16:9', note: 'YouTube and websites' },
+]
 
 const chatId = ref(route.params.chatId || null)
 const chat = ref(null)
@@ -53,6 +59,7 @@ const presenters = ref([])
 const sameVoice = ref(false)
 const type = ref('auto')
 const length = ref(null)
+const aspect = ref('9:16')
 const menu = ref('')
 const expanded = ref(null)
 // Every presenter, in a window opened from the More card (owner, 2026-10-11); the prompt box shows only a few.
@@ -113,7 +120,8 @@ const presenterLabel = computed(() => {
   if (!presenters.value.length) return 'Let us pick'
   return presenters.value.map(p => p.name).join(' + ') + (presenters.value.length === 1 && presenters.value[0].voice ? ' · ' + (LABEL[presenters.value[0].voice.delivery] || 'friendly').toLowerCase() : '')
 })
-const shapeLabel = computed(() => '9:16 · ' + (length.value ? `about ${length.value} s` : 'auto length'))
+const shapeLabel = computed(() => aspect.value + ' · ' + (length.value ? `about ${length.value} s` : 'auto length'))
+function videoShape(take) { return take?.aspect === '16:9' ? 'uc-video--wide' : take?.aspect === '1:1' ? 'uc-video--square' : '' }
 // A few faces in the prompt box, the chosen ones first; the rest are behind More.
 const filteredStock = computed(() => {
   const on = id => presenters.value.some(p => p.character_id === id)
@@ -377,7 +385,7 @@ async function send(override = null) {
     setTimeout(() => sentUploads.forEach(u => u.preview && URL.revokeObjectURL(u.preview)), 60000)
     scrollDown()
     const { data } = await api.post(`/ugc/chats/${id}/messages`, {
-      text: body, attachments, link: sentLink, type: type.value, length: length.value,
+      text: body, attachments, link: sentLink, type: type.value, length: length.value, aspect: aspect.value,
       // Only once the presenters are known: before the actor list loads they look empty and would wipe the chat's.
       ...(presentersKnown() ? { presenters: presenters.value.map(p => ({ character_id: p.character_id, voice: p.voice, setting: p.setting || null })) } : {}),
     }, { timeout: 180000 })
@@ -559,6 +567,7 @@ function restoreSettings() {
   const s = chat.value.state
   type.value = s.type || 'auto'
   length.value = s.length || null
+  aspect.value = s.aspect || '9:16'
   restorePresenters()
 }
 function restorePresenters() {
@@ -773,8 +782,8 @@ onBeforeUnmount(() => {
                     <p class="uc-muted">Usually a few minutes. You can leave this page; it carries on, and it will be in My ads.</p>
                   </div>
                   <div v-else-if="runState(run) === 'ready'" class="uc-ready">
-                    <video v-if="takeOf(run)?.thumbnail_type === 'video'" class="uc-video" :src="takeOf(run).thumbnail_url + '#t=0.5'" controls playsinline preload="metadata"></video>
-                    <img v-else-if="takeOf(run)?.thumbnail_url" class="uc-video" :src="takeOf(run).thumbnail_url" alt="" />
+                    <video v-if="takeOf(run)?.thumbnail_type === 'video'" :class="['uc-video', videoShape(takeOf(run))]" :src="takeOf(run).thumbnail_url + '#t=0.5'" controls playsinline preload="metadata"></video>
+                    <img v-else-if="takeOf(run)?.thumbnail_url" :class="['uc-video', videoShape(takeOf(run))]" :src="takeOf(run).thumbnail_url" alt="" />
                     <div class="uc-ready-side">
                       <h3>Your video is ready</h3>
                       <p class="uc-muted">{{ run.name }} · {{ takeOf(run)?.credits ?? run.credits }} credits</p>
@@ -937,9 +946,11 @@ onBeforeUnmount(() => {
             <div class="uc-pop-anchor">
               <button type="button" class="uc-pill" @click="toggleMenu('shape')">{{ shapeLabel }} <span class="uc-caret">▾</span></button>
               <div v-if="menu === 'shape'" class="uc-pop uc-pop--shape">
+                <span class="uc-label uc-pad">Shape</span>
+                <button v-for="s in SHAPES" :key="s.key" type="button" :class="['uc-type', { on: aspect === s.key }]" @click="aspect = s.key"><b>{{ s.label }}</b><span>{{ s.note }}</span></button>
                 <span class="uc-label uc-pad">Length</span>
                 <button v-for="l in LENGTHS" :key="String(l)" type="button" :class="['uc-type', { on: length === l }]" @click="length = l; menu = ''"><b>{{ l ? `About ${l} seconds` : 'Auto' }}</b><span>{{ l ? 'A guide: every line plays out in full' : 'From your script, or what fits the type' }}</span></button>
-                <p class="uc-muted uc-pad">Vertical 9:16 for now.</p>
+                <p class="uc-muted uc-pad">Green screen and split videos are always vertical.</p>
               </div>
             </div>
 
@@ -1072,6 +1083,8 @@ button.uc-ghost { background: transparent; cursor: pointer; font: inherit; font-
 .uc-making p { grid-column: 1 / -1; margin: 0; font-size: 12.5px; }
 .uc-ready { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
 .uc-video { width: 250px; max-width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; background: #000; }
+.uc-video--wide { width: 440px; aspect-ratio: 16 / 9; }
+.uc-video--square { width: 320px; aspect-ratio: 1; }
 .uc-ready-side h3 { margin: 4px 0 4px; font-size: 17px; }
 .uc-ready-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .uc-failed p { margin: 4px 0 10px; font-size: 13px; }

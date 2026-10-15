@@ -277,12 +277,14 @@ final class UgcChatService
             $presenters = [array_merge($presenters[0], ['character_id' => null, 'picked' => false, 'cast_character_ids' => $castIds, 'wardrobe_2' => $second,
                 'speaker_voices' => [1 => $presenters[0]['voice'] ?? null, 2 => $presenters[1]['voice'] ?? null]])];
         }
+        // The shape the user chose; a green screen or a split of their files stays vertical (its compositing is built for it).
+        $aspect = $composition !== [] ? '9:16' : (string) ($state['aspect'] ?? '9:16');
         foreach ($presenters as $p) {
             // A presenter with their own place gets it, and clothes that suit it.
             $own = is_string($p['setting'] ?? null) && isset($settings[$p['setting']]) && $p['setting'] !== $setting ? $p['setting'] : null;
             $takes[] = $this->take($request, $plan, $p, $products, (string) ($d['product'] ?? ''), $type, $title,
                 $own ? $this->pickWardrobe($recentOutfits, $settings[$own]['wardrobe'] ?? []) : $wardrobe, $own ?? $setting, $composition,
-                mb_substr(trim((string) ($d['pronunciations'] ?? '')), 0, 600));
+                mb_substr(trim((string) ($d['pronunciations'] ?? '')), 0, 600), $aspect);
         }
 
         // The director writes before anyone is cast: a single presenter it could not name is named now.
@@ -293,7 +295,7 @@ final class UgcChatService
         if (! DB::table('ugc_chats')->where('id', $id)->value('title')) DB::table('ugc_chats')->where('id', $id)->update(['title' => $title]);
         return $this->say($id, 'pitch', mb_substr((string) $d['summary'], 0, 600), [
             'type' => $type, 'title' => $title, 'plan' => ['format' => $plan['format'], 'script' => $plan['script'], 'segments' => $plan['segments']],
-            'takes' => $takes, 'credits' => $total, 'aspect' => $state['aspect'] ?? '9:16', 'product_asset_ids' => $products, 'made' => false,
+            'takes' => $takes, 'credits' => $total, 'aspect' => $takes[0]['request']['aspect_ratio'] ?? '9:16', 'product_asset_ids' => $products, 'made' => false,
             // "No product photo yet" only where a product would be invented: not over a background or split of the user's files, nor their footage.
             'product_photo_tip' => $products === [] && $composition === [] && $footage === [],
         ]);
@@ -312,6 +314,10 @@ final class UgcChatService
         if ($composition !== [] || $type === 'skit' || $this->credits->planTier((int) $request->user()->workspace_id) === 'ugc_pass') return [];
         $choices = [];
         foreach (['seedance25', 'omni', 'veo', 'veo_hq'] as $key) {
+            if ($key !== 'seedance25' && ($v['aspect_ratio'] ?? '9:16') === '1:1') {
+                $choices[] = ['key' => $key, 'engine' => $key, 'credits' => 0, 'available' => false, 'note' => 'Square videos are made on Seedance.'];
+                continue;
+            }
             if ($key === 'veo' && UgcOneShotPricing::hasPresenter($v, $segments)) {
                 $choices[] = ['key' => 'veo', 'engine' => 'veo', 'credits' => 0, 'available' => false, 'note' => 'Can\'t start from a presenter\'s face. Use Seedance or Omni.'];
                 continue;
@@ -329,7 +335,7 @@ final class UgcChatService
         return $choices;
     }
 
-    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null, array $composition = [], string $pronunciations = ''): array
+    private function take(Request $request, array $plan, array $p, array $products, string $product, string $type, string $title, string $wardrobe = '', ?string $setting = null, array $composition = [], string $pronunciations = '', string $aspect = '9:16'): array
     {
         $voice = $p['voice'] ?? null;
         $segments = array_map(function ($s) use ($voice, $p) {
@@ -351,12 +357,14 @@ final class UgcChatService
                 'engine' => 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null, 'pronunciations' => $pronunciations !== '' ? $pronunciations : null,
                 'product_asset_ids' => $products ?: null, 'product' => mb_substr($product, 0, 200), 'language' => 'en',
                 'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title, 'wardrobe' => $wardrobe,
-                'setting_key' => $setting, 'wardrobe_2' => $p['wardrobe_2'] ?? null], fn ($x) => $x !== null && $x !== '');
+                'setting_key' => $setting, 'wardrobe_2' => $p['wardrobe_2'] ?? null, 'aspect_ratio' => $aspect], fn ($x) => $x !== null && $x !== '');
             // Seedance 2.5 by default (owner, 2026-10-12: "the best I have seen"); a plan longer than its 30-second take goes to
             // Omni, which keeps a cast presenter's photo, rather than to Veo Fast.
             $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
             if ($price['engine'] !== 'seedance25') {
                 $v['engine'] = 'omni';
+                // Square is Seedance's alone, and Seedance makes one take of up to 30 seconds: a longer one is made vertical.
+                if ($aspect === '1:1') $v['aspect_ratio'] = '9:16';
                 $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
             }
             $v['credits'] = (int) $price['quote'];
@@ -366,7 +374,7 @@ final class UgcChatService
         }
         $per = UgcPlan::quote($segments);
         $v = array_filter(['ugc_type' => $liveType, 'format' => $plan['format'], 'segments' => $segments, 'script' => $plan['script'], 'character_ids' => $characterId ? [$characterId] : null,
-            'aspect_ratio' => '9:16', 'language' => 'en', 'product_asset_id' => $products[0] ?? null, 'credits_per_character' => $per,
+            'aspect_ratio' => $aspect, 'language' => 'en', 'product_asset_id' => $products[0] ?? null, 'credits_per_character' => $per,
             'title' => $title], fn ($x) => $x !== null && $x !== '');
         return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'composed',
             'engine' => 'composed', 'credits' => $per, 'request' => $v];
@@ -645,7 +653,7 @@ final class UgcChatService
             if ($m->kind === 'making') {
                 foreach ($payload['runs'] ?? [] as $i => $run) {
                     $takes = $run['run_id'] ? $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET') : [];
-                    $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'credits', 'format', 'revision_export_id'])), $takes['takes'] ?? []);
+                    $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'aspect', 'credits', 'format', 'revision_export_id'])), $takes['takes'] ?? []);
                     // Refused by the video model's moderation (not a fault of ours): the chat offers another model for it.
                     $payload['runs'][$i]['declined'] = collect($takes['takes'] ?? [])->contains(fn ($t) => ($t['status'] ?? '') === 'needs_attention'
                         && str_contains((string) (\App\Models\Scene::query()->where('project_id', (int) $t['id'])->orderBy('scene_order')->first()?->image_generation_settings_json['last_error'] ?? ''), 'declined'));

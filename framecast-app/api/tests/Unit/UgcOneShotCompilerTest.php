@@ -223,6 +223,16 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringContainsString('toward the left edge', $chunks[1]['prompt']);
     }
 
+    public function test_the_prompt_names_the_shape_chosen(): void
+    {
+        $beat = [['script_text' => 'This one works.', 'seconds' => 4]];
+        $this->assertStringContainsString('A vertical 9:16', UgcOneShotCompiler::compile($beat, [])[0]['prompt']);
+        $this->assertStringContainsString('A square 1:1', UgcOneShotCompiler::compile($beat, ['aspect' => '1:1'])[0]['prompt']);
+        $wide = UgcOneShotCompiler::compile($beat, ['aspect' => '16:9'])[0]['prompt'];
+        $this->assertStringContainsString('A landscape 16:9', $wide);
+        $this->assertStringContainsString('phone held sideways', $wide);
+    }
+
     public function test_pov_and_reaction_are_silent_and_leave_room_for_their_headline(): void
     {
         foreach (['pov_hook', 'reaction'] as $type) {

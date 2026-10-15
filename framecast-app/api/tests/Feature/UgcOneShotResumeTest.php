@@ -26,6 +26,7 @@ class UgcOneShotResumeTest extends TestCase
     private ?\Closure $onPoll = null;
     private array $startFrames = [];
     private array $askedSeconds = [];
+    private array $shapes = [];
 
     private array $sentPrompts = [];
     private array $refs = [];
@@ -59,7 +60,7 @@ class UgcOneShotResumeTest extends TestCase
                 '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
         }
         $veo = Mockery::mock(ReplicateVeoAdapter::class);
-        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = []) { $this->sentPrompts[] = $prompt; $this->askedSeconds[] = $seconds; $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
+        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = [], $seed = null, $resolution = '720p', $videos = [], $aspect = '9:16') { $this->shapes[] = $aspect; $this->sentPrompts[] = $prompt; $this->askedSeconds[] = $seconds; $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
             if ($this->onPoll) ($this->onPoll)();
@@ -478,6 +479,13 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([396], $this->refunded);
     }
 
+    public function test_every_clip_is_made_in_the_take_s_shape(): void
+    {
+        $job = new GenerateOneShotUgcJob(7, 70, [['prompt' => 'one', 'seconds' => 4], ['prompt' => 'two', 'seconds' => 4]], 396, 'seedance25', [], null, null, '720p', null, null, false, [], false, [], '16:9');
+        $this->assertNull($this->run_($job));
+        $this->assertSame(['16:9', '16:9'], $this->shapes);
+    }
+
     public function test_the_charge_carries_what_the_take_really_cost(): void
     {
         DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);
@@ -570,7 +578,7 @@ class UgcOneShotResumeTest extends TestCase
     public function test_a_take_with_a_look_dresses_the_presenter_once_and_every_clip_uses_that_picture(): void
     {
         $look = Mockery::mock(\App\Services\Ugc\UgcLook::class);
-        $look->shouldReceive('make')->once()->with('data:image/png;base64,FACE', 'data:image/png;base64,PLACE', 'a rust sweater', 'a home desk')
+        $look->shouldReceive('make')->once()->with('data:image/png;base64,FACE', 'data:image/png;base64,PLACE', 'a rust sweater', 'a home desk', '9:16')
             ->andReturn(['uri' => 'data:image/png;base64,DRESSED', 'score' => 88]);
         $this->app->instance(\App\Services\Ugc\UgcLook::class, $look);
         $chunks = [['prompt' => 'one', 'seconds' => 6, 'new_shot' => true], ['prompt' => 'two', 'seconds' => 6, 'new_shot' => true]];

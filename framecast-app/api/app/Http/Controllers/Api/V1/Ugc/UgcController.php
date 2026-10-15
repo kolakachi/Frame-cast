@@ -103,7 +103,7 @@ class UgcController extends Controller
             // glyph.
             $thumbType = $thumbAssetId ? Asset::query()->whereKey($thumbAssetId)->value('asset_type') : null;
             $row = ['id' => $project->id, 'character' => $project->title, 'scenes' => $project->scenes->count(),
-                'thumbnail_url' => $thumbUrl, 'thumbnail_type' => $thumbType, 'created_at' => $project->created_at?->toIso8601String(),
+                'thumbnail_url' => $thumbUrl, 'thumbnail_type' => $thumbType, 'aspect' => $project->aspect_ratio ?: '9:16', 'created_at' => $project->created_at?->toIso8601String(),
                 'format' => data_get($project->visual_brief, 'ugc_format'),
                 'credits' => data_get($project->visual_brief, 'ugc_estimated_credits', 0),
                 'variant' => data_get($project->visual_brief, 'ugc_variant'),
@@ -971,6 +971,8 @@ class UgcController extends Controller
             'composition.right_asset_id' => ['nullable', 'integer', 'min:1'],
             'cast_character_ids' => ['sometimes', 'array', 'size:2'],
             'cast_character_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+            // The shape (P2-ASPECT, owner 2026-10-15): square on Seedance only; green screen and splits stay vertical.
+            'aspect_ratio' => ['sometimes', 'string', 'in:9:16,1:1,16:9'],
 
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_id' => ['nullable', 'integer', 'min:1'],
@@ -1212,7 +1214,7 @@ class UgcController extends Controller
             true,
         )['pronunciations'] ?? '')."\n".trim((string) ($v['pronunciations'] ?? '')));
         $style = [
-            'ugc_type' => $v['ugc_type'] ?? '', 'speakers' => $speakerDescriptions,
+            'ugc_type' => $v['ugc_type'] ?? '', 'speakers' => $speakerDescriptions, 'aspect' => (string) ($v['aspect_ratio'] ?? '9:16'),
             'presenter' => $presenter,
             'setting' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::direction((string) $v['setting_key']) : trim((string) ($v['setting'] ?? '')),
             'place_note' => ! empty($v['setting_key']) ? \App\Services\Ugc\UgcSettings::note((string) $v['setting_key'], $placePhoto) : '',
@@ -1278,6 +1280,13 @@ class UgcController extends Controller
                 'The UGC Test Pass makes ads up to 15 seconds. Shorten the plan, or upgrade for longer ads.']);
         }
 
+        $aspect = (string) ($v['aspect_ratio'] ?? '9:16');
+        if ($aspect !== '9:16' && ! empty($v['composition'])) {
+            throw ValidationException::withMessages(['aspect_ratio' => 'Green screen and split videos are vertical (9:16) for now.']);
+        }
+        if ($aspect === '1:1' && $engine !== 'seedance25') {
+            throw ValidationException::withMessages(['aspect_ratio' => 'Square videos are made on Seedance, which makes one take of up to 30 seconds. Choose vertical or landscape for this one.']);
+        }
         if ((int) $v['credits'] !== $quote) {
             throw ValidationException::withMessages(['credits' => "The estimate changed — this take is {$quote} credits. Review and approve again."]);
         }
@@ -1372,7 +1381,7 @@ class UgcController extends Controller
             'workspace_id' => $user->workspace_id,
             'created_by_user_id' => $user->id,
             'title' => trim((string) ($v['title'] ?? '')) ?: (Str::limit($script, 48, '…', preserveWords: true) ?: 'One-take UGC ad'),
-            'aspect_ratio' => '9:16',
+            'aspect_ratio' => $aspect,
             'duration_target_seconds' => (int) $totalSeconds,
             'status' => 'generating',
             'source_type' => 'script',
@@ -1428,6 +1437,7 @@ class UgcController extends Controller
             $presenterImageAttached && $style['wardrobe'] !== '' && in_array($engine, ['omni', 'veo', 'veo_hq'], true)
                 && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
                 ? array_filter(['wardrobe' => $style['wardrobe'], 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
+            $aspect,
         )->afterCommit();
 
         $payload = ['data' => [

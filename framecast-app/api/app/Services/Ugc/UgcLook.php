@@ -29,13 +29,13 @@ class UgcLook
      *
      * @return array{uri: string, score: int|null}|null
      */
-    public function make(string $presenter, ?string $place, string $wardrobe, string $placeText): ?array
+    public function make(string $presenter, ?string $place, string $wardrobe, string $placeText, string $aspect = '9:16'): ?array
     {
         $prompt = self::prompt($wardrobe, $placeText, $place !== null);
         $best = null;
         for ($try = 0; $try < 2; $try++) {
             try {
-                $out = $this->images->generate($prompt, '', '9:16', ['reference_image_urls' => array_values(array_filter([$presenter, $place]))]);
+                $out = $this->images->generate($prompt, '', $aspect, ['reference_image_urls' => array_values(array_filter([$presenter, $place]))]);
                 $bytes = Http::timeout(60)->get((string) $out['image_url'])->throw()->body();
             } catch (\Throwable $e) {
                 Log::warning('ugc look: the image could not be made', ['error' => mb_substr($e->getMessage(), 0, 200)]);

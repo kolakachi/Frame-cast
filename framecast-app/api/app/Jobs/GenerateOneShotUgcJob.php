@@ -70,7 +70,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
         array $composition = [],
         bool $storyboard = false,
         array $look = [],
+        string $aspect = '9:16',
     ) {
+        $this->aspect = $aspect;
         $this->composition = $composition;
         $this->storyboard = $storyboard;
         $this->look = $look;
@@ -99,6 +101,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** The take's look (UgcLook): wardrobe, place text and whether the place photo rides in the references (at index 2),
      *  so the job dresses the cast presenter once and uses that picture in every clip. Empty: the cast photo as it is. */
     public array $look = [];
+
+    /** The take's shape (9:16, 1:1 on Seedance, or 16:9). A plain property for the same reason as runToken. */
+    public string $aspect = '9:16';
 
     /** The references the clips get: the take's own, with the dressed presenter in place of the cast photo when there is a look. */
     private array $refs = [];
@@ -149,7 +154,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 try {
                     $composite = app(\App\Services\Generation\Image\CharacterImageAdapter::class)->generate(
                         'Vertical 9:16 selfie-framing still of the person from the first reference image naturally holding the product shown in the other reference images at chest height, label facing the camera, casual lived-in setting, soft daylight, authentic phone-camera feel',
-                        'realistic', '9:16',
+                        'realistic', $this->aspect,
                         ['reference_image_urls' => array_slice(array_merge([$startFrame], $this->referenceImages), 0, 4), 'quality' => 'medium'],
                     );
                     $bytes = ! empty($composite['image_b64']) ? base64_decode($composite['image_b64'], true)
@@ -494,7 +499,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $file = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/look.txt';
         $uri = self::parts()->exists($file) ? (string) self::parts()->get($file) : '';
         if ($uri === '') {
-            $made = app(\App\Services\Ugc\UgcLook::class)->make($refs[0], $plate, (string) ($this->look['wardrobe'] ?? ''), (string) ($this->look['place'] ?? ''));
+            $made = app(\App\Services\Ugc\UgcLook::class)->make($refs[0], $plate, (string) ($this->look['wardrobe'] ?? ''), (string) ($this->look['place'] ?? ''), $this->aspect);
             if ($made === null) return $refs;
             $uri = $made['uri'];
             self::parts()->put($file, $uri);
@@ -719,7 +724,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
             $prompt = (string) $chunk['prompt'];
             if (in_array($this->faceRef, $chunkRefs, true)) $prompt .= "\n\nOne reference image is a close-up of the presenter's face: in every frame their face matches it exactly, the same person.";
-            $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution);
+            $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution, [], $this->aspect);
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->refresh()->image_generation_settings_json ?? [],
                 // generation_started_at is the heartbeat the stuck-generation reaper reads.
@@ -1100,6 +1105,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         if ($this->composition !== []) $recipe[] = $this->composition;
         if ($this->storyboard) $recipe[] = 'storyboard';
         if ($this->look !== []) $recipe[] = $this->look;
+        if ($this->aspect !== '9:16') $recipe[] = $this->aspect;
         return substr(hash('sha256', json_encode($recipe)), 0, 16);
     }
 
@@ -1121,7 +1127,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         self::parts()->put($recipe, json_encode([
             'projectId' => $this->projectId, 'sceneId' => $this->sceneId, 'chunks' => $this->chunks, 'credits' => $this->credits,
             'engine' => $this->engine, 'referenceImages' => $this->referenceImages, 'initialStartFrame' => $this->initialStartFrame,
-            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition, 'storyboard' => $this->storyboard, 'look' => $this->look,
+            'seed' => $this->seed, 'resolution' => $this->resolution, 'demoStorageUrl' => $this->demoStorageUrl, 'checkFace' => $this->checkFace, 'composition' => $this->composition, 'storyboard' => $this->storyboard, 'look' => $this->look, 'aspect' => $this->aspect,
         ]));
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
@@ -1200,7 +1206,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             self::dispatch(
                 (int) $recipe['projectId'], (int) $recipe['sceneId'], $recipe['chunks'], (int) $recipe['credits'], (string) $recipe['engine'],
                 $recipe['referenceImages'] ?? [], $recipe['initialStartFrame'] ?? null, $recipe['seed'] ?? null,
-                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [], (bool) ($recipe['storyboard'] ?? false), (array) ($recipe['look'] ?? []),
+                (string) ($recipe['resolution'] ?? '720p'), $recipe['demoStorageUrl'] ?? null, $token, (bool) ($recipe['checkFace'] ?? false), $recipe['composition'] ?? [], (bool) ($recipe['storyboard'] ?? false), (array) ($recipe['look'] ?? []), (string) ($recipe['aspect'] ?? '9:16'),
             )->afterCommit();
             return 'resumed';
         });

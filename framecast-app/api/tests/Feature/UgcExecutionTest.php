@@ -449,6 +449,25 @@ class UgcExecutionTest extends TestCase
         Bus::assertNothingDispatched();
     }
 
+    public function test_a_take_is_made_in_its_shape_square_only_on_seedance(): void
+    {
+        Schema::create('client_profiles', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('brief')->nullable(); });
+        $shots = [$this->shot()];
+        $segments = \App\Services\Ugc\UgcPlan::normalise($shots, 'direct_camera');
+        $credits = fn (string $engine) => (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds(\App\Services\Ugc\UgcOneShotCompiler::compile($segments, [], \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS), $segments, $engine) * CreditService::VIDEO_ONESHOT_PER_SECOND[$engine])
+            + \App\Services\Ugc\UgcOneShotPricing::lipsyncCredits($engine, $segments);
+        try {
+            (new UgcController)->generateOneShot($this->request($shots, 'direct_camera', ['engine' => 'omni', 'aspect_ratio' => '1:1', 'credits' => $credits('omni')]), app(CreditService::class));
+            $this->fail('square on Omni was accepted');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('Square videos are made on Seedance', json_encode($e->errors()));
+        }
+        $response = (new UgcController)->generateOneShot($this->request($shots, 'direct_camera', ['engine' => 'omni', 'aspect_ratio' => '16:9', 'credits' => $credits('omni')]), app(CreditService::class));
+        $this->assertSame(201, $response->getStatusCode(), json_encode($response->getData(true)));
+        Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class, fn ($job) => $job->aspect === '16:9');
+        $this->assertSame('16:9', Project::query()->latest('id')->value('aspect_ratio'));
+    }
+
     public function test_native_types_dispatch_their_composition_cast_and_silent_media(): void
     {
         Schema::create('client_profiles', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('brief')->nullable(); });

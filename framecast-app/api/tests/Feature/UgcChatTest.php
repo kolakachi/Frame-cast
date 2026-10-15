@@ -392,6 +392,21 @@ class UgcChatTest extends TestCase
         }
     }
 
+    public function test_the_chosen_shape_reaches_the_take_one_take_or_scene_by_scene(): void
+    {
+        $this->withoutMiddleware();
+        foreach ([['16:9', 10, '16:9'], ['1:1', 10, '1:1'], ['1:1', 40, '1:1']] as [$asked, $seconds, $made]) {
+            $segments = [['kind' => 'on_camera', 'script_text' => 'Here is the product, and why it works for me.', 'seconds' => $seconds, 'visual_brief' => 'Desk.', 'motion_prompt' => 'Holds it up.']];
+            $this->planOverride = ['format' => 'direct_camera', 'script' => \App\Services\Ugc\UgcPlan::script($segments), 'segments' => $segments, 'presenter_character_id' => 5];
+            $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'summary' => 'A review.', 'script' => $this->planOverride['script']];
+            $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+            $reply = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Make it', 'type' => 'testimonial', 'aspect' => $asked])->assertOk()->json('data.reply');
+            $take = json_decode(DB::table('ugc_chat_messages')->where('id', $reply['id'])->value('payload_json'), true)['takes'][0];
+            $this->assertSame($made, $take['request']['aspect_ratio'], "$asked, $seconds s");
+            $this->assertSame($made, $reply['payload']['aspect']);
+        }
+    }
+
     public function test_a_skit_casts_whoever_is_missing_in_contrast_and_dresses_them_apart(): void
     {
         $this->withoutMiddleware();
