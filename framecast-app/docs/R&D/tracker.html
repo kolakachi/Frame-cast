@@ -1,0 +1,108 @@
+<title>WyvStudio R&amp;D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: a lab-bench ledger: progress summary on top, one filterable ledger of findings below. */
+:root {
+  --bg: #f4f6f8; --panel: #ffffff; --ink: #18212b; --muted: #5d6b79; --rule: #dde3e9; --grid: #e9edf1; --accent: #0f6c7c;
+  --done: #1f7a4d; --done-bg: #e3f3ea; --next: #1f5fbf; --next-bg: #e5eefb; --open: #8a5a00; --open-bg: #fbf0d9;
+  --check: #6b3fb3; --check-bg: #efe8fb; --idea: #56636f; --idea-bg: #edf0f3;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif; --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f151b; --panel: #151d25; --ink: #e4eaf0; --muted: #94a3b1; --rule: #26313c; --grid: #19222b; --accent: #4fb3c4;
+  --done: #6fd39f; --done-bg: #12301f; --next: #8db8ff; --next-bg: #15253f; --open: #f0c060; --open-bg: #33270d;
+  --check: #c4a6ff; --check-bg: #261b3d; --idea: #a9b5c0; --idea-bg: #1d262f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f151b; --panel: #151d25; --ink: #e4eaf0; --muted: #94a3b1; --rule: #26313c; --grid: #19222b; --accent: #4fb3c4;
+  --done: #6fd39f; --done-bg: #12301f; --next: #8db8ff; --next-bg: #15253f; --open: #f0c060; --open-bg: #33270d;
+  --check: #c4a6ff; --check-bg: #261b3d; --idea: #a9b5c0; --idea-bg: #1d262f; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); padding-inline: 16px; padding-block: 28px 48px;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 24px 24px; }
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px }
+header { display: grid; gap: 6px }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent) }
+h1 { font: 700 34px/1.1 var(--display); margin: 0; letter-spacing: -.01em; text-wrap: balance }
+.lede { margin: 0; color: var(--muted); max-width: 64ch }
+.summary { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; display: grid; gap: 12px }
+.bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--idea-bg) }
+.bar span { display: block; height: 100% }
+.counts { display: flex; flex-wrap: wrap; gap: 8px 18px; font-variant-numeric: tabular-nums }
+.counts b { font: 600 20px/1 var(--display); margin-right: 4px }
+.counts span { color: var(--muted); font-size: 13px }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.chip { font: 500 13px/1 var(--body); border: 1px solid var(--rule); background: var(--panel); color: var(--ink); padding: 7px 11px; border-radius: 999px; cursor: pointer }
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--bg) }
+.chip:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.sep { width: 1px; height: 22px; background: var(--rule) }
+input[type=search] { flex: 1 1 220px; min-width: 0; font: 14px var(--body); padding: 8px 11px; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); color: var(--ink) }
+.ledger { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden }
+.row { display: grid; grid-template-columns: 72px 86px minmax(0, 1fr) 84px; gap: 14px; padding: 12px 16px; border-top: 1px solid var(--rule); align-items: start }
+.row:first-child { border-top: 0 }
+.row.head { font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-block: 10px; background: var(--bg) }
+.id { font: 500 13px/1.6 var(--mono); color: var(--muted) }
+.area { font-size: 13px; color: var(--muted); line-height: 1.6 }
+.what { min-width: 0 } .what p { margin: 0 } .meta { margin-top: 3px; font-size: 13px; color: var(--muted) }
+.pill { justify-self: start; font: 600 12px/1 var(--body); padding: 5px 9px; border-radius: 999px; white-space: nowrap }
+.s-done { color: var(--done); background: var(--done-bg) } .s-next { color: var(--next); background: var(--next-bg) } .s-open { color: var(--open); background: var(--open-bg) }
+.s-check { color: var(--check); background: var(--check-bg) } .s-idea { color: var(--idea); background: var(--idea-bg) } .s-skipped { color: var(--idea); background: var(--idea-bg); text-decoration: line-through }
+.empty { padding: 24px 16px; color: var(--muted) }
+footer { color: var(--muted); font-size: 13px }
+@media (max-width: 640px) { .row { grid-template-columns: 1fr auto; gap: 6px 12px } .row.head { display: none } .area { order: 3; grid-column: 1 / -1 } .what { grid-column: 1 / -1; order: 4 } .id { order: 1 } .pill { order: 2; justify-self: end } h1 { font-size: 28px } }
+@media (prefers-reduced-motion: no-preference) { .bar span { transition: width .4s ease } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Research to product</span>
+    <h1>WyvStudio R&amp;D</h1>
+    <p class="lede">Everything we found while researching and decided to take, in one ledger. Items move from idea to done as they are built; ideas need a yes or a no.</p>
+  </header>
+  <section class="summary" aria-label="Progress">
+    <div class="bar" id="bar" role="img"></div>
+    <div class="counts" id="counts"></div>
+  </section>
+  <div class="controls" role="toolbar" aria-label="Filter">
+    <div id="statusChips" class="controls"></div>
+    <span class="sep" aria-hidden="true"></span>
+    <div id="areaChips" class="controls"></div>
+    <input type="search" id="q" placeholder="Search items or sources" aria-label="Search items or sources">
+  </div>
+  <section class="ledger" id="ledger" aria-live="polite"></section>
+  <footer>Updated 2026-10-15 · source: <span style="font-family:var(--mono)">docs/R&amp;D/items.py</span></footer>
+</div>
+
+<script>
+const ITEMS = [{"id": "RD-05", "area": "Create", "item": "Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs", "src": "product-launch-motion, student-kit, skills/", "status": "check", "note": "R&D said done (local), priorities said build: confirm it is live."}, {"id": "RD-01", "area": "UGC", "item": "A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing", "src": "Pixelle-Video", "status": "next", "note": "Today a decline only offers another model."}, {"id": "RD-02", "area": "UGC", "item": "Character mix-up check: each skit clip shows the right speaker", "src": "Jellyfish", "status": "next", "note": "Pairs with face checks on skit speakers."}, {"id": "RD-08", "area": "Create", "item": "True peak at or below -1 dBTP alongside -14 LUFS", "src": "Opus Motion Design Harness", "status": "next", "note": ""}, {"id": "RD-09", "area": "Create", "item": "Every cut has a carrier: a plan rule and a check", "src": "Opus Motion Design Harness", "status": "next", "note": ""}, {"id": "RD-10", "area": "Create", "item": "Focus and letter type kit: blur-in text, letters rising, rack focus, glow flash", "src": "Gap report", "status": "next", "note": ""}, {"id": "RD-12", "area": "Create", "item": "Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults", "src": "Anthropic skills, taste-skill", "status": "next", "note": "Paid test, about $5-8."}, {"id": "RD-30", "area": "Money", "item": "A provider call never sent settles at zero; a closed run's held credits are released", "src": "Dan rebuild", "status": "next", "note": "Money correctness."}, {"id": "RD-03", "area": "UGC", "item": "Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot", "src": "Toonflow, huobao", "status": "open", "note": "Casting, dressing and the shared place photo are done; the sheet and @name are not."}, {"id": "RD-06", "area": "Create", "item": "Motion vocabulary by scene purpose (386 unused blocks), a no-slideshow check and a plan lint", "src": "awesome-ai-motion, huashu, cinetic", "status": "open", "note": ""}, {"id": "RD-07", "area": "Create", "item": "Finishing checks: constant-speed motion, repeated technique, text under phone UI, cues present, voice over music, contact sheet", "src": "animate, claude-motion-design", "status": "open", "note": "FS3 is partly built; one-frame pops done."}, {"id": "RD-11", "area": "Create", "item": "Explainer styles (whiteboard, kinetic type, finance chart) and a timing breakdown for 'make it like this'", "src": "huashu, student-kit", "status": "open", "note": "Never marketed as a named channel's look."}, {"id": "RD-31", "area": "Platform", "item": "Trim old tool output in the build loop to cut cost", "src": "arXiv harness study", "status": "open", "note": ""}, {"id": "RD-33", "area": "Platform", "item": "Review herk-edit-kit and write down which parts to take", "src": "herk-edit-kit", "status": "open", "note": "Noted as 'mine for parts' without a list."}, {"id": "RD-04", "area": "UGC", "item": "Two-shot opener or Seedance multi-shot, if skit rooms still split", "src": "OpenMontage", "status": "idea", "note": "Only if the next skit take shows two rooms."}, {"id": "RD-13", "area": "Create", "item": "Change requests answer every note with exactly what changed", "src": "Opus Motion Design Harness", "status": "idea", "note": ""}, {"id": "RD-14", "area": "Create", "item": "A defect the checks missed becomes a new check, approved once", "src": "Opus Motion Design Harness", "status": "idea", "note": ""}, {"id": "RD-15", "area": "Create", "item": "Social-native kit: comments, like burst, stitch, chat, notes app, POV", "src": "Kit planning", "status": "idea", "note": ""}, {"id": "RD-16", "area": "Create", "item": "Product hero kit: 2.5D turn, floor reflection, spotlight, explode, before/after", "src": "Kit planning", "status": "idea", "note": ""}, {"id": "RD-17", "area": "Create", "item": "UI morph kit: blur hand-off, drawn chart with tooltip, palette, 60 fps option", "src": "UI motion study", "status": "idea", "note": ""}, {"id": "RD-18", "area": "Create", "item": "Data and infographic kit", "src": "Kit planning", "status": "idea", "note": ""}, {"id": "RD-19", "area": "Create", "item": "One shared style line and several variants per image prompt", "src": "Higgsfield KICKS demo", "status": "idea", "note": ""}, {"id": "RD-20", "area": "Create", "item": "Spinning globe and 3D product-hero helpers", "src": "cobe, drei", "status": "idea", "note": "WebGL runs in software on the worker: 1-3 beats only."}, {"id": "RD-21", "area": "Create", "item": "Shader backgrounds ported to WebGL: gradient, aurora, glass, grain", "src": "shaders", "status": "idea", "note": "Time each render first."}, {"id": "RD-22", "area": "Create", "item": "Original music written as code", "src": "Opus Motion Design Harness", "status": "idea", "note": ""}, {"id": "RD-23", "area": "Create", "item": "Better beat and drop detection for the user's own music", "src": "claude-motion, animate", "status": "idea", "note": ""}, {"id": "RD-24", "area": "Create", "item": "A small hand-licensed Lottie set with a start offset per scene", "src": "lottie-web", "status": "idea", "note": ""}, {"id": "RD-25", "area": "Create", "item": "Premium effect recipes: tab edges, bars to line, dock falloff, glass focus, particle logo", "src": "motion-graphics-skills", "status": "idea", "note": ""}, {"id": "RD-26", "area": "Create", "item": "Illustrated looks in code: riso print, cut paper", "src": "animate", "status": "idea", "note": ""}, {"id": "RD-27", "area": "Create", "item": "Studio mode: a gate at every stage, for agencies", "src": "Opus Motion Design Harness", "status": "idea", "note": ""}, {"id": "RD-28", "area": "Create", "item": "Text behind the subject: cut out the person, type between layers", "src": "Barty object separation", "status": "idea", "note": ""}, {"id": "RD-29", "area": "Create", "item": "Math-style explainer shots", "src": "manimgx", "status": "idea", "note": "Watch until it matures and runs on ARM."}, {"id": "RD-32", "area": "Platform", "item": "Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1", "src": "fabric.js", "status": "idea", "note": "A new product."}, {"id": "RD-34", "area": "Create", "item": "Collage kit and Collage / zine style", "src": "Higgsfield KICKS demo", "status": "done", "note": "2026-10-09"}, {"id": "RD-35", "area": "Create", "item": "Gap report: reference moments no move reproduces", "src": "Kit planning", "status": "done", "note": "create:move-gaps"}, {"id": "RD-36", "area": "Create", "item": "Kit guide split: core kit plus specialty kits per video", "src": "Kit planning", "status": "done", "note": ""}, {"id": "RD-37", "area": "Create", "item": "Single-frame glitch check on the finished video", "src": "claude-motion-design", "status": "done", "note": ""}, {"id": "RD-38", "area": "Create", "item": "Energy arc, easing by material, sound matches weight, still before a cut", "src": "klik, LottieFiles, product-launch-motion", "status": "done", "note": ""}, {"id": "RD-39", "area": "Create", "item": "Onboarding: three questions, site to brand kit, first brief ready", "src": "Higgsfield onboarding", "status": "done", "note": ""}, {"id": "RD-40", "area": "UGC", "item": "Outfits that hold: the presenter dressed once and that picture in every clip, skit speakers too", "src": "Jellyfish", "status": "done", "note": "2026-10-15"}, {"id": "RD-41", "area": "UGC", "item": "Skit speakers keep one side of the frame (180-degree rule)", "src": "OpenMontage", "status": "done", "note": "2026-10-15"}, {"id": "RD-42", "area": "Create", "item": "Taste rules written into the builder's doctrine", "src": "Anthropic skills, taste-skill", "status": "done", "note": "A/B is RD-12."}];
+const ORDER = ["check", "next", "open", "idea", "done", "skipped"];
+const LABEL = { check: "Check", next: "Next", open: "Open", idea: "Idea", done: "Done", skipped: "Skipped" };
+const COLOR = { done: "var(--done)", next: "var(--next)", open: "var(--open)", check: "var(--check)", idea: "var(--idea)", skipped: "var(--rule)" };
+const areas = [...new Set(ITEMS.map(i => i.area))];
+const state = { status: "all", area: "all", q: "" };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function counts() {
+  const n = s => ITEMS.filter(i => i.status === s).length;
+  document.getElementById("bar").innerHTML = ORDER.filter(n).map(s => `<span style="width:${(n(s) / ITEMS.length * 100).toFixed(2)}%;background:${COLOR[s]}" title="${LABEL[s]}: ${n(s)}"></span>`).join("");
+  document.getElementById("bar").setAttribute("aria-label", ORDER.filter(n).map(s => `${LABEL[s]} ${n(s)}`).join(", "));
+  document.getElementById("counts").innerHTML = ORDER.filter(n).map(s => `<div><b style="color:${COLOR[s]}">${n(s)}</b><span>${LABEL[s].toLowerCase()}</span></div>`).join("") + `<div><b>${ITEMS.length}</b><span>in total</span></div>`;
+}
+function chips(el, values, key, labels) {
+  el.innerHTML = ["all", ...values].map(v => `<button type="button" class="chip" data-v="${esc(v)}" aria-pressed="${state[key] === v}">${v === "all" ? "All" : esc(labels ? labels[v] : v)}</button>`).join("");
+  el.onclick = e => { const b = e.target.closest("button"); if (!b) return; state[key] = b.dataset.v; render(); };
+}
+function render() {
+  chips(document.getElementById("statusChips"), ORDER.filter(s => ITEMS.some(i => i.status === s)), "status", LABEL);
+  chips(document.getElementById("areaChips"), areas, "area");
+  const q = state.q.toLowerCase();
+  const rows = ITEMS.filter(i => (state.status === "all" || i.status === state.status) && (state.area === "all" || i.area === state.area)
+    && (!q || (i.item + " " + i.src + " " + i.note + " " + i.id).toLowerCase().includes(q)));
+  document.getElementById("ledger").innerHTML = `<div class="row head"><span>ID</span><span>Area</span><span>Item</span><span>Status</span></div>`
+    + (rows.length ? rows.map(i => `<div class="row"><span class="id">${esc(i.id)}</span><span class="area">${esc(i.area)}</span>
+      <div class="what"><p>${esc(i.item)}</p><div class="meta">From ${esc(i.src)}${i.note ? " · " + esc(i.note) : ""}</div></div>
+      <span class="pill s-${i.status}">${LABEL[i.status]}</span></div>`).join("") : `<div class="empty">Nothing matches. Clear the filters to see every item.</div>`);
+}
+document.getElementById("q").addEventListener("input", e => { state.q = e.target.value; render(); });
+counts(); render();
+</script>
