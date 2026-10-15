@@ -121,7 +121,8 @@ class UgcChatController extends DeveloperController
             foreach ($m['payload']['runs'] ?? [] as $run) {
                 foreach ($run['takes'] ?? [] as $t) {
                     $out[] = array_filter(['video_id' => $t['id'] ?? null, 'presenter' => $run['name'] ?? null, 'status' => $t['status'] ?? null,
-                        'url' => ($t['status'] ?? '') === 'ready' ? ($t['thumbnail_url'] ?? null) : null, 'aspect' => $t['aspect'] ?? null], fn ($v) => $v !== null);
+                        // A finished take reads "ready_for_review" (MCP-BRIEF live test, 2026-10-15: no link was given).
+                        'url' => in_array($t['status'] ?? '', ['ready', 'ready_for_review', 'completed'], true) ? ($t['thumbnail_url'] ?? null) : null, 'aspect' => $t['aspect'] ?? null], fn ($v) => $v !== null);
                 }
             }
         }
