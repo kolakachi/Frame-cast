@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\{DB, Http, Log};
 
 /**
  * Looks at the finished video (todo D1, D2, D4 and the agreement's required items): frames sampled from the final
- * encode, with the approved cast images beside them, read by a cheap vision model. It reports what it could see,
+ * encode, with the approved cast images beside them, read by Sonnet (create.final_look_model). It reports what it could see,
  * with times, and says when it could not see; it never turns an unreadable answer into a pass.
  */
 class FinalLook
@@ -45,7 +45,7 @@ class FinalLook
  "lettering": {"status": "clean"|"garbled", "times": [<seconds>], "note": "<garbled letters or fake logos baked into the picture; clean overlay captions and real product labels are fine>"},
  "actions": [{"shot": <n>, "status": "present"|"missing"|"unclear", "time": <seconds or null>, "note": "<under 15 words; say if the person looks into the camera when they should not>"}],
  "answer": {"status": "answered"|"not_answered"|"unclear"|"none", "note": "<under 20 words>"}}
-Required items, each with its id (each must be visible; spoken-only items are "unclear" here, they are checked by listening; answer every id): '.json_encode(array_map(fn ($t, $k) => ['id' => 'r'.($k + 1), 'item' => $t], $required, array_keys($required)), JSON_UNESCAPED_UNICODE).'
+Required items, each with its id (each must be visible; an item that lists several things, such as "phone down, bag grabbed, fireworks", is present only when every one of them is seen, otherwise it is missing and the note names the part not seen; spoken-only items are "unclear" here, they are checked by listening; answer every id): '.json_encode(array_map(fn ($t, $k) => ['id' => 'r'.($k + 1), 'item' => $t], $required, array_keys($required)), JSON_UNESCAPED_UNICODE).'
 Directed shots (each action should be visible, with its gaze; judge each shot on the frames marked inside it, which follow its action from early to late): '.json_encode($shots, JSON_UNESCAPED_UNICODE)
             .($question !== '' ? "\nThe opening question, which the last frames should visibly answer: ".json_encode($question, JSON_UNESCAPED_UNICODE) : "\nThere is no opening question to check: answer.status is \"none\".")]];
         foreach ($frames as $f) {
@@ -58,7 +58,7 @@ Directed shots (each action should be visible, with its gaze; judge each shot on
         }
         try {
             $r = \App\Services\Create\NetRetry::run(fn () => Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(150)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 3000, 'messages' => [['role' => 'user', 'content' => $content]]]));
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.final_look_model', 'claude-sonnet-5-5'), 'max_tokens' => 3000, 'messages' => [['role' => 'user', 'content' => $content]]]));
             // A refusal or an outage is a vendor event (recorded, alerted when it is our account), and the look says why.
             if (! $r->successful()) {
                 $kind = \App\Services\Vendors\VendorAlerts::observe('anthropic', $r->body(), $r->status(), ['run_id' => $runId]);

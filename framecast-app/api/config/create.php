@@ -54,6 +54,9 @@ return [
     'planner_model_creative' => env('CREATE_PLANNER_MODEL_CREATIVE', 'claude-opus-5-5'),
     // Cheap vision checks (storyboard panels against their direction): a small model, never the creative one.
     'check_model' => env('CREATE_CHECK_MODEL', 'claude-haiku-4-5-20251001'),
+    // The final look before delivery (FinalLook): Sonnet, not the cheap check model. Haiku called a required item missing
+    // for the wrong part (workspace 82, 2026-10-15), which sends the repair round after the wrong thing. A few cents a build.
+    'final_look_model' => env('CREATE_FINAL_LOOK_MODEL', 'claude-sonnet-5-5'),
     // How a reference video is read (todo G2): 'opus' sends every sheet to the creative model; 'split' has the check
     // model write per-frame facts and the creative model read them plus the motion frames. Default until the A/B decides.
     'study_mode' => env('CREATE_STUDY_MODE', 'opus'),
