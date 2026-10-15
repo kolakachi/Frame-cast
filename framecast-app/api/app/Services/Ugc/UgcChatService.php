@@ -263,7 +263,10 @@ final class UgcChatService
 
         $presenters = $state['presenters'] ?? [];
         if ($live && $type === 'asmr') $presenters = [['character_id' => null, 'voice' => $presenters[0]['voice'] ?? null]];
-        if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? null, 'voice' => null, 'picked' => true]];
+        // The director's cast for this pitch; on a revision that names nobody, the face it cast last time stays (an assistant's
+        // "make it shorter" recast Harjit as "a fitting presenter", 2026-10-15).
+        $kept = ! empty($before['picked']) && ! empty($before['character_id']) && $type !== 'skit' ? (int) $before['character_id'] : null;
+        if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? $kept, 'voice' => null, 'picked' => true]];
         $takes = [];
         $title = mb_substr(trim((string) ($d['title'] ?? 'UGC video')), 0, 120);
         if ($type === 'skit') {

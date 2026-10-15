@@ -392,6 +392,21 @@ class UgcChatTest extends TestCase
         }
     }
 
+    public function test_a_revision_that_names_nobody_keeps_the_face_the_director_cast(): void
+    {
+        $this->withoutMiddleware();
+        $segments = [['kind' => 'on_camera', 'script_text' => 'This one works for me.', 'seconds' => 6, 'visual_brief' => 'Desk.', 'motion_prompt' => 'Holds it up.']];
+        $this->planOverride = ['format' => 'direct_camera', 'script' => \App\Services\Ugc\UgcPlan::script($segments), 'segments' => $segments, 'presenter_character_id' => 5];
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'summary' => 'A review.', 'script' => $this->planOverride['script']];
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $first = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Make it'])->assertOk()->json('data.reply');
+        $this->assertSame(5, json_decode(DB::table('ugc_chat_messages')->where('id', $first['id'])->value('payload_json'), true)['takes'][0]['character_id']);
+        unset($this->planOverride['presenter_character_id']);
+        $this->replies[] = ['action' => 'pitch', 'type' => 'testimonial', 'format' => 'direct_camera', 'summary' => 'A shorter review.', 'script' => $this->planOverride['script']];
+        $second = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'Shorter'])->assertOk()->json('data.reply');
+        $this->assertSame(5, json_decode(DB::table('ugc_chat_messages')->where('id', $second['id'])->value('payload_json'), true)['takes'][0]['character_id']);
+    }
+
     public function test_a_ticked_music_bed_reaches_the_take_with_its_credits_and_only_for_pov_and_reaction(): void
     {
         $this->withoutMiddleware();
