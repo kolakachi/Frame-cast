@@ -102,6 +102,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** The references the clips get: the take's own, with the dressed presenter in place of the cast photo when there is a look. */
     private array $refs = [];
 
+    /** A close-up of the cast presenter's face from their own photo (UgcFaceCrop), sent beside the dressed picture. */
+    private ?string $faceRef = null;
+
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
         $project = Project::query()->find($this->projectId);
@@ -130,6 +133,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $reuse[$i] = $bytes;
             }
             $this->refs = $this->look !== [] ? $this->dressed($project, $scene, $storage) : $this->referenceImages;
+            if ($this->checkFace && $this->referenceImages !== []) $this->faceRef = $this->faceClose($project);
             $stills = $this->storyboard ? $this->stills($project, $scene, $storage) : [];
             $reviewRemakes = 0;
             // veo-3.1-fast has no reference-image inputs, so packaging can
@@ -493,6 +497,18 @@ class GenerateOneShotUgcJob implements ShouldQueue
         return array_values($refs);
     }
 
+    /** The presenter's face close-up, made once per take and kept with its saved parts ('none' when there is none). */
+    private function faceClose(Project $project): ?string
+    {
+        $file = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/face.txt';
+        $uri = self::parts()->exists($file) ? (string) self::parts()->get($file) : '';
+        if ($uri === '') {
+            $uri = app(\App\Services\Ugc\UgcFaceCrop::class)->crop($this->referenceImages[0]) ?? 'none';
+            self::parts()->put($file, $uri);
+        }
+        return $uri === 'none' ? null : $uri;
+    }
+
     /** Staff pilots keep a trace of every step; customer takes do not. */
     private function tracing(array $chunk): bool
     {
@@ -653,8 +669,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // A new shot: the presenter (first), the previous shot's last frame, then the product; the engine takes 3.
             if ($continuity !== null && $chunkRefs !== []) {
                 $chunkRefs = array_slice(array_merge([$chunkRefs[0], $continuity], array_slice($chunkRefs, 1)), 0, 3);
+            } elseif ($this->faceRef !== null && $chunkRefs !== [] && empty($chunk['reference_images'])) {
+                // The face close-up goes second, ahead of a second product angle; after a cut the last frame takes that place.
+                $chunkRefs = array_slice(array_merge([$chunkRefs[0], $this->faceRef], array_slice($chunkRefs, 1)), 0, 3);
             }
-            $predictionId = $veo->start((string) $chunk['prompt'], (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution);
+            $prompt = (string) $chunk['prompt'];
+            if (in_array($this->faceRef, $chunkRefs, true)) $prompt .= "\n\nOne reference image is a close-up of the presenter's face: in every frame their face matches it exactly, the same person.";
+            $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution);
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->refresh()->image_generation_settings_json ?? [],
                 // generation_started_at is the heartbeat the stuck-generation reaper reads.

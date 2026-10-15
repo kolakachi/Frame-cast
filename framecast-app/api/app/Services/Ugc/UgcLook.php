@@ -16,13 +16,16 @@ use Illuminate\Support\Facades\Log;
  */
 class UgcLook
 {
+    /** Every clip copies this picture's face, so it is held to a higher mark than a clip (2026-10-15: looks at 78 led to clips at 72). */
+    public const PASS = 85;
+
     public function __construct(private readonly NanoBananaProImageAdapter $images, private readonly UgcFaceCheck $faces)
     {
     }
 
     /**
      * The dressed presenter as a data URI, with how closely it matched their photo; null when it could not be made (the
-     * take then keeps the cast photo). A look under the face check's pass mark is made once more and the closer kept.
+     * take then keeps the cast photo). A look under its pass mark (85) is made once more and the closer kept.
      *
      * @return array{uri: string, score: int|null}|null
      */
@@ -42,7 +45,7 @@ class UgcLook
             $uri = 'data:image/png;base64,'.base64_encode($bytes);
             $score = $this->faces->scoreImage($presenter, $uri);
             if ($best === null || ($score ?? 0) > ($best['score'] ?? 0)) $best = ['uri' => $uri, 'score' => $score];
-            if ($score === null || $score >= UgcFaceCheck::PASS) break;
+            if ($score === null || $score >= self::PASS) break;
         }
 
         return $best;

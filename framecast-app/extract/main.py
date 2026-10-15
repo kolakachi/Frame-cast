@@ -21,6 +21,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 import document as document_service
+import face as face_service
 import json
 import pdf as pdf_service
 import url as url_service
@@ -33,6 +34,7 @@ app = FastAPI(title="WyvStudio Extract", docs_url=None, redoc_url=None)
 
 # Refuse absurd uploads before reading them into memory.
 MAX_PDF_BYTES = int(os.environ.get("MAX_PDF_BYTES", 100 * 1024 * 1024))
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 
 class UrlRequest(BaseModel):
@@ -116,6 +118,18 @@ async def extract_document(file: UploadFile = File(...), filename: str = Form(""
         raise HTTPException(status_code=500, detail="Could not read that document.") from exc
     log.info("document analysed source=%s pages=%s pictures=%s scanned_units=%s", result["source"], result["page_count"], len(result["pictures"]), result["scanned_units"])
     return result
+
+
+@app.post("/face/box")
+async def face_box(file: UploadFile = File(...)) -> dict:
+    """Where the presenter's face is in their photo (UgcFaceCrop)."""
+    data = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large.")
+    try:
+        return face_service.box(data)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Not an image.")
 
 
 @app.post("/extract/document/render")

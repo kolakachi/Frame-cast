@@ -419,6 +419,18 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([396], $this->charged);
     }
 
+    public function test_a_cast_presenter_s_face_close_up_rides_second_and_the_prompt_names_it(): void
+    {
+        $crop = Mockery::mock(\App\Services\Ugc\UgcFaceCrop::class);
+        $crop->shouldReceive('crop')->once()->with('data:image/png;base64,FACE')->andReturn('face-close-up');
+        $this->app->instance(\App\Services\Ugc\UgcFaceCrop::class, $crop);
+        $job = new GenerateOneShotUgcJob(7, 70, [['prompt' => 'one', 'seconds' => 6], ['prompt' => 'two', 'seconds' => 6]], 396, 'omni',
+            ['data:image/png;base64,FACE', 'product-a', 'product-b'], null, null, '720p', null, null, true);
+        $this->assertNull($this->run_($job));
+        $this->assertSame(['data:image/png;base64,FACE', 'face-close-up', 'product-a'], $this->refs[0], 'the face goes ahead of a second product angle');
+        $this->assertStringContainsString('close-up of the presenter\'s face', $this->sentPrompts[0]);
+    }
+
     public function test_skit_speakers_carry_the_place_photo_after_their_own(): void
     {
         Storage::disk('minio')->put('ada.png', 'ada-bytes');

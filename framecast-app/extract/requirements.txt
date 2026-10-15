@@ -11,3 +11,6 @@ PyMuPDF==1.25.1
 # Purpose-built article extraction — boilerplate/nav/comment removal that our
 # hand-rolled regex stripping in PHP only approximates.
 trafilatura==2.0.0
+
+# Face boxes in presenter photos (face.py): the headless build, no GUI libraries.
+opencv-python-headless==4.10.0.84
