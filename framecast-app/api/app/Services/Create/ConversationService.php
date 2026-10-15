@@ -119,6 +119,9 @@ class ConversationService
                 if ($said) $replies[] = 'Every voice will say '.collect($said)->map(fn ($s, $w) => $w.' as “'.$s.'”')->implode(', ').'. Saved for this workspace.';
             }
             array_push($replies, ...$inferred['questions']);
+            // "Continue" while a step waits for its OK: pointed at the step's own Approve, and no planning turn follows.
+            $heldFor = $replies === [] && StepNudge::isGoOn($input['content']) ? StepNudge::waiting($c) : null;
+            if ($heldFor !== null) $replies[] = StepNudge::reply($heldFor, $input['content']);
             foreach ($replies as $i => $reply) {
                 $version++;
                 DB::table('create_messages')->insert([
@@ -127,7 +130,9 @@ class ConversationService
                 ]);
             }
             DB::table('create_conversations')->where('id', $id)->update($updates + ['version' => $version, 'updated_at' => now()]);
-            return DB::table('create_messages')->where('id', $messageId)->first();
+            $sent = DB::table('create_messages')->where('id', $messageId)->first();
+            if ($heldFor !== null) $sent->held_for_step = $heldFor;
+            return $sent;
         });
     }
 

@@ -880,6 +880,7 @@ async function send() {
   if(!prompt.value.trim() || hasUpload.value || docBusy.value) return
   siteBrief.value = false
   const text = prompt.value.trim()
+  let heldForStep = null
   await guarded(async () => {
     for (const u of [...uploads.value]) {
       if (u.error && u.state === 'ready') throw Error(u.error)
@@ -911,7 +912,8 @@ async function send() {
     }
     linkStudying.value = ''
     sendingKey ||= crypto.randomUUID()
-    await api.post(`${base(target)}/messages`,{content:text,expected_version:conversation.value.version,idempotency_key:sendingKey})
+    // "Continue" while a character or storyboard waits for its OK: the reply points at its Approve, and no plan follows.
+    heldForStep = (await api.post(`${base(target)}/messages`,{content:text,expected_version:conversation.value.version,idempotency_key:sendingKey})).data?.data?.held_for_step || null
     persistDraft(target,''); sendingKey = null; prompt.value = ''; pendingText.value = ''; quote.value = null; selectedRevision.value = null
     await refresh(); await loadHistory(); await nextTick(); end.value?.scrollIntoView({behavior:'smooth',block:'end'})
     if (linkProblems.length) error.value = 'Your message was sent, but a link could not be used. ' + linkProblems.join(' ')
@@ -920,6 +922,7 @@ async function send() {
   // A failed study leaves the message unsent: give the text back to the box.
   if (pendingText.value) { if (!prompt.value) prompt.value = pendingText.value; pendingText.value = '' }
   // The plan turn follows every brief. It is free; failure leaves the brief saved.
+  if (heldForStep) { if (currentPlan.value) openStep(currentPlan.value, heldForStep); return }
   if (!error.value && canWrite.value && !active.value) await makePlan()
 }
 async function plan(retryRunId = null, buildStage = null) { await guarded(async () => {

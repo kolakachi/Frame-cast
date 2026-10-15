@@ -79,7 +79,7 @@ class Clarifier
             ."Also ask for material only the user has when the reference or brief depends on it and nothing in Files, the brand library or approved facts covers it: real screens or recordings of their product, real results or videos made with it, numbers or reviews they can stand behind, product photos, their logo. "
             ."Ask for all of it in one question that names each item and says they can attach it here or reply \"go without\"; ask for material once only. "
             ."If the user said to go ahead, or you can make a good plan now, ask nothing.\n"
-            .'Reply with JSON only: {"question": "one short question, under 25 words (up to 45 when asking for material), plain words" | null}'
+            .'Ask in the language of the user\'s latest message. Reply with JSON only: {"question": "one short question, under 25 words (up to 45 when asking for material), plain words" | null}'
             ."\n\nSettings: ".$settings."\nFiles:\n".($files ?: '(none)').($docs ? "\nDocuments the user added:\n".$docs : '')."\nBrand library: ".($brand ?: '(empty)')
             .($moments ? "\nWhat the reference shows:\n".$moments : '')."\n\nConversation:\n".$messages;
         try {
