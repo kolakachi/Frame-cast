@@ -2,7 +2,7 @@
 ITEMS = [
 # id, area, item, from, status, note
 ("RD-01","UGC","A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing","Pixelle-Video","done","2026-10-15: a declined clip is reworded in neutral words (UgcPromptSoften) and made once more; a second decline fails uncharged."),
-("RD-02","UGC","Character mix-up check: each skit clip shows the right speaker","Jellyfish","next","Pairs with face checks on skit speakers."),
+("RD-02","UGC","Character mix-up check: each skit clip shows the right speaker","Jellyfish","done","2026-10-15: skit clips are face-checked against their own speaker; a clip closer to the other speaker is recorded as a mix-up and counts as a miss (remade when face remakes are on)."),
 ("RD-03","UGC","Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot","Toonflow, huobao","open","Casting, dressing and the shared place photo are done; the sheet and @name are not."),
 ("RD-04","UGC","Two-shot opener or Seedance multi-shot, if skit rooms still split","OpenMontage","idea","Only if the next skit take shows two rooms."),
 ("RD-05","Create","Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs","product-launch-motion, student-kit, skills/","done","2026-10-15: craft.md already had the traps, one camera, hand-offs and label swaps; added deterministic frames and fonts-before-measuring."),

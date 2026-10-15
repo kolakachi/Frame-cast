@@ -182,6 +182,15 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
             $fromTail = [];
             $faceRetries = 0;
+            // A skit speaker's own photo, read once, for the mix-up check (RD-02).
+            $speakerPhotos = [];
+            $photoOf = function (int $speaker) use (&$speakerPhotos, $project): ?string {
+                if (! array_key_exists($speaker, $speakerPhotos)) {
+                    $ids = collect($this->chunks)->first(fn ($c) => (int) ($c['speaker'] ?? 0) === $speaker && ! empty($c['reference_asset_ids']))['reference_asset_ids'] ?? [];
+                    $speakerPhotos[$speaker] = $ids ? ($this->referenceUris(array_slice($ids, 0, 1), (int) $project->workspace_id)[0] ?? null) : null;
+                }
+                return $speakerPhotos[$speaker];
+            };
             $carry = null;
             $adapt = null;
             foreach ($this->chunks as $i => $chunk) {
@@ -256,10 +265,24 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // remakes on (services.ugc.face_retry), a clip under the pass mark is made again once, at our cost, and
                     // the closer of the two is kept; at most two remakes a take. A remake whose check could not run is
                     // never preferred to a clip that was checked.
-                    if (! $sourceOnly && $this->checkFace && $this->referenceImages !== []) {
+                    // A skit's speakers are checked too, each against their own photo (RD-02, 2026-10-15).
+                    $skitClip = ! empty($chunk['reference_asset_ids']) && ! empty($chunk['speaker']);
+                    if (! $sourceOnly && (($this->checkFace && $this->referenceImages !== []) || $skitClip)) {
                         $checker = app(\App\Services\Ugc\UgcFaceCheck::class);
-                        $faceReference = $chunk['reference_images'][0] ?? $this->referenceImages[0];
+                        $faceReference = $skitClip ? ($photoOf((int) $chunk['speaker']) ?? $chunk['reference_images'][0]) : ($chunk['reference_images'][0] ?? $this->referenceImages[0]);
                         $score = $checker->score($faceReference, $path);
+                        // The mix-up check (from Jellyfish): a clip whose face is closer to the other speaker than to its own
+                        // shows the wrong person; it counts as a miss, so a face remake (when on) makes it again.
+                        if ($skitClip && $score !== null) {
+                            foreach (array_unique(array_map(fn ($c) => (int) ($c['speaker'] ?? 0), $this->chunks)) as $other) {
+                                if ($other === 0 || $other === (int) $chunk['speaker'] || ($otherPhoto = $photoOf($other)) === null) continue;
+                                $theirs = $checker->score($otherPhoto, $path);
+                                if ($theirs !== null && $theirs > $score) {
+                                    $this->noteMixup($scene, $i, (int) $chunk['speaker'], $other, $score, $theirs);
+                                    $score = min($score, \App\Services\Ugc\UgcFaceCheck::PASS - 1);
+                                }
+                            }
+                        }
                         if ($score !== null && $score < \App\Services\Ugc\UgcFaceCheck::PASS && $faceRetries < 2 && config('services.ugc.face_retry')) {
                             if (! $this->owns($scene->refresh())) return; // superseded while the check ran: no paid remake
                             $faceRetries++;
@@ -1258,6 +1281,16 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
             ['oneshot_recipe' => $recipe, 'oneshot_parts_hash' => $hash, 'oneshot_parts' => []])])->save();
         return [];
+    }
+
+    /** A skit clip that shows the other speaker, on the take's record (RD-02). */
+    private function noteMixup(Scene $scene, int $i, int $speaker, int $shown, int $own, int $theirs): void
+    {
+        $settings = $scene->refresh()->image_generation_settings_json ?? [];
+        $mixups = (array) ($settings['speaker_mixups'] ?? []);
+        $mixups[(string) ($i + 1)] = ['speaker' => $speaker, 'looks_like' => $shown, 'own' => $own, 'theirs' => $theirs];
+        $scene->forceFill(['image_generation_settings_json' => array_merge($settings, ['speaker_mixups' => $mixups])])->save();
+        \Illuminate\Support\Facades\Log::warning('one-shot: a skit clip shows the other speaker', ['project_id' => $this->projectId, 'segment' => $i + 1, 'speaker' => $speaker, 'looks_like' => $shown]);
     }
 
     /** Each clip's resemblance score on the scene, so the take's record shows how close the presenter stayed. */

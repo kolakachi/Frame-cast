@@ -633,6 +633,26 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([], $this->charged);
     }
 
+    public function test_a_skit_clip_that_shows_the_other_speaker_is_recorded_as_a_mix_up(): void
+    {
+        Storage::disk('minio')->put('ada.png', 'ada-bytes');
+        Storage::disk('minio')->put('ben.png', 'ben-bytes');
+        DB::table('assets')->insert([['id' => 5, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ada.png', 'mime_type' => 'image/png'],
+            ['id' => 6, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ben.png', 'mime_type' => 'image/png']]);
+        $ada = 'data:image/png;base64,'.base64_encode('ada-bytes');
+        $ben = 'data:image/png;base64,'.base64_encode('ben-bytes');
+        // Clip 1 (Ada) looks like Ada; clip 2 (Ben) looks more like Ada than Ben.
+        $scores = [[$ada, 90], [$ben, 40], [$ben, 60], [$ada, 85]];
+        $faces = Mockery::mock(\App\Services\Ugc\UgcFaceCheck::class);
+        $faces->shouldReceive('score')->times(4)->andReturnUsing(function ($ref) use (&$scores) { [$expected, $score] = array_shift($scores); $this->assertSame($expected, $ref); return $score; });
+        $this->app->instance(\App\Services\Ugc\UgcFaceCheck::class, $faces);
+        $clip = fn ($speaker, $id) => ['prompt' => 'line', 'seconds' => 4, 'new_shot' => true, 'speaker' => $speaker, 'reference_asset_ids' => [$id]];
+        $this->assertNull($this->run_(new GenerateOneShotUgcJob(7, 70, [$clip(1, 5), $clip(2, 6)], 396, 'omni', [])));
+        $s = $this->settings();
+        $this->assertSame(['2' => ['speaker' => 2, 'looks_like' => 1, 'own' => 60, 'theirs' => 85]], $s['speaker_mixups']);
+        $this->assertSame(['1' => 90, '2' => 60], $s['face_scores'], 'a mix-up never scores at or above the pass mark');
+    }
+
     public function test_the_charge_carries_what_the_take_really_cost(): void
     {
         DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);
