@@ -136,8 +136,9 @@ class UgcOneShotCompilerTest extends TestCase
     public function test_underestimated_short_beat_gets_enough_time_without_needing_a_split(): void
     {
         $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 3];
-        $this->assertSame(6, UgcOneShotCompiler::compile([$beat])[0]['seconds']);
-        $this->assertSame(5, UgcOneShotCompiler::compile([$beat], [], 10)[0]['seconds']);
+        // The ad's last clip holds a closing second (ENDING_SECONDS).
+        $this->assertSame(7, UgcOneShotCompiler::compile([$beat])[0]['seconds']);
+        $this->assertSame(6, UgcOneShotCompiler::compile([$beat], [], 10)[0]['seconds']);
     }
 
     public function test_underestimated_beats_are_not_packed_into_one_overfull_clip(): void
@@ -145,7 +146,7 @@ class UgcOneShotCompilerTest extends TestCase
         $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 2];
         $chunks = UgcOneShotCompiler::compile([$beat, $beat]);
         $this->assertCount(2, $chunks);
-        $this->assertSame([6, 6], array_column($chunks, 'seconds'));
+        $this->assertSame([6, 7], array_column($chunks, 'seconds'), 'the last clip holds a closing second');
     }
 
     public function test_each_split_clip_has_its_own_finishing_pause(): void
@@ -166,13 +167,13 @@ class UgcOneShotCompilerTest extends TestCase
     {
         $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 3, 'speed' => 0.5];
         $chunks = UgcOneShotCompiler::compile([$beat], [], 10);
-        $this->assertSame(9, $chunks[0]['seconds']);
+        $this->assertSame(10, $chunks[0]['seconds'], 'with the closing second');
     }
 
     public function test_single_generation_uses_speech_budget_and_refuses_an_overfull_script(): void
     {
         $beat = ['script_text' => 'This body lotion leaves my skin feeling soft all day.', 'seconds' => 3];
-        $this->assertSame(5, UgcOneShotCompiler::compileSingle([$beat])['seconds']);
+        $this->assertSame(6, UgcOneShotCompiler::compileSingle([$beat])['seconds'], 'with the closing second');
         $this->assertNull(UgcOneShotCompiler::compileSingle([
             ['script_text' => implode(' ', array_fill(0, 75, 'word')), 'seconds' => 15],
         ]));
@@ -190,7 +191,7 @@ class UgcOneShotCompilerTest extends TestCase
             $this->assertStringNotContainsString('selfie ad', $chunk['prompt']);
         }
         $single = UgcOneShotCompiler::compileSingle([$beat], ['ugc_type' => 'asmr']);
-        $this->assertSame(23, $single['seconds']);
+        $this->assertSame(24, $single['seconds'], 'with the closing second');
         $this->assertStringContainsString('Tap the glass', $single['prompt']);
     }
 
@@ -254,4 +255,13 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringNotContainsString('no counting aloud', $green['prompt']);
     }
 
+
+    public function test_only_the_last_clip_closes_the_ad_and_holds_a_beat(): void
+    {
+        $chunks = UgcOneShotCompiler::compile([['script_text' => 'First line here.', 'seconds' => 4], ['script_text' => 'And that is why I love it.', 'seconds' => 4, 'new_shot' => true]], [], 4);
+        $this->assertStringNotContainsString('final shot of the ad', $chunks[0]['prompt']);
+        $this->assertStringContainsString('final shot of the ad', end($chunks)['prompt']);
+        $this->assertTrue(end($chunks)['final']);
+        $this->assertStringContainsString('final shot of the ad', UgcOneShotCompiler::compileSingle([['script_text' => 'One line.', 'seconds' => 4]])['prompt']);
+    }
 }

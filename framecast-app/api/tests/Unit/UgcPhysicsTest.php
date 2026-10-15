@@ -80,7 +80,7 @@ class UgcPhysicsTest extends TestCase
         $this->assertStringContainsString('One silent shot from the first frame to the last', $clips[1]['prompt']);
         $this->assertStringNotContainsString('talks directly', $clips[1]['prompt']);
         $this->assertStringNotContainsString('The delivery is', $clips[1]['prompt']);
-        $this->assertSame(2, $clips[1]['seconds'], 'a 2-second action is not padded to 4');
+        $this->assertSame(3, $clips[1]['seconds'], 'a 2-second action is not padded to 4; as the last clip it holds a closing second');
         $this->assertStringNotContainsString('never from the reference\'s own background', $clips[1]['prompt']);
     }
 

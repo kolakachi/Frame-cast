@@ -875,8 +875,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $wav = $raw.'.wav';
             array_push($temps, $raw, $wav);
             file_put_contents($raw, $bytes);
-            // Sync takes WAV; a short tail of silence keeps the last word from being clipped at the cut.
-            $run = Process::timeout(60)->run(['ffmpeg', '-y', '-i', $raw, '-af', 'apad=pad_dur=0.25', '-ar', '48000', '-ac', '1', $wav]);
+            // Sync takes WAV; a short tail of silence keeps the last word from being clipped at the cut, and the ad's final
+            // clip keeps a second after its last word, so it closes rather than stops (owner, 2026-10-15).
+            $run = Process::timeout(60)->run(['ffmpeg', '-y', '-i', $raw, '-af', 'apad=pad_dur='.(! empty($chunk['final']) ? '1.0' : '0.25'), '-ar', '48000', '-ac', '1', $wav]);
             $seconds = $run->successful() ? self::seconds($wav) : null;
             if ($seconds === null) throw new \RuntimeException('the read could not be converted');
             return ['path' => $wav, 'seconds' => $seconds];

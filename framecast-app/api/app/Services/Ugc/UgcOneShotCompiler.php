@@ -27,6 +27,12 @@ class UgcOneShotCompiler
      * What every take is told about the people and things in it. The hands rules came from the 2026-10-10 sweep: a box
      * floated in mid-air while one hand held the phone, so a second hand only joins once the phone is set down.
      */
+    /** The last clip closes the ad (owner, 2026-10-15: "a UGC should be self contained"; takes stopped as if the story went on). */
+    public const ENDING = 'This is the final shot of the ad: finish every action it describes, then hold the closing moment (the look, the smile, the product in hand) still and in frame for about a second before the clip ends. Nothing new starts.';
+
+    /** The closing hold: the final clip runs this much longer than its plan, and is priced so. */
+    public const ENDING_SECONDS = 1;
+
     private const CLOSING = 'Casual creator energy, natural relaxed delivery with no repeated words, false starts or stammering. Only the cuts this script calls for — between them each shot holds as one continuous take, no unrequested angle changes, no camera zoom, natural head movement. Take ONLY the face and identity from the presenter\'s photo, never its background or outfit; the setting, framing, clothing and action come from this description. The presenter matches the reference person\'s face exactly where one is shown; where the presenter is given as a casting description instead, match it precisely — skin tone, hair and age are not negotiable. Either way they stay the same person throughout: same face, same hair, same clothing, no drift or deformation. Real subtle skin texture with natural pores — never a 3D, CGI or beauty-filter look. The phone is the camera filming this and never appears in the frame, except in a shot the description calls a mirror selfie: there the phone stays in one hand the whole shot and only the other hand moves or holds anything. To demonstrate something up close, a mirror selfie switches to the front camera: a cut to a handheld front-camera shot where the phone is no longer seen. Talking shots are handheld, so only one arm and hand are free and visible; anything that needs both hands (applying, opening, pouring) is filmed from the camera propped on the counter or a shelf, both hands free, phone out of sight. When the product, a box, a plate or anything else is not in a hand it rests on a counter, table or shelf. Nothing floats or hovers; anything held shows a real grip and weight, fingers relaxed, at a natural distance from the camera. No counting on fingers and no holding up a number of fingers (models miscount them). No studio lighting. No words, subtitles, captions, titles, graphics or watermarks anywhere on screen: every spoken line is heard, never written (text is added later, never by you) — the product\'s own packaging, label and branding stay visible and legible. There is exactly one of the product: never a second box, bottle or pack beside the one being held or used, unless the description asks for several. No other brand appears anywhere: no logos, brand names or packaging from any other company, on the product or in the room; anything else on screen is plain and unbranded. Natural room tone.';
 
     /**
@@ -117,10 +123,13 @@ class UgcOneShotCompiler
                 $lines[0] = 'One silent shot from the first frame to the last, nothing before or after it: '.lcfirst($lines[0] ?? '');
             }
 
+            $final = $i === count($chunks) - 1;
             $out[] = [
                 'prompt' => $preamble."\n\n".$continuation.implode(' ', $lines).$wordsOnly.($dialogue === [] ? ' No speech, narration, singing or music. Preserve the described physical sounds.' : '')
+                    .($final ? ' '.self::ENDING : '')
                     ."\n\n".self::CLOSING,
-                'seconds' => $chunk['seconds'],
+                'seconds' => $final ? min($maxSeconds, $chunk['seconds'] + self::ENDING_SECONDS) : $chunk['seconds'],
+                'final' => $final,
                 'dialogue' => implode(' ', $dialogue),
                 'new_shot' => $newShot,
                 'requires_audio' => ($style['ugc_type'] ?? '') === 'asmr',
@@ -185,10 +194,11 @@ class UgcOneShotCompiler
             'prompt' => self::preamble($style)."
 
 ".implode(' ', $lines).$demoLine.($dialogue === [] ? ' No speech, narration, singing or music. Preserve the described physical sounds.' : ' Say exactly the quoted words, including scripted numbers, and no others. Finish each line before cutting. Hold for a full second after the final word.')
-                ."
+                .' '.self::ENDING."
 
 ".self::CLOSING,
-            'seconds' => max(4, $total),
+            'seconds' => max(4, min($maxSeconds, $total + self::ENDING_SECONDS)),
+            'final' => true,
             'requires_audio' => ($style['ugc_type'] ?? '') === 'asmr',
             'dialogue' => implode(' ', $dialogue),
         ];

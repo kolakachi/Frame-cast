@@ -447,11 +447,12 @@ class DeveloperApiTest extends TestCase
         $engine = $quote->json('data.credits.engine');
         $seconds = $quote->json('data.credits.plan_seconds');
         $this->assertSame(10, $seconds);
-        $this->assertSame($seconds * \App\Services\CreditService::VIDEO_ONESHOT_PER_SECOND[$engine], $quote->json('data.credits.max'));
+        // The plan's seconds, plus the closing second the last clip holds (UgcOneShotCompiler::ENDING_SECONDS).
+        $this->assertSame(($seconds + \App\Services\Ugc\UgcOneShotCompiler::ENDING_SECONDS) * \App\Services\CreditService::VIDEO_ONESHOT_PER_SECOND[$engine], $quote->json('data.credits.max'));
 
         $draft = $this->withToken($key)->postJson('/api/developer/v1/ugc/quotes', ['mode' => 'one_shot', 'format' => 'direct_camera', 'segments' => $segments, 'consent' => true, 'quality' => 'draft'])->assertStatus(201);
         if ($draft->json('data.credits.engine') === 'seedance25') {
-            $this->assertSame(10 * \App\Services\CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT, $draft->json('data.credits.max'));
+            $this->assertSame((10 + \App\Services\Ugc\UgcOneShotCompiler::ENDING_SECONDS) * \App\Services\CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT, $draft->json('data.credits.max'));
         }
 
         $created = $this->withToken($key)->postJson('/api/developer/v1/ugc/videos', ['quote_id' => $quote->json('data.quote_id'), 'idempotency_key' => 'os-1'])->assertStatus(202);

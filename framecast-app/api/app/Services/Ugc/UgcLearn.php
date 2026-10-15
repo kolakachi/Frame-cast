@@ -23,7 +23,7 @@ class UgcLearn
 {
     public const ROLES = ['director', 'planner', 'sheet'];
 
-    private const AREAS = ['identity', 'wardrobe', 'product', 'action', 'speech', 'sound', 'room', 'framing', 'text', 'pacing', 'other'];
+    private const AREAS = ['identity', 'wardrobe', 'product', 'action', 'speech', 'sound', 'room', 'framing', 'text', 'pacing', 'ending', 'other'];
 
     /**
      * Review one take. $take: project_id, workspace_id, ugc_type, engine, outcome (delivered|failed), brief, clips
@@ -43,7 +43,8 @@ class UgcLearn
             ."the product changing shape, words on screen nobody asked for, a room that changes, a line cut off), and for each the one "
             ."lesson that would have prevented it, written as an instruction to the part of the pipeline that could act on it: the "
             ."director (who pitches the ad), the planner (who splits it into shots) or the sheet writer (who times each clip's actions). "
-            ."No pitfall is better than an invented one.\n\n"
+            ."No pitfall is better than an invented one. Judge the ending too: an ad must be self-contained and close on a payoff, a closing line or "
+            ."a held look; one that stops mid-story, on a setup or mid-action is an 'ending' pitfall.\n\n"
             .'Answer JSON only: {"score": 1-10 (how well it delivers the brief), "pitfalls": [{"area": one of '.implode('|', self::AREAS)
             .', "what": "what went wrong, briefly", "role": "director|planner|sheet", "lesson": "one imperative sentence"}]}';
         $answer = $this->ask($text, $frames, 1500);

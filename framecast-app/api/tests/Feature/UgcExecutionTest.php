@@ -434,7 +434,7 @@ class UgcExecutionTest extends TestCase
         $this->app->instance(CreditService::class, $credits);
         $request = $this->request([$this->shot()], 'direct_camera', [
             'request_id' => (string) \Illuminate\Support\Str::uuid(),
-            'credits' => 5 * CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25'],
+            'credits' => (5 + \App\Services\Ugc\UgcOneShotCompiler::ENDING_SECONDS) * CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25'],
         ]);
         Schema::drop('projects'); // Inject a database failure after reservation, before dispatch.
         try {
