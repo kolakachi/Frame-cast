@@ -38,6 +38,9 @@ class Project extends Model
     {
         // A deleted take's saved one-take segments go with it (GenerateOneShotUgcJob keeps them until delivery).
         static::deleting(function (Project $project): void {
+            // A take deleted before it delivered gives back the credits held for it.
+            Scene::query()->where('project_id', $project->getKey())->whereNotNull('image_generation_settings_json->oneshot_held')->pluck('id')
+                ->each(fn ($id) => \App\Jobs\GenerateOneShotUgcJob::releaseHold((int) $id));
             Scene::query()->where('project_id', $project->getKey())->whereNotNull('image_generation_settings_json->oneshot_recipe')->get()
                 ->each(fn (Scene $scene) => \App\Jobs\GenerateOneShotUgcJob::forgetParts($scene, (int) $project->workspace_id));
         });

@@ -20,6 +20,7 @@ class UgcOneShotResumeTest extends TestCase
     private int $starts = 0;
     private ?int $failOn = null;
     private array $charged = [];
+    private array $refunded = [];
     private string $tier = 'creator';
     private int $balance = 100000;
     private ?\Closure $onPoll = null;
@@ -47,6 +48,8 @@ class UgcOneShotResumeTest extends TestCase
         ] as $table => $cols) {
             Schema::create($table, function (Blueprint $t) use ($cols) { $t->id(); foreach ($cols as $c) $t->text($c)->nullable(); $t->timestamps(); });
         }
+        Schema::create('credit_ledger', function (Blueprint $t) { $t->id(); $t->integer('workspace_id')->nullable(); $t->integer('project_id')->nullable(); $t->string('operation')->nullable(); $t->integer('credits')->default(0); $t->decimal('upstream_cost_usd', 10, 6)->nullable(); $t->timestamps(); });
+        Schema::create('api_usage_events', function (Blueprint $t) { $t->id(); $t->integer('project_id')->nullable(); $t->decimal('estimated_cost_usd', 12, 6)->default(0); });
         DB::table('projects')->insert(['id' => 7, 'workspace_id' => 3, 'title' => 'Crunchy Clouds', 'status' => 'generating', 'source_type' => 'ugc', 'visual_brief' => '{"ugc_format":"one_shot"}']);
         DB::table('scenes')->insert(['id' => 70, 'project_id' => 7, 'scene_order' => 1, 'label' => 'One-take ad', 'duration_seconds' => 18, 'image_generation_settings_json' => '{"in_progress":true}']);
 
@@ -64,7 +67,8 @@ class UgcOneShotResumeTest extends TestCase
         });
         $this->app->instance(ReplicateVeoAdapter::class, $veo);
         $credits = Mockery::mock(CreditService::class)->shouldIgnoreMissing();
-        $credits->shouldReceive('deduct')->andReturnUsing(function ($ws, $amount) { $this->charged[] = $amount; return true; });
+        $credits->shouldReceive('deduct')->andReturnUsing(function ($ws, $amount) { if ($amount > $this->balance) return false; $this->charged[] = $amount; return true; });
+        $credits->shouldReceive('refund')->andReturnUsing(function ($ws, $amount) { $this->refunded[] = $amount; });
         $credits->shouldReceive('planTier')->andReturnUsing(fn () => $this->tier);
         $credits->shouldReceive('balance')->andReturnUsing(fn () => $this->balance);
         $this->app->instance(CreditService::class, $credits);
@@ -190,7 +194,7 @@ class UgcOneShotResumeTest extends TestCase
         $old = $this->job(null, 'first');
         $old->failed(new \RuntimeException('late failure'));
         $this->assertSame(0, $this->starts - $startsBefore);
-        $this->assertSame([], $this->charged);
+        $this->assertSame([396], $this->charged, 'held once, by the resume; the superseded run charges nothing');
         $this->assertTrue($this->settings()['in_progress'], 'the new run keeps the take');
         $this->assertNull($this->settings()['last_error']);
 
@@ -200,7 +204,7 @@ class UgcOneShotResumeTest extends TestCase
         $this->onPoll = fn () => $this->setToken('newer');
         $startsBefore = $this->starts;
         $this->run_($this->job([['prompt' => 'x', 'seconds' => 6], ['prompt' => 'y', 'seconds' => 6]], $current));
-        $this->assertSame([], $this->charged, 'superseded mid-run: no charge');
+        $this->assertSame([396], $this->charged, 'superseded mid-run: nothing beyond the one hold');
         $this->assertSame(1, $this->starts - $startsBefore, 'and it stops before making the next clip');
     }
 
@@ -440,9 +444,42 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'a take that exists keeps its clips');
     }
 
+    public function test_a_take_held_at_the_start_is_never_charged_again_and_its_charge_gets_the_real_cost(): void
+    {
+        DB::table('credit_ledger')->insert(['workspace_id' => 3, 'project_id' => 7, 'operation' => 'ugc_oneshot', 'credits' => 396]);
+        DB::table('api_usage_events')->insert(['project_id' => 7, 'estimated_cost_usd' => 2.5]);
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(['in_progress' => true, 'oneshot_held' => 396])]);
+        $this->assertNull($this->run_($this->job()));
+        $this->assertSame([], $this->charged, 'paid when it started');
+        $this->assertEquals(2.5, (float) DB::table('credit_ledger')->where('project_id', 7)->value('upstream_cost_usd'));
+        $this->assertArrayNotHasKey('oneshot_held', $this->settings());
+    }
+
+    public function test_a_held_take_that_fails_gives_its_credits_back_once_and_holds_them_again_to_resume(): void
+    {
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(['in_progress' => true, 'oneshot_held' => 396])]);
+        $this->failOn = 2;
+        $job = $this->job();
+        $this->assertNotNull($this->run_($job));
+        $job->failed(new \RuntimeException('again'));
+        $this->assertSame([396], $this->refunded, 'given back once');
+        $this->balance = 10;
+        $this->assertSame('short', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
+        $this->balance = 100000;
+        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
+        $this->assertSame([396], $this->charged, 'held again as it resumes');
+        $this->assertSame(396, $this->settings()['oneshot_held']);
+    }
+
+    public function test_a_take_deleted_before_it_delivers_gives_its_held_credits_back(): void
+    {
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(['in_progress' => true, 'oneshot_held' => 396])]);
+        Project::query()->find(7)->delete();
+        $this->assertSame([396], $this->refunded);
+    }
+
     public function test_the_charge_carries_what_the_take_really_cost(): void
     {
-        Schema::create('api_usage_events', function (Blueprint $t) { $t->id(); $t->integer('project_id')->nullable(); $t->decimal('estimated_cost_usd', 12, 6)->default(0); });
         DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);
         $this->assertSame(1.86, GenerateOneShotUgcJob::realCost(7));
         $this->assertNull(GenerateOneShotUgcJob::realCost(99));

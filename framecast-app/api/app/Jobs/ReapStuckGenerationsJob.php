@@ -248,6 +248,9 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
                 'updated_at' => now(),
             ]);
 
+            // A reaped one-take can no longer deliver: the credits held when it started go back.
+            if (! empty($cfg['oneshot_held'])) rescue(fn () => \App\Jobs\GenerateOneShotUgcJob::releaseHold((int) $scene->id), null, true);
+
             Log::warning('ReapStuckGenerationsJob: cleared stuck image generation', [
                 'scene_id'   => $scene->id,
                 'started_at' => $scene->image_generation_settings_json['generation_started_at'] ?? null,

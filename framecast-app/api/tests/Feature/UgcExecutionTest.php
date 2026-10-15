@@ -61,6 +61,8 @@ class UgcExecutionTest extends TestCase
         $credits = $this->createMock(CreditService::class);
         $credits->method('balance')->willReturn(100000);
         $credits->method('limitFor')->willReturnCallback(fn ($id, $key) => in_array($key, ['ugc_ads', 'custom_characters'], true) ? true : null);
+        // A one-take holds its credits as it starts.
+        $credits->method('deduct')->willReturn(true);
         $this->app->instance(CreditService::class, $credits);
     }
 

@@ -24,8 +24,9 @@ use Illuminate\Support\Str;
  * a single take. No scenes; an Omni line is read by the speaker's fixed voice
  * and lip-synced onto the clip (voiceRead, lipsync), every other engine speaks natively.
  *
- * Charge-on-success: a failed segment charges nothing and leaves the error
- * on the scene for a free retry.
+ * Paid as it starts, given back if it fails (owner, 2026-10-15): the quote is held when the take is dispatched
+ * (hold), refunded when it fails, is reaped or is deleted (releaseHold), and held again when it resumes. A take
+ * delivered after the balance ran out used to be free.
  *
  * Resumable (owner, 2026-10-10): each finished segment, and the frame the next
  * one starts from, is saved as it lands, with the job's recipe. A retry
@@ -392,6 +393,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $token = (json_decode((string) $row, true) ?: [])['oneshot_token'] ?? null;
                 if ($this->runToken !== null && $token !== null && $token !== $this->runToken) return false;
                 $scene->refresh();
+                // Held when the take started (DEDUCT-FALSE, owner 2026-10-15); a job queued before then is charged here instead.
+                $held = (int) (($scene->image_generation_settings_json ?? [])['oneshot_held'] ?? 0);
                 $scene->forceFill([
                     'visual_asset_id' => $asset->id,
                     'duration_seconds' => $duration ?: $scene->duration_seconds,
@@ -401,10 +404,17 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     'image_generation_settings_json' => array_diff_key(array_merge(
                         $scene->image_generation_settings_json ?? [],
                         ['in_progress' => false, 'last_error' => null],
-                    ), array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash'])),
+                    ), array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash', 'oneshot_held'])),
                 ])->save();
 
                 $project->forceFill(['status' => 'ready_for_review'])->save();
+
+                if ($held > 0) {
+                    // Paid when it started: the charge line gets what the take really cost.
+                    \App\Models\CreditLedgerEntry::query()->where('project_id', $this->projectId)->where('operation', 'ugc_oneshot')
+                        ->latest('id')->limit(1)->update(['upstream_cost_usd' => self::realCost($this->projectId)]);
+                    return true;
+                }
 
                 // Money moves only now, with the finished video stored.
                 $charged = $credits->deduct($project->workspace_id, $this->credits, 'ugc_oneshot', [
@@ -562,9 +572,40 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $scene->image_generation_settings_json ?? [],
                 ['in_progress' => false, 'last_error' => mb_substr($e->getMessage(), 0, 300)],
             )])->save();
+            // Nothing delivered, nothing paid: the credits held at the start go back.
+            self::releaseHold((int) $scene->getKey());
         });
 
         $this->releasePassTake();
+    }
+
+    /**
+     * Hold a take's credits as it starts (DEDUCT-FALSE, owner 2026-10-15: "hold credits at start"). Charged once, up
+     * front, so a take delivered after the balance ran out (two takes at once) is still paid for; a take that does not
+     * deliver gives them back (releaseHold). False when the balance cannot cover it.
+     */
+    public static function hold(Scene $scene, int $workspaceId, int $credits): bool
+    {
+        if ($credits <= 0) return true;
+        if (! app(CreditService::class)->deduct($workspaceId, $credits, 'ugc_oneshot', ['project_id' => (int) $scene->project_id, 'scene_id' => (int) $scene->getKey(), 'metadata' => ['held' => true]])) return false;
+        $settings = $scene->refresh()->image_generation_settings_json ?? [];
+        $scene->forceFill(['image_generation_settings_json' => array_merge($settings, ['oneshot_held' => $credits])])->save();
+        return true;
+    }
+
+    /** The credits held for a take that will not deliver go back, once (failure, a reaped run, a deleted take). */
+    public static function releaseHold(int $sceneId): void
+    {
+        DB::transaction(function () use ($sceneId): void {
+            $row = DB::table('scenes')->where('id', $sceneId)->lockForUpdate()->first(['project_id', 'image_generation_settings_json']);
+            $settings = $row ? (json_decode((string) $row->image_generation_settings_json, true) ?: []) : [];
+            $held = (int) ($settings['oneshot_held'] ?? 0);
+            if ($held <= 0) return;
+            unset($settings['oneshot_held']);
+            DB::table('scenes')->where('id', $sceneId)->update(['image_generation_settings_json' => json_encode($settings), 'updated_at' => now()]);
+            $workspaceId = (int) DB::table('projects')->where('id', $row->project_id)->value('workspace_id');
+            if ($workspaceId > 0) app(CreditService::class)->refund($workspaceId, $held, 'ugc_oneshot');
+        });
     }
 
     /**
@@ -1146,8 +1187,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if (app(CreditService::class)->planTier((int) $project->workspace_id) === 'ugc_pass') return 'not_resumable';
             $recipe = json_decode((string) self::parts()->get($settings['oneshot_recipe']), true);
             if (! is_array($recipe) || (int) ($recipe['sceneId'] ?? 0) !== (int) $scene->getKey() || empty($recipe['chunks'])) return 'not_resumable';
-            // The take is charged on delivery: it only resumes when the balance can still pay for it.
-            if (app(CreditService::class)->balance((int) $project->workspace_id) < (int) $recipe['credits']) return 'short';
+            // A failed take gave its credits back: they are held again as it resumes, or it does not resume.
+            if ((int) ($settings['oneshot_held'] ?? 0) <= 0) {
+                if (! self::hold($scene, (int) $project->workspace_id, (int) $recipe['credits'])) return 'short';
+                $settings = $scene->refresh()->image_generation_settings_json ?? [];
+            }
             $token = (string) Str::uuid();
             $scene->forceFill(['image_generation_settings_json' => array_merge($settings, [
                 'last_error' => null, 'in_progress' => true, 'generation_started_at' => now()->toIso8601String(), 'oneshot_token' => $token,

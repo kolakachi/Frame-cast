@@ -1403,6 +1403,12 @@ class UgcController extends Controller
         if ($isTestPass) {
             app(\App\Services\UgcPassTakeService::class)->attach((int) $user->workspace_id, $requestId, (int) $project->id);
         }
+        // The credits are held now, not taken on delivery (DEDUCT-FALSE, owner 2026-10-15): a take delivered after the balance
+        // ran out (two at once) was free. A take that does not deliver gives them back.
+        if (! \App\Jobs\GenerateOneShotUgcJob::hold($scene, (int) $user->workspace_id, $quote)) {
+            $project->delete();
+            throw ValidationException::withMessages(['credits' => "This take needs {$quote} credits."]);
+        }
         \App\Jobs\GenerateOneShotUgcJob::dispatch(
             $project->id, $scene->id,
             $chunks,
