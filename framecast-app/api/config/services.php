@@ -126,6 +126,10 @@ return [
         'review_remake' => (bool) env('UGC_REVIEW_REMAKE', false),
         // Omni takes with speech: each line read by the speaker's fixed voice and lip-synced onto Omni's motion (2026-10-15).
         'omni_lipsync' => (bool) env('UGC_OMNI_LIPSYNC', true),
+        // LEARN (2026-10-15): every take reviewed after it finishes; the daily lessons list is read by the director, planner
+        // and sheet writer while lessons_apply is on.
+        'learn' => (bool) env('UGC_LEARN', true),
+        'lessons_apply' => (bool) env('UGC_LESSONS_APPLY', true),
         // Follow the take, not the plan (UgcFollowOn): 'record' keeps the next clip's rewrite in the trace only, 'apply'
         // uses it, 'off' skips the step. Applied since take 295's rewrites read every clip right (owner, 2026-10-12).
         'follow_on' => env('UGC_FOLLOW_ON', 'apply'),

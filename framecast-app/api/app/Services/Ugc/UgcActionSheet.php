@@ -130,6 +130,7 @@ TXT;
 
     private function ask(string $content, int $count): array
     {
+        $content .= UgcLearn::for('sheet');
         $key = (string) config('services.anthropic.key');
         try {
             $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(90)

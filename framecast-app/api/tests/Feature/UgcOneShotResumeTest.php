@@ -486,6 +486,16 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['16:9', '16:9'], $this->shapes);
     }
 
+    public function test_every_finished_or_failed_take_is_queued_for_review(): void
+    {
+        $this->assertNull($this->run_($this->job()));
+        Bus::assertDispatched(\App\Jobs\ReviewUgcTakeJob::class, fn ($j) => $j->take['outcome'] === 'delivered' && $j->take['project_id'] === 7 && $j->take['video_url'] !== null && count($j->take['clips']) === 3);
+        $this->failOn = $this->starts + 1;
+        DB::table('scenes')->where('id', 70)->update(['status' => 'draft', 'visual_asset_id' => null]);
+        $this->assertNotNull($this->run_($this->job([['prompt' => 'again', 'seconds' => 4]])));
+        Bus::assertDispatched(\App\Jobs\ReviewUgcTakeJob::class, fn ($j) => $j->take['outcome'] === 'failed' && str_contains((string) $j->take['error'], 'refused'));
+    }
+
     public function test_the_charge_carries_what_the_take_really_cost(): void
     {
         DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);

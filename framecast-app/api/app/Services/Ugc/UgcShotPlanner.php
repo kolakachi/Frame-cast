@@ -49,7 +49,7 @@ class UgcShotPlanner
     {
         try {
             $result = $this->ai->generate('ugc_shot_plan', [
-                'script_text' => trim($scriptText), 'product' => $product, 'context' => $context,
+                'script_text' => trim($scriptText), 'product' => $product, 'context' => $context.UgcLearn::for('planner'),
                 'duration' => (string) $durationSeconds, 'language' => $language,
                 'available_footage' => implode(', ', $availableFootage),
                 // With a multi-beat reference, reaction is off the menu, not

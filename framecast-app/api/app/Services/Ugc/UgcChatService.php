@@ -147,7 +147,7 @@ final class UgcChatService
                 'transcript' => $this->transcript($id), 'materials' => $this->materials($state),
                 'presenters' => $this->presentersText($state, (int) $request->user()->workspace_id), 'type' => $state['type'] ?? 'auto',
                 'shape' => ($state['aspect'] ?? '9:16').(! empty($state['length']) ? ', '.$state['length'].' seconds' : ', length open'),
-                'settings' => $this->settingsText($request).$this->placeNote($id), 'type_contracts' => json_encode(UgcTypes::contracts($request->user())), 'previous_error' => $error,
+                'settings' => $this->settingsText($request).$this->placeNote($id).UgcLearn::for('director'), 'type_contracts' => json_encode(UgcTypes::contracts($request->user())), 'previous_error' => $error,
                         // Room to finish (2026-10-12): the model's thinking shares the budget, and at 1,500 a long brief's pitch was
             // cut off mid-sentence, not JSON, three times running ("I could not work that out").
             ], 4000, 0.4);

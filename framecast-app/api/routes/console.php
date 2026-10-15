@@ -100,6 +100,8 @@ Schedule::command('create:maintain-storage --apply --originals --limit=100')->ho
 Schedule::command('credits:settle-holds')->everyFiveMinutes()->withoutOverlapping(10);
 // One-take segments saved for a retry are kept 7 days (GenerateOneShotUgcJob).
 Schedule::command('ugc:prune-oneshot-parts')->dailyAt('04:20')->withoutOverlapping(60);
+// LEARN: the day's UGC take reviews merged into the lessons the director, planner and sheet writer read.
+Schedule::command('ugc:learn-lessons')->dailyAt('04:40')->withoutOverlapping(30);
 Schedule::command('create:health')->everyFiveMinutes()->withoutOverlapping(10)
     ->when(fn () => (bool) config('create.enabled'));
 

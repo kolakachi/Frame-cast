@@ -1389,6 +1389,7 @@ class UgcController extends Controller
             'source_content_raw' => $script,
             'visual_brief' => [
                 'ugc_format' => 'one_shot',
+                'ugc_type' => $v['ugc_type'] ?? null,
                 'ugc_estimated_credits' => $quote,
                 'ugc_run_id' => $runId,
             ],

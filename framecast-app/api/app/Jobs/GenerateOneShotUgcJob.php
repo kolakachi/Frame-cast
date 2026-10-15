@@ -443,6 +443,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
             // Delivered: the saved segment files have done their job.
             try { self::parts()->deleteDirectory(self::partsDir((int) $project->workspace_id, $this->sceneId)); } catch (\Throwable $e) { report($e); }
+            $this->learnFrom('delivered', (string) $asset->storage_url, null);
         } finally {
             foreach ($temps as $t) {
                 @unlink($t);
@@ -579,9 +580,31 @@ class GenerateOneShotUgcJob implements ShouldQueue
             )])->save();
             // Nothing delivered, nothing paid: the credits held at the start go back.
             self::releaseHold((int) $scene->getKey());
+            $this->learnFrom('failed', null, $e->getMessage());
         });
 
         $this->releasePassTake();
+    }
+
+    /** Queue the take's review (LEARN): what was asked, what the checks said, and the finished video when there is one. */
+    private function learnFrom(string $outcome, ?string $videoUrl, ?string $error): void
+    {
+        rescue(function () use ($outcome, $videoUrl, $error): void {
+            if (! config('services.ugc.learn', true)) return;
+            $project = Project::query()->find($this->projectId);
+            $settings = Scene::query()->whereKey($this->sceneId)->value('image_generation_settings_json') ?? [];
+            $settings = is_array($settings) ? $settings : (json_decode((string) $settings, true) ?: []);
+            \App\Jobs\ReviewUgcTakeJob::dispatch([
+                'project_id' => $this->projectId, 'workspace_id' => $project?->workspace_id, 'outcome' => $outcome,
+                'ugc_type' => (string) data_get($project?->visual_brief, 'ugc_type', ''), 'engine' => $this->engine,
+                'brief' => trim(($project?->title ?? '').'. '.($project?->source_content_raw ?? '')),
+                'clips' => array_map(fn ($c) => array_filter(['asked' => mb_substr((string) ($c['prompt'] ?? ''), 0, 700), 'line' => $c['dialogue'] ?? null,
+                    'headlines' => $c['headlines'] ?? null]), $this->chunks),
+                'checks' => array_filter(['face_scores' => $settings['face_scores'] ?? null, 'clip_reviews' => $settings['clip_reviews'] ?? null,
+                    'dressed_picture_score' => $settings['look']['face_score'] ?? null]),
+                'error' => $error, 'video_url' => $videoUrl,
+            ]);
+        }, null, false);
     }
 
     /**
