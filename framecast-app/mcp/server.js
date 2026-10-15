@@ -52,17 +52,20 @@ const API_TIMEOUT_MS = 30_000
 const INSTRUCTIONS = `WyvStudio makes short branded videos for the user's workspace, spending its credits.
 
 Which tools to use
-- Default: Create, where the Creative Director plans and makes the video. For any request to make a video, ad, promo, explainer, tutorial, testimonial or a UGC-style ad, use weave_start, then weave_status, then weave_approve. Changes to a Create video go through weave_reply, never the Classic edit tools.
-- Use the Classic tools (estimate_video, create_video, the get_project/propose_edits/apply_edits editor, export_video, plan_ugc/create_ugc) only when: the user asks for Classic, the composer or a scene-by-scene video; the video is an existing Classic project (a numeric video id); the user wants UGC Ads takes (several actors or hooks to test side by side, or an ad analysed with analyze_ugc_reference); or the video is longer than weave_start allows. If unsure, use Create.
+- Default: Create, where the Creative Director plans and makes the video. For any request to make a video, ad, promo, explainer or tutorial, use weave_start, then weave_status, then weave_approve. Changes to a Create video go through weave_reply, never the Classic edit tools.
+- UGC ads (a creator or presenter on camera: testimonial, problem and solution, unboxing, before and after, comparison, green screen, ASMR, day in the life, skit, POV hook, reaction) go to the UGC director: ugc_brief with the user's brief, ugc_reply to answer its question or ask for changes, ugc_make once the user approves the pitch's price, then ugc_status.
+- Use the Classic tools (estimate_video, create_video, the get_project/propose_edits/apply_edits editor, export_video, plan_ugc/create_ugc) only when: the user asks for Classic, the composer or a scene-by-scene video; the video is an existing Classic project (a numeric video id); the user wants UGC takes planned shot by shot (an ad analysed with analyze_ugc_reference); or the video is longer than weave_start allows. If unsure, use Create, or the UGC director for a UGC ad.
 - If weave_start is refused because Create is unavailable to the workspace, say so and offer the Classic way.
 
 Credits
 - Call get_capabilities first for the balance and plan.
 - weave_start plans at once and costs a few credits: say so before calling it. Nothing else is charged until the user approves a price.
 - Always show the price from weave_approve (step 1) and wait for an explicit yes before step 2. Never approve on the user's behalf.
+- ugc_brief and ugc_reply are free. Show the pitch (what it will show, the script, the credits) and call ugc_make only after an explicit yes and the user's confirmation that they have the rights to any real person's likeness or voice used.
 - When can_afford is false, do not start the build. Offer what if_short lists (quick effort, a shorter video, fewer paid shots via weave_reply) or the top-up link, and let the user choose.
 
 Timing
+- A UGC video usually takes 5 to 15 minutes after ugc_make; check ugc_status every minute or two.
 - Planning takes a minute or two; building a Create video usually takes 10 to 20 minutes. Tell the user, and check weave_status every minute or two rather than continuously. Share preview_url and app_url when it is ready.
 
 Undo
@@ -481,11 +484,69 @@ function buildServer(token) {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ character_id, quote_id, idempotency_key }) => call(token, 'POST', `/ugc/characters/${character_id}/preview`, { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_presenter_preview'))
 
+  // The UGC Creative Director (MCP-BRIEF, owner 2026-10-15): the app's own UGC chat, brief in, pitch and price out.
+  const UGC_TYPES = ['auto', 'testimonial', 'problem_solution', 'green_screen', 'before_after', 'unboxing', 'comparison', 'pov_hook', 'asmr', 'day_in_life', 'skit', 'listicle', 'founder_story', 'reaction']
+  const ugcMessage = {
+    type: z.enum(UGC_TYPES).optional().describe('The kind of UGC ad; "auto" (default) lets the director choose.'),
+    aspect: z.enum(['9:16', '1:1', '16:9']).optional().describe('Shape. 9:16 by default; 1:1 is made on Seedance (up to 30 s); green screen and splits are always 9:16.'),
+    length: z.number().int().min(5).max(60).optional().describe('About how many seconds.'),
+    link: z.string().url().max(2000).optional().describe('A product page: its photos and facts are read.'),
+    attachments: z.array(z.object({ asset_id: z.number().int(), role: z.enum(['product', 'footage', 'sample', 'background', 'left', 'right']).optional() })).max(20).optional()
+      .describe('Library files (upload_asset first): product photos, footage to cut in, a sample ad, a green screen background, or the left and right of a split.'),
+    character_ids: z.array(z.number().int()).max(5).optional().describe('Presenters from list_characters; a skit uses two. Omit to let the director cast.'),
+  }
+  server.registerTool(
+    'ugc_brief',
+    {
+      title: 'UGC ad: brief the director (free)',
+      description: 'Start a UGC ad with the user\'s brief (product, audience, angle, any script, how names are said). The director answers with one question (answer it with ugc_reply, offering suggested_answers) or a pitch: what the video shows, its script, the presenter and model, and the credits. Free. Show the pitch to the user; change it with ugc_reply; make it with ugc_make.',
+      inputSchema: z.object({ text: z.string().min(1).max(4000), ...ugcMessage }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => call(token, 'POST', '/ugc/chats', args, 'ugc_brief'),
+  )
+  server.registerTool(
+    'ugc_reply',
+    {
+      title: 'UGC ad: reply to the director (free)',
+      description: 'Answer the director\'s question, or ask for changes to the pitch ("make her older", "shorter", "say Lumora as loo-MOR-ah"). Returns the next question or a revised pitch. Free.',
+      inputSchema: z.object({ chat_id: z.string().uuid(), text: z.string().min(1).max(4000), ...ugcMessage }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ chat_id, ...args }) => call(token, 'POST', `/ugc/chats/${chat_id}/messages`, args, 'ugc_reply'),
+  )
+  server.registerTool(
+    'ugc_make',
+    {
+      title: 'UGC ad: make the pitched video',
+      description: 'Makes the video the pitch describes. SPENDS the pitch\'s credits, held as it starts and given back if it does not deliver. Only after the user has seen the pitch and price and said yes, and confirmed they have the rights to any real person\'s likeness or voice (consent). message_id is the pitch\'s. model picks another of the pitch\'s other_models. music adds a music bed to a POV hook or reaction (+2 credits). Then poll ugc_status.',
+      inputSchema: z.object({
+        chat_id: z.string().uuid(), message_id: z.number().int(),
+        consent: z.boolean().describe('True only after the user confirmed likeness and voice rights.'),
+        model: z.enum(['auto', 'seedance25', 'omni', 'veo']).optional(),
+        music: z.boolean().optional(),
+        idempotency_key: z.string().max(128).optional().describe('Defaults to the pitch: calling twice makes one video.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ chat_id, model, ...args }) => call(token, 'POST', `/ugc/chats/${chat_id}/make`, { ...args, engine: model || 'auto' }, 'ugc_make'),
+  )
+  server.registerTool(
+    'ugc_status',
+    {
+      title: 'UGC ad: status',
+      description: 'The chat\'s last director message and every video it started: status (generating, ready, failed) and, when ready, a link to watch it.',
+      inputSchema: z.object({ chat_id: z.string().uuid() }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ chat_id }) => call(token, 'GET', `/ugc/chats/${chat_id}`, undefined, 'ugc_status'),
+  )
+
   server.registerTool(
     'plan_ugc',
     {
       title: 'Classic UGC Ads: plan an ad (free)',
-      description: 'Classic UGC Ads, for takes to test side by side (several actors or hooks). For a single UGC-style ad use weave_start with format ugc_ad. Turn a script or a brief into a shot plan for a UGC-style ad: shots with kind (on_camera, b_roll, reaction), narration, seconds and visual direction, plus the format it chose. Free. Pass the returned format and segments to estimate_ugc unchanged. Formats: direct_camera (one continuous talking take), demo, story, reaction, text_led; "auto" lets the planner pick. Optionally ask for alternate openings with variants_count.',
+      description: 'Classic UGC Ads, for takes to test side by side (several actors or hooks). For a single UGC ad use ugc_brief (the UGC director). Turn a script or a brief into a shot plan for a UGC-style ad: shots with kind (on_camera, b_roll, reaction), narration, seconds and visual direction, plus the format it chose. Free. Pass the returned format and segments to estimate_ugc unchanged. Formats: direct_camera (one continuous talking take), demo, story, reaction, text_led; "auto" lets the planner pick. Optionally ask for alternate openings with variants_count.',
       inputSchema: z.object({
         script: z.string().max(1500).optional().describe('The narration, if the user has one.'),
         context: z.string().max(1500).optional().describe('Or a brief: product, audience, angle.'),

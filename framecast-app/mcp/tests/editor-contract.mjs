@@ -90,6 +90,19 @@ try {
   }
   await rpc('tools/call', { name: 'propose_edits', arguments: { video_id: 1, revision: 'v1', changes: [{ op: 'use_narration', scene_id: 1, asset_id: 7, mode: 'audio_and_script' }] } })
   assert.equal(captured.at(-1).body.changes[0].mode, 'audio_and_script')
+  // The UGC director (MCP-BRIEF): brief, reply, make, status reach the developer chat routes.
+  await rpc('tools/call', { name: 'ugc_brief', arguments: { text: 'A POV ad for my serum', type: 'pov_hook', aspect: '1:1', attachments: [{ asset_id: 7, role: 'product' }] } })
+  assert.equal(captured.at(-1).path, '/api/developer/v1/ugc/chats')
+  assert.equal(captured.at(-1).body.aspect, '1:1')
+  const chatId = '9ee04a26-804e-45a9-b574-855170b9ad8c'
+  await rpc('tools/call', { name: 'ugc_reply', arguments: { chat_id: chatId, text: 'Make her older' } })
+  assert.equal(captured.at(-1).path, `/api/developer/v1/ugc/chats/${chatId}/messages`)
+  assert.equal(captured.at(-1).body.chat_id, undefined)
+  await rpc('tools/call', { name: 'ugc_make', arguments: { chat_id: chatId, message_id: 12, consent: true, model: 'omni', music: true } })
+  assert.equal(captured.at(-1).path, `/api/developer/v1/ugc/chats/${chatId}/make`)
+  assert.deepEqual([captured.at(-1).body.engine, captured.at(-1).body.music, captured.at(-1).body.message_id], ['omni', true, 12])
+  await rpc('tools/call', { name: 'ugc_status', arguments: { chat_id: chatId } })
+  assert.equal(captured.at(-1).method, 'GET')
   const reference = { shape: 'Hook and proof', beats: [{ role: 'hook', does: 'Ask a question' }] }
   await rpc('tools/call', { name: 'analyze_ugc_reference', arguments: { asset_id: 7 } })
   assert.equal(captured.at(-1).path, '/api/developer/v1/ugc/reference')

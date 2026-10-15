@@ -93,6 +93,11 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\Guar
     Route::post('/ugc/quotes', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'quotes']);
     Route::post('/ugc/videos', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'videos']);
     Route::get('/ugc/allowance', [\App\Http\Controllers\Api\Developer\V1\UgcController::class, 'allowance']);
+    // The UGC Creative Director (MCP-BRIEF): brief in, question or priced pitch out, then make.
+    Route::post('/ugc/chats', [\App\Http\Controllers\Api\Developer\V1\UgcChatController::class, 'start'])->middleware('throttle:20,1');
+    Route::get('/ugc/chats/{id}', [\App\Http\Controllers\Api\Developer\V1\UgcChatController::class, 'show'])->whereUuid('id');
+    Route::post('/ugc/chats/{id}/messages', [\App\Http\Controllers\Api\Developer\V1\UgcChatController::class, 'reply'])->whereUuid('id')->middleware('throttle:20,1');
+    Route::post('/ugc/chats/{id}/make', [\App\Http\Controllers\Api\Developer\V1\UgcChatController::class, 'make'])->whereUuid('id');
     Route::post('/characters', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'store']);
     Route::patch('/characters/{characterId}', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'update'])->whereNumber('characterId');
     Route::post('/characters/{characterId}/images/quotes', [\App\Http\Controllers\Api\Developer\V1\CharacterController::class, 'imageQuote'])->whereNumber('characterId');

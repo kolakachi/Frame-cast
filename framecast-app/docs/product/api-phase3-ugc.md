@@ -60,3 +60,20 @@ double-reserve; one-shot and composed paths both produce projects with
 
 About four days: planner and quote wrapping two, create and take rules one,
 MCP, docs, schema and tests one.
+
+## The UGC director through the API and MCP (MCP-BRIEF, built 2026-10-15)
+
+Owner, 2026-10-15: "let it jump for the mcp brief, ugc is standalone now". The app's UGC chat (the Creative
+Director: completeness check, pronunciations, type rules, model picker, credit hold) is open to assistants. Every
+step delegates to the app's own `UgcChatController` with an internal request (`Developer\V1\UgcChatController`).
+
+| MCP tool | Endpoint | What it does |
+|---|---|---|
+| `ugc_brief` | `POST /developer/v1/ugc/chats` | Free. Text plus optional type, aspect, length, link, attachments (asset ids with roles), character ids. Returns the director's question (with suggested answers) or a pitch: type, title, aspect, script, shots, credits, each video's presenter and model with the other models' prices, whether a music bed is offered |
+| `ugc_reply` | `POST /developer/v1/ugc/chats/{id}/messages` | Free. Answer the question or ask for changes; returns the next question or a revised pitch |
+| `ugc_make` | `POST /developer/v1/ugc/chats/{id}/make` | Paid. The pitch's message id, consent (likeness and voice rights), optional model and music. The idempotency key (default: the pitch) maps to one request id, so a retried call makes one video. Credits are held as it starts and given back if it does not deliver |
+| `ugc_status` | `GET /developer/v1/ugc/chats/{id}` | The last director message and every video started: status and, when ready, its link |
+
+The MCP server's instructions now send UGC ads (testimonial, unboxing, skit, POV hook and the rest) to the UGC
+director, and keep weave_start for other videos; plan_ugc/estimate_ugc/create_ugc stay for shot-by-shot work.
+Tests: `tests/Unit/DeveloperUgcChatTest.php`, `mcp/tests/editor-contract.mjs`.
