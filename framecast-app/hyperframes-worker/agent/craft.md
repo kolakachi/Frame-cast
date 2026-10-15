@@ -49,7 +49,7 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - A signature move is optional. Use it only when the approved direction calls for one; do not invent it for a footage edit or restrained explainer.
 
 ## Transitions and teaching
-- Each beat's transition_out says what already on screen becomes the next scene and with which move: build exactly that (the named move is checked); a cut only where the plan says cut.
+- Each beat's transition_out says what already on screen becomes the next scene and with which move: build exactly that (the named move is checked); a cut only where the plan says cut. When it names "on" (the narration words it lands on), the move completes on the first of those words, from the word timings, never a beat early or late.
 - A teaching video (scenes carry arc): open on the hook's question, show before naming, one new idea per beat, and end on an image that answers the opening question. On-screen text adds to the narration; it never repeats a spoken line word for word.
 
 ## Sound (when there is audio)

@@ -9,7 +9,6 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 
 | ID | Area | Item | From | Status | Note |
 |----|------|------|------|--------|------|
-| RD-09 | Create | Every cut has a carrier: a plan rule and a check | Opus Motion Design Harness | next |  |
 | RD-10 | Create | Focus and letter type kit: blur-in text, letters rising, rack focus, glow flash | Gap report | next |  |
 | RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | next | Paid test, about $5-8. |
 | RD-03 | UGC | Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot | Toonflow, huobao | open | Casting, dressing and the shared place photo are done; the sheet and @name are not. |
@@ -27,6 +26,7 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-02 | UGC | Character mix-up check: each skit clip shows the right speaker | Jellyfish | done | 2026-10-15: skit clips are face-checked against their own speaker; a clip closer to the other speaker is recorded as a mix-up and counts as a miss (remade when face remakes are on). |
 | RD-05 | Create | Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs | product-launch-motion, student-kit, skills/ | done | 2026-10-15: craft.md already had the traps, one camera, hand-offs and label swaps; added deterministic frames and fonts-before-measuring. |
 | RD-08 | Create | True peak at or below -1 dBTP alongside -14 LUFS | Opus Motion Design Harness | done | 2026-10-15: Create's delivery check already measured true peak (ebur128) and corrected to -1 dB; UGC takes now get the same standard (they were not levelled). |
+| RD-09 | Create | Every cut has a carrier: a plan rule and a check | Opus Motion Design Harness | done | 2026-10-15: transition_out (what becomes the next scene, with which move) and its move check existed; added the words it lands on, timed by the builder, and a plain cut set on any beat left without one. |
 | RD-30 | Money | A provider call never sent settles at zero; a closed run's held credits are released | Dan rebuild | done | 2026-10-15: a call with no dispatch claim, prediction or response settles at zero; held credits were already released at clear states since 2026-10-10 (CreditHolds). |
 | RD-34 | Create | Collage kit and Collage / zine style | Higgsfield KICKS demo | done | 2026-10-09 |
 | RD-35 | Create | Gap report: reference moments no move reproduces | Kit planning | done | create:move-gaps |

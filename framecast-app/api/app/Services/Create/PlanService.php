@@ -865,10 +865,20 @@ class PlanService
             'arc' => in_array($s['arc'] ?? null, self::ARC, true) ? $s['arc'] : null,
             // What on screen becomes the next scene, and the move that does it (a cut where a cut is right).
             'transition_out' => is_array($s['transition_out'] ?? null) ? array_filter(['from' => $str($s['transition_out']['from'] ?? '', 60), 'becomes' => $str($s['transition_out']['becomes'] ?? '', 60),
+                // The words the move lands on (RD-09, every cut has a carrier): the builder times it to them.
+                'on' => $str($s['transition_out']['on'] ?? '', 60),
                 'move' => ($s['transition_out']['move'] ?? '') === 'cut' ? 'cut' : (MotionMoves::valid($s['transition_out']['move'] ?? null) ?? null)]) : null,
         // A step-by-step reference easily needs a title card and a screen per step plus a hook and a close; cutting at 8 silently lost the ending.
         ])->map(fn ($s) => array_filter($s, fn ($v, $k) => ! in_array($k, ['arc', 'transition_out'], true) || ! empty($v), ARRAY_FILTER_USE_BOTH))
             ->filter(fn ($s) => $s['label'] !== '' && $s['end'] > $s['start'])->take(16)->values()->all();
+        // Every cut has a carrier (RD-09, from the Opus Motion Design Harness): a beat the planner left without a transition
+        // gets a plain cut, said out loud, so no join is left to chance between two beats.
+        foreach ($scenes as $k => $scene) {
+            if ($k < count($scenes) - 1 && empty($scene['transition_out']['move'])) {
+                $scenes[$k]['transition_out'] = ['move' => 'cut'] + (array) ($scene['transition_out'] ?? []);
+                \Illuminate\Support\Facades\Log::info('create plan: a beat had no carrier; a cut was set', ['beat' => $scene['label']]);
+            }
+        }
         $callouts = collect((array) ($raw['callouts'] ?? []))->map(fn ($t) => $str($t, 120))->filter()->unique()->take(6)->values()->all();
         $known = collect(CapabilityCatalogue::forWorkspace($workspaceId))->keyBy('kind');
         $decisions = collect((array) ($raw['decisions'] ?? []))->filter(fn ($d) => is_array($d))->map(function ($d) use ($str, $slug, $known) {

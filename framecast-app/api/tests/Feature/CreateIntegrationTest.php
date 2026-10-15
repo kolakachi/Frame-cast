@@ -357,7 +357,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('anthropic:claude-opus-5-5', $p['provider']);
         $this->assertSame([$asset->id], array_column($plan['reused'], 'asset_id'), 'only this conversation\'s source files');
         $blank = ['state_in' => '', 'state_out' => '', 'reads' => [], 'layout' => '', 'field' => '', 'uses' => []];
-        $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take', ...$blank], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped', ...$blank]], array_map(fn ($scene) => array_diff_key($scene, array_flip(['id', 'requirement_ids'])), $plan['scenes']));
+        // Every cut has a carrier (RD-09): a beat the model left without a transition gets a plain cut.
+        $this->assertEquals([['label' => 'Hook', 'start' => 0.0, 'end' => 4.0, 'idea' => 'Take', ...$blank, 'transition_out' => ['move' => 'cut']], ['label' => 'Too long', 'start' => 10.0, 'end' => 15.0, 'idea' => 'clamped', ...$blank]], array_map(fn ($scene) => array_diff_key($scene, array_flip(['id', 'requirement_ids'])), $plan['scenes']));
         $this->assertCount(2, array_unique(array_column($plan['scenes'], 'id')));
         $this->assertCount(1, $plan['decisions'], 'a decision with one option is dropped');
         $this->assertSame('introstyle', $plan['decisions'][0]['id']);
