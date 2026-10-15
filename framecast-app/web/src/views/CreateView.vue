@@ -1106,6 +1106,22 @@ const wayLocked = p => !!p && (p.status !== 'proposed' || !!p.built)
 const pickedFrom = ref(null)
 async function pickWay(n, d) { const from = waysPlanId.value; waysPlanId.value = null; pickedFrom.value = from; prompt.value = `Make it direction ${n}: ${d.name}`; await send() }
 async function planMix() { const t = mixText.value.trim(); if (!t) return; pickedFrom.value = waysPlanId.value; waysPlanId.value = null; mixText.value = ''; prompt.value = `Directions: ${t}`; await send() }
+// Another concept from the same brief (owner, 2026-10-15): a new video whose brief, settings and files are this one's,
+// told which concepts this brief already made, from a way left unused or with a one-line steer. Planning is charged as usual.
+const conceptOpen = ref(false), conceptSteer = ref(''), conceptBusy = ref(false)
+async function startConcept(extra = {}) {
+  if (conceptBusy.value || !id.value) return
+  conceptBusy.value = true
+  try {
+    await guarded(async () => {
+      const made = (await api.post(`${base()}/concepts`, { idempotency_key: crypto.randomUUID(), ...extra })).data.data
+      conceptOpen.value = false; conceptSteer.value = ''; waysPlanId.value = null
+      await router.push({ name: 'create', params: { conversationId: made.id } }); await refresh(); await loadHistory()
+      if (canWrite.value && !active.value) await makePlan()
+    })
+  } finally { conceptBusy.value = false }
+}
+const conceptRootTitle = c => history.value.find(h => h.id === c.concept_of)?.title || ''
 async function moreWays(p) {
   if (moreWaysBusy.value) return
   moreWaysBusy.value = true
@@ -1667,6 +1683,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                     <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
                     <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
                     <button v-if="canChange" type="button" class="btn btn--outline" :disabled="locked" @click="changeOpen = true">Change…</button>
+                    <button v-if="media && !outputMeta.look && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked || conceptBusy" @click="conceptOpen = true">Make another concept</button>
                     <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
                     <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
                     <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
@@ -2034,12 +2051,20 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
         <p class="muted" v-if="historyLoading && !history.length">Searching…</p><p class="muted" v-else-if="!filteredHistory.length && historyNext === null">No matching conversations.</p>
         <template v-for="g in historyGroups" :key="g.label">
           <div class="drawer-group">{{ g.label }}</div>
-          <router-link v-for="c in g.items" :key="c.id" :class="['session', c.id === id ? 'is-current' : '']" :to="{name:'create',params:{conversationId:c.id}}" @click="showHistory = false"><span class="session__thumb" /><div><b>{{ c.title }}</b><small>{{ c.last_message || 'Add your first brief or attachment' }}</small><span :class="['status', state(c) === 'working' ? 'status--info' : state(c) === 'needs' ? 'status--warn' : state(c) === 'done' ? 'status--ok' : 'status--neutral']">{{ stateLabel(c).toUpperCase() }}</span></div><time>{{ date(c.updated_at) }}</time></router-link>
+          <router-link v-for="c in g.items" :key="c.id" :class="['session', c.id === id ? 'is-current' : '']" :to="{name:'create',params:{conversationId:c.id}}" @click="showHistory = false"><span class="session__thumb" /><div><b>{{ c.title }}</b><small v-if="c.concept_of">Another concept of {{ conceptRootTitle(c) || 'an earlier brief' }}</small><small v-else>{{ c.last_message || 'Add your first brief or attachment' }}</small><span :class="['status', state(c) === 'working' ? 'status--info' : state(c) === 'needs' ? 'status--warn' : state(c) === 'done' ? 'status--ok' : 'status--neutral']">{{ stateLabel(c).toUpperCase() }}</span></div><time>{{ date(c.updated_at) }}</time></router-link>
         </template>
         <div ref="historySentinel" class="history-sentinel" aria-hidden="true" />
         </div>
         <template #footer><small class="muted">{{ historyLoading ? 'Loading…' : historyNext === null ? 'That’s everything' : 'Scroll for more' }}</small><span class="spacer" /><router-link to="/videos" class="btn btn--ghost btn--sm" @click="showHistory = false">All videos →</router-link></template>
       </SideDrawer>
+      <CreateDialog :open="conceptOpen" title="Make another concept" @close="conceptOpen = false">
+        <form class="link-form" @submit.prevent="startConcept({ steer: conceptSteer })">
+          <p class="muted link-form__note">A new video from this same brief, with its settings and files, and a different idea. I already know which concepts this brief has made, so the new one won't repeat them. Planning is charged as usual.</p>
+          <label for="concept-steer" class="link-form__label">What to try this time (optional)</label>
+          <input id="concept-steer" v-model="conceptSteer" class="input" maxlength="300" autocomplete="off" placeholder="e.g. make it about the family" :disabled="conceptBusy" />
+          <div class="link-form__actions"><button type="button" class="btn btn--ghost btn--sm" @click="conceptOpen = false">Cancel</button><button type="submit" class="btn btn--primary btn--sm" :disabled="conceptBusy">{{ conceptBusy ? 'Starting…' : 'Make another concept' }}</button></div>
+        </form>
+      </CreateDialog>
       <CreateDialog :open="pronOpen" title="Pronunciations" @close="pronOpen = false">
         <form class="link-form" @submit.prevent="savePronunciations">
           <p class="muted link-form__note">How the voice should say a word, for example WyvStudio as "Weave Studio". Only the voice changes; the screen keeps the written word. Applies to new voiceovers in this workspace.</p>
@@ -2097,7 +2122,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
             <p v-if="i === 0 && d.why" class="way__why">{{ d.why }}</p>
             <div class="way__foot">
               <span v-if="i === 0" class="muted">{{ wayLocked(waysPlan) ? 'Locked when you approved the plan' : 'This is the plan in the chat' }}</span>
-              <template v-else><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || planning || !canWrite || !!active" @click="pickWay(i + 1, d)">{{ wayLocked(waysPlan) ? 'Start a new version this way' : 'Plan this way' }}</button><small class="muted">about 30 credits</small></template>
+              <template v-else><button type="button" class="btn btn--ghost btn--sm" :disabled="locked || planning || !canWrite || !!active" @click="pickWay(i + 1, d)">{{ wayLocked(waysPlan) ? 'Start a new version this way' : 'Plan this way' }}</button><button v-if="wayLocked(waysPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked || conceptBusy || !canWrite" @click="startConcept({ direction: { name: d.name, idea: d.idea } })">Make as a new video</button><small class="muted">about 30 credits</small></template>
             </div>
           </div>
           <button v-if="(waysPlan.plan.concept.more || []).length < 9" type="button" class="btn btn--ghost btn--sm ways-more" :disabled="locked || moreWaysBusy || !canWrite" @click="moreWays(waysPlan)">{{ moreWaysBusy ? 'Thinking of more ways…' : 'More ways · 3 new ideas, a few credits' }}</button>

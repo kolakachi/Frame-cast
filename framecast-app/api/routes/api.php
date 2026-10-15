@@ -265,6 +265,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/conversations/{id}', [$controller, 'show']);
             Route::patch('/conversations/{id}', [$controller, 'update']);
             Route::post('/conversations/{id}/messages', [$controller, 'message']);
+            // Another concept from the same brief, in a new conversation (owner, 2026-10-15).
+            Route::post('/conversations/{id}/concepts', [$controller, 'concept']);
             Route::post('/conversations/{id}/uploads', [$controller, 'upload']);
             Route::post('/conversations/{id}/attachments', [$controller, 'attach']);
             // Documents in Weave (2026-10-09): read in the background; the drawer picks what the video may show.

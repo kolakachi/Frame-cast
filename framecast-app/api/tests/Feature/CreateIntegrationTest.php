@@ -5583,4 +5583,33 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['voice', 'on_screen_words'], $plan['change_touches']);
         $this->assertSame([], app(\App\Services\Create\PlanService::class)->normalize([...$raw, 'change_touches' => null], ['files' => []], $this->workspace->id)['change_touches']);
     }
+
+    // Another concept from the same brief (owner, 2026-10-15).
+    public function test_another_concept_keeps_the_brief_settings_and_files_and_lists_what_was_made(): void
+    {
+        (require database_path('migrations/2026_10_15_210000_add_concept_of_to_create_conversations.php'))->up();
+        $this->pilot();
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 30, 'aspect_ratio' => '9:16']);
+        $asset = \App\Models\Asset::query()->create(['workspace_id' => $this->owner->workspace_id, 'asset_type' => 'image', 'title' => 'Logo', 'storage_url' => 'logo.png', 'mime_type' => 'image/png', 'status' => 'active']);
+        DB::table('create_attachments')->insert(['conversation_id' => $c->id, 'asset_id' => $asset->id, 'purpose' => 'source', 'created_at' => now(), 'updated_at' => now()]);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A 30 s lottery ad. VOICEOVER: "Vem pra gente."', 'expected_version' => (int) $this->conversations->conversation($this->owner, $c->id)->version, 'idempotency_key' => 'brief']);
+        DB::table('create_plans')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c->id, 'message_id' => (string) \Illuminate\Support\Str::uuid(), 'brief_sequence' => 1, 'provider' => 'test', 'request_hash' => 'x', 'status' => 'proposed', 'idempotency_key' => 'p', 'plan_json' => json_encode(['concept' => ['name' => 'Family table', 'idea' => 'Tickets at every plate']]), 'created_at' => now(), 'updated_at' => now()]);
+
+        $svc = app(\App\Services\Create\ConceptService::class);
+        $new = $svc->start($this->owner, $c->id, 'k1', 'make it about the beach');
+        $this->assertSame($c->id, $new->concept_of);
+        $this->assertSame($new->id, $svc->start($this->owner, $c->id, 'k1')->id, 'the same key starts it once');
+        $this->assertSame(30, json_decode($new->settings_json, true)['duration_seconds']);
+        $this->assertSame([$asset->id], DB::table('create_attachments')->where('conversation_id', $new->id)->pluck('asset_id')->all());
+        $brief = DB::table('create_messages')->where('conversation_id', $new->id)->where('role', 'user')->value('content');
+        $this->assertStringContainsString('VOICEOVER: "Vem pra gente."', $brief);
+        $this->assertStringContainsString('1. Family table: Tickets at every plate', $brief);
+        $this->assertStringContainsString('Steer: make it about the beach', $brief);
+        $this->assertStringStartsWith('Concept 2:', $new->title);
+
+        // A concept of a concept belongs to the same brief.
+        $third = $svc->start($this->owner, $new->id, 'k2', null, ['name' => 'Beach', 'idea' => 'Hammock at golden hour']);
+        $this->assertSame($c->id, $third->concept_of);
+        $this->assertStringContainsString('Make this direction: Beach — Hammock at golden hour', DB::table('create_messages')->where('conversation_id', $third->id)->where('role', 'user')->value('content'));
+    }
 }

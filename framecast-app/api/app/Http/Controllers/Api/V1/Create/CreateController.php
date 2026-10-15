@@ -141,6 +141,15 @@ class CreateController extends Controller
         return $this->show($r, $id);
     }
 
+    /** Another concept from this conversation's brief: a new conversation, its brief already sent, ready to plan. */
+    public function concept(Request $r, string $id)
+    {
+        $input = $r->validate(['idempotency_key' => 'required|string|max:128', 'steer' => 'nullable|string|max:300',
+            'direction' => 'nullable|array', 'direction.name' => 'nullable|string|max:120', 'direction.idea' => 'nullable|string|max:400']);
+        $c = app(\App\Services\Create\ConceptService::class)->start($r->user(), $id, $input['idempotency_key'], $input['steer'] ?? null, $input['direction'] ?? null);
+        return response()->json(['data' => ['id' => $c->id, 'title' => $c->title]], 201);
+    }
+
     public function message(Request $r, string $id)
     {
         $input = $r->validate(['content' => 'required|string|max:10000', 'idempotency_key' => 'required|string|max:128', 'expected_version' => 'required|integer|min:0']);
