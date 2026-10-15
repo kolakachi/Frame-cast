@@ -91,6 +91,36 @@ class UgcChatTest extends TestCase
         return (new User)->forceFill(['id' => $workspace, 'workspace_id' => $workspace]);
     }
 
+    public function test_recent_conversations_page_through_with_their_state_and_only_this_workspace(): void
+    {
+        if (! Schema::hasTable('projects')) Schema::create('projects', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->string('status')->nullable(); $t->timestamps(); });
+        $chat = function (string $id, int $ws, ?string $title, string $at, array $messages) {
+            DB::table('ugc_chats')->insert(['id' => $id, 'workspace_id' => $ws, 'user_id' => $ws, 'title' => $title, 'created_at' => $at, 'updated_at' => $at]);
+            foreach ($messages as [$role, $kind, $content, $payload]) DB::table('ugc_chat_messages')->insert(['chat_id' => $id, 'role' => $role, 'kind' => $kind, 'content' => $content, 'payload_json' => json_encode($payload)]);
+        };
+        DB::table('projects')->insert([['id' => 801, 'workspace_id' => 1, 'status' => 'ready_for_review'], ['id' => 802, 'workspace_id' => 1, 'status' => 'needs_attention']]);
+        if (! Schema::hasColumn('scenes', 'visual_asset_id')) Schema::table('scenes', fn (Blueprint $t) => $t->integer('visual_asset_id')->nullable());
+        DB::table('scenes')->insert(['project_id' => 801, 'scene_order' => 1, 'visual_asset_id' => 20]);
+        $chat('00000000-0000-4000-8000-000000000001', 1, null, '2026-10-15 09:00:00', [['user', 'text', 'Coffee ad, cosy kitchen', []]]);
+        $chat('00000000-0000-4000-8000-000000000002', 1, 'Serum pitch', '2026-10-15 10:00:00', [['user', 'text', 'serum', []], ['assistant', 'pitch', 'x', ['takes' => []]]]);
+        $chat('00000000-0000-4000-8000-000000000003', 1, 'Volt Rush', '2026-10-15 11:00:00', [['user', 'text', 'drink', []], ['assistant', 'pitch', 'x', []], ['assistant', 'making', 'Making it now.', ['runs' => [['take_ids' => [801]]]]]]);
+        $chat('00000000-0000-4000-8000-000000000004', 1, 'Green screen', '2026-10-15 12:00:00', [['user', 'text', 'gs', []], ['assistant', 'making', 'x', ['runs' => [['take_ids' => [802]]]]]]);
+        $chat('00000000-0000-4000-8000-000000000005', 2, 'Someone else', '2026-10-15 13:00:00', [['user', 'text', 'other workspace', []]]);
+        $chat('00000000-0000-4000-8000-000000000006', 1, 'Empty', '2026-10-15 14:00:00', []);
+
+        $this->withoutMiddleware();
+        $page = $this->actingAs($this->user())->getJson('/api/v1/ugc/chats?limit=3')->assertOk();
+        $this->assertSame(['Green screen', 'Volt Rush', 'Serum pitch'], array_column($page->json('data.chats'), 'title'), 'newest first; empty chats and other workspaces left out');
+        $this->assertSame(['needs', 'made', 'pitched'], array_column($page->json('data.chats'), 'state'));
+        $this->assertNotNull($page->json('data.chats.1.thumbnail_url'), 'a made video shows its thumbnail');
+        $this->assertSame(3, $page->json('meta.next_offset'));
+        $rest = $this->actingAs($this->user())->getJson('/api/v1/ugc/chats?limit=3&offset=3')->assertOk();
+        $this->assertSame([['Coffee ad, cosy kitchen', 'draft']], array_map(fn ($c) => [$c['title'], $c['state']], $rest->json('data.chats')), 'untitled chats are named by their first message');
+        $this->assertNull($rest->json('meta.next_offset'));
+        $found = $this->actingAs($this->user())->getJson('/api/v1/ugc/chats?search=kitchen')->assertOk();
+        $this->assertSame(['00000000-0000-4000-8000-000000000001'], array_column($found->json('data.chats'), 'id'), 'search reads titles and what the user wrote');
+    }
+
     public function test_it_asks_when_unclear_then_pitches_one_priced_video_and_makes_it_once(): void
     {
         $this->withoutMiddleware();

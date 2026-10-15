@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
+import SideDrawer from '../components/create/SideDrawer.vue'
 import ComposerTray from '../components/create/ComposerTray.vue'
 import RefThumb from '../components/create/RefThumb.vue'
 import UgcBackgroundPicker from '../components/ugc/UgcBackgroundPicker.vue'
@@ -183,8 +184,35 @@ async function loadBalance() {
   try { const { data } = await api.get('/me'); balance.value = data?.data?.credits?.balance ?? null } catch { /* cosmetic */ }
 }
 async function loadRecent() {
-  try { const { data } = await api.get('/ugc/chats'); recent.value = (data?.data?.chats ?? []).slice(0, 4) } catch { /* optional */ }
+  try { const { data } = await api.get('/ugc/chats', { params: { limit: 4 } }); recent.value = data?.data?.chats ?? [] } catch { /* optional */ }
 }
+// Recent conversations (2026-10-15): every UGC chat, newest first, a page at a time, from any screen.
+const showHistory = ref(false), history = ref([]), historyNext = ref(0), historyLoading = ref(false), historySearch = ref(''), historySentinel = ref(null)
+const STATE_LABEL = { draft: 'Draft', pitched: 'Ready to make', making: 'Making…', made: 'Made', needs: 'Needs a look' }
+let historyEpoch = 0, historyObserver = null, historyTimer = null
+async function loadHistory(more = false) {
+  if (more && (historyNext.value === null || historyLoading.value)) return
+  const ticket = more ? historyEpoch : ++historyEpoch
+  historyLoading.value = true
+  try {
+    const { data } = await api.get('/ugc/chats', { params: { limit: 20, offset: more ? historyNext.value : 0, search: historySearch.value || undefined } })
+    if (ticket !== historyEpoch) return
+    history.value = more ? [...history.value, ...(data?.data?.chats ?? [])] : (data?.data?.chats ?? [])
+    historyNext.value = data?.meta?.next_offset ?? null
+  } catch (err) {
+    if (ticket === historyEpoch) error.value = apiErrorMessage(err, 'Could not load your conversations.')
+  } finally {
+    if (ticket === historyEpoch) historyLoading.value = false
+  }
+}
+function openHistory() { showHistory.value = true; loadHistory() }
+watch(historySearch, () => { clearTimeout(historyTimer); historyTimer = setTimeout(() => loadHistory(), 250) })
+watch(historySentinel, el => {
+  historyObserver?.disconnect()
+  if (!el) return
+  historyObserver = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadHistory(true) })
+  historyObserver.observe(el)
+})
 
 // Files: photos are product references, clips are footage; "Sample UGC" marks an ad they like (its structure is read).
 function pickFiles(role) { menu.value = ''; (role === 'sample' ? sampleInput : fileInput).value?.click() }
@@ -585,6 +613,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   disposed = true
+  historyObserver?.disconnect(); clearTimeout(historyTimer)
   clearTimeout(poll)
   document.removeEventListener('pointerdown', closeMenus)
   document.removeEventListener('keydown', escMenus)
@@ -595,11 +624,29 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="uc-shell" @dragover.prevent @drop.prevent="onDrop">
+    <SideDrawer :open="showHistory" title="Recent conversations" meta="Newest first" @close="showHistory = false">
+      <div class="uc-history">
+        <input v-model="historySearch" type="search" class="uc-history-search" aria-label="Search conversations" placeholder="Search titles or what you wrote…" />
+        <router-link class="uc-history-new" :to="{ name: 'ugc-new' }" @click="showHistory = false">+ New UGC video</router-link>
+        <p v-if="historyLoading && !history.length" class="uc-muted">Loading…</p>
+        <p v-else-if="!history.length && historyNext === null" class="uc-muted">{{ historySearch ? 'No matching conversations.' : 'No conversations yet.' }}</p>
+        <router-link v-for="c in history" :key="c.id" :class="['uc-history-row', { 'is-current': c.id === chatId }]" :to="{ name: 'ugc-chat', params: { chatId: c.id } }" @click="showHistory = false">
+          <span class="uc-history-thumb">
+            <video v-if="c.thumbnail_type === 'video'" :src="`${c.thumbnail_url}#t=0.5`" muted preload="metadata" playsinline />
+            <img v-else-if="c.thumbnail_url" :src="c.thumbnail_url" alt="" />
+          </span>
+          <span class="uc-history-text"><b>{{ c.title }}</b><small><span :class="['uc-history-state', 'is-' + c.state]">{{ STATE_LABEL[c.state] ?? c.state }}</span> · {{ ago(c.updated_at) }}</small></span>
+        </router-link>
+        <div ref="historySentinel" class="uc-history-sentinel" aria-hidden="true" />
+      </div>
+      <template #footer><small class="uc-muted">{{ historyLoading ? 'Loading…' : historyNext === null ? 'That’s everything' : 'Scroll for more' }}</small></template>
+    </SideDrawer>
     <AppSidebar :user="authStore.user" active-page="ugc-ads" @logout="authStore.logout()" />
     <main class="uc-main">
       <header class="uc-top">
         <div class="uc-crumb"><router-link :to="{ name: 'ugc-ads' }">UGC Ads</router-link> / <b>{{ title }}</b></div>
         <div class="uc-top-r">
+          <button type="button" class="uc-ghost" aria-haspopup="dialog" @click="openHistory">Recent conversations</button>
           <router-link class="uc-ghost" :to="{ name: 'ugc-ads' }">My ads</router-link>
           <span v-if="balance !== null" class="uc-credits">◆ <b>{{ balance.toLocaleString() }}</b> credits</span>
         </div>
@@ -616,6 +663,7 @@ onBeforeUnmount(() => {
           <div v-if="recent.length" class="uc-recent">
             <span class="uc-label">Pick up where you left off</span>
             <router-link v-for="c in recent" :key="c.id" :to="{ name: 'ugc-chat', params: { chatId: c.id } }">{{ c.title }} <span class="uc-muted">· {{ ago(c.updated_at) }}</span></router-link>
+            <button type="button" class="uc-link-btn" @click="openHistory">See all</button>
           </div>
           <router-link class="uc-wizard" :to="{ name: 'ugc-wizard' }">Prefer the step-by-step form?</router-link>
         </section>
@@ -935,6 +983,20 @@ onBeforeUnmount(() => {
 .uc-face-row { display: inline-flex; }
 .uc-face-row img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid var(--color-bg-deep); margin-left: -8px; }
 .uc-face-row img:first-child { margin-left: 0; }
+.uc-history { display: flex; flex-direction: column; gap: 6px; }
+.uc-history-search { width: 100%; padding: 9px 12px; border: 1px solid var(--color-border); border-radius: 10px; background: transparent; color: inherit; font: inherit; }
+.uc-history-new { align-self: flex-start; font-size: 13px; color: var(--color-accent, #ff6b35); text-decoration: none; padding: 6px 2px; }
+.uc-history-row { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; text-decoration: none; color: inherit; border: 1px solid transparent; }
+.uc-history-row:hover, .uc-history-row:focus-visible { border-color: var(--color-border); }
+.uc-history-row.is-current { border-color: var(--color-accent, #ff6b35); }
+.uc-history-thumb { width: 40px; aspect-ratio: 9 / 16; border-radius: 6px; overflow: hidden; background: var(--color-border); }
+.uc-history-thumb video, .uc-history-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.uc-history-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.uc-history-text b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-history-text small { font-size: 12px; color: var(--color-text-muted, #8b8b9a); }
+.uc-history-state.is-made { color: #3fb97f; } .uc-history-state.is-needs { color: #e0a33a; } .uc-history-state.is-making { color: var(--color-accent, #ff6b35); }
+.uc-history-sentinel { height: 1px; }
+button.uc-ghost { background: transparent; cursor: pointer; font: inherit; font-size: 13px; }
 .uc-recent { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 26px; align-items: center; }
 .uc-recent a { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--color-border); color: var(--color-text-secondary); text-decoration: none; }
 .uc-recent a:hover { border-color: var(--color-border-active); color: var(--color-text-primary); }

@@ -13,16 +13,53 @@ class UgcChatController extends Controller
 {
     public function __construct(private UgcChatService $chats) {}
 
+    /**
+     * The workspace's UGC chats, newest first, a page at a time (Recent conversations, 2026-10-15): each with its title
+     * (or its first message), where it stands (draft, pitched, making, made, needs a look) and the made video's
+     * thumbnail. A fixed handful of queries per page, however long the history.
+     */
     public function index(Request $request): JsonResponse
     {
         if (! UgcChatService::allowed($request->user())) return $this->error('not_available', 'Not available on this account yet.', 404);
-        // A chat with no pitch yet is named by its first message, so unfinished chats can be told apart.
-        $rows = DB::table('ugc_chats')->where('workspace_id', $request->user()->workspace_id)->orderByDesc('updated_at')->limit(30)
-            ->get(['id', 'title', 'updated_at'])->map(fn ($c) => ['id' => $c->id, 'updated_at' => $c->updated_at, 'title' => $c->title
-                ?: \Illuminate\Support\Str::limit(trim((string) DB::table('ugc_chat_messages')->where('chat_id', $c->id)->where('role', 'user')->where('content', '!=', '')->orderBy('id')->value('content')), 48)
-                ?: 'New UGC video'])
-            ->filter(fn ($c) => DB::table('ugc_chat_messages')->where('chat_id', $c['id'])->exists())->values();
-        return response()->json(['data' => ['chats' => $rows], 'meta' => []]);
+        $v = $request->validate(['limit' => ['sometimes', 'integer', 'min:1', 'max:50'], 'offset' => ['sometimes', 'integer', 'min:0'], 'search' => ['sometimes', 'nullable', 'string', 'max:120']]);
+        $limit = (int) ($v['limit'] ?? 30); $offset = (int) ($v['offset'] ?? 0); $search = trim((string) ($v['search'] ?? ''));
+        $first = DB::table('ugc_chat_messages as f')->select('f.content')->whereColumn('f.chat_id', 'c.id')->where('f.role', 'user')->where('f.content', '!=', '')->orderBy('f.id')->limit(1);
+        $query = DB::table('ugc_chats as c')->where('c.workspace_id', $request->user()->workspace_id)
+            ->whereExists(fn ($q) => $q->select(DB::raw(1))->from('ugc_chat_messages as m')->whereColumn('m.chat_id', 'c.id'))
+            ->select('c.id', 'c.title', 'c.updated_at')->selectSub($first, 'first_text');
+        if ($search !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], mb_strtolower($search)).'%';
+            $query->where(fn ($q) => $q->whereRaw('lower(c.title) like ?', [$like])
+                ->orWhereExists(fn ($m) => $m->select(DB::raw(1))->from('ugc_chat_messages as s')->whereColumn('s.chat_id', 'c.id')->where('s.role', 'user')->whereRaw('lower(s.content) like ?', [$like])));
+        }
+        $rows = $query->orderByDesc('c.updated_at')->orderByDesc('c.id')->offset($offset)->limit($limit + 1)->get();
+        $more = $rows->count() > $limit;
+        $rows = $rows->take($limit)->values();
+        $ids = $rows->pluck('id')->all();
+
+        // The latest pitch and the latest "making" message of each chat, in one query.
+        $last = [];
+        foreach (DB::table('ugc_chat_messages')->whereIn('chat_id', $ids ?: ['-'])->whereIn('kind', ['pitch', 'making'])->orderBy('id')->get(['chat_id', 'kind', 'payload_json']) as $m) {
+            $last[$m->chat_id][$m->kind] = json_decode((string) $m->payload_json, true) ?: [];
+        }
+        $takeIds = collect($last)->flatMap(fn ($k) => collect($k['making']['runs'] ?? [])->flatMap(fn ($r) => $r['take_ids'] ?? []))->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $projects = $takeIds ? DB::table('projects')->whereIn('id', $takeIds)->where('workspace_id', $request->user()->workspace_id)->pluck('status', 'id') : collect();
+        $visuals = $takeIds ? DB::table('scenes')->whereIn('project_id', $takeIds)->whereNotNull('visual_asset_id')->orderBy('scene_order')->get(['project_id', 'visual_asset_id'])->groupBy('project_id')->map(fn ($g) => (int) $g->first()->visual_asset_id) : collect();
+        $types = $visuals->isNotEmpty() ? DB::table('assets')->whereIn('id', $visuals->values()->all())->pluck('asset_type', 'id') : collect();
+
+        $chats = $rows->map(function ($c) use ($last, $projects, $visuals, $types) {
+            $runs = $last[$c->id]['making']['runs'] ?? [];
+            $statuses = collect($runs)->flatMap(fn ($r) => $r['take_ids'] ?? [])->map(fn ($id) => $projects[(int) $id] ?? null)->filter();
+            $state = $runs === [] ? (isset($last[$c->id]['pitch']) ? 'pitched' : 'draft')
+                : ($statuses->contains('needs_attention') ? 'needs' : ($statuses->isNotEmpty() && $statuses->every(fn ($s) => $s === 'ready_for_review') ? 'made' : 'making'));
+            $take = collect($runs)->flatMap(fn ($r) => $r['take_ids'] ?? [])->first(fn ($id) => isset($visuals[(int) $id]));
+            $thumb = $take !== null ? $visuals[(int) $take] : null;
+            return ['id' => $c->id, 'updated_at' => $c->updated_at, 'state' => $state,
+                'title' => $c->title ?: (\Illuminate\Support\Str::limit(trim((string) $c->first_text), 60) ?: 'New UGC video'),
+                'thumbnail_url' => $thumb ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.assets.content', now()->addHours(2), ['assetId' => $thumb]) : null,
+                'thumbnail_type' => $thumb ? ($types[$thumb] ?? null) : null];
+        })->values();
+        return response()->json(['data' => ['chats' => $chats], 'meta' => ['next_offset' => $more ? $offset + $limit : null]]);
     }
 
     public function store(Request $request): JsonResponse
