@@ -410,6 +410,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if (! empty($this->chunks[0]['music'])) $finalPath = $this->musicBed($finalPath, (string) $this->chunks[0]['music'], $temps);
             // ASMR's quiet sounds raised to one steady level for phones, gently (no pumping of room hiss).
             if (! empty($this->chunks[0]['requires_audio'])) $finalPath = self::levelAsmr($finalPath, $temps);
+            // Every other take to the social standard Create delivers at (RD-08): -14 LUFS, true peak at or below -1 dB.
+            else $finalPath = self::levelForSocial($finalPath, $temps);
 
             $storagePath = sprintf('workspaces/%d/assets/ugc-oneshot/%s.mp4', $project->workspace_id, Str::uuid());
             $storageUrl = $storage->put($storagePath, file_get_contents($finalPath), ['ContentType' => 'video/mp4']);
@@ -1087,6 +1089,30 @@ class GenerateOneShotUgcJob implements ShouldQueue
     }
 
     /** One steady level for ASMR (-20 LUFS, gentle range), video untouched. Any failure keeps the take as made. */
+    /** Integrated loudness and true peak of a file's sound (EBU R128); nulls when it has none. */
+    public static function loudness(string $path): array
+    {
+        $err = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-nostats', '-i', $path, '-map', '0:a:0?', '-af', 'ebur128=peak=true', '-f', 'null', '-'])->errorOutput();
+        preg_match_all('/\bI:\s+(-?[\d.]+)\s+LUFS/', $err, $i);
+        preg_match_all('/Peak:\s+(-?[\d.]+)\s+dBFS/', $err, $p);
+        return ['lufs' => $i[1] ? (float) end($i[1]) : null, 'peak' => $p[1] ? (float) end($p[1]) : null];
+    }
+
+    /**
+     * A take levelled to where social platforms play (RD-08, the parity standard Create's delivery check uses): -14 LUFS
+     * integrated, true peak at or below -1 dB. Left alone when already within 1 LU and under the peak, or silent.
+     */
+    private static function levelForSocial(string $path, array &$temps): string
+    {
+        $m = self::loudness($path);
+        if ($m['lufs'] === null || $m['lufs'] < -60) return $path;
+        if (abs($m['lufs'] + 14) <= 1 && ($m['peak'] ?? -99) <= -1) return $path;
+        $out = tempnam(sys_get_temp_dir(), 'oneshot-level-').'.mp4';
+        $temps[] = $out;
+        $run = Process::timeout(300)->run(['ffmpeg', '-y', '-i', $path, '-c:v', 'copy', '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.84:level=false', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', $out]);
+        return $run->successful() && filesize($out) ? $out : $path;
+    }
+
     private static function levelAsmr(string $path, array &$temps): string
     {
         $out = tempnam(sys_get_temp_dir(), 'asmr-level-').'.mp4';

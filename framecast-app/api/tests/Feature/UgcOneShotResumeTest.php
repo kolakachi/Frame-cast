@@ -653,6 +653,20 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['1' => 90, '2' => 60], $s['face_scores'], 'a mix-up never scores at or above the pass mark');
     }
 
+    public function test_a_take_is_levelled_to_social_loudness_with_true_peak_under_minus_one(): void
+    {
+        $this->clip = sys_get_temp_dir().'/oneshot-loud-clip.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=180x320:r=24:d=4', '-f', 'lavfi', '-i', 'sine=f=440:d=4,volume=0.95',
+            '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', $this->clip])->throw();
+        $this->assertGreaterThan(1, abs(GenerateOneShotUgcJob::loudness($this->clip)['lufs'] + 14), 'the clip starts off the standard');
+        $this->assertNull($this->run_($this->job([['prompt' => 'A line.', 'seconds' => 4]])));
+        $video = sys_get_temp_dir().'/oneshot-loud-made.mp4';
+        file_put_contents($video, app(StorageService::class)->get((string) \App\Models\Asset::query()->latest('id')->value('storage_url')));
+        $m = GenerateOneShotUgcJob::loudness($video);
+        $this->assertEqualsWithDelta(-14, $m['lufs'], 1.0);
+        $this->assertLessThanOrEqual(-1, $m['peak']);
+    }
+
     public function test_the_charge_carries_what_the_take_really_cost(): void
     {
         DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);
