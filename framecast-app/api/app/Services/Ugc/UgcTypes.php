@@ -19,7 +19,7 @@ final class UgcTypes
         'skit' => ['Skit', 'Two cast speakers in one scene, with a twist', 'story', 'Two cast speakers, shot/reverse-shot. Each spoken beat has speaker 1 or 2 matching the selected cast order. One speaker per shot; no overlapping dialogue. Preserve setup, exchange and payoff.'],
         'listicle' => ['Listicle', 'A numbered list of reasons or tips', 'direct_camera', 'Keep the promised number of points and their order. Say scripted numbers; never add unrequested counting.'],
         'founder_story' => ['Founder story', 'Why it was made, told with your own presenter', 'direct_camera', 'The maker tells the supplied origin story using their own selected presenter. Do not invent biography.'],
-        'reaction' => ['Reaction', 'A silent reaction with an on-screen headline', 'reaction', 'One silent 5- or 10-second reaction, with a headline and restrained physical movement.'],
+        'reaction' => ['Reaction', 'A silent reaction with an on-screen headline', 'reaction', 'One silent 5- or 10-second reaction shot of the presenter, with restrained physical movement and a short headline that sets up what they are reacting to. The headline is burned on screen, so the picture has no text.'],
     ];
 
     public const ROLES = ['product', 'footage', 'sample', 'background', 'left', 'right'];
@@ -92,7 +92,7 @@ final class UgcTypes
 
     public static function native(string $type, ?\App\Models\User $user = null): bool
     {
-        return in_array($type, ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'skit', 'green_screen', 'pov_hook'], true)
+        return in_array($type, ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'skit', 'green_screen', 'pov_hook', 'reaction'], true)
             && self::live($type, $user);
     }
 }

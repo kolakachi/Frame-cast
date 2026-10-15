@@ -383,7 +383,7 @@ class UgcChatTest extends TestCase
             $take = $stored['takes'][0];
             $this->assertSame($type, $take['request']['ugc_type']);
             $this->assertSame($format, end($this->planned)['format']);
-            $this->assertSame($type === 'reaction' ? 'composed' : 'one_shot', $take['mode'], $type);
+            $this->assertSame('one_shot', $take['mode'], $type);
             if ($type === 'skit') {
                 $this->assertCount(1, $pitch['payload']['takes']);
                 $this->assertSame([5, 6], $take['request']['cast_character_ids']);

@@ -457,10 +457,14 @@ class UgcExecutionTest extends TestCase
         $storage = $this->createMock(\App\Services\Media\StorageService::class);
         $storage->method('readStream')->willReturnCallback(function () { $stream = fopen('php://temp', 'r+'); fwrite($stream, 'image-bytes'); rewind($stream); return $stream; });
         $this->app->instance(\App\Services\Media\StorageService::class, $storage);
-        foreach (['asmr', 'green_screen', 'skit'] as $type) {
+        foreach (['asmr', 'green_screen', 'skit', 'pov_hook', 'reaction'] as $type) {
             $shots = [$this->shot()];
             $extra = ['ugc_type' => $type, 'character_id' => 1, 'engine' => 'omni'];
-            $format = $type === 'green_screen' ? 'direct_camera' : 'story';
+            $format = $type === 'green_screen' ? 'direct_camera' : ($type === 'reaction' ? 'reaction' : 'story');
+            // Silent: the headline is the ad, burned on the take from each shot's start.
+            if ($type === 'pov_hook') $shots = [$this->shot(['kind' => 'b_roll', 'source' => 'generate', 'script_text' => '', 'headline' => 'POV: it finally fits', 'seconds' => 4, 'motion_prompt' => 'A knowing look.']),
+                $this->shot(['kind' => 'b_roll', 'source' => 'generate', 'script_text' => '', 'headline' => '', 'seconds' => 3, 'motion_prompt' => 'Sets it down.'])];
+            if ($type === 'reaction') $shots = [$this->shot(['kind' => 'reaction', 'script_text' => '', 'headline' => 'When the bill is half', 'seconds' => 5, 'motion_prompt' => 'A slow, pleased nod.'])];
             if ($type === 'asmr') $shots = [$this->shot(['kind' => 'b_roll', 'source' => 'upload', 'asset_id' => 11, 'script_text' => '', 'motion_prompt' => 'Listen to the pouring.'])];
             if ($type === 'green_screen') $extra['composition'] = ['layout' => 'green_screen', 'background_asset_id' => 10];
             if ($type === 'skit') {
@@ -476,6 +480,8 @@ class UgcExecutionTest extends TestCase
             Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class, function ($job) use ($type) {
                 if ($type === 'asmr') return ($job->chunks[0]['source_media']['url'] ?? '') === 'source.mp4' && $job->chunks[0]['requires_audio'] && $job->chunks[0]['dialogue'] === '';
                 if ($type === 'green_screen') return ($job->composition['assets'][0]['id'] ?? null) === 10;
+                if ($type === 'pov_hook') return ($job->chunks[0]['headlines'] ?? null) === [['text' => 'POV: it finally fits', 'start' => 0.0, 'end' => 7.0]] && $job->chunks[0]['dialogue'] === '';
+                if ($type === 'reaction') return ($job->chunks[0]['headlines'] ?? null) === [['text' => 'When the bill is half', 'start' => 0.0, 'end' => 5.0]];
                 // Each speaker's photos travel as ids, read by the job (#7), never inline copies.
                 // Each speaker is read in a voice of their own, synced onto Omni's clip.
                 if (($job->chunks[0]['voice']['id'] ?? 'a') === ($job->chunks[1]['voice']['id'] ?? 'a')) return false;

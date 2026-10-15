@@ -223,6 +223,18 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringContainsString('toward the left edge', $chunks[1]['prompt']);
     }
 
+    public function test_pov_and_reaction_are_silent_and_leave_room_for_their_headline(): void
+    {
+        foreach (['pov_hook', 'reaction'] as $type) {
+            $chunk = UgcOneShotCompiler::compile([['kind' => $type === 'reaction' ? 'reaction' : 'b_roll', 'script_text' => '', 'seconds' => 5,
+                'visual_brief' => 'Kitchen counter, headline in the safe space above.', 'motion_prompt' => 'A slow knowing nod.', 'headline' => 'POV: it worked']], ['ugc_type' => $type])[0];
+            $this->assertStringContainsString('top quarter of the frame free', $chunk['prompt'], $type);
+            $this->assertStringContainsString('No speech', $chunk['prompt'], $type);
+            $this->assertStringNotContainsString('safe space', $chunk['prompt'], 'no text is asked of the model');
+            $this->assertSame('', $chunk['dialogue']);
+        }
+    }
+
     public function test_green_screen_has_a_keyable_background_and_lists_allow_scripted_numbers(): void
     {
         $beat = ['script_text' => 'One, it is useful. Two, it is simple.', 'seconds' => 8];

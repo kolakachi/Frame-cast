@@ -1036,7 +1036,7 @@ class UgcController extends Controller
             }
         }
         $spoken = array_values(array_filter($segments, fn ($s) => trim((string) $s['script_text']) !== ''));
-        if ($spoken === [] && ! in_array($v['ugc_type'] ?? '', ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'pov_hook'], true)) {
+        if ($spoken === [] && ! in_array($v['ugc_type'] ?? '', ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'pov_hook', 'reaction'], true)) {
             throw ValidationException::withMessages(['segments' => 'A one-take ad needs spoken beats. Silent card plans generate through the standard path.']);
         }
 
@@ -1313,8 +1313,8 @@ class UgcController extends Controller
             $cast = ($v['ugc_type'] ?? '') === 'skit' ? [1 => $v['cast_character_ids'][0] ?? null, 2 => $v['cast_character_ids'][1] ?? null] : [0 => $v['character_id'] ?? null];
             $chunks = \App\Services\Ugc\UgcVoices::assign($chunks, $segments, $cast, (string) $presenter);
         }
-        // A POV hook's words are the ad (2026-10-15): each shot's headline, from its start until the next one, burned on the take.
-        if (($v['ugc_type'] ?? '') === 'pov_hook' && $chunks !== []) $chunks[0]['headlines'] = \App\Services\Ugc\UgcHeadline::cues($segments);
+        // A POV hook's or a reaction's words are the ad (2026-10-15): each shot's headline, from its start until the next one, burned on the take.
+        if (in_array($v['ugc_type'] ?? '', ['pov_hook', 'reaction'], true) && $chunks !== []) $chunks[0]['headlines'] = \App\Services\Ugc\UgcHeadline::cues($segments);
         $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
         foreach ($chunks as &$chunk) {
             // The storyboard and its reviewer need the take's clothes (take 287's stills copied the presenter's photo).
