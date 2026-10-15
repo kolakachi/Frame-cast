@@ -1246,6 +1246,11 @@ class UgcController extends Controller
         if ($engine === 'seedance25' && $single === null) {
             $engine = 'veo';
         }
+        // The same rule as the quote (UgcOneShotPricing): Veo Fast never makes a take with a presenter.
+        if ($engine === 'veo' && \App\Services\Ugc\UgcOneShotPricing::hasPresenter($v, $segments)) {
+            if (($v['engine'] ?? null) === 'veo') throw ValidationException::withMessages(['engine' => \App\Services\Ugc\UgcOneShotPricing::VEO_PRESENTER]);
+            $engine = 'omni';
+        }
         $chunks = $single !== null
             ? [$single]
             : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style,
@@ -1261,7 +1266,8 @@ class UgcController extends Controller
         // A demo take is a normal 720p Seedance render (the clip is spliced in
         // post, not sent to the model) — no video_in premium; draft is off.
         $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
-        $quote = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds($chunks, $segments, $engine) * $perSecond);
+        $quote = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds($chunks, $segments, $engine) * $perSecond)
+            + \App\Services\Ugc\UgcOneShotPricing::lipsyncCredits($engine, $segments, (string) ($v['ugc_type'] ?? ''));
         // 15 seconds a take on the Test Pass — the length the offer promises,
         // and what keeps 600 credits worth one full-quality ad or two drafts.
         if ($isTestPass && $planSeconds > 15) {
@@ -1299,6 +1305,11 @@ class UgcController extends Controller
         }
         $chunks = $sheets !== [] ? \App\Services\Ugc\UgcActionSheet::apply($chunks, $sheets)
             : \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)->stage($chunks, $productNote));
+        // Omni's speech is replaced by the speaker's own fixed voice, lip-synced (UgcVoices, ReplicateLipsyncAdapter).
+        if ($engine === 'omni' && ($v['ugc_type'] ?? '') !== 'asmr' && config('services.ugc.omni_lipsync', true)) {
+            $cast = ($v['ugc_type'] ?? '') === 'skit' ? [1 => $v['cast_character_ids'][0] ?? null, 2 => $v['cast_character_ids'][1] ?? null] : [0 => $v['character_id'] ?? null];
+            $chunks = \App\Services\Ugc\UgcVoices::assign($chunks, $segments, $cast, (string) $presenter);
+        }
         $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
         foreach ($chunks as &$chunk) {
             // The storyboard and its reviewer need the take's clothes (take 287's stills copied the presenter's photo).

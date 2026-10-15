@@ -102,7 +102,7 @@ class VendorUsageRecorder
     private static function service(string $model, string $basis, array $p): string
     {
         if ($basis === 'per_image') return 'image';
-        if (isset($p['metrics']['video_output_duration_seconds']) || preg_match('/veo|omni|seedance|wan-|hailuo|kling|fabric|modify-video|aleph/', $model)) return 'video';
+        if (isset($p['metrics']['video_output_duration_seconds']) || preg_match('/veo|omni|seedance|wan-|hailuo|kling|fabric|modify-video|aleph|lipsync/', $model)) return 'video';
         if (preg_match('/music|audio|tts|chatterbox/', $model)) return 'audio';
         return 'other';
     }

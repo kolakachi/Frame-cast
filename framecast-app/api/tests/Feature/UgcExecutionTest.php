@@ -469,13 +469,16 @@ class UgcExecutionTest extends TestCase
             }
             // Billed for the seconds generated (#4); the ASMR take only replays uploaded footage, so it is free.
             $segments = \App\Services\Ugc\UgcPlan::normalise($shots, $format);
-            $extra['credits'] = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds(\App\Services\Ugc\UgcOneShotCompiler::compile($segments, ['ugc_type' => $type], \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS), $segments, 'omni') * CreditService::VIDEO_ONESHOT_PER_SECOND['omni']);
+            $extra['credits'] = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds(\App\Services\Ugc\UgcOneShotCompiler::compile($segments, ['ugc_type' => $type], \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS), $segments, 'omni') * CreditService::VIDEO_ONESHOT_PER_SECOND['omni'])
+                + \App\Services\Ugc\UgcOneShotPricing::lipsyncCredits('omni', $segments, $type);
             $response = (new UgcController)->generateOneShot($this->request($shots, $format, $extra), app(CreditService::class));
             $this->assertSame(201, $response->getStatusCode(), $type.' '.json_encode($response->getData(true)));
             Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class, function ($job) use ($type) {
                 if ($type === 'asmr') return ($job->chunks[0]['source_media']['url'] ?? '') === 'source.mp4' && $job->chunks[0]['requires_audio'] && $job->chunks[0]['dialogue'] === '';
                 if ($type === 'green_screen') return ($job->composition['assets'][0]['id'] ?? null) === 10;
                 // Each speaker's photos travel as ids, read by the job (#7), never inline copies.
+                // Each speaker is read in a voice of their own, synced onto Omni's clip.
+                if (($job->chunks[0]['voice']['id'] ?? 'a') === ($job->chunks[1]['voice']['id'] ?? 'a')) return false;
                 return count($job->chunks) === 2 && ($job->chunks[0]['reference_asset_ids'][0] ?? null) === 10 && ! empty($job->chunks[1]['reference_asset_ids'])
                     && empty($job->chunks[0]['reference_images']);
             });

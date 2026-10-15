@@ -57,6 +57,15 @@ class UgcOneShotPricing
             || collect($segments)->contains(fn ($s) => in_array($s['kind'] ?? '', ['on_camera', 'reaction'], true));
     }
 
+    /** The lip-sync pass on an Omni take: its spoken seconds at the lip-sync rate (none when it is off or not Omni). */
+    public static function lipsyncCredits(string $engine, array $segments, string $type = ''): int
+    {
+        // ASMR keeps the model's own sound: a read voice would replace the crack and fizz it is made of.
+        if ($engine !== 'omni' || $type === 'asmr' || ! config('services.ugc.omni_lipsync', true)) return 0;
+        $spoken = array_sum(array_map(fn ($s) => trim((string) ($s['script_text'] ?? '')) !== '' ? (float) ($s['seconds'] ?? 0) : 0, $segments));
+        return (int) ceil($spoken) * CreditService::VIDEO_LIPSYNC_PER_SECOND;
+    }
+
     public static function price(User $user, array $v, array $segments, CreditService $credits): array
     {
         $workspaceId = (int) $user->workspace_id;
@@ -140,6 +149,6 @@ class UgcOneShotPricing
         $chunks = $single !== null ? [$single] : UgcOneShotCompiler::compile($segments, $style,
             $engine === 'omni' ? UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : UgcOneShotCompiler::MAX_SEGMENT_SECONDS);
 
-        return ['engine' => $engine, 'quote' => (int) (self::quoteSeconds($chunks, $segments, $engine) * $perSecond), 'plan_seconds' => $planSeconds, 'draft' => $draft, 'presenter_attached' => $presenterAttached];
+        return ['engine' => $engine, 'quote' => (int) (self::quoteSeconds($chunks, $segments, $engine) * $perSecond) + self::lipsyncCredits($engine, $segments, (string) ($v['ugc_type'] ?? '')), 'plan_seconds' => $planSeconds, 'draft' => $draft, 'presenter_attached' => $presenterAttached];
     }
 }

@@ -21,7 +21,8 @@ use Illuminate\Support\Str;
  * One full UGC video from compiled screenplay chunks: each chunk generates
  * on Veo with native speech, each next chunk starts from the previous one's
  * tail frame so the presenter carries through, and the segments concat into
- * a single take. No scenes, no TTS, no lip-sync — the ad is born whole.
+ * a single take. No scenes; an Omni line is read by the speaker's fixed voice
+ * and lip-synced onto the clip (voiceRead, lipsync), every other engine speaks natively.
  *
  * Charge-on-success: a failed segment charges nothing and leaves the error
  * on the scene for a free retry.
@@ -207,6 +208,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 } else {
                     if (! $this->owns($scene->refresh())) return; // superseded: the newer run makes the rest
                     $sourceOnly = ! empty($chunk['source_media']) && trim((string) ($chunk['dialogue'] ?? '')) === '';
+                    // An Omni line is read once by its speaker's voice first, and the clip is asked for the read's length, so
+                    // the read can be synced onto it after (owner, 2026-10-14: "for omni we can use lip sync").
+                    $read = $sourceOnly ? null : $this->voiceRead($chunk, $i, $project, $temps);
+                    if ($read !== null) $chunk['seconds'] = max(2, (int) ceil($read['seconds'] + 0.4));
                     $path = $sourceOnly
                         ? app(\App\Services\Ugc\UgcComposition::class)->source($chunk['source_media'], $chunk['seconds'], (float) ($chunk['source_offset'] ?? 0), $storage, $temps, ! empty($chunk['requires_audio']))
                         : $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
@@ -261,6 +266,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // any trim, with the exact prompt it was given.
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['prompt' => (string) $chunk['prompt'], 'sheet' => $chunk['sheet'] ?? null,
                         'seconds_asked' => $chunk['seconds'] ?? null, 'seconds_made' => self::seconds($path)], $path);
+                    if ($read !== null) $path = $this->lipsync($path, $read, $i, $temps);
                     $heard = $this->checkSpeech($path, (string) ($chunk['dialogue'] ?? ''), $i);
                     $keyColour = $this->composition['key_color'] ?? '0x00FF00';
                     if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
@@ -270,10 +276,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         \Illuminate\Support\Facades\Log::info('one-shot: no key backdrop, clip made again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
                         $again = $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
                         if (! $this->owns($scene->refresh())) return;
-                        $heard = $this->checkSpeech($again, (string) ($chunk['dialogue'] ?? ''), $i);
                         if (! \App\Services\Ugc\UgcComposition::hasGreenBackground($again, $keyColour)) {
                             throw new \RuntimeException('Segment '.($i + 1).' came back without the plain backdrop twice, so the presenter cannot be placed over your page. Nothing was charged. Try again, or make it as a testimonial instead.');
                         }
+                        if ($read !== null) $again = $this->lipsync($again, $read, $i, $temps);
+                        $heard = $this->checkSpeech($again, (string) ($chunk['dialogue'] ?? ''), $i);
                         $path = $again;
                     }
                     if (! empty($chunk['requires_audio'])) {
@@ -672,6 +679,60 @@ class GenerateOneShotUgcJob implements ShouldQueue
         }
 
         return $path;
+    }
+
+    /**
+     * The speaker's read of an Omni clip's line, as a local WAV with its length; null when the clip is not voiced this
+     * way, or when the read failed (the clip then keeps Omni's own voice: a worse take, not a lost one).
+     *
+     * @return array{path: string, seconds: float}|null
+     */
+    private function voiceRead(array $chunk, int $i, Project $project, array &$temps): ?array
+    {
+        $line = trim((string) ($chunk['dialogue'] ?? ''));
+        $voice = $chunk['voice'] ?? null;
+        if ($this->engine !== 'omni' || ! config('services.ugc.omni_lipsync') || $line === '' || empty($voice['id'])) return null;
+        try {
+            $tts = app(\App\Services\Generation\TTS\TTSAdapter::class)->synthesize($line, 'en', (string) $voice['id'], (float) ($voice['speed'] ?? 1.0), [
+                'voice_prompt' => (string) ($voice['direction'] ?? ''), 'usage_context' => ['workspace_id' => (int) $project->workspace_id, 'project_id' => $project->id, 'purpose' => 'ugc_lipsync_read'],
+            ]);
+            $url = (string) ($tts['audio_url'] ?? '');
+            $bytes = str_starts_with($url, 'http') ? @file_get_contents($url) : app(StorageService::class)->get($url);
+            if (! is_string($bytes) || $bytes === '') throw new \RuntimeException('the read could not be fetched');
+            $raw = tempnam(sys_get_temp_dir(), 'oneshot-read-');
+            $wav = $raw.'.wav';
+            array_push($temps, $raw, $wav);
+            file_put_contents($raw, $bytes);
+            // Sync takes WAV; a short tail of silence keeps the last word from being clipped at the cut.
+            $run = Process::timeout(60)->run(['ffmpeg', '-y', '-i', $raw, '-af', 'apad=pad_dur=0.25', '-ar', '48000', '-ac', '1', $wav]);
+            $seconds = $run->successful() ? self::seconds($wav) : null;
+            if ($seconds === null) throw new \RuntimeException('the read could not be converted');
+            return ['path' => $wav, 'seconds' => $seconds];
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('one-shot: line not read, Omni keeps its own voice', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            return null;
+        }
+    }
+
+    /** The clip with the speaker's read synced onto its mouth; the clip as made when the sync fails. */
+    private function lipsync(string $clip, array $read, int $i, array &$temps): string
+    {
+        try {
+            // A clip longer than the read is cut to it first, so the presenter does not stand silent at the end.
+            $made = self::seconds($clip);
+            if ($made !== null && $made > $read['seconds'] + 0.5) {
+                $cut = tempnam(sys_get_temp_dir(), 'oneshot-cut-').'.mp4';
+                $temps[] = $cut;
+                $run = Process::timeout(120)->run(['ffmpeg', '-y', '-i', $clip, '-t', sprintf('%.2f', $read['seconds'] + 0.2), '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', $cut]);
+                if ($run->successful() && filesize($cut)) $clip = $cut;
+            }
+            $synced = app(\App\Services\Generation\Video\ReplicateLipsyncAdapter::class)->sync($clip, $read['path']);
+            $temps[] = $synced;
+            return $synced;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('one-shot: lip-sync failed, Omni keeps its own voice', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            return $clip;
+        }
     }
 
     /** Whether this job's run still owns the take. */

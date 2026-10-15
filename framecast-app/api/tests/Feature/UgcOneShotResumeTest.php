@@ -24,6 +24,7 @@ class UgcOneShotResumeTest extends TestCase
     private int $balance = 100000;
     private ?\Closure $onPoll = null;
     private array $startFrames = [];
+    private array $askedSeconds = [];
 
     private array $sentPrompts = [];
     private array $refs = [];
@@ -55,7 +56,7 @@ class UgcOneShotResumeTest extends TestCase
                 '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
         }
         $veo = Mockery::mock(ReplicateVeoAdapter::class);
-        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = []) { $this->sentPrompts[] = $prompt; $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
+        $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = []) { $this->sentPrompts[] = $prompt; $this->askedSeconds[] = $seconds; $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
             if ($this->onPoll) ($this->onPoll)();
@@ -343,6 +344,51 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertNull($error, (string) $error?->getMessage());
         $this->assertSame(1, $this->starts);
         $this->assertSame([396], $this->charged);
+    }
+
+    private function voiced(?\Closure $sync): array
+    {
+        $read = sys_get_temp_dir().'/oneshot-read.mp3';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'sine=f=220:d=2', '-c:a', 'libmp3lame', $read])->throw();
+        Storage::disk('minio')->put('read.mp3', file_get_contents($read));
+        $tts = Mockery::mock(\App\Services\Generation\TTS\TTSAdapter::class);
+        $tts->shouldReceive('synthesize')->once()->withArgs(fn ($text, $lang, $voice, $speed, $opts) => $text === 'Okay so this works' && $voice === 'Puck' && $opts['voice_prompt'] === 'Excited')
+            ->andReturn(['audio_url' => 'minio://read.mp3', 'duration_seconds' => 2.0, 'provider_key' => 'test', 'provider_voice_id' => 'Puck']);
+        $this->app->instance(\App\Services\Generation\TTS\TTSAdapter::class, $tts);
+        $calls = [];
+        $lipsync = Mockery::mock(\App\Services\Generation\Video\ReplicateLipsyncAdapter::class);
+        $lipsync->shouldReceive('sync')->andReturnUsing(function ($video, $audio) use (&$calls, $sync) { $calls[] = [$video, $audio]; return $sync ? $sync($video) : $video; });
+        $this->app->instance(\App\Services\Generation\Video\ReplicateLipsyncAdapter::class, $lipsync);
+        $this->clipWords = ['transcript' => 'Okay so this works', 'provider_key' => 'test', 'words' => [['word' => 'Okay', 'start' => 0.1, 'end' => 0.4], ['word' => 'so', 'start' => 0.4, 'end' => 0.6], ['word' => 'this', 'start' => 0.6, 'end' => 0.8], ['word' => 'works', 'start' => 0.8, 'end' => 1.2]]];
+        $error = $this->run_($this->job([['prompt' => 'Talk to camera.', 'seconds' => 8, 'dialogue' => 'Okay so this works', 'voice' => ['id' => 'Puck', 'direction' => 'Excited', 'speed' => 1.0]]]));
+        return [$error, $calls];
+    }
+
+    public function test_an_omni_line_is_read_once_and_synced_onto_a_clip_sized_to_the_read(): void
+    {
+        [$error, $calls] = $this->voiced(null);
+        $this->assertNull($error, (string) $error?->getMessage());
+        $this->assertSame([3], $this->askedSeconds, 'the clip is asked for the read (2 s plus its tail), not the plan\'s 8 s');
+        $this->assertCount(1, $calls);
+        $this->assertStringEndsWith('.wav', $calls[0][1], 'Sync takes WAV');
+        $this->assertSame([396], $this->charged);
+    }
+
+    public function test_a_failed_lip_sync_keeps_the_clip_with_omnis_own_voice(): void
+    {
+        [$error, $calls] = $this->voiced(fn () => throw new \RuntimeException('Lip-sync failed: busy'));
+        $this->assertNull($error, (string) $error?->getMessage());
+        $this->assertCount(1, $calls);
+        $this->assertSame([396], $this->charged, 'a worse take, not a lost one');
+    }
+
+    public function test_a_line_without_a_voice_is_never_read_or_synced(): void
+    {
+        $this->app->instance(\App\Services\Generation\TTS\TTSAdapter::class, Mockery::mock(\App\Services\Generation\TTS\TTSAdapter::class)->shouldNotReceive('synthesize')->getMock());
+        $this->app->instance(\App\Services\Generation\Video\ReplicateLipsyncAdapter::class, Mockery::mock(\App\Services\Generation\Video\ReplicateLipsyncAdapter::class)->shouldNotReceive('sync')->getMock());
+        $this->clipWords = ['transcript' => 'Okay so', 'provider_key' => 'test', 'words' => [['word' => 'Okay', 'start' => 0.1, 'end' => 0.4], ['word' => 'so', 'start' => 0.4, 'end' => 0.6]]];
+        $this->assertNull($this->run_($this->job([['prompt' => 'Talk.', 'seconds' => 6, 'dialogue' => 'Okay so']])));
+        $this->assertSame([6], $this->askedSeconds);
     }
 
     public function test_skit_photos_travel_as_ids_and_are_read_only_from_the_workspace(): void

@@ -16,6 +16,7 @@
 return [
     'replicate' => [
         'google/gemini-omni-1.1' => ['per_second' => 0.15],
+        'sync/lipsync-2-pro' => ['per_second' => 0.083], // $5 per minute of output (the UGC Omni lip-sync pass)
         'google/veo-3.1' => ['per_second' => 0.40, 'no_audio' => 0.20],
         'google/veo-3.1-fast' => ['per_second' => 0.15, 'no_audio' => 0.10],
         'bytedance/seedance-2.5' => ['per_second' => ['480p' => 0.1028, '720p' => 0.2312], 'default' => '720p'],
