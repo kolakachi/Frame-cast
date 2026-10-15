@@ -668,6 +668,73 @@
       return tl;
     },
 
+    /* ---- Product hero (RD-16): a product photo (a cutout PNG) made to feel shot in a studio. ---- */
+
+    /* floor: set once. A cutout stands on a glossy floor: a soft contact shadow under it and a faded mirror image below.
+       el is the product <img> (a transparent cutout) inside a positioned box. opts: reflection (opacity, .28),
+       fade (share of the height the reflection shows, .45), shadow (opacity, .35), gap (px, 0). */
+    floor: function (el, opts) {
+      el = $(el); opts = opts || {};
+      var box = el.parentNode, h = el.offsetHeight, w = el.offsetWidth, top = el.offsetTop + h + (opts.gap || 0), fade = opts.fade || 0.45;
+      var mirror = el.cloneNode(true); mirror.removeAttribute('id');
+      mirror.style.cssText = 'position:absolute;left:' + el.offsetLeft + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px;transform:scaleY(-1);opacity:' + (opts.reflection == null ? 0.28 : opts.reflection)
+        + ';-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,1) 0%,rgba(0,0,0,0) ' + Math.round(fade * 100) + '%);mask-image:linear-gradient(to top,rgba(0,0,0,1) 0%,rgba(0,0,0,0) ' + Math.round(fade * 100) + '%);pointer-events:none';
+      var shadow = document.createElement('div');
+      shadow.style.cssText = 'position:absolute;left:' + (el.offsetLeft + w * 0.12) + 'px;top:' + (top - h * 0.03) + 'px;width:' + (w * 0.76) + 'px;height:' + (h * 0.06) + 'px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(0,0,0,' + (opts.shadow == null ? 0.35 : opts.shadow) + ') 0%,rgba(0,0,0,0) 70%);pointer-events:none';
+      box.insertBefore(shadow, el); box.insertBefore(mirror, el);
+      return { mirror: mirror, shadow: shadow };
+    },
+
+    /* productTurn (low, 2-3 s): a flat product photo turns a few degrees in 3D under the light, as on a turntable,
+       with a sheen sliding across its surface (the sheen is masked to the cutout, so only the product shines).
+       el is the product <img>. opts: angle (degrees each side, 14), duration (2.4), sheen (true), lift (px, 12). */
+    productTurn: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var a = opts.angle || 14, d = opts.duration || 2.4;
+      if (el.parentNode && el.parentNode.style) el.parentNode.style.perspective = el.parentNode.style.perspective || '1400px';
+      tl.fromTo(el, { rotationY: -a, y: 0 }, { rotationY: a, y: -(opts.lift == null ? 12 : opts.lift), duration: d, ease: 'sine.inOut', immediateRender: false }, at);
+      if (opts.sheen !== false && el.getAttribute) {
+        var src = el.getAttribute('src'), s = document.createElement('div');
+        s.style.cssText = 'position:absolute;left:' + el.offsetLeft + 'px;top:' + el.offsetTop + 'px;width:' + el.offsetWidth + 'px;height:' + el.offsetHeight + 'px;pointer-events:none;mix-blend-mode:screen;'
+          + 'background:linear-gradient(105deg,rgba(255,255,255,0) 42%,rgba(255,255,255,.4) 50%,rgba(255,255,255,0) 58%);background-size:300% 100%;'
+          + (src ? '-webkit-mask-image:url(' + src + ');mask-image:url(' + src + ');-webkit-mask-size:100% 100%;mask-size:100% 100%;' : '');
+        el.parentNode.appendChild(s);
+        tl.fromTo(s, { backgroundPosition: '100% 0', rotationY: -a }, { backgroundPosition: '0% 0', rotationY: a, y: -(opts.lift == null ? 12 : opts.lift), duration: d, ease: 'sine.inOut', immediateRender: false }, at);
+      }
+      return tl;
+    },
+
+    /* spotlight (mid, 1.2 s): the stage is dark and a pool of light travels in and lands on the product, then opens a
+       little. el is a full-frame layer above the scene. opts: to ({x, y} stage px: the product's centre), from ({x, y};
+       default off the top left), radius (px, 360), open (final radius, radius * 1.25), dark (.82), duration (1.2),
+       lift (seconds after landing when the dark fades away; omit to stay dark). */
+    spotlight: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth, H = stage.offsetHeight, to = opts.to || { x: W / 2, y: H / 2 }, from = opts.from || { x: -W * 0.2, y: H * 0.1 };
+      var r = opts.radius || 360, dark = opts.dark == null ? 0.82 : opts.dark, d = opts.duration || 1.2;
+      // CSS variables tween on every seek (a callback would not run when a render seeks frame by frame).
+      el.style.background = 'radial-gradient(circle var(--wm-sr) at var(--wm-sx) var(--wm-sy),rgba(0,0,0,0) 0%,rgba(0,0,0,0) 55%,rgba(0,0,0,' + dark + ') 100%)';
+      tl.set(el, { autoAlpha: 0 }, 0).set(el, { autoAlpha: 1 }, at)
+        .fromTo(el, { '--wm-sx': from.x + 'px', '--wm-sy': from.y + 'px' }, { '--wm-sx': to.x + 'px', '--wm-sy': to.y + 'px', duration: d * 0.75, ease: ease['default'], immediateRender: true }, at)
+        .fromTo(el, { '--wm-sr': r + 'px' }, { '--wm-sr': (opts.open || r * 1.25) + 'px', duration: d * 0.4, ease: 'sine.out', immediateRender: true }, at + d * 0.7);
+      // The lights come up after the reveal (opts.lift: seconds after it lands), so later beats are not left in the dark.
+      if (opts.lift != null) tl.to(el, { autoAlpha: 0, duration: 0.6, ease: 'sine.inOut' }, at + d + opts.lift);
+      return tl;
+    },
+
+    /* explode (high, ~1 s): the parts or ingredients burst out of the product and settle at their places around it,
+       each with its label. parts: elements already laid out where they end; they start at the product's centre.
+       opts: from (the product element, or {x, y} stage px), stagger (.06), duration (.8), spin (degrees, 25). */
+    explode: function (tl, parts, at, opts) {
+      opts = opts || {}; var stage = stageOf(opts), list = all(parts);
+      var o = opts.from && opts.from.x != null ? opts.from : centre(opts.from || list[0].parentNode, stage);
+      list.forEach(function (el, i) {
+        var c = centre(el, stage), spin = (i % 2 ? 1 : -1) * (opts.spin == null ? 25 : opts.spin);
+        tl.fromTo(el, { x: o.x - c.x, y: o.y - c.y, scale: 0.3, rotation: spin, autoAlpha: 0 },
+          { x: 0, y: 0, scale: 1, rotation: 0, autoAlpha: 1, duration: opts.duration || 0.8, ease: ease['default'], immediateRender: true }, at + i * (opts.stagger == null ? 0.06 : opts.stagger));
+      });
+      return tl;
+    },
+
     /* circleText: a line of text set around a circle (a stamp, a badge, "MADE TO MOVE · "), turning. el is an empty
        square box; opts: text, size (font px, 34), spin (degrees over duration, 120), duration (4), font. */
     circleText: function (tl, el, at, opts) {
@@ -1025,6 +1092,8 @@
     pop: function (a) { return [['pop', a[2] + 0.04]]; },
     glow: function (a) { return [['chime', a[2] + 0.05]]; },
     heartBurst: function (a) { return [['pop', a[2] + 0.02]]; },
+    spotlight: function (a) { return [['whoosh', a[2] + 0.1]]; },
+    explode: function (a) { return [['whoosh-big', a[2] + 0.05]]; },
     replySticker: function (a) { return [['pop', a[2] + 0.06]]; },
     stitch: function (a) { return [['whoosh-fast', a[3] + 0.05]]; },
     stamp: function (a) { return [['thud', a[2] + 0.1]]; },
@@ -1066,7 +1135,7 @@
     stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
   var OPTS = { tear: 3, sticker: 3, cards: 3, confetti: 3, book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
-    glow: 3, heartBurst: 3, replySticker: 3, stitch: 4, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
+    glow: 3, spotlight: 3, explode: 3, heartBurst: 3, replySticker: 3, stitch: 4, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {
     var fn = WM[name];

@@ -67,6 +67,7 @@ When the plan names a move (plan.reference_systems[].move, reference_decisions[]
 ## More kits (attached when a video needs them; read one with the guidance action when it fits)
 - `kit/collage.md`: torn-paper cuts, die-cut stickers, rapid card montages, silver/ink/duotone/halftone prints, sunburst, confetti, circular badge text (a zine or sticker ad).
 - `kit/documents.md`: the user's own pages and slides shown as they look: pages turning like a book, a deck's slides, a camera move to the part being said.
+- `kit/product.md`: a product photo shot like a studio: glossy floor and shadow, a 2.5D turn with a sheen, a spotlight that finds it, ingredients exploding out with labels.
 - `kit/social.md`: feed-native ads: a reply-to-comment card, a stitch into a corner thumbnail, hearts from the like button, POV captions, and the registry's comment, chat, notes and notification pieces.
 
 ## Sound

@@ -61,6 +61,9 @@ class MotionMoves
         'heart_burst' => 'hearts float up from the like button and fade, as when a video is liked',
         'reply_sticker' => 'the "Reply to @name\'s comment" card pops on with a tilt to open a reply video',
         'stitch' => 'the clip being answered shrinks into a corner thumbnail while the reply fills the frame',
+        'product_turn' => 'a product photo turns a few degrees in 3D with a sheen sliding across it, as on a turntable',
+        'spotlight' => 'the stage goes dark and a pool of light travels in and lands on the product',
+        'explode' => 'the ingredients or parts burst out of the product and settle around it with labels',
         'custom' => 'none of these: built by hand from the description',
     ];
 
@@ -75,6 +78,7 @@ class MotionMoves
         'odometer' => ['mid', 1.0], 'gauge' => ['mid', 1.2], 'streak' => ['high', 0.35],
         'smash' => ['high', 0.05], 'split' => ['mid', 0.7], 'stack' => ['mid', 0.4], 'parallax' => ['low', 3.0],
         'blur_in' => ['low', 0.7], 'letters' => ['mid', 0.8], 'rack_focus' => ['low', 0.6], 'glow' => ['mid', 0.5],
+        'product_turn' => ['low', 2.4], 'spotlight' => ['mid', 1.2], 'explode' => ['high', 0.9],
         'heart_burst' => ['mid', 1.6], 'reply_sticker' => ['mid', 0.5], 'stitch' => ['high', 0.55],
         'tear' => ['high', 0.7], 'sticker' => ['mid', 0.45], 'cards' => ['high', 1.0], 'confetti' => ['high', 1.6], 'circle_text' => ['low', 4.0],
         'book' => ['mid', 1.1], 'slides' => ['mid', 0.6], 'page_focus' => ['low', 2.9],
@@ -95,6 +99,7 @@ class MotionMoves
         'a number or a result' => ['odometer', 'count', 'gauge'],
         'a list or steps' => ['stack', 'pop', 'toss', 'cards'],
         'a product, an app or a screen' => ['device', 'camera', 'cursor', 'press', 'morph', 'edges', 'rack_focus'],
+        'a physical product hero shot' => ['spotlight', 'product_turn', 'explode', 'pull_back'],
         'a comparison or before and after' => ['split', 'morph'],
         'a reveal or a payoff' => ['iris', 'pull_back', 'through', 'flood', 'text_mask'],
         'a change of topic' => ['whip', 'push', 'wipe', 'hidden_cut', 'streak'],

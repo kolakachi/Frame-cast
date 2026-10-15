@@ -72,9 +72,11 @@ test('specialty kits ride only on the videos that use them; the core kit lists t
  assert.deepEqual(await pins({},[{kind:'document_page'}]),['kit/motion-kit.md','kit/documents.md']);
  assert.deepEqual(await pins({scenes:[{uses:['yt-comment-card']}]}),['kit/motion-kit.md','kit/social.md'],'a feed piece brings the social kit');
  assert.deepEqual(await pins({scenes:[{transition_out:{move:'stitch'}}]}),['kit/motion-kit.md','kit/social.md']);
+ assert.deepEqual(await pins({media:[{kind:'cutout'}]}),['kit/motion-kit.md','kit/product.md'],'a product cutout brings the product kit');
+ assert.deepEqual(await pins({scenes:[{transition_out:{move:'explode'}}]}),['kit/motion-kit.md','kit/product.md']);
  const core=await pinnedKits(dir,{scratch_guide:'x'});
  assert.ok(!core.includes('WM.tear(')&&!core.includes('WM.book('),'the core kit no longer carries the specialty kits');
- assert.ok(core.includes('kit/collage.md')&&core.includes('kit/documents.md')&&core.includes('kit/social.md'),'but names them so the builder can read one');
+ assert.ok(core.includes('kit/collage.md')&&core.includes('kit/documents.md')&&core.includes('kit/social.md')&&core.includes('kit/product.md'),'but names them so the builder can read one');
 });
 
 test('the focus and letter moves: blurIn sharpens, letters splits once and rises each letter, rackFocus and glow record', () => {
@@ -105,4 +107,14 @@ test('the social moves: hearts are seeded and fade, the reply sticker settles ti
  WM.replySticker(tl,mk(),1,{});assert.equal(calls.filter(c=>c[0]==='fromTo').at(-1)[3].rotation,-3);
  WM.stitch(tl,mk(),mk(),5,{corner:'top-right'});
  const s=calls.filter(c=>c[0]==='fromTo').at(-1)[3];assert.equal(s.scale,0.3);assert.equal(s.transformOrigin,'100% 0%');
+});
+
+test('the product moves: floor adds a shadow and a mirror, turn and explode tween, spotlight tweens its light', () => {
+ const {WM,tl,calls,mk}=kit();
+ for(const id of ['product_turn','spotlight','explode'])assert.equal(typeof WM[RECIPES[id]],'function',id);
+ const box=mk();box.insertBefore=function(c){this.children.push(c);};const img=mk();img.parentNode=box;img.offsetWidth=300;img.offsetHeight=700;img.offsetLeft=390;img.offsetTop=520;img.cloneNode=()=>({removeAttribute(){},style:{}});
+ const f=WM.floor(img,{});assert.equal(box.children.length,2);assert.match(f.mirror.style.cssText,/scaleY\(-1\)/);
+ const light=mk();WM.spotlight(tl,light,1,{stage:{offsetWidth:1080,offsetHeight:1920},to:{x:540,y:870},lift:1});
+ assert.ok(calls.some(c=>c[0]==='fromTo'&&c[3]['--wm-sx']==='540px'),'the light lands on the product');
+ assert.ok(calls.some(c=>c[0]==='to'&&c[1]===light&&c[2].autoAlpha===0),'and lifts');
 });
