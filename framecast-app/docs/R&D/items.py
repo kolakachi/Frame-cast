@@ -13,7 +13,7 @@ ITEMS = [
 ("RD-10","Create","Focus and letter type kit: blur-in text, letters rising, rack focus, glow flash","Gap report","done","2026-10-15: WM.blurIn, WM.letters, WM.rackFocus and WM.glow in the motion kit, named for the planner (blur_in, letters, rack_focus, glow) and in the purpose guide; glow brings a chime."),
 ("RD-11","Create","Explainer styles (whiteboard, kinetic type, finance chart) and a timing breakdown for 'make it like this'","huashu, student-kit","open","Never marketed as a named channel's look."),
 ("RD-12","Create","Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults","Anthropic skills, taste-skill","next","Paid test, about $5-8."),
-("RD-13","Create","Change requests answer every note with exactly what changed","Opus Motion Design Harness","open","Kept 2026-10-15 (owner), for later."),
+("RD-13","Create","Change requests answer every note with exactly what changed","Opus Motion Design Harness","done","2026-10-15: an edit's latest message is split into its notes (bullets, lines or sentences); with two or more, the finish summary ends with a titled list, one item per note (what changed or why not), shown as its own section in the chat; a short list is sent back once."),
 ("RD-14","Create","A defect the checks missed becomes a new check, approved once","Opus Motion Design Harness","open","Kept 2026-10-15 (owner), for later."),
 ("RD-15","Create","Social-native kit: comments, like burst, stitch, chat, notes app, POV","Kit planning","open","Kept 2026-10-15 (owner), for later."),
 ("RD-16","Create","Product hero kit: 2.5D turn, floor reflection, spotlight, explode, before/after","Kit planning","open","Kept 2026-10-15 (owner), for later."),

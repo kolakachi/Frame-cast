@@ -94,7 +94,7 @@ const DESC={
  primitives:'Installed runtime options.',
  assets:'The files available to the composition.',
  visual_review:'Your review of the latest frames: decision pass or repair, findings, and scores per sampled frame {time, score 1-10, problems[]}. Pass only when every frame scores 8 or more.',
- finish:'Deliver the current draft (after a passing check, snapshots and a passing visual review) with a short summary for the user, written in the language of the user\'s own messages (Portuguese for a user who writes in Portuguese, even when the brief is in English).',
+ finish:'Deliver the current draft (after a passing check, snapshots and a passing visual review) with a short summary for the user, written in the language of the user\'s own messages (Portuguese for a user who writes in Portuguese, even when the brief is in English). When changeNotes is present (an edit with several notes), end the summary with a titled list (for example "Your changes:" then "- ..."), one item per note in order, each saying exactly what changed or why it did not.',
  needs_input:'Ask the user one essential question when a fact or asset is missing. Not for preferences.',
  propose_media:'Propose extra paid media for the user to approve; never buys anything.',
  media:'Edit a supplied media file in the sandbox for free: op probe|silences|levels|screen|fade|space|trim|cut|remove_silence|clean_audio|loudness|stabilize|speed|crop|frame|grade|duck|beats|tighten with params.',

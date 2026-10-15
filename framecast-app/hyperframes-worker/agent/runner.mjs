@@ -12,6 +12,7 @@ import {beatFindings} from './narration-timing.mjs';
 import {moveFindings} from './move-check.mjs';
 import {finishFindings} from './finish-lint.mjs';
 import {trimStale} from './history-trim.mjs';
+import {unansweredNotes} from './change-notes.mjs';
 import {repeatFindings} from './teach-check.mjs';
 import {layoutFindings} from './layout-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
@@ -434,6 +435,11 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
       if(context.artExpected===true&&!state.artSearched&&!state.artNoticed&&tools.art){
         state.artNoticed=true;
         result={ok:false,error:'Not finished: the brief asks for icons or 3D objects, and the art library was not searched. Search it with the art action (add 3d, line or filled) and use what fits, or finish again saying why nothing in it fits.'};
+      } else
+      // RD-13: an edit with several notes is answered note by note; sent back once when the list is short.
+      if(unansweredNotes(action.summary,context.changeNotes).length&&!state.notesNoticed){
+        state.notesNoticed=true;
+        result={ok:false,error:'Not finished: the user asked for '+context.changeNotes.length+' changes. End the summary with a list, one item per note in this order, each saying what changed (or why it did not).',notes:context.changeNotes};
       } else
       // The user reviews the result: findings are notes on the version, never another round.
       if(open.length&&state.pacingNoticed!==key){
