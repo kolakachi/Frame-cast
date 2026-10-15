@@ -102,6 +102,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
      *  so the job dresses the cast presenter once and uses that picture in every clip. Empty: the cast photo as it is. */
     public array $look = [];
 
+    /** A section remake of a delivered take (SECTIONS, owner 2026-10-15): ['from' => i, 'to' => k, 'note' => '']. Clips
+     *  from..to are made again (to: the last clip carried straight on from it), every other saved clip is reused. */
+    public array $remake = [];
+
+    /** How long a delivered take keeps its clips for section remakes (owner, 2026-10-15: 30 days). */
+    public const SECTION_DAYS = 30;
+
     /** The take's shape (9:16, 1:1 on Seedance, or 16:9). A plain property for the same reason as runToken. */
     public string $aspect = '9:16';
 
@@ -134,8 +141,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // the old clip's last frame and would not join the new one.
             $reuse = [];
             foreach (array_keys($this->chunks) as $i) {
+                // A section remake makes its clips again and reuses all the others, before and after them.
+                if ($this->remake !== [] && $i >= (int) $this->remake['from'] && $i <= (int) $this->remake['to']) continue;
                 $bytes = isset($saved[$i]) ? self::parts()->get($saved[$i]['url']) : null;
-                if (! is_string($bytes) || $bytes === '') break;
+                if (! is_string($bytes) || $bytes === '') {
+                    if ($this->remake !== []) throw new \RuntimeException('This video\'s sections are no longer kept, so one cannot be remade. Nothing was charged.');
+                    break;
+                }
                 $reuse[$i] = $bytes;
             }
             $this->refs = $this->look !== [] ? $this->dressed($project, $scene, $storage) : $this->referenceImages;
@@ -174,6 +186,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
             $adapt = null;
             foreach ($this->chunks as $i => $chunk) {
                 $clipVerdict = null;
+                if ($this->remake !== [] && $i === (int) $this->remake['from'] && trim((string) ($this->remake['note'] ?? '')) !== '') {
+                    $chunk['prompt'] = (string) $chunk['prompt']."\n\nWhat to change from the last version of this shot: ".trim((string) $this->remake['note']);
+                }
                 // What the clip before actually said decides this one's words (carry()); recorded in the trace.
                 if ($carry !== null) {
                     $chunk = self::carryOver($chunk, $carry);
@@ -395,30 +410,45 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
             // Only the run that owns the take delivers and charges. The ownership check, the delivery and the charge run
             // under the scene's row lock, the same lock resume() claims under, so one always sees the other.
-            $delivered = DB::transaction(function () use ($scene, $project, $asset, $duration, $credits) {
+            // Each section of the video, for remakes: where it starts and ends, and whether it carries straight on from the
+            // one before (a remake of that one makes it again too).
+            $sections = [];
+            $at = 0.0;
+            foreach ($segmentPaths as $i => $p) {
+                $len = (float) (self::seconds($p) ?? 0);
+                $chunk = $this->chunks[$i] ?? [];
+                $label = trim((string) ($chunk['dialogue'] ?? '')) ?: trim((string) ($chunk['headlines'][0]['text'] ?? ''));
+                $sections[] = ['i' => $i, 'start' => round($at, 2), 'end' => round($at + $len, 2), 'carried' => ! empty($fromTail[$i]), 'label' => mb_substr($label, 0, 80)];
+                $at += $len;
+            }
+            $delivered = DB::transaction(function () use ($scene, $project, $asset, $duration, $credits, $sections) {
                 $row = DB::table('scenes')->where('id', $this->sceneId)->lockForUpdate()->value('image_generation_settings_json');
                 $token = (json_decode((string) $row, true) ?: [])['oneshot_token'] ?? null;
                 if ($this->runToken !== null && $token !== null && $token !== $this->runToken) return false;
                 $scene->refresh();
                 // Held when the take started (DEDUCT-FALSE, owner 2026-10-15); a job queued before then is charged here instead.
                 $held = (int) (($scene->image_generation_settings_json ?? [])['oneshot_held'] ?? 0);
+                $before = (int) $scene->visual_asset_id;
                 $scene->forceFill([
                     'visual_asset_id' => $asset->id,
                     'duration_seconds' => $duration ?: $scene->duration_seconds,
                     'status' => 'ready',
-                    // The recipe goes with delivery, in the same step: a failure after this point can never resume
-                    // (and charge) a delivered take.
+                    // The recipe and clips stay for SECTION_DAYS so a section can be remade (a delivered take never resumes:
+                    // resume() refuses one). A remake keeps the video it replaced, for one step back.
                     'image_generation_settings_json' => array_diff_key(array_merge(
                         $scene->image_generation_settings_json ?? [],
-                        ['in_progress' => false, 'last_error' => null],
-                    ), array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash', 'oneshot_held'])),
+                        ['in_progress' => false, 'last_error' => null, 'section_error' => null, 'sections' => $sections,
+                            'sections_until' => now()->addDays(self::SECTION_DAYS)->toIso8601String()],
+                        $this->remake !== [] && $before > 0 ? ['sections_previous' => ['asset_id' => $before, 'from' => (int) $this->remake['from'], 'to' => (int) $this->remake['to'],
+                            'sections' => ($scene->image_generation_settings_json ?? [])['sections'] ?? []]] : [],
+                    ), array_flip(['oneshot_held', 'section_remake'])),
                 ])->save();
 
                 $project->forceFill(['status' => 'ready_for_review'])->save();
 
                 if ($held > 0) {
                     // Paid when it started: the charge line gets what the take really cost.
-                    \App\Models\CreditLedgerEntry::query()->where('project_id', $this->projectId)->where('operation', 'ugc_oneshot')
+                    \App\Models\CreditLedgerEntry::query()->where('project_id', $this->projectId)->where('operation', $this->remake !== [] ? 'ugc_section' : 'ugc_oneshot')
                         ->latest('id')->limit(1)->update(['upstream_cost_usd' => self::realCost($this->projectId)]);
                     return true;
                 }
@@ -443,8 +473,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 return;
             }
 
-            // Delivered: the saved segment files have done their job.
-            try { self::parts()->deleteDirectory(self::partsDir((int) $project->workspace_id, $this->sceneId)); } catch (\Throwable $e) { report($e); }
+            // Delivered: the saved clips stay for SECTION_DAYS, for section remakes (ugc:prune-oneshot-parts removes them).
             $this->learnFrom('delivered', (string) $asset->storage_url, null);
         } finally {
             foreach ($temps as $t) {
@@ -573,6 +602,15 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+        // A section remake that failed leaves the delivered video as it was, and gives its credits back.
+        if ($this->remake !== []) {
+            Scene::query()->whereKey($this->sceneId)->get()->filter(fn (Scene $scene) => $this->owns($scene))->each(function (Scene $scene) use ($e): void {
+                $scene->forceFill(['image_generation_settings_json' => array_merge($scene->image_generation_settings_json ?? [],
+                    ['in_progress' => false, 'section_error' => mb_substr($e->getMessage(), 0, 300)])])->save();
+                self::releaseHold((int) $scene->getKey(), 'ugc_section');
+            });
+            return;
+        }
         Scene::query()->whereKey($this->sceneId)->get()
             ->filter(fn (Scene $scene) => $this->owns($scene) && ! ($scene->status === 'ready' && $scene->visual_asset_id))
             ->each(function (Scene $scene) use ($e): void {
@@ -614,19 +652,19 @@ class GenerateOneShotUgcJob implements ShouldQueue
      * front, so a take delivered after the balance ran out (two takes at once) is still paid for; a take that does not
      * deliver gives them back (releaseHold). False when the balance cannot cover it.
      */
-    public static function hold(Scene $scene, int $workspaceId, int $credits): bool
+    public static function hold(Scene $scene, int $workspaceId, int $credits, string $operation = 'ugc_oneshot'): bool
     {
         if ($credits <= 0) return true;
-        if (! app(CreditService::class)->deduct($workspaceId, $credits, 'ugc_oneshot', ['project_id' => (int) $scene->project_id, 'scene_id' => (int) $scene->getKey(), 'metadata' => ['held' => true]])) return false;
+        if (! app(CreditService::class)->deduct($workspaceId, $credits, $operation, ['project_id' => (int) $scene->project_id, 'scene_id' => (int) $scene->getKey(), 'metadata' => ['held' => true]])) return false;
         $settings = $scene->refresh()->image_generation_settings_json ?? [];
         $scene->forceFill(['image_generation_settings_json' => array_merge($settings, ['oneshot_held' => $credits])])->save();
         return true;
     }
 
     /** The credits held for a take that will not deliver go back, once (failure, a reaped run, a deleted take). */
-    public static function releaseHold(int $sceneId): void
+    public static function releaseHold(int $sceneId, string $operation = 'ugc_oneshot'): void
     {
-        DB::transaction(function () use ($sceneId): void {
+        DB::transaction(function () use ($sceneId, $operation): void {
             $row = DB::table('scenes')->where('id', $sceneId)->lockForUpdate()->first(['project_id', 'image_generation_settings_json']);
             $settings = $row ? (json_decode((string) $row->image_generation_settings_json, true) ?: []) : [];
             $held = (int) ($settings['oneshot_held'] ?? 0);
@@ -634,7 +672,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             unset($settings['oneshot_held']);
             DB::table('scenes')->where('id', $sceneId)->update(['image_generation_settings_json' => json_encode($settings), 'updated_at' => now()]);
             $workspaceId = (int) DB::table('projects')->where('id', $row->project_id)->value('workspace_id');
-            if ($workspaceId > 0) app(CreditService::class)->refund($workspaceId, $held, 'ugc_oneshot');
+            if ($workspaceId > 0) app(CreditService::class)->refund($workspaceId, $held, $operation);
         });
     }
 
@@ -1215,8 +1253,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
             report($e);
         }
         $settings = $scene->image_generation_settings_json ?? [];
-        if (array_intersect_key($settings, array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash']))) {
-            $scene->forceFill(['image_generation_settings_json' => array_diff_key($settings, array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash']))])->save();
+        $keys = array_flip(['oneshot_recipe', 'oneshot_parts', 'oneshot_parts_hash', 'sections', 'sections_until', 'sections_previous']);
+        if (array_intersect_key($settings, $keys)) {
+            $scene->forceFill(['image_generation_settings_json' => array_diff_key($settings, $keys)])->save();
         }
     }
 

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
 import SideDrawer from '../components/create/SideDrawer.vue'
 import ComposerTray from '../components/create/ComposerTray.vue'
+import UgcSections from '../components/ugc/UgcSections.vue'
 import RefThumb from '../components/create/RefThumb.vue'
 import UgcBackgroundPicker from '../components/ugc/UgcBackgroundPicker.vue'
 import UgcPresenterModal from '../components/ugc/UgcPresenterModal.vue'
@@ -799,6 +800,7 @@ onBeforeUnmount(() => {
                         <button type="button" class="uc-btn" @click="openReview(run)">Review & share</button>
                         <button type="button" class="uc-btn" @click="openEditor(run)">Fine-tune in editor</button>
                       </div>
+                      <UgcSections v-if="takeOf(run)?.id && takeOf(run)?.format === 'one_shot'" :take-id="takeOf(run).id" @changed="load" />
                     </div>
                   </div>
                   <div v-else class="uc-card uc-failed">

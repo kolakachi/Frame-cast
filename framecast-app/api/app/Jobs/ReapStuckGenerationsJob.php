@@ -227,6 +227,17 @@ class ReapStuckGenerationsJob implements ShouldQueue, ShouldBeUnique
             if (! $waiting && ! empty($cfg['oneshot_token']) && \Carbon\CarbonImmutable::parse($cfg['generation_started_at'])->gt(now()->subSeconds((new \App\Jobs\GenerateOneShotUgcJob(0, 0, [], 0))->timeout + 300))) {
                 continue;
             }
+            // A section remake that stalled leaves the delivered video as it was and gives its credits back.
+            if (! empty($cfg['section_remake'])) {
+                $cfg['in_progress'] = false;
+                unset($cfg['section_remake']);
+                $cfg['section_error'] = 'The remake timed out. Your video is as it was; nothing was charged.';
+                $cfg['oneshot_token'] = 'reaped:'.\Illuminate\Support\Str::uuid();
+                DB::table('scenes')->where('id', $scene->id)->update(['image_generation_settings_json' => json_encode($cfg), 'updated_at' => now()]);
+                rescue(fn () => \App\Jobs\GenerateOneShotUgcJob::releaseHold((int) $scene->id, 'ugc_section'), null, true);
+                $cleared++;
+                continue;
+            }
             $cfg['in_progress']  = false;
             $cfg['needs_visual'] = true;
             $cfg['last_error']   = ($cfg['last_error'] ?? '') !== ''

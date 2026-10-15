@@ -131,8 +131,9 @@ class UgcOneShotResumeTest extends TestCase
         $asset = \App\Models\Asset::query()->find(Scene::query()->find(70)->visual_asset_id);
         $this->assertSame('Okay', data_get($asset->metadata_json, 'caption_timing.words.0.word'), 'captions are timed from the video\'s own speech');
         $this->assertSame('ready_for_review', Project::query()->find(7)->status);
-        $this->assertSame([], Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'saved clips go once delivered');
-        $this->assertArrayNotHasKey('oneshot_parts', $this->settings());
+        // Kept after delivery for section remakes (SECTIONS), but a delivered take never resumes.
+        $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'saved clips stay for section remakes');
+        $this->assertSame('not_resumable', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
     }
 
     public function test_a_changed_recipe_never_reuses_old_clips(): void
@@ -512,6 +513,84 @@ class UgcOneShotResumeTest extends TestCase
         file_put_contents($made, app(StorageService::class)->get((string) $asset->storage_url));
         $level = Process::run(['ffmpeg', '-i', $made, '-af', 'volumedetect', '-f', 'null', '-'])->errorOutput();
         $this->assertMatchesRegularExpression('/mean_volume: -[0-4]?\d\.\d dB/', $level, 'the silent clip now carries the bed');
+    }
+
+    public function test_a_delivered_take_keeps_its_sections_and_one_can_be_remade_reusing_the_rest(): void
+    {
+        $this->assertNull($this->run_($this->job()));
+        $s = $this->settings();
+        $this->assertCount(3, $s['sections']);
+        $this->assertSame([0, 1, 2], array_column($s['sections'], 'i'));
+        $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'the clips stay for remakes');
+        $first = (int) Scene::query()->find(70)->visual_asset_id;
+
+        $startsBefore = $this->starts;
+        $this->setToken('remake-1');
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(array_merge($this->settings(), ['oneshot_held' => 100, 'section_remake' => true, 'in_progress' => true]))]);
+        $remake = $this->job(null, 'remake-1');
+        $remake->remake = ['from' => 1, 'to' => 1, 'note' => 'She smiles at the end.'];
+        $this->assertNull($this->run_($remake));
+        $this->assertSame(1, $this->starts - $startsBefore, 'only the picked section is made again');
+        $this->assertStringContainsString('She smiles at the end.', end($this->sentPrompts));
+        $after = $this->settings();
+        $this->assertSame($first, $after['sections_previous']['asset_id'], 'the earlier video is kept for one step back');
+        $this->assertNotSame($first, (int) Scene::query()->find(70)->visual_asset_id);
+        $this->assertArrayNotHasKey('section_remake', $after);
+    }
+
+    public function test_a_failed_section_remake_leaves_the_video_and_gives_the_credits_back(): void
+    {
+        $this->assertNull($this->run_($this->job()));
+        $video = (int) Scene::query()->find(70)->visual_asset_id;
+        $this->setToken('remake-2');
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(array_merge($this->settings(), ['oneshot_held' => 100, 'section_remake' => true, 'in_progress' => true]))]);
+        $this->failOn = $this->starts + 1;
+        $remake = $this->job(null, 'remake-2');
+        $remake->remake = ['from' => 2, 'to' => 2, 'note' => ''];
+        $this->assertNotNull($this->run_($remake));
+        $this->assertSame($video, (int) Scene::query()->find(70)->visual_asset_id);
+        $this->assertSame([100], $this->refunded);
+        $this->assertFalse($this->settings()['in_progress']);
+        $this->assertNotEmpty($this->settings()['section_error']);
+        $this->assertSame('ready', Scene::query()->find(70)->status);
+    }
+
+    public function test_a_delivered_take_s_clips_outlive_the_retry_week_until_their_sections_expire(): void
+    {
+        $this->assertNull($this->run_($this->job()));
+        DB::table('scenes')->where('id', 70)->update(['updated_at' => now()->subDays(GenerateOneShotUgcJob::PARTS_DAYS + 1)]);
+        $this->artisan('ugc:prune-oneshot-parts')->assertSuccessful();
+        $this->assertNotEmpty(Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)), 'kept for section remakes');
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(array_merge($this->settings(), ['sections_until' => now()->subDay()->toIso8601String()])),
+            'updated_at' => now()->subDays(GenerateOneShotUgcJob::PARTS_DAYS + 1)]);
+        $this->artisan('ugc:prune-oneshot-parts')->assertSuccessful();
+        $this->assertSame([], Storage::disk('local')->allFiles(GenerateOneShotUgcJob::partsDir(3, 70)));
+        $this->assertArrayNotHasKey('sections', $this->settings());
+    }
+
+    public function test_the_remake_endpoint_prices_holds_and_starts_one_section_and_going_back_restores_the_video(): void
+    {
+        $this->assertNull($this->run_($this->job()));
+        $first = (int) Scene::query()->find(70)->visual_asset_id;
+        $user = new \App\Models\User(['workspace_id' => 3]);
+        $req = function (array $body = []) use ($user) { $r = \Illuminate\Http\Request::create('/x', 'POST', $body); $r->setUserResolver(fn () => $user); return $r; };
+        $c = app(\App\Http\Controllers\Api\V1\Ugc\UgcSectionController::class);
+        $list = $c->index($req(), 7)->getData(true)['data'];
+        $this->assertTrue($list['available']);
+        $price = $list['sections'][1]['remake']['credits'];
+        $this->assertSame(422, $c->remake($req(['credits' => $price + 1]), 7, 1)->getStatusCode(), 'a stale price is refused');
+        $this->assertSame(202, $c->remake($req(['credits' => $price, 'note' => 'Brighter light.']), 7, 1)->getStatusCode());
+        $this->assertSame([396, $price], $this->charged, 'the section is held as it starts');
+        Bus::assertDispatched(GenerateOneShotUgcJob::class, fn ($j) => $j->remake === ['from' => 1, 'to' => 2, 'note' => 'Brighter light.'], 'section 3 carried straight on from 2, so it is remade too');
+        $this->assertSame(409, $c->remake($req(['credits' => $price]), 7, 1)->getStatusCode(), 'one remake at a time');
+
+        // As if the remake delivered: a new video, the earlier one kept.
+        $s = $this->settings();
+        DB::table('scenes')->where('id', 70)->update(['visual_asset_id' => 999, 'image_generation_settings_json' => json_encode(array_merge($s, ['in_progress' => false,
+            'sections_previous' => ['asset_id' => $first, 'from' => 1, 'to' => 1, 'sections' => $s['sections']]]))]);
+        $this->assertSame(200, $c->revert($req(), 7)->getStatusCode());
+        $this->assertSame($first, (int) Scene::query()->find(70)->visual_asset_id);
+        $this->assertSame(409, $c->revert($req(), 7)->getStatusCode(), 'one step back only');
     }
 
     public function test_the_charge_carries_what_the_take_really_cost(): void

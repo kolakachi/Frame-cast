@@ -21,7 +21,10 @@ class PruneOneShotParts extends Command
             ->with('project:id,workspace_id')
             ->lazyById(200)->each(function (Scene $scene) use (&$pruned): void {
                 // A take still being made keeps its segments whatever their age.
-                if (! empty(($scene->image_generation_settings_json ?? [])['in_progress']) || ! $scene->project) return;
+                $settings = $scene->image_generation_settings_json ?? [];
+                if (! empty($settings['in_progress']) || ! $scene->project) return;
+                // A delivered take keeps its clips for section remakes until sections_until (SECTION_DAYS).
+                if (! empty($settings['sections_until']) && now()->lt(\Carbon\CarbonImmutable::parse($settings['sections_until']))) return;
                 GenerateOneShotUgcJob::forgetParts($scene, (int) $scene->project->workspace_id);
                 $pruned++;
             });

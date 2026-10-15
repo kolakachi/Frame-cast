@@ -506,6 +506,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/chats/{id}/rewrite', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'rewrite'])->whereUuid('id')->middleware('throttle:10,1');
             Route::post('/chats/{id}/retry', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'retry'])->whereUuid('id');
             Route::post('/chats/{id}/attachments/remove', [\App\Http\Controllers\Api\V1\Ugc\UgcChatController::class, 'removeAttachment'])->whereUuid('id');
+            // SECTIONS: remake one section of a delivered one-take, or step back to the version before.
+            Route::get('/takes/{projectId}/sections', [\App\Http\Controllers\Api\V1\Ugc\UgcSectionController::class, 'index'])->whereNumber('projectId');
+            Route::post('/takes/{projectId}/sections/{index}/remake', [\App\Http\Controllers\Api\V1\Ugc\UgcSectionController::class, 'remake'])->whereNumber('projectId')->whereNumber('index');
+            Route::post('/takes/{projectId}/sections/revert', [\App\Http\Controllers\Api\V1\Ugc\UgcSectionController::class, 'revert'])->whereNumber('projectId');
 
             // My Footage: bring a video, correct our read of it, plan and
             // produce your version. Same gate as the rest of UGC.
