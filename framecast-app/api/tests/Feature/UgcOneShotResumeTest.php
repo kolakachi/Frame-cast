@@ -690,6 +690,25 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['1' => 90, '2' => 90], $this->settings()['speaker_looks']);
     }
 
+    public function test_the_cast_sheet_is_checked_before_any_clip_and_each_clip_names_its_speaker(): void
+    {
+        Storage::disk('minio')->put('ada.png', 'ada-bytes');
+        DB::table('assets')->insert(['id' => 5, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ada.png', 'mime_type' => 'image/png']);
+        $clip = fn ($speaker, $id, $name) => ['prompt' => 'line', 'seconds' => 4, 'new_shot' => true, 'speaker' => $speaker, 'reference_asset_ids' => [$id], 'speaker_name' => $name];
+        // The second speaker's photo cannot be read: the take stops before the first clip is bought.
+        $e = $this->run_(new GenerateOneShotUgcJob(7, 70, [$clip(1, 5, 'Ada Obi'), $clip(2, 404, 'Ben')], 396, 'omni'));
+        $this->assertNotNull($e);
+        $this->assertStringContainsString('The photo of Ben could not be read', $e->getMessage());
+        $this->assertSame([], $this->sentPrompts, 'no clip was started');
+        // Readable: the sheet is recorded and each clip says which reference is whom.
+        $this->assertNull($this->run_(new GenerateOneShotUgcJob(7, 70, [$clip(1, 5, 'Ada Obi')], 396, 'omni')));
+        $this->assertSame([['name' => '@AdaObi', 'speaker' => 1, 'products' => 0, 'dressed' => false, 'place' => false]], $this->settings()['cast_sheet']);
+        $this->assertStringStartsWith('Cast: @AdaObi is the person in this shot; reference image 1 is @AdaObi: keep this face and hair. Only @AdaObi appears on camera.', $this->sentPrompts[0]);
+        $this->assertSame('Cast: @Ben is the person in this shot; reference image 1 is @Ben dressed for this ad, in its room: keep this face, hair and outfit; images 2 to 3 are the product. Only @Ben appears on camera.',
+            GenerateOneShotUgcJob::castLine('Ben', 3, true, false));
+        $this->assertStringContainsString('image 2 is the product; image 3 is the room both people share', GenerateOneShotUgcJob::castLine('Ben', 3, false, true));
+    }
+
     public function test_skit_speakers_carry_the_place_photo_after_their_own(): void
     {
         Storage::disk('minio')->put('ada.png', 'ada-bytes');

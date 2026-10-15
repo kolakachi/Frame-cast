@@ -1127,6 +1127,7 @@ class UgcController extends Controller
 
         $speakerReferences = [];
         $speakerDescriptions = [];
+        $speakerNames = [];
         if (($v['ugc_type'] ?? '') === 'skit') {
             foreach ($v['cast_character_ids'] as $index => $characterId) {
                 $actor = Character::query()->whereKey($characterId)->where('status', 'active')
@@ -1141,6 +1142,7 @@ class UgcController extends Controller
                 // The ad's outfits replace the clothing in a stock description, as for a single presenter.
                 $about = trim((string) ($v['wardrobe'] ?? '')) !== '' ? self::withoutClothing((string) $actor->description) : (string) $actor->description;
                 $speakerDescriptions[$index + 1] = $actor->name.($about !== '' ? ' — '.$about : '');
+                $speakerNames[$index + 1] = (string) $actor->name;
             }
         }
         // The setting's background photo (owner, 2026-10-11): the kind of place, never a copy. It goes third, after the
@@ -1340,6 +1342,7 @@ class UgcController extends Controller
             if (isset($sourceMedia[$chunk['source_asset_id'] ?? 0])) $chunk['source_media'] = $sourceMedia[$chunk['source_asset_id']];
             if (isset($speakerReferences[$chunk['speaker'] ?? 0])) {
                 $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
+                $chunk['speaker_name'] = $speakerNames[$chunk['speaker']] ?? '';
                 // Both speakers in one room: the place photo rides with each speaker's own (the job reads it from the take's references).
                 if ($placePhoto) $chunk['place_at'] = $plateAt;
                 // The speaker's own outfit and the ad's place: the job dresses each speaker once and uses that picture in all

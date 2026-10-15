@@ -191,6 +191,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 }
                 return $speakerPhotos[$speaker];
             };
+            // RD-03: the cast sheet, before any paid clip. Every speaker's photo is read and each speaker dressed once, so
+            // a photo that cannot be read stops the take before a clip is bought (it used to fail at that speaker's
+            // first clip, after the earlier clips were paid for). Recorded on the take as cast_sheet.
+            $castRefs = $this->castSheet($project, $scene);
             $carry = null;
             $adapt = null;
             foreach ($this->chunks as $i => $chunk) {
@@ -212,7 +216,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 }
                 // A skit clip names its speaker's photos by id; they are read here, only from this workspace or stock.
                 if (! empty($chunk['reference_asset_ids']) && empty($chunk['reference_images'])) {
-                    $chunk['reference_images'] = $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
+                    $chunk['reference_images'] = $castRefs[(int) ($chunk['speaker'] ?? 0)] ?? $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
                     if ($chunk['reference_images'] === []) throw new \RuntimeException('Segment '.($i + 1).': the speaker\'s photo could not be read. Nothing was charged; try again.');
                     $plate = isset($chunk['place_at']) ? ($this->referenceImages[$chunk['place_at']] ?? null) : null;
                     // Each speaker dressed once, in their own outfit and the ad's room, and that picture used in every one of
@@ -225,6 +229,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         // The place photo, so both speakers of a skit are in one room: the speaker, their product, then the place.
                         $chunk['reference_images'] = array_merge(array_slice($chunk['reference_images'], 0, 2), [$plate]);
                     }
+                    // Which reference is whom, by name (RD-03, Toonflow's @name): two people's pictures were mixed up (RD-02).
+                    $chunk['prompt'] = self::castLine((string) ($chunk['speaker_name'] ?? ''), count($chunk['reference_images']), $dressed !== null, $dressed === null && $plate !== null)."\n\n".$chunk['prompt'];
                 }
                 // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
                 // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from
@@ -592,6 +598,41 @@ class GenerateOneShotUgcJob implements ShouldQueue
     }
 
     /** A skit speaker dressed for the ad (UgcLook), made once per speaker and kept with the take's parts; null if it failed. */
+    /**
+     * The skit's cast sheet (RD-03): each speaker's photos read and their dressed picture made, before any paid clip.
+     * A photo that cannot be read stops the take here, with nothing bought. Returns each speaker's photos by speaker.
+     *
+     * @return array<int, list<string>>
+     */
+    private function castSheet(Project $project, Scene $scene): array
+    {
+        $refs = []; $sheet = [];
+        foreach ($this->chunks as $chunk) {
+            $speaker = (int) ($chunk['speaker'] ?? 0);
+            if (empty($chunk['reference_asset_ids']) || isset($refs[$speaker])) continue;
+            $name = trim((string) ($chunk['speaker_name'] ?? '')) ?: 'Speaker '.$speaker;
+            $refs[$speaker] = $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
+            if ($refs[$speaker] === []) throw new \RuntimeException('The photo of '.$name.' could not be read, so no clip was made. Nothing was charged; try again.');
+            $plate = isset($chunk['place_at']) ? ($this->referenceImages[$chunk['place_at']] ?? null) : null;
+            $dressed = ! empty($chunk['wardrobe']) ? $this->dressedSpeaker($project, $scene, $speaker, $refs[$speaker][0], $plate, (string) $chunk['wardrobe'], (string) ($chunk['place'] ?? '')) : null;
+            $sheet[] = ['name' => '@'.preg_replace('/\s+/', '', $name), 'speaker' => $speaker, 'products' => count($refs[$speaker]) - 1, 'dressed' => $dressed !== null, 'place' => $plate !== null];
+        }
+        if ($sheet !== []) $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [], ['cast_sheet' => $sheet])])->save();
+        return $refs;
+    }
+
+    /** One line naming which reference image is whom: the speaker by name, then the product, then the room. */
+    public static function castLine(string $name, int $count, bool $dressed, bool $plateLast): string
+    {
+        $at = '@'.(preg_replace('/\s+/', '', trim($name)) ?: 'Speaker');
+        $parts = ['reference image 1 is '.$at.($dressed ? ' dressed for this ad, in its room: keep this face, hair and outfit' : ': keep this face and hair')];
+        $products = $count - 1 - ($plateLast ? 1 : 0);
+        if ($products === 1) $parts[] = 'image 2 is the product';
+        elseif ($products > 1) $parts[] = 'images 2 to '.(1 + $products).' are the product';
+        if ($plateLast) $parts[] = 'image '.$count.' is the room both people share';
+        return 'Cast: '.$at.' is the person in this shot; '.implode('; ', $parts).'. Only '.$at.' appears on camera.';
+    }
+
     private function dressedSpeaker(Project $project, Scene $scene, int $speaker, string $photo, ?string $plate, string $wardrobe, string $place): ?string
     {
         $file = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/look-speaker-'.$speaker.'.txt';
