@@ -9,7 +9,6 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 
 | ID | Area | Item | From | Status | Note |
 |----|------|------|------|--------|------|
-| RD-10 | Create | Focus and letter type kit: blur-in text, letters rising, rack focus, glow flash | Gap report | next |  |
 | RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | next | Paid test, about $5-8. |
 | RD-03 | UGC | Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot | Toonflow, huobao | open | Casting, dressing and the shared place photo are done; the sheet and @name are not. |
 | RD-11 | Create | Explainer styles (whiteboard, kinetic type, finance chart) and a timing breakdown for 'make it like this' | huashu, student-kit | open | Never marketed as a named channel's look. |
@@ -27,6 +26,7 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-07 | Create | Finishing checks: constant-speed motion, repeated technique, text under phone UI, cues present, voice over music, contact sheet | animate, claude-motion-design | done | 2026-10-15: safe zones, edge margins, overlap, one-frame pops, loudness, sound cues (placed by the sound pass) and the review contact sheet existed; added the repeated-technique and constant-speed checks (builder warnings) and raised voice over music from 6 to 9 dB. |
 | RD-08 | Create | True peak at or below -1 dBTP alongside -14 LUFS | Opus Motion Design Harness | done | 2026-10-15: Create's delivery check already measured true peak (ebur128) and corrected to -1 dB; UGC takes now get the same standard (they were not levelled). |
 | RD-09 | Create | Every cut has a carrier: a plan rule and a check | Opus Motion Design Harness | done | 2026-10-15: transition_out (what becomes the next scene, with which move) and its move check existed; added the words it lands on, timed by the builder, and a plain cut set on any beat left without one. |
+| RD-10 | Create | Focus and letter type kit: blur-in text, letters rising, rack focus, glow flash | Gap report | done | 2026-10-15: WM.blurIn, WM.letters, WM.rackFocus and WM.glow in the motion kit, named for the planner (blur_in, letters, rack_focus, glow) and in the purpose guide; glow brings a chime. |
 | RD-30 | Money | A provider call never sent settles at zero; a closed run's held credits are released | Dan rebuild | done | 2026-10-15: a call with no dispatch claim, prediction or response settles at zero; held credits were already released at clear states since 2026-10-10 (CreditHolds). |
 | RD-34 | Create | Collage kit and Collage / zine style | Higgsfield KICKS demo | done | 2026-10-09 |
 | RD-35 | Create | Gap report: reference moments no move reproduces | Kit planning | done | create:move-gaps |

@@ -884,6 +884,69 @@
       });
       return tl;
     },
+
+    /* ---- Focus and letters (RD-10): type that arrives like a lens finding it. ---- */
+
+    /* blurIn (low, .7 s): text sharpens in from a soft blur, line by line (els in reading order). Premium and calm;
+       no scale, so the letters never climb the pixel grid. opts: duration (.7), stagger (.12), blur (px, 14), rise (em, .15). */
+    blurIn: function (tl, els, at, opts) {
+      opts = opts || {}; var b = opts.blur == null ? 14 : opts.blur;
+      all(typeof els === 'string' || els.length != null ? els : [els]).forEach(function (el, i) {
+        tl.fromTo(el, { autoAlpha: 0, y: (opts.rise == null ? 0.15 : opts.rise) + 'em', filter: 'blur(' + b + 'px)' },
+          { autoAlpha: 1, y: 0, filter: 'blur(0px)', duration: opts.duration || 0.7, ease: ease.heavy, immediateRender: true }, at + i * (opts.stagger == null ? 0.12 : opts.stagger));
+      });
+      return tl;
+    },
+
+    /* letters (mid, ~.6 s + .03 s a letter): a headline's letters rise one by one out of a mask line. el holds plain
+       text; it is split into letters once (words kept whole so lines only break between words). Wrap the line in a
+       container with data-layout-allow-overlap. opts: stagger (.03), duration (.5), from (yPercent, 110). */
+    letters: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      if (!el._wmLetters) {
+        var text = el.textContent || '', list = [];
+        el.textContent = '';
+        text.split(/(\s+)/).forEach(function (part) {
+          if (!part) return;
+          if (/^\s+$/.test(part)) { el.appendChild(document.createTextNode ? document.createTextNode(' ') : document.createElement('span')); return; }
+          var word = document.createElement('span'); word.style.display = 'inline-block'; word.style.whiteSpace = 'nowrap';
+          part.split('').forEach(function (ch) {
+            var mask = document.createElement('span'), letter = document.createElement('span');
+            mask.style.display = 'inline-block'; mask.style.overflow = 'hidden'; mask.style.verticalAlign = 'top';
+            letter.style.display = 'inline-block'; letter.textContent = ch;
+            mask.appendChild(letter); word.appendChild(mask); list.push(letter);
+          });
+          el.appendChild(word);
+        });
+        el._wmLetters = list;
+      }
+      el._wmLetters.forEach(function (letter, i) {
+        tl.fromTo(letter, { yPercent: opts.from == null ? 110 : opts.from }, { yPercent: 0, duration: opts.duration || 0.5, ease: ease.snappy, immediateRender: true },
+          at + i * (opts.stagger == null ? 0.03 : opts.stagger));
+      });
+      return tl;
+    },
+
+    /* rackFocus (low, .6 s): the focus pulls from one thing to another, like a lens: `from` (an element or a list)
+       goes soft and dims, `to` sharpens. For UI: the panel that matters comes into focus while the rest falls back.
+       opts: duration (.6), blur (px, 8), dim (.55). Camera-like, so it eases in and out. */
+    rackFocus: function (tl, from, to, at, opts) {
+      opts = opts || {}; var b = opts.blur == null ? 8 : opts.blur, d = opts.duration || 0.6;
+      if (from) all(typeof from === 'string' || from.length != null ? from : [from]).forEach(function (el) {
+        tl.fromTo(el, { filter: 'blur(0px)', opacity: 1 }, { filter: 'blur(' + b + 'px)', opacity: opts.dim == null ? 0.55 : opts.dim, duration: d, ease: 'sine.inOut', immediateRender: false }, at);
+      });
+      tl.fromTo($(to), { filter: 'blur(' + b + 'px)' }, { filter: 'blur(0px)', opacity: 1, duration: d, ease: 'sine.inOut', immediateRender: false }, at);
+      return tl;
+    },
+
+    /* glow (mid, .5 s): a highlight flashes with light, then settles: a key word, a price, a button.
+       opts: color (the accent, '#fff'), size (px, 22), duration (.5), sound ('chime' by default, false for none). */
+    glow: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {}; var c = opts.color || '#fff', d = opts.duration || 0.5, s = opts.size || 22;
+      tl.fromTo(el, { filter: 'brightness(1) drop-shadow(0 0 0px ' + c + ')' }, { filter: 'brightness(1.35) drop-shadow(0 0 ' + s + 'px ' + c + ')', duration: d * 0.3, ease: 'power2.out', immediateRender: false }, at)
+        .to(el, { filter: 'brightness(1) drop-shadow(0 0 0px ' + c + ')', duration: d * 0.7, ease: 'sine.inOut' }, at + d * 0.3);
+      return tl;
+    },
   };
 
   // Elements and geometry. Positions come from layout (offsets), not from the
@@ -912,6 +975,7 @@
   var o = function (a, i) { return (a[i] && typeof a[i] === 'object') ? a[i] : {}; };
   var CUES = {
     pop: function (a) { return [['pop', a[2] + 0.04]]; },
+    glow: function (a) { return [['chime', a[2] + 0.05]]; },
     stamp: function (a) { return [['thud', a[2] + 0.1]]; },
     press: function (a) { return [['click', a[2] + 0.09]]; },
     toss: function (a) { return [['swish', a[2] + 0.1]]; },
@@ -951,7 +1015,7 @@
     stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
   var OPTS = { tear: 3, sticker: 3, cards: 3, confetti: 3, book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
-    pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
+    glow: 3, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {
     var fn = WM[name];

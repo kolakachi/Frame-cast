@@ -75,6 +75,13 @@ Moves bring their own sound: before the render each move's effect from the built
 - `data-sounds="off"` on the root composition turns all of it off: when the user asks for no effects, or the reference has none.
 - Do not buy sound effects or place your own for these; they would double up.
 
+## Focus and letters (energy · length)
+Type that arrives like a lens finding it. Premium and calm work; use one of these as a video's type voice rather than all four.
+- `WM.blurIn(tl, ['#l1', '#l2'], at, {duration: .7, stagger: .12})` (low · .7 s): lines sharpen in from a soft blur, in reading order.
+- `WM.letters(tl, '#title', at, {stagger: .03})` (mid · ~.6 s + .03 s a letter): the letters rise one by one out of a mask line. Plain text in `#title`; wrap the line in a container with `data-layout-allow-overlap`. Short headlines (up to ~24 letters).
+- `WM.rackFocus(tl, '.rest', '#panel', at, {blur: 8, dim: .55})` (low · .6 s): focus pulls from the rest to the thing that matters (a UI panel, a product, a figure).
+- `WM.glow(tl, '#price', at, {color: accent, size: 22})` (mid · .5 s): a key word, price or button flashes with light and settles. Once or twice a video.
+
 ## Type in motion (no jitter)
 Measured on rendered frames (snapcn's motion rules): moving text looks cheap when it shakes or sticks, and these stop it.
 - The kit draws all text with `text-rendering: geometricPrecision` and keeps GSAP off compositor layers (`force3D: false`), so scaled type stays type instead of a shimmering bitmap. Do not undo either: no `will-change`, `translateZ(0)`, `translate3d`, `backface-visibility` or `force3D: true` on text (they are the same layer trick and bring the shimmer back).

@@ -54,6 +54,10 @@ class MotionMoves
         'book' => 'pages turn like a real book',
         'slides' => 'a deck\'s slides change one after another, each filling the frame',
         'page_focus' => 'the camera moves into a part of a page or slide and back out',
+        'blur_in' => 'lines of text sharpen in from a soft blur, like a lens finding them',
+        'letters' => 'a short headline\'s letters rise one by one out of a mask line',
+        'rack_focus' => 'focus pulls from one thing to another: the rest goes soft, the thing that matters sharpens',
+        'glow' => 'a key word, price or button flashes with light and settles',
         'custom' => 'none of these: built by hand from the description',
     ];
 
@@ -67,6 +71,7 @@ class MotionMoves
         'dutch' => ['mid', 0.7], 'cold_open' => ['high', 1.3], 'text_mask' => ['mid', 2.0], 'ramp_freeze' => ['high', 0.6], 'hidden_cut' => ['high', 0.7],
         'odometer' => ['mid', 1.0], 'gauge' => ['mid', 1.2], 'streak' => ['high', 0.35],
         'smash' => ['high', 0.05], 'split' => ['mid', 0.7], 'stack' => ['mid', 0.4], 'parallax' => ['low', 3.0],
+        'blur_in' => ['low', 0.7], 'letters' => ['mid', 0.8], 'rack_focus' => ['low', 0.6], 'glow' => ['mid', 0.5],
         'tear' => ['high', 0.7], 'sticker' => ['mid', 0.45], 'cards' => ['high', 1.0], 'confetti' => ['high', 1.6], 'circle_text' => ['low', 4.0],
         'book' => ['mid', 1.1], 'slides' => ['mid', 0.6], 'page_focus' => ['low', 2.9],
     ];
@@ -82,15 +87,15 @@ class MotionMoves
      * beat catalogue and cinetic's techniques, 2026-10-15). A guide for the planner, never a rule a reference overrides.
      */
     public const BY_PURPOSE = [
-        'a hook (the first seconds)' => ['cold_open', 'giant_wipe', 'stamp', 'smash', 'ramp_freeze', 'words'],
+        'a hook (the first seconds)' => ['cold_open', 'giant_wipe', 'stamp', 'smash', 'ramp_freeze', 'words', 'letters'],
         'a number or a result' => ['odometer', 'count', 'gauge'],
         'a list or steps' => ['stack', 'pop', 'toss', 'cards'],
-        'a product, an app or a screen' => ['device', 'camera', 'cursor', 'press', 'morph', 'edges'],
+        'a product, an app or a screen' => ['device', 'camera', 'cursor', 'press', 'morph', 'edges', 'rack_focus'],
         'a comparison or before and after' => ['split', 'morph'],
         'a reveal or a payoff' => ['iris', 'pull_back', 'through', 'flood', 'text_mask'],
         'a change of topic' => ['whip', 'push', 'wipe', 'hidden_cut', 'streak'],
-        'an emphasis word' => ['write_on', 'rise', 'text_mask', 'field'],
-        'a calm or premium hold' => ['push_in', 'parallax', 'pull_back'],
+        'an emphasis word' => ['write_on', 'rise', 'text_mask', 'field', 'glow'],
+        'a calm or premium hold' => ['push_in', 'parallax', 'pull_back', 'blur_in', 'rack_focus'],
         'the close and call to action' => ['stamp', 'sticker', 'circle_text', 'field'],
     ];
 

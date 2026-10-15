@@ -4,7 +4,7 @@
 //  - constant-speed motion: a position or scale move with linear easing glides like a machine, not a hand.
 const strip=s=>String(s||'').replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
 // Moves the content drives (each number, line, list item or click is its own), never a repeated technique.
-const CONTENT=new Set(['count','odometer','gauge','type','words','cursor','press','stack','pop','sticker','cards','edges','fly','writeOn','rise']);
+const CONTENT=new Set(['count','odometer','gauge','type','words','cursor','press','stack','pop','sticker','cards','edges','fly','writeOn','rise','blurIn','letters']);
 
 export function techniqueFindings(sources,{max=2}={}){
  const code=strip(sources),counts={};

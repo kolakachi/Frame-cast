@@ -74,3 +74,19 @@ test('specialty kits ride only on the videos that use them; the core kit lists t
  assert.ok(!core.includes('WM.tear(')&&!core.includes('WM.book('),'the core kit no longer carries the specialty kits');
  assert.ok(core.includes('kit/collage.md')&&core.includes('kit/documents.md'),'but names them so the builder can read one');
 });
+
+test('the focus and letter moves: blurIn sharpens, letters splits once and rises each letter, rackFocus and glow record', () => {
+ const {WM,tl,calls,mk}=kit();
+ for(const id of ['blur_in','letters','rack_focus','glow'])assert.equal(typeof WM[RECIPES[id]],'function',id);
+ const title=mk();title.textContent='Go now';
+ WM.letters(tl,title,1,{});WM.letters(tl,title,2,{});
+ assert.equal(title.children.filter(c=>c.style.whiteSpace==='nowrap').length,2,'two words, split once');
+ const rises=calls.filter(c=>c[0]==='fromTo'&&c[2].yPercent===110);
+ assert.equal(rises.length,10,'five letters, built twice');
+ assert.equal(+(rises[1][4]-rises[0][4]).toFixed(3),0.03);
+ WM.blurIn(tl,mk(),3,{});
+ assert.match(calls.at(-1)[2].filter,/blur\(14px\)/);
+ WM.rackFocus(tl,[mk(),mk()],mk(),4,{});WM.glow(tl,mk(),5,{});
+ const used=WM.movesUsed().map(m=>m.move);
+ for(const n of ['letters','blurIn','rackFocus','glow'])assert.ok(used.includes(n),n);
+});
