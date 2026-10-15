@@ -1342,6 +1342,10 @@ class UgcController extends Controller
                 $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
                 // Both speakers in one room: the place photo rides with each speaker's own (the job reads it from the take's references).
                 if ($placePhoto) $chunk['place_at'] = $plateAt;
+                // The speaker's own outfit and the ad's place: the job dresses each speaker once and uses that picture in all
+                // their clips, as a single presenter's look does (take 306: clothes changed from clip to clip).
+                $outfit = (string) ($style['speaker_wardrobes'][$chunk['speaker']] ?? $style['wardrobe']);
+                if ($outfit !== '') { $chunk['wardrobe'] = $outfit; $chunk['place'] = (string) $style['setting']; }
             }
         }
         unset($chunk);

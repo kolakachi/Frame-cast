@@ -205,9 +205,16 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if (! empty($chunk['reference_asset_ids']) && empty($chunk['reference_images'])) {
                     $chunk['reference_images'] = $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
                     if ($chunk['reference_images'] === []) throw new \RuntimeException('Segment '.($i + 1).': the speaker\'s photo could not be read. Nothing was charged; try again.');
-                    // The place photo, so both speakers of a skit are in one room: the speaker, their product, then the place.
-                    if (isset($chunk['place_at'], $this->referenceImages[$chunk['place_at']])) {
-                        $chunk['reference_images'] = array_merge(array_slice($chunk['reference_images'], 0, 2), [$this->referenceImages[$chunk['place_at']]]);
+                    $plate = isset($chunk['place_at']) ? ($this->referenceImages[$chunk['place_at']] ?? null) : null;
+                    // Each speaker dressed once, in their own outfit and the ad's room, and that picture used in every one of
+                    // their clips (take 306, 2026-10-15: from the cast photo plus a written outfit, clothes changed per clip).
+                    $dressed = ! empty($chunk['wardrobe']) ? $this->dressedSpeaker($project, $scene, (int) ($chunk['speaker'] ?? 0), $chunk['reference_images'][0], $plate, (string) $chunk['wardrobe'], (string) ($chunk['place'] ?? '')) : null;
+                    if ($dressed !== null) {
+                        // The dressed picture carries the face, the clothes and the room: then the product.
+                        $chunk['reference_images'] = array_merge([$dressed], array_slice($chunk['reference_images'], 1, 2));
+                    } elseif ($plate !== null) {
+                        // The place photo, so both speakers of a skit are in one room: the speaker, their product, then the place.
+                        $chunk['reference_images'] = array_merge(array_slice($chunk['reference_images'], 0, 2), [$plate]);
                     }
                 }
                 // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
@@ -557,6 +564,23 @@ class GenerateOneShotUgcJob implements ShouldQueue
             self::parts()->put($file, $uri);
         }
         return $uri === 'none' ? null : $uri;
+    }
+
+    /** A skit speaker dressed for the ad (UgcLook), made once per speaker and kept with the take's parts; null if it failed. */
+    private function dressedSpeaker(Project $project, Scene $scene, int $speaker, string $photo, ?string $plate, string $wardrobe, string $place): ?string
+    {
+        $file = self::partsDir((int) $project->workspace_id, $this->sceneId).'/'.$this->recipeHash().'/look-speaker-'.$speaker.'.txt';
+        $uri = self::parts()->exists($file) ? (string) self::parts()->get($file) : '';
+        if ($uri === '') {
+            $made = app(\App\Services\Ugc\UgcLook::class)->make($photo, $plate, $wardrobe, $place, $this->aspect);
+            if ($made === null) return null;
+            $uri = $made['uri'];
+            self::parts()->put($file, $uri);
+            $looks = (array) (($scene->refresh()->image_generation_settings_json ?? [])['speaker_looks'] ?? []);
+            $looks[(string) $speaker] = $made['score'];
+            $scene->forceFill(['image_generation_settings_json' => array_merge($scene->image_generation_settings_json ?? [], ['speaker_looks' => $looks])])->save();
+        }
+        return $uri;
     }
 
     /** Staff pilots keep a trace of every step; customer takes do not. */

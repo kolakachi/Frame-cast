@@ -613,6 +613,22 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertNull(GenerateOneShotUgcJob::realCost(99));
     }
 
+    public function test_each_skit_speaker_is_dressed_once_and_wears_it_in_every_clip(): void
+    {
+        Storage::disk('minio')->put('ada.png', 'ada-bytes');
+        Storage::disk('minio')->put('ben.png', 'ben-bytes');
+        DB::table('assets')->insert([['id' => 5, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ada.png', 'mime_type' => 'image/png'],
+            ['id' => 6, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ben.png', 'mime_type' => 'image/png']]);
+        $look = Mockery::mock(\App\Services\Ugc\UgcLook::class);
+        $look->shouldReceive('make')->twice()->andReturnUsing(fn ($photo, $plate, $wardrobe) => ['uri' => 'dressed:'.$wardrobe, 'score' => 90]);
+        $this->app->instance(\App\Services\Ugc\UgcLook::class, $look);
+        $clip = fn ($speaker, $ids, $outfit) => ['prompt' => 'line', 'seconds' => 4, 'new_shot' => true, 'speaker' => $speaker, 'reference_asset_ids' => $ids, 'place_at' => 0, 'wardrobe' => $outfit, 'place' => 'a kitchen'];
+        $job = new GenerateOneShotUgcJob(7, 70, [$clip(1, [5], 'a sage hoodie'), $clip(2, [6], 'a rust sweater'), $clip(1, [5], 'a sage hoodie')], 396, 'omni', ['place-photo']);
+        $this->assertNull($this->run_($job));
+        $this->assertSame([['dressed:a sage hoodie'], ['dressed:a rust sweater'], ['dressed:a sage hoodie']], $this->refs, 'the dressed picture, in place of the cast photo and the place photo');
+        $this->assertSame(['1' => 90, '2' => 90], $this->settings()['speaker_looks']);
+    }
+
     public function test_skit_speakers_carry_the_place_photo_after_their_own(): void
     {
         Storage::disk('minio')->put('ada.png', 'ada-bytes');
