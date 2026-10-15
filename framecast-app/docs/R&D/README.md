@@ -9,8 +9,11 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 
 | ID | Area | Item | From | Status | Note |
 |----|------|------|------|--------|------|
-| RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | next | Paid test, about $5-8. |
+| RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | next | 2026-10-15: ready to run. The rules not yet in the design card are cards/taste.md plus an AI-look checklist for the reviewer, behind one switch (off by default; CREATE_TASTE_RULES, or taste_rules on a run). Waits for the owner's OK on the paid A/B (2 briefs x on/off, about $5-8). |
 | RD-43 | Platform | My Footage Tighten: retake and false-start detection, phrase-safe filler cuts, pauses that keep a breath | herk-edit-kit | idea | From the RD-33 review; ideas only, our own code. |
+| RD-44 | Create | Stutter and freeze check on the finished file: unique fps, worst hitch, frozen tail; frame 0 opens on content | designer-stack | idea | From the designer-stack review; S. |
+| RD-45 | Create | Hook and copy cliche lint: Introducing, Unlock the power of, Game changer, placeholder names | designer-stack | idea | From the designer-stack review; S. |
+| RD-46 | Create | Design-tool selection move: selection box with handles, a WxH label, a cursor click | designer-stack | idea | From the designer-stack review; M. |
 | RD-01 | UGC | A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing | Pixelle-Video | done | 2026-10-15: a declined clip is reworded in neutral words (UgcPromptSoften) and made once more; a second decline fails uncharged. |
 | RD-02 | UGC | Character mix-up check: each skit clip shows the right speaker | Jellyfish | done | 2026-10-15: skit clips are face-checked against their own speaker; a clip closer to the other speaker is recorded as a mix-up and counts as a miss (remade when face remakes are on). |
 | RD-03 | UGC | Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot | Toonflow, huobao | done | 2026-10-15: a skit's cast sheet is made before any paid clip (every speaker's photo read, each dressed once; an unreadable photo stops the take with nothing bought), recorded on the take as cast_sheet; each clip's prompt opens with a cast line naming its speaker (@Name) and which reference image is the person, the product and the room. |
