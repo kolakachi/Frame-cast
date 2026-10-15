@@ -262,7 +262,7 @@ final class UgcChatService
         if (isset($plan['error'])) return $this->say($id, 'error', $plan['error']['message'] ?? 'The plan could not be made. Try again.');
 
         $presenters = $state['presenters'] ?? [];
-        if ($live && in_array($type, ['asmr', 'pov_hook'], true)) $presenters = [['character_id' => null, 'voice' => $type === 'asmr' ? ($presenters[0]['voice'] ?? null) : null]];
+        if ($live && $type === 'asmr') $presenters = [['character_id' => null, 'voice' => $presenters[0]['voice'] ?? null]];
         if (! $presenters) $presenters = [['character_id' => $plan['presenter_character_id'] ?? null, 'voice' => null, 'picked' => true]];
         $takes = [];
         $title = mb_substr(trim((string) ($d['title'] ?? 'UGC video')), 0, 120);

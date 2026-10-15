@@ -355,6 +355,7 @@ class UgcOneShotCompiler
             ? 'A vertical 9:16 creator video. Follow each shot\'s framing and action exactly, including product-only close-ups. '
             : 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. ';
         if ($type === 'asmr') $opening .= 'ASMR: macro close-ups of hands and the product only, never a face; slow, deliberate movements, each shot built around one clear, crisp physical sound close to the microphone (the crack, pour, fizz, crunch, peel, tap or spray it names); a quiet room, no music, no voiceover; speech only when explicitly scripted, always whispered. ';
+        if ($type === 'pov_hook') $opening .= 'A POV moment: nobody speaks and no lips move as if talking; natural room sound only. Keep the top quarter of the frame free of faces and important detail, and no text, captions or graphics anywhere in the picture: a headline is added on top afterwards. ';
         if ($type === 'skit') $opening .= 'Shot/reverse-shot dialogue. Only the selected speaker appears and speaks in this shot, looking toward the other person off camera. Both people are together in the same room, across from each other: each shot shows its speaker with that same room behind them, the same light and time of day in every shot. ';
         // Screen direction (the 180-degree rule): each speaker keeps one side, so the cuts read as one conversation.
         if ($type === 'skit' && in_array($style['speaker'] ?? null, [1, 2], true)) $opening .= ($style['speaker'] === 1

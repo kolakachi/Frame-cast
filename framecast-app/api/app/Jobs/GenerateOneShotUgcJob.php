@@ -349,6 +349,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
 
             if ($this->composition !== []) $finalPath = app(\App\Services\Ugc\UgcComposition::class)->render($finalPath, $this->composition, $storage, $temps);
+            // A POV hook's headlines, burned on the take: its words are the ad.
+            if (! empty($this->chunks[0]['headlines'])) $finalPath = self::burnHeadlines($finalPath, $this->chunks[0]['headlines'], $temps);
             // ASMR's quiet sounds raised to one steady level for phones, gently (no pumping of room hiss).
             if (! empty($this->chunks[0]['requires_audio'])) $finalPath = self::levelAsmr($finalPath, $temps);
 
@@ -737,6 +739,22 @@ class GenerateOneShotUgcJob implements ShouldQueue
             \Illuminate\Support\Facades\Log::warning('one-shot: lip-sync failed, Omni keeps its own voice', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
             return $clip;
         }
+    }
+
+    /** The headlines drawn over the video at their times, sound copied as it is. */
+    private static function burnHeadlines(string $path, array $cues, array &$temps): string
+    {
+        $size = trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', $path])->output());
+        [$w, $h] = array_map('intval', explode('x', $size) + [1 => 0]);
+        $duration = self::seconds($path);
+        if ($w <= 0 || $h <= 0 || $duration === null) throw new \RuntimeException('The headline could not be added: the video could not be read. Nothing was charged; try again.');
+        $ass = tempnam(sys_get_temp_dir(), 'oneshot-headline-').'.ass';
+        $out = tempnam(sys_get_temp_dir(), 'oneshot-headline-').'.mp4';
+        array_push($temps, $ass, $out);
+        file_put_contents($ass, \App\Services\Ugc\UgcHeadline::assTimed($cues, $w, $h, $duration));
+        $run = Process::timeout(600)->run(['ffmpeg', '-y', '-i', $path, '-vf', 'subtitles='.$ass, '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-c:a', 'copy', '-movflags', '+faststart', $out]);
+        if (! $run->successful() || ! filesize($out)) throw new \RuntimeException('The headline could not be added to the video. Nothing was charged; try again.');
+        return $out;
     }
 
     /** Whether this job's run still owns the take. */

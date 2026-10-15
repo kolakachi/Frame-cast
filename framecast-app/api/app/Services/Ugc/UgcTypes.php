@@ -13,7 +13,7 @@ final class UgcTypes
         'before_after' => ['Before / After', 'Before then after, or a split using your two uploads', 'story', 'Use supplied before and after evidence. Do not invent a transformation. Preserve both stages.'],
         'unboxing' => ['Unboxing', 'Opens the package, shows details, first impressions', 'story', 'One person on their own phone: shows the closed package, sets the phone down and opens it in view while reacting, then picks the phone up to show inside and give a first impression. The opening is done in frame by the presenter, never a product-only cutaway.'],
         'comparison' => ['Comparison', 'Compare in sequence, or split your two uploads', 'story', 'Compare supplied facts fairly. Use a generic unbranded alternative unless actual comparison assets are provided.'],
-        'pov_hook' => ['POV hook', 'An on-screen hook over still-image moments', 'text_led', 'Silent still-image cards carrying a concise POV headline. No spoken script.'],
+        'pov_hook' => ['POV hook', 'A bold "POV:" line over a few silent everyday moments', 'story', 'One to three short silent shots, 5 to 10 seconds in all: the presenter in an everyday moment where the product belongs (a knowing look into the lens, a reaction, the product in use), or only their hands when the moment is first-person. Never talking. Every shot is kind b_roll with an empty script; the first carries the hook as its headline, starting "POV:" and under 60 characters; a later shot may carry a short payoff headline. The words are burned on screen, so the picture has no text.'],
         'asmr' => ['ASMR', 'Product close-ups, quiet actions and native sound', 'story', 'Three to five macro shots of hands and the product, never a face. Each shot is built around one named physical sound (crack, pour, fizz, crunch, peel, tap, spray, texture) and its slow action, in order. No music. No speech unless explicitly requested as whispers.'],
         'day_in_life' => ['Day in the life', 'The product inside a daily routine', 'story', 'A coherent routine with the product naturally used across its moments. Preserve silent actions.'],
         'skit' => ['Skit', 'Two cast speakers in one scene, with a twist', 'story', 'Two cast speakers, shot/reverse-shot. Each spoken beat has speaker 1 or 2 matching the selected cast order. One speaker per shot; no overlapping dialogue. Preserve setup, exchange and payoff.'],
@@ -92,7 +92,7 @@ final class UgcTypes
 
     public static function native(string $type, ?\App\Models\User $user = null): bool
     {
-        return in_array($type, ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'skit', 'green_screen'], true)
+        return in_array($type, ['asmr', 'unboxing', 'day_in_life', 'problem_solution', 'before_after', 'comparison', 'skit', 'green_screen', 'pov_hook'], true)
             && self::live($type, $user);
     }
 }

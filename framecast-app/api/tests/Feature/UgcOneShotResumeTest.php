@@ -400,6 +400,25 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([['data:image/png;base64,'.base64_encode('ada-bytes')]], $this->refs, 'its own photo only; another workspace\'s is never read');
     }
 
+    public function test_a_pov_hook_take_has_its_headlines_burned_in_at_their_times(): void
+    {
+        $this->clip = sys_get_temp_dir().'/oneshot-pov-clip.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=180x320:r=24:d=4', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+            '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
+        $plain = sys_get_temp_dir().'/oneshot-pov-plain.png';
+        Process::run(['ffmpeg', '-y', '-ss', '1', '-i', $this->clip, '-frames:v', '1', $plain])->throw();
+        $error = $this->run_($this->job([['prompt' => 'A knowing look.', 'seconds' => 4, 'dialogue' => '',
+            'headlines' => [['text' => 'POV: you found it', 'start' => 0, 'end' => 4]]]]));
+        $this->assertNull($error, (string) $error?->getMessage());
+        $asset = \App\Models\Asset::query()->where('tags', 'like', '%ugc_oneshot%')->latest('id')->first();
+        $video = sys_get_temp_dir().'/oneshot-pov-made.mp4';
+        file_put_contents($video, app(StorageService::class)->get((string) $asset->storage_url));
+        $made = sys_get_temp_dir().'/oneshot-pov-made.png';
+        Process::run(['ffmpeg', '-y', '-ss', '1', '-i', $video, '-frames:v', '1', $made])->throw();
+        $this->assertNotSame(md5_file($plain), md5_file($made), 'the headline is drawn on the picture');
+        $this->assertSame([396], $this->charged);
+    }
+
     public function test_skit_speakers_carry_the_place_photo_after_their_own(): void
     {
         Storage::disk('minio')->put('ada.png', 'ada-bytes');
