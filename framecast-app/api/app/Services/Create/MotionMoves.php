@@ -77,6 +77,30 @@ class MotionMoves
     }
 
     /** "words (a headline builds…), write_on (…)": the list a model chooses from. */
+    /**
+     * Which moves suit what a beat is doing (RD-06, from awesome-ai-motion's scene-purpose tables, product-launch-motion's
+     * beat catalogue and cinetic's techniques, 2026-10-15). A guide for the planner, never a rule a reference overrides.
+     */
+    public const BY_PURPOSE = [
+        'a hook (the first seconds)' => ['cold_open', 'giant_wipe', 'stamp', 'smash', 'ramp_freeze', 'words'],
+        'a number or a result' => ['odometer', 'count', 'gauge'],
+        'a list or steps' => ['stack', 'pop', 'toss', 'cards'],
+        'a product, an app or a screen' => ['device', 'camera', 'cursor', 'press', 'morph', 'edges'],
+        'a comparison or before and after' => ['split', 'morph'],
+        'a reveal or a payoff' => ['iris', 'pull_back', 'through', 'flood', 'text_mask'],
+        'a change of topic' => ['whip', 'push', 'wipe', 'hidden_cut', 'streak'],
+        'an emphasis word' => ['write_on', 'rise', 'text_mask', 'field'],
+        'a calm or premium hold' => ['push_in', 'parallax', 'pull_back'],
+        'the close and call to action' => ['stamp', 'sticker', 'circle_text', 'field'],
+    ];
+
+    /** The purpose guide as one line for the planner. */
+    public static function purposePrompt(): string
+    {
+        return 'Choose motion by the job each beat does: '.implode('; ', array_map(fn ($job, $moves) => $job.': '.implode(', ', $moves), array_keys(self::BY_PURPOSE), self::BY_PURPOSE))
+            .'. Vary it: one move at most twice in a video unless it is the video\'s signature, and the energy rises to the payoff.';
+    }
+
     public static function prompt(): string
     {
         return implode('; ', array_map(fn ($k, $v) => $k.' ('.$v.(isset(self::ENERGY[$k]) ? '; '.self::ENERGY[$k][0].' energy, ~'.self::ENERGY[$k][1].' s' : '').')', array_keys(self::MOVES), self::MOVES));
