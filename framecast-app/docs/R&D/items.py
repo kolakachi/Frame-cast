@@ -5,7 +5,7 @@ ITEMS = [
 ("RD-02","UGC","Character mix-up check: each skit clip shows the right speaker","Jellyfish","next","Pairs with face checks on skit speakers."),
 ("RD-03","UGC","Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot","Toonflow, huobao","open","Casting, dressing and the shared place photo are done; the sheet and @name are not."),
 ("RD-04","UGC","Two-shot opener or Seedance multi-shot, if skit rooms still split","OpenMontage","idea","Only if the next skit take shows two rooms."),
-("RD-05","Create","Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs","product-launch-motion, student-kit, skills/","check","R&D said done (local), priorities said build: confirm it is live."),
+("RD-05","Create","Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs","product-launch-motion, student-kit, skills/","done","2026-10-15: craft.md already had the traps, one camera, hand-offs and label swaps; added deterministic frames and fonts-before-measuring."),
 ("RD-06","Create","Motion vocabulary by scene purpose (386 unused blocks), a no-slideshow check and a plan lint","awesome-ai-motion, huashu, cinetic","open",""),
 ("RD-07","Create","Finishing checks: constant-speed motion, repeated technique, text under phone UI, cues present, voice over music, contact sheet","animate, claude-motion-design","open","FS3 is partly built; one-frame pops done."),
 ("RD-08","Create","True peak at or below -1 dBTP alongside -14 LUFS","Opus Motion Design Harness","next",""),

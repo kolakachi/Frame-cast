@@ -76,6 +76,9 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 
 ## Render traps (measured: the preview looks right, the render does not)
 
+- Every frame is a pure function of time: the renderer seeks frame by frame, out of order, on several workers. No `Math.random`, `Date.now`, `setTimeout`, `setInterval`, `requestAnimationFrame`, CSS transitions or animations, or `repeat: -1`/`yoyo` tweens; anything that looks random (particles, jitter, noise) comes from a fixed seed, so frame 300 is the same however it was reached.
+- Every font named in the CSS has its `@font-face` in the project (lint: `font_family_without_font_face`), and text is measured only with that font in place: a width or line count measured in the fallback font puts the layout, the type-on reveal or the caption box off once the real font arrives.
+
 - No `mix-blend-mode` on an overlay layer (a vignette, a grade): it blends against nothing and the whole video renders white. Use plain opacity, or put the darkening in the overlay's own alpha.
 - A property written only in a `fromTo`'s from side is not applied when a render worker seeks into the middle, so the element vanishes. Write it in the to side too (`{opacity:1, scale:0}` → `{opacity:1, scale:1}`). A `fromTo` whose start should stay hidden until its cue needs `immediateRender:false`.
 - Two tweens writing the same transform at the same time judder: put scale on an outer wrapper and rotation (or x/y) on an inner one. Leave 0.01 s between back-to-back tweens on one property.

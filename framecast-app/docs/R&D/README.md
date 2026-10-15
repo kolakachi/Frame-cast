@@ -9,7 +9,6 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 
 | ID | Area | Item | From | Status | Note |
 |----|------|------|------|--------|------|
-| RD-05 | Create | Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs | product-launch-motion, student-kit, skills/ | check | R&D said done (local), priorities said build: confirm it is live. |
 | RD-01 | UGC | A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing | Pixelle-Video | next | Today a decline only offers another model. |
 | RD-02 | UGC | Character mix-up check: each skit clip shows the right speaker | Jellyfish | next | Pairs with face checks on skit speakers. |
 | RD-08 | Create | True peak at or below -1 dBTP alongside -14 LUFS | Opus Motion Design Harness | next |  |
@@ -42,6 +41,7 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-28 | Create | Text behind the subject: cut out the person, type between layers | Barty object separation | idea |  |
 | RD-29 | Create | Math-style explainer shots | manimgx | idea | Watch until it matures and runs on ARM. |
 | RD-32 | Platform | Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1 | fabric.js | idea | A new product. |
+| RD-05 | Create | Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs | product-launch-motion, student-kit, skills/ | done | 2026-10-15: craft.md already had the traps, one camera, hand-offs and label swaps; added deterministic frames and fonts-before-measuring. |
 | RD-34 | Create | Collage kit and Collage / zine style | Higgsfield KICKS demo | done | 2026-10-09 |
 | RD-35 | Create | Gap report: reference moments no move reproduces | Kit planning | done | create:move-gaps |
 | RD-36 | Create | Kit guide split: core kit plus specialty kits per video | Kit planning | done |  |
