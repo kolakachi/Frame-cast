@@ -1,0 +1,22 @@
+@font-face{font-family:'Caveat';src:url('caveat.ttf') format('truetype');font-weight:400 700;}
+@font-face{font-family:'Inter';src:url('inter.ttf') format('truetype');font-weight:100 900;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#F7F6F2;overflow:hidden;}
+#root{position:relative;width:100%;height:100%;overflow:hidden;background:var(--color_background,#F7F6F2);color:var(--color_text,#1E1E22);}
+/* One tall board; the camera is the board's translateY. */
+#board{position:absolute;left:0;top:0;width:1080px;height:7680px;}
+.stop{position:absolute;left:0;width:1080px;height:1920px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:56px;padding:0 90px;}
+.hand{font-family:'Caveat',cursive;font-weight:700;color:var(--color_text,#1E1E22);text-align:center;line-height:1.05;}
+.q{font-size:120px;max-width:900px;}
+.lbl{font-size:60px;max-width:280px;}
+.turn{font-size:84px;color:var(--color_accent,#D62F2F);}
+.fix{font-size:96px;max-width:900px;}
+.brand{font-size:190px;}
+.url{font-family:'Inter',sans-serif;font-weight:600;font-size:52px;letter-spacing:.02em;}
+svg path{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;}
+.draw path{stroke:var(--color_text,#1E1E22);stroke-width:8;}
+.mark path{stroke:var(--color_accent,#D62F2F);stroke-width:9;}
+.causes{display:flex;gap:40px;align-items:flex-start;justify-content:center;width:100%;}
+.cause{position:relative;display:flex;flex-direction:column;align-items:center;gap:18px;width:280px;}
+#circle1{position:absolute;left:-40px;top:-40px;}
+.hand,.url{clip-path:inset(-20% 100% -20% -4%);}

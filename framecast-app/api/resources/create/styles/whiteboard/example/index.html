@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" data-composition-variables='[{"id":"headline","type":"string","label":"Question","default":"Why does your plant keep dying?"},{"id":"line_1","type":"string","label":"Cause 1","default":"Too much water"},{"id":"line_2","type":"string","label":"Cause 2","default":"Too little light"},{"id":"line_3","type":"string","label":"Cause 3","default":"No drainage"},{"id":"line_4","type":"string","label":"Turn","default":"Usually this one"},{"id":"line_5","type":"string","label":"Fix","default":"Water only when the top of the soil is dry"},{"id":"line_6","type":"string","label":"Brand","default":"Fernhouse"},{"id":"cta","type":"string","label":"URL","default":"fernhouse.app"},{"id":"color_background","type":"color","label":"Board","default":"#F7F6F2"},{"id":"color_accent","type":"color","label":"Emphasis marker","default":"#D62F2F"},{"id":"color_text","type":"color","label":"Marker","default":"#1E1E22"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+  <div id="board" class="clip" data-start="0" data-duration="15" data-track-index="1">
+
+    <!-- Stop 1: the question and a wilting plant -->
+    <section class="stop" id="stop1" style="top:0">
+      <div class="hand q" id="question">Why does your plant keep dying?</div>
+      <svg class="draw" id="plant" viewBox="0 0 400 520" width="560" height="728">
+        <path pathLength="1" d="M110 360 L290 360 L265 500 L135 500 Z"/>
+        <path pathLength="1" d="M200 360 C200 300 205 250 200 190"/>
+        <path pathLength="1" d="M200 250 C160 245 120 270 100 320"/>
+        <path pathLength="1" d="M201 215 C240 215 285 245 300 300"/>
+        <path pathLength="1" d="M200 190 C180 160 150 150 125 165"/>
+      </svg>
+    </section>
+
+    <!-- Stop 2: three causes in a row -->
+    <section class="stop" id="stop2" style="top:1920px">
+      <div class="causes">
+        <div class="cause" id="c1">
+          <svg class="mark" id="circle1" viewBox="0 0 360 460" width="360" height="460"><path pathLength="1" d="M180 18 C295 15 348 130 340 235 C332 350 262 445 170 442 C72 438 16 340 20 225 C25 110 90 22 195 22"/></svg>
+          <svg class="draw" viewBox="0 0 200 220" width="200" height="220"><path pathLength="1" d="M100 20 C70 80 45 115 45 150 A55 55 0 0 0 155 150 C155 115 130 80 100 20 Z"/></svg>
+          <div class="hand lbl" id="cause1">Too much water</div>
+        </div>
+        <div class="cause" id="c2">
+          <svg class="draw" viewBox="0 0 200 220" width="200" height="220"><path pathLength="1" d="M100 70 A40 40 0 1 0 100.1 70"/><path pathLength="1" d="M100 20 L100 45 M100 155 L100 180 M30 110 L55 110 M145 110 L170 110 M50 60 L68 78 M132 142 L150 160 M150 60 L132 78 M68 142 L50 160"/></svg>
+          <div class="hand lbl" id="cause2">Too little light</div>
+        </div>
+        <div class="cause" id="c3">
+          <svg class="draw" viewBox="0 0 200 220" width="200" height="220"><path pathLength="1" d="M35 60 L165 60 L145 200 L55 200 Z"/><path pathLength="1" d="M70 200 L130 200"/></svg>
+          <div class="hand lbl" id="cause3">No drainage</div>
+        </div>
+      </div>
+      <div class="hand turn" id="turnLine">Usually this one</div>
+    </section>
+
+    <!-- Stop 3: the fix, arrowed from the cause -->
+    <section class="stop" id="stop3" style="top:3840px">
+      <svg class="mark" id="arrow" viewBox="0 0 300 260" width="300" height="260"><path pathLength="1" d="M40 20 C60 120 140 200 250 215"/><path pathLength="1" d="M205 180 L252 216 L200 240"/></svg>
+      <div class="hand fix" id="fixLine">Water only when the top of the soil is dry</div>
+      <svg class="draw" id="finger" viewBox="0 0 420 300" width="504" height="360"><path pathLength="1" d="M90 150 L330 150 L300 290 L120 290 Z"/><path pathLength="1" d="M105 185 C170 178 250 192 318 184"/><path pathLength="1" d="M190 20 L190 160 A20 20 0 0 0 230 160 L230 20"/><path pathLength="1" d="M300 60 L320 85 L360 35"/></svg>
+    </section>
+
+    <!-- Stop 4: the brand, written on and underlined -->
+    <section class="stop" id="stop4" style="top:5760px">
+      <div class="hand brand" id="brand">Fernhouse</div>
+      <svg class="mark" id="under" viewBox="0 0 620 60" width="620" height="60"><path pathLength="1" d="M10 35 C150 15 420 50 610 25"/></svg>
+      <div class="url" id="url">fernhouse.app</div>
+    </section>
+  </div>
+</div>
+<script src="main.js"></script>
+<script>
+  window.__timelines["main"] = window.__wyvTl;
+</script>
+</body>
+</html>

@@ -543,6 +543,21 @@ class PlanService
         return $brief ?: null;
     }
 
+    /**
+     * The reference's timing breakdown (RD-11, huashu): each moment's share of the length with what it does, so "make it
+     * like this" keeps the reference's proportions at the new length (a hook that took 12% still takes about 12%).
+     */
+    public static function timingBreakdown(array $moments, float $duration): ?array
+    {
+        if ($duration <= 0 || ! $moments) return null;
+        $rows = [];
+        foreach (array_slice($moments, 0, 24) as $m) {
+            if (! isset($m['start'], $m['end']) || $m['end'] <= $m['start']) continue;
+            $rows[] = $m['id'].' '.$m['start'].'-'.$m['end'].' s, '.round(($m['end'] - $m['start']) / $duration * 100).'%'.(($m['purpose'] ?? '') !== '' ? ': '.$m['purpose'] : '');
+        }
+        return $rows ? ['how_to_use' => 'Scale each share to settings.duration_seconds: keep the proportions, not the seconds.', 'moments' => $rows] : null;
+    }
+
     /** The study as the planner reads it: moment ids carry the asset id so decisions can name them. */
     public static function studyBrief(int $assetId, array $s): array
     {
@@ -552,6 +567,7 @@ class PlanService
             'summary' => $s['summary'] ?? null, 'duration_seconds' => $s['duration_seconds'] ?? null, 'coverage' => $s['coverage'] ?? null,
             'video_type' => $s['video_type'] ?? null, 'fps' => $s['fps'] ?? null, 'treatment' => ! empty($s['treatment']['look']) ? $s['treatment'] : null,
             'pacing' => $s['pacing'] ?? null, 'patterns' => $s['patterns'] ?? null,
+            'timing' => self::timingBreakdown((array) ($s['moments'] ?? []), (float) ($s['duration_seconds'] ?? 0)),
             'music' => ! empty($s['music']['present']) ? array_intersect_key($s['music'], array_flip(['tempo_bpm', 'beat_seconds', 'cuts_on_beat', 'confidence'])) : null,
             // Sound effects heard with the voice taken out (times measured, kinds rough); none means the reference has none.
             'sound_effects' => is_array($s['sound'] ?? null) ? ['count' => $s['sound']['count'] ?? 0, 'per_10_seconds' => $s['sound']['per_10_seconds'] ?? 0, 'kinds' => $s['sound']['kinds'] ?? [],

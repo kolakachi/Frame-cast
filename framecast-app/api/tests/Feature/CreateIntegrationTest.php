@@ -105,6 +105,13 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame('A sneaker mid-air. Shared look of every picture in this video: Risograph print, two inks.', \App\Services\Create\PlanMediaExecutor::sharedLook('A sneaker mid-air.', ['image_style' => 'Risograph print, two inks.']));
         $this->assertSame('A sneaker mid-air.', \App\Services\Create\PlanMediaExecutor::sharedLook('A sneaker mid-air.', []));
         $this->assertStringContainsString('"image_style": string', \App\Services\Create\Planning\PlanPrompt::system());
+        // RD-11: the whiteboard explainer pack, and the reference's timing as shares of its length.
+        $wb = collect(\App\Services\Create\StylePacks::catalogue())->firstWhere('slug', 'whiteboard');
+        $this->assertSame('Whiteboard explainer', $wb['name']);
+        $this->assertTrue($wb['has_example']);
+        $t = \App\Services\Create\PlanService::timingBreakdown([['id' => 'm1', 'start' => 0, 'end' => 2.4, 'purpose' => 'sets up the promise'], ['id' => 'm2', 'start' => 2.4, 'end' => 20, 'purpose' => '']], 20);
+        $this->assertSame(['m1 0-2.4 s, 12%: sets up the promise', 'm2 2.4-20 s, 88%'], $t['moments']);
+        $this->assertNull(\App\Services\Create\PlanService::timingBreakdown([], 20));
         // A video cutout cuts the take bought before it, so it is bought after every take, however the planner lists it.
         $cut = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'media' => [['kind' => 'reference_sheet', 'description' => 'Presenter sheet'],
             ['kind' => 'cutout_video', 'description' => 'The take: cut her out'], ['kind' => 'ugc_take', 'description' => 'The presenter speaks the script'], ['kind' => 'voiceover', 'description' => 'Narration']]],

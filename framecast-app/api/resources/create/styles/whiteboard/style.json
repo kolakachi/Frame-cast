@@ -1,0 +1,13 @@
+{
+ "slug": "whiteboard",
+ "name": "Whiteboard explainer",
+ "when": "Explaining how something works or why a problem happens, step by step, in a friendly teaching voice: a process, a cause and its fix, a simple idea made visual.",
+ "video_types": [
+  "explainer",
+  "how it works",
+  "tutorial",
+  "lesson"
+ ],
+ "look": "Black marker drawings and handwriting on a bright off-white board, one red or blue marker for emphasis",
+ "pace": "Steady, on the voice: each drawing draws on as it is said, the camera glides along one board"
+}
