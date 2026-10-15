@@ -98,6 +98,13 @@ class CreateIntegrationTest extends TestCase
         $p = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'mascot3d' => ['spec' => ['hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange']],
             ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']], (int) $this->workspace->id);
         $this->assertSame(['spec' => ['seed' => 7, 'hair' => ['style' => 'bob'], 'finish' => 'toon'], 'why' => 'A friendly guide in brand orange'], $p['mascot3d']);
+        // RD-19: one style line for every generated picture.
+        $styled = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'image_style' => 'Risograph print, two inks, soft grain, flat light'],
+            ['files' => [], 'voices' => [], 'settings' => ['duration_seconds' => 15, 'audio' => 'original']], (int) $this->workspace->id);
+        $this->assertSame('Risograph print, two inks, soft grain, flat light', $styled['image_style']);
+        $this->assertSame('A sneaker mid-air. Shared look of every picture in this video: Risograph print, two inks.', \App\Services\Create\PlanMediaExecutor::sharedLook('A sneaker mid-air.', ['image_style' => 'Risograph print, two inks.']));
+        $this->assertSame('A sneaker mid-air.', \App\Services\Create\PlanMediaExecutor::sharedLook('A sneaker mid-air.', []));
+        $this->assertStringContainsString('"image_style": string', \App\Services\Create\Planning\PlanPrompt::system());
         // A video cutout cuts the take bought before it, so it is bought after every take, however the planner lists it.
         $cut = app(\App\Services\Create\PlanService::class)->normalize(['summary' => 'x', 'left_out' => '', 'media' => [['kind' => 'reference_sheet', 'description' => 'Presenter sheet'],
             ['kind' => 'cutout_video', 'description' => 'The take: cut her out'], ['kind' => 'ugc_take', 'description' => 'The presenter speaks the script'], ['kind' => 'voiceover', 'description' => 'Narration']]],

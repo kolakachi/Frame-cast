@@ -27,7 +27,7 @@ class PlanMediaExecutor
         $portrait = in_array($ctx['aspect_ratio'] ?? '9:16', ['9:16', '4:5'], true);
         return match ($kind) {
             'stock_video', 'stock_image' => $this->stock($kind, $description, $portrait, $dir),
-            'ai_image' => $this->aiImage($description, $ctx, $dir),
+            'ai_image' => $this->aiImage(self::sharedLook($description, $ctx), $ctx, $dir),
             'animate_image' => $this->animate($description, $ctx, $dir),
             'voiceover', 'cloned_voiceover' => $this->voice($kind, $ctx, $dir),
             'library_music' => $this->music($description, $ctx, $dir),
@@ -103,6 +103,13 @@ class PlanMediaExecutor
             'background', 'close', 'closeup', 'up', 'macro', 'dark', 'bright', 'moody', 'cinematic', 'aerial', 'wide', 'tight', 'the', 'a', 'an', 'of', 'with', 'over', 'on', 'in', 'and', 'for', 'at', 'to', 'into', 'from', 'being', 'its', 'their', 'our'];
         $words = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($q)), fn ($w) => $w !== '' && ! in_array($w, $skip, true)));
         return implode(' ', array_slice($words, 0, 4)) ?: Str::limit($q, 60, '');
+    }
+
+    /** Every generated picture in a video carries the plan's one style line, so they read as one campaign (RD-19). */
+    public static function sharedLook(string $description, array $ctx): string
+    {
+        $style = trim((string) ($ctx['image_style'] ?? ''));
+        return $style === '' ? $description : rtrim($description).' Shared look of every picture in this video: '.rtrim($style, '. ').'.';
     }
 
     private function aiImage(string $prompt, array $ctx, string $dir): array

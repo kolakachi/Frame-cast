@@ -840,6 +840,7 @@ class PlanService
         $contract = RequirementContract::normalize($raw, $ctx);
         $requirements = $contract['requirements'];
         $characterStyle = $str($raw['character_style'] ?? '', 240);
+        $imageStyle = $str($raw['image_style'] ?? '', 240);
         $image = ($ctx['settings']['output_kind'] ?? 'video') === 'image';
         $duration = (float) ($ctx['settings']['duration_seconds'] ?? 15);
         $sources = collect($ctx['files'])->where('purpose', 'source')->keyBy('asset_id');
@@ -1025,7 +1026,7 @@ class PlanService
             // From scratch: the concept (with the two directions not taken), the format playbook and the motion voice.
             ...FormatPlaybooks::normalize($raw, ! collect($ctx['files'] ?? [])->contains(fn ($f) => ($f['purpose'] ?? '') === 'reference'), $ctx['settings']['format'] ?? null),
             // Design first: one still per beat for approval before the motion. The user can turn it off on the plan card.
-            'requirements' => $requirements, 'character_style' => $characterStyle,
+            'requirements' => $requirements, 'character_style' => $characterStyle, 'image_style' => $imageStyle,
             // The user reviews the plan, then the video is built straight away. A separate look stage only when
             // expensive media depends on an approved look (a character image, talking or animated character clips).
             'look_first' => (bool) ($raw['look_first'] ?? false) && collect($media)->contains(fn ($m) => in_array($m['kind'] ?? '', ['character_poses', 'character_variants', 'talking_shot', 'talking_take'], true)

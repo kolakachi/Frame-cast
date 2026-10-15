@@ -19,7 +19,7 @@ ITEMS = [
 ("RD-16","Create","Product hero kit: 2.5D turn, floor reflection, spotlight, explode, before/after","Kit planning","open","Kept 2026-10-15 (owner), for later."),
 ("RD-17","Create","UI morph kit: blur hand-off, drawn chart with tooltip, palette, 60 fps option","UI motion study","skipped","Skipped 2026-10-15 (owner): not our customer's need yet."),
 ("RD-18","Create","Data and infographic kit","Kit planning","skipped","Skipped 2026-10-15 (owner): not our customer's need yet."),
-("RD-19","Create","One shared style line and several variants per image prompt","Higgsfield KICKS demo","open","Kept 2026-10-15 (owner), for later."),
+("RD-19","Create","One shared style line and several variants per image prompt","Higgsfield KICKS demo","done","2026-10-15: the planner writes one image_style line (medium, lighting, lens, palette, finish) carried on the plan and added to every ai_image prompt; ai_image descriptions keep to subject and framing; a flicker montage is planned as 3-6 variant items of one prompt (priced per item as before)."),
 ("RD-20","Create","Spinning globe and 3D product-hero helpers","cobe, drei","skipped","Skipped 2026-10-15 (owner): WebGL is software-rendered on the worker."),
 ("RD-21","Create","Shader backgrounds ported to WebGL: gradient, aurora, glass, grain","shaders","skipped","Skipped 2026-10-15 (owner): WebGPU-only, no GPU on the worker."),
 ("RD-22","Create","Original music written as code","Opus Motion Design Harness","skipped","Skipped 2026-10-15 (owner)."),
