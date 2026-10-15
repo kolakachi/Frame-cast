@@ -10,7 +10,7 @@ import {attributesById,phraseStart,TOLERANCE} from './timing-check.mjs';
 import {heard} from './requirement-review.mjs';
 const run=promisify(execFile);
 
-export const RULES={coverage:.9,heardCoverage:.75,missingRun:3,extra:.25,voiceOverMusicDb:6,quietDb:-55,musicDb:-50,deadAir:1.5,abruptDb:-35};
+export const RULES={coverage:.9,heardCoverage:.75,missingRun:3,extra:.25,voiceOverMusicDb:9,quietDb:-55,musicDb:-50,deadAir:1.5,abruptDb:-35};
 // Numbers as they are said: the script may write "25%" where the voice was asked to say "twenty-five percent", and the
 // transcriber writes either. Integers up to the millions become words; % and & become words; a web address's dots and
 // slashes become "dot" and "slash".
