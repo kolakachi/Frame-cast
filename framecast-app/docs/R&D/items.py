@@ -31,7 +31,7 @@ ITEMS = [
 ("RD-28","Create","Text behind the subject: cut out the person, type between layers","Barty object separation","skipped","Skipped 2026-10-15 (owner)."),
 ("RD-29","Create","Math-style explainer shots","manimgx","skipped","Skipped 2026-10-15 (owner): watch only."),
 ("RD-30","Money","A provider call never sent settles at zero; a closed run's held credits are released","Dan rebuild","done","2026-10-15: a call with no dispatch claim, prediction or response settles at zero; held credits were already released at clear states since 2026-10-10 (CreditHolds)."),
-("RD-31","Platform","Trim old tool output in the build loop to cut cost","arXiv harness study","open",""),
+("RD-31","Platform","Trim old tool output in the build loop to cut cost","arXiv harness study","done","2026-10-15: old frames already left in batches, earlier writes shrank, and results shortened near the context cap; added a rule-based trim of stale output (a read of a file rewritten later, a check, timeline or preview a newer one replaced), run only in the same batch as the frame drop so it never forces an extra re-cache. Shortened characters are counted on the build state (trimmedChars)."),
 ("RD-32","Platform","Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1","fabric.js","skipped","Skipped 2026-10-15 (owner): a separate product."),
 ("RD-33","Platform","Review herk-edit-kit and write down which parts to take","herk-edit-kit","open","Noted as 'mine for parts' without a list."),
 ("RD-34","Create","Collage kit and Collage / zine style","Higgsfield KICKS demo","done","2026-10-09"),

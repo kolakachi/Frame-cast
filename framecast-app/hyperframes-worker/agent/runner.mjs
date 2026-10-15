@@ -11,6 +11,7 @@ import {rowsOf,timingFindings,duckingFindings,ambienceFindings,audioEdges,audioE
 import {beatFindings} from './narration-timing.mjs';
 import {moveFindings} from './move-check.mjs';
 import {finishFindings} from './finish-lint.mjs';
+import {trimStale} from './history-trim.mjs';
 import {repeatFindings} from './teach-check.mjs';
 import {layoutFindings} from './layout-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
@@ -483,7 +484,11 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
     t.forEach((m,k)=>{if(m.role==='user'&&k>0)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content)&&b.content.some(x=>x.type==='image')){lastImage=k;if(withImages.at(-1)!==k)withImages.push(k);}});
     // Old frames leave in a batch once several have built up, not one by one: changing an earlier turn makes the model
     // provider re-cache everything after it, and those rebuilds were half of one build's cost (GTM-1 #3).
-    if(withImages.length>KEPT_FRAME_TURNS)t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
+    if(withImages.length>KEPT_FRAME_TURNS){
+      t.forEach((m,k)=>{if(m.role==='user'&&k>0&&k!==lastImage)for(const b of m.content)if(b.type==='tool_result'&&Array.isArray(b.content))b.content=b.content.map(x=>x.type==='image'?{type:'text',text:'[earlier frames omitted]'}:x);});
+      // The history is being re-cached from here anyway: stale reads and superseded check results shrink in the same batch.
+      state.trimmedChars=(state.trimmedChars||0)+trimStale(t,{from:withImages[0]});
+    }
     // A file written in an earlier turn is on disk: its text leaves the history (the model reads it back if it needs it).
     // Measured as text: the one kept image is sent as an image, so its base64 does not count against the text budget.
     const over=()=>Buffer.byteLength(JSON.stringify(t,(k,v)=>k==='data'&&typeof v==='string'&&v.length>512?'[image]':v))+Buffer.byteLength(toolHostPolicy+skills)>cap.contextBytes;
