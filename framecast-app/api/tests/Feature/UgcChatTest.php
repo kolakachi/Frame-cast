@@ -392,9 +392,28 @@ class UgcChatTest extends TestCase
         }
     }
 
-    public function test_green_screen_asks_for_a_background_and_skit_for_two_speakers(): void
+    public function test_a_skit_casts_whoever_is_missing_in_contrast_and_dresses_them_apart(): void
     {
         $this->withoutMiddleware();
+        DB::table('characters')->insert([['id' => 8, 'workspace_id' => null, 'name' => 'Lena', 'status' => 'active', 'is_stock' => true, 'reference_asset_id' => 10, 'gender' => 'female'],
+            ['id' => 9, 'workspace_id' => null, 'name' => 'Tomi', 'status' => 'active', 'is_stock' => true, 'reference_asset_id' => 10, 'gender' => 'male']]);
+        $segments = [['kind' => 'on_camera', 'script_text' => 'What is that?', 'seconds' => 4, 'visual_brief' => 'Kitchen.', 'motion_prompt' => 'Points.', 'speaker' => 1],
+            ['kind' => 'on_camera', 'script_text' => 'Your new favourite.', 'seconds' => 4, 'visual_brief' => 'Kitchen.', 'motion_prompt' => 'Smiles.', 'speaker' => 2]];
+        $this->planOverride = ['format' => 'story', 'script' => \App\Services\Ugc\UgcPlan::script($segments), 'segments' => $segments];
+        $this->replies[] = ['action' => 'pitch', 'type' => 'skit', 'format' => 'story', 'summary' => 'Two friends.', 'script' => $this->planOverride['script']];
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $reply = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'A skit', 'type' => 'skit', 'presenters' => [['character_id' => 5]]])->assertOk()->json('data.reply');
+        $this->assertSame('pitch', $reply['kind'], json_encode($reply));
+        $take = json_decode(DB::table('ugc_chat_messages')->where('id', $reply['id'])->value('payload_json'), true)['takes'][0];
+        $this->assertSame([5, 9], $take['request']['cast_character_ids'], 'the chosen face stays speaker 1; the second is of the other gender');
+        $this->assertNotEmpty($take['request']['wardrobe_2']);
+        $this->assertNotSame($take['request']['wardrobe'], $take['request']['wardrobe_2']);
+    }
+
+    public function test_green_screen_asks_for_a_background_and_a_skit_for_its_cast_when_none_is_free(): void
+    {
+        $this->withoutMiddleware();
+        DB::table('characters')->delete();
         foreach (['green_screen', 'skit'] as $type) {
             $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
             $this->replies[] = ['action' => 'pitch', 'type' => $type, 'summary' => 'A video.', 'script' => 'Try this.'];

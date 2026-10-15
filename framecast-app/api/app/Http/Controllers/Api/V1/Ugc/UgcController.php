@@ -1006,6 +1006,8 @@ class UgcController extends Controller
             'title' => ['nullable', 'string', 'max:120'],
             // What the presenter wears in this ad (the chat varies it, so a stock actor is not always in one outfit).
             'wardrobe' => ['nullable', 'string', 'max:160'],
+            // A skit's speaker 2 wears their own outfit.
+            'wardrobe_2' => ['nullable', 'string', 'max:160'],
             'consent' => ['accepted'],
             'reviewed' => ['accepted'],
             'credits' => ['required', 'integer'],
@@ -1109,10 +1111,7 @@ class UgcController extends Controller
                     $description = (string) $c->description;
                     // An ad that sets its own wardrobe drops the clothing written into a stock description ("oversized
                     // linen shirt"), or every ad put the actor in the same outfit.
-                    if (trim((string) ($v['wardrobe'] ?? '')) !== '') {
-                        $description = implode(', ', array_filter(array_map('trim', explode(',', $description)),
-                            fn ($part) => ! preg_match('/\b(shirt|t-shirt|tee|top|sweater|jumper|hoodie|cardigan|jacket|blazer|coat|dress|blouse|tank|vest|linen|denim|knit|sweatshirt|overshirt|wearing|outfit)\b/i', $part)));
-                    }
+                    if (trim((string) ($v['wardrobe'] ?? '')) !== '') $description = self::withoutClothing($description);
                     $presenter = trim($c->name.($description !== '' ? ' — '.$description : ''));
                 }
                 if ($uri = $dataUri((int) $c->reference_asset_id)) {
@@ -1135,7 +1134,9 @@ class UgcController extends Controller
                 // in the queue and the saved recipe for a six-clip skit. The job loads them when it makes the clip.
                 $speakerReferences[$index + 1] = [(int) $actor->reference_asset_id];
                 foreach (array_slice($productIds, 0, 2) as $pid) if ($dataUri($pid)) $speakerReferences[$index + 1][] = (int) $pid;
-                $speakerDescriptions[$index + 1] = $actor->name.' — '.$actor->description;
+                // The ad's outfits replace the clothing in a stock description, as for a single presenter.
+                $about = trim((string) ($v['wardrobe'] ?? '')) !== '' ? self::withoutClothing((string) $actor->description) : (string) $actor->description;
+                $speakerDescriptions[$index + 1] = $actor->name.($about !== '' ? ' — '.$about : '');
             }
         }
         // The setting's background photo (owner, 2026-10-11): the kind of place, never a copy. It goes third, after the
@@ -1220,6 +1221,8 @@ class UgcController extends Controller
             'product_look' => $productIds ? app(\App\Services\Ugc\ProductVision::class)->look($productIds, (int) $user->workspace_id) : '',
             'tone' => trim((string) ($v['tone'] ?? '')),
             'wardrobe' => trim((string) ($v['wardrobe'] ?? '')),
+            'speaker_wardrobes' => ($v['ugc_type'] ?? '') === 'skit' && trim((string) ($v['wardrobe_2'] ?? '')) !== ''
+                ? [1 => trim((string) ($v['wardrobe'] ?? '')), 2 => trim((string) $v['wardrobe_2'])] : [],
             'pronunciations' => $pronNotes,
             'demo' => $demoStorageUrl !== null,
         ];
@@ -1317,7 +1320,11 @@ class UgcController extends Controller
             // The trace (every step's prompt, raw clip and verdict) is kept for the team's takes only.
             if (in_array($user->role, ['super_admin', 'platform_admin'], true)) $chunk['trace'] = true;
             if (isset($sourceMedia[$chunk['source_asset_id'] ?? 0])) $chunk['source_media'] = $sourceMedia[$chunk['source_asset_id']];
-            if (isset($speakerReferences[$chunk['speaker'] ?? 0])) $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
+            if (isset($speakerReferences[$chunk['speaker'] ?? 0])) {
+                $chunk['reference_asset_ids'] = $speakerReferences[$chunk['speaker']];
+                // Both speakers in one room: the place photo rides with each speaker's own (the job reads it from the take's references).
+                if ($placePhoto) $chunk['place_at'] = $plateAt;
+            }
         }
         unset($chunk);
         $runId = (string) Str::uuid();
@@ -1568,5 +1575,12 @@ class UgcController extends Controller
         return ['id' => $project->id, 'character' => $character?->name ?? 'No presenter',
             'scenes' => count($segments), 'credits' => UgcPlan::quote($segments), 'status' => 'generating',
             'run_id' => $runId, 'variant' => $variantLabel ?: null];
+    }
+
+    /** A stock description without its clothing ("oversized linen shirt"), for an ad that sets its own outfits. */
+    private static function withoutClothing(string $description): string
+    {
+        return implode(', ', array_filter(array_map('trim', explode(',', $description)),
+            fn ($part) => ! preg_match('/\b(shirt|t-shirt|tee|top|sweater|jumper|hoodie|cardigan|jacket|blazer|coat|dress|blouse|tank|vest|linen|denim|knit|sweatshirt|overshirt|wearing|outfit)\b/i', $part)));
     }
 }

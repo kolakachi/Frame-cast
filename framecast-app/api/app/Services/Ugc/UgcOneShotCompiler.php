@@ -56,8 +56,11 @@ class UgcOneShotCompiler
             $speaker = $chunk['beats'][0]['speaker'] ?? null;
             $chunkStyle = $style;
             if ($speaker && isset($style['speakers'][$speaker])) $chunkStyle['presenter'] = $style['speakers'][$speaker];
-            // "Choose your own spot" is for the opening shot only: on a later clip it re-imagined the room each time (take 285).
-            if ($i > 0 && ! $speaker) $chunkStyle['place_note'] = '';
+            if ($speaker && isset($style['speaker_wardrobes'][$speaker])) $chunkStyle['wardrobe'] = $style['speaker_wardrobes'][$speaker];
+            if ($speaker) $chunkStyle['speaker'] = (int) $speaker;
+            // "Choose your own spot" is for the opening shot only: on a later clip it re-imagined the room each time (take 285),
+            // and in a skit it put the second speaker somewhere else.
+            if ($i > 0) $chunkStyle['place_note'] = '';
             $preamble = self::preamble($chunkStyle);
             foreach ($chunk['beats'] as $j => $beat) {
                 if ($j > 0 && ! empty($beat['continues'])) {
@@ -352,7 +355,11 @@ class UgcOneShotCompiler
             ? 'A vertical 9:16 creator video. Follow each shot\'s framing and action exactly, including product-only close-ups. '
             : 'A vertical 9:16 UGC-style selfie ad, one continuous handheld take. ';
         if ($type === 'asmr') $opening .= 'ASMR: macro close-ups of hands and the product only, never a face; slow, deliberate movements, each shot built around one clear, crisp physical sound close to the microphone (the crack, pour, fizz, crunch, peel, tap or spray it names); a quiet room, no music, no voiceover; speech only when explicitly scripted, always whispered. ';
-        if ($type === 'skit') $opening .= 'Shot/reverse-shot dialogue. Only the selected speaker appears and speaks in this shot, looking toward the other person off camera. ';
+        if ($type === 'skit') $opening .= 'Shot/reverse-shot dialogue. Only the selected speaker appears and speaks in this shot, looking toward the other person off camera. Both people are together in the same room, across from each other: each shot shows its speaker with that same room behind them, the same light and time of day in every shot. ';
+        // Screen direction (the 180-degree rule): each speaker keeps one side, so the cuts read as one conversation.
+        if ($type === 'skit' && in_array($style['speaker'] ?? null, [1, 2], true)) $opening .= ($style['speaker'] === 1
+            ? 'This speaker sits frame-left of the other person: they look slightly toward the right edge of the frame, never into the lens. '
+            : 'This speaker sits frame-right of the other person: they look slightly toward the left edge of the frame, never into the lens. ');
         if ($type === 'green_screen') {
             $wardrobe = 'a charcoal grey top';
             $key = match ($style['chroma_key'] ?? '') { '0x0000FF' => 'blue (#0000FF)', '0xFF00FF' => 'magenta (#FF00FF)', default => 'green (#00FF00)' };

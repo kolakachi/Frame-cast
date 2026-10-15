@@ -400,6 +400,16 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([['data:image/png;base64,'.base64_encode('ada-bytes')]], $this->refs, 'its own photo only; another workspace\'s is never read');
     }
 
+    public function test_skit_speakers_carry_the_place_photo_after_their_own(): void
+    {
+        Storage::disk('minio')->put('ada.png', 'ada-bytes');
+        DB::table('assets')->insert(['id' => 5, 'workspace_id' => 3, 'asset_type' => 'image', 'storage_url' => 'minio://ada.png', 'mime_type' => 'image/png']);
+        $job = new GenerateOneShotUgcJob(7, 70, [['prompt' => 'Ada', 'seconds' => 4, 'new_shot' => true, 'speaker' => 1, 'reference_asset_ids' => [5], 'place_at' => 1]],
+            396, 'omni', ['product-photo', 'place-photo']);
+        $this->assertNull($this->run_($job));
+        $this->assertSame([['data:image/png;base64,'.base64_encode('ada-bytes'), 'place-photo']], $this->refs);
+    }
+
     public function test_skit_uses_each_speakers_own_reference_without_the_other_speakers_tail(): void
     {
         $this->assertNull($this->run_($this->job([

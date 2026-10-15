@@ -207,6 +207,22 @@ class UgcOneShotCompilerTest extends TestCase
         $this->assertStringNotContainsString('same presenter', $chunks[1]['prompt']);
     }
 
+    public function test_skit_speakers_share_one_room_and_wear_their_own_outfits(): void
+    {
+        $chunks = UgcOneShotCompiler::compile([
+            ['script_text' => 'What is that?', 'seconds' => 3, 'speaker' => 1],
+            ['script_text' => 'Your new favourite.', 'seconds' => 3, 'speaker' => 2],
+        ], ['ugc_type' => 'skit', 'speakers' => [1 => 'Ada', 2 => 'Ben'], 'wardrobe' => 'a red knit sweater',
+            'speaker_wardrobes' => [1 => 'a red knit sweater', 2 => 'a white linen shirt'], 'place_note' => 'Choose your own spot in the room.'], 10);
+        $this->assertStringContainsString('Ada, wearing a red knit sweater', $chunks[0]['prompt']);
+        $this->assertStringContainsString('Ben, wearing a white linen shirt', $chunks[1]['prompt']);
+        $this->assertStringContainsString('same room', $chunks[1]['prompt']);
+        $this->assertStringContainsString('Choose your own spot', $chunks[0]['prompt']);
+        $this->assertStringNotContainsString('Choose your own spot', $chunks[1]['prompt'], 'the second speaker is not sent somewhere else');
+        $this->assertStringContainsString('toward the right edge', $chunks[0]['prompt'], 'each speaker keeps one side of the frame');
+        $this->assertStringContainsString('toward the left edge', $chunks[1]['prompt']);
+    }
+
     public function test_green_screen_has_a_keyable_background_and_lists_allow_scripted_numbers(): void
     {
         $beat = ['script_text' => 'One, it is useful. Two, it is simple.', 'seconds' => 8];

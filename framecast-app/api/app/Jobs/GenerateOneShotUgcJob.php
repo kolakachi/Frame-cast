@@ -180,6 +180,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if (! empty($chunk['reference_asset_ids']) && empty($chunk['reference_images'])) {
                     $chunk['reference_images'] = $this->referenceUris($chunk['reference_asset_ids'], (int) $project->workspace_id);
                     if ($chunk['reference_images'] === []) throw new \RuntimeException('Segment '.($i + 1).': the speaker\'s photo could not be read. Nothing was charged; try again.');
+                    // The place photo, so both speakers of a skit are in one room: the speaker, their product, then the place.
+                    if (isset($chunk['place_at'], $this->referenceImages[$chunk['place_at']])) {
+                        $chunk['reference_images'] = array_merge(array_slice($chunk['reference_images'], 0, 2), [$this->referenceImages[$chunk['place_at']]]);
+                    }
                 }
                 // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
                 // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from

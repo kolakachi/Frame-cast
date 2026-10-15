@@ -200,9 +200,13 @@ final class UgcChatService
             if (! $roleAsset('left') || ! $roleAsset('right')) return $this->say($id, 'question', 'A split comparison needs both files. Assign one upload to Left / Before and the other to Right / After, then send again.');
             $composition = ['layout' => 'split', 'left_asset_id' => $roleAsset('left'), 'right_asset_id' => $roleAsset('right')];
         }
-        $castIds = array_values(array_filter(array_column($state['presenters'] ?? [], 'character_id')));
-        if ($type === 'skit' && (count($state['presenters'] ?? []) !== 2 || count($castIds) !== 2 || count(array_unique($castIds)) !== 2)) {
-            return $this->say($id, 'question', 'Choose exactly two different presenters for this skit. They will play speaker 1 and speaker 2 in one video.');
+        $castIds = array_values(array_unique(array_filter(array_column($state['presenters'] ?? [], 'character_id'))));
+        if ($type === 'skit') {
+            if (count($castIds) > 2) return $this->say($id, 'question', 'A skit has two people. Keep two presenters, one for each speaker, then send again.');
+            // The director casts whoever is missing (owner, 2026-10-14): a second face that contrasts with the first, so the
+            // two read apart on screen and in voice. The user can swap either in Presenters and send again.
+            $castIds = $this->castSkit($request, $castIds);
+            if (count($castIds) !== 2) return $this->say($id, 'question', 'Choose two presenters for this skit. They will play speaker 1 and speaker 2 in one video.');
         }
         $format = (UgcTypes::contracts($request->user())[$type] ?? null)[2] ?? UgcTypes::format($type);
         // A pitch that shows a routine (open, pour, taste…) needs its shots apart (take 283, 2026-10-12): as one talking
@@ -267,7 +271,11 @@ final class UgcChatService
             if (array_diff($speakers, [1, 2]) || count($speakers) !== 2) {
                 return $this->say($id, 'error', 'The skit plan must assign each shot to speaker 1 or 2 and include both speakers. Ask for a revised plan; no credits were spent.');
             }
-            $presenters = [array_merge($presenters[0], ['cast_character_ids' => $castIds, 'speaker_voices' => [1 => $presenters[0]['voice'] ?? null, 2 => $presenters[1]['voice'] ?? null]])];
+            // Speaker 2 dresses differently from speaker 1: one outfit on both read as a uniform.
+            $second = $setting !== null && $setting === $kept && trim((string) ($before['wardrobe_2'] ?? '')) !== '' ? (string) $before['wardrobe_2']
+                : $this->pickWardrobe(array_merge([$wardrobe], $recentOutfits), $setting !== null ? ($settings[$setting]['wardrobe'] ?? []) : []);
+            $presenters = [array_merge($presenters[0], ['character_id' => null, 'picked' => false, 'cast_character_ids' => $castIds, 'wardrobe_2' => $second,
+                'speaker_voices' => [1 => $presenters[0]['voice'] ?? null, 2 => $presenters[1]['voice'] ?? null]])];
         }
         foreach ($presenters as $p) {
             // A presenter with their own place gets it, and clothes that suit it.
@@ -343,7 +351,7 @@ final class UgcChatService
                 'engine' => 'seedance25', 'quality' => 'full', 'product_asset_id' => $products[0] ?? null, 'pronunciations' => $pronunciations !== '' ? $pronunciations : null,
                 'product_asset_ids' => $products ?: null, 'product' => mb_substr($product, 0, 200), 'language' => 'en',
                 'presenter_description' => $characterId ? null : mb_substr((string) ($plan['presenter'] ?? ''), 0, 400), 'title' => $title, 'wardrobe' => $wardrobe,
-                'setting_key' => $setting], fn ($x) => $x !== null && $x !== '');
+                'setting_key' => $setting, 'wardrobe_2' => $p['wardrobe_2'] ?? null], fn ($x) => $x !== null && $x !== '');
             // Seedance 2.5 by default (owner, 2026-10-12: "the best I have seen"); a plan longer than its 30-second take goes to
             // Omni, which keeps a cast presenter's photo, rather than to Veo Fast.
             $price = UgcOneShotPricing::price($request->user(), $v, $segments, $this->credits);
@@ -353,6 +361,7 @@ final class UgcChatService
             }
             $v['credits'] = (int) $price['quote'];
             return ['character_id' => $characterId, 'name' => $name, 'picked' => ! empty($p['picked']), 'voice' => $voice, 'mode' => 'one_shot', 'wardrobe' => $wardrobe, 'setting' => $setting,
+                'wardrobe_2' => $p['wardrobe_2'] ?? null, 'cast_character_ids' => $p['cast_character_ids'] ?? null,
                 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'request' => $v, 'engines' => $this->engineChoices($request, $v, $segments, $type, $composition)];
         }
         $per = UgcPlan::quote($segments);
@@ -428,6 +437,28 @@ final class UgcChatService
     {
         return DB::table('characters')->where('status', 'active')->whereNotNull('reference_asset_id')
             ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)->orWhere(fn ($q) => $q->whereNull('workspace_id')->where('is_stock', true)));
+    }
+
+    /**
+     * A skit's two speakers: the ones the user chose, and the director's pick for whoever is missing — stock faces not
+     * cast lately, the second of the other gender when the first's is known, so the two never look or sound alike.
+     *
+     * @param  list<int>  $chosen
+     * @return list<int>
+     */
+    private function castSkit(Request $request, array $chosen): array
+    {
+        [$recent] = $this->recentCasting($request);
+        while (count($chosen) < 2) {
+            $pool = self::castable($request->user())->where('is_stock', true)->whereNotIn('id', $chosen);
+            $first = $chosen ? (string) DB::table('characters')->where('id', $chosen[0])->value('gender') : '';
+            $contrast = $first !== '' ? (clone $pool)->where('gender', '!=', $first)->whereNotNull('gender') : $pool;
+            $fresh = fn ($q) => (clone $q)->whereNotIn('id', $recent ?: [0])->inRandomOrder()->value('id');
+            $pick = $fresh($contrast) ?? (clone $contrast)->inRandomOrder()->value('id') ?? $fresh($pool) ?? (clone $pool)->inRandomOrder()->value('id');
+            if (! $pick) break;
+            $chosen[] = (int) $pick;
+        }
+        return $chosen;
     }
 
     /** Whether every chosen presenter is the workspace's own character (never a stock actor, never "let us pick"). */
