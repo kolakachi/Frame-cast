@@ -19,6 +19,8 @@ class UgcOneShotResumeTest extends TestCase
     private string $clip;
     private int $starts = 0;
     private ?int $failOn = null;
+    private ?int $hangOn = null;
+    private array $cancelled = [];
     private array $charged = [];
     private array $refunded = [];
     private string $tier = 'creator';
@@ -63,9 +65,11 @@ class UgcOneShotResumeTest extends TestCase
         $veo->shouldReceive('start')->andReturnUsing(function ($prompt, $seconds, $startFrame = null, $engine = null, $refs = [], $seed = null, $resolution = '720p', $videos = [], $aspect = '9:16') { $this->shapes[] = $aspect; $this->sentPrompts[] = $prompt; $this->askedSeconds[] = $seconds; $this->startFrames[] = $startFrame; $this->refs[] = $refs; return 'pred-'.(++$this->starts); });
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
+            if ($this->hangOn !== null && $id === 'pred-'.$this->hangOn) return null;
             if ($this->onPoll) ($this->onPoll)();
             return $this->clip;
         });
+        $veo->shouldReceive('cancel')->andReturnUsing(function ($id) { $this->cancelled[] = $id; });
         $this->app->instance(ReplicateVeoAdapter::class, $veo);
         $credits = Mockery::mock(CreditService::class)->shouldIgnoreMissing();
         $credits->shouldReceive('deduct')->andReturnUsing(function ($ws, $amount) { if ($amount > $this->balance) return false; $this->charged[] = $amount; return true; });
@@ -591,6 +595,15 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(200, $c->revert($req(), 7)->getStatusCode());
         $this->assertSame($first, (int) Scene::query()->find(70)->visual_asset_id);
         $this->assertSame(409, $c->revert($req(), 7)->getStatusCode(), 'one step back only');
+    }
+
+    public function test_a_clip_that_hangs_is_cancelled_and_made_once_more(): void
+    {
+        $this->hangOn = 2;
+        $this->assertNull($this->run_($this->job()));
+        $this->assertSame(['pred-2'], $this->cancelled);
+        $this->assertSame(4, $this->starts, 'three clips, one of them twice');
+        $this->assertSame([396], $this->charged);
     }
 
     public function test_the_charge_carries_what_the_take_really_cost(): void

@@ -137,6 +137,13 @@ class ReplicateVeoAdapter
     }
 
     /** Output URL on success, null on timeout; throws (honestly) on failure. */
+    /** Stop a prediction we no longer wait for (one that hung), so it neither runs on nor bills. */
+    public function cancel(string $predictionId): void
+    {
+        rescue(fn () => Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(20)
+            ->post('https://api.replicate.com/v1/predictions/'.$predictionId.'/cancel'), report: false);
+    }
+
     public function pollUntilDone(string $predictionId, int $maxSeconds = 600): ?string
     {
         $deadline = time() + $maxSeconds;

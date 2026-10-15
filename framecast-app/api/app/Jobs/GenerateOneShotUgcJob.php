@@ -795,7 +795,16 @@ class GenerateOneShotUgcJob implements ShouldQueue
             )])->save();
 
             try {
-                $url = $veo->pollUntilDone($predictionId);
+                // Omni makes a clip in about 40 seconds; five minutes is a hang, not a slow clip.
+                $url = $veo->pollUntilDone($predictionId, $this->engine === 'omni' ? 300 : 600);
+                if (($url === null || $url === '') && $attempt === 0) {
+                    // A request the model never finished (take 306, 2026-10-15: one Omni clip "processing" for 30 minutes):
+                    // cancelled and made once more, rather than failing the whole take.
+                    $veo->cancel($predictionId);
+                    \Illuminate\Support\Facades\Log::warning('one-shot: a clip hung, cancelled and made again', ['project_id' => $this->projectId, 'segment' => $i + 1, 'prediction_id' => $predictionId]);
+                    continue;
+                }
+                if ($url === null || $url === '') $veo->cancel($predictionId);
                 break;
             } catch (\RuntimeException $e) {
                 $transient = trim(str_replace('Veo generation failed:', '', $e->getMessage())) === ''
