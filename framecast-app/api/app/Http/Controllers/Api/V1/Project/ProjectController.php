@@ -1943,7 +1943,8 @@ class ProjectController extends Controller
             'output_asset' => $outputAsset ? $this->serializeAsset($outputAsset) : null,
             'download_url' => $outputAsset ? \Illuminate\Support\Facades\URL::temporarySignedRoute(
                 'media.assets.content', now()->addMinutes((int) config('media.signed_url_ttl_minutes', 720)),
-                ['assetId' => $outputAsset->getKey(), 'download' => 1],
+                ['assetId' => $outputAsset->getKey(), 'download' => 1] + \App\Services\Analytics\DownloadLog::linkParams(
+                    request()->user()?->id ? (int) request()->user()->id : null, request()->is('api/developer/*')),
             ) : null,
         ];
     }

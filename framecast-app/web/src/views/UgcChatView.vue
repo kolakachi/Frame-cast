@@ -530,7 +530,8 @@ async function download(run) {
       if (disposed || takeOf(run)?.id !== t.id) return
     }
     if (job?.status === 'failed') throw new Error(job.failure_reason || 'The video could not be finished. Try again.')
-    const url = job?.status === 'completed' ? job.output_asset?.storage_url : null
+    // The download link (recorded as a download, saved as a file); the plain file link only for an older export.
+    const url = job?.status === 'completed' ? (job.download_url || job.output_asset?.storage_url) : null
     if (!url) throw new Error('The video is taking long to finish. Try again in a minute.')
     // A link the user clicks: a window opened after this long wait would be blocked as a pop-up.
     ready.value = { ...ready.value, [t.id]: url }

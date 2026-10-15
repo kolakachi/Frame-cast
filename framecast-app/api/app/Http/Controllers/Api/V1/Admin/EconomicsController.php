@@ -33,6 +33,10 @@ class EconomicsController extends Controller
             ->selectRaw("workspace_id, SUM(CASE WHEN operation LIKE 'grant:%' THEN -credits ELSE 0 END) as granted, SUM(CASE WHEN operation LIKE 'grant:%' THEN 0 ELSE credits END) as used")
             ->get()->keyBy('workspace_id');
 
+        // Finished videos downloaded (owner, 2026-10-15), from Create, UGC or the Classic editor, in the app or by the API.
+        $hasDownloads = \Illuminate\Support\Facades\Schema::hasTable('video_downloads');
+        $downloads = $hasDownloads ? DB::table('video_downloads')->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+            ->groupBy('workspace_id')->selectRaw('workspace_id, count(*) as n')->pluck('n', 'workspace_id') : collect();
         $ids = collect($rev->keys())->merge($cost->keys())->merge($earlier->keys())->filter()->unique()->values();
         // Sales with no account behind them (an AppSumo licence bought but never redeemed) still reached us: one row.
         if ($rev->has('')) $ids->push('');
@@ -40,7 +44,7 @@ class EconomicsController extends Controller
         $workspaces = DB::table('workspaces')->whereIn('id', $real)->get()->keyBy('id');
         $owners = DB::table('users')->whereIn('workspace_id', $real)->orderBy('id')->get(['workspace_id', 'email'])->unique('workspace_id')->pluck('email', 'workspace_id');
 
-        $rows = $ids->map(function ($id) use ($rev, $cost, $earlier, $credits, $workspaces, $owners) {
+        $rows = $ids->map(function ($id) use ($rev, $cost, $earlier, $credits, $workspaces, $owners, $downloads) {
             $sales = $rev->get($id, collect());
             $paid = (float) $sales->sum(fn ($r) => (float) ($r->net_usd ?? 0));
             $fees = (float) $sales->sum('fee_usd');
@@ -71,6 +75,7 @@ class EconomicsController extends Controller
                 'margin_usd' => round($in - $real - $est, 2),
                 'credits_granted' => (int) ($c->granted ?? 0),
                 'credits_used' => (int) ($c->used ?? 0),
+                'downloads' => (int) ($downloads[$id] ?? 0),
                 'unpriced_sales' => $sales->whereNull('net_usd')->count(),
             ];
         })->filter(fn ($r) => ! $paidOnly || $r['sales'] > 0)->sortByDesc('money_in_usd')->values();
@@ -103,6 +108,9 @@ class EconomicsController extends Controller
 
         return response()->json(['data' => [
             'rows' => $rows, 'by_channel' => $byChannel, 'by_source' => $bySource, 'totals' => $totals, 'unattributed_cost_usd' => $unattributed,
+            'downloads' => $hasDownloads ? DB::table('video_downloads')->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+                ->groupBy('source', 'via')->selectRaw('source, via, count(*) as downloads, count(distinct workspace_id) as workspaces')
+                ->orderByDesc('downloads')->get()->map(fn ($d) => ['source' => $d->source, 'via' => $d->via, 'downloads' => (int) $d->downloads, 'workspaces' => (int) $d->workspaces])->all() : [],
             'full_cost_since' => self::FULL_SINCE, 'period_days' => $days,
         ], 'meta' => []]);
     }

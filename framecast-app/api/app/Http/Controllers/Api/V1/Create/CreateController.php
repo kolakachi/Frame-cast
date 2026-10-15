@@ -72,9 +72,12 @@ class CreateController extends Controller
         // The player streams each version from a signed link; one link per 15-minute window, valid 30 to 45 minutes.
         $expires = \Illuminate\Support\Carbon::createFromTimestamp((intdiv(now()->timestamp, 900) + 3) * 900);
         $paths = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('artifact_path', 'id');
-        $revisions->each(function ($revision) use ($paths, $expires) {
+        $revisions->each(function ($revision) use ($paths, $expires, $r) {
             $path = $paths[$revision->id] ?? null;
             $revision->preview_url = $path && app(\App\Services\Create\CreateStorage::class)->exists($path) ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', $expires, ['revisionId' => $revision->id]) : null;
+            // The Download button's own link, so a download is recorded and playback never is (owner, 2026-10-15).
+            $revision->download_url = $revision->preview_url ? \Illuminate\Support\Facades\URL::temporarySignedRoute('media.create.version', $expires,
+                ['revisionId' => $revision->id, 'download' => 1] + \App\Services\Analytics\DownloadLog::linkParams((int) $r->user()->id)) : null;
         });
         $bundles = DB::table('composition_revisions')->where('conversation_id', $id)->pluck('bundle_json', 'id');
         $revisions->each(function($revision)use($bundles){$revision->variables=\App\Services\Create\CompositionVariables::declarations(json_decode($bundles[$revision->id] ?? '{}', true)['index.html'] ?? null);});
@@ -497,14 +500,24 @@ class CreateController extends Controller
     }
 
     /** The version's video by signed link (no session): the link itself is the permission, and it expires. */
-    public function signedVideo(string $revisionId)
+    public function signedVideo(\Illuminate\Http\Request $request, string $revisionId)
     {
         $revision = DB::table('composition_revisions')->where('id', $revisionId)->firstOrFail();
         $workspace = DB::table('create_conversations')->where('id', $revision->conversation_id)->value('workspace_id');
         abort_unless($workspace && \App\Models\Workspace::whereKey($workspace)->where('status', 'active')->exists(), 404);
         abort_unless($revision->artifact_path && app(\App\Services\Create\CreateStorage::class)->exists($revision->artifact_path), 404);
         $ext = pathinfo($revision->artifact_path, PATHINFO_EXTENSION);
-        return response()->file(app(\App\Services\Create\CreateStorage::class)->path($revision->artifact_path), ['Content-Type' => match ($ext) { 'png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp', default => 'video/mp4' }, 'Cache-Control' => 'private, max-age=600']);
+        $headers = ['Content-Type' => match ($ext) { 'png' => 'image/png', 'jpg' => 'image/jpeg', 'webp' => 'image/webp', default => 'video/mp4' }, 'Cache-Control' => 'private, max-age=600'];
+        // A download link (download=1, signed with who asked): recorded, and saved as a file. A range request for the rest of
+        // the same file is not a second download.
+        if ($request->boolean('download')) {
+            $headers['Content-Disposition'] = 'attachment; filename="wyvstudio-v'.$revision->number.'.'.($ext ?: 'mp4').'"';
+            if (! $request->headers->has('Range') || str_starts_with((string) $request->header('Range'), 'bytes=0-')) {
+                \App\Services\Analytics\DownloadLog::record((int) $workspace, $request->integer('u') ?: null, 'create', (string) $request->query('via', 'app'),
+                    ['conversation_id' => $revision->conversation_id, 'revision_id' => $revision->id]);
+            }
+        }
+        return response()->file(app(\App\Services\Create\CreateStorage::class)->path($revision->artifact_path), $headers);
     }
 
     public function signedPoster(string $revisionId)

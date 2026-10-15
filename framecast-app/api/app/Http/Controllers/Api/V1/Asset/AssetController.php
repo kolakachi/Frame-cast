@@ -368,6 +368,17 @@ class AssetController extends Controller
 
         $storageService = app(StorageService::class);
         $rawStorageUrl  = (string) $asset->storage_url;
+        // A download link (download=1) is recorded once per file, never playback (owner, 2026-10-15): a finished UGC take,
+        // a Classic export or one handed over by the API.
+        if ($request->boolean('download') && (! $request->headers->has('Range') || str_starts_with((string) $request->header('Range'), 'bytes=0-'))) {
+            $projectId = \App\Models\ExportJob::query()->where('output_asset_id', $asset->getKey())->latest('id')->value('project_id');
+            $project = $projectId ? \App\Models\Project::query()->find($projectId) : null;
+            $source = $storageService->isCreatePrivate($rawStorageUrl) ? 'create' : (data_get($project?->visual_brief, 'ugc_format') ? 'ugc' : 'editor');
+            if ($asset->workspace_id) {
+                \App\Services\Analytics\DownloadLog::record((int) $asset->workspace_id, $request->integer('u') ?: null, $source, (string) $request->query('via', 'app'),
+                    ['project_id' => $projectId, 'asset_id' => $asset->getKey()]);
+            }
+        }
         if ($storageService->isCreatePrivate($rawStorageUrl)) {
             abort_unless(config('create.enabled')
                 && \App\Services\Create\ConversationService::workspaceAllowed((int) $asset->workspace_id)

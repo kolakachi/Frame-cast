@@ -171,7 +171,7 @@ class VideoController extends DeveloperController
             'title' => $project->title,
             // The same signed, workspace-private link the dashboard uses.
             // Nothing is made public to hand it over.
-            'download_url' => URL::temporarySignedRoute('media.assets.content', $expires, ['assetId' => $asset->getKey(), 'download' => 1]),
+            'download_url' => URL::temporarySignedRoute('media.assets.content', $expires, ['assetId' => $asset->getKey(), 'download' => 1] + \App\Services\Analytics\DownloadLog::linkParams((int) $request->user()->id, true)),
             'download_expires_at' => $expires->toIso8601String(),
             'export_id' => $export->id,
             'source_fingerprint' => $export->source_fingerprint,

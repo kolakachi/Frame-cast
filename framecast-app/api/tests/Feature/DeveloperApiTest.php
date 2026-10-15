@@ -993,6 +993,11 @@ class DeveloperApiTest extends TestCase
         $this->assertStringContainsString("/media/assets/{$assetId}?download=1", $url);
         $this->assertStringContainsString('signature=', $url);
         $this->assertNull($project->fresh()->share_token, 'fetching the result never makes the project public');
+        // Fetching it is recorded as a download through the API (owner, 2026-10-15).
+        $this->assertStringContainsString('via=api', $url);
+        (include base_path('database/migrations/2026_10_15_200000_create_video_downloads_table.php'))->up();
+        $this->get($url);
+        $this->assertDatabaseHas('video_downloads', ['asset_id' => $assetId, 'via' => 'api', 'source' => 'editor']);
     }
 
     public function test_replaying_the_same_idempotency_key_returns_the_same_video(): void

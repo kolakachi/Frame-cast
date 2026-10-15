@@ -51,6 +51,16 @@ onMounted(load)
       <tbody><tr v-for="c in data.by_source || []" :key="c.channel"><td>{{ label(c.channel) }}</td><td class="num">{{ c.signups }}</td><td class="num">{{ c.paying }}</td><td class="num">{{ c.conversion_pct }}%</td><td class="num">{{ usd(c.money_in_usd) }}</td></tr></tbody>
     </table></div>
 
+    <h3 class="econ-h3">Downloads</h3>
+    <p class="econ-sub">Finished videos saved {{ days ? `in the last ${days} days` : 'since 15 Oct 2026, when this started being recorded' }}: from where, and whether in the app or through the API. Playing a video is not a download.</p>
+    <div class="econ-scroll"><table class="econ-table">
+      <thead><tr><th>From</th><th>How</th><th class="num">Downloads</th><th class="num">Workspaces</th></tr></thead>
+      <tbody>
+        <tr v-for="d in data.downloads || []" :key="d.source + d.via"><td>{{ { create: 'Create', ugc: 'UGC', editor: 'Classic editor' }[d.source] || d.source }}</td><td>{{ d.via === 'api' ? 'API / assistant' : 'App' }}</td><td class="num">{{ d.downloads }}</td><td class="num">{{ d.workspaces }}</td></tr>
+        <tr v-if="!(data.downloads || []).length"><td colspan="4" class="econ-note">No downloads recorded in this period.</td></tr>
+      </tbody>
+    </table></div>
+
     <h3 class="econ-h3">Sales by channel</h3>
     <div class="econ-scroll"><table class="econ-table">
       <thead><tr><th>Channel</th><th>Sales</th><th>Refunded</th><th class="num">Money in</th></tr></thead>
@@ -66,6 +76,7 @@ onMounted(load)
         <th class="num"><button @click="sort = 'cost_recorded_usd'">Cost</button></th>
         <th class="num"><button @click="sort = 'margin_usd'">Margin</button></th>
         <th class="num"><button @click="sort = 'credits_used'">Credits used</button></th>
+        <th class="num"><button @click="sort = 'downloads'">Downloads</button></th>
       </tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.workspace_id">
@@ -77,8 +88,9 @@ onMounted(load)
           <td class="num">{{ usd(r.cost_recorded_usd) }}<small v-if="r.cost_earlier_estimate_usd">+ {{ usd(r.cost_earlier_estimate_usd) }} est.</small></td>
           <td class="num" :class="r.margin_usd < 0 ? 'neg' : 'pos'">{{ usd(r.margin_usd) }}</td>
           <td class="num">{{ r.credits_used.toLocaleString() }}<small>of {{ r.credits_granted.toLocaleString() }} granted</small></td>
+          <td class="num">{{ r.downloads ?? 0 }}</td>
         </tr>
-        <tr v-if="!rows.length"><td colspan="8" class="econ-note">Nothing in this period.</td></tr>
+        <tr v-if="!rows.length"><td colspan="9" class="econ-note">Nothing in this period.</td></tr>
       </tbody>
     </table></div>
   </template>

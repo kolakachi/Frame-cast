@@ -49,7 +49,8 @@ function requestDelivery(action) { shareUrl.value=''; delivery.value={action,rev
 async function performDelivery() {
  const d=delivery.value;if(!d)return
  if(d.revision.has_newer_changes && !d.allowOlder)return
- if(d.action==='download'){const a=document.createElement('a');a.href=media.value;a.download=downloadName.value;a.click();delivery.value=null;return}
+ // The version's download link (recorded as a download; the player's link is not), else what is showing.
+ if(d.action==='download'){const a=document.createElement('a');a.href=d.revision?.download_url||media.value;a.download=downloadName.value;a.click();delivery.value=null;return}
  if(d.action==='schedule'){scheduleTarget.value=d;delivery.value=null;return}
  await guarded(async()=>{const result=await api.post(`${base()}/revisions/${d.revision.id}/delivery`,{action:d.action,expected_version:d.version,confirmed:true,allow_older:d.allowOlder});shareUrl.value=result.data.data.url || '';await refresh();if(d.action==='unshare')delivery.value=null})
 }
