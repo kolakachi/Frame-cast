@@ -15,7 +15,6 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-09 | Create | Every cut has a carrier: a plan rule and a check | Opus Motion Design Harness | next |  |
 | RD-10 | Create | Focus and letter type kit: blur-in text, letters rising, rack focus, glow flash | Gap report | next |  |
 | RD-12 | Create | Taste rules A/B: frontend-design, canvas-design and taste-skill as defaults | Anthropic skills, taste-skill | next | Paid test, about $5-8. |
-| RD-30 | Money | A provider call never sent settles at zero; a closed run's held credits are released | Dan rebuild | next | Money correctness. |
 | RD-03 | UGC | Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot | Toonflow, huobao | open | Casting, dressing and the shared place photo are done; the sheet and @name are not. |
 | RD-06 | Create | Motion vocabulary by scene purpose (386 unused blocks), a no-slideshow check and a plan lint | awesome-ai-motion, huashu, cinetic | open |  |
 | RD-07 | Create | Finishing checks: constant-speed motion, repeated technique, text under phone UI, cues present, voice over music, contact sheet | animate, claude-motion-design | open | FS3 is partly built; one-frame pops done. |
@@ -42,6 +41,7 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-29 | Create | Math-style explainer shots | manimgx | idea | Watch until it matures and runs on ARM. |
 | RD-32 | Platform | Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1 | fabric.js | idea | A new product. |
 | RD-05 | Create | Builder rules in the prompt: HyperFrames effects that break renders, and the craft rules from the motion briefs | product-launch-motion, student-kit, skills/ | done | 2026-10-15: craft.md already had the traps, one camera, hand-offs and label swaps; added deterministic frames and fonts-before-measuring. |
+| RD-30 | Money | A provider call never sent settles at zero; a closed run's held credits are released | Dan rebuild | done | 2026-10-15: a call with no dispatch claim, prediction or response settles at zero; held credits were already released at clear states since 2026-10-10 (CreditHolds). |
 | RD-34 | Create | Collage kit and Collage / zine style | Higgsfield KICKS demo | done | 2026-10-09 |
 | RD-35 | Create | Gap report: reference moments no move reproduces | Kit planning | done | create:move-gaps |
 | RD-36 | Create | Kit guide split: core kit plus specialty kits per video | Kit planning | done |  |

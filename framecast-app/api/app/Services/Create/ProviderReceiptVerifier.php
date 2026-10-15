@@ -47,6 +47,12 @@ class ProviderReceiptVerifier
             abort_unless(($cost ?? 0) === 0, 422, 'An offline step has no provider cost; supply --cost-microusd=0.');
             return new VerifiedAttemptReceipt($attempt->id, 'failed', null, 0, 'offline step interrupted when its worker stopped; no provider billing');
         }
+        // A call never sent has no bill either (RD-30, from the Dan rebuild 2026-10-09): the dispatch journal claims
+        // dispatched_at before any request leaves, so no claim, no prediction and no saved response prove it never left.
+        if (empty($attempt->dispatched_at) && empty($attempt->prediction_id) && empty($attempt->provider_response_json)) {
+            abort_unless(($cost ?? 0) === 0, 422, 'This call was never sent; supply --cost-microusd=0.');
+            return new VerifiedAttemptReceipt($attempt->id, 'failed', null, 0, 'never dispatched: no dispatch claim, prediction or provider response; no provider billing');
+        }
         abort_unless($attempt->provider === 'replicate', 422, 'No verified receipt adapter for this provider.');
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D',$attempt->prediction_id ?? ''), 409, 'The prediction ID was not recorded. Locate it before reconciliation.');
         abort_unless($cost !== null && $cost >= 0 && $cost <= $attempt->cost_limit_microusd

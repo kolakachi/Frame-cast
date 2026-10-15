@@ -5241,7 +5241,19 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['status' => 'failed', 'prediction_id' => null, 'cost_microusd' => 0], $r->result());
         $this->rejected(422, fn () => $verifier->verify($render, 5, null));
         $this->rejected(409, fn () => $verifier->verify((object) ['id' => 'att-2', 'provider' => 'offline', 'cost_limit_microusd' => 100, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
-        $this->rejected(422, fn () => $verifier->verify((object) ['id' => 'att-3', 'provider' => 'anthropic', 'cost_limit_microusd' => 1, 'credit_limit' => 1, 'prediction_id' => null], 0, null));
+        $this->rejected(422, fn () => $verifier->verify((object) ['id' => 'att-3', 'provider' => 'anthropic', 'cost_limit_microusd' => 1, 'credit_limit' => 1, 'prediction_id' => null, 'dispatched_at' => '2026-10-15 10:00:00'], 0, null));
+    }
+
+    public function test_a_paid_call_that_was_never_sent_settles_at_zero(): void
+    {
+        // RD-30: no dispatch claim, no prediction and no saved response prove the request never left (the dispatch journal
+        // claims dispatched_at before sending).
+        $verifier = app(\App\Services\Create\ProviderReceiptVerifier::class);
+        $never = (object) ['id' => 'att-4', 'provider' => 'replicate', 'cost_limit_microusd' => 9000, 'credit_limit' => 5, 'prediction_id' => null, 'dispatched_at' => null, 'provider_response_json' => null];
+        $this->assertSame(['status' => 'failed', 'prediction_id' => null, 'cost_microusd' => 0], $verifier->verify($never, 0, null)->result());
+        $this->rejected(422, fn () => $verifier->verify($never, 40, null));
+        // Once claimed for dispatch it may have been sent: it needs the provider's receipt.
+        $this->rejected(409, fn () => $verifier->verify((object) (['dispatched_at' => '2026-10-15 10:00:00'] + (array) $never), 0, 'Billing record test'));
     }
     public function test_a_kind_of_video_picked_up_front_is_the_playbook_the_plan_starts_from(): void
     {

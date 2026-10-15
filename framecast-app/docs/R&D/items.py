@@ -30,7 +30,7 @@ ITEMS = [
 ("RD-27","Create","Studio mode: a gate at every stage, for agencies","Opus Motion Design Harness","idea",""),
 ("RD-28","Create","Text behind the subject: cut out the person, type between layers","Barty object separation","idea",""),
 ("RD-29","Create","Math-style explainer shots","manimgx","idea","Watch until it matures and runs on ARM."),
-("RD-30","Money","A provider call never sent settles at zero; a closed run's held credits are released","Dan rebuild","next","Money correctness."),
+("RD-30","Money","A provider call never sent settles at zero; a closed run's held credits are released","Dan rebuild","done","2026-10-15: a call with no dispatch claim, prediction or response settles at zero; held credits were already released at clear states since 2026-10-10 (CreditHolds)."),
 ("RD-31","Platform","Trim old tool output in the build loop to cut cost","arXiv harness study","open",""),
 ("RD-32","Platform","Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1","fabric.js","idea","A new product."),
 ("RD-33","Platform","Review herk-edit-kit and write down which parts to take","herk-edit-kit","open","Noted as 'mine for parts' without a list."),

@@ -1,9 +1,9 @@
 # Engineering follow-ups found during R&D work
 
-- **Settle a never-sent provider call at zero** (next). `create:reconcile-attempt` refuses calls without a provider
+- **Settle a never-sent provider call at zero** (done 2026-10-15, RD-30). `create:reconcile-attempt` refuses calls without a provider
   receipt, even when the call was never dispatched (no send time, no prediction id): the Dan rebuild's reused take was
   one. Such a call is provably free.
-- **Release a closed run's held credits** (next). `OperationAccounting::reserved()` sums `reserved_credits` whatever the
+- **Release a closed run's held credits** (done 2026-10-10 by CreditHolds: holds follow clear states, none past 24 hours). `OperationAccounting::reserved()` sums `reserved_credits` whatever the
   operation's status, and closing a stuck run did not zero it, so a run that ever got stuck held credits until cleared
   by hand (four local runs, 2026-10-09).
 - **Document pages and the 20-file limit** (idea). A conversation holds 20 files; a document's pages count toward it, so
