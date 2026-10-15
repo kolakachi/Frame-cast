@@ -3131,6 +3131,32 @@ class CreateIntegrationTest extends TestCase
         $input['content'] = 'Replace the voice'; $this->rejected(409, fn () => $this->conversations->message($this->owner, $c->id, $input));
     }
 
+    public function test_a_fault_reported_on_a_delivered_video_becomes_a_check_once_approved(): void
+    {
+        (require database_path('migrations/2026_10_15_220000_create_create_missed_defects_table.php'))->up();
+        $c = $this->brief();
+        $this->conversations->message($this->owner, $c->id, ['content' => 'The headline is cut off at the right edge.', 'expected_version' => (int) $c->version, 'idempotency_key' => 'd-0']);
+        Bus::assertNotDispatched(\App\Jobs\ReviewMissedDefectJob::class); // no delivered video yet
+        $rev = (string) \Illuminate\Support\Str::uuid();
+        DB::table('composition_revisions')->insert(['id' => $rev, 'conversation_id' => $c->id, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'number' => 1, 'parent_revision_id' => null,
+            'bundle_json' => '{}', 'bundle_hash' => str_repeat('c', 64), 'artifact_path' => 'x.mp4', 'artifact_hash' => str_repeat('d', 64), 'summary' => 'v1', 'metadata_json' => json_encode(['final_checks' => ['status' => 'passed']]), 'created_at' => now()]);
+        DB::table('create_conversations')->where('id', $c->id)->update(['head_revision_id' => $rev]);
+        $v = (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $this->conversations->message($this->owner, $c->id, ['content' => 'The headline is cut off at the right edge.', 'expected_version' => $v, 'idempotency_key' => 'd-1']);
+        Bus::assertDispatched(\App\Jobs\ReviewMissedDefectJob::class, fn ($j) => $j->revisionId === $rev);
+
+        config(['services.anthropic.key' => 'k']);
+        \Illuminate\Support\Facades\Http::fake(['api.anthropic.com/*' => \Illuminate\Support\Facades\Http::sequence()
+            ->push(['content' => [['type' => 'text', 'text' => '{"fault": true, "defect": "headline clipped at the edge", "area": "text", "check": "Every line of on-screen text sits fully inside the frame."}']]])
+            ->push(['content' => [['type' => 'text', 'text' => '{"fault": false}']]])]);
+        $d = app(\App\Services\Create\MissedDefects::class);
+        $this->assertSame('text', $d->review((int) $this->workspace->id, $c->id, $rev, 'The headline is cut off at the right edge.')['area']);
+        $this->assertNull($d->review((int) $this->workspace->id, $c->id, $rev, 'Make it blue instead.'));
+        $this->assertSame([], \App\Services\Create\MissedDefects::approved(), 'proposed only');
+        $this->artisan('create:missed-defects', ['--approve' => DB::table('create_missed_defects')->value('id')])->assertSuccessful();
+        $this->assertSame(['Every line of on-screen text sits fully inside the frame.'], \App\Services\Create\MissedDefects::approved());
+    }
+
     public function test_other_workspace_conversation_is_not_found(): void
     {
         $c = $this->brief(); $other = Workspace::create(['name' => 'Other', 'status' => 'active']);

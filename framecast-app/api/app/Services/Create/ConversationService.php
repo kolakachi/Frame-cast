@@ -74,9 +74,24 @@ class ConversationService
         return $this->conversation($user, $id);
     }
 
+    /** @var array{0: object, 1: string}|null the message to read for a missed fault once it is saved (RD-14) */
+    private ?array $defectCheck = null;
+
     public function message(User $user, string $id, array $input): object
     {
         $this->authorize($user, true);
+        $this->defectCheck = null;
+        $sent = $this->saveMessage($user, $id, $input);
+        if ($this->defectCheck !== null) {
+            [$conversation, $content] = $this->defectCheck;
+            $this->defectCheck = null;
+            MissedDefects::capture($conversation, $content);
+        }
+        return $sent;
+    }
+
+    private function saveMessage(User $user, string $id, array $input): object
+    {
         return DB::transaction(function () use ($user, $id, $input) {
             $c = $this->conversation($user, $id, true);
             abort_if($c->archived_at, 409, 'Restore this conversation before editing.');
@@ -132,6 +147,8 @@ class ConversationService
             DB::table('create_conversations')->where('id', $id)->update($updates + ['version' => $version, 'updated_at' => now()]);
             $sent = DB::table('create_messages')->where('id', $messageId)->first();
             if ($heldFor !== null) $sent->held_for_step = $heldFor;
+            // RD-14: a message about a delivered video is read (queued, after the save) for a fault the checks missed.
+            elseif ($replies === []) $this->defectCheck = [$c, (string) $input['content']];
             return $sent;
         });
     }
@@ -401,6 +418,8 @@ class ConversationService
                     'shown_ceiling'=>$realMediaCeiling + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agentCeiling(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : 0),
                     'effort'=>CostEstimate::effort($settings),
                     'build_stage'=>$step ?? ($lookFirst ? 'storyboard' : 'full_video'), 'step'=>$step, 'media_only'=>$step !== null, 'assumed'=>(bool) $assume, 'look_first'=>$lookFirst, 'from_look'=>$step ? false : $fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
+                    // RD-14: approved checks from faults users found that the checks had missed; the visual reviewer runs them.
+                    'house_checks'=>MissedDefects::approved(),
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
                     'style_pack'=>$resolvedPack,

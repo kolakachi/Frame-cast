@@ -57,6 +57,9 @@ return [
     // The final look before delivery (FinalLook): Sonnet, not the cheap check model. Haiku called a required item missing
     // for the wrong part (workspace 82, 2026-10-15), which sends the repair round after the wrong thing. A few cents a build.
     'final_look_model' => env('CREATE_FINAL_LOOK_MODEL', 'claude-sonnet-5-5'),
+    // RD-14: a message on a delivered video is read for a fault the checks missed (a small model call, queued).
+    'missed_defects' => env('CREATE_MISSED_DEFECTS', true),
+    'missed_defect_model' => env('CREATE_MISSED_DEFECT_MODEL', 'claude-haiku-5-5'),
     // How a reference video is read (todo G2): 'opus' sends every sheet to the creative model; 'split' has the check
     // model write per-frame facts and the creative model read them plus the motion frames. Default until the A/B decides.
     'study_mode' => env('CREATE_STUDY_MODE', 'opus'),

@@ -196,7 +196,7 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
  const busyNote=()=>{try{onProgress?.({...lastProgress,doing:'The model is busy, trying again in a moment'});}catch{/* reporting never stops a build */}};
  let busy=0;
  const critic=paid&&criticPolicy&&provider.complete?async({sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,round,signal})=>{busy=0;
-  const messages=criticMessages({brief:messages0.at(-1).content,plan:planWithFiles,lookOnly:input.look_first===true,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint:input.style_pack?.fingerprint??null,round});
+  const messages=criticMessages({houseChecks:input.house_checks,brief:messages0.at(-1).content,plan:planWithFiles,lookOnly:input.look_first===true,route,sheet,strip,stripEvidence,detail,detailCells,compare,compareCells,authorScores,findings,fingerprint:input.style_pack?.fingerprint??null,round});
   const args={prompt:'critic call '+(++criticCall),system:criticSystem,maxTokens:Number(criticPolicy.max_output_tokens)||4096,messages,tools:[],signal};
   const out=await whenModelFree(async()=>{
   if(provider.reserve)try{await provider.reserve();}catch(e){if(e.code!=='BUDGET_EXHAUSTED')e.code='NOT_STARTED';throw e;}
