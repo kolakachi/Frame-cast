@@ -22,7 +22,7 @@ assembly stays simple, motion graphics stay in Create.
 
 | ID | Item | Status | Next |
 |---|---|---|---|
-| TYPES-LIVE | Open each type to customers once its reviewed test passes (UGC_TYPES_LIVE on prod). Live: problem_solution (2026-10-14, take 302). Next: green_screen, then before_after, comparison, unboxing, day_in_life, asmr; skit, pov_hook, reaction last | partly | green screen test |
+| TYPES-LIVE | Open each type to customers once its reviewed test passes (UGC_TYPES_LIVE on prod). Live: problem_solution (2026-10-14, take 302). 2026-10-15, owner: "make all the types available for customers" (green screen and ASMR tested by the owner): all ten native types live; skit, POV hook and reaction live before a real take | done | watch the first customer skit, POV and reaction takes |
 | END-ACTION | The last action a plan names can be skipped in a single take (take 302: "gets back to work" never happens, the reviewer flagged the right hand not on the keys). Hold the final action long enough, or remake when the reviewer says no | open | build |
 | UGC-COST | ugc_oneshot charges record no upstream cost (take 302: 627 cr, upstream_cost_usd null; real about $4.39 at $0.2312/s), so God Mode economics miss UGC video spend | open | build |
 | VEO-TEST | Veo 3.1 Fast (starts from the dressed look) and Veo 3.1 HQ are in the model picker; not yet tested on the new pipeline | open | test takes, then judge |
