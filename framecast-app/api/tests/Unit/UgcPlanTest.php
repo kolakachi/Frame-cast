@@ -260,4 +260,13 @@ class UgcPlanTest extends TestCase
 
         $this->assertGreaterThan($short * 3, $long, 'four times the length must cost about four times as much');
     }
+
+    public function test_a_two_person_scene_may_have_more_talking_takes_than_one_presenter(): void
+    {
+        $line = fn (int $speaker) => ['kind' => 'on_camera', 'script_text' => 'A line.', 'seconds' => 3, 'visual_brief' => 'Kitchen.', 'speaker' => $speaker];
+        $skit = array_map(fn ($i) => $line($i % 2 + 1), range(0, 5));
+        $this->assertCount(6, \App\Services\Ugc\UgcPlan::normalise($skit, 'story'));
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        \App\Services\Ugc\UgcPlan::normalise(array_map(fn ($s) => array_diff_key($s, ['speaker' => 1]), $skit), 'story');
+    }
 }

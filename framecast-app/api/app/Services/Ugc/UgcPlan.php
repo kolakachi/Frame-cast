@@ -218,8 +218,12 @@ final class UgcPlan
                 self::invalid('A text-led ad needs at least one headline. The words on screen are the ad.');
             }
         }
-        if (count(array_filter($out, fn ($s) => $s['kind'] === 'on_camera')) > 4) {
-            self::invalid('Use at most four deliberate talking takes. Shots are not silently converted to cutaways.');
+        // A skit is shot/reverse-shot, one line per shot (2026-10-15: a five-line skit was refused here), so a plan with
+        // speakers may have more talking takes than one presenter's ad.
+        $talkingCap = array_filter($raw, fn ($s) => is_array($s) && ! empty($s['speaker'])) ? 8 : 4;
+        if (count(array_filter($out, fn ($s) => $s['kind'] === 'on_camera')) > $talkingCap) {
+            self::invalid($talkingCap === 4 ? 'Use at most four deliberate talking takes. Shots are not silently converted to cutaways.'
+                : 'Use at most eight talking takes in a two-person scene.');
         }
 
         return $out;

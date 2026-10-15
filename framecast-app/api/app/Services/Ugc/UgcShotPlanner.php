@@ -90,6 +90,16 @@ class UgcShotPlanner
                     }
                 }
             }
+            // A wordless beat planned as a talking shot (a skit's "she sips, pauses, sits up", 2026-10-15) is a silent
+            // shot of the same person: in a story or demo that is a valid cutaway, not a plan to throw away.
+            if (in_array($chosen, ['story', 'demo'], true)) {
+                foreach ($raw as $i => $seg) {
+                    if (is_array($seg) && ($seg['kind'] ?? '') === 'on_camera' && trim((string) ($seg['script_text'] ?? '')) === '') {
+                        $raw[$i]['kind'] = 'b_roll';
+                        $raw[$i]['source'] = $seg['source'] ?? 'generate';
+                    }
+                }
+            }
             // Never discard a requested scene or turn camera directions into visible copy.
             // Invalid plans go through the repair pass with the original brief intact.
             $raw = array_values($raw);
@@ -101,6 +111,7 @@ class UgcShotPlanner
             $segments = $this->keepOfferedAssetsOnly($segments, $library);
             $spoken = UgcPlan::script($segments);
             if (trim($scriptText) !== '' && ! UgcPlan::sameScript($scriptText, $spoken)) {
+                Log::info('UGC planner changed the script', ['asked' => mb_substr($scriptText, 0, 600), 'planned' => mb_substr($spoken, 0, 600)]);
                 throw new \UnexpectedValueException('Director changed the supplied spoken script.');
             }
 
