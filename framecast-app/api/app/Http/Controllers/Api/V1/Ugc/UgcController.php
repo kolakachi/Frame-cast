@@ -973,6 +973,8 @@ class UgcController extends Controller
             'cast_character_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
             // The shape (P2-ASPECT, owner 2026-10-15): square on Seedance only; green screen and splits stay vertical.
             'aspect_ratio' => ['sometimes', 'string', 'in:9:16,1:1,16:9'],
+            // A music bed under a POV hook or a reaction (MusicGen, AI_MUSIC credits); off unless asked.
+            'music' => ['sometimes', 'boolean'],
 
             'script' => ['present', 'nullable', 'string', 'max:1500'],
             'character_id' => ['nullable', 'integer', 'min:1'],
@@ -1280,6 +1282,8 @@ class UgcController extends Controller
                 'The UGC Test Pass makes ads up to 15 seconds. Shorten the plan, or upgrade for longer ads.']);
         }
 
+        $music = ! empty($v['music']) && in_array($v['ugc_type'] ?? '', ['pov_hook', 'reaction'], true);
+        if ($music) $quote += CreditService::AI_MUSIC;
         $aspect = (string) ($v['aspect_ratio'] ?? '9:16');
         if ($aspect !== '9:16' && ! empty($v['composition'])) {
             throw ValidationException::withMessages(['aspect_ratio' => 'Green screen and split videos are vertical (9:16) for now.']);
@@ -1324,6 +1328,9 @@ class UgcController extends Controller
         }
         // A POV hook's or a reaction's words are the ad (2026-10-15): each shot's headline, from its start until the next one, burned on the take.
         if (in_array($v['ugc_type'] ?? '', ['pov_hook', 'reaction'], true) && $chunks !== []) $chunks[0]['headlines'] = \App\Services\Ugc\UgcHeadline::cues($segments);
+        if ($music && $chunks !== []) $chunks[0]['music'] = ($v['ugc_type'] ?? '') === 'reaction'
+            ? 'a short playful instrumental sting for a social video, light and bouncy, no vocals'
+            : 'a light upbeat lo-fi instrumental bed for a short social video, steady and warm, no vocals';
         $storyboard = ! empty($v['storyboard']) && in_array($user->role, ['super_admin', 'platform_admin'], true) && in_array($engine, ['omni', 'veo_hq'], true) && count($chunks) > 1;
         foreach ($chunks as &$chunk) {
             // The storyboard and its reviewer need the take's clothes (take 287's stills copied the presenter's photo).

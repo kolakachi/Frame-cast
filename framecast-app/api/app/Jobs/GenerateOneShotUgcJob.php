@@ -361,6 +361,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if ($this->composition !== []) $finalPath = app(\App\Services\Ugc\UgcComposition::class)->render($finalPath, $this->composition, $storage, $temps);
             // A POV hook's headlines, burned on the take: its words are the ad.
             if (! empty($this->chunks[0]['headlines'])) $finalPath = self::burnHeadlines($finalPath, $this->chunks[0]['headlines'], $temps);
+            // The music bed, when asked for: made to the video's length and kept low under its own sound.
+            if (! empty($this->chunks[0]['music'])) $finalPath = $this->musicBed($finalPath, (string) $this->chunks[0]['music'], $temps);
             // ASMR's quiet sounds raised to one steady level for phones, gently (no pumping of room hiss).
             if (! empty($this->chunks[0]['requires_audio'])) $finalPath = self::levelAsmr($finalPath, $temps);
 
@@ -831,6 +833,28 @@ class GenerateOneShotUgcJob implements ShouldQueue
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('one-shot: lip-sync failed, Omni keeps its own voice', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
             return $clip;
+        }
+    }
+
+    /** A music track made for the take and mixed quietly under its sound; the video as it was when that fails. */
+    private function musicBed(string $path, string $prompt, array &$temps): string
+    {
+        try {
+            $seconds = (int) ceil(self::seconds($path) ?? 8);
+            $music = app(\App\Services\Generation\Music\ReplicateMusicAdapter::class)->generate($prompt, min(30, max(3, $seconds)));
+            $track = tempnam(sys_get_temp_dir(), 'oneshot-music-').'.mp3';
+            $out = tempnam(sys_get_temp_dir(), 'oneshot-music-').'.mp4';
+            array_push($temps, $track, $out);
+            file_put_contents($track, (string) file_get_contents((string) $music['audio_url']));
+            $hasSound = trim(Process::timeout(30)->run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', $path])->output()) !== '';
+            $bed = sprintf('[1:a]volume=0.22,afade=t=in:d=0.4,afade=t=out:st=%.2f:d=1[m]', max(0, $seconds - 1));
+            $graph = $hasSound ? $bed.';[0:a][m]amix=inputs=2:duration=first:normalize=0[a]' : $bed.';[m]atrim=0:'.$seconds.'[a]';
+            $run = Process::timeout(300)->run(['ffmpeg', '-y', '-i', $path, '-i', $track, '-filter_complex', $graph, '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart', $out]);
+            if (! $run->successful() || ! filesize($out)) throw new \RuntimeException('the mix failed');
+            return $out;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('one-shot: music bed not added', ['project_id' => $this->projectId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            return $path;
         }
     }
 

@@ -392,6 +392,22 @@ class UgcChatTest extends TestCase
         }
     }
 
+    public function test_a_ticked_music_bed_reaches_the_take_with_its_credits_and_only_for_pov_and_reaction(): void
+    {
+        $this->withoutMiddleware();
+        $segments = [['kind' => 'b_roll', 'source' => 'generate', 'script_text' => '', 'headline' => 'POV: it fits', 'seconds' => 5, 'visual_brief' => 'Desk.', 'motion_prompt' => 'A knowing look.']];
+        $this->planOverride = ['format' => 'story', 'script' => '', 'segments' => $segments, 'presenter_character_id' => 5];
+        $this->replies[] = ['action' => 'pitch', 'type' => 'pov_hook', 'format' => 'story', 'summary' => 'A POV moment.', 'script' => ''];
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $pitch = $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'POV', 'type' => 'pov_hook'])->assertOk()->json('data.reply');
+        $this->assertSame('pitch', $pitch['kind'], json_encode($pitch));
+        $quoted = $pitch['payload']['takes'][0]['credits'];
+        $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/make", ['message_id' => $pitch['id'], 'request_id' => '6f1c1e7a-2222-4a2b-9c3d-123456789abc', 'consent' => true, 'music' => true])->assertOk();
+        $sent = end($this->handed);
+        $this->assertTrue($sent['music']);
+        $this->assertSame($quoted + \App\Services\CreditService::AI_MUSIC, $sent['credits']);
+    }
+
     public function test_the_chosen_shape_reaches_the_take_one_take_or_scene_by_scene(): void
     {
         $this->withoutMiddleware();

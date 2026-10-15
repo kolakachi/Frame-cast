@@ -449,6 +449,17 @@ class UgcExecutionTest extends TestCase
         Bus::assertNothingDispatched();
     }
 
+    public function test_a_music_bed_is_quoted_on_top_and_only_under_pov_and_reaction(): void
+    {
+        Schema::create('client_profiles', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('brief')->nullable(); });
+        $shots = [$this->shot(['kind' => 'reaction', 'script_text' => '', 'headline' => 'When it just works', 'seconds' => 5, 'motion_prompt' => 'A slow nod.'])];
+        $segments = \App\Services\Ugc\UgcPlan::normalise($shots, 'reaction');
+        $base = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds(\App\Services\Ugc\UgcOneShotCompiler::compile($segments, ['ugc_type' => 'reaction'], \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS), $segments, 'omni') * CreditService::VIDEO_ONESHOT_PER_SECOND['omni']);
+        $response = (new UgcController)->generateOneShot($this->request($shots, 'reaction', ['ugc_type' => 'reaction', 'character_id' => 1, 'engine' => 'omni', 'music' => true, 'credits' => $base + CreditService::AI_MUSIC]), app(CreditService::class));
+        $this->assertSame(201, $response->getStatusCode(), json_encode($response->getData(true)));
+        Bus::assertDispatched(\App\Jobs\GenerateOneShotUgcJob::class, fn ($job) => str_contains((string) ($job->chunks[0]['music'] ?? ''), 'no vocals'));
+    }
+
     public function test_a_take_is_made_in_its_shape_square_only_on_seedance(): void
     {
         Schema::create('client_profiles', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('brief')->nullable(); });
@@ -502,7 +513,7 @@ class UgcExecutionTest extends TestCase
                 if ($type === 'asmr') return ($job->chunks[0]['source_media']['url'] ?? '') === 'source.mp4' && $job->chunks[0]['requires_audio'] && $job->chunks[0]['dialogue'] === '';
                 if ($type === 'green_screen') return ($job->composition['assets'][0]['id'] ?? null) === 10;
                 if ($type === 'pov_hook') return ($job->chunks[0]['headlines'] ?? null) === [['text' => 'POV: it finally fits', 'start' => 0.0, 'end' => 7.0]] && $job->chunks[0]['dialogue'] === '';
-                if ($type === 'reaction') return ($job->chunks[0]['headlines'] ?? null) === [['text' => 'When the bill is half', 'start' => 0.0, 'end' => 5.0]];
+                if ($type === 'reaction') return ($job->chunks[0]['headlines'] ?? null) === [['text' => 'When the bill is half', 'start' => 0.0, 'end' => 5.0]] && ! isset($job->chunks[0]['music']);
                 // Each speaker's photos travel as ids, read by the job (#7), never inline copies.
                 // Each speaker is read in a voice of their own, synced onto Omni's clip.
                 if (($job->chunks[0]['voice']['id'] ?? 'a') === ($job->chunks[1]['voice']['id'] ?? 'a')) return false;

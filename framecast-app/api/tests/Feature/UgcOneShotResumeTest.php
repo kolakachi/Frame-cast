@@ -496,6 +496,24 @@ class UgcOneShotResumeTest extends TestCase
         Bus::assertDispatched(\App\Jobs\ReviewUgcTakeJob::class, fn ($j) => $j->take['outcome'] === 'failed' && str_contains((string) $j->take['error'], 'refused'));
     }
 
+    public function test_a_music_bed_is_made_to_length_and_mixed_under_the_take(): void
+    {
+        $track = sys_get_temp_dir().'/oneshot-music-src.mp3';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'sine=f=440:d=3', '-c:a', 'libmp3lame', $track])->throw();
+        $music = Mockery::mock(\App\Services\Generation\Music\ReplicateMusicAdapter::class);
+        $music->shouldReceive('generate')->once()->withArgs(fn ($prompt, $seconds) => str_contains($prompt, 'no vocals') && $seconds === 3)->andReturn(['audio_url' => $track, 'duration' => 3]);
+        $this->app->instance(\App\Services\Generation\Music\ReplicateMusicAdapter::class, $music);
+        $this->clip = sys_get_temp_dir().'/oneshot-music-clip.mp4';
+        Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=c=gray:s=180x320:r=24:d=3', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+            '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', $this->clip])->throw();
+        $this->assertNull($this->run_($this->job([['prompt' => 'A look.', 'seconds' => 3, 'dialogue' => '', 'music' => 'a light bed, no vocals']])));
+        $asset = \App\Models\Asset::query()->latest('id')->first();
+        $made = sys_get_temp_dir().'/oneshot-music-made.mp4';
+        file_put_contents($made, app(StorageService::class)->get((string) $asset->storage_url));
+        $level = Process::run(['ffmpeg', '-i', $made, '-af', 'volumedetect', '-f', 'null', '-'])->errorOutput();
+        $this->assertMatchesRegularExpression('/mean_volume: -[0-4]?\d\.\d dB/', $level, 'the silent clip now carries the bed');
+    }
+
     public function test_the_charge_carries_what_the_take_really_cost(): void
     {
         DB::table('api_usage_events')->insert([['project_id' => 7, 'estimated_cost_usd' => 1.2], ['project_id' => 7, 'estimated_cost_usd' => 0.66], ['project_id' => 8, 'estimated_cost_usd' => 9]]);

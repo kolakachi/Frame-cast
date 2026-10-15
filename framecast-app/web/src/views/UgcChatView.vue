@@ -441,10 +441,15 @@ function presenterBox(m) {
   return { ...h, [placement.endsWith('_left') ? 'left' : 'right']: '0' }
 }
 function chosenEngine(m) { return engineFor.value[m.id] ?? 'auto' }
+// A music bed under a POV hook or a reaction: off unless ticked (owner, 2026-10-15). 2 credits a video.
+const musicFor = ref({})
+const MUSIC_CREDITS = 2
+function musicable(m) { return ['pov_hook', 'reaction'].includes(m.payload?.type) && (m.payload?.takes ?? []).some(t => t.mode === 'one_shot') }
 function pitchCredits(m) {
   const key = chosenEngine(m)
-  if (key === 'auto') return m.payload?.credits ?? 0
-  return (m.payload?.takes ?? []).reduce((sum, t) => sum + ((t.engines ?? []).find(e => e.key === key)?.credits ?? t.credits ?? 0), 0)
+  const music = musicable(m) && musicFor.value[m.id] ? MUSIC_CREDITS * (m.payload?.takes ?? []).length : 0
+  if (key === 'auto') return (m.payload?.credits ?? 0) + music
+  return (m.payload?.takes ?? []).reduce((sum, t) => sum + ((t.engines ?? []).find(e => e.key === key)?.credits ?? t.credits ?? 0), 0) + music
 }
 function short(m) { return balance.value !== null && balance.value < pitchCredits(m) }
 function startMake(m) { confirmFor.value = m.id; consent.value = false }
@@ -454,7 +459,7 @@ async function make(m) {
   error.value = ''
   try {
     if (sending.value) return
-    const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true, engine: chosenEngine(m), ...(position(m) ? { placement: position(m).placement, size: position(m).size } : {}) }, { timeout: 120000 })
+    const { data } = await api.post(`/ugc/chats/${chatId.value}/make`, { message_id: m.id, request_id: m.requestKey || (m.requestKey = crypto.randomUUID()), consent: true, engine: chosenEngine(m), ...(position(m) ? { placement: position(m).placement, size: position(m).size } : {}), ...(musicable(m) && musicFor.value[m.id] ? { music: true } : {}) }, { timeout: 120000 })
     chat.value = data.data.chat
     confirmFor.value = null
     loadBalance()
@@ -757,6 +762,7 @@ onBeforeUnmount(() => {
                     <b>{{ ENGINE_INFO[e.key]?.[0] ?? e.key }} · {{ e.credits }}</b><span>{{ e.available ? ENGINE_INFO[e.key]?.[1] : e.note }}</span>
                   </button>
                 </div>
+                <label v-if="canMake(m) && musicable(m)" class="uc-music"><input v-model="musicFor[m.id]" type="checkbox" /> Add a music bed <span class="uc-muted">+{{ MUSIC_CREDITS }} credits, a short instrumental made for this video</span></label>
                 <div class="uc-pitch-foot">
                   <span><b>{{ m.payload.takes.length }} video{{ m.payload.takes.length === 1 ? '' : 's' }}</b> · <b>{{ pitchCredits(m) }}</b> credits</span>
                   <template v-if="canMake(m)">
@@ -1084,6 +1090,7 @@ button.uc-ghost { background: transparent; cursor: pointer; font: inherit; font-
 .uc-ready { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
 .uc-video { width: 250px; max-width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; background: #000; }
 .uc-video--wide { width: 440px; aspect-ratio: 16 / 9; }
+.uc-music { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; margin: 6px 0; cursor: pointer; }
 .uc-video--square { width: 320px; aspect-ratio: 1; }
 .uc-ready-side h3 { margin: 4px 0 4px; font-size: 17px; }
 .uc-ready-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

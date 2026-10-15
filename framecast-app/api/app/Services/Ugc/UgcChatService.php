@@ -527,6 +527,11 @@ final class UgcChatService
             // The model the user picked, at that model's own price; "auto" (or none) keeps the pitch's.
             $chosen = collect($t['engines'] ?? [])->first(fn ($e) => $e['key'] === $engine && $e['available']);
             if ($chosen !== null && $t['mode'] === 'one_shot') { $t['request']['engine'] = $chosen['key']; $t['request']['credits'] = $chosen['credits']; }
+            // The music bed, when asked for on a POV hook or a reaction: a short track made for it, quoted on top.
+            if (! empty($position['music']) && $t['mode'] === 'one_shot' && in_array($t['request']['ugc_type'] ?? '', ['pov_hook', 'reaction'], true)) {
+                $t['request']['music'] = true;
+                $t['request']['credits'] = (int) $t['request']['credits'] + CreditService::AI_MUSIC;
+            }
             // Keyed by the pitch and the model, not the browser: a second Make after a reload is the same request (idempotent).
             $payload = $t['request'] + ['script' => '', 'consent' => true, 'reviewed' => true, 'request_id' => \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'wyv-ugc-chat:'.$messageId.':'.$i.($chosen !== null ? ':'.$chosen['key'] : ''))->toString()];
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
