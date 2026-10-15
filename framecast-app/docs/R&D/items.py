@@ -1,7 +1,7 @@
 # One list: the R&D tracker (README.md) and the progress page (tracker.html) are both built from it.
 ITEMS = [
 # id, area, item, from, status, note
-("RD-01","UGC","A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing","Pixelle-Video","next","Today a decline only offers another model."),
+("RD-01","UGC","A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing","Pixelle-Video","done","2026-10-15: a declined clip is reworded in neutral words (UgcPromptSoften) and made once more; a second decline fails uncharged."),
 ("RD-02","UGC","Character mix-up check: each skit clip shows the right speaker","Jellyfish","next","Pairs with face checks on skit speakers."),
 ("RD-03","UGC","Cast sheet: every person, place and prop gets a reference and shots name them (@name); a ready check before any paid shot","Toonflow, huobao","open","Casting, dressing and the shared place photo are done; the sheet and @name are not."),
 ("RD-04","UGC","Two-shot opener or Seedance multi-shot, if skit rooms still split","OpenMontage","idea","Only if the next skit take shows two rooms."),

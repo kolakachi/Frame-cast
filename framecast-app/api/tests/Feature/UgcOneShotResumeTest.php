@@ -20,6 +20,7 @@ class UgcOneShotResumeTest extends TestCase
     private int $starts = 0;
     private ?int $failOn = null;
     private ?int $hangOn = null;
+    private ?int $declineOn = null;
     private array $cancelled = [];
     private array $charged = [];
     private array $refunded = [];
@@ -66,6 +67,7 @@ class UgcOneShotResumeTest extends TestCase
         $veo->shouldReceive('pollUntilDone')->andReturnUsing(function ($id) {
             if ($this->failOn !== null && $id === 'pred-'.$this->failOn) throw new \RuntimeException('Veo generation failed: the model refused this clip');
             if ($this->hangOn !== null && $id === 'pred-'.$this->hangOn) return null;
+            if ($this->declineOn !== null && $id === 'pred-'.$this->declineOn) throw new \App\Services\Generation\ProviderFailed('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
             if ($this->onPoll) ($this->onPoll)();
             return $this->clip;
         });
@@ -604,6 +606,31 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['pred-2'], $this->cancelled);
         $this->assertSame(4, $this->starts, 'three clips, one of them twice');
         $this->assertSame([396], $this->charged);
+    }
+
+    public function test_a_clip_declined_by_moderation_is_reworded_once_and_made(): void
+    {
+        $this->declineOn = 1;
+        $soften = Mockery::mock(\App\Services\Ugc\UgcPromptSoften::class);
+        $soften->shouldReceive('rewrite')->once()->with('one')->andReturn('one, in plain words');
+        $this->app->instance(\App\Services\Ugc\UgcPromptSoften::class, $soften);
+        $this->assertNull($this->run_($this->job()));
+        $this->assertSame('one, in plain words', $this->sentPrompts[1], 'the second try is the reworded prompt');
+        $this->assertSame([396], $this->charged);
+    }
+
+    public function test_a_clip_declined_again_after_rewording_fails_uncharged(): void
+    {
+        $this->declineOn = 1;
+        $soften = Mockery::mock(\App\Services\Ugc\UgcPromptSoften::class);
+        $soften->shouldReceive('rewrite')->once()->andReturn('one, in plain words');
+        $this->app->instance(\App\Services\Ugc\UgcPromptSoften::class, $soften);
+        $veo = app(ReplicateVeoAdapter::class);
+        $this->onPoll = function () { if ($this->starts === 2) throw new \App\Services\Generation\ProviderFailed('The video model declined this segment — again.'); };
+        $error = $this->run_($this->job());
+        $this->assertStringContainsString('declined this segment', (string) $error?->getMessage());
+        $this->assertSame(2, $this->starts, 'reworded once, never more');
+        $this->assertSame([], $this->charged);
     }
 
     public function test_the_charge_carries_what_the_take_really_cost(): void

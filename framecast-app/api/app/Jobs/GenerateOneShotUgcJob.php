@@ -790,6 +790,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         // take over it.
         $url = null;
         $lastTransient = null;
+        $softened = null;
         for ($attempt = 0; $attempt < 2; $attempt++) {
             // veo_hq keeps the character face as a reference on
             // EVERY chunk so identity holds across the chain (the
@@ -809,7 +810,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 // The face close-up goes second, ahead of a second product angle; after a cut the last frame takes that place.
                 $chunkRefs = array_slice(array_merge([$chunkRefs[0], $this->faceRef], array_slice($chunkRefs, 1)), 0, 3);
             }
-            $prompt = (string) $chunk['prompt'];
+            $prompt = $softened ?? (string) $chunk['prompt'];
             if (in_array($this->faceRef, $chunkRefs, true)) $prompt .= "\n\nOne reference image is a close-up of the presenter's face: in every frame their face matches it exactly, the same person.";
             $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution, [], $this->aspect);
             $scene->forceFill(['image_generation_settings_json' => array_merge(
@@ -831,6 +832,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if ($url === null || $url === '') $veo->cancel($predictionId);
                 break;
             } catch (\RuntimeException $e) {
+                // Declined by moderation: the same shot in neutral words, tried once (RD-01, from Pixelle-Video).
+                if ($attempt === 0 && $softened === null && str_contains($e->getMessage(), 'declined this segment')
+                    && ($softened = app(\App\Services\Ugc\UgcPromptSoften::class)->rewrite((string) $chunk['prompt'])) !== null) {
+                    \Illuminate\Support\Facades\Log::info('one-shot: a declined clip was reworded and tried again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
+                    continue;
+                }
                 $transient = trim(str_replace('Veo generation failed:', '', $e->getMessage())) === ''
                     || str_contains($e->getMessage(), 'ReadError');
                 if (! $transient || $attempt === 1) {
