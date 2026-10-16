@@ -60,7 +60,7 @@ if(operation==='check'||operation==='snapshot'||operation==='strip'){
  if(page&&/<audio\b/i.test(page))await writeFile(root+'/index.html',page.replace(/<audio\b[^>]*>(?:[\s\S]*?<\/audio>)?/gi,''));
 }
 await copyFile('/opt/worker/node_modules/gsap/dist/gsap.min.js',root+'/gsap.min.js');await copyFile('/opt/worker/runtime/wyv-motion.js',root+'/wyv-motion.js');await copyFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',root+'/font.ttf');
-for(const f of ['barty-motion.js','barty-hyperframes.js','wyv-mascot.js','three-wyv.js','wyv-3d.js'])await copyFile('/opt/worker/runtime/'+f,root+'/'+f);
+for(const f of ['barty-motion.js','barty-hyperframes.js','wyv-mascot.js','three-wyv.js','wyv-3d.js','wyv-illos.js'])await copyFile('/opt/worker/runtime/'+f,root+'/'+f);
 // Licensed display and text fonts (SIL OFL), vendored in runtime/fonts.
 for(const f of ['inter.ttf','anton.ttf','bebas-neue.ttf','playfair.ttf','space-grotesk.ttf','caveat.ttf'])await copyFile('/opt/worker/runtime/fonts/'+f,root+'/'+f);
 // Registry items the composition wires (data-composition-src) are staged from the vendored registry, with the libraries they load.

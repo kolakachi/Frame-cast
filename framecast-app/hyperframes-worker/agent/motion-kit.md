@@ -87,6 +87,14 @@ Type that arrives like a lens finding it. Premium and calm work; use one of thes
 ## Social-native (read kit/social.md)
 - `WM.replySticker`, `WM.stitch`, `WM.heartBurst`: a reply-to-comment card, a stitch into a corner thumbnail, hearts from the like button. The card patterns, the registry's feed pieces and the safe zones are in kit/social.md.
 
+## Illustrations (wyv-illos.js)
+25 small flat pictures drawn in code, with dark outlines in the brand's colours, each animating itself (1-2 s). Load `wyv-illos.js` after GSAP, give each an empty square box (240-520 px) and call `WI.<name>(tl, '#box', at, {palette})`. The palette defaults to `--color_text`, `--color_accent` and `--color_background`; pass `{ink, accent, support, paper, pop}` to set roles.
+- Shopping: `bag` (drops in, items pop out), `cart` (rolls in, items drop in), `parcel` (slides to a door, tick), `gift` (lid pops, sparkles), `tag` (price tag swings, %), `money` (coins stack).
+- Messages: `phone` (buzz, notification, badge; `{count}`), `chat` (bubble, typing, reply), `mail` (envelope opens, letter rises), `megaphone` (sound pulses), `rating` (stars fill; `{stars}`, approved ratings only), `thumbs`.
+- Progress: `rocket` (lifts off and leaves), `chart` (bars grow, arrow rises), `trophy` (rises, shine), `plant` (grows), `checklist` (ticks draw in), `bulb` (switches on).
+- Everyday: `calendar` (page tears, date circled), `clock` (hands spin), `coffee` (steam), `pin` (drops on a map), `lock` (opens), `search` (finds a line), `sparkle`.
+Use one per beat as the picture that carries the line (an icon is not a scene: pair it with the words). For anything not in the list, draw it the same way: flat shapes, 8-10 px dark outlines, palette roles.
+
 ## Type in motion (no jitter)
 Measured on rendered frames (snapcn's motion rules): moving text looks cheap when it shakes or sticks, and these stop it.
 - The kit draws all text with `text-rendering: geometricPrecision` and keeps GSAP off compositor layers (`force3D: false`), so scaled type stays type instead of a shimmering bitmap. Do not undo either: no `will-change`, `translateZ(0)`, `translate3d`, `backface-visibility` or `force3D: true` on text (they are the same layer trick and bring the shimmer back).
