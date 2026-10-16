@@ -21,6 +21,12 @@ class CostEstimate
     /** Against Standard: Quick plans on Sonnet and builds with fewer, lighter calls; Thorough reviews more. */
     public const SCALE = ['quick' => 0.4, 'standard' => 1.0, 'thorough' => 1.9];
     public const CEILING_TIMES = 5;
+    /**
+     * Fix D (2026-10-16 proof: neo-brutalism spent 844 builder credits against a 340 quote, blueprint 499 against 216):
+     * styles with many separate elements take more builder rounds. Until a style has three real runs of its own, its
+     * estimate is scaled by this measured guess; with three, its own median replaces it.
+     */
+    public const STYLE_WEIGHT = ['neo-brutalism' => 2.0, 'comic-book' => 1.8, 'isometric' => 1.8, 'collage-zine' => 1.6, 'whiteboard' => 1.4];
     /** Room for a few of the dearest calls (each may cost up to $1.20) even on a short Quick build. */
     public const CEILING_FLOOR = 1000;
 
@@ -33,9 +39,16 @@ class CostEstimate
     public static function agent(string $effort, int $seconds, array $kind = []): int
     {
         $learned = self::learned($effort, $seconds, $kind);
-        if ($learned !== null) return $learned;
+        if ($learned !== null) return (int) round($learned * self::styleWeight($effort, $seconds, $kind));
         $seconds = max(5, min(60, $seconds));
-        return (int) round((120 + 0.75 * $seconds * $seconds) * (self::SCALE[$effort] ?? 1.0));
+        return (int) round((120 + 0.75 * $seconds * $seconds) * (self::SCALE[$effort] ?? 1.0) * self::styleWeight($effort, $seconds, $kind));
+    }
+
+    /** The style's weight when it has no three real runs of its own (their median already carries it). */
+    private static function styleWeight(string $effort, int $seconds, array $kind): float
+    {
+        $w = self::STYLE_WEIGHT[$kind['style'] ?? ''] ?? 1.0;
+        return $w !== 1.0 && count(self::learnedSpread($effort, $seconds, array_intersect_key($kind, ['style' => 1]), true)) >= 3 ? 1.0 : $w;
     }
 
     /** The most the build agent may spend: five times its estimate, never under the floor. */
@@ -50,17 +63,19 @@ class CostEstimate
         $row = ! empty($plan['plan_id']) ? DB::table('create_plans')->where('id', $plan['plan_id'])->first(['plan_json', 'conversation_id', 'created_at']) : null;
         $p = json_decode((string) ($row->plan_json ?? ''), true) ?: [];
         $task = $p['planner_task'] ?? null;
+        $style = is_string($p['style_route'] ?? null) && StylePacks::exists($p['style_route']) ? $p['style_route'] : (is_string($plan['style_route'] ?? null) && StylePacks::exists($plan['style_route']) ? $plan['style_route'] : null);
         // A plan amended before any video exists builds a whole new video: it is "creative" for the estimate, whatever
         // the planner called the amendment (GTM-1: a brand reply made a first build look like a small edit, 245 vs 734).
         if ($task === 'edit' && $row && ! DB::table('composition_revisions')->where('conversation_id', $row->conversation_id)->where('created_at', '<', $row->created_at)->exists()) $task = 'creative';
-        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $task]);
+        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $task, 'style' => $style]);
     }
 
     /** The likely spread of the build agent's credits: the middle half of real runs of this kind (or around the formula). */
     public static function agentRange(string $effort, int $seconds, array $kind = []): array
     {
         $spent = self::learnedSpread($effort, $seconds, $kind);
-        if ($spent) return [$spent[intdiv(count($spent), 4)], $spent[min(count($spent) - 1, intdiv(3 * count($spent), 4))]];
+        $w = self::styleWeight($effort, $seconds, $kind);
+        if ($spent) return [(int) round($spent[intdiv(count($spent), 4)] * $w), (int) round($spent[min(count($spent) - 1, intdiv(3 * count($spent), 4))] * $w)];
         $mid = self::agent($effort, $seconds, $kind);
         return [(int) round($mid * 0.8), (int) round($mid * 1.8)];
     }
@@ -91,7 +106,18 @@ class CostEstimate
     }
 
     /** @return int[] the agent credits of up to 30 real runs of this kind, sorted ([] when fewer than 3) */
-    private static function learnedSpread(string $effort, int $seconds, array $kind = []): array
+    /** @var array<string, array{at:int, v:int[]}> a short memo: a quote asks for the same spread several times */
+    private static array $memo = [];
+
+    private static function learnedSpread(string $effort, int $seconds, array $kind = [], bool $styleOnly = false): array
+    {
+        $key = $effort.'|'.$seconds.'|'.json_encode($kind).'|'.(int) $styleOnly;
+        // Kept for a minute: long-running workers reuse this class, and new runs must count.
+        if (app()->runningUnitTests() || (self::$memo[$key]['at'] ?? 0) < time() - 60) self::$memo[$key] = ['at' => time(), 'v' => self::spreadOf($effort, $seconds, $kind, $styleOnly)];
+        return self::$memo[$key]['v'];
+    }
+
+    private static function spreadOf(string $effort, int $seconds, array $kind, bool $styleOnly): array
     {
         $runs = DB::table('composition_runs')->where('status', 'preview_ready')->where('input_json->build_stage', 'full_video')
             ->where('created_at', '>=', now()->subDays(60))->orderByDesc('created_at')->limit(300)->get(['id', 'input_json'])
@@ -101,9 +127,12 @@ class CostEstimate
         if ($runs->count() < 3) return [];
         $plans = DB::table('create_plans')->whereIn('id', $runs->pluck('input.plan.plan_id')->filter()->unique()->all())->pluck('plan_json', 'id')
             ->map(fn ($j) => json_decode((string) $j, true) ?: []);
-        $runs = $runs->map(fn ($r) => $r + ['type' => $plans[$r['input']['plan']['plan_id'] ?? '']['video_type'] ?? null, 'task' => $plans[$r['input']['plan']['plan_id'] ?? '']['planner_task'] ?? null,
+        $runs = $runs->map(fn ($r) => $r + ['type' => $plans[$r['input']['plan']['plan_id'] ?? '']['video_type'] ?? null, 'task' => $plans[$r['input']['plan']['plan_id'] ?? '']['planner_task'] ?? null, 'style' => $r['input']['style_pack']['slug'] ?? null,
             'credits' => (int) DB::table('composition_attempts')->where('run_id', $r['id'])->whereIn('kind', ['agent', 'critic'])->sum('charged_credits')])->filter(fn ($r) => $r['credits'] > 0);
-        foreach ([array_intersect_key($kind, ['type' => 1, 'task' => 1]), array_intersect_key($kind, ['type' => 1]), []] as $want) {
+        // A style with three runs of its own decides first; then the video type and request, the type, any.
+        $style = ! empty($kind['style']) ? [['style' => $kind['style']]] : [];
+        $wants = $styleOnly ? $style : [...$style, array_intersect_key($kind, ['type' => 1, 'task' => 1]), array_intersect_key($kind, ['type' => 1]), []];
+        foreach ($wants as $want) {
             if (count($want) !== count(array_filter($want))) continue;
             $spent = $runs->filter(fn ($r) => ! array_diff_assoc($want, array_intersect_key($r, $want)))->take(30)->pluck('credits')->sort()->values();
             if ($spent->count() >= 3) return $spent->all();

@@ -2595,6 +2595,9 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([289, 795, 116, 1511], [$e::agent('standard', 15), $e::agent('standard', 30), $e::agent('quick', 15), $e::agent('thorough', 30)]);
         $this->assertSame([1445, 3975, 1000], [$e::agentCeiling('standard', 15), $e::agentCeiling('standard', 30), $e::agentCeiling('quick', 15)], 'five times the estimate, never under 1,000');
         $this->assertSame([231, 520], $e::agentRange('standard', 15), 'without real runs, a spread around the curve');
+        // Fix D: a busy style without three real runs of its own is scaled by its measured weight.
+        $this->assertSame([578, 520], [$e::agent('standard', 15, ['style' => 'neo-brutalism']), $e::agent('standard', 15, ['style' => 'comic-book'])]);
+        $this->assertSame(289, $e::agent('standard', 15, ['style' => 'glassmorphism']), 'a calm style keeps the base estimate');
         $this->assertSame([30, 75, 100, 145], [$e::planningCharge(60), $e::planningCharge(150), $e::planningCharge(200), $e::planningCharge(290)], 'half the real cost, with no cap');
         // Effort sets the build: Quick has no reviewer and 24 calls; every effort has a credit budget, not a call count.
         $quick = \App\Services\Create\PilotPolicy::class;
