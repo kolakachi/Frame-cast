@@ -4,7 +4,7 @@ Owner decisions, 2026-10-16. Mockups: `create-ui/templates-mockup/v2/` (index, t
 
 ## What a template is
 
-A finished Create version that anyone can start from. "Make mine" makes the same video for the user's product: same layout, moves, timing, style and length, with their product, words, colours and photos.
+A finished Create version that anyone can start from. It is a reference like any other, with one difference: we already know its parts, so nothing has to be studied or guessed. The agent is not boxed in: the user picks how closely to follow the template, and the agent follows that choice (owner, 2026-10-16: "template should work how it is supposed to work, the agent should follow the reference options").
 
 ## Who sees it
 
@@ -30,33 +30,35 @@ Written when staff add a template, from the version's code and the record of wha
 | Music and sound | the track and effects | `create_plan_media` (music) |
 | AI clips | each generated moment and what it shows | `create_plan_media` |
 
-Structure, motion and timing are locked: they are the template.
+What may change depends on the reference option the user picks (below), not on the template.
 
 Builds already declare text and colours as HyperFrames composition variables, and every new build should keep doing so (the builder writes them today; `preflight.mjs` fills gaps). A template without variables can still be used, through the builder.
 
 ## "Make mine"
 
-1. Copy the template's version into a new conversation for the user.
-2. Fill each part, inferring first:
+1. Start a new conversation for the user with the template as its reference and the reference option they picked (default: exactly, since they chose a finished video).
+2. The Creative Director plans as for any reference, with the template's parts list, plan and code in hand, and fills each part, inferring first:
    - product link → name, photos, selling points (the product read UGC already uses);
    - brand kit → colours, fonts, logo;
    - uploads → their photos;
    - ask in chat only for what is missing (offer, call to action).
 3. Style rules stay in charge: brand colours go into the template's colour roles only if text stays readable; copy longer than a slot is shortened and shown before anything is made.
-4. Make it in the cheapest way that works:
-   - text and colours only → a free edit (`FreeEditService`): one render, no model call, no credits. HyperFrames renders new values with `--variables`, and `--batch` renders many rows at once.
-   - photos, voice, any part that is not a variable → a change run (the builder swaps them by patch).
-   - new generation (voice, music, AI images, AI clips) → bought per item, as today.
+4. The production follows from the option, not the other way round:
+   - exactly, and the plan only swaps parts → no AI builder: variables for text and colours, photo files swapped behind their slots, voice re-made at the template's line starts, then one render and the usual checks; the builder is called only to repair a failed check;
+   - exactly, but something can't be a plain swap (a longer story, a new beat, a shape change) → the builder edits from the template's code;
+   - similar → the builder makes a new video keeping the template's format, look and pacing;
+   - inspired → an ordinary build that takes the template's idea.
+   - new generation (voice, music, AI images, AI clips) is bought per item in every case.
 
 ## Price
 
-- Fixed: the swap. Low, and the same each time for a template; quoted per template, not estimated from the style.
+- Exactly with only swaps: low and the same each time for a template, so it is quoted per template, not estimated from the style. Similar and inspired are quoted like any build.
 - Per item: anything generated new for this product, each listed with its price ("Voice: 3 cr, 2 AI clips: 240 cr"). The user can drop an item before paying, for example their own photo instead of an AI image.
 - CostEstimate gets a `template` kind, learned from template runs, so neo-brutalism's style weight (2.0×) does not inflate template quotes.
 
 ## How references relate
 
-Create already asks how closely to follow a reference video (`ReferenceMatch`): exactly (moment for moment, brand and content swapped), similar (format, look and pacing, own story), inspired (just the idea). A template is "exactly" with the parts list known up front, so nothing has to be studied or guessed.
+Create already asks how closely to follow a reference video (`ReferenceMatch`): exactly (moment for moment, brand and content swapped), similar (format, look and pacing, own story), inspired (just the idea). Templates use the same three options, shown on the template page next to "Make mine", and changeable in Details as today.
 
 ## Test (2026-10-16): Ridge 2 → Volt Rush, no image or video generation
 
@@ -80,7 +82,7 @@ Conclusion: having the builder do the swap is cheaper but not cheap enough. Most
 | Voice | re-voice the new script line by line at the template's line starts (TTS, about 3 cr) |
 | Music, fonts, moves | kept as they are |
 
-Then render and run the usual checks. The builder is called only when a check fails (a line too long for its slot, a photo that reads badly), as a small repair. That would put a no-generation template at about the voice cost plus one render, and a fixed price we can quote.
+Then render and run the usual checks (this is the exactly-with-swaps case above). The builder is called only when a check fails (a line too long for its slot, a photo that reads badly), as a small repair. That would put a no-generation template at about the voice cost plus one render, and a fixed price we can quote.
 
 Fix in any case (they hurt template runs and ordinary changes alike):
 - the art-library rule should not fire on a change that only swaps content;
@@ -88,3 +90,11 @@ Fix in any case (they hurt template runs and ordinary changes alike):
 - a re-voiced line that is shorter than its slot should be placed, not fail the preview.
 
 Note: version 1 of aeb4755c (revision 08fd1388) is the template; version 2 is this test.
+
+## Build order
+
+1. Data and staff action: `create_templates` (version, title, category, description, ask hint, style, shape, length, parts list, preview), "Add to templates" in a side drawer on a finished version, staff-only.
+2. Templates page and template page, behind the staff-only switch, with the reference option next to "Make mine".
+3. "Make mine": a new conversation with the template as reference and the chosen option; the planner gets the parts list, plan and code.
+4. The no-builder production for exactly-with-swaps, with the builder as repair.
+5. The three fixes above, and a `template` kind in CostEstimate.
