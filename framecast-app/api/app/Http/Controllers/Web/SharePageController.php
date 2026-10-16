@@ -21,6 +21,18 @@ use App\Services\Media\StorageService;
  */
 class SharePageController extends Controller
 {
+    /**
+     * Where "Make a video like this" goes. A visitor who arrived with tracking tags (an email campaign, an ad) keeps
+     * them, so the sign-up is credited to that campaign (2026-10-16: a SendFox email's sample links were credited to
+     * the share page); otherwise the share page is the source.
+     */
+    public static function ctaUrl(array $query): string
+    {
+        $keep = array_filter(array_intersect_key($query, array_flip(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid'])),
+            fn ($v) => is_string($v) && $v !== '' && strlen($v) <= 200);
+        return 'https://wyvstudio.com/?'.http_build_query($keep ?: ['utm_source' => 'share_page', 'utm_medium' => 'video']);
+    }
+
     public function show(string $token, StorageService $storage)
     {
         $project = Project::query()
@@ -111,6 +123,7 @@ class SharePageController extends Controller
             'isoDuration' => $duration ? 'PT'.max(1, (int) round($duration)).'S' : null,
             'uploadDate'  => ($export?->completed_at ?? $project->created_at)?->toIso8601String(),
             'canonical'   => 'https://app.wyvstudio.com/sample/'.$token,
+            'ctaUrl'      => self::ctaUrl(request()->query()),
         ])->header('Cache-Control', 'public, max-age=300');
     }
 }

@@ -70,7 +70,7 @@
   @endif
 
   <div class="made">Made with <strong>WyvStudio</strong> — AI short-video studio</div>
-  <a class="cta" href="https://wyvstudio.com/?utm_source=share_page&utm_medium=video" rel="noopener">Make a video like this →</a>
+  <a class="cta" href="{{ $ctaUrl ?? 'https://wyvstudio.com/?utm_source=share_page&utm_medium=video' }}" rel="noopener">Make a video like this →</a>
 
 @if ($videoUrl)
 <script>
