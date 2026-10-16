@@ -12,7 +12,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
-| TPL-PUBLIC | Turn on CREATE_TEMPLATES_PUBLIC when the set is ready | owner |
 
 ## 2. Next: build
 
