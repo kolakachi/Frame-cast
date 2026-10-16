@@ -6,6 +6,11 @@ test('a headline that leaves before it can be read is flagged; one held long eno
  const codes=findings(f,15).filter(x=>x.code==='reading_time');
  assert.equal(codes.length,1);assert.match(codes[0].message,/No camera/);
 });
+test('flip-board tiles and other lone glyphs are motion, not words to read',()=>{
+ const f=frames(151,t=>({texts:[...(t>=9.2&&t<9.3?[{id:11,x:0,y:0,text:'U'},{id:12,x:0,y:0,text:'D'}]:[]),...(t>=3&&t<3.4?[{id:13,x:0,y:0,text:'AUTUMN'}]:[])],things:[{id:9,x:0,y:0}]}));
+ const codes=findings(f,15).filter(x=>x.code==='reading_time');
+ assert.deepEqual(codes.map(c=>c.text),['AUTUMN'],'a real word shown too briefly is still caught');
+});
 test('the closing line only needs to be on screen at the end',()=>{
  const f=frames(151,t=>({texts:t>=14.5?[{id:3,x:0,y:0,text:'WyvStudio, turn any idea into a video'}]:[],things:[{id:9,x:0,y:0}]}));
  assert.equal(findings(f,15).filter(x=>x.code==='reading_time').length,0);

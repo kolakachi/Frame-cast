@@ -121,6 +121,9 @@ export function findings(frames,duration,rules=RULES){
   if(r.start!==null)r.best=Math.max(r.best,r.last-r.start+rules.step);
   // The last block on screen runs to the end of the video; it only needs to be there.
   const endsVideo=r.last>=duration-rules.step*1.5;
+  // A lone letter or digit is a glyph in motion (a flip-board tile, a letter-by-letter build, a countdown), not words to
+  // read: a square announcement's date board was sent back for "U", "D" and "C" flipping past for 0.1 s (2026-10-16).
+  if(r.text.replace(/\s/g,'').length<=1)continue;
   const need=Math.max(rules.min,r.text.replace(/\s/g,'').length/rules.cps+rules.pad);
   if(!endsVideo&&r.best+rules.slack<need)out.push({code:'reading_time',severity:'error',time:r.first,text:r.text,best:+r.best.toFixed(2),until:+(r.last+rules.step).toFixed(2),
    message:`"${r.text.slice(0,60)}" is fully on screen for ${r.best.toFixed(1)} s; it needs ${need.toFixed(1)} s to be read.`,
