@@ -3,9 +3,6 @@
 namespace App\Services\Create;
 
 use App\Models\{Asset, User};
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\{DB, Http};
-use Illuminate\Support\Str;
 
 /**
  * Our own videos on Create's empty screen (C2, 2026-10-09; owner picked "box first, one strip below"). "Make one like
@@ -14,8 +11,6 @@ use Illuminate\Support\Str;
  */
 class SampleLibrary
 {
-    private const BASE = 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/';
-
     /** Every example on the landing page and B2 (32): id => [folder, title, filter kind, seconds, shape]. "All" mixes kinds. */
     public const SAMPLES = [
         'b01' => ['weave', 'Launch promo in bold kinetic type', 'launch', 20, 'portrait'],
@@ -52,58 +47,31 @@ class SampleLibrary
         'app-demo' => ['ugc', 'Embed a real app or product demo', 'ugc', 10, 'landscape'],
     ];
 
-    /**
-     * Light enough for the empty screen: a 260 px WebP poster (about 7 KB) and a 6-second 360p silent preview for hover
-     * (about 80 KB), both cached for a year. The full video is fetched only when "Make one like this" uses it.
-     *
-     * @return list<array{id: string, title: string, kind: string, seconds: int, shape: string, poster_url: string, preview_url: string, video_url: string}>
-     */
-    public static function catalogue(): array
-    {
-        return array_map(fn ($id, $s) => ['id' => $id, 'title' => $s[1], 'kind' => $s[2], 'seconds' => $s[3], 'shape' => $s[4],
-            'poster_url' => self::BASE.'thumbs/'.$id.'.webp', 'preview_url' => self::BASE.'previews/'.$id.'.mp4', 'video_url' => self::BASE.$s[0].'/'.$id.'.mp4'],
-            array_keys(self::SAMPLES), self::SAMPLES);
-    }
+    /** The strip's old filter kinds, for templates added after the examples (their tabs on the Templates page differ). */
+    private const KIND = ['offer' => 'ads', 'app' => 'launch', 'announce' => 'launch', 'explainer' => 'explainer', 'ugc' => 'ugc', 'footage' => 'footage'];
 
     /**
-     * The examples this workspace's plan opens: all of them, unless the plan names a vault size (the Launchpad Bundle's
-     * done-for-you templates: the first 10, 30 with the bump; none on the other launch plans).
+     * The examples on the empty screen, now read from the template library (Templates, 2026-10-16: one library). Light
+     * enough for the screen: a 260 px WebP poster and a 6-second 360p silent preview for hover, cached for a year; the
+     * full video is fetched only when "Make one like this" uses it.
+     *
+     * @return list<array{id: string, title: string, kind: string, seconds: int, shape: string, poster_url: ?string, preview_url: ?string, video_url: ?string}>
      */
     public static function catalogueFor(User $user): array
     {
-        $vault = app(\App\Services\CreditService::class)->limitFor((int) $user->workspace_id, 'sample_vault');
-        return $vault === null ? self::catalogue() : array_slice(self::catalogue(), 0, max(0, (int) $vault));
+        return array_values(array_map(fn ($t) => ['id' => $t['id'], 'title' => $t['title'], 'kind' => self::SAMPLES[$t['id']][2] ?? (self::KIND[$t['category']] ?? 'ads'),
+            'seconds' => $t['seconds'], 'shape' => ['9:16' => 'portrait', '1:1' => 'square', '16:9' => 'landscape'][$t['shape']] ?? 'portrait',
+            'poster_url' => $t['poster_url'], 'preview_url' => $t['preview_url'], 'video_url' => $t['video_url']],
+            array_filter(app(TemplateLibrary::class)->visible($user), fn ($t) => ! $t['locked'] && ($t['on_samples'] || config('create.templates_public')))));
     }
 
-    /** Attaches the sample as the conversation's style reference: a copy made once per workspace, studied like any reference. */
+    /** "Make one like this": the example as the conversation's reference, copied into the workspace once and studied. */
     public function attach(User $user, string $conversationId, string $sampleId, int $version): Asset
     {
-        abort_unless(isset(self::SAMPLES[$sampleId]), 422, 'That example is no longer available.');
-        if (! in_array($sampleId, array_column(self::catalogueFor($user), 'id'), true)) \App\Support\PlanGate::deny('sample_vault');
-        $conversations = app(ConversationService::class);
-        $conversations->authorize($user, true);
-        $kept = Asset::where('workspace_id', $user->workspace_id)->where('status', '!=', 'archived')->where('metadata_json->create_sample_id', $sampleId)->first();
-        if ($kept) {
-            $conversations->attach($user, $conversationId, (int) $kept->id, 'reference', $version);
-            return $kept;
-        }
-        $dir = sys_get_temp_dir().'/create-sample-'.Str::uuid();
-        mkdir($dir, 0700);
-        try {
-            $file = $dir.'/'.$sampleId.'.mp4';
-            $r = Http::timeout(120)->sink($file)->get(self::BASE.self::SAMPLES[$sampleId][0].'/'.$sampleId.'.mp4');
-            abort_unless($r->successful() && is_file($file) && filesize($file) > 0, 503, 'That example could not be fetched just now. Try again, or describe your video instead.');
-            $asset = app(AttachmentUploadService::class)->upload($user, $conversationId, new UploadedFile($file, $sampleId.'.mp4', 'video/mp4', null, true), 'reference', 'sample:'.$conversationId.':'.$sampleId, $version);
-            $asset->forceFill(['title' => 'Example: '.self::SAMPLES[$sampleId][1], 'metadata_json' => array_merge($asset->metadata_json ?? [], ['create_sample_id' => $sampleId])])->save();
-            // Studied in the background like a reference attached in the app, so the plan reads a finished study.
-            if (config('create.mode') !== 'fixture') {
-                $effort = json_decode((string) DB::table('create_conversations')->where('id', $conversationId)->value('settings_json'), true)['reference_effort'] ?? null;
-                \App\Jobs\StudyCreateReference::dispatch($asset->id, References\ReferenceStudy::coverageMode($effort))->afterCommit();
-            }
-            return $asset->fresh();
-        } finally {
-            foreach (glob($dir.'/*') ?: [] as $f) @unlink($f);
-            @rmdir($dir);
-        }
+        $visible = collect(app(TemplateLibrary::class)->visible($user))->firstWhere('id', $sampleId);
+        abort_unless($visible, 422, 'That example is no longer available.');
+        if ($visible['locked']) \App\Support\PlanGate::deny('sample_vault');
+        app(ConversationService::class)->authorize($user, true);
+        return app(TemplateLibrary::class)->reference($user, $conversationId, $sampleId, $version);
     }
 }

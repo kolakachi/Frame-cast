@@ -20,6 +20,8 @@ class OutputSettings
         'voice'=>'sometimes|nullable|string|max:40',
         // The kind of video the user picked before writing (a dashboard card): a format playbook id the planner starts from.
         'format'=>'sometimes|nullable|string|max:40',
+        // The template this conversation was started from (Templates, 2026-10-16).
+        'template_id'=>'sometimes|nullable|string|max:40',
     ]; }
     public static function normalize(array $input): array {
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');

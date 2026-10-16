@@ -49,6 +49,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_10_07_000000_create_create_runtime_controls.php'))->up();
         (require database_path('migrations/2026_10_07_010000_create_create_worker_assignments.php'))->up();
         (require database_path('migrations/2026_10_07_120000_add_notes_to_create_attachments.php'))->up();
+        (require database_path('migrations/2026_10_16_120000_create_create_templates_table.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();

@@ -277,6 +277,15 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/conversations/{id}/references', [$controller, 'reference']);
             // C2: our example videos on the empty screen; "Make one like this" attaches one as the style reference.
             Route::get('/samples', [$controller, 'samples']);
+            // Templates (owner, 2026-10-16): one library with the examples; the page is staff-only until it is made public.
+            $templates = \App\Http\Controllers\Api\V1\Create\TemplateController::class;
+            Route::get('/templates', [$templates, 'index']);
+            Route::post('/templates', [$templates, 'store']);
+            Route::get('/templates/{id}', [$templates, 'show']);
+            Route::patch('/templates/{id}', [$templates, 'update']);
+            Route::delete('/templates/{id}', [$templates, 'destroy']);
+            Route::post('/templates/{id}/use', [$templates, 'use'])->middleware('throttle:20,1,create-template-use');
+            Route::get('/conversations/{id}/revisions/{revisionId}/template-draft', [$templates, 'draft']);
             Route::post('/conversations/{id}/samples', [$controller, 'useSample']);
             Route::delete('/conversations/{id}/attachments/{assetId}', [$controller, 'detach'])->whereNumber('assetId');
             Route::post('/conversations/{id}/plans', [$controller, 'plan']);

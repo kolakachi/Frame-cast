@@ -62,6 +62,8 @@ class LaunchpadGatingTest extends TestCase
             $t->decimal('amount', 12, 2)->nullable(); $t->string('currency', 3)->nullable(); $t->json('payload')->nullable();
             $t->timestamp('revoked_at')->nullable(); $t->timestamps(); $t->unique(['receipt', 'product']);
         });
+        // The done-for-you vault is the template library (Templates, 2026-10-16).
+        (require database_path('migrations/2026_10_16_120000_create_create_templates_table.php'))->up();
     }
 
     private function launch(): LaunchpadService
@@ -205,7 +207,7 @@ class LaunchpadGatingTest extends TestCase
         }
         $user = fn (int $ws) => (new User)->forceFill(['workspace_id' => $ws]);
         $this->assertSame([], \App\Services\Create\SampleLibrary::catalogueFor($user($fe)));
-        $this->assertSame(\App\Services\Create\SampleLibrary::catalogue(), \App\Services\Create\SampleLibrary::catalogueFor($user($ltd)));
+        $this->assertCount(count(\App\Services\Create\SampleLibrary::SAMPLES), \App\Services\Create\SampleLibrary::catalogueFor($user($ltd)));
         $this->launch()->grant('gate-fe@example.com', null, 'bundle', 'LP-12');
         $this->assertCount(10, \App\Services\Create\SampleLibrary::catalogueFor($user($fe)));
 
