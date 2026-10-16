@@ -1,7 +1,7 @@
 # Step 1 scope — developer namespace and the five endpoints
 
 25 September 2026 · Implements Stage A items A1 (namespace) and A3 (contract) of
-[api-access-todo.md](api-access-todo.md). Baseline `5428bab`.
+[api-access-todo.md](archive/2026-10-16/api-access-todo.md). Baseline `5428bab`.
 
 ## What exists that this builds on
 

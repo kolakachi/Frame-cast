@@ -5,6 +5,9 @@ with the published progress page from `items.py` (`python3 build_tracker.py`). S
 confirmed), **next** (decided, not built), **open** (to build, not yet ordered), **idea** (worth considering, needs a
 yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 2026-10-15: clear this list.
 
+**Closed 2026-10-16.** The tracker below is history: the items still open (RD-49 next; ideas RD-43 to RD-46) moved to
+[the one todo](../product/todo.md). Research notes in this folder stay as reference.
+
 ## Tracker
 
 | ID | Area | Item | From | Status | Note |
@@ -59,6 +62,6 @@ yes or no), **done**, **skipped** (decided against, reason in the note). Owner, 
 | RD-32 | Platform | Still-ad editor: logo and headline on a generated image, export 1.91:1 and 1:1 | fabric.js | skipped | Skipped 2026-10-15 (owner). Why: a still-ad editor is a separate product (image ads), outside the video studio. |
 | RD-42 | Create | Taste rules written into the builder's doctrine | Anthropic skills, taste-skill | skipped | Dropped with RD-12 (owner, 2026-10-15). |
 
-Notes per topic: [higgsfield-claude-motion.md](higgsfield-claude-motion.md), [kits-roadmap.md](kits-roadmap.md), [motion-skill-repos.md](motion-skill-repos.md), [opus-motion-harness.md](opus-motion-harness.md), [higgsfield-onboarding.md](higgsfield-onboarding.md), [follow-ups.md](follow-ups.md); repo licences in `docs/product/priorities.md` (Research repos we borrow from).
+Notes per topic: [higgsfield-claude-motion.md](higgsfield-claude-motion.md), [kits-roadmap.md](kits-roadmap.md), [motion-skill-repos.md](motion-skill-repos.md), [opus-motion-harness.md](opus-motion-harness.md), [higgsfield-onboarding.md](higgsfield-onboarding.md), [follow-ups.md](follow-ups.md); repo licences in `docs/product/archive/2026-10-16/priorities.md` (Research repos we borrow from).
 
 Run `php artisan create:move-gaps` on production after a deploy to re-rank the kit items by what users actually ask for.

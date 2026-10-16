@@ -1,7 +1,7 @@
 # Phase 1 — full creation settings through the API and MCP
 
 25 September 2026 · First of the four expansion phases that gate customer
-outreach (tracker: [api-access-todo.md](api-access-todo.md)). Baseline `4812812`.
+outreach (tracker: [api-access-todo.md](archive/2026-10-16/api-access-todo.md)). Baseline `4812812`.
 
 Goal: an assistant can make any standard video the New Video flow can, with
 the same validation, the same estimate and one create. The assistant may

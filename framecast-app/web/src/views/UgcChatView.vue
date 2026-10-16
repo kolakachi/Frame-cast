@@ -13,7 +13,7 @@ import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import { apiErrorMessage } from '../composables/apiError'
 
-// UGC Ads as a conversation (owner, 2026-10-10; mockup docs/product/ugc-chat-todo.md). Everything goes in one prompt box
+// UGC Ads as a conversation (owner, 2026-10-10; mockup docs/product/todo.md). Everything goes in one prompt box
 // at once: product photos, footage, a link, a sample UGC, a script or an idea, presenters with their voices and an
 // optional type. The director asks only what it cannot infer, then pitches ONE video with its price. Make it hands the
 // pitch to the UGC pipeline, which makes it as a Classic project (Fine-tune in editor).

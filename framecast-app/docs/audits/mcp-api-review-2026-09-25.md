@@ -1,8 +1,8 @@
 # MCP and developer API audit — 25 September 2026
 
 Reviewed local HEAD `9b26301`, `framecast-app/mcp`, developer controllers,
-API-key accounting, relevant OAuth/auth code, `api-access-todo.md` and
-`api-expansion-todo.md`. This is a review, not a release verification. No
+API-key accounting, relevant OAuth/auth code, `docs/product/archive/2026-10-16/api-access-todo.md` and
+`docs/product/archive/2026-10-16/api-expansion-todo.md`. This is a review, not a release verification. No
 production writes, paid generations or customer contact were performed.
 
 ## Verdict

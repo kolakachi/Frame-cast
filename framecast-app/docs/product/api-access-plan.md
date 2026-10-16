@@ -4,7 +4,7 @@ Version 1.3 · 25 September 2026 · Foundation implemented; not ready for custom
 
 Audience: product owner and implementation team.
 
-Implementation tracker: [API and MCP TODO](api-access-todo.md).
+Implementation tracker: [API and MCP TODO](archive/2026-10-16/api-access-todo.md).
 
 This is the proposed release plan, not developer documentation or a claim that
 all controls below exist. The implementation baseline reviewed is `5428bab`.

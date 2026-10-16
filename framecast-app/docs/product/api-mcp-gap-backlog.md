@@ -12,8 +12,8 @@ remain behind a disabled rollout flag.
 ## Purpose and evidence
 
 One actionable checklist for the API/MCP audit and the follow-up comparison with
-`/projects/{id}/editor`. This supplements `api-access-todo.md` and
-`api-expansion-todo.md`; checked items in those documents do not override the
+`/projects/{id}/editor`. This supplements `archive/2026-10-16/api-access-todo.md` and
+`archive/2026-10-16/api-expansion-todo.md`; checked items in those documents do not override the
 unresolved findings here.
 
 Distinguish **bugs** (existing behavior is incorrect), **parity gaps** (app

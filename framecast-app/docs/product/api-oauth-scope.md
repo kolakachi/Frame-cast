@@ -1,6 +1,6 @@
 # OAuth for MCP connectors — scope
 
-25 September 2026 · Implements D2 (OAuth path) of [api-access-todo.md](api-access-todo.md).
+25 September 2026 · Implements D2 (OAuth path) of [api-access-todo.md](archive/2026-10-16/api-access-todo.md).
 Status: built and verified on the dev stack the same day; see the tracker's evidence log.
 Decided in scope 25 September 2026 so ChatGPT and Claude web connectors can
 connect without the user handling a key.

@@ -1,6 +1,6 @@
 # Templates plan
 
-Owner decisions, 2026-10-16. Mockups: `create-ui/templates-mockup/v2/` (index, template, staff). Todo: TEMPLATES in `create-todo.md`.
+Owner decisions, 2026-10-16. Mockups: `create-ui/templates-mockup/v2/` (index, template, staff). Todo: the TPL rows in `todo.md`.
 
 ## What a template is
 

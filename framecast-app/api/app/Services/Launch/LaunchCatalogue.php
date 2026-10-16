@@ -3,7 +3,7 @@
 namespace App\Services\Launch;
 
 /**
- * What each Launchpad product and bump gives (owner-approved offers, 2026-10-12; docs/product/launchpad-gating-todo.md).
+ * What each Launchpad product and bump gives (owner-approved offers, 2026-10-12; docs/product/todo.md (LAUNCHPAD; history in docs/product/archive/2026-10-16/launchpad-gating-todo.md)).
  *
  * A main product sets a tier (its limits are that tier's row in CreditService::PLAN_LIMITS) and grants credits once.
  * A bump either grants credits, raises a limit to at least a value ("limits"), or adds to one ("add"). Content-only

@@ -26,7 +26,7 @@ table = "".join(f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} |\n" for
 tail = readme[readme.index("Run `php artisan create:move-gaps`"):] if "Run `php artisan create:move-gaps`" in readme else ""
 (HERE / "README.md").write_text(head + table + "\nNotes per topic: [higgsfield-claude-motion.md](higgsfield-claude-motion.md), [kits-roadmap.md](kits-roadmap.md), "
     "[motion-skill-repos.md](motion-skill-repos.md), [opus-motion-harness.md](opus-motion-harness.md), [higgsfield-onboarding.md](higgsfield-onboarding.md), "
-    "[follow-ups.md](follow-ups.md); repo licences in `docs/product/priorities.md` (Research repos we borrow from).\n\n" + tail)
+    "[follow-ups.md](follow-ups.md); repo licences in `docs/product/archive/2026-10-16/priorities.md` (Research repos we borrow from).\n\n" + tail)
 
 data = [dict(zip(["id", "area", "item", "src", "status", "note"], r)) for r in rows]
 page = (HERE / "tracker.template.html").read_text().replace("__DATA__", json.dumps(data)).replace("__UPDATED__", today)
