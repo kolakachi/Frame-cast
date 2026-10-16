@@ -49,7 +49,7 @@ class PilotPolicy
                     'tool_mode'=>(bool) config('create.tool_mode', false),'unlimited'=>true],
                     'critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>250,'effort'=>'low','cost_limit_microusd'=>1000000,'max_calls'=>10,'max_output_tokens'=>8192],
                     // A render per repair round (todo D): the first render and up to two re-renders.
-                    'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
+                    'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.164','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
             }
             // Real builds (2026-10-06) took 3 to 21 calls, the dearest $0.60, 95% under $0.26: calls are capped per effort
             // with room, a call at $1.20 (a reviewer call at $0.30, the dearest seen $0.14), and the whole build at its
@@ -67,11 +67,11 @@ class PilotPolicy
                 // The critic: a separate reviewer of short low-effort calls with the frames and the strip, on Thorough builds only
                 // (only they are reviewed, so Quick and Standard hold nothing for it).
                 ...($level==='thorough'?['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>'low','cost_limit_microusd'=>300000,'max_calls'=>4,'max_output_tokens'=>4096]]:[]),
-                'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
+                'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.164','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,
             'cost_limit_microusd'=>300000,'max_calls'=>8,'max_output_tokens'=>4096,'context_bytes'=>64000],
-            'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+            'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.164','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
     }
 
     public static function ceiling(array $policy): int

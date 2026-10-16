@@ -31,7 +31,7 @@
         "ad",
         "mascot"
       ],
-      "compatibility": "Guidance revision differs from installed runtime 0.8.82. Use only host-advertised tools. No automatic installs, shell commands, subagents, capture or publishing from these files. Scripts/examples are readable references; binary assets are not vendored.",
+      "compatibility": "Guidance pinned to the release tag of installed runtime 0.8.164. Use only host-advertised tools. No automatic installs, shell commands, subagents, capture or publishing from these files. Scripts/examples are readable references; binary assets are not vendored.",
       "workflows": [
         {
           "name": "hyperframes",

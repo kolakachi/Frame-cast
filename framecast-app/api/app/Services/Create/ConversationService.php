@@ -244,7 +244,7 @@ class ConversationService
                 $base = $c->head_revision_id ? DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $c->head_revision_id)->firstOrFail() : null;
                 $settings=json_decode($c->settings_json,true);
                 $paid=config('create.mode')==='agent';
-                $policy=$paid ? PilotPolicy::execution($settings) : ['agent'=>['provider'=>'offline','model'=>'offline-contract-v1','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>6],'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.82','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
+                $policy=$paid ? PilotPolicy::execution($settings) : ['agent'=>['provider'=>'offline','model'=>'offline-contract-v1','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>6],'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.164','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
                 $policy=self::modelTest($policy,$settings,$user);
                 if($paid && ($settings['output_kind']??'video')==='image') {
                     abort_if(count(array_filter($files,fn($f)=>$f['asset_type']!=='image'))>0,422,'Image generation accepts images only. Start a video brief to use footage or audio.');

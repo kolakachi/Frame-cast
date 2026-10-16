@@ -45,7 +45,7 @@ class FreeEditService
                 'source_revision_id' => $revisionId, 'free_edit' => true, 'edit_values' => $changes,
                 'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['role', 'content'])->all(),
                 'attachments' => DB::table('create_attachments')->where('conversation_id', $id)->orderBy('asset_id')->get(['asset_id', 'purpose'])->all(),
-                'execution_policy' => ['render' => ['provider' => 'offline', 'model' => 'hyperframes-0.8.82', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 1]],
+                'execution_policy' => ['render' => ['provider' => 'offline', 'model' => 'hyperframes-0.8.164', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 1]],
                 'pilot_budget_id' => config('create.mode') === 'agent' ? config('create.pilot_budget_id') : null,
                 'input_files' => $files, 'base_bundle' => $bundle, 'base_bundle_hash' => hash('sha256', json_encode($bundle)), 'media_input' => null, 'plan' => null,
                 'settings' => $metadata['settings'] ?? json_decode($c->settings_json, true), 'mode' => config('create.mode'),

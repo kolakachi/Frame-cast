@@ -5,6 +5,8 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 const [source,commit,packageId='hyperframes']=process.argv.slice(2);
+// The installed HyperFrames version, named in the guidance note so the builder never reads a stale one.
+const runtimeVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).dependencies.hyperframes;
 const specialists=JSON.parse(await readFile(new URL('./specialist-skills.json',import.meta.url),'utf8'));
 const specialist=specialists[packageId];
 if(packageId!=='hyperframes'&&!specialist)throw Error('Unknown skill package');
@@ -32,7 +34,7 @@ let previous={packages:[],files:{}};
 try{previous=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
 const entry={id:packageId,repository:specialist?.repository??'https://github.com/heygen-com/hyperframes',commit,license:specialist?.license??'Apache-2.0',runtime:specialist?.runtime??'hyperframes',mode:'reference-only',
  routes:specialist?.routes??['product','motion','ad','mascot'],
- compatibility:specialist?'Creative guidance and source examples are available. The upstream renderer, installers and script dependencies are NOT installed by this package. Use existing host tools for supported techniques; request a missing capability rather than executing upstream commands. Approved colour treatment overrides example palettes; preserve the selected engine and approved plan. Binary assets/fonts are excluded.':'Guidance revision differs from installed runtime 0.8.82. Use only host-advertised tools. No automatic installs, shell commands, subagents, capture or publishing from these files. Scripts/examples are readable references; binary assets are not vendored.',
+ compatibility:specialist?'Creative guidance and source examples are available. The upstream renderer, installers and script dependencies are NOT installed by this package. Use existing host tools for supported techniques; request a missing capability rather than executing upstream commands. Approved colour treatment overrides example palettes; preserve the selected engine and approved plan. Binary assets/fonts are excluded.':'Guidance pinned to the release tag of installed runtime '+runtimeVersion+'. Use only host-advertised tools. No automatic installs, shell commands, subagents, capture or publishing from these files. Scripts/examples are readable references; binary assets are not vendored.',
  workflows:names.map(name=>({name,path:'skills/'+packageId+'/'+name+'/SKILL.md'}))};
 const manifest={packages:[...previous.packages.filter(p=>p.id!==packageId),entry].sort((a,b)=>a.id.localeCompare(b.id)),
  files:{...Object.fromEntries(Object.entries(previous.files).filter(([name])=>!name.startsWith(packageId+'/'))),...files}};
