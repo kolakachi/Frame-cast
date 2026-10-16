@@ -1,7 +1,8 @@
 # Named looks (recipes)
 
 When the brief or the plan names one of these looks, build it this way. A look sets the palette, type and motion;
-the approved plan, the brand's colours and fonts and the user's words still win. A look the user names lifts the
+the approved plan, the brand's colours and fonts and the user's words still win. Where a look's rules differ from the
+design card's defaults (asymmetry, one accent colour, two type families, no centred layouts), the look wins. A look the user names lifts the
 "avoid generated looks" rule for that look only (neon is allowed in a neon video, not everywhere). Fonts listed are
 fetched for the build; the bundled faces are the fallback. Everything stays seeded and seek-safe.
 

@@ -1,5 +1,9 @@
 Distilled from HyperFrames hyperframes-creative (heygen-com/hyperframes, Apache-2.0).
 
+These are defaults for a video with no chosen style. A chosen style pack or a named look (kit/looks.md) replaces them
+where they differ: its palette, type, composition and motion win (art deco is centred and symmetric, Bauhaus keeps its
+own grid, neo-brutalism uses several loud colours).
+
 ## Settle the spec before writing
 - Palette by role, declared once: field (background), ink, accent (one hue, visible: 15-25% as atmosphere, full on the focal hit), support (a tinted neutral for cards and rules). Tint neutrals toward the accent; never pure #000 or #fff. No full-frame linear gradients on dark (they band): radial, or solid plus a local glow.
 - One type scale from frame height H: display 12-20%, headline 6-9%, body 2.6-3.6%, label 1.7-2.2%. Nothing under 24 px. Hero text spans 60-80% of the width.

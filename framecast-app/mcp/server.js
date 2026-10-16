@@ -876,7 +876,8 @@ function buildServer(token) {
   // always shown and approved by the user before anything is made, and changes re-plan. Planning itself costs a few
   // credits; making the video costs the approved quote at most.
   const WEAVE_FORMATS = ['offer_ad', 'launch_promo', 'testimonial', 'explainer', 'listicle', 'product_demo', 'ugc_ad', 'before_after', 'tutorial', 'brand_story']
-  const WEAVE_STYLES = ['data-story', 'editorial-frame', 'kinetic-type', 'launch-reel', 'mascot-explainer', 'product-ui']
+  // Every built-in style in api/resources/create/styles (a test keeps the two lists the same).
+  const WEAVE_STYLES = ['collage-zine', 'comic-book', 'data-story', 'editorial-frame', 'glassmorphism', 'isometric', 'kinetic-type', 'launch-reel', 'mascot-explainer', 'neo-brutalism', 'product-ui', 'whiteboard']
   const weaveId = z.string().uuid().describe('The Create video id from weave_start or weave_list.')
 
   server.registerTool(
