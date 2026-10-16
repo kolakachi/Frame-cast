@@ -10,12 +10,15 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 ## 1. Now
 
+The visibility rows follow `strategy.md` (the loop in §3, the channel order in §4).
+
 | ID | Item | Next |
 |---|---|---|
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
 | CONNECTOR-LIST | List WyvStudio in MCP registries and connector directories (ChatGPT, Claude, Smithery and others) and skills.marketing | build + owner accounts |
 | SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one) | build |
+| LINKEDIN-TEST | 30-day LinkedIn test (strategy.md §4, channel 1): one template post a day on the marketer's profile and the company page, "comment TEMPLATE" to get it; Claude drafts posts and replies, a person posts them; stop under 20 free first videos | marketer, after TPL-PAGES and FREE-FIRST |
 | SOCIAL | Weekly posts of template videos and made-from-one-line videos on TikTok, Reels and X, made by the Creative Director | owner OK on spend, then build |
 
 ## 2. Next: build
