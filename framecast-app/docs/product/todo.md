@@ -12,7 +12,7 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
-| TPL-MAKE | Make about 11 more templates from our own builds: 12 to go public, 2+ per tab, some 1:1 and 16:9 (each a paid build, about $1–4; ask before each) | owner picks briefs |
+| TPL-MAKE | Optional now: the 32 examples plus ours already give every tab 2+ (33 templates, 15 from code). Gap: shapes (29 are 9:16, 3 are 16:9, 1 is 1:1): 2–3 square and 1–2 landscape templates from our own builds (each a paid build, about $1–4; ask before each) | owner picks briefs |
 | TPL-PUBLIC | Turn on CREATE_TEMPLATES_PUBLIC when the set is ready | owner |
 
 ## 2. Next: build
