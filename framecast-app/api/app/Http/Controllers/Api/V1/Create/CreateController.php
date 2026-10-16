@@ -20,7 +20,7 @@ class CreateController extends Controller
         if (! \App\Support\PlanGate::allows((int) $r->user()->workspace_id, 'create')) {
             return response()->json(['data' => ['enabled' => false, 'locked' => 'plan']]);
         }
-        return response()->json(['data' => ['enabled' => true, 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
+        return response()->json(['data' => ['enabled' => true, 'templates' => \App\Services\Create\TemplateLibrary::pageOpen($r->user()), 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
             'uploads' => ['max_files'=>20,'max_file_bytes'=>config('create.input_file_bytes'),'max_total_bytes'=>config('create.input_total_bytes'),'mime_types'=>array_keys(AttachmentUploadService::TYPES)]]]);
     }
 

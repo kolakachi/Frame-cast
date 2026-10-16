@@ -16,6 +16,9 @@ const props = defineProps({
   placeholder: { type: String, default: 'Select…' },
   align: { type: String, default: 'right' }, // menu edge to anchor to
   drop: { type: String, default: 'auto' }, // 'auto' | 'up' | 'down'
+  // A filter row's dropdown (Templates): no box until hovered or open, with its name before the value ("Style Any").
+  bare: { type: Boolean, default: false },
+  prefix: { type: String, default: '' },
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -95,7 +98,8 @@ onBeforeUnmount(() => { if (closeOpen === close) closeOpen = null; document.remo
 
 <template>
   <div class="ui-select" ref="root">
-    <button type="button" class="ui-select-trigger" :disabled="disabled" :aria-label="label" :aria-expanded="open" :class="{ open }" @click.stop="toggle">
+    <button type="button" class="ui-select-trigger" :disabled="disabled" :aria-label="label" :aria-expanded="open" :class="{ open, 'ui-select-trigger--bare': bare }" @click.stop="toggle">
+      <span v-if="prefix" class="ui-select-prefix">{{ prefix }}</span>
       <span class="ui-select-value">{{ selectedLabel }}</span>
       <span class="ui-select-caret">▾</span>
     </button>
@@ -125,6 +129,8 @@ onBeforeUnmount(() => { if (closeOpen === close) closeOpen = null; document.remo
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
 .ui-select-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.ui-select-trigger--bare { min-width: 0; justify-content: flex-start; border-color: transparent; background: transparent; font-size: 13px; }
+.ui-select-prefix { color: var(--color-text-muted, #6a6a7c); }
 .ui-select-trigger:hover, .ui-select-trigger.open { border-color: rgba(255, 107, 53, 0.45); }
 .ui-select-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-select-caret { font-size: 9px; opacity: 0.6; transition: transform 0.15s; }

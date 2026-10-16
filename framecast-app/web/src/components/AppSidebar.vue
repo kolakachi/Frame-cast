@@ -23,6 +23,8 @@ const sidebarStore = useSidebarStore();
 const authStore = useAuthStore();
 const isInternal = computed(() => Boolean(authStore.user?.is_internal));
 const createEnabled = ref(false);
+// Templates: staff only until the page is made public (the API says which).
+const templatesOpen = ref(false);
 const isCollapsed = computed(() => sidebarStore.collapsed);
 
 const router = useRouter();
@@ -100,7 +102,7 @@ const workspaceError = ref('');
 const activeWorkspaceId = computed(() => props.user?.workspace_id ?? null);
 const activeWorkspaceName = computed(() => switchTargets.value.find(w => Number(w.id) === Number(activeWorkspaceId.value))?.name || workspaceStore.workspaceName);
 onMounted(async () => {
-  try { createEnabled.value = (await api.get('/create/capabilities')).data.data.enabled; } catch { createEnabled.value = false; }
+  try { const caps = (await api.get('/create/capabilities')).data.data; createEnabled.value = caps.enabled; templatesOpen.value = !!caps.templates; } catch { createEnabled.value = false; }
   try { switchTargets.value = (await api.get('/workspace-access')).data.data; }
   catch { workspaceError.value = 'Could not load workspaces. Refresh to retry.'; }
 });
@@ -449,6 +451,16 @@ onBeforeUnmount(() => {
         </svg>
         Create
         <span class="nav-pilot">PILOT</span>
+      </button>
+      <button v-if="createEnabled && templatesOpen" :class="['nav-item', ['templates', 'template'].includes(activePage) ? 'active' : '']" type="button" data-tooltip="Templates" @click="nav('templates')">
+        <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7.5" height="9" rx="1.5" />
+          <rect x="13.5" y="3" width="7.5" height="5.5" rx="1.5" />
+          <rect x="3" y="15" width="7.5" height="6" rx="1.5" />
+          <rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.5" />
+        </svg>
+        Templates
+        <span v-if="isAdmin" class="nav-pilot">STAFF</span>
       </button>
       <button
         :class="['nav-item', activePage === 'calendar' ? 'active' : '']"

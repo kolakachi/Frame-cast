@@ -36,6 +36,9 @@ import api from '../services/api'
 
 const routes = [
   { path: '/create/:conversationId?', name: 'create', component: () => import('../views/CreateView.vue'), meta: { requiresAuth: true } },
+  // Templates (owner, 2026-10-16): staff-only until made public; the page itself asks the API.
+  { path: '/templates', name: 'templates', component: () => import('../views/TemplatesView.vue'), meta: { requiresAuth: true } },
+  { path: '/templates/:templateId', name: 'template', component: () => import('../views/TemplateView.vue'), meta: { requiresAuth: true } },
   { path: '/client-work', name: 'client-work', component: () => import('../views/ClientWorkView.vue'), meta: { requiresAuth: true } },
   // Phase 3: a client seat's home (approvals waiting, the week, a message to the agency) and an agency's team.
   { path: '/client-home', name: 'client-home', component: () => import('../views/ClientHomeView.vue'), meta: { requiresAuth: true } },

@@ -18,6 +18,7 @@ import PlanningLive from '../components/create/PlanningLive.vue'
 import SideDrawer from '../components/create/SideDrawer.vue'
 import LibraryPicker from '../components/create/LibraryPicker.vue'
 import ChangeDrawer from '../components/create/ChangeDrawer.vue'
+import TemplateDrawer from '../components/create/TemplateDrawer.vue'
 import CreateLoading from '../components/create/CreateLoading.vue'
 import PlanGroup from '../components/create/PlanGroup.vue'
 import PlanNote from '../components/create/PlanNote.vue'
@@ -581,6 +582,9 @@ const isOldRevision = computed(() => currentRevision.value && currentRevision.va
 const active = computed(() => data.value?.runs?.find(r => ['queued','running','cancel_requested','needs_attention'].includes(r.status)))
 watch(() => active.value?.id, now => { if (!now) autoRan.value = null })
 const canWrite = computed(() => ['owner','admin','editor','super_admin','platform_admin','client_admin','client_editor'].includes(auth.user?.role))
+// Staff: "Add to templates" on a finished version (Templates, 2026-10-16).
+const isStaff = computed(() => ['super_admin','platform_admin'].includes(auth.user?.role))
+const templateOpen = ref(false), templateNote = ref('')
 const hasUpload = computed(() => uploads.value.some(u => ['queued','uploading'].includes(u.state)))
 const locked = computed(() => busy.value || hasUpload.value)
 const expiredQuote = computed(() => quote.value && Date.parse(quote.value.expires_at) <= clock.value)
@@ -1084,6 +1088,8 @@ onMounted(async () => {
   catch(e) {if(e.response?.status !== 404) error.value = message(e)}
   finally {loaded.value = true}
   if (available.value) { void resumePlanning(); offerSiteBrief(); void launchFromDashboard(); void loadSamples() }
+  // "Make mine" on a template sent the brief; Create plans it here, so the plan and its price come before anything is made.
+  if (available.value && route.query.plan === '1') { router.replace({ query: { ...route.query, plan: undefined } }); if (id.value && canWrite.value && !currentPlan.value && !planning.value) void makePlan() }
   // The dashboard's "Say your name right" step opens the pronunciations dialog here.
   if (available.value && route.query.pronunciations === '1') { const name = String(route.query.name || ''); router.replace({ query: { ...route.query, pronunciations: undefined, name: undefined } }); void openPronunciations(name) }
   timer = setInterval(async () => {clock.value = Date.now(); if(active.value && active.value.status !== 'needs_attention' && !locked.value) {try {await refresh()} catch(e) {error.value = message(e)}}},2000)
@@ -1693,7 +1699,9 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                       <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="approvalOpen = true; approvalResult = ''; approvalError = ''">Send for approval</button>
                     </template>
                     <button type="button" class="btn btn--ghost" @click="versionOpen = true">Details</button>
+                    <button v-if="isStaff && media && !outputMeta.look && !imageOutput" type="button" class="btn btn--ghost btn--staff" @click="templateNote = ''; templateOpen = true">Add to templates</button>
                   </div>
+                  <p v-if="templateNote" class="result-hint" role="status">{{ templateNote }} <router-link :to="{ name: 'templates' }">See Templates →</router-link></p>
                   <p v-if="shareNote" class="result-hint result-share" role="status">{{ shareNote }}</p>
                   <p v-if="!outputMeta.look && !isOldRevision && canWrite" class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below, like “slower cuts” or “bigger captions”.</p>
                 </div>
@@ -1833,6 +1841,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
             <div class="samples__head">
               <div ref="refHelpBox" class="samples__title">
                 <h3 id="samples-title">Or start from a video you love</h3>
+                <router-link v-if="capabilities?.templates" class="samples__all" :to="{ name: 'templates' }">See all templates →</router-link>
                 <button type="button" class="ref-help" :aria-expanded="refHelp" aria-controls="ref-help-panel" aria-label="What WyvStudio does with a reference video" @click="refHelp = !refHelp">?</button>
                 <div v-if="refHelp" id="ref-help-panel" class="ref-help__panel" role="dialog" aria-label="How a reference works">
                   <b>How a reference works</b>
@@ -1985,6 +1994,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
       </CreateDialog>
       <CreateDialog :open="!!delivery" :title="delivery?.action === 'unshare' ? 'Turn off this share link?' : 'Use this version?'" @close="delivery=null"><template v-if="delivery"><p>Version {{ delivery.revision.number }} is the exact file for this action.</p><p v-if="delivery.revision.has_newer_changes" class="notice">Newer changes are not in this file. Update your creation or continue with this version.</p><label v-if="delivery.revision.has_newer_changes" class="consent"><input v-model="delivery.allowOlder" type="checkbox" /> Continue with this earlier result.</label><p v-if="delivery.action === 'share'" class="muted">Anyone with the link can view this version until you turn it off. No other files or messages are shared.</p><p v-if="shareUrl"><a :href="shareUrl" target="_blank" rel="noopener">Open share page</a><input class="input" readonly :value="shareUrl" aria-label="Share link" @focus="$event.target.select()" /></p><div class="row-actions"><button v-if="delivery.revision.has_newer_changes" type="button" class="btn btn--ghost btn--sm" @click="updateForDelivery">Update creation</button><button type="button" class="btn btn--primary btn--sm" :disabled="locked || delivery.revision.has_newer_changes && !delivery.allowOlder" @click="performDelivery">{{ delivery.action === 'share' ? 'Create share link' : delivery.action === 'unshare' ? 'Turn off link' : delivery.action === 'schedule' ? 'Choose account and time' : 'Download this version' }}</button></div><p v-if="error" class="create-error">{{ error }}</p></template></CreateDialog>
       <SchedulePostModal v-if="scheduleTarget" :export-job-id="scheduleTarget.revision.export_job_id" :delivery-path="`${base()}/revisions/${scheduleTarget.revision.id}/delivery`" :delivery-context="{expected_version:scheduleTarget.version,allow_older:scheduleTarget.allowOlder}" :allow-ai-caption="false" @close="scheduleTarget=null" />
+      <TemplateDrawer v-if="isStaff" :open="templateOpen" :conversation-id="id || ''" :revision="currentRevision ? { id: currentRevision.id, number: currentRevision.number } : null" :video="media || ''" @close="templateOpen = false" @saved="t => { templateOpen = false; templateNote = `Added “${t.title}” to Templates.` }" />
       <ChangeDrawer ref="changeDrawer" :open="changeOpen" :conversation-id="id || ''" :revision="currentRevision ? { id: currentRevision.id, number: currentRevision.number } : null" :version="conversation?.version || 0" :src="media" @close="changeOpen = false" @updated="d => { data = d }" @planned="changePlanned" />
       <SideDrawer :open="!!docOpenId" :title="docFull?.title || 'Document'" :meta="docFull ? (docFull.pages_total > docFull.page_count ? 'First ' + docFull.page_count + ' of ' + docFull.pages_total + ' ' + docUnit + 's' : docFull.page_count + ' ' + docUnit + (docFull.page_count === 1 ? '' : 's')) + ' · ' + docFull.picture_list.length + (docFull.picture_list.length === 1 ? ' picture' : ' pictures') + (docFull.notes_list?.length ? ' · speaker notes on ' + docFull.notes_list.length : '') : 'Opening…'" @close="docOpenId = null">
         <div v-if="docFull" class="doc-pick">
@@ -2440,6 +2450,8 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{
 .samples{padding:22px max(24px,calc((100% - 1040px)/2)) 32px;display:flex;flex-direction:column;gap:12px}
 .samples__head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .samples__head h3{margin:0;font-size:16px;font-weight:700}
+.samples__all{font-size:13px;color:#ff875a;text-decoration:none;white-space:nowrap}.samples__all:hover{color:#ff6b35}
+.btn--staff{color:#ff875a}
 .samples__title{position:relative;display:flex;align-items:center;gap:8px}
 .ref-help{width:22px;height:22px;border-radius:50%;border:1px solid var(--line-3);background:transparent;color:var(--text-2);font:700 12px/1 var(--mono);cursor:pointer;display:grid;place-items:center;padding:0}
 .ref-help:hover,.ref-help[aria-expanded="true"]{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
