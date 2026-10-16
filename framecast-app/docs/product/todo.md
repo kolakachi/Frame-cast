@@ -36,6 +36,7 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 | P2-ASPECT / EXP-WARN | Every size from one video, and a warning when a 16:9 export of a vertical video gets side bars | owner decides, then build |
 | WEAVE-60 | Create up to 60 s before falling back to Classic: render cap and tests | build |
 | CAST-ALL | Skits with two or more people: a cast and place sheet, shots refer to people by name, a ready check per shot | build |
+| SHOT-VOCAB | A shot vocabulary for generated clips (owner, 2026-10-16, after filmvision.ai's shot glossary; our own words, theirs is all rights reserved): the planner names each shot's size (wide, medium, close-up, extreme close-up), angle (eye level, low, high, overhead, three-quarter, profile, over the shoulder, POV) and role (establishing, insert, cutaway, reaction); a sequence varies its framing (wide, then medium, then a close insert); a check flags three clips in a row with the same framing | build, after the templates |
 | MOD-RETRY | A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing | build |
 | RD-49 | Logo animation format (3–6 s, becomes the logo, last second still) and a transparent export (WebM with alpha) | plan first |
 
