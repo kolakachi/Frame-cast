@@ -5,84 +5,133 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Add to templates · Staff · WyvStudio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Archivo+Black&family=Space+Mono:wght@700&display=swap">
 <link rel="stylesheet" href="styles.css">
 <style>
-  /* Behind the dialog: the Create result as it is today, with the staff-only button added. */
-  .behind { padding: 40px 44px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; opacity: .45; }
+  /* Behind the drawer: the Create result as it is today, with the staff-only button added. */
+  .behind { padding: 40px 44px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
   .behind p { margin: 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 10px; }
-  .chip { padding: 8px 14px; border-radius: var(--radius); background: var(--surface-2); font-size: 13px; }
+  .chip { padding: 8px 14px; border-radius: var(--radius); background: var(--surface-2); font-size: 13px; border: 0; cursor: pointer; }
   .chip.staff { color: var(--accent); box-shadow: inset 0 0 0 1px rgba(255,107,53,.45); font-weight: 600; }
-  .scrim { position: fixed; inset: 0; background: rgba(5,5,8,.55); display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; overflow-y: auto; }
-  .dialog { width: min(540px, 100%); background: var(--surface); border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.6), inset 0 0 0 1px #24242f; padding: 26px; display: flex; flex-direction: column; gap: 20px; }
-  .dialog h2 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
-  .dialog .lede { font-size: 14px; }
-  .input { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 14px; min-height: 44px; }
-  .input:focus { border-color: #34344a; outline: none; }
-  .input[readonly] { color: var(--subtle); }
-  .row { display: flex; flex-wrap: wrap; gap: 12px; }
-  .row > * { flex: 1 1 200px; }
-  .note { margin: 0; font-size: 13px; color: var(--subtle); padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); }
-  .actions { display: flex; justify-content: flex-end; gap: 10px; }
-  .btn-ghost { min-height: 44px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--line); background: transparent; cursor: pointer; }
-  .actions .btn-primary { padding: 0 18px; }
-  .dd.field-dd .dd-trigger { background: var(--bg); }
+
+  /* The drawer: as SideDrawer.vue (420px, right edge, fixed header, scrolling body, footer always in view). */
+  .scrim { position: fixed; inset: 0; background: #0008; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); display: flex; flex-direction: column; background: #17171f; border-left: 1px solid #2c313b; font-size: 13px; animation: pd-in .24s cubic-bezier(.2,.8,.2,1); }
+  @keyframes pd-in { from { transform: translateX(32px); opacity: 0 } to { transform: none; opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .drawer { animation: none } }
+  .pd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid #262b34; }
+  .pd-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .pd-meta { display: block; color: #8f95a1; font-size: 12px; }
+  .pd-x { width: 28px; height: 28px; border-radius: 6px; border: 0; background: transparent; color: #9b9b9b; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .pd-x:hover { background: #191d24; color: var(--text); }
+  .pd-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .pd-foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #262b34; }
+
+  /* Fields, as ChangeDrawer.vue */
+  .cd-group { display: flex; flex-direction: column; gap: 8px; }
+  .cd-group h3, .cd-group > label > span:first-child { margin: 0; font: 600 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; color: #8f95a1; }
+  .cd-group label { display: flex; flex-direction: column; gap: 8px; }
+  .cd-in { width: 100%; box-sizing: border-box; border: 1px solid #2c313b; border-radius: 8px; background: #151820; padding: 8px 9px; font-size: 13px; line-height: 1.45; resize: none; }
+  .cd-in:focus { outline: none; border-color: rgba(255,107,53,.6); }
+  .cd-in[readonly] { color: #8f95a1; }
+  .cd-hint { margin: 0; color: #b5bac4; font-size: 12.5px; }
+
+  /* The version being added */
+  .tpl-version { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding: 10px; border: 1px solid rgba(255,107,53,.45); border-radius: 12px; background: #1d2129; }
+  .tpl-thumb { position: relative; width: 64px; height: 114px; border-radius: 7px; overflow: hidden; background: #FFE14D; display: flex; align-items: center; justify-content: center; }
+  .tpl-thumb .sticker { background: #FF6FB5; border: 2px solid #111; box-shadow: 3px 3px 0 #111; padding: 3px 4px; font: 10px/0.95 "Archivo Black", sans-serif; color: #111; transform: rotate(-4deg); }
+  .tpl-version strong { display: block; font-size: 13px; }
+  .tpl-version small { display: block; color: #8f95a1; font-size: 12px; line-height: 1.5; }
+
+  .dd.field-dd .dd-trigger { min-height: 36px; padding: 0 9px; background: #151820; border-color: #2c313b; border-radius: 8px; font-size: 13px; }
+  .dd.field-dd .dd-trigger:hover, .dd.field-dd .dd-trigger[aria-expanded="true"] { border-color: rgba(255,107,53,.45); }
+  .dd.field-dd .dd-menu { left: 0; right: 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 380px) { .two { grid-template-columns: 1fr; } }
+
+  .pd-note { margin: 0; font-size: 12px; color: #8f95a1; }
+  .pd-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .btn-ghost { min-height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid #2c313b; background: transparent; font-size: 13px; cursor: pointer; }
+  .btn-sm { min-height: 36px; padding: 0 16px; border-radius: 8px; font-size: 13px; }
 </style>
 </head>
 <body>
-<div class="behind" aria-hidden="true">
+<div class="behind">
   <p class="card-meta">WyvStudio</p>
   <p><strong>Here is your 15-second 9:16 ad for the Ridge 2.</strong></p>
-  <div class="chips"><span class="chip">Download</span><span class="chip">Share</span><span class="chip">Change…</span><span class="chip staff">Add to templates</span></div>
+  <div class="chips"><span class="chip">Download</span><span class="chip">Share</span><span class="chip">Change…</span><button type="button" class="chip staff" data-open>Add to templates</button></div>
 </div>
 
-<div class="scrim">
-  <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg" action="#" onsubmit="event.preventDefault()">
-    <div class="info-head">
-      <h2 id="dlg">Add to templates</h2>
-      <p class="lede">This version becomes a template. Its video, style, shape and structure are kept; each user's own product and copy replace the Ridge 2.</p>
-    </div>
+<div data-drawer>
+  <div class="scrim" data-close></div>
+  <form class="drawer" role="dialog" aria-modal="true" aria-labelledby="dlg" action="#" onsubmit="event.preventDefault()">
+    <header class="pd-head">
+      <div><h2 id="dlg">Add to templates</h2><span class="pd-meta">Version 3 · staff only</span></div>
+      <button type="button" class="pd-x" aria-label="Close Add to templates" data-close><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
 
-    <label class="field"><span class="field-label">Title</span>
-      <input class="input" value="Sneaker drop with an offer">
-    </label>
-
-    <div class="row">
-      <div class="field">
-        <span class="field-label" id="use-label">Category</span>
-        <div class="dd field-dd" data-dd data-value="offer">
-          <button type="button" class="dd-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="use-label"><span class="dd-value">Offer ad</span><span class="dd-caret" aria-hidden="true">▾</span></button>
-          <div class="dd-menu" role="listbox" aria-labelledby="use-label" hidden>
-            <button type="button" class="dd-option" role="option" data-value="offer" aria-selected="true">Offer ad</button>
-            <button type="button" class="dd-option" role="option" data-value="app" aria-selected="false">App showcase</button>
-            <button type="button" class="dd-option" role="option" data-value="explainer" aria-selected="false">Explainer</button>
-            <button type="button" class="dd-option" role="option" data-value="ugc" aria-selected="false">UGC ad</button>
-            <button type="button" class="dd-option" role="option" data-value="announce" aria-selected="false">Announcement</button>
-          </div>
+    <div class="pd-body">
+      <div class="tpl-version">
+        <div class="tpl-thumb" aria-hidden="true"><div class="sticker">NEW<br>DROP</div></div>
+        <div>
+          <strong>Ridge 2 · Version 3</strong>
+          <small>Neo-brutalism · 15 s · 9:16 · voice and music</small>
+          <small>Kept: the video, style, shape and structure. Each user's product and copy replace the Ridge 2.</small>
         </div>
       </div>
-      <label class="field"><span class="field-label">Style</span>
-        <input class="input" value="Neo-brutalism (from the video)" readonly>
-      </label>
+
+      <div class="cd-group"><label><span>Title</span>
+        <input class="cd-in" value="Sneaker drop with an offer"></label>
+      </div>
+
+      <div class="two">
+        <div class="cd-group">
+          <h3 id="use-label">Category</h3>
+          <div class="dd field-dd" data-dd data-value="offer">
+            <button type="button" class="dd-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="use-label"><span class="dd-value">Offer ad</span><span class="dd-caret" aria-hidden="true">▾</span></button>
+            <div class="dd-menu" role="listbox" aria-labelledby="use-label" hidden>
+              <button type="button" class="dd-option" role="option" data-value="offer" aria-selected="true">Offer ad</button>
+              <button type="button" class="dd-option" role="option" data-value="app" aria-selected="false">App showcase</button>
+              <button type="button" class="dd-option" role="option" data-value="explainer" aria-selected="false">Explainer</button>
+              <button type="button" class="dd-option" role="option" data-value="ugc" aria-selected="false">UGC ad</button>
+              <button type="button" class="dd-option" role="option" data-value="announce" aria-selected="false">Announcement</button>
+            </div>
+          </div>
+        </div>
+        <div class="cd-group"><label><span>Style</span>
+          <input class="cd-in" value="Neo-brutalism" readonly></label>
+        </div>
+      </div>
+
+      <div class="cd-group"><label><span>Description on the template</span>
+        <textarea class="cd-in" rows="4">Loud neo-brutalist blocks slam in: your product on a card, three reasons as stickers, the offer in a burst, and a pressed “Shop now” to close.</textarea></label>
+      </div>
+
+      <div class="cd-group"><label><span>What the user is asked for</span>
+        <textarea class="cd-in" rows="2">A link, or a few words about it. e.g. yourshop.com/ridge-2, launch week 20% off</textarea></label>
+        <p class="cd-hint">Shown as the placeholder in “Your product” on the template page.</p>
+      </div>
     </div>
 
-    <label class="field"><span class="field-label">Description on the template</span>
-      <textarea class="textarea" rows="3">Loud neo-brutalist blocks slam in: your product on a card, three reasons as stickers, the offer in a burst, and a pressed “Shop now” to close.</textarea>
-    </label>
-
-    <label class="field"><span class="field-label">What the user is asked for</span>
-      <input class="input" value="A link, or a few words about it. e.g. yourshop.com/ridge-2, launch week 20% off">
-    </label>
-
-    <p class="note">Only staff see Templates until it is made public. Then every template shows to everyone.</p>
-
-    <div class="actions">
-      <button type="button" class="btn-ghost">Cancel</button>
-      <button type="submit" class="btn-primary">Add template</button>
-    </div>
+    <footer class="pd-foot">
+      <p class="pd-note">Only staff see Templates until it is made public.</p>
+      <div class="pd-buttons">
+        <button type="button" class="btn-ghost" data-close>Cancel</button>
+        <button type="submit" class="btn-primary btn-sm">Add template</button>
+      </div>
+    </footer>
   </form>
 </div>
 <script src="dropdown.js"></script>
+<script>
+  // Open from the staff button; close from the scrim, the ×, Cancel or Escape.
+  (function () {
+    var d = document.querySelector('[data-drawer]');
+    document.querySelector('[data-open]').addEventListener('click', function () { d.hidden = false; });
+    d.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { d.hidden = true; }); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !d.querySelector('.dd-trigger[aria-expanded="true"]')) d.hidden = true; }, true);
+  })();
+</script>
 </body>
 </html>
