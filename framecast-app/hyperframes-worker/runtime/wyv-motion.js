@@ -545,6 +545,31 @@
       return tl;
     },
 
+    /* marquee: a strip of text that scrolls at a constant speed and loops with no seam (the neo-brutalism proof showed
+       "LAUNCH WEUNCH WEEK" where a hand-built strip ran out and overlapped, 2026-10-16). The strip gets two identical
+       halves, each repeating the text enough to fill it, and moves by exactly half its own width per loop: measured in
+       percent, so a web font that loads late can't open a gap. el: the strip (overflow hidden; its text is the unit).
+       opts: text (else the element's text), gap (separator, ' ✦ '), loop (seconds per pass, 4), dir ('left' or 'right'),
+       duration (seconds it runs: its slot), repeat (copies per half; from the strip's width and the text's length). */
+    marquee: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var unit = String(opts.text || el.textContent || '').replace(/\s*✦\s*$/, '').trim(), gap = opts.gap == null ? ' ✦ ' : opts.gap;
+      var size = parseFloat(getComputedStyle(el).fontSize) || 40, box = el.offsetWidth || 1080;
+      var per = opts.repeat || Math.max(2, Math.ceil(box / Math.max(1, (unit.length + gap.length) * size * 0.45)) + 1);
+      var half = new Array(per + 1).join(unit + gap);
+      el.textContent = '';
+      var track = document.createElement('div');
+      track.className = 'wm-marquee-track';
+      track.style.cssText = 'display:inline-block;white-space:pre;will-change:transform';
+      track.textContent = half + half;
+      el.appendChild(track);
+      var loop = opts.loop || 4, dur = opts.duration || loop, left = opts.dir !== 'right';
+      var wrap = function (v) { v = parseFloat(v) % 50; return v > 0 ? v - 50 : v; };
+      tl.fromTo(track, { xPercent: left ? 0 : -50 }, { xPercent: (left ? -50 : 50) * dur / loop + (left ? 0 : -50), duration: dur, ease: 'none',
+        modifiers: { xPercent: wrap }, immediateRender: true }, at);
+      return at + dur;
+    },
+
     /* cards: a rapid montage, each card shown for a few frames, hard cuts, a little tilt and a slam. el holds the
        cards (.wm-card, stacked). opts: every (frames per card, 2), fps (24), tilt (degrees, 0 for none), seed. */
     cards: function (tl, el, at, opts) {

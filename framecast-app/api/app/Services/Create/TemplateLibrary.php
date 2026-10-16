@@ -252,7 +252,7 @@ class TemplateLibrary
         $media = collect($input['plan_media'] ?? []);
         $voice = $media->firstWhere('kind', 'voiceover');
         $music = $media->firstWhere('kind', 'music');
-        $clips = $media->filter(fn ($m) => in_array($m['kind'] ?? '', ['ai_video', 'talking_take', 'talking_shot', 'stock_video', 'broll'], true))
+        $clips = $media->filter(fn ($m) => in_array($m['kind'] ?? '', ['generated_shot', 'animate_image', 'ugc_take', 'talking_take', 'talking_shot', 'stock_video', 'ai_video', 'broll'], true))
             ->map(fn ($m) => ['kind' => $m['kind'], 'what' => (string) ($m['description'] ?? $m['kind']), 'credits' => (int) ($m['credits'] ?? 0)])->values()->all();
         $settings = $input['settings'] ?? [];
         return [

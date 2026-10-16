@@ -12,7 +12,8 @@ handmade-digital, the look of a brand that doesn't hide behind gradients.
 ## Motion
 - Blocks slam in: WM.stamp for words and badges, WM.toss for cards, WM.pop for chips; a 1-2 frame overshoot, then dead still.
 - Buttons get pressed (WM.press) and shadows collapse as they press (the block moves into its shadow).
-- The marquee runs at a constant speed (linear is right here); everything else is snappy.
+- The marquee runs at a constant speed (linear is right here); everything else is snappy. Build every marquee strip with `WM.marquee` (it loops with no seam); never repeat the text by hand and slide it.
+- Fill the frame on every beat: in 9:16, a single card or chip sits at the visual centre and is big enough to fill most of the height, or the lower part carries a marquee, a sticker or the next element. No beat leaves half the frame as empty field.
 - A new element every 0.4-0.7 s; hold the offer card for at least 1.5 s.
 
 ## Structure

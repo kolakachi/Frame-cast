@@ -61,10 +61,10 @@ class CreateTemplatesTest extends TestCase
         foreach ([['image', 'image/png', 'png', 'shoe'], ['audio', 'audio/wav', 'wav', 'voice']] as $i => [$type, $mime, $ext, $what]) {
             $asset = Asset::create(['workspace_id' => $this->staff->workspace_id, 'asset_type' => $type, 'title' => 'AI '.$what, 'storage_url' => 'create-upload://x/'.$i,
                 'mime_type' => $mime, 'file_size_bytes' => 4, 'status' => 'active', 'restriction_scope' => 'workspace']);
-            $sha = hash('sha256', $what);
+            $sha = hash('sha256', $what.'!!');
             $path = 'create/uploads/'.$this->staff->workspace_id.'/'.Str::uuid().'/'.$sha.'.'.$ext;
             $storage->put($path, $what.'!!', ['visibility' => 'private']);
-            $files[] = ['asset_id' => $asset->id, 'purpose' => 'source', 'name' => 'asset-'.$asset->id.'-'.$sha.'.'.$ext, 'sha256' => $sha, 'bytes' => 6,
+            $files[] = ['asset_id' => $asset->id, 'purpose' => 'source', 'name' => 'asset-'.$asset->id.'-'.$sha.'.'.$ext, 'sha256' => $sha, 'bytes' => strlen($what.'!!'),
                 'mime_type' => $mime, 'asset_type' => $type, 'storage_path' => $path, 'title' => 'AI '.$what];
         }
         DB::table('create_plan_media')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $conversation, 'plan_id' => 'p', 'item_index' => 0, 'kind' => 'ai_image', 'description_hash' => 'h', 'status' => 'succeeded',
@@ -246,6 +246,31 @@ class CreateTemplatesTest extends TestCase
         $this->assertTrue($conversations->autoRunEligible($this->staff, $c, $quote));
         $quote->payload_json = ['kind' => 'composition_fixture', 'mode' => 'agent', 'free_edit' => true];
         $this->assertFalse($conversations->autoRunEligible($this->staff, $c, $quote));
+    }
+
+    public function test_a_version_moves_between_installs_and_becomes_a_templates_source(): void
+    {
+        // TPL-LOCAL (2026-10-16): examples built locally are exported with their code and media and imported on prod.
+        [, $revision, $files] = $this->version();
+        $dir = sys_get_temp_dir().'/vx-'.Str::random(6);
+        $transfer = app(\App\Services\Create\VersionTransfer::class);
+        $out = $transfer->export($revision, $dir);
+        $this->assertSame([2, 13, true], [$out['files'], $out['bytes'], $out['video']]);
+        $this->rejected(403, fn () => $transfer->import($dir, $this->customer, 'b01'));
+        $in = $transfer->import($dir, $this->staff, 'b01');
+        $this->assertSame(2, $in['files']);
+        $t = DB::table('create_templates')->find('b01');
+        $this->assertSame(['version', $in['revision_id'], 'weave'], [$t->source, $t->revision_id, $t->sample_folder], 'the example keeps its public poster and video');
+        $this->assertContains('1 product picture', $in['template']['summary']);
+        $head = DB::table('composition_revisions')->find($in['revision_id']);
+        $html = json_decode($head->bundle_json, true)['index.html'];
+        $this->assertStringNotContainsString($files[0]['name'], $html, 'the code names the imported copies');
+        $parts = json_decode($t->parts_json, true);
+        $this->assertSame('Ridge 2 shoe, side profile', $parts['images'][0]['what'], 'what each picture shows came along');
+        // Exactly on that template now starts from the imported code.
+        $made = $this->library->use($this->staff, 'b01', ['product' => 'Volt Rush', 'match' => 'exact', 'idempotency_key' => 'x1']);
+        $this->assertSame(1, (int) DB::table('composition_revisions')->where('conversation_id', $made['id'])->value('number'));
+        $this->assertStringContainsString('Follow it exactly', $made['brief']);
     }
 
     public function test_a_launch_vault_limits_which_templates_can_be_used(): void
