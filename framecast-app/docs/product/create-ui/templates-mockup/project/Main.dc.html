@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Templates</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&amp;family=Archivo+Black&amp;family=Bangers&amp;family=Space+Mono:wght@700&amp;display=swap">
+<style>
+body{margin:0;background:#0a0a0f}
+a{color:#ff875a}a:hover{color:#ff6b35}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #0a0a0f; color: #ececf3; font-family: 'DM Sans', system-ui, sans-serif; display: flex; flex-wrap: wrap;">
+  <nav aria-label="Main" style="flex: 1 1 220px; max-width: 240px; background: #111118; border-right: 1px solid #2a2a36; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-weight: 800; font-size: 20px; padding: 0 10px 18px;">Wyv<span style="color: #ff6b35;">Studio</span></div>
+    <a href="#" style="color: #a1a1b5; text-decoration: none; padding: 10px 12px; border-radius: 10px;">Create</a>
+    <a href="#" aria-current="page" style="color: #ececf3; text-decoration: none; padding: 10px 12px; border-radius: 10px; background: #1d1d28; font-weight: 700;">Templates</a>
+    <a href="#" style="color: #a1a1b5; text-decoration: none; padding: 10px 12px; border-radius: 10px;">UGC Ads</a>
+    <a href="#" style="color: #a1a1b5; text-decoration: none; padding: 10px 12px; border-radius: 10px;">Videos</a>
+    <a href="#" style="color: #a1a1b5; text-decoration: none; padding: 10px 12px; border-radius: 10px;">Brand kit</a>
+    <div style="margin-top: auto; padding: 12px; border: 1px solid #2a2a36; border-radius: 12px; font-size: 13px; color: #a1a1b5;">2,833 credits</div>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 36px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px;">
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+      <div>
+        <h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em;">Templates</h1>
+        <p style="margin: 6px 0 0; color: #a1a1b5; font-size: 16px;">Start from a finished video. Add your product and the Creative Director makes it yours.</p>
+      </div>
+      <label style="display: flex; align-items: center; gap: 10px; background: #111118; border: 1px solid #2a2a36; border-radius: 12px; padding: 10px 14px; min-width: 260px; color: #6a6a7c; font-size: 14px;">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6a6a7c" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input type="search" placeholder="Search templates" aria-label="Search templates" style="background: transparent; border: 0; color: #ececf3; font: inherit; outline: none; width: 100%;">
+      </label>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+      <button style="background: #ff6b35; color: #fff; border: 0; border-radius: 999px; padding: 9px 16px; font: 700 14px 'DM Sans', sans-serif;">All</button>
+      <button style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 999px; padding: 9px 16px; font: 500 14px 'DM Sans', sans-serif;">Offer ads</button>
+      <button style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 999px; padding: 9px 16px; font: 500 14px 'DM Sans', sans-serif;">App showcases</button>
+      <button style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 999px; padding: 9px 16px; font: 500 14px 'DM Sans', sans-serif;">Explainers</button>
+      <button style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 999px; padding: 9px 16px; font: 500 14px 'DM Sans', sans-serif;">UGC ads</button>
+      <button style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 999px; padding: 9px 16px; font: 500 14px 'DM Sans', sans-serif;">Announcements</button>
+      <span style="flex: 1 1 20px;"></span>
+      <label style="font-size: 14px; color: #a1a1b5; display: flex; gap: 8px; align-items: center;">Style
+        <select style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 10px; padding: 8px 10px; font: 500 14px 'DM Sans', sans-serif;"><option>Any style</option><option>Neo-brutalism</option><option>Glassmorphism</option><option>Blueprint</option></select>
+      </label>
+      <label style="font-size: 14px; color: #a1a1b5; display: flex; gap: 8px; align-items: center;">Shape
+        <select style="background: #17171f; color: #ececf3; border: 1px solid #2a2a36; border-radius: 10px; padding: 8px 10px; font: 500 14px 'DM Sans', sans-serif;"><option>Any</option><option>9:16 vertical</option><option>16:9 wide</option><option>1:1 square</option></select>
+      </label>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 22px;">
+
+      <article style="background: #111118; border: 1px solid #2a2a36; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="height: 300px; background: #FFE14D; position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="background: #FF6FB5; border: 5px solid #111; box-shadow: 8px 8px 0 #111; padding: 14px 18px; font: 28px 'Archivo Black', sans-serif; color: #111; transform: rotate(-4deg); line-height: 0.95;">NEW<br>DROP</div>
+          <div style="position: absolute; left: 0; right: 0; bottom: 26px; background: #111; color: #FFE14D; font: 700 12px 'Space Mono', monospace; padding: 6px 0; white-space: nowrap; overflow: hidden;">RIDGE 2 ✦ NEW DROP ✦ RIDGE 2 ✦</div>
+          <span style="position: absolute; top: 10px; right: 10px; background: rgba(10,10,15,.75); color: #ececf3; font-size: 12px; padding: 4px 8px; border-radius: 999px;">0:15</span>
+        </div>
+        <div style="padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700;">Sneaker drop with an offer</h2>
+          <p style="margin: 0; font-size: 13px; color: #a1a1b5;">Neo-brutalism · Offer ad · 9:16</p>
+          <a href="Detail.dc.html" style="margin-top: 8px; text-align: center; background: #ff6b35; color: #fff; text-decoration: none; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px;">Use template</a>
+        </div>
+      </article>
+
+      <article style="background: #111118; border: 1px solid #2a2a36; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="height: 300px; background: #1b1f6b; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 220px; height: 220px; border-radius: 50%; background: #5B3FD9; left: -40px; top: -30px;"></div>
+          <div style="position: absolute; width: 200px; height: 200px; border-radius: 50%; background: #2E8BFF; right: -50px; bottom: -20px;"></div>
+          <div style="position: relative; width: 150px; padding: 16px; border-radius: 18px; background: rgba(255,255,255,.18); border: 1.5px solid rgba(255,255,255,.45); color: #fff;">
+            <div style="font-size: 12px; opacity: .85;">Earned this month</div>
+            <div style="font-size: 34px; font-weight: 300;">[£ X]</div>
+            <div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,.5); margin-top: 8px; width: 70%;"></div>
+          </div>
+          <span style="position: absolute; top: 10px; right: 10px; background: rgba(10,10,15,.75); color: #ececf3; font-size: 12px; padding: 4px 8px; border-radius: 999px;">0:15</span>
+        </div>
+        <div style="padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700;">App tour in three features</h2>
+          <p style="margin: 0; font-size: 13px; color: #a1a1b5;">Glassmorphism · App showcase · 9:16</p>
+          <a href="Detail.dc.html" style="margin-top: 8px; text-align: center; background: #ff6b35; color: #fff; text-decoration: none; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px;">Use template</a>
+        </div>
+      </article>
+
+      <article style="background: #111118; border: 1px solid #2a2a36; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="height: 300px; background: #0b0b12; position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 100%; height: 124px; background: #0b3a8c; position: relative; display: flex; align-items: center; justify-content: center;">
+            <svg aria-hidden="true" width="140" height="96" viewBox="0 0 140 96" fill="none" stroke="#fff" stroke-width="2"><rect x="50" y="8" width="40" height="80" rx="6"></rect><path d="M50 30h40M50 52h40M50 70h40"></path><path d="M20 70h22M98 30h22" stroke-dasharray="4 4"></path></svg>
+          </div>
+          <span style="position: absolute; top: 10px; right: 10px; background: rgba(10,10,15,.75); color: #ececf3; font-size: 12px; padding: 4px 8px; border-radius: 999px;">0:20</span>
+        </div>
+        <div style="padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700;">How it works, as a technical drawing</h2>
+          <p style="margin: 0; font-size: 13px; color: #a1a1b5;">Blueprint · Explainer · 16:9</p>
+          <a href="Detail.dc.html" style="margin-top: 8px; text-align: center; background: #ff6b35; color: #fff; text-decoration: none; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px;">Use template</a>
+        </div>
+      </article>
+
+      <article style="background: #111118; border: 1px solid #2a2a36; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="height: 300px; background: #FFF8E6; position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box;">
+          <div style="flex: 1; border: 5px solid #111; background: #7FC8FF;"></div>
+          <div style="flex: 1; border: 5px solid #111; background: #FF8A5C; display: flex; align-items: center; justify-content: center; font: 30px 'Bangers', sans-serif; color: #E83B2E;">CLICK!</div>
+          <div style="flex: 1; border: 5px solid #111; background: #B6F0C2;"></div>
+          <span style="position: absolute; top: 18px; right: 18px; background: rgba(10,10,15,.75); color: #ececf3; font-size: 12px; padding: 4px 8px; border-radius: 999px;">0:15</span>
+        </div>
+        <div style="padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700;">New feature, told as a comic</h2>
+          <p style="margin: 0; font-size: 13px; color: #a1a1b5;">Comic book · Announcement · 9:16</p>
+          <a href="Detail.dc.html" style="margin-top: 8px; text-align: center; background: #ff6b35; color: #fff; text-decoration: none; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px;">Use template</a>
+        </div>
+      </article>
+
+      <article style="background: #111118; border: 1px solid #2a2a36; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="height: 300px; background: #2b2420; position: relative; display: flex; align-items: flex-end; justify-content: center;">
+          <div style="width: 120px; height: 200px; background: #3a3029; border-radius: 60px 60px 0 0;"></div>
+          <div style="position: absolute; bottom: 30px; left: 14px; right: 14px; background: #fff; color: #111; font-weight: 800; font-size: 14px; padding: 6px 10px; border-radius: 8px; text-align: center;">honestly my shower routine…</div>
+          <span style="position: absolute; top: 10px; right: 10px; background: rgba(10,10,15,.75); color: #ececf3; font-size: 12px; padding: 4px 8px; border-radius: 999px;">0:15</span>
+        </div>
+        <div style="padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700;">Presenter talks about your product</h2>
+          <p style="margin: 0; font-size: 13px; color: #a1a1b5;">UGC ad · presenter · 9:16</p>
+          <a href="Detail.dc.html" style="margin-top: 8px; text-align: center; background: #ff6b35; color: #fff; text-decoration: none; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px;">Use template</a>
+        </div>
+      </article>
+
+    </div>
+    <p style="margin: 0; color: #6a6a7c; font-size: 13px;">Pictures on the cards are placeholders; the real page plays each finished video on hover.</p>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

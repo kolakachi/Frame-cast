@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Staff: add a video to templates</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#0a0a0f}
+a{color:#ff875a}a:hover{color:#ff6b35}
+</style>
+</helmet>
+<div style="min-height: 820px; background: #0a0a0f; color: #ececf3; font-family: 'DM Sans', system-ui, sans-serif; position: relative; padding: 32px 40px; box-sizing: border-box;">
+  <!-- Behind the dialog: the Create result card as it is today, with the staff-only button added. -->
+  <div style="max-width: 760px; display: flex; flex-direction: column; gap: 14px; opacity: .45;">
+    <p style="margin: 0; font-size: 13px; color: #a1a1b5;">WyvStudio</p>
+    <p style="margin: 0; font-weight: 700;">Here is your 15-second 9:16 ad for the Ridge 2.</p>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <span style="background: #17171f; border: 1px solid #2a2a36; border-radius: 10px; padding: 9px 14px; font-size: 14px;">Download</span>
+      <span style="background: #17171f; border: 1px solid #2a2a36; border-radius: 10px; padding: 9px 14px; font-size: 14px;">Share</span>
+      <span style="background: #17171f; border: 1px solid #2a2a36; border-radius: 10px; padding: 9px 14px; font-size: 14px;">Change…</span>
+      <span style="background: #1d1d28; border: 1px solid #ff6b35; color: #ff875a; border-radius: 10px; padding: 9px 14px; font-size: 14px; font-weight: 700;">Add to templates · staff</span>
+    </div>
+  </div>
+
+  <div role="dialog" aria-modal="true" aria-labelledby="dlg" style="position: absolute; left: 50%; top: 70px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); background: #111118; border: 1px solid #2a2a36; border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.6); padding: 26px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px;">
+    <h2 id="dlg" style="margin: 0; font-size: 20px; font-weight: 800;">Add to templates</h2>
+    <p style="margin: 0; color: #a1a1b5; font-size: 14px;">This version becomes a template anyone can start from. Its video, style, shape and structure are kept; the product and copy are replaced by each user's own.</p>
+    <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #a1a1b5;">Title
+      <input value="Sneaker drop with an offer" style="background: #0a0a0f; border: 1px solid #2a2a36; border-radius: 10px; color: #ececf3; padding: 11px 12px; font: 15px 'DM Sans', sans-serif;">
+    </label>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <label style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #a1a1b5;">Use
+        <select style="background: #0a0a0f; border: 1px solid #2a2a36; border-radius: 10px; color: #ececf3; padding: 11px 12px; font: 15px 'DM Sans', sans-serif;"><option>Offer ad</option><option>App showcase</option><option>Explainer</option><option>UGC ad</option><option>Announcement</option></select>
+      </label>
+      <label style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #a1a1b5;">Style
+        <input value="Neo-brutalism (from the video)" disabled style="background: #15151d; border: 1px solid #2a2a36; border-radius: 10px; color: #a1a1b5; padding: 11px 12px; font: 15px 'DM Sans', sans-serif;">
+      </label>
+    </div>
+    <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #a1a1b5;">Short description (shown on the template)
+      <textarea rows="2" style="background: #0a0a0f; border: 1px solid #2a2a36; border-radius: 10px; color: #ececf3; padding: 11px 12px; font: 15px 'DM Sans', sans-serif;">Loud neo-brutalist blocks: your product on a card, three reasons as stickers, the offer in a burst.</textarea>
+    </label>
+    <label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #a1a1b5;">Starter hint (what the user is asked for)
+      <input value="Your product link, and the offer if you have one" style="background: #0a0a0f; border: 1px solid #2a2a36; border-radius: 10px; color: #ececf3; padding: 11px 12px; font: 15px 'DM Sans', sans-serif;">
+    </label>
+    <fieldset style="border: 0; padding: 0; margin: 0; display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px;">
+      <legend style="color: #a1a1b5; margin-bottom: 6px;">Who sees it</legend>
+      <label style="display: flex; gap: 8px; align-items: center;"><input type="radio" name="vis" checked> Everyone</label>
+      <label style="display: flex; gap: 8px; align-items: center;"><input type="radio" name="vis"> Staff only (draft)</label>
+    </fieldset>
+    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+      <button style="background: transparent; color: #ececf3; border: 1px solid #2a2a36; border-radius: 10px; padding: 11px 16px; font: 600 14px 'DM Sans', sans-serif;">Cancel</button>
+      <button style="background: #ff6b35; color: #fff; border: 0; border-radius: 10px; padding: 11px 18px; font: 800 14px 'DM Sans', sans-serif;">Add template</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
