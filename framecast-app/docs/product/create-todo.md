@@ -40,6 +40,8 @@ deploys drain Create around the restart.
 | TASTE-CREATE | Taste rules for the builder (taste-skill, frontend-design, canvas-design) | dropped | 2026-10-15 A/B: no better, a third dearer; owner: not needed (RD-12) |
 | TASTE-SITE | taste-skill review of our own pages (wyvstudio.com, sales., special.): the hero "New ·" pill, mono uppercase labels in the funnel, accent words in headlines, icon cards | open | run the review (free), owner picks the fixes |
 | I2 | Local stack: rebuild reverb (api, queue workers and scheduler rebuilt 2026-10-08) | partly | rebuild |
+| TEMPLATES | A Templates page: finished videos people can start from ("make one like this for my product"), browsable by style and use (offer ad, app showcase, explainer). Staff and admin accounts get "Add to templates" on any finished Create video (owner, 2026-10-16, after the RD-48 neo-brutalism proof: "I love it"). First template: the Ridge 2 neo-brutalism ad (create aeb4755c). | open | plan the page and the staff action, then build |
+| PROOF-COST | RD-48 proof build 1 (neo-brutalism) used 23 builder calls, $3.84 against a ~$1.40 estimate, and stopped mid-change ("best version so far"); its final checks came back blocked with empty reasons. Find why, before more style tests. Also: the marquee seam ("LAUNCH WEUNCH"), empty lower halves on two beats, "free returns" not on screen | open | investigate after the other two proofs |
 
 ## 2. Needs a real run or a look
 
