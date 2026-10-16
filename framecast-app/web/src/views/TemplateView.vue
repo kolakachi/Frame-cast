@@ -87,7 +87,7 @@ onMounted(async () => {
 
           <div class="info">
             <div class="info-head">
-              <span v-if="t.staff" class="staff-row"><span class="staff-badge">Staff</span>
+              <span v-if="t.staff" class="staff-row"><span v-if="!t.public" class="staff-badge">Staff</span>
                 <button type="button" class="link" @click="editOpen = true">Edit</button>
                 <button type="button" class="link" @click="removeTemplate">Remove</button>
                 <router-link v-if="t.conversation_id" class="link" :to="{ name: 'create', params: { conversationId: t.conversation_id } }">Open the original</router-link>

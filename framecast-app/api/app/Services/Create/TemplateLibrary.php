@@ -57,7 +57,7 @@ class TemplateLibrary
         $t = $this->find($user, $id);
         $card = collect($this->visible($user))->firstWhere('id', $t->id);
         return [...$card, 'description' => $t->description, 'ask_hint' => $t->ask_hint, 'parts' => self::summary(json_decode((string) $t->parts_json, true) ?: []),
-            'matches' => self::matchOptions(), 'staff' => self::isStaff($user),
+            'matches' => self::matchOptions(), 'staff' => self::isStaff($user), 'public' => (bool) config('create.templates_public'),
             ...(self::isStaff($user) ? ['conversation_id' => $t->conversation_id, 'revision_id' => $t->revision_id, 'parts_full' => json_decode((string) $t->parts_json, true)] : [])];
     }
 

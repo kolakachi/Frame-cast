@@ -24,7 +24,7 @@ const authStore = useAuthStore();
 const isInternal = computed(() => Boolean(authStore.user?.is_internal));
 const createEnabled = ref(false);
 // Templates: staff only until the page is made public (the API says which).
-const templatesOpen = ref(false);
+const templatesOpen = ref(false), templatesPublic = ref(false);
 const isCollapsed = computed(() => sidebarStore.collapsed);
 
 const router = useRouter();
@@ -102,7 +102,7 @@ const workspaceError = ref('');
 const activeWorkspaceId = computed(() => props.user?.workspace_id ?? null);
 const activeWorkspaceName = computed(() => switchTargets.value.find(w => Number(w.id) === Number(activeWorkspaceId.value))?.name || workspaceStore.workspaceName);
 onMounted(async () => {
-  try { const caps = (await api.get('/create/capabilities')).data.data; createEnabled.value = caps.enabled; templatesOpen.value = !!caps.templates; } catch { createEnabled.value = false; }
+  try { const caps = (await api.get('/create/capabilities')).data.data; createEnabled.value = caps.enabled; templatesOpen.value = !!caps.templates; templatesPublic.value = !!caps.templates_public; } catch { createEnabled.value = false; }
   try { switchTargets.value = (await api.get('/workspace-access')).data.data; }
   catch { workspaceError.value = 'Could not load workspaces. Refresh to retry.'; }
 });
@@ -460,7 +460,7 @@ onBeforeUnmount(() => {
           <rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.5" />
         </svg>
         Templates
-        <span v-if="isAdmin" class="nav-pilot">STAFF</span>
+        <span v-if="isAdmin && !templatesPublic" class="nav-pilot">STAFF</span>
       </button>
       <button
         :class="['nav-item', activePage === 'calendar' ? 'active' : '']"
