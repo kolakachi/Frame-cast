@@ -41,4 +41,8 @@ test('the check measures marked beats against the narration as placed, through i
  assert.match(f[0].message,/"First, give" is said at 3\.80 s/);assert.match(f[0].fixHint,/data-start to 3\.65/);
  assert.equal(beatFindings({rows,html:'<audio id="vo" src="vo.wav" data-start="0.3"></audio>',scenes,voiceFiles:new Set(['vo.wav']),transcripts:{'vo.wav':words},videoSeconds:30})[0].code,'beats_unmarked');
  assert.deepEqual(beatFindings({rows,html,scenes,voiceFiles:new Set(['vo.wav']),transcripts:{},videoSeconds:30}),[],'no transcript yet, nothing to measure');
+ // Beats marked without ids count too (the Parcelpath whiteboard build failed every preview for "unmarked", 2026-10-16).
+ const noIds='<audio id="vo" src="vo.wav" data-start="0.3"></audio><div class="clip beat" data-beat="Step 1 card" data-start="4.5"></div><div class="clip beat" data-beat="Close" data-start="16"></div>';
+ const g=beatFindings({rows,html:noIds,scenes,voiceFiles:new Set(['vo.wav']),transcripts:{'vo.wav':words},videoSeconds:30});
+ assert.deepEqual(g.map(x=>[x.code,x.selector]),[['beat_off_voice','[data-beat="Step 1 card"]']]);
 });

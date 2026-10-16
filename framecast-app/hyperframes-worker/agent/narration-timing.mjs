@@ -56,10 +56,24 @@ export function voiceTiming({scenes=[],lines=[],words=[],clipStart=0.3,videoSeco
  * The check: each container marked data-beat="<scene label>" starts when its words are heard. The narration clip
  * is found among the rows; its own transcript (carried through any edit) gives the word times.
  */
+/**
+ * Every element marked data-beat, with or without an id: [key, attributes]. Reading them through attributesById (ids
+ * only) missed beats written as <div class="clip beat" data-beat="Step 1">, so a whiteboard build failed every preview
+ * for "no beat containers are marked" and stopped with no video (2026-10-16).
+ */
+export function beatContainers(html){
+ const out=[];
+ for(const m of String(html).matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)){
+  const attrs={};for(const a of m[2].matchAll(/([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)')/g))attrs[a[1].toLowerCase()]=a[3]??a[4];
+  if(attrs['data-beat'])out.push([attrs.id||null,attrs]);
+ }
+ return out;
+}
+
 export function beatFindings({rows,html,scenes,voiceFiles,transcripts,videoSeconds}){
  const anchored=(scenes||[]).filter(s=>s.starts_on);if(!anchored.length)return [];
  const clip=(rows||[]).find(r=>r.kind==='audio'&&voiceFiles.has(r.src)&&transcripts[r.src]);if(!clip)return [];
- const attrs=attributesById(html),marked=[...attrs].filter(([,a])=>a['data-beat']);
+ const attrs=attributesById(html),marked=beatContainers(html);
  if(!marked.length)return [{code:'beats_unmarked',message:'No beat containers are marked, so their timing cannot follow the narration.',
   fixHint:'Put data-beat="<scene label>" on each beat\'s container (with its data-start), as in plan.scenes.'}];
  const offset=Number(attrs.get(clip.id||clip.elementId)?.['data-media-start'])||0,rate=Number(clip.playbackRate)||1;
@@ -69,7 +83,7 @@ export function beatFindings({rows,html,scenes,voiceFiles,transcripts,videoSecon
  for(const [id,a] of marked){
   const b=timing.beats.find(x=>x.label===a['data-beat']);if(!b||b.heard_at===null)continue;
   const at=Number(a['data-start']);if(!Number.isFinite(at))continue;
-  if(Math.abs(at-b.voiced[0])>TOLERANCE)out.push({code:'beat_off_voice',selector:'#'+id,time:at,
+  if(Math.abs(at-b.voiced[0])>TOLERANCE)out.push({code:'beat_off_voice',selector:id?'#'+id:`[data-beat="${a['data-beat']}"]`,time:at,
    message:`Beat "${b.label}" starts at ${at.toFixed(2)} s but "${b.starts_on}" is said at ${(clip.start+b.heard_at).toFixed(2)} s.`,
    fixHint:`Set its data-start to ${b.voiced[0].toFixed(2)} and move its contents with it.`});
  }
