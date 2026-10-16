@@ -71,6 +71,10 @@ cp -a "$staging/hyperframes-worker/." hyperframes-worker/
 echo "$SHORT" > hyperframes-worker/REVISION
 if [ "$needs_npm" = 1 ]; then echo "Packages changed: npm ci"; (cd hyperframes-worker && npm ci --omit=dev --no-audit --no-fund); fi
 if [ "$needs_image" = 1 ]; then echo "Sandbox inputs changed: rebuilding the sandbox image"; (cd hyperframes-worker && docker compose -f compose.local.yml build -q smoke) || { echo "Sandbox image build failed; slots stay stopped." >&2; exit 3; }; fi
+# The build cache and the replaced image's layers stay on the 30 GB disk after a rebuild; the slots stop claiming builds
+# below 8 GiB free (2026-10-16: 6.25 GB of cache held every slot waiting for 3 hours). Clear them; the image in use stays.
+if [ "$needs_image" = 1 ]; then docker builder prune -f >/dev/null && docker image prune -f >/dev/null || echo "Could not clear the build cache; check the disk." >&2; fi
+echo "Free disk: $(df -h / | awk 'NR==2{print $4}')"
 
 for u in $UNITS; do sudo systemctl start "$u"; done
 sleep 5
