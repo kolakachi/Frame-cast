@@ -12,6 +12,14 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
+| CHECK-GUARD | A check that is wrong can stop a build with no video and the user charged (4 of 11 failed builds in 30 days). A blocking check that repeats with the same message after the builder changed what it points at becomes disputed: the build finishes, the note says what could not be confirmed, the dispute is recorded for review, and a build that still fails on a check we mark wrong is refunded | build (now) |
+| MOD-RETRY | A generated shot blocked by the model's moderation fails the build. Tell the user which shot was blocked and why, with a suggested different wording they can send; owner, 2026-10-16: "inform the user / recommend a different message" | build |
+| DEDUCT-FALSE | A UGC take finished after the balance ran out is delivered and not charged: charge what is owed, or hold the delivery until topped up | build |
+| FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
+| TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
+| CONNECTOR-LIST | List WyvStudio in MCP registries and connector directories (ChatGPT, Claude, Smithery and others) and skills.marketing | build + owner accounts |
+| SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one) | build |
+| SOCIAL | Weekly posts of template videos and made-from-one-line videos on TikTok, Reels and X, made by the Creative Director | owner OK on spend, then build |
 
 ## 2. Next: build
 
@@ -35,7 +43,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 | WEAVE-60 | Create up to 60 s before falling back to Classic: render cap and tests | build |
 | CAST-ALL | Skits with two or more people: a cast and place sheet, shots refer to people by name, a ready check per shot | build |
 | SHOT-VOCAB | A shot vocabulary for generated clips (owner, 2026-10-16, after filmvision.ai's shot glossary; our own words, theirs is all rights reserved): the planner names each shot's size (wide, medium, close-up, extreme close-up), angle (eye level, low, high, overhead, three-quarter, profile, over the shoulder, POV) and role (establishing, insert, cutaway, reaction); a sequence varies its framing (wide, then medium, then a close insert); a check flags three clips in a row with the same framing | build, after the templates |
-| MOD-RETRY | A shot blocked by moderation is rewritten more neutrally and retried once, instead of failing | build |
 | RD-49 | Logo animation format (3–6 s, becomes the logo, last second still) and a transparent export (WebM with alpha) | plan first |
 
 **UGC**
@@ -78,12 +85,10 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 | OMNI-CREATE | Lip-sync in Create and the repeat cut (see Next) |
 | O9 / O10 / O11 | Open Create to the two real customers (ws 28, ws 27); does the GTM-1 round count as acceptance; pricing, limits and quality bar |
 | AGENCIES | Ship the /agencies page (`marketing/agencies.html`, untracked): feedback or "ship" |
-| FREE-STEP | A free first step on the homepage (today every CTA needs payment) |
 | ACADEMY | The academy's 30% coupon conflicts with AppSumo's best-deal rule |
 | OFFER-69 | The $69 sales offer |
 | AD-BUDGET | Ads test budget (recommended $1,000–1,500) |
 | PROOF | One free ad each for 15–20 brands already running video ads, then 2–3 short case studies (about 330 credits each) |
-| DEDUCT-FALSE | A UGC take delivered after the balance ran out is not charged today |
 | MONTHLY | A monthly plan for teams that need ads every week (decide once about 10 teams buy a second pack) |
 | UGC-DEFAULTS | Confirm (built that way): an explicit type beats the sample's; a pasted script's length wins; Rewrite with AI is free; saved characters from Library; old-form captions on by default, cuts re-anchored, shorter resumable timeout |
 | IN-APP-CHECKS | In the app: "never more than" shows a real hold (CR4); a vague change gets one question (S11); captions in Details (RF3); a screenshot reads as "change this moment" (FS7); a tab open across a deploy, the directions drawer, Details (O8) |
