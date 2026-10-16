@@ -54,6 +54,8 @@ const characters = ref([])
 const error = ref('')
 const sending = ref(false)
 const text = ref('')
+// MOD-RETRY: a declined shot's other wording goes into the box, for the user to read, edit and send.
+function useAdvice(run) { text.value = `Make it again with shot ${run.advice.segment} changed to: "${run.advice.wording}"`; nextTick(() => document.getElementById('ugc-prompt')?.focus()) }
 const uploads = ref([])
 const link = ref(null)
 const presenters = ref([])
@@ -807,10 +809,12 @@ onBeforeUnmount(() => {
                   <div v-else class="uc-card uc-failed">
                     <b>{{ run.name === 'A fitting presenter' ? 'Your' : `${run.name}'s` }} video didn't come out.</b>
                     <p v-if="run.declined" class="uc-muted">{{ ENGINE_INFO[run.engine]?.[0] ?? 'The video model' }} declined this presenter. Nothing was charged.<template v-if="switchFor(m, run)"> {{ ENGINE_INFO[switchFor(m, run).key][0] }} can make it instead.</template></p>
-                    <p v-else class="uc-muted">Nothing was charged for it. Try again picks up where it stopped.</p>
+                    <p v-if="run.declined && run.advice" class="uc-muted">Likely why: {{ run.advice.why }}<br>Shot {{ run.advice.segment }} in other words: “{{ run.advice.wording }}”</p>
+                    <p v-else-if="!run.declined" class="uc-muted">Nothing was charged for it. Try again picks up where it stopped.</p>
                     <div class="uc-ready-btns">
                       <button v-if="switchFor(m, run)" type="button" class="uc-btn uc-btn--sm uc-btn--primary" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri, switchFor(m, run).key)">{{ retrying === `${m.id}:${ri}` ? 'Starting…' : `Make it on ${ENGINE_INFO[switchFor(m, run).key][0]} · ${switchFor(m, run).credits} credits` }}</button>
                       <button type="button" :class="['uc-btn', 'uc-btn--sm', switchFor(m, run) ? '' : 'uc-btn--primary']" :disabled="retrying === `${m.id}:${ri}`" @click="retryRun(m, ri)">{{ retrying === `${m.id}:${ri}` && !switchFor(m, run) ? 'Starting…' : 'Try again' }}</button>
+                      <button v-if="run.declined && run.advice" type="button" class="uc-btn uc-btn--sm" @click="useAdvice(run)">Use these words</button>
                       <button type="button" class="uc-link-btn" @click="openRun(run)">Details</button>
                     </div>
                   </div>

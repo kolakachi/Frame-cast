@@ -738,6 +738,8 @@ async function useEngineFor(sg) {
   await guarded(async () => { await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, engine_overrides: overrides }); await refresh(); ok = true })
   if (ok) await plan(null, 'full_video')
 }
+// MOD-RETRY: the declined shot's plainer wording goes into the change box, for the user to read, edit and send.
+function useWordingFor(sg) { prompt.value = `Remake shot ${sg.shot} in these words: "${sg.wording}"`; versionOpen.value = false; nextTick(() => composer.value?.focus()) }
 const needsAnotherRound = computed(() => ['incomplete', 'issues', 'blocked'].includes(outputMeta.value.creative_review?.status) || (reviewScores.value.length > 0 && reviewScores.value.some(s => s.score < 8)))
 async function keepImproving() { const notes = reviewNotes.value; prompt.value = 'Keep this video and improve it' + (notes.length ? ': ' + notes.join('; ') : '.'); await send() }
 function styleSettings(value) { return value.startsWith('pack:') ? { style_pack: value.slice(5), style_id: null } : { style_id: value || null, style_pack: null } }
@@ -2306,8 +2308,10 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                 <div v-if="(outputMeta.media_suggestions || []).length && !outputMeta.look && !isOldRevision && canWrite && paid" class="checks" role="status">
                   <b>A video model declined some shots</b>
                   <p v-for="sg in outputMeta.media_suggestions" :key="sg.shot" class="suggestion-line">
-                    Shot {{ sg.shot }} was declined by {{ sg.declined_by || 'the video model' }}.
-                    <button type="button" class="btn btn--ghost btn--sm" :disabled="locked || active" @click="useEngineFor(sg)">Make it on {{ sg.label }} · {{ sg.credits }} cr</button>
+                    Shot {{ sg.shot }} was declined by {{ sg.declined_by || 'the video model' }}<template v-if="sg.why">: {{ sg.why }}</template><template v-else>.</template>
+                    <template v-if="sg.wording"><br><span class="muted">In plainer words: “{{ sg.wording }}”</span><br></template>
+                    <button v-if="sg.wording" type="button" class="btn btn--ghost btn--sm" :disabled="locked || active" @click="useWordingFor(sg)">Use these words</button>
+                    <button v-if="sg.engine" type="button" class="btn btn--ghost btn--sm" :disabled="locked || active" @click="useEngineFor(sg)">Make it on {{ sg.label }} · {{ sg.credits }} cr</button>
                   </p>
                 </div>
                 <div v-if="outputMeta.creative_review && !['passed', 'ready', 'blocked'].includes(outputMeta.creative_review.status) && (reviewNotes.length || outputMeta.look)" class="checks" role="status">

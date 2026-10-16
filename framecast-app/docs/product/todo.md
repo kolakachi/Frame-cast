@@ -12,7 +12,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
-| MOD-RETRY | A generated shot blocked by the model's moderation fails the build. Tell the user which shot was blocked and why, with a suggested different wording they can send; owner, 2026-10-16: "inform the user / recommend a different message" | build |
 | DEDUCT-FALSE | A UGC take finished after the balance ran out is delivered and not charged: charge what is owed, or hold the delivery until topped up | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |

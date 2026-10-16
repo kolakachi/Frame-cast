@@ -1025,6 +1025,22 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($summary, DB::table('composition_revisions')->where('run_id', $run->id)->value('summary'));
     }
 
+    public function test_mod_retry_advice_is_short_plain_and_kept_on_the_version_with_or_without_another_engine(): void
+    {
+        config(['services.anthropic.key' => 'test-key']);
+        Http::fake(['api.anthropic.com/*' => Http::sequence()
+            ->push(['content' => [['type' => 'text', 'text' => 'Sure. {"why": "\\"Bare shoulders\\" can read as undressed.", "wording": "A woman in a sleeveless top rubs the lotion into her arm by a window."}']]])
+            ->push(['content' => [['type' => 'text', 'text' => '{"why": "x", "wording": "A woman with bare shoulders rubs the lotion in by a window."}']]])]);
+        $a = \App\Services\Create\RefusalAdvice::for('a short video shot', 'A woman with bare shoulders rubs the lotion in by a window.');
+        $this->assertSame('"Bare shoulders" can read as undressed.', $a['why']);
+        $this->assertNull(\App\Services\Create\RefusalAdvice::for('a short video shot', 'A woman with bare shoulders rubs the lotion in by a window.'), 'the same words back are no advice');
+        $kept = \App\Services\Create\RunService::mediaSuggestions([
+            ['shot' => 2, 'declined_by' => 'Seedance', 'why' => 'w', 'wording' => 'plainer'],
+            ['shot' => 3, 'engine' => 'nope'],
+        ]);
+        $this->assertSame([['shot' => 2, 'declined_by' => 'Seedance', 'why' => 'w', 'wording' => 'plainer']], $kept, 'advice without another engine is kept; an unknown engine alone is not');
+    }
+
     public function test_check_guard_records_disputes_and_a_check_marked_wrong_refunds_the_failed_build_once(): void
     {
         // Delivered past a disputed check: recorded with its version; nothing to refund (the user has the video).

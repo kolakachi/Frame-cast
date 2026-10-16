@@ -663,8 +663,12 @@ final class UgcChatService
                     $takes = $run['run_id'] ? $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET') : [];
                     $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'aspect', 'credits', 'format', 'revision_export_id'])), $takes['takes'] ?? []);
                     // Refused by the video model's moderation (not a fault of ours): the chat offers another model for it.
-                    $payload['runs'][$i]['declined'] = collect($takes['takes'] ?? [])->contains(fn ($t) => ($t['status'] ?? '') === 'needs_attention'
-                        && str_contains((string) (\App\Models\Scene::query()->where('project_id', (int) $t['id'])->orderBy('scene_order')->first()?->image_generation_settings_json['last_error'] ?? ''), 'declined'));
+                    $declinedScene = collect($takes['takes'] ?? [])->filter(fn ($t) => ($t['status'] ?? '') === 'needs_attention')
+                        ->map(fn ($t) => \App\Models\Scene::query()->where('project_id', (int) $t['id'])->orderBy('scene_order')->first()?->image_generation_settings_json ?? [])
+                        ->first(fn ($s) => str_contains((string) ($s['last_error'] ?? ''), 'declined'));
+                    $payload['runs'][$i]['declined'] = $declinedScene !== null;
+                    // MOD-RETRY: what likely tripped the filter and the clip in other words, for the user to send.
+                    if (is_array($declinedScene['refusal_advice'] ?? null)) $payload['runs'][$i]['advice'] = array_intersect_key($declinedScene['refusal_advice'], array_flip(['why', 'wording', 'segment']));
                 }
             }
             return ['id' => (int) $m->id, 'role' => $m->role, 'kind' => $m->kind, 'content' => $m->content, 'payload' => $payload, 'at' => $m->created_at];

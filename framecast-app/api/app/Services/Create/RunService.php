@@ -285,9 +285,14 @@ class RunService
     /** Shots a model refused, each with the next-best engine and its price (C3), for the user to choose. */
     public static function mediaSuggestions(mixed $s): array
     {
-        return collect(is_array($s) ? $s : [])->filter(fn ($x) => is_array($x) && in_array($x['engine'] ?? null, ShotRoute::ENGINES, true))->take(8)
-            ->map(fn ($x) => ['shot' => max(1, (int) ($x['shot'] ?? 1)), 'engine' => $x['engine'], 'label' => ShotRoute::label($x['engine']), 'credits' => max(0, (int) ($x['credits'] ?? 0)),
-                'declined_by' => mb_substr((string) ($x['declined_by'] ?? ''), 0, 40)])->values()->all();
+        // A declined shot carries another engine (with its price), advice in plainer words (MOD-RETRY), or both.
+        $engine = fn ($x) => in_array($x['engine'] ?? null, ShotRoute::ENGINES, true);
+        $advice = fn ($x) => is_string($x['wording'] ?? null) && trim($x['wording']) !== '';
+        return collect(is_array($s) ? $s : [])->filter(fn ($x) => is_array($x) && ($engine($x) || $advice($x)))->take(8)
+            ->map(fn ($x) => ['shot' => max(1, (int) ($x['shot'] ?? 1)),
+                ...($engine($x) ? ['engine' => $x['engine'], 'label' => ShotRoute::label($x['engine']), 'credits' => max(0, (int) ($x['credits'] ?? 0))] : []),
+                'declined_by' => mb_substr((string) ($x['declined_by'] ?? ''), 0, 40),
+                ...($advice($x) ? ['why' => mb_substr(trim((string) ($x['why'] ?? '')), 0, 240), 'wording' => mb_substr(trim($x['wording']), 0, 1200)] : [])])->values()->all();
     }
 
     /** The final checks on the delivered video (todo D), reduced to known fields and bounded text. */

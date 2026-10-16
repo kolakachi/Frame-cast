@@ -627,10 +627,16 @@ class UgcOneShotResumeTest extends TestCase
         $this->app->instance(\App\Services\Ugc\UgcPromptSoften::class, $soften);
         $veo = app(ReplicateVeoAdapter::class);
         $this->onPoll = function () { if ($this->starts === 2) throw new \App\Services\Generation\ProviderFailed('The video model declined this segment — again.'); };
+        // MOD-RETRY: the take keeps what likely tripped the filter and the clip in other words, for the chat to show.
+        config(['services.anthropic.key' => 'test-key']);
+        \Illuminate\Support\Facades\Http::fake(['api.anthropic.com/*' => \Illuminate\Support\Facades\Http::response(['content' => [['type' => 'text',
+            'text' => '{"why": "\\"In bed\\" can read as intimate.", "wording": "She holds the jar up at a sunny kitchen table and smiles."}']]])]);
         $error = $this->run_($this->job());
         $this->assertStringContainsString('declined this segment', (string) $error?->getMessage());
         $this->assertSame(2, $this->starts, 'reworded once, never more');
         $this->assertSame([], $this->charged);
+        $advice = json_decode((string) DB::table('scenes')->where('id', 70)->value('image_generation_settings_json'), true)['refusal_advice'] ?? null;
+        $this->assertSame(['why' => '"In bed" can read as intimate.', 'wording' => 'She holds the jar up at a sunny kitchen table and smiles.', 'segment' => 1], $advice);
     }
 
     public function test_a_skit_clip_that_shows_the_other_speaker_is_recorded_as_a_mix_up(): void

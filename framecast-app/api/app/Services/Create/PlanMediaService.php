@@ -241,8 +241,10 @@ class PlanMediaService
                         'aspect_ratio' => json_decode((string) $run->input_json, true)['settings']['aspect_ratio'] ?? '9:16',
                         'subjects' => array_values(array_diff((array) ($item['refs'] ?? []), ['avatar', 'sheet'])), 'panels' => [(string) ($item['first_frame'] ?? '')]]);
                     $result = $fail($state['error']);
-                    if ($suggest) DB::table('create_plan_media')->where('plan_id', $planId)->where('item_index', $cacheIndex)->update(['record_json' => json_encode(['declined' => true, 'engine' => $item['engine'] ?? null, 'suggest' => $suggest])]);
-                    return $suggest ? [...$result, 'declined' => true, 'suggest' => $suggest] : $result;
+                    // MOD-RETRY: what likely tripped the filter, and the shot in words a cautious filter accepts, for the user to send.
+                    $advice = RefusalAdvice::for('a short video shot', (string) ($item['description'] ?? ''));
+                    if ($suggest || $advice) DB::table('create_plan_media')->where('plan_id', $planId)->where('item_index', $cacheIndex)->update(['record_json' => json_encode(['declined' => true, 'engine' => $item['engine'] ?? null, 'suggest' => $suggest, 'advice' => $advice])]);
+                    return [...$result, 'declined' => true, ...($suggest ? ['suggest' => $suggest] : []), ...($advice ? ['advice' => $advice] : [])];
                 }
                 if ($state['declined'] || ($pending['restarts'][$k] ?? 0) >= 1) return $fail($state['error']);
                 $pending['restarts'][$k] = ($pending['restarts'][$k] ?? 0) + 1;

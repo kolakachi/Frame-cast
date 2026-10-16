@@ -904,6 +904,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     \Illuminate\Support\Facades\Log::info('one-shot: a declined clip was reworded and tried again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
                     continue;
                 }
+                // Declined again in plainer words (MOD-RETRY, owner 2026-10-16: "inform the user / recommend a different
+                // message"): the take keeps what likely tripped the filter and the clip reworded, for the chat to show.
+                if (str_contains($e->getMessage(), 'declined this segment')) {
+                    $advice = \App\Services\Create\RefusalAdvice::for('a short clip for a UGC video ad (plainer wording was already tried once and refused too, so change the risky element itself, not only its words)', (string) $chunk['prompt']);
+                    if ($advice) Scene::query()->whereKey($this->sceneId)->get()->filter(fn (Scene $scene) => $this->owns($scene))->each(fn (Scene $scene) => $scene->forceFill([
+                        'image_generation_settings_json' => array_merge($scene->image_generation_settings_json ?? [], ['refusal_advice' => [...$advice, 'segment' => $i + 1]])])->save());
+                }
                 $transient = trim(str_replace('Veo generation failed:', '', $e->getMessage())) === ''
                     || str_contains($e->getMessage(), 'ReadError');
                 if (! $transient || $attempt === 1) {
