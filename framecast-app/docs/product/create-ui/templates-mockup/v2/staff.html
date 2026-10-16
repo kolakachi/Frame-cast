@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add to templates · Staff · WyvStudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* Behind the dialog: the Create result as it is today, with the staff-only button added. */
+  .behind { padding: 40px 44px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; opacity: .45; }
+  .behind p { margin: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { padding: 8px 14px; border-radius: var(--radius); background: var(--surface-2); font-size: 13px; }
+  .chip.staff { color: var(--accent); box-shadow: inset 0 0 0 1px rgba(255,107,53,.45); font-weight: 600; }
+  .scrim { position: fixed; inset: 0; background: rgba(5,5,8,.55); display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; overflow-y: auto; }
+  .dialog { width: min(540px, 100%); background: var(--surface); border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.6), inset 0 0 0 1px #24242f; padding: 26px; display: flex; flex-direction: column; gap: 20px; }
+  .dialog h2 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
+  .dialog .lede { font-size: 14px; }
+  .input { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 14px; min-height: 44px; }
+  .input:focus { border-color: #34344a; outline: none; }
+  .input[readonly] { color: var(--subtle); }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .row > * { flex: 1 1 200px; }
+  .note { margin: 0; font-size: 13px; color: var(--subtle); padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); }
+  .actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .btn-ghost { min-height: 44px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--line); background: transparent; cursor: pointer; }
+  .actions .btn-primary { padding: 0 18px; }
+  .dd.field-dd .dd-trigger { background: var(--bg); }
+</style>
+</head>
+<body>
+<div class="behind" aria-hidden="true">
+  <p class="card-meta">WyvStudio</p>
+  <p><strong>Here is your 15-second 9:16 ad for the Ridge 2.</strong></p>
+  <div class="chips"><span class="chip">Download</span><span class="chip">Share</span><span class="chip">Change…</span><span class="chip staff">Add to templates</span></div>
+</div>
+
+<div class="scrim">
+  <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg" action="#" onsubmit="event.preventDefault()">
+    <div class="info-head">
+      <h2 id="dlg">Add to templates</h2>
+      <p class="lede">This version becomes a template. Its video, style, shape and structure are kept; each user's own product and copy replace the Ridge 2.</p>
+    </div>
+
+    <label class="field"><span class="field-label">Title</span>
+      <input class="input" value="Sneaker drop with an offer">
+    </label>
+
+    <div class="row">
+      <div class="field">
+        <span class="field-label" id="use-label">Category</span>
+        <div class="dd field-dd" data-dd data-value="offer">
+          <button type="button" class="dd-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="use-label"><span class="dd-value">Offer ad</span><span class="dd-caret" aria-hidden="true">▾</span></button>
+          <div class="dd-menu" role="listbox" aria-labelledby="use-label" hidden>
+            <button type="button" class="dd-option" role="option" data-value="offer" aria-selected="true">Offer ad</button>
+            <button type="button" class="dd-option" role="option" data-value="app" aria-selected="false">App showcase</button>
+            <button type="button" class="dd-option" role="option" data-value="explainer" aria-selected="false">Explainer</button>
+            <button type="button" class="dd-option" role="option" data-value="ugc" aria-selected="false">UGC ad</button>
+            <button type="button" class="dd-option" role="option" data-value="announce" aria-selected="false">Announcement</button>
+          </div>
+        </div>
+      </div>
+      <label class="field"><span class="field-label">Style</span>
+        <input class="input" value="Neo-brutalism (from the video)" readonly>
+      </label>
+    </div>
+
+    <label class="field"><span class="field-label">Description on the template</span>
+      <textarea class="textarea" rows="3">Loud neo-brutalist blocks slam in: your product on a card, three reasons as stickers, the offer in a burst, and a pressed “Shop now” to close.</textarea>
+    </label>
+
+    <label class="field"><span class="field-label">What the user is asked for</span>
+      <input class="input" value="A link, or a few words about it. e.g. yourshop.com/ridge-2, launch week 20% off">
+    </label>
+
+    <p class="note">Only staff see Templates until it is made public. Then every template shows to everyone.</p>
+
+    <div class="actions">
+      <button type="button" class="btn-ghost">Cancel</button>
+      <button type="submit" class="btn-primary">Add template</button>
+    </div>
+  </form>
+</div>
+<script src="dropdown.js"></script>
+</body>
+</html>

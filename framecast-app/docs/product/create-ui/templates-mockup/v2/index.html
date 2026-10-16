@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Templates · WyvStudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Archivo+Black&family=Bangers&family=Space+Mono:wght@700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" aria-label="Main">
+    <div class="logo">Wyv<span>Studio</span></div>
+    <a class="nav-link" href="#">Create</a>
+    <!-- Staff accounts only until Templates is made public. -->
+    <a class="nav-link" href="index.html" aria-current="page">Templates <span class="nav-staff">Staff</span></a>
+    <a class="nav-link" href="#">UGC ads</a>
+    <a class="nav-link" href="#">Videos</a>
+    <a class="nav-link" href="#">Brand kit</a>
+    <div class="credits"><span>2,833 credits</span><a href="#">Top up</a></div>
+  </nav>
+
+  <main class="content">
+    <div class="content-inner">
+      <header class="page-head">
+        <div>
+          <h1>Templates <span class="staff-badge" title="Customers don't see Templates until it is made public">Staff only</span></h1>
+          <p>Start from a finished video. Add your product and the Creative Director makes it yours.</p>
+        </div>
+        <label class="search">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span class="sr-only">Search templates</span>
+          <input type="search" placeholder="Search templates" data-search>
+        </label>
+      </header>
+
+      <div class="filters">
+        <div class="tabs" role="group" aria-label="Category">
+          <button type="button" class="tab" data-cat="all" aria-pressed="true">All</button>
+          <button type="button" class="tab" data-cat="offer" aria-pressed="false">Offer ads</button>
+          <button type="button" class="tab" data-cat="app" aria-pressed="false">App showcases</button>
+          <button type="button" class="tab" data-cat="explainer" aria-pressed="false">Explainers</button>
+          <button type="button" class="tab" data-cat="ugc" aria-pressed="false">UGC ads</button>
+          <button type="button" class="tab" data-cat="announce" aria-pressed="false">Announcements</button>
+        </div>
+        <!-- Our own dropdown (UiSelect in the app), never a native <select>. -->
+        <div class="selects">
+          <div class="dd" data-dd data-style data-value="">
+            <button type="button" class="dd-trigger" aria-haspopup="listbox" aria-expanded="false"><span class="dd-label">Style</span><span class="dd-value">Any</span><span class="dd-caret" aria-hidden="true">▾</span></button>
+            <div class="dd-menu" role="listbox" aria-label="Style" hidden>
+              <button type="button" class="dd-option" role="option" data-value="" aria-selected="true">Any</button>
+              <button type="button" class="dd-option" role="option" data-value="Neo-brutalism" aria-selected="false">Neo-brutalism</button>
+              <button type="button" class="dd-option" role="option" data-value="Glassmorphism" aria-selected="false">Glassmorphism</button>
+              <button type="button" class="dd-option" role="option" data-value="Blueprint" aria-selected="false">Blueprint</button>
+              <button type="button" class="dd-option" role="option" data-value="Comic book" aria-selected="false">Comic book</button>
+              <button type="button" class="dd-option" role="option" data-value="UGC" aria-selected="false">UGC</button>
+            </div>
+          </div>
+          <div class="dd" data-dd data-shape data-value="">
+            <button type="button" class="dd-trigger" aria-haspopup="listbox" aria-expanded="false"><span class="dd-label">Shape</span><span class="dd-value">Any</span><span class="dd-caret" aria-hidden="true">▾</span></button>
+            <div class="dd-menu" role="listbox" aria-label="Shape" hidden>
+              <button type="button" class="dd-option" role="option" data-value="" aria-selected="true">Any</button>
+              <button type="button" class="dd-option" role="option" data-value="9:16" aria-selected="false">9:16</button>
+              <button type="button" class="dd-option" role="option" data-value="1:1" aria-selected="false">1:1</button>
+              <button type="button" class="dd-option" role="option" data-value="16:9" aria-selected="false">16:9</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Each card: put the poster in <img>; the optional <video> plays muted on hover. -->
+      <div class="grid" data-grid>
+        <a class="card" href="template.html" data-cat="offer" data-style="Neo-brutalism" data-shape="9:16">
+          <div class="card-media">
+            <div class="ph ph-drop" aria-hidden="true"><div class="sticker">NEW<br>DROP</div><div class="ticker">RIDGE 2 ✦ NEW DROP ✦ RIDGE 2 ✦</div></div>
+            <span class="duration">0:15</span>
+          </div>
+          <div class="card-text"><span class="card-title">Sneaker drop with an offer</span><span class="card-meta">Offer ad · 9:16</span></div>
+        </a>
+
+        <a class="card" href="template.html" data-cat="app" data-style="Glassmorphism" data-shape="9:16">
+          <div class="card-media">
+            <div class="ph ph-glass" aria-hidden="true"><i class="b1"></i><i class="b2"></i><div class="pane"><small>Earned this month</small><strong>[£ X]</strong><i></i></div></div>
+            <span class="duration">0:15</span>
+          </div>
+          <div class="card-text"><span class="card-title">App tour in three features</span><span class="card-meta">App showcase · 9:16</span></div>
+        </a>
+
+        <a class="card" href="template.html" data-cat="explainer" data-style="Blueprint" data-shape="16:9">
+          <div class="card-media">
+            <div class="ph ph-blue" aria-hidden="true"><div class="band"><svg width="130" height="90" viewBox="0 0 140 96" fill="none" stroke="#fff" stroke-width="2"><rect x="50" y="8" width="40" height="80" rx="6"/><path d="M50 30h40M50 52h40M50 70h40"/><path d="M20 70h22M98 30h22" stroke-dasharray="4 4"/></svg></div></div>
+            <span class="duration">0:20</span>
+          </div>
+          <div class="card-text"><span class="card-title">How it works, as a technical drawing</span><span class="card-meta">Explainer · 16:9</span></div>
+        </a>
+
+        <a class="card" href="template.html" data-cat="announce" data-style="Comic book" data-shape="9:16">
+          <div class="card-media">
+            <div class="ph ph-comic" aria-hidden="true"><div class="p1"></div><div class="p2">CLICK!</div><div class="p3"></div></div>
+            <span class="duration">0:15</span>
+          </div>
+          <div class="card-text"><span class="card-title">New feature, told as a comic</span><span class="card-meta">Announcement · 9:16</span></div>
+        </a>
+
+        <a class="card" href="template.html" data-cat="ugc" data-style="UGC" data-shape="9:16">
+          <div class="card-media">
+            <div class="ph ph-ugc" aria-hidden="true"><div class="person"></div><div class="cap">honestly my shower routine…</div></div>
+            <span class="duration">0:15</span>
+          </div>
+          <div class="card-text"><span class="card-title">Presenter talks about your product</span><span class="card-meta">UGC ad · 9:16</span></div>
+        </a>
+      </div>
+      <p class="card-meta" data-empty hidden>No templates match. Try another category or clear the search.</p>
+    </div>
+  </main>
+</div>
+
+<script src="dropdown.js"></script>
+<script>
+  // Filter cards by category tab, style, shape and search.
+  (function () {
+    var cards = document.querySelectorAll('[data-grid] .card');
+    var tabs = document.querySelectorAll('.tab');
+    var q = document.querySelector('[data-search]'), st = document.querySelector('[data-style]'), sh = document.querySelector('[data-shape]');
+    function val(dd) { return dd.dataset.value; }
+    var empty = document.querySelector('[data-empty]'), cat = 'all';
+    function apply() {
+      var text = q.value.trim().toLowerCase(), shown = 0;
+      cards.forEach(function (c) {
+        var ok = (cat === 'all' || c.dataset.cat === cat) && (!val(st) || c.dataset.style === val(st)) &&
+                 (!val(sh) || c.dataset.shape === val(sh)) && (!text || c.textContent.toLowerCase().indexOf(text) > -1);
+        c.hidden = !ok; if (ok) shown++;
+      });
+      empty.hidden = shown > 0;
+    }
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () {
+        tabs.forEach(function (x) { x.setAttribute('aria-pressed', String(x === t)); });
+        cat = t.dataset.cat; apply();
+      });
+    });
+    q.addEventListener('input', apply);
+    [st, sh].forEach(function (el) { el.addEventListener('dd-change', apply); });
+
+    // Hover preview: play a card's muted <video> while hovered or focused
+    cards.forEach(function (c) {
+      var v = c.querySelector('video'); if (!v) return;
+      function play() { v.play().catch(function () {}); }
+      function stop() { v.pause(); v.currentTime = 0; }
+      c.addEventListener('mouseenter', play); c.addEventListener('focus', play);
+      c.addEventListener('mouseleave', stop); c.addEventListener('blur', stop);
+    });
+  })();
+</script>
+</body>
+</html>

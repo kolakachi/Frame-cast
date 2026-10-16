@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sneaker drop with an offer · Templates · WyvStudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Archivo+Black&family=Space+Mono:wght@700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="detail">
+  <a class="back" href="index.html">
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+    Templates
+  </a>
+  <!-- Staff accounts only until Templates is made public. -->
+  <span class="staff-badge" style="margin:0;align-self:flex-start">Staff only · not public yet</span>
+
+  <div class="detail-body">
+    <div class="player-col">
+      <!-- Swap the placeholder for: <video src="…" poster="…" playsinline></video> -->
+      <div class="player" data-shape="9:16" data-player>
+        <div class="ph ph-drop" aria-hidden="true"><div class="sticker">NEW<br>DROP</div><div class="ticker">RIDGE 2 ✦ NEW DROP ✦ RIDGE 2 ✦ NEW DROP ✦</div></div>
+        <button type="button" class="play" aria-label="Play with sound" data-play>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      </div>
+      <span class="player-note">0:15 · plays with sound</span>
+    </div>
+
+    <div class="info">
+      <div class="info-head">
+        <span class="eyebrow">Offer ad · 15 seconds · 9:16</span>
+        <h1>Sneaker drop with an offer</h1>
+        <p class="lede">Loud neo-brutalist blocks slam in: your product on a card, three reasons as stickers, the offer in a burst, and a pressed “Shop now” to close. Built for launches and sales on Reels and TikTok.</p>
+        <span class="facts">Neo-brutalism · Voice and music · About 3–4 credits a second</span>
+      </div>
+
+      <hr class="divider">
+
+      <form class="use" action="#" method="post">
+        <label class="field">
+          <span class="field-label">Your product</span>
+          <textarea class="textarea" name="product" rows="3" required placeholder="A link, or a few words about it. e.g. yourshop.com/ridge-2, launch week 20% off"></textarea>
+        </label>
+
+        <div class="use-row">
+          <label class="add-photos">
+            <span class="icon-box"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span data-photo-label>Add product photos</span>
+            <input class="sr-only" type="file" name="photos" accept="image/*" multiple data-photos>
+          </label>
+
+          <fieldset class="shape" style="border:0;margin:0;padding:0">
+            <legend class="sr-only">Shape</legend>
+            <span aria-hidden="true">Shape</span>
+            <div class="seg">
+              <label><input type="radio" name="shape" value="9:16" checked>9:16</label>
+              <label><input type="radio" name="shape" value="1:1">1:1</label>
+              <label><input type="radio" name="shape" value="16:9">16:9</label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="submit">
+          <button type="submit" class="btn-primary">Make mine</button>
+          <p class="fineprint">You’ll see the plan and the price before anything is made.</p>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    // Shape choice reshapes the preview frame
+    var player = document.querySelector('[data-player]');
+    document.querySelectorAll('input[name="shape"]').forEach(function (r) {
+      r.addEventListener('change', function () { player.dataset.shape = r.value; });
+    });
+    // Show how many photos were picked
+    var photos = document.querySelector('[data-photos]'), label = document.querySelector('[data-photo-label]');
+    photos.addEventListener('change', function () {
+      var n = photos.files.length;
+      label.textContent = n ? n + (n === 1 ? ' photo added' : ' photos added') : 'Add product photos';
+    });
+    // Play: hide the button once a real <video> is playing
+    var btn = document.querySelector('[data-play]');
+    btn.addEventListener('click', function () {
+      var v = player.querySelector('video');
+      if (v) { v.play(); player.classList.add('is-playing'); v.addEventListener('pause', function () { player.classList.remove('is-playing'); }, { once: true }); }
+    });
+  })();
+</script>
+</body>
+</html>
