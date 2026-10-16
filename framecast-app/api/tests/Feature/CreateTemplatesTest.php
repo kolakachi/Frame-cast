@@ -113,7 +113,7 @@ class CreateTemplatesTest extends TestCase
         $this->assertSame(['heroshoe', 'Ridge 2 shoe, side profile', 'ai_image'], [$draft['parts']['images'][0]['element'], $draft['parts']['images'][0]['what'], $draft['parts']['images'][0]['kind']]);
         $this->assertSame(['New drop.', 'Shop the drop.'], $draft['parts']['voice']['lines']);
         $this->assertSame('Neo-brutalism', $draft['parts']['style']);
-        $this->assertSame(['1 lines of text', '1 brand colours', '1 product picture', 'Voiceover', 'Music'], $draft['summary']);
+        $this->assertSame(['1 line of text', '1 brand colour', '1 product picture', 'Voiceover', 'Music'], $draft['summary']);
         $added = $this->library->add($this->staff, $conversation, $revision, ['title' => 'Sneaker drop', 'category' => 'offer', 'ask_hint' => 'Your product link']);
         $this->assertSame(['version', '9:16', 15, 'Neo-brutalism'], [$added['source'], $added['shape'], $added['seconds'], $added['style']]);
         $this->assertSame($added['id'], $this->library->draft($this->staff, $conversation, $revision)['existing_id']);

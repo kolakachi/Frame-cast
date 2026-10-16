@@ -271,8 +271,8 @@ class TemplateLibrary
     public static function summary(array $parts): array
     {
         $out = [];
-        if (! empty($parts['text'])) $out[] = count($parts['text']).' lines of text';
-        if (! empty($parts['colours'])) $out[] = count($parts['colours']).' brand colours';
+        if (! empty($parts['text'])) $out[] = count($parts['text']).(count($parts['text']) === 1 ? ' line of text' : ' lines of text');
+        if (! empty($parts['colours'])) $out[] = count($parts['colours']).(count($parts['colours']) === 1 ? ' brand colour' : ' brand colours');
         if (! empty($parts['images'])) $out[] = count($parts['images']).' product '.(count($parts['images']) === 1 ? 'picture' : 'pictures');
         if (! empty($parts['voice'])) $out[] = 'Voiceover';
         if (! empty($parts['music'])) $out[] = 'Music';

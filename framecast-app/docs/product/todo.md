@@ -13,8 +13,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 | ID | Item | Next |
 |---|---|---|
 | TPL-MAKE | Make about 11 more templates from our own builds: 12 to go public, 2+ per tab, some 1:1 and 16:9 (each a paid build, about $1–4; ask before each) | owner picks briefs |
-| TPL-LOCAL | Move the 11 examples built locally to prod with their code, so they become full templates (Exactly can then swap without the builder). `create:version export/import/link` built and tested locally; run on prod after the push, and link the 3 already there (30703d4a, 8623176a; e55486c6 from ws 13 via export/import) | build: prod import |
-| TPL-DESC | Descriptions and "what the user is asked for" on the 32 examples (Edit on each template; Write it for me works on our versions) | build |
 | TPL-PUBLIC | Turn on CREATE_TEMPLATES_PUBLIC when the set is ready | owner |
 
 ## 2. Next: build
