@@ -18,7 +18,11 @@ we say it are in `positioning-roadmap.md`; this doc does not repeat them. The wo
   email brought visits but no sign-ups.
 - **Biggest leak:** every way in asks for payment before the visitor sees a result. 8 of 18 AppSumo sales were refunded;
   the reasons were "harder and slower than expected" and "doesn't fit my workflow".
-- **People:** the owner builds and stays behind the scenes. The marketer is the public face. No ad budget is set yet.
+- **People:** the owner builds and stays behind the scenes. The marketer posts. No ad budget is set yet; this is an
+  experiment run on little or no cash, and it may take months.
+- **Who actually pays so far:** small business owners doing their own marketing (a retirement-planning Facebook page,
+  a lottery shop in Brazil, a creator), all through AppSumo. That is smaller than the "lean marketing team" in
+  positioning-roadmap, and the channels below lean towards them.
 
 ## 2. The goal for the next 90 days
 
@@ -53,27 +57,55 @@ The loop needs three things built before any channel is worth paying for: templa
 video (FREE-FIRST) and template links on shares (SHARE-TPL). Until they exist, every channel lands people on a payment
 wall.
 
-## 4. Channels, in order
+## 4. The face: an AI presenter
 
-Each channel gets a test with a stop rule, so nothing runs on hope.
+Owner, 2026-10-16: an AI presenter is WyvStudio's constant face. Whatever would need a founder to push it, she does.
+
+- **She is open about being AI.** "WyvStudio's presenter, made in WyvStudio" is the hook and the proof. Every platform's
+  AI label is applied (study.md has the rules).
+- **She posts from brand accounts**, never as a person: her own WyvStudio accounts on TikTok, Instagram, YouTube Shorts
+  and X; on LinkedIn she appears on the company page, which the marketer reshares (LinkedIn bans profiles for people who
+  do not exist).
+- **One look, kept:** one reference photo, waist-up framing, lip-synced voice, the same voice every time. The first
+  three videos are a pilot to check her face holds before she is announced.
+- **Cost:** our own generation cost, a few dollars per presenter video. Faceless videos from Create fill the weeks in
+  between for less.
+
+## 5. Where the buyers are
+
+| Who | Where they spend time | How they find tools |
+|---|---|---|
+| Small business owner (a store, an app, a local business) | TikTok and YouTube tutorials, Facebook groups, r/smallbusiness (r/shopify and r/ecommerce read only: they ban tool promotion) | Shopify App Store, search, ChatGPT/Claude answers, peers |
+| In-house marketer or social media manager | Instagram and TikTok (trends), LinkedIn, Slack communities | Search, directories and reviews, peers |
+| Media buyer or creative strategist | X, Facebook ad groups, r/FacebookAds, r/PPC | Peers, X, trials |
+
+The checked list (size, activity, promotion rules) is in `study.md`.
+
+## 6. Channels, in order
+
+**One main channel at a time.** The others are free listings that run without daily work. A channel is judged by
+volume, not days: 100 posts, 100 pages or 100 answers before deciding (owner, 2026-10-16, after "pick one channel and
+do it until you have really tried").
 
 | # | Channel | Why it fits | Test | Stop rule |
 |---|---|---|---|---|
-| 1 | **LinkedIn, the marketer's profile and the company page** | Lean brand and marketing teams are there | 30 days: one template post a day, "comment for the template"; Claude drafts each reply and link, a person posts them | Under 20 free first videos in 30 days |
-| 2 | **Template pages in search** | 39 pages people search for ("product offer ad template") | Pages live with sitemap and share previews; watch impressions in Search Console | No impressions after 60 days: fix titles before writing more |
-| 3 | **Connector directories** | Marketers using ChatGPT and Claude find us where they already work | List in MCP registries, the ChatGPT and Claude directories, and skills.marketing | Free; keep them listed |
-| 4 | **Short-form social (TikTok, Reels, X)** | The product is video, so show the videos | Weekly template and "made from one line" videos, made by the Creative Director | No sign-ups from them after 6 weeks: drop to monthly |
-| 5 | **Paid creators** | Borrow audiences that match ours | After channel 1 converts: pay 3–5 marketing creators to share template posts, tracked by UTM | Cost per paying team above one Creator pack ($157) |
-| 6 | **Google Ads** | People already searching for ad videos | One landing page per keyword group (ADS-LP); budget per AD-BUDGET | Cost per paying team above $157 after $500 spent |
-| 7 | **Outreach** | Book demos with teams already running video ads | A free ad made from the team's own product (PROOF), then 2–3 case studies | Under 2 replies per 50 sent |
+| 1 | **Main: the presenter's short videos** (TikTok, Reels, Shorts) | Owners and social managers learn there; every video shows the product | 3–5 a week: "make this ad for your shop", a bad ad fixed, a template explained; each ends on a template link | After 100 videos: under 50 free first videos from them |
+| 2 | **Background: template pages and how-to articles** (search and AI answers) | People pick the first tool they find | Template pages first, then a few articles a week from the topic list in study.md; each embeds a presenter video | After 100 pages: no impressions growth in Search Console |
+| 3 | **Background: free listings** | Free, found by people already shopping for tools | G2/Capterra, SaaSHub, AlternativeTo, Future Tools, Product Hunt, the ChatGPT/Claude connector directories (the big AI directories are paid; skipped) | Free; keep them listed |
+| 4 | **Community answers** (Reddit, Facebook groups) | Owners ask "how do I make an ad" there daily | Helpful answers with an example video, inside each group's rules | After 100 answers: no sign-ups from them |
+| 5 | **Boosts** | The cheapest paid test | $5–20 on a post that already did well unpaid | Cost per free first video above $2 |
+| 6 | **Shopify App Store** | Store owners look for tools inside Shopify | Plan first: a small app that turns a product into a video in one click (study.md has the requirements) | Plan, then owner decides |
+| 7 | **Later, with revenue:** paid creators, Google Ads (ADS-LP, AD-BUDGET), outreach with a free ad (PROOF) | Borrowed audiences and search intent | After channel 1 brings paying teams | Cost per paying team above one Creator pack ($157) |
 
 Not now:
 
 - Bulk cold outreach tools: they need the free first video to point at.
 - More marketplace launches like AppSumo: refunds ran at 47%, and AppSumo credits never refill.
+- LinkedIn as the main channel: our paying buyers so far are owners, not in-house teams. It stays as the company page.
+- New features outside the loop and fixes for harm, until the main channel has had its 100 videos.
 - Comparing ourselves to avatar tools.
 
-## 5. Content
+## 7. Content
 
 - **Lead magnets are our templates.** Each one is a real ad a team can make for their brand. Add playbooks only when a
   template needs explaining ("3 hooks for a product drop").
@@ -82,18 +114,19 @@ Not now:
 - **Voice:** plain words. We make the video; teams post it or run it themselves. Never say or imply that we run ads.
   Never mention Series. Say WyvStudio as "weave studio" in anything spoken.
 
-## 6. Money
+## 8. Money
 
 | Stage | Spend | On |
 |---|---|---|
 | Days 1–30 | Under $100 | Our own credits for posts and template videos; listings are free |
-| Days 31–60 | Up to $1,000 | Paid creators, only if LinkedIn converts |
-| Days 61–90 | Per AD-BUDGET ($1,000–1,500 recommended) | Google Ads and more creators, put on what works |
+| Days 31–60 | Up to $100 | Boosts on posts that already did well unpaid |
+| Days 61–90 | Up to $1,000, from revenue | Paid creators, only if the presenter channel brings paying teams |
+| After day 90 | Per AD-BUDGET ($1,000–1,500 recommended), from revenue | Google Ads and more creators, put on what works |
 
 Revenue from each stage pays for the next one. Free first videos cost us cents each; cap them at one per verified
 workspace.
 
-## 7. What we measure
+## 9. What we measure
 
 Every link carries `utm_source` (and the template's id where there is one). `workspaces.acquisition_channel` records
 where each sign-up came from, and God Mode's by-source table shows sales by source.
@@ -109,21 +142,23 @@ where each sign-up came from, and God Mode's by-source table shows sales by sour
 
 Review every two weeks: keep, change, or stop each channel by its stop rule.
 
-## 8. Who does what
+## 10. Who does what
 
 - **Owner:** decisions, the product, and this doc. Stays out of public posts.
-- **Marketer:** the LinkedIn profile, posting, replies, creator deals, the email list.
+- **Marketer:** posting and replies on the brand accounts, community answers, the LinkedIn company page, creator deals, the email list.
 - **Claude:**
   - builds the loop (pages, free video, share links) and the listings;
   - drafts posts and replies;
-  - makes template and social videos (asking before paid generation);
+  - makes the presenter's videos and template videos (asking before paid generation);
+  - writes the template pages and articles;
   - reports the numbers.
 
-## 9. Open decisions
+## 11. Open decisions
 
 | Decision | Recommendation |
 |---|---|
 | FREE-FIRST limits | One template video per verified workspace, watermarked, download allowed; removing the mark needs a purchase |
-| Daily posting | One good post a day on one profile, not two per profile |
+| The presenter | Pick one of our presenters (or make one), 3 pilot videos with a cost estimate first |
+| Shopify App Store | Plan the small app after the loop is built |
 | AD-BUDGET | $1,000–1,500 for the first Google Ads test, after the loop is built |
-| Paid creators | Only after LinkedIn shows free first videos turning into sales |
+| Paid creators | Only after the presenter channel shows free first videos turning into sales |

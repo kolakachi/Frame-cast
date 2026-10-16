@@ -10,16 +10,17 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 ## 1. Now
 
-The visibility rows follow `strategy.md` (the loop in §3, the channel order in §4).
+The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4, the channel order in §6; research in `study.md`).
 
 | ID | Item | Next |
 |---|---|---|
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
-| CONNECTOR-LIST | List WyvStudio in MCP registries and connector directories (ChatGPT, Claude, Smithery and others) and skills.marketing | build + owner accounts |
 | SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one) | build |
-| LINKEDIN-TEST | 30-day LinkedIn test (strategy.md §4, channel 1): one template post a day on the marketer's profile and the company page, "comment TEMPLATE" to get it; Claude drafts posts and replies, a person posts them; stop under 20 free first videos | marketer, after TPL-PAGES and FREE-FIRST |
-| SOCIAL | Weekly posts of template videos and made-from-one-line videos on TikTok, Reels and X, made by the Creative Director | owner OK on spend, then build |
+| PRESENTER | WyvStudio's AI presenter as the brand face (strategy.md §4): pick or make her, then 3 pilot videos (cost estimate first) to check her face holds; then the main channel, 3–5 short videos a week on brand TikTok, Reels, Shorts and X, judged after 100 videos | owner picks her, then build |
+| LISTINGS | Free listings this week (study.md §3): G2 free profile (then ask Bob and neimar for reviews), SaaSHub, AlternativeTo, Future Tools, the ChatGPT/Claude connector directories; Product Hunt once the free first video exists. Apply to Online Geniuses and DTC FAM. The big AI directories are paid: skipped | owner accounts, Claude writes the entries |
+| COMMUNITY | Helpful answers with example videos in the checked communities (study.md), inside each group's rules; judged after 100 answers | marketer |
+| SHOPIFY-APP | Shopify App Store listing: a small app that turns a product into a video; plan first (requirements in study.md) | plan, after the loop |
 
 ## 2. Next: build
 
@@ -44,6 +45,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the channel order in 
 | CAST-ALL | Skits with two or more people: a cast and place sheet, shots refer to people by name, a ready check per shot | build |
 | SHOT-VOCAB | A shot vocabulary for generated clips (owner, 2026-10-16, after filmvision.ai's shot glossary; our own words, theirs is all rights reserved): the planner names each shot's size (wide, medium, close-up, extreme close-up), angle (eye level, low, high, overhead, three-quarter, profile, over the shoulder, POV) and role (establishing, insert, cutaway, reaction); a sequence varies its framing (wide, then medium, then a close insert); a check flags three clips in a row with the same framing | build, after the templates |
 | RD-49 | Logo animation format (3–6 s, becomes the logo, last second still) and a transparent export (WebM with alpha) | plan first |
+| AI-MARK | Mark exported videos as AI-made (C2PA Content Credentials). The EU AI Act asks AI tools to mark outputs since Aug 2, 2026, possibly by Dec 2, 2026 for tools already on sale (unconfirmed); platforms also label marked videos automatically. Confirm the date, then plan | check, then plan |
 
 **UGC**
 
