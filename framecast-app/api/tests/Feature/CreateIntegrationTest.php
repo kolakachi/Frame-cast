@@ -5593,6 +5593,11 @@ class CreateIntegrationTest extends TestCase
         $swap = fn ($p = null, $m = null) => \App\Services\Create\VoiceSwap::plan(DB::table('create_conversations')->where('id', $c->id)->first(), DB::table('composition_revisions')->where('id', $revision)->first(), $p ?? $plan, $m ?? $voiceOnly, ['output_kind' => 'video'], false);
         $this->assertSame(['old_src' => 'asset-'.$spaced.'-ab12.wav', 'old_lines' => ['Want brighter skin?', 'Meet Dewbloom Glow.'], 'new_lines' => ['Want brighter skin?', 'Meet Dewbloom Glow!']], $swap(), 'the spaced copy of the old voice is the narration clip');
         $this->assertNull($swap([...$plan, 'change_touches' => ['voice', 'on_screen_words']]), 'words on screen change too: a normal edit');
+        // As one part of a swap (PartSwap: values and photos baked in too), the voice may change alongside words and pictures.
+        $withParts = fn ($p) => \App\Services\Create\VoiceSwap::plan(DB::table('create_conversations')->where('id', $c->id)->first(), DB::table('composition_revisions')->where('id', $revision)->first(), $p, $voiceOnly, ['output_kind' => 'video'], false, true);
+        $this->assertNotNull($withParts([...$plan, 'change_touches' => ['voice', 'on_screen_words', 'pictures']]));
+        $this->assertNull($withParts([...$plan, 'change_touches' => ['voice', 'timing']]), 'timing is never a swap');
+        $this->assertNull($withParts([...$plan, 'change_touches' => ['on_screen_words']]), 'no voice change, no voice swap');
         $this->assertNull($swap([...$plan, 'change_touches' => []]), 'the planner did not say what the change touches: a normal edit');
         $this->assertNotNull($swap([...$plan, 'on_screen_copy' => ['Only the voiceover is regenerated.']]), 'notes written into the copy field do not block a voice swap');
         $this->assertNull($swap([...$plan, 'narration' => ['One line now.']]), 'a different number of lines: a normal edit');

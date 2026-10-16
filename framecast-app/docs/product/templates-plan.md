@@ -95,7 +95,9 @@ Note: version 1 of aeb4755c (revision 08fd1388) is the template; version 2 is th
 
 Built (not deployed): the library (32 examples seeded, vault order kept), staff "Add to templates" in a side drawer, the Templates page and template page, "Make mine" following the reference options (exactly from a version copies it into the user's workspace as version 1; anything else attaches the template's video as the reference), the three fixes above. Tested in the browser locally: page, filters, our dropdown, phone width, add a version, Make mine → Create plans it and asks for what is missing.
 
-Not built yet: the no-builder production for exactly-with-swaps (step 4). Today an exact template run goes through the builder as a change; text-and-colour-only changes already become free edits.
+Built 2026-10-16 (step 4): a change that only swaps parts is made without the builder (PartSwap). The Creative Director decides it, from the version's text and colour fields (with max_chars), its pictures (current_pictures) and the attached images; the quote bakes the new values and photos into the version's code; nothing to buy means a free re-render that runs like any small job, and a new voice uses the VOICE-ONLY swap (only the voice is charged). Anything else (layout, timing, music, new elements, text that needs more room, words that are fixed in the template) is built as usual. After the render, text the new words push off the frame (edge findings the version did not already have) is named in the version note.
+
+Local test (Brightline on the WyvStudio motion film template): the planner chose a swap on its own (5 texts and colours, the logo), 0 credits, one render, no builder. The first run showed a long hook running off the frame and a fixed template word ("Running") staying; the planner now gets each field's limit and is told fixed words stay, and wrote "money, sorted?" to fit, saying so in its assumptions.
 
 ## Build order
 

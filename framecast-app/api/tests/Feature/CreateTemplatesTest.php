@@ -199,6 +199,55 @@ class CreateTemplatesTest extends TestCase
         $this->assertArrayNotHasKey('category', $this->library->suggest($this->staff, $conversation, $revision), 'an unknown category is dropped');
     }
 
+    public function test_a_change_that_only_swaps_parts_is_made_without_the_builder(): void
+    {
+        [$conversation, $revision, $files] = $this->version();
+        $photo = Asset::create(['workspace_id' => $this->staff->workspace_id, 'asset_type' => 'image', 'title' => 'Volt Rush can', 'storage_url' => 'create-upload://x/p',
+            'mime_type' => 'image/png', 'file_size_bytes' => 4, 'status' => 'active', 'restriction_scope' => 'workspace']);
+        $base = DB::table('composition_revisions')->where('id', $revision)->first();
+        $pictures = \App\Services\Create\PartSwap::pictures(json_decode($base->bundle_json, true));
+        $this->assertSame([['src' => $files[0]['name'], 'asset_id' => $files[0]['asset_id'], 'element' => 'heroshoe']], $pictures);
+        $described = \App\Services\Create\PartSwap::described($pictures, (int) $this->staff->workspace_id);
+        $this->assertSame('Ridge 2 shoe, side profile', $described[0]['what'], 'the plan item that made the picture says what it shows');
+        $ctx = ['current_variables' => [['id' => 'headline', 'type' => 'string', 'label' => 'Hook', 'current' => 'NEW DROP'], ['id' => 'color_background', 'type' => 'color', 'label' => 'Field', 'current' => '#FFE14D']],
+            'current_pictures' => $described, 'files' => [['asset_id' => $photo->id, 'asset_type' => 'image', 'purpose' => 'source']]];
+        $raw = ['values' => ['headline' => 'VOLT RUSH', 'color_background' => '#D7FF3A', 'nope' => 'x'], 'pictures' => [['from' => $files[0]['name'], 'to_asset_id' => $photo->id], ['from' => 'asset-9-x.png', 'to_asset_id' => $photo->id]]];
+        $swap = \App\Services\Create\PartSwap::normalize($raw, $ctx, ['on_screen_words', 'pictures']);
+        $this->assertSame(['headline' => 'VOLT RUSH', 'color_background' => '#d7ff3a'], $swap['values']);
+        $this->assertSame([['from' => $files[0]['name'], 'to_asset_id' => $photo->id]], $swap['pictures'], 'only pictures the version has, filled with attached images');
+        $this->assertFalse($swap['voice']);
+        $this->assertNull(\App\Services\Create\PartSwap::normalize($raw, $ctx, ['on_screen_words', 'pictures', 'timing']), 'timing needs the builder');
+        $this->assertNull(\App\Services\Create\PartSwap::normalize([...$raw, 'values' => ['headline' => 'Freelance money, finally sorted?']], $ctx, ['on_screen_words', 'pictures']), 'text longer than its slot needs the builder');
+        $this->assertSame([9, 4], [\App\Services\Create\PartSwap::maxChars('NEW DROP'), \App\Services\Create\PartSwap::maxChars('Go')]);
+        $this->assertNull(\App\Services\Create\PartSwap::normalize(['values' => ['headline' => 'X']], $ctx, ['on_screen_words', 'pictures']), 'a picture change with no picture to put in is not a swap');
+        $this->assertNull(\App\Services\Create\PartSwap::normalize(['pictures' => [['from' => $files[0]['name'], 'to_asset_id' => 999]]], $ctx, ['pictures']), 'an image the user did not attach is not used');
+
+        // The quote bakes the values and the photo into the version: nothing to buy, no builder.
+        $c = DB::table('create_conversations')->where('id', $conversation)->first();
+        $plan = ['planner_task' => 'edit', 'change_touches' => ['on_screen_words', 'pictures'], 'swap' => $swap];
+        $captured = [['asset_id' => $photo->id, 'name' => 'asset-'.$photo->id.'-'.str_repeat('c', 64).'.png', 'asset_type' => 'image', 'purpose' => 'source']];
+        $q = \App\Services\Create\PartSwap::forQuote($c, $base, $plan, [], ['output_kind' => 'video'], false, $captured);
+        $this->assertTrue($q['free']);
+        $html = $q['bundle']['index.html'];
+        $this->assertStringContainsString($captured[0]['name'], $html);
+        $this->assertStringNotContainsString($files[0]['name'], $html);
+        $this->assertSame('VOLT RUSH', collect(\App\Services\Create\CompositionVariables::declarations($html))->firstWhere('id', 'headline')['default']);
+        $this->assertStringContainsString($files[1]['name'], $html, 'the voice is kept');
+        $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, $plan, [['kind' => 'music']], ['output_kind' => 'video'], false, $captured), 'buying anything but a voice is a build');
+        $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, [...$plan, 'swap' => [...$swap, 'voice' => true], 'change_touches' => ['voice', 'pictures']], [], ['output_kind' => 'video'], false, $captured), 'a new voice must be in the plan');
+        $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, $plan, [], ['output_kind' => 'video'], false, []), 'the photo must be among the run\'s files');
+        $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, null, $plan, [], ['output_kind' => 'video'], false, $captured), 'a first video is built');
+        $this->assertNotNull(\App\Services\Create\PartSwap::forQuote($c, $base, [...$plan, 'planner_task' => 'creative'], [], ['output_kind' => 'video'], false, $captured), 'a template conversation\'s first plan is "creative" planning, still a swap');
+
+        // A free swap runs on its own like any small job; a plain free edit keeps its button.
+        $quote = \App\Models\ApiQuote::create(['id' => \App\Models\ApiQuote::newId(), 'workspace_id' => $this->staff->workspace_id, 'created_by_user_id' => $this->staff->id,
+            'credits_min' => 0, 'credits_max' => 0, 'expires_at' => now()->addMinutes(10), 'payload_json' => ['kind' => 'composition_fixture', 'mode' => 'agent', 'free_edit' => true, 'part_swap' => ['pictures' => $swap['pictures']]]]);
+        $conversations = app(\App\Services\Create\ConversationService::class);
+        $this->assertTrue($conversations->autoRunEligible($this->staff, $c, $quote));
+        $quote->payload_json = ['kind' => 'composition_fixture', 'mode' => 'agent', 'free_edit' => true];
+        $this->assertFalse($conversations->autoRunEligible($this->staff, $c, $quote));
+    }
+
     public function test_a_launch_vault_limits_which_templates_can_be_used(): void
     {
         config(['create.templates_public' => true]);

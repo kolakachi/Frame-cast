@@ -18,9 +18,10 @@ class VoiceSwap
      *
      * @return array{old_src: string, old_lines: list<string>, new_lines: list<string>}|null
      */
-    public static function plan(object $c, ?object $base, ?array $plan, array $planMedia, array $settings, bool $step): ?array
+    /** $withParts: the voice is one part of a swap (PartSwap) that also sets text, colours or pictures. */
+    public static function plan(object $c, ?object $base, ?array $plan, array $planMedia, array $settings, bool $step, bool $withParts = false): ?array
     {
-        if (! $base || ! $plan || $step || ($plan['look_first'] ?? false) || ($plan['planner_task'] ?? null) !== 'edit') return null;
+        if (! $base || ! $plan || $step || ($plan['look_first'] ?? false) || (! $withParts && ($plan['planner_task'] ?? null) !== 'edit')) return null;
         if (($settings['output_kind'] ?? 'video') !== 'video' || ($settings['video_mode'] ?? 'composition') !== 'composition') return null;
         // Exactly one new item, and it is a voice.
         if (count($planMedia) !== 1 || ! in_array($planMedia[0]['kind'] ?? '', self::KINDS, true)) return null;
@@ -34,7 +35,8 @@ class VoiceSwap
         if (! $old || count($old) !== count($new)) return null;
         // The planner names the parts a change alters; only a change to the voice alone is swapped. (The on-screen copy
         // field is not used: change plans wrote notes into it, 2026-10-08.)
-        if (($plan['change_touches'] ?? null) !== ['voice']) return null;
+        $touches = (array) ($plan['change_touches'] ?? []);
+        if ($withParts ? (! in_array('voice', $touches, true) || array_diff($touches, PartSwap::TOUCHES)) : $touches !== ['voice']) return null;
         // Beat names are not compared: a swap keeps the version exactly, and re-plans rename beats (brief 2, 2026-10-08).
         // A swap that could not fit a line for this plan goes to the builder instead (any other failure may simply retry).
         if (DB::table('composition_runs')->where('conversation_id', $c->id)->where('input_json->plan->plan_id', $plan['plan_id'] ?? '')

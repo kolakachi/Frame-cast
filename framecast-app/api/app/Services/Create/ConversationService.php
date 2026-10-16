@@ -399,11 +399,30 @@ class ConversationService
                     if (isset($policy['plan_media'])) $policy['plan_media'] = ['credits' => $mediaEstimate, 'cost_limit_microusd' => $mediaEstimate * 4000, 'max_calls' => count($planMedia), 'total_credits' => $mediaEstimate] + $policy['plan_media'];
                     $mediaCeiling = $realMediaCeiling = $mediaEstimate;
                 }
+                // A change that only swaps parts (text and colour values, the user's photos, the voice) skips the builder too:
+                // the values and pictures are baked into the version here, and only a new voice is bought (PartSwap).
+                $partSwap = $paid ? PartSwap::forQuote($c, $base, $plan, $planMedia ?? [], $settings, (bool) $step, $files) : null;
+                if ($partSwap) {
+                    unset($policy['agent'], $policy['critic']);
+                    if ($partSwap['free']) {
+                        // Nothing to buy: a re-render of the swapped version, like a free edit.
+                        $policy = ['render' => ['provider' => 'offline', 'model' => 'hyperframes-0.8.164', 'credits' => 0, 'cost_limit_microusd' => 0, 'max_calls' => 1]];
+                        $planMedia = []; $mediaEstimate = 0; $mediaCeiling = $realMediaCeiling = 0; $voiceSwap = null;
+                    } else {
+                        $voiceSwap = $partSwap['voice_swap'];
+                        if (isset($policy['plan_media'])) $policy['plan_media'] = ['credits' => $mediaEstimate, 'cost_limit_microusd' => $mediaEstimate * 4000, 'max_calls' => count($planMedia), 'total_credits' => $mediaEstimate] + $policy['plan_media'];
+                        $mediaCeiling = $realMediaCeiling = $mediaEstimate;
+                    }
+                }
                 $payload = ['kind' => 'composition_fixture', 'conversation_id' => $id, 'version' => $version,
                     'base_revision_id' => $c->head_revision_id, 'messages' => $messages, 'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->orderBy('asset_id')->get(['asset_id','purpose'])->all(),
                     'execution_policy' => $policy, 'pilot_budget_id'=>$paid ? config('create.pilot_budget_id') : null,
-                    'input_files' => $files, 'base_bundle' => $base ? json_decode($base->bundle_json, true) : null,
-                    'base_bundle_hash' => $base?->bundle_hash,
+                    'input_files' => $files, 'base_bundle' => $partSwap ? $partSwap['bundle'] : ($base ? json_decode($base->bundle_json, true) : null),
+                    'base_bundle_hash' => $partSwap ? hash('sha256', json_encode($partSwap['bundle'])) : $base?->bundle_hash,
+                    // The version's own text-off-frame findings, so the swap's note names only what the new words broke.
+                    ...($partSwap ? ['part_swap' => ['values' => $partSwap['values'], 'pictures' => $partSwap['pictures'], 'voice' => ! $partSwap['free'],
+                        'base_edges' => array_values(array_map(fn ($e) => ['selector' => $e['selector'] ?? '', 'message' => $e['message'] ?? ''], (array) ($baseMeta['delivery_checks']['edges'] ?? [])))]] : []),
+                    ...($partSwap && $partSwap['free'] ? ['free_edit' => true, 'edit_values' => $partSwap['values'], 'source_revision_id' => $c->head_revision_id] : []),
                     'base_review' => $baseMeta['creative_review'] ?? null,
                     'media_input'=>$mediaInput,
                     'voice_swap'=>$voiceSwap,
@@ -438,9 +457,12 @@ class ConversationService
     public function autoRunEligible(User $user, object $c, ApiQuote $quote): bool
     {
         $p = $quote->payload_json;
-        if (($p['kind'] ?? '') !== 'composition_fixture' || ! empty($p['free_edit'])) return false;
+        // A free swap (PartSwap: new values and photos, nothing bought) runs like any small job; a plain free edit has its own button.
+        $freeSwap = ! empty($p['free_edit']) && ! empty($p['part_swap']);
+        if (($p['kind'] ?? '') !== 'composition_fixture' || (! empty($p['free_edit']) && ! $freeSwap)) return false;
         if ((int) $quote->credits_max > (int) config('create.auto_run_credits', 15)) return false;
-        if ($p['mode'] === 'agent' && ! $c->provider_consent_at) return false;
+        // Nothing of a free swap goes to an AI provider, so it needs no provider consent.
+        if ($p['mode'] === 'agent' && ! $freeSwap && ! $c->provider_consent_at) return false;
         $today = DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->whereNotNull('input_json->auto_run')->count();
         return $today < (int) config('create.auto_run_daily_limit', 20);
     }

@@ -452,7 +452,7 @@ class PlanService
             'on_screen_copy' => $s['callouts'], 'narration' => $s['narration'] ?? [], 'voice' => $s['voice'] ?? null, 'kept_as_is' => $s['kept'],
             'choices' => collect($p['decisions'])->map(fn ($d) => ['question' => $d['question'], 'chosen' => collect($d['options'])->firstWhere('id', $s['choices'][$d['id']] ?? null)['label'] ?? null])->all(),
             'media' => self::selectedMedia([...$p, 'requirements' => $activeRequirements]), 'left_out' => $p['left_out'], 'style_route' => $s['style'] ?? $p['style'] ?? null, 'colour_treatment' => $p['colour_treatment'] ?? null, 'signature_move' => $p['signature_move'] ?? '', 'look_first' => (bool) ($s['look_first'] ?? $p['look_first'] ?? false), 'video_tier' => $s['video_tier'] ?? 'standard',
-            'agreement' => $s['agreement'] ?? $p['agreement'] ?? null, 'planner_task' => $p['planner_task'] ?? null, 'change_touches' => $p['change_touches'] ?? null]
+            'agreement' => $s['agreement'] ?? $p['agreement'] ?? null, 'planner_task' => $p['planner_task'] ?? null, 'change_touches' => $p['change_touches'] ?? null, 'swap' => $p['swap'] ?? null]
             // What the build and its checks follow from a reference and the 3D route; without these the builder never sees them.
             + array_intersect_key($p, array_flip(['reference_decisions', 'reference_systems', 'reference_pacing', 'reference_sound', 'reference_match', 'reference_layout', 'reference_unaccounted', 'mascot3d', 'props3d', 'concept', 'playbook', 'motion_voice']))
             // From scratch: the playbook, concept and motion voice as the build's pinned guide.
@@ -731,9 +731,12 @@ class PlanService
             'messages' => DB::table('create_messages')->where('conversation_id', $c->id)->orderBy('sequence')->get(['role', 'content', 'sequence'])->map(fn ($m) => (array) $m)->all(),
             // Text and colour fields of the current version; a request that only changes these is free.
             'current_variables' => ($head = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('bundle_json') : null)
-                ? array_map(fn ($d) => ['id' => $d['id'], 'type' => $d['type'], 'label' => $d['label'] ?? $d['id'], 'current' => $d['default'] ?? null],
+                ? array_map(fn ($d) => ['id' => $d['id'], 'type' => $d['type'], 'label' => $d['label'] ?? $d['id'], 'current' => $d['default'] ?? null,
+                    ...($d['type'] === 'string' ? ['max_chars' => PartSwap::maxChars((string) ($d['default'] ?? ''))] : [])],
                     array_values(array_filter(CompositionVariables::declarations((string) (json_decode($head, true)['index.html'] ?? '')), fn ($d) => in_array($d['type'] ?? '', ['string', 'color'], true))))
                 : [],
+            // The pictures of the current version, so a change that only puts the user's photos in their slots is a swap.
+            'current_pictures' => $head ? PartSwap::described(PartSwap::pictures(json_decode($head, true) ?: []), (int) $user->workspace_id) : [],
             // Voices the narration may use: the catalogue by character, plus the workspace's own clone.
             'voices' => array_merge(array_map(fn ($k) => ['key' => $k, 'character' => \App\Services\Generation\TTS\GeminiVoices::VOICES[$k], 'gender' => \App\Services\Generation\TTS\GeminiVoices::gender($k)], array_keys(\App\Services\Generation\TTS\GeminiVoices::VOICES)),
                 \Illuminate\Support\Facades\Schema::hasTable('voice_profiles') && DB::table('voice_profiles')->where('workspace_id', $user->workspace_id)->where('is_cloned', true)->exists() ? [['key' => 'clone', 'character' => "The workspace's own cloned voice", 'gender' => '']] : []),
@@ -1163,6 +1166,9 @@ class PlanService
         $plan['new_wording'] = self::newWording([...$callouts, ...$narration], $ctx);
         // On a change, the parts it alters (owner's component rule); unknown or empty means "treat as a full edit".
         $plan['change_touches'] = array_values(array_unique(array_intersect(array_map(fn ($t) => is_string($t) ? strtolower(trim($t)) : '', (array) ($raw['change_touches'] ?? [])), ['voice', 'music', 'sound_effects', 'on_screen_words', 'pictures', 'timing', 'people'])));
+        // A change that only swaps parts (text and colour values, the user's photos in picture slots, the voice) is made
+        // without the builder (PartSwap); checked here against the real version and the attached files.
+        $plan['swap'] = PartSwap::normalize($raw['swap'] ?? null, $ctx, $plan['change_touches']);
         // What is being made (M) and what sets the timing (B4), from what the plan actually makes.
         $plan['video_type'] = self::videoType($plan, $ctx);
         if (collect($plan['media'])->contains(fn ($m) => in_array($m['kind'] ?? '', ['ugc_take', 'talking_take'], true)) && is_array($plan['creative_intent'] ?? null))

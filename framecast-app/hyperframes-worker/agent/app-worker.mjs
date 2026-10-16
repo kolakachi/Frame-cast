@@ -32,6 +32,7 @@ import {apiOriginAllowed} from './api-origin.mjs';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {swapSummary} from './swap-summary.mjs';
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const base=process.env.CREATE_API_URL??'http://localhost:8000';
 const url=new URL(base);
@@ -397,7 +398,7 @@ async function execute(run){
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js'&&n!=='wyv-illos.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
-  const result=freeEdit?{status:'preview_ready',summary:'Updated '+Object.keys(run.input.edit_values??{}).length+' field(s). Free: no model call, one render.',bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?fitSummary(agentResult.state.summary??'',cutNote(agentResult.state.edits)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
+  const result=freeEdit?{status:'preview_ready',summary:swapSummary(run.input,deliveryChecks),bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?fitSummary(agentResult.state.summary??'',cutNote(agentResult.state.edits)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
   // What was heard settles the requirements that wait for listening, and its problems join Before you post.
   if(audioReview){
@@ -450,3 +451,4 @@ process.exitCode=await runWorkerLoop({shutdown,
  claim:()=>diskGate.claim(async()=>verifyClaimAssignment(await request('claim',identity??{}),identity)),execute,
  once:process.argv.includes('--once'),onError:e=>console.error(e.message),
 });
+
