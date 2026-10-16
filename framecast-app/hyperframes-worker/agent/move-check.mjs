@@ -7,7 +7,7 @@ export const RECIPES={words:'words',write_on:'writeOn',iris:'iris',toss:'toss',p
  camera:'camera',flood:'flood',rise:'rise',edges:'edges',
  push_in:'pushIn',pull_back:'pullBack',dutch:'dutch',cold_open:'coldOpen',text_mask:'textMask',ramp_freeze:'rampFreeze',hidden_cut:'hiddenCut',odometer:'odometer',gauge:'gauge',streak:'streak',
  smash:'smash',split:'split',stack:'stack',parallax:'parallax',
- blur_in:'blurIn',letters:'letters',rack_focus:'rackFocus',glow:'glow',heart_burst:'heartBurst',reply_sticker:'replySticker',stitch:'stitch',product_turn:'productTurn',spotlight:'spotlight',explode:'explode',
+ blur_in:'blurIn',letters:'letters',rack_focus:'rackFocus',glow:'glow',heart_burst:'heartBurst',reply_sticker:'replySticker',stitch:'stitch',product_turn:'productTurn',spotlight:'spotlight',explode:'explode',split_flap:'splitFlap',mesh_gradient:'mesh',
  tear:'tear',sticker:'sticker',cards:'cards',confetti:'confetti',circle_text:'circleText',book:'book',slides:'slides',page_focus:'pageFocus'};
 
 /** Each required move with what it reproduces: Map(move -> [labels]). */

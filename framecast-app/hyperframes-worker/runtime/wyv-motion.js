@@ -735,6 +735,77 @@
       return tl;
     },
 
+    /* ---- Looks (kit/looks.md): pieces a named style needs. ---- */
+
+    /* splitFlap (mid, ~1 s + .04 s a tile): a departures board: each tile flips through a few seeded characters and
+       lands on its own, with a flap falling over the top half each time. el is an empty box; opts.text (lines with \n),
+       cols (the widest line), step (.07 s a flip), flips (6), stagger (.04 s a tile), seed, colors {tile, text, accent}.
+       Tile size follows el's font-size (a tile is .78em by 1.15em). Seek-safe: every character is its own layer. */
+    splitFlap: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var lines = String(opts.text == null ? (el.textContent || '') : opts.text).toUpperCase().split('\n');
+      var cols = opts.cols || Math.max.apply(null, lines.map(function (l) { return l.length; }));
+      var rnd = seeded(opts.seed || 13), step = opts.step || 0.07, flips = opts.flips == null ? 6 : opts.flips, stagger = opts.stagger == null ? 0.04 : opts.stagger;
+      var col = opts.colors || {}, tileBg = col.tile || '#1c1c1f', ink = col.text || '#f4f1ea';
+      var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      if (!el._wmFlap) {
+        el.textContent = '';
+        el._wmFlap = [];
+        lines.forEach(function (line) {
+          var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:.06em;margin-bottom:.06em';
+          for (var c = 0; c < cols; c++) {
+            var ch = line.charAt(c) || ' ', tile = document.createElement('div');
+            tile.style.cssText = 'position:relative;width:.78em;height:1.15em;background:' + tileBg + ';border-radius:.08em;overflow:hidden;color:' + ink + ';text-align:center;line-height:1.15em;box-shadow:inset 0 -.04em 0 rgba(0,0,0,.35)';
+            var seq = ch === ' ' ? [' '] : [];
+            if (ch !== ' ') { for (var k = 0; k < flips; k++) seq.push(chars.charAt(Math.floor(rnd() * chars.length))); seq.push(ch); }
+            var layers = seq.map(function (s, k) { var l = document.createElement('span'); l.textContent = s; l.style.cssText = 'position:absolute;left:0;right:0;top:0;bottom:0;visibility:' + (k === 0 && ch === ' ' ? 'visible' : 'hidden'); tile.appendChild(l); return l; });
+            var flap = document.createElement('div'); flap.style.cssText = 'position:absolute;left:0;right:0;top:0;height:50%;background:' + tileBg + ';transform-origin:50% 100%;visibility:hidden';
+            var seam = document.createElement('div'); seam.style.cssText = 'position:absolute;left:0;right:0;top:50%;height:.03em;background:rgba(0,0,0,.55)';
+            tile.appendChild(flap); tile.appendChild(seam); row.appendChild(tile);
+            el._wmFlap.push({ layers: layers, flap: flap, blank: ch === ' ', accent: col.accent && /[0-9]/.test(ch) });
+          }
+          el.appendChild(row);
+        });
+      }
+      el._wmFlapTimes = [];
+      el._wmFlap.forEach(function (t, i) {
+        if (t.blank) return;
+        var t0 = at + i * stagger;
+        t.layers.forEach(function (l, k) {
+          var tk = t0 + k * step;
+          tl.set(l, { autoAlpha: 1 }, tk);
+          if (k > 0) tl.set(t.layers[k - 1], { autoAlpha: 0 }, tk);
+          if (k > 0) tl.fromTo(t.flap, { autoAlpha: 1, scaleY: 1, filter: 'brightness(1.4)' }, { scaleY: 0, filter: 'brightness(.7)', duration: step * 0.9, ease: 'power1.in', immediateRender: false }, tk - step)
+            .set(t.flap, { autoAlpha: 0 }, tk);
+        });
+        tl.set(t.layers[0], { autoAlpha: 0 }, 0).set(t.layers[0], { autoAlpha: 1 }, t0);
+        el._wmFlapTimes.push(t0 + (t.layers.length - 1) * step);
+      });
+      return tl;
+    },
+
+    /* mesh (low, the whole hold): soft colour fields drift and blend behind the content, like a mesh gradient.
+       el is an empty full-frame layer under the content. opts: colors (3-4, the first is the base), duration (8),
+       seed, scale (field size as a share of the frame's longer side, .9). Radial fields, so dark ones do not band. */
+    mesh: function (tl, el, at, opts) {
+      el = $(el); opts = opts || {};
+      var stage = stageOf(opts), W = stage.offsetWidth || 1080, H = stage.offsetHeight || 1920, L = Math.max(W, H);
+      var cols = opts.colors || ['#1b1f6b', '#7b2ff7', '#f107a3', '#26c6da'], rnd = seeded(opts.seed || 21), d = opts.duration || 8, sz = L * (opts.scale || 0.9);
+      if (!el._wmMesh) {
+        el.style.background = cols[0]; el.style.overflow = 'hidden';
+        el._wmMesh = cols.slice(1).concat(cols.length < 4 ? [cols[1]] : []).map(function (c) {
+          var b = document.createElement('div');
+          b.style.cssText = 'position:absolute;left:0;top:0;width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;background:radial-gradient(circle at 50% 50%,' + c + ' 0%,' + c + 'cc 25%,' + c + '00 68%)';
+          el.appendChild(b); return b;
+        });
+      }
+      el._wmMesh.forEach(function (b, i) {
+        var x0 = rnd() * W - sz / 2, y0 = rnd() * H - sz / 2, x1 = rnd() * W - sz / 2, y1 = rnd() * H - sz / 2;
+        tl.fromTo(b, { x: x0, y: y0, scale: 0.85 + rnd() * 0.3 }, { x: x1, y: y1, scale: 0.85 + rnd() * 0.3, duration: d, ease: 'sine.inOut', immediateRender: true }, at);
+      });
+      return tl;
+    },
+
     /* circleText: a line of text set around a circle (a stamp, a badge, "MADE TO MOVE · "), turning. el is an empty
        square box; opts: text, size (font px, 34), spin (degrees over duration, 120), duration (4), font. */
     circleText: function (tl, el, at, opts) {
@@ -1092,6 +1163,8 @@
     pop: function (a) { return [['pop', a[2] + 0.04]]; },
     glow: function (a) { return [['chime', a[2] + 0.05]]; },
     heartBurst: function (a) { return [['pop', a[2] + 0.02]]; },
+    // One soft tick as each tile lands (the sound pass thins ticks that crowd each other).
+    splitFlap: function (a) { var e = $(a[1]); return ((e && e._wmFlapTimes) || []).map(function (t) { return ['tick', t]; }); },
     spotlight: function (a) { return [['whoosh', a[2] + 0.1]]; },
     explode: function (a) { return [['whoosh-big', a[2] + 0.05]]; },
     replySticker: function (a) { return [['pop', a[2] + 0.06]]; },
@@ -1135,7 +1208,7 @@
     stack: function (a) { var n = all(a[1]).length, t = a[2], e = o(a, 3).each || 0.8, out = []; for (var i = 0; i < n; i++) out.push(['tick', (Array.isArray(t) ? t[i] : (t || 0) + i * e) + 0.05]); return out; },
   };
   var OPTS = { tear: 3, sticker: 3, cards: 3, confetti: 3, book: 3, slides: 3, pageFocus: 5, device: 3, flood: 3, iris: 3, pop: 3, stamp: 3, press: 3, toss: 3, giantWipe: 4, camera: 4, fly: 4, layout: 4, edges: 5, through: 1,
-    glow: 3, spotlight: 3, explode: 3, heartBurst: 3, replySticker: 3, stitch: 4, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
+    glow: 3, splitFlap: 3, spotlight: 3, explode: 3, heartBurst: 3, replySticker: 3, stitch: 4, pullBack: 3, dutch: 3, coldOpen: 3, rampFreeze: 3, hiddenCut: 5, odometer: 4, gauge: 4, streak: 3, smash: 4, split: 4, stack: 3 };
   var cues = [];
   Object.keys(CUES).forEach(function (name) {
     var fn = WM[name];

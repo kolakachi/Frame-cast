@@ -64,6 +64,8 @@ class MotionMoves
         'product_turn' => 'a product photo turns a few degrees in 3D with a sheen sliding across it, as on a turntable',
         'spotlight' => 'the stage goes dark and a pool of light travels in and lands on the product',
         'explode' => 'the ingredients or parts burst out of the product and settle around it with labels',
+        'split_flap' => 'a departures board flips through letters and lands on the words or numbers',
+        'mesh_gradient' => 'soft colour fields drift and blend behind the content, like a mesh gradient',
         'custom' => 'none of these: built by hand from the description',
     ];
 
@@ -78,6 +80,7 @@ class MotionMoves
         'odometer' => ['mid', 1.0], 'gauge' => ['mid', 1.2], 'streak' => ['high', 0.35],
         'smash' => ['high', 0.05], 'split' => ['mid', 0.7], 'stack' => ['mid', 0.4], 'parallax' => ['low', 3.0],
         'blur_in' => ['low', 0.7], 'letters' => ['mid', 0.8], 'rack_focus' => ['low', 0.6], 'glow' => ['mid', 0.5],
+        'split_flap' => ['mid', 1.2], 'mesh_gradient' => ['low', 8.0],
         'product_turn' => ['low', 2.4], 'spotlight' => ['mid', 1.2], 'explode' => ['high', 0.9],
         'heart_burst' => ['mid', 1.6], 'reply_sticker' => ['mid', 0.5], 'stitch' => ['high', 0.55],
         'tear' => ['high', 0.7], 'sticker' => ['mid', 0.45], 'cards' => ['high', 1.0], 'confetti' => ['high', 1.6], 'circle_text' => ['low', 4.0],
@@ -96,7 +99,7 @@ class MotionMoves
      */
     public const BY_PURPOSE = [
         'a hook (the first seconds)' => ['cold_open', 'giant_wipe', 'stamp', 'smash', 'ramp_freeze', 'words', 'letters'],
-        'a number or a result' => ['odometer', 'count', 'gauge'],
+        'a number or a result' => ['odometer', 'count', 'gauge', 'split_flap'],
         'a list or steps' => ['stack', 'pop', 'toss', 'cards'],
         'a product, an app or a screen' => ['device', 'camera', 'cursor', 'press', 'morph', 'edges', 'rack_focus'],
         'a physical product hero shot' => ['spotlight', 'product_turn', 'explode', 'pull_back'],
@@ -104,7 +107,7 @@ class MotionMoves
         'a reveal or a payoff' => ['iris', 'pull_back', 'through', 'flood', 'text_mask'],
         'a change of topic' => ['whip', 'push', 'wipe', 'hidden_cut', 'streak'],
         'an emphasis word' => ['write_on', 'rise', 'text_mask', 'field', 'glow'],
-        'a calm or premium hold' => ['push_in', 'parallax', 'pull_back', 'blur_in', 'rack_focus'],
+        'a calm or premium hold' => ['push_in', 'parallax', 'pull_back', 'blur_in', 'rack_focus', 'mesh_gradient'],
         'feed-native social proof (a reply to a comment, a stitch, likes)' => ['reply_sticker', 'stitch', 'heart_burst'],
         'the close and call to action' => ['stamp', 'sticker', 'circle_text', 'field'],
     ];

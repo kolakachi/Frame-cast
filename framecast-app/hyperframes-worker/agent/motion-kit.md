@@ -67,6 +67,7 @@ When the plan names a move (plan.reference_systems[].move, reference_decisions[]
 ## More kits (attached when a video needs them; read one with the guidance action when it fits)
 - `kit/collage.md`: torn-paper cuts, die-cut stickers, rapid card montages, silver/ink/duotone/halftone prints, sunburst, confetti, circular badge text (a zine or sticker ad).
 - `kit/documents.md`: the user's own pages and slides shown as they look: pages turning like a book, a deck's slides, a camera move to the part being said.
+- `kit/looks.md`: recipes for 20 named looks (particles, liquid, holographic, neon, wireframe, glass, kinetic, isometric, clay, ascii, mesh, comic, split-flap, VHS, halftone, Bauhaus, pixel, blueprint, art deco, neo-brutalism); the ones a brief names are pinned.
 - `kit/product.md`: a product photo shot like a studio: glossy floor and shadow, a 2.5D turn with a sheen, a spotlight that finds it, ingredients exploding out with labels.
 - `kit/social.md`: feed-native ads: a reply-to-comment card, a stitch into a corner thumbnail, hearts from the like button, POV captions, and the registry's comment, chat, notes and notification pieces.
 
@@ -86,6 +87,10 @@ Type that arrives like a lens finding it. Premium and calm work; use one of thes
 
 ## Social-native (read kit/social.md)
 - `WM.replySticker`, `WM.stitch`, `WM.heartBurst`: a reply-to-comment card, a stitch into a corner thumbnail, hearts from the like button. The card patterns, the registry's feed pieces and the safe zones are in kit/social.md.
+
+## Looks pieces
+- `WM.splitFlap(tl, '#board', at, {text: 'SALE\nSTARTS', cols: 8})` (mid · ~1 s): a departures board flips through letters and lands on the words, one tick per tile; tile size follows the box's font-size. Approved words and numbers only.
+- `WM.mesh(tl, '#bg', at, {colors: [base, c1, c2, c3], duration: 8})` (low · the whole hold): soft colour fields drift and blend behind the content, like a mesh gradient. `#bg` is an empty full-frame layer under everything.
 
 ## Illustrations (wyv-illos.js)
 25 small flat pictures drawn in code, with dark outlines in the brand's colours, each animating itself (1-2 s). Load `wyv-illos.js` after GSAP, give each an empty square box (240-520 px) and call `WI.<name>(tl, '#box', at, {palette})`. The palette defaults to `--color_text`, `--color_accent` and `--color_background`; pass `{ink, accent, support, paper, pop}` to set roles.

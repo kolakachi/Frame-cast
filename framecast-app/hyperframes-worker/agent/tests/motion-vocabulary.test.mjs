@@ -118,3 +118,16 @@ test('the product moves: floor adds a shadow and a mirror, turn and explode twee
  assert.ok(calls.some(c=>c[0]==='fromTo'&&c[3]['--wm-sx']==='540px'),'the light lands on the product');
  assert.ok(calls.some(c=>c[0]==='to'&&c[1]===light&&c[2].autoAlpha===0),'and lifts');
 });
+
+test('the look pieces: split-flap lands every tile on its letter with a tick time each; mesh drifts its fields', () => {
+ const {WM,tl,calls,mk}=kit();
+ for(const id of ['split_flap','mesh_gradient'])assert.equal(typeof WM[RECIPES[id]],'function',id);
+ const board=mk();WM.splitFlap(tl,board,1,{text:'AB\nC',cols:2,flips:2});
+ assert.equal(board._wmFlap.length,4,'two rows of two tiles');
+ assert.equal(board._wmFlapTimes.length,3,'blank tiles do not flip');
+ const finals=board._wmFlap.filter(t=>!t.blank).map(t=>t.layers.at(-1).textContent);
+ assert.equal(finals.join(''),'ABC');
+ const bg=mk();WM.mesh(tl,bg,0,{colors:['#000','#f00','#0f0','#00f'],duration:6,stage:{offsetWidth:1080,offsetHeight:1920}});
+ assert.equal(bg._wmMesh.length,3);
+ assert.ok(calls.some(c=>c[0]==='fromTo'&&c[3].duration===6));
+});

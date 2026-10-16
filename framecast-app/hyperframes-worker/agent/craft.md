@@ -32,7 +32,7 @@ The approved user intent takes precedence over stylistic recipes. Infer the outp
 - One camera: pushes, pans and zooms go on one container, and a handoff starts where the last move ended, never snapping back to 1.0 at a scene change. Never zoom in and straight back out.
 - Hand off with shared elements when the plan allows: what leaves becomes what arrives (a button grows into the page, a dot becomes the logo, a card flies into its slot), rather than a crossfade between unrelated scenes.
 - Something that appears in under 0.3 s reads as a pop: cut to it, or fade over at least 0.3 s.
-- Unless the approved plan or reference calls for them, avoid the looks that mark a video as generated: particle bursts, shockwave rings, lens flares, camera shake, RGB split, neon glows, grid floors, flashing backgrounds, repeated bouncing. Emphasise a word with colour, weight or scale, never a highlight box behind it (it reads as a text selection).
+- Unless the approved plan, the reference or a look the user names (kit/looks.md) calls for them, avoid the looks that mark a video as generated: particle bursts, shockwave rings, lens flares, camera shake, RGB split, neon glows, grid floors, flashing backgrounds, repeated bouncing. Emphasise a word with colour, weight or scale, never a highlight box behind it (it reads as a text selection).
 - Before hand-building a named visual (device frame, captions, CTA, counter, chart, chat UI, transition, texture, mascot), search the registry with the catalog action and wire the item (kit/registry.md).
 
 ## Character (when there is one)
