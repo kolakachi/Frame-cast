@@ -342,3 +342,18 @@ test('without a checked draft an unexpected error still fails',async t=>{
  const tools={check:async()=>({ok:true}),snapshot:async()=>({ok:true,paths:['frame.png']}),timeline:async()=>{throw Error('Renderer crashed');}};
  const h=await harness(t,[action({type:'timeline'})],{tools});assert.equal((await h.run()).status,'failed');
 });
+test('after a clean pass and two polish rounds, a self-started edit is refused and the builder is told to finish (fix A)',async t=>{
+ const p=(a,b)=>action({type:'patch',path:'index.html',before:a,after:b});
+ const h=await harness(t,[p('Original','v1'),action({type:'preview',times:[1]}),p('v1','v2'),action({type:'preview',times:[1]}),p('v2','v3'),action({type:'preview',times:[1]}),p('v3','v4'),action({type:'finish',summary:'Done'})]);
+ const out=await h.run();
+ assert.equal(out.status,'preview_ready');
+ assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>v3</h1>','the fourth edit was not applied');
+ assert.match(h.seen[7].prompt,/passed its checks \(version 1\) and has had 2 rounds of polish since/);
+});
+test('a failed check reopens edits after the polish allowance',async t=>{
+ let n=0;const tools={check:async()=>(++n===3?{ok:false,errors:[{code:'x',message:'broken'}]}:{ok:true}),snapshot:async()=>({ok:true,paths:['f.png']})};
+ const p=(a,b)=>action({type:'patch',path:'index.html',before:a,after:b});
+ const h=await harness(t,[p('Original','v1'),action({type:'preview',times:[1]}),p('v1','v2'),action({type:'preview',times:[1]}),p('v2','v3'),action({type:'preview',times:[1]}),p('v3','v4'),action({type:'preview',times:[1]}),action({type:'finish',summary:'Done'})],{tools});
+ await h.run();
+ assert.equal(await readFile(h.root+'/index.html','utf8'),'<h1>v4</h1>','a failed check is a finding: the fix is taken');
+});

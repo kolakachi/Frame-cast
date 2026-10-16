@@ -13,6 +13,7 @@ import {moveFindings} from './move-check.mjs';
 import {finishFindings} from './finish-lint.mjs';
 import {trimStale} from './history-trim.mjs';
 import {unansweredNotes} from './change-notes.mjs';
+import {missingIdWarning} from './missing-ids.mjs';
 import {repeatFindings} from './teach-check.mjs';
 import {layoutFindings} from './layout-check.mjs';
 import {numberFindings} from './grounding-check.mjs';
@@ -23,6 +24,8 @@ import {digest} from './workspace.mjs';
 export const CURRENT_TEXT_BYTES=20000;
 // Preview turns whose frames stay in the history before the older ones are dropped together.
 export const KEPT_FRAME_TURNS=4;
+// Fix A: passing previews allowed after the first clean pass before the builder must finish (findings excepted).
+export const POLISH_ROUNDS=2;
 
 // One owner per local run. Production locking/leases belong to E2.
 export async function runAgent({stateFile,context,baseSources=null,workspace,provider,tools,skills='',limits={},signal,stopRequested=()=>false,initialTranscripts={},requireVisualReview=false,initialImage,onProgress=()=>{},onTrace=async()=>{}}) {
@@ -56,6 +59,13 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
   const boundedSignal=signal?AbortSignal.any([signal,timeout]):timeout;
   // The last draft that passed every check and was snapshotted, kept so a run
   // that hits its deadline or call limit mid-repair still delivers a valid video.
+  // Fix A: the polish allowance is spent once POLISH_ROUNDS passing previews followed a clean pass and no finding is open.
+  const polishSpent=()=>{
+    if(state.cleanPassRevision==null||(state.polishPreviews??0)<POLISH_ROUNDS)return false;
+    const open=state.checkedRevision===-1||(state.pacing?.findings||[]).some(f=>f.severity==='error')||state.sentBackRevision===state.revision
+      ||(state.critic?.verdict==='revise'&&(state.criticRevision??-1)>=state.cleanPassRevision);
+    return !open;
+  };
   const keepGood=async()=>{if(state.checkedRevision!==state.revision||state.snapshotRevision!==state.revision)return;const files={};for(const f of await workspace.sourceFiles()){try{files[f]=await workspace.read(f);}catch{/* not every draft has every file */}}state.lastGood={revision:state.revision,files};};
   // What the user reads about a delivered version: plain words, never scores, rounds or that a reviewer exists.
   // The technical reason is kept in internalNote for the trajectory and for us.
@@ -267,6 +277,11 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
       if(!tools.catalog)throw Error('The registry catalogue is not available in this run');
       result=await tools.catalog({query:action.query});
     }
+    else if((action.type==='write'||action.type==='patch')&&!String(action.path||'').startsWith('work/')&&polishSpent()) {
+      // Fix A (2026-10-16 proof: a blueprint build passed eight previews in a row while it kept tweaking): after a clean
+      // pass and POLISH_ROUNDS more passing previews, the builder finishes unless a real finding asks for a change.
+      result={ok:false,sourceUnchanged:true,error:'This draft passed its checks (version '+state.cleanPassRevision+') and has had '+state.polishPreviews+' rounds of polish since. Finish now: run visual_review if it is required, then finish. A change is only taken for a specific finding: a failed check, a reviewer directive, or a finish that was sent back.'};
+    }
     else if(action.type==='write'||action.type==='patch') {
       try {
         let text=action.content;
@@ -285,7 +300,10 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
         text=flight.text;
         await workspace.write(action.path,text);
         if(action.path.startsWith('work/'))result={written:action.path,note:'Scratch file; run it with the run action.'};
-        else {state.bundleHash=await workspace.fingerprint();state.revision++;result={revision:state.revision,...(flight.fixed.length?{fixed:flight.fixed}:{}),...(flight.warnings.length?{warnings:flight.warnings}:{})};
+        else {state.bundleHash=await workspace.fingerprint();state.revision++;
+          // Fix B: element ids the scripts use that no element has, named now instead of found by a failed preview.
+          if(/\.(html|js)$/.test(action.path))try{const files={};for(const f of ['index.html',...(await workspace.sourceFiles().catch(()=>[]))])if(/\.(html|js)$/.test(f)&&!/^(gsap|wyv-|barty-|three-)/.test(f)&&!(f in files))files[f]=await workspace.read(f).catch(()=>'');const w=files['index.html']?missingIdWarning(files):null;if(w)flight.warnings.push(w);}catch{/* a warning never blocks a write */}
+          result={revision:state.revision,...(flight.fixed.length?{fixed:flight.fixed}:{}),...(flight.warnings.length?{warnings:flight.warnings}:{})};
           // The file as it is now, so the next patch needs no read call (GTM-1: a third of one build's calls were read-backs).
           if(context.toolMode===true&&Buffer.byteLength(text)<=CURRENT_TEXT_BYTES)Object.assign(result,{path:action.path,current:text});}
       } catch(e) {
@@ -369,7 +387,9 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
-      if(result.ok){state.checkedRevision=state.revision;const pacing=await softFindings(result.pacing);state.pacing={revision:state.revision,findings:pacing};result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
+      if(result.ok){state.checkedRevision=state.revision;const pacing=await softFindings(result.pacing);state.pacing={revision:state.revision,findings:pacing};
+        // Fix A: a pass with no blocking finding starts the polish allowance; each later passing preview spends one.
+        if(!pacing.some(f=>f.severity==='error')){if(state.cleanPassRevision==null){state.cleanPassRevision=state.revision;state.polishPreviews=0;}else if(state.revision>state.cleanPassRevision)state.polishPreviews=(state.polishPreviews??0)+1;}result=await bounded(()=>tools.snapshot({times:action.times,signal:boundedSignal}));if(result.ok){state.snapshotRevision=state.revision;state.reviewImage=result.providerImage;state.lastSnapshot={reference_row:!!result.reference_row};await keepGood();result={...result,providerImage:undefined,...(pacing?.length?{pacing}:{})};}}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
     }
     else if(action.type==='check') {
@@ -434,17 +454,17 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
       // what fits, or say why none does), never forced.
       if(context.artExpected===true&&!state.artSearched&&!state.artNoticed&&tools.art){
         state.artNoticed=true;
-        result={ok:false,error:'Not finished: the brief asks for icons or 3D objects, and the art library was not searched. Search it with the art action (add 3d, line or filled) and use what fits, or finish again saying why nothing in it fits.'};
+        state.sentBackRevision=state.revision;result={ok:false,error:'Not finished: the brief asks for icons or 3D objects, and the art library was not searched. Search it with the art action (add 3d, line or filled) and use what fits, or finish again saying why nothing in it fits.'};
       } else
       // RD-13: an edit with several notes is answered note by note; sent back once when the list is short.
       if(unansweredNotes(action.summary,context.changeNotes).length&&!state.notesNoticed){
         state.notesNoticed=true;
-        result={ok:false,error:'Not finished: the user asked for '+context.changeNotes.length+' changes. End the summary with a list, one item per note in this order, each saying what changed (or why it did not).',notes:context.changeNotes};
+        state.sentBackRevision=state.revision;result={ok:false,error:'Not finished: the user asked for '+context.changeNotes.length+' changes. End the summary with a list, one item per note in this order, each saying what changed (or why it did not).',notes:context.changeNotes};
       } else
       // The user reviews the result: findings are notes on the version, never another round.
       if(open.length&&state.pacingNoticed!==key){
         state.pacingNoticed=key;
-        result={ok:false,error:'Not finished: this draft still has these findings. Fix them and check again, or finish again with a summary that says why each one is intentional.',findings:open.map(f=>({code:f.code,time:f.time,message:f.message,fixHint:f.fixHint}))};
+        state.sentBackRevision=state.revision;result={ok:false,error:'Not finished: this draft still has these findings. Fix them and check again, or finish again with a summary that says why each one is intentional.',findings:open.map(f=>({code:f.code,time:f.time,message:f.message,fixHint:f.fixHint}))};
       } else {
         if(open.length)state.pacingAccepted=open.map(f=>f.code);
         // Notes on the finished version: how closely each reference moment's slots were kept (exact copies only).
