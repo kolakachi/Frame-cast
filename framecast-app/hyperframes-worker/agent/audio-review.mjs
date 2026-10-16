@@ -18,10 +18,16 @@ const ONES=['zero','one','two','three','four','five','six','seven','eight','nine
 const TENS=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
 const say=n=>{if(n<20)return ONES[n];if(n<100)return TENS[Math.floor(n/10)]+(n%10?' '+ONES[n%10]:'');if(n<1000)return ONES[Math.floor(n/100)]+' hundred'+(n%100?' '+say(n%100):'');
  if(n<1e6)return say(Math.floor(n/1000))+' thousand'+(n%1000?' '+say(n%1000):'');return say(Math.floor(n/1e6))+' million'+(n%1e6?' '+say(n%1e6):'');};
-export const spoken=s=>String(s??'')
+export const spoken=s=>String(s??'').replace(/\bper\s+cent\b/gi,'percent')
  .replace(/\b([a-z0-9-]+)\.(com|co|io|ai|app|net|org|shop|store|uk|me)\b/gi,'$1 dot $2').replace(/(\w)\/(\w)/g,'$1 slash $2')
  .replace(/\$\s?(\d[\d,]*)/g,'$1 dollars').replace(/(\d),(\d{3})\b/g,'$1$2').replace(/%/g,' percent').replace(/&/g,' and ')
  .replace(/\b\d{1,9}\b/g,d=>say(Number(d)));
+// How people say numbers that read the same either way (CHECK-NUMBERS): a year as two pairs ("twenty twenty six"),
+// round hundreds as hundreds ("twelve hundred" for 1,200), "2x" as "two times". A second form of the script, so either way passes.
+export const naturalNumbers=s=>String(s??'')
+ .replace(/\b(\d{1,2}),?(\d)00\b(?![\d%])/g,(all,a,b)=>{const v=Number(a+b+'00');return v>=1100&&v<10000&&v%1000?say(Math.floor(v/100))+' hundred':all;})
+ .replace(/(^|[^$\d])\b(19|20)([1-9]\d)\b(?![\d%]|[,.]\d)/g,(all,pre,a,b)=>pre+say(Number(a))+' '+say(Number(b)))
+ .replace(/\b(\d+)x\b/gi,'$1 times');
 const norm=s=>spoken(s).toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s']/gu,' ').replace(/'/g,'').trim();
 export const tokens=text=>norm(text).split(/\s+/).filter(Boolean);
 const lev=(a,b)=>{const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;
@@ -165,7 +171,8 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
   const heardFile=await listen(wav);
   let words=(heardFile?.words||[]).map(w=>({text:w.text,start:+w.start,end:+w.end}));
   // The script as written and as the voice was asked to say it (pronunciations): whichever the voice matches better.
-  const forms=[heardFile?.script?.spoken,heardFile?.script?.written].filter(l=>Array.isArray(l)&&l.length);
+  const given=[heardFile?.script?.spoken,heardFile?.script?.written].filter(l=>Array.isArray(l)&&l.length);
+  const forms=[...given,...given.map(l=>l.map(naturalNumbers)).filter((l,i)=>l.join('\n')!==given[i].join('\n'))];
   const align=()=>forms.map(l=>alignScript(l,words)).sort((a,b)=>(b.coverage??0)-(a.coverage??0))[0]??null;
   let narration=forms.length?align():null;
   // A transcriber can drop a short phrase after a pause; a passage that seems missing is listened to again on its own
@@ -187,7 +194,7 @@ export async function listenToExport({file,html='',requirements=[],listen,ffmpeg
   const mix=mixFindings(await levelWindows(wav,ffmpeg),words,duration);
   const a={narration,narration_ok,sync:cueSync(html,words),mix,duration,names:saidAs(heardFile?.script?.names||[],words)};
   const found=problems(a);
-  return {words,duration,summary:{ok:!found.length,heard_words:words.length,...(narration?{script_coverage:narration.coverage,missing:narration.missing,line_starts:narration.lineStarts}:{}),
+  return {words,duration,summary:{ok:!found.length,heard_words:words.length,heard_text:tokens(words.map(w=>w.text).join(' ')).join(' ').slice(0,4000),...(narration?{script_coverage:narration.coverage,missing:narration.missing,line_starts:narration.lineStarts}:{}),
    sync:(a.sync||[]).slice(0,12),mix,names:a.names,problems:found},checks:heardChecks(requirements,a)};
  }finally{await rm(dir,{recursive:true,force:true});}
 }

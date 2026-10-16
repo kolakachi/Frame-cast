@@ -103,3 +103,15 @@ test('a saved pronunciation is held to what is heard: the right sound passes, a 
  assert.equal(saidAs(names,[w('into',1.6),w('WyvStudio',1.8)])[0].status,'unverified','the transcriber wrote the brand back');
  assert.equal(saidAs([{written:'Ledgerly',spoken:'ledger-lee'}],[w('Try',1),w('ledger',1.2),w('lee',1.5),w('free',1.8)])[0].status,'pass');
 });
+test('numbers match however they are said: years in pairs, round hundreds, 2x, per cent (CHECK-NUMBERS)',async()=>{
+ const {naturalNumbers}=await import('../audio-review.mjs');
+ const heard=t=>t.split(' ').map((x,i)=>({text:x,start:i*.4,end:i*.4+.3}));
+ const best=(s,h)=>Math.max(...[[s],[naturalNumbers(s)]].map(l=>alignScript(l,heard(h)).coverage));
+ assert.equal(best('Founded in 2026.','Founded in twenty twenty six.'),1);
+ assert.equal(best('Founded in 2026.','Founded in two thousand twenty six.'),1);
+ assert.equal(best('Get 1,200 credits.','Get twelve hundred credits.'),1);
+ assert.equal(best('Twice as fast, 2x the output.','Twice as fast, two times the output.'),1);
+ assert.equal(best('Save 25 per cent.','Save 25%.'),1);
+ assert.equal(best('Save twenty-five percent today.','Save 25% today.'),1,'Northside: the transcript wrote digits');
+ for(const s of ['Version 2026.5','$2026 total','2026% growth','Since 2005.'])assert.equal(naturalNumbers(s),s,'decimals, prices, percents and 2001-2009 keep one reading');
+});

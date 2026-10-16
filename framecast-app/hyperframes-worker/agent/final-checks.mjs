@@ -33,6 +33,32 @@ export async function flashFrames(file,duration,ffmpeg='ffmpeg'){
  return out.map(({time,diff})=>({time,diff}));
 }
 
+/**
+ * Hard light/dark switches: frame to frame, the whole picture's brightness jumps (cream to charcoal and back). A rule
+ * about change over time can't be judged from single frames (CHECK-SWITCH: "paper and charcoal hard switches on hits"
+ * failed as not seen on a video that switches on every beat), so the change is measured. Returns [{time, from, to}].
+ */
+export async function brightnessSwitches(file,duration,ffmpeg='ffmpeg'){
+ const S=32,N=S*S;
+ const {stdout}=await run(ffmpeg,['-hide_banner','-loglevel','error','-i',file,'-an','-vf',`scale=${S}:${S},format=gray`,'-f','rawvideo','-'],{timeout:180000,maxBuffer:128*1024*1024,encoding:'buffer'});
+ const count=Math.floor(stdout.length/N);if(count<2)return [];
+ const fps=duration>0?count/duration:24;
+ const mean=Array.from({length:count},(_,i)=>{let s=0;for(let k=i*N;k<(i+1)*N;k++)s+=stdout[k];return s/N;});
+ return switchesIn(mean,fps);
+}
+
+/** The switches in a brightness series: a jump of at least 60 (of 255) between neighbouring frames, light to dark or back. */
+export function switchesIn(mean,fps){
+ const out=[];
+ for(let n=1;n<mean.length;n++){const a=mean[n-1],b=mean[n];
+  if(Math.abs(b-a)>=60&&!(out.length&&n-out.at(-1).frame<=2))out.push({frame:n,time:+(n/fps).toFixed(2),from:a>b?'light':'dark',to:a>b?'dark':'light'});}
+ return out.map(({time,from,to})=>({time,from,to}));
+}
+
+/** A rule about the picture switching between light and dark ("paper and charcoal hard switches", "flips to black"). */
+export const LIGHT_DARK_SWITCH=/\b(switch\w*|flip\w*|alternat\w*|swap\w*|toggl\w*|invert\w*|hard cuts?)\b/i;
+export const LIGHT_DARK_WORDS=/\b(light|dark|paper|charcoal|cream|black|white|bright|ink|background|field|colou?rs?|invert\w*|day|night)\b/i;
+
 /** Blank picture nobody asked for: anything but a fade out at the very end (the opening is the thumbnail: no black). */
 export function unintendedBlanks(spans,duration){
  return spans.filter(s=>!(s.start<=0.05&&s.end<=0.2)&&!(duration&&s.end>=duration-0.05&&s.end-s.start<=0.6));
@@ -74,14 +100,51 @@ const at=t=>Number.isFinite(t)?'At '+Number(t).toFixed(1)+' s: ':'';
 /** What the final verdict hears from the listening check's summary (names included: GTM-1 found them dropped here). */
 export function audioForVerdict(summary){
  if(!summary)return null;
- return {script_coverage:summary.script_coverage,missing:summary.missing,music:summary.mix?.music===true,names:summary.names||[],...(Number.isFinite(summary.heard_words)?{heard_words:summary.heard_words}:{})};
+ return {script_coverage:summary.script_coverage,missing:summary.missing,music:summary.mix?.music===true,names:summary.names||[],...(Number.isFinite(summary.heard_words)?{heard_words:summary.heard_words}:{}),
+  ...(typeof summary.heard_text==='string'?{heard_text:summary.heard_text}:{})};
+}
+
+/**
+ * A rule about what is said, settled by ear, not by sight (REQ-SPOKEN: "Closing line says 'Start at WyvStudio'" was blocked
+ * as not seen on a voice-only version that says it, 2026-10-14). A quoted phrase the voice should say passes when it is
+ * heard, or when it is in the script and no missing passage covers it; "the URL is never spoken" fails only when the
+ * address is heard. Null when the rule is not about speech.
+ */
+export function spokenRule(item,{audio,narration=[],onScreen=[],key}){
+ const never=/\b(never|not|no|without)\b[^.;]{0,30}\b(spoken|speaks?|said|says?|aloud|read out)\b|\b(spoken|said|read out)\b[^.;]{0,12}\b(never|not)\b/i;
+ if(never.test(item)&&/\b(url|web ?address|website|domain|link)\b|\b[a-z0-9-]+\.(com|co|io|ai|app|net|org|shop)\b/i.test(item)){
+  if(!audio||typeof audio.heard_text!=='string')return {status:'unverified',message:'The final audio could not be listened to.'};
+  const domain=/\b([a-z0-9-]+)\.(com|co|io|ai|app|net|org|shop)\b/i.exec(item);
+  const heard=` ${audio.heard_text} `;
+  const spokenUrl=/ (dot|www|slash) /.test(heard)&&(!domain||heard.includes(' '+key(domain[1])+' '));
+  return spokenUrl?{status:'fail',message:'The web address is said aloud.'}:{status:'pass',message:''};
+ }
+ const quoted=[...String(item).matchAll(/["“”‘’']([^"“”‘’']{3,80})["“”‘’']/g)].map(m=>m[1]).filter(q=>key(q));
+ if(!quoted.length)return null;
+ const script=' '+key(narration.join(' '))+' ',screen=' '+key(onScreen.join(' '))+' ';
+ // About the voice outright, or "says" with a line that is in the script and not on screen ("Button says 'Shop now'" is on screen).
+ const voiceWords=/\b(voice ?-?over|voice|narrat\w*|spoken|speaks?|aloud|closing line|final line|last line|line says|narrator)\b/i.test(item);
+ const saysScript=/\b(says?|said|saying)\b/i.test(item)&&quoted.every(q=>script.includes(' '+key(q)+' ')&&!screen.includes(' '+key(q)+' '));
+ if(!voiceWords&&!saysScript)return null;
+ if(!audio)return {status:'unverified',message:'The final audio could not be listened to.'};
+ const heard=typeof audio.heard_text==='string'?' '+audio.heard_text+' ':null;
+ const results=quoted.map(q=>{const k=key(q);
+  if(heard&&heard.includes(' '+k+' '))return 'pass';
+  const inScript=script.includes(' '+k+' ');
+  const lost=(audio.missing||[]).some(m=>{const mk=key(m);return mk&&(k.includes(mk)||mk.includes(k));});
+  if(inScript&&lost)return 'fail';
+  if(inScript&&(audio.script_coverage??0)>=0.5)return 'pass';
+  return 'unverified';});
+ const bad=quoted[results.indexOf('fail')],unsure=quoted[results.indexOf('unverified')];
+ return results.includes('fail')?{status:'fail',message:'Not heard in the final audio: "'+bad+'".'}
+  :results.includes('unverified')?{status:'unverified',message:'"'+unsure+'" could not be confirmed by ear. Give it a listen.'}:{status:'pass',message:''};
 }
 
 /**
  * Combines the measurements into checks. look: the vision verdict ({status:'checked'|'unverified', required, identity,
  * lettering, actions}); audio: the listening summary; moves: missing planned moves; blanks: unintended blank spans.
  */
-export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],flashes=[],expectsSpeech=false,generatedPeople=false,media=null}){
+export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],flashes=[],switches=null,expectsSpeech=false,generatedPeople=false,media=null}){
  const checks=[];
  const add=(id,label,status,blocking,message,times=[])=>checks.push({id,label,status,blocking,message,times});
  // Approved words (narration or a take) in the delivered audio.
@@ -115,13 +178,18 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
    // How a name is said is settled by the saved pronunciation check above, never by sight.
    const said=/said as|pronounc/i.test(item)?names.find(n=>key(item).includes(key(n.written))):null;
    if(said){add('required','Must appear: '+item,said.status==='pass'?'pass':said.status==='fail'?'fail':'unverified',true,said.status==='pass'?'':said.status==='fail'?`Heard "${said.heard}", not "${said.spoken}".`:'Could not be confirmed by ear. Give it a listen.',Number.isFinite(said.time)?[said.time]:[]);continue;}
+   // What the voice says is settled by ear (REQ-SPOKEN): a quoted line it should say, or a web address it must not.
+   const spokenCheck=r.status!=='present'||/\b(never|not)\b/i.test(item)?spokenRule(item,{audio,narration:plan.narration||[],onScreen:plan.on_screen_copy||plan.callouts||[],key}):null;
+   if(spokenCheck){add('required','Must appear: '+item,spokenCheck.status,true,spokenCheck.message);continue;}
    // Sound (a voiceover, music) is settled by listening, not by sight: the look cannot hear it.
    const voice=/\b(voice ?-?over|voice|narrat\w*|spoken|narrator)\b/i.test(item),music=/\b(music|soundtrack|score|jingle)\b/i.test(item);
    // "No voiceover" asks for silence from the voice, not for a voice (the Laban build was blocked, and two repair rounds
    // spent, on "No voiceover; music and effects only", 2026-10-08).
    const noVoice=/\b(no|without|zero)\s+(voice ?-?over|voice|narrat\w*|narrator|speech|spoken)/i.test(item),noMusic=/\b(no|without)\s+(music|soundtrack|score)/i.test(item);
    if((voice||music)&&r.status!=='present'&&r.status!=='missing'){
-    const heardVoice=noVoice?(audio?.heard_words??Infinity)<=3:!voice||(audio&&!(audio.missing||[]).length&&(audio.script_coverage??0)>=0.75);
+    // A voice is there when much of the script is heard; whether every word is said is the words check's job (CHECK-VOICE:
+    // Northside's "voiceover and music throughout" failed as "the voice is missing" over one misheard number, 2026-10-07).
+    const heardVoice=noVoice?(audio?.heard_words??Infinity)<=3:!voice||(audio&&(audio.script_coverage!=null?audio.script_coverage>=0.5:(audio.heard_words??0)>=4));
     const heardMusic=noMusic?audio?.music===false:!music||audio?.music===true;
     const wrong=[!heardVoice&&(noVoice?'a voice was heard':'the voice is missing'),!heardMusic&&(noMusic?'music was heard':'the music is missing')].filter(Boolean);
     if(!audio)add('required','Must appear: '+item,'unverified',true,'The final audio could not be listened to.');
@@ -135,6 +203,12 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
     const kinds=/stock/i.test(rule[0])?['stock_video','stock_image']:/\b(images?|pictures?|photos?|stills?)\b/i.test(rule[0])?['ai_image']:['generated_shot','animate_image','ugc_take','talking_shot','talking_take'];
     const used=media.filter(m=>kinds.includes(m.kind)&&m.status==='succeeded');
     add('required','Must appear: '+item,used.length?'fail':'pass',true,used.length?'The build used '+used.length+' '+(used.length>1?'items':'item')+' this rules out ('+[...new Set(used.map(m=>m.kind.replace(/_/g,' ')))].join(', ')+').':'');
+    continue;
+   }
+   // Light/dark switches are measured on the video, not judged from single frames (CHECK-SWITCH).
+   if(r.status!=='present'&&Array.isArray(switches)&&LIGHT_DARK_SWITCH.test(item)&&LIGHT_DARK_WORDS.test(item)){
+    const many=switches.length>=2;
+    add('required','Must appear: '+item,many?'pass':'fail',true,many?'':switches.length?'The picture switches between light and dark only once.':'The picture never switches between light and dark.',switches.slice(0,6).map(x=>x.time));
     continue;
    }
    if(r.status==='missing')add('required','Must appear: '+item,'fail',true,'Not seen in the final video'+(r.note?' ('+r.note+')':'')+'.');
@@ -177,6 +251,8 @@ export function peopleToKeep(plan={},planMedia=[]){
 export async function finalChecks({file,duration,plan={},planMedia=[],audioSummary=null,moves=[],reading=[],look,html='',ffmpeg='ffmpeg'}){
  let blanks=null;try{blanks=unintendedBlanks(await blankSpans(file,ffmpeg),duration);}catch{/* reported as unverified */}
  let flashes=[];try{flashes=await flashFrames(file,duration,ffmpeg);}catch{/* advisory measurement: a failure adds nothing */}
+ // Measured only when a required item is about light/dark switching; a measurement that fails leaves it to the look.
+ let switches=null;if((plan.agreement?.required||[]).some(i=>LIGHT_DARK_SWITCH.test(i)&&LIGHT_DARK_WORDS.test(i)))try{switches=await brightnessSwitches(file,duration,ffmpeg);}catch{}
  const generated=planMedia.some(m=>['generated_shot','ugc_take'].includes(m.kind)&&m.status==='succeeded');
  const generatedPeople=generated&&peopleToKeep(plan,planMedia);
  const needsLook=generated||(plan.agreement?.required||[]).length>0;
@@ -187,7 +263,7 @@ export async function finalChecks({file,duration,plan={},planMedia=[],audioSumma
   try{verdict=await look(await Promise.all(frames.map(async f=>({time:f.time,label:f.label,jpeg:await readFile(f.path)}))));}catch(e){verdict={status:'unverified',note:'the check request failed: '+String(e?.message||e).slice(0,100)};}finally{await cleanup();}
  }
  const expectsSpeech=plan.settings_audio!=='silent'&&((plan.narration||[]).length>0||planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'));
- return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,flashes,expectsSpeech,generatedPeople,media:planMedia});
+ return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,flashes,switches,expectsSpeech,generatedPeople,media:planMedia});
 }
 
 /**

@@ -144,6 +144,12 @@ test('a required voiceover or music is settled by listening, not by sight', () =
  assert.match(silent.checks.find(c=>c.label==='Must appear: Voiceover and music').message,/music/);
  assert.equal(silent.status,'blocked');
  assert.equal(finalVerdict({plan,look,audio:null,expectsSpeech:true}).checks.find(c=>c.label==='Must appear: Voiceover and music').status,'unverified');
+ // CHECK-VOICE (Northside, 2026-10-07): one misheard number is the words check's finding, not a missing voice.
+ const misheard=finalVerdict({plan,look,audio:{script_coverage:0.857,missing:['twenty five percent'],music:true,heard_words:26},expectsSpeech:true});
+ assert.equal(misheard.checks.find(c=>c.label==='Must appear: Voiceover and music').status,'pass');
+ assert.equal(misheard.checks.find(c=>c.id==='words').status,'fail','the missing words are still reported, once');
+ const mute=finalVerdict({plan,look,audio:{script_coverage:0.1,missing:['the whole script'],music:true,heard_words:2},expectsSpeech:true});
+ assert.match(mute.checks.find(c=>c.label==='Must appear: Voiceover and music').message,/voice is missing/);
 });
 
 test('a look that could not run says why (a vendor outage is not a quiet skip)', () => {
@@ -205,4 +211,35 @@ test('a rule about how the video is made is settled by what was bought, not by s
  const c=bad.checks.find(c=>c.label==='Must appear: No AI video clips');
  assert.equal(c.status,'fail');assert.match(c.message,/generated shot/);
  assert.equal(finalVerdict({plan:{agreement:{required:['No stock footage']}},look,media:[{kind:'stock_video',status:'succeeded'}]}).checks.find(c=>/stock/.test(c.label)).status,'fail');
+});
+
+test('what the voice says is settled by ear, not by sight (REQ-SPOKEN)', () => {
+ const narration=['Branded video without a shoot.','Start at WyvStudio.'];
+ const plan={narration,on_screen_copy:['Shop now'],agreement:{required:["Closing line says 'Start at WyvStudio'",'URL never spoken, stays on screen only',"Button says 'Shop now'"]}};
+ const look={status:'checked',required:[{id:'r1',status:'missing',note:'no such text on screen'},{id:'r2',status:'present'},{id:'r3',status:'present',time:12}]};
+ const heard={script_coverage:1,missing:[],music:false,heard_words:9,heard_text:'branded video without a shoot start at weave studio'};
+ const v=finalVerdict({plan,look,audio:heard,expectsSpeech:true});
+ const of=l=>v.checks.find(c=>c.label==='Must appear: '+l);
+ assert.equal(of("Closing line says 'Start at WyvStudio'").status,'pass','in the script and not missing: said (the transcript writes how it sounded)');
+ assert.equal(of('URL never spoken, stays on screen only').status,'pass');
+ assert.equal(of("Button says 'Shop now'").status,'pass','on-screen text stays with the look');
+ const lost=finalVerdict({plan,look,audio:{...heard,script_coverage:0.6,missing:['start at wyvstudio']},expectsSpeech:true});
+ assert.equal(lost.checks.find(c=>c.label==="Must appear: Closing line says 'Start at WyvStudio'").status,'fail');
+ const url=finalVerdict({plan:{...plan,agreement:{required:['Voice never speaks wyvstudio.com aloud']}},look:{status:'checked',required:[{id:'r1',status:'unclear'}]},audio:{...heard,heard_text:'go to wyvstudio dot com'},expectsSpeech:true});
+ assert.equal(url.checks.find(c=>c.id==='required').status,'fail');
+ assert.match(url.checks.find(c=>c.id==='required').message,/said aloud/);
+});
+
+test('light and dark switches are measured, not judged from single frames (CHECK-SWITCH)', async () => {
+ const {switchesIn}=await import('../final-checks.mjs');
+ const series=[230,231,229,40,41,42,228,230,229,45,44];
+ assert.deepEqual(switchesIn(series,10).map(s=>[s.time,s.to]),[[0.3,'dark'],[0.6,'light'],[0.9,'dark']]);
+ assert.deepEqual(switchesIn([200,190,170,150,130,110],10),[],'a slow fade is not a switch');
+ const plan={agreement:{required:['Paper and charcoal hard switches on hits','Ends on the wordmark']}};
+ const look={status:'checked',required:[{id:'r1',status:'missing',note:'one frame shows paper only'},{id:'r2',status:'present',time:14}]};
+ const v=finalVerdict({plan,look,switches:[{time:1.6},{time:4.2},{time:6.3}]});
+ assert.equal(v.checks.find(c=>c.label==='Must appear: Paper and charcoal hard switches on hits').status,'pass');
+ assert.equal(v.status,'passed');
+ assert.equal(finalVerdict({plan,look,switches:[]}).checks.find(c=>c.label.startsWith('Must appear: Paper')).status,'fail');
+ assert.equal(finalVerdict({plan,look,switches:null}).checks.find(c=>c.label.startsWith('Must appear: Paper')).status,'fail','not measured: the look decides as before');
 });
