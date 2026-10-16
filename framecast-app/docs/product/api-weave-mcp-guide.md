@@ -12,7 +12,9 @@ the tools below. Publishing to socials and agency client workspaces come later.
 
 | MCP tool | Developer API | What it does |
 |---|---|---|
-| `weave_start` | `POST /api/developer/v1/weave/videos` | Brief plus optional `format`, `aspect_ratio`, `duration_seconds`, `voice`, `style_pack`, `effort`, `captions`, `reference_url`, `asset_ids`. Makes the conversation, attaches files and the link, sends the brief, starts planning. `idempotency_key` replays the same video. |
+| `weave_start` | `POST /api/developer/v1/weave/videos` | Brief plus optional `format`, `aspect_ratio`, `duration_seconds`, `voice`, `style_pack`, `effort`, `captions`, `reference_url`, `reference_match` (exact, similar, inspired: how closely to follow a reference video), `asset_ids`. Makes the conversation, attaches files and the link, sends the brief, starts planning. `idempotency_key` replays the same video. |
+| `weave_templates` | `GET …/weave/templates?category=&shape=` | Templates the workspace can start from: kind, shape, length, what it asks for, `watch_url`, `in_plan`, and the `follow_options`. Until Templates is public, the examples on Create's empty screen; staff see every template. |
+| `weave_from_template` | `POST …/weave/templates/{id}/videos` | Make mine: `product`, `match` (exact by default), `aspect_ratio`, `asset_ids` (photos, attached as the user's own media), `idempotency_key`. Exact on a template made in Create starts from a copy of that version, so a swap of text, colours and photos is usually free to make; otherwise the template is the reference. Starts planning like `weave_start`. |
 | `weave_status` | `GET …/weave/videos/{id}` | One `state` with a `next` hint (see below). |
 | `weave_reply` | `POST …/weave/videos/{id}/messages` | An answer to Weave's question, a change to the plan, or a change to the finished video. Re-plans. |
 | `weave_approve` (step 1) | `POST …/weave/videos/{id}/quotes` | The price: `quote_id`, `credits_max`, `credits_estimate`, what it `makes`, `paid_media`, `credits_available`. Nothing runs. `look_token` first records an approved look. |

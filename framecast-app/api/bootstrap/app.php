@@ -83,8 +83,16 @@ return Application::configure(basePath: dirname(__DIR__))
                 ? $e->getMessage() ?: 'An error occurred.'
                 : 'An unexpected error occurred. Please try again.';
 
+            // The code names what happened (an assistant read "server_error" for a template that does not exist, 2026-10-16).
+            $code = match (true) {
+                $status === 400 => 'bad_request', $status === 401 => 'unauthenticated', $status === 402 => 'insufficient_credits',
+                $status === 403 => 'forbidden', $status === 404 => 'not_found', $status === 405 => 'method_not_allowed',
+                $status === 409 => 'conflict', $status === 422 => 'invalid_request', $status === 429 => 'rate_limited',
+                $status === 503 => 'unavailable', default => 'server_error',
+            };
+
             return response()->json([
-                'error' => ['code' => 'server_error', 'message' => $message],
+                'error' => ['code' => $code, 'message' => $message],
             ], $status);
         });
     })->create();

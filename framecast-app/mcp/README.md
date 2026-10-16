@@ -77,6 +77,14 @@ Assistant `schedule_post` results likewise require app confirmation and retain
 [delivery guide](../docs/product/api-delivery-mcp-guide.md) for excluded app-only
 actions and version guarantees.
 
+## Templates (1.10.0)
+
+`weave_templates` lists the templates the workspace can start from (the examples on Create's empty screen until
+Templates is public; every template for staff), and `weave_from_template` starts a video from one with the user's
+product, how closely to follow it (exact, similar, inspired) and their photos. `weave_start` takes
+`reference_match` for a reference video. Errors now carry a code per status (`not_found`, `conflict`,
+`insufficient_credits`…) instead of `server_error` for everything. See the [Weave guide](../docs/product/api-weave-mcp-guide.md).
+
 ## Release verification
 
 Current implementation and deployment gates: [release closure](../docs/product/api-release-closure.md).

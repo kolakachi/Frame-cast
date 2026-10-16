@@ -12,7 +12,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
-| MCP | Bring the connector up to date: templates (list them, make one from a template with Exactly / Similar / Inspired), the reference option on any brief | build (in progress 2026-10-16) |
 | CANARY | One paid test build on prod: nothing real has run yet on HyperFrames 0.8.164, the no-builder swap or the new final checks (about $1) | owner OK, then build |
 | TPL-MAKE | Make about 11 more templates from our own builds: 12 to go public, 2+ per tab, some 1:1 and 16:9 (each a paid build, about $1–4; ask before each) | owner picks briefs |
 | TPL-LOCAL | Move the 11 examples built locally to prod with their code, so they become full templates (Exactly can then swap without the builder) | build |

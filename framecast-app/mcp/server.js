@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.9.0'
+const VERSION = process.env.MCP_VERSION || '1.10.0'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -55,11 +55,13 @@ Which tools to use
 - Default: Create, where the Creative Director plans and makes the video. For any request to make a video, ad, promo, explainer or tutorial, use weave_start, then weave_status, then weave_approve. Changes to a Create video go through weave_reply, never the Classic edit tools.
 - UGC ads (a creator or presenter on camera: testimonial, problem and solution, unboxing, before and after, comparison, green screen, ASMR, day in the life, skit, POV hook, reaction) go to the UGC director: ugc_brief with the user's brief, ugc_reply to answer its question or ask for changes, ugc_make once the user approves the pitch's price, then ugc_status.
 - Use the Classic tools (estimate_video, create_video, the get_project/propose_edits/apply_edits editor, export_video, plan_ugc/create_ugc) only when: the user asks for Classic, the composer or a scene-by-scene video; the video is an existing Classic project (a numeric video id); the user wants UGC takes planned shot by shot (an ad analysed with analyze_ugc_reference); or the video is longer than weave_start allows. If unsure, use Create, or the UGC director for a UGC ad.
+- Templates: when the user wants to start from an example ("something like your offer ads", "show me templates"), list them with weave_templates (share each watch_url), then weave_from_template with their product, how closely to follow it (exact, similar or inspired) and their photos. It then goes on like weave_start: weave_status, weave_approve.
+- A reference video (a link or a clip) can be followed exactly, similarly or loosely: pass reference_match to weave_start when the user said which; otherwise the Creative Director asks.
 - If weave_start is refused because Create is unavailable to the workspace, say so and offer the Classic way.
 
 Credits
 - Call get_capabilities first for the balance and plan.
-- weave_start plans at once and costs a few credits: say so before calling it. Nothing else is charged until the user approves a price.
+- weave_start and weave_from_template plan at once and cost a few credits: say so before calling them. Nothing else is charged until the user approves a price.
 - Always show the price from weave_approve (step 1) and wait for an explicit yes before step 2. Never approve on the user's behalf.
 - ugc_brief and ugc_reply are free. Show the pitch (what it will show, the script, the credits) and call ugc_make only after an explicit yes and the user's confirmation that they have the rights to any real person's likeness or voice used.
 - When can_afford is false, do not start the build. Offer what if_short lists (quick effort, a shorter video, fewer paid shots via weave_reply) or the top-up link, and let the user choose.
@@ -895,12 +897,48 @@ function buildServer(token) {
         effort: z.enum(['quick', 'standard', 'thorough']).optional().describe('How much care goes into the build; standard by default.'),
         captions: z.boolean().optional().describe('Spoken words on screen; true by default.'),
         reference_url: z.string().url().max(500).optional().describe('A video post to match the style of, or a page with facts about the product.'),
+        reference_match: z.enum(['exact', 'similar', 'inspired']).optional().describe('How closely to follow a reference video (reference_url or an attached clip): exact (moment for moment, with the user\'s product and words), similar (its format, look and pacing, the user\'s own story) or inspired (just the idea). Leave out and the Creative Director asks the user.'),
         asset_ids: z.array(z.number().int().min(1)).max(10).optional().describe('Library asset ids (from upload_asset or list_library): logos, product photos, clips.'),
         idempotency_key: z.string().max(100).optional().describe('Repeat the same key to retry safely without starting a second video.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async (input) => call(token, 'POST', '/weave/videos', input, 'weave_start'),
+  )
+
+  server.registerTool(
+    'weave_templates',
+    {
+      title: 'Browse video templates',
+      description: "Finished videos the user can start from: each with its kind (offer ad, app showcase, explainer, UGC ad, announcement, from your footage), shape, length, what it asks for and a watch_url to show the user. Start one with weave_from_template. in_plan false means the user's plan does not include that template. follow_options lists how closely a template can be followed.",
+      inputSchema: z.object({
+        category: z.enum(['offer', 'app', 'explainer', 'ugc', 'announce', 'footage']).optional().describe('Only this kind.'),
+        shape: z.enum(['9:16', '16:9', '1:1']).optional().describe('Only this shape.'),
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ category, shape }) => {
+      const query = new URLSearchParams(Object.entries({ category, shape }).filter(([, v]) => v))
+      return call(token, 'GET', `/weave/templates${query.size ? `?${query}` : ''}`, undefined, 'weave_templates')
+    },
+  )
+
+  server.registerTool(
+    'weave_from_template',
+    {
+      title: 'Make a video from a template',
+      description: "Start a Create video from a template (weave_templates), like Make mine in the app: the user's product (a link or a few words, with any offer), how closely to follow the template (exact: the same video with their product, words, colours and photos; similar: its format, look and pacing, their own story; inspired: just the idea), the shape, and their photos (upload with upload_asset first). Planning starts at once and costs a few credits; following exactly with only text, colours and photos swapped is usually free to make. Then weave_status, and weave_approve with the user's yes, as for weave_start.",
+      inputSchema: z.object({
+        template_id: z.string().regex(/^[A-Za-z0-9-]{1,40}$/).describe('The id from weave_templates.'),
+        product: z.string().min(3).max(2000).describe("The user's product in their words: a link, or what it is, plus any offer."),
+        match: z.enum(['exact', 'similar', 'inspired']).optional().describe('How closely to follow the template; exact by default.'),
+        aspect_ratio: z.enum(['9:16', '16:9', '1:1', '4:5']).optional().describe("The template's own shape by default."),
+        asset_ids: z.array(z.number().int().min(1)).max(6).optional().describe('Library asset ids of the product photos or logo to use.'),
+        idempotency_key: z.string().max(100).optional().describe('Repeat the same key to retry safely without starting a second video.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ template_id, ...body }) => call(token, 'POST', `/weave/templates/${encodeURIComponent(template_id)}/videos`, body, 'weave_from_template'),
   )
 
   server.registerTool(

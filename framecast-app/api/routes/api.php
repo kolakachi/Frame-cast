@@ -128,6 +128,8 @@ Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\Guar
     Route::post('/videos/{videoId}/undo', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'undo'])->whereNumber('videoId');
     Route::post('/videos/{videoId}/redo', [\App\Http\Controllers\Api\Developer\V1\EditorController::class, 'redo'])->whereNumber('videoId');
     // Weave (Create) for assistants (L3, 2026-10-09): start, status, reply, price, approve, share, list.
+    Route::get('/weave/templates', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'templates']);
+    Route::post('/weave/templates/{templateId}/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'fromTemplate'])->where('templateId', '[A-Za-z0-9-]{1,40}');
     Route::get('/weave/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'index']);
     Route::post('/weave/videos', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'store']);
     Route::get('/weave/videos/{id}', [\App\Http\Controllers\Api\Developer\V1\WeaveController::class, 'show'])->whereUuid('id');

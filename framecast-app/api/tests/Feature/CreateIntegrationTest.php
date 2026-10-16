@@ -5440,6 +5440,33 @@ class CreateIntegrationTest extends TestCase
         $this->assertContains($id, array_column($this->actingAs($this->owner)->getJson($api)->assertOk()->json('data.videos'), 'id'));
     }
 
+    public function test_an_assistant_lists_templates_and_starts_a_video_from_one(): void
+    {
+        // Templates in the connector (2026-10-16): the examples for everyone until Templates is public, "Make mine" with
+        // the reference option, and the option on any brief with a reference.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $list = $this->actingAs($this->owner)->getJson('/api/developer/v1/weave/templates')->assertOk()->json('data');
+        $this->assertCount(32, $list['templates']);
+        $this->assertSame(['exact', 'similar', 'inspired'], array_column($list['follow_options'], 'value'));
+        $first = $list['templates'][0];
+        $this->assertSame(['id', 'title', 'kind', 'shape', 'seconds', 'watch_url', 'in_plan'], array_keys($first));
+        $this->assertCount(3, $this->actingAs($this->owner)->getJson('/api/developer/v1/weave/templates?category=app')->json('data.templates'));
+        // A video template (an example) is followed as the reference.
+        \Illuminate\Support\Facades\Storage::fake('local');
+        Http::fake(['*/marketing/samples/weave/b01.mp4' => Http::response("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom".str_repeat("\x00", 64))]);
+        $made = $this->actingAs($this->owner)->postJson('/api/developer/v1/weave/templates/b01/videos', ['product' => 'Dewbloom vitamin C serum, launch week 20% off', 'match' => 'similar', 'idempotency_key' => 'tpl-1'])
+            ->assertCreated()->json('data');
+        $settings = json_decode((string) DB::table('create_conversations')->where('id', $made['id'])->value('settings_json'), true);
+        $this->assertSame(['similar', 'b01'], [$settings['reference_match'], $settings['template_id']]);
+        $this->assertSame('reference', DB::table('create_attachments')->where('conversation_id', $made['id'])->value('purpose'));
+        $this->assertStringContainsString('Dewbloom vitamin C serum', (string) DB::table('create_messages')->where('conversation_id', $made['id'])->where('role', 'user')->value('content'));
+        $this->assertSame($made['id'], $this->actingAs($this->owner)->postJson('/api/developer/v1/weave/templates/b01/videos', ['product' => 'Dewbloom', 'idempotency_key' => 'tpl-1'])->json('data.id'), 'same key, same video');
+        $this->actingAs($this->owner)->postJson('/api/developer/v1/weave/templates/nope/videos', ['product' => 'Dewbloom'])->assertNotFound();
+        // The reference option on a plain brief.
+        $start = $this->actingAs($this->owner)->postJson('/api/developer/v1/weave/videos', ['brief' => 'A launch promo for Dewbloom', 'reference_match' => 'inspired', 'idempotency_key' => 'ref-1'])->assertCreated()->json('data');
+        $this->assertSame('inspired', json_decode((string) DB::table('create_conversations')->where('id', $start['id'])->value('settings_json'), true)['reference_match']);
+    }
+
     public function test_the_first_plan_asks_to_keep_its_settings_and_how_a_name_is_said_in_words(): void
     {
         // C1 and C7 (owner, 2026-10-09): no extra buttons; the first plan says what it was made for and asks.

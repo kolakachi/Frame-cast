@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Developer\V1;
 use App\Http\Controllers\Api\V1\Create\CreateController;
 use App\Services\Create\ConversationService;
 use App\Services\Create\OutputSettings;
+use App\Services\Create\TemplateLibrary;
 use App\Services\Create\VariantService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,8 @@ class WeaveController extends DeveloperController
             'duration_seconds' => 'sometimes|integer|min:5|max:30', 'voice' => 'sometimes|nullable|string|max:40',
             'style_pack' => 'sometimes|nullable|string|max:40', 'effort' => 'sometimes|in:quick,standard,thorough',
             'captions' => 'sometimes|boolean', 'reference_url' => 'sometimes|nullable|url|max:500',
+            // How closely to follow a reference link or file (as the app asks): exactly, similar or inspired.
+            'reference_match' => 'sometimes|nullable|in:exact,similar,inspired',
             'asset_ids' => 'sometimes|array|max:10', 'asset_ids.*' => 'integer|min:1',
             'idempotency_key' => 'sometimes|string|max:100',
         ]);
@@ -54,6 +57,7 @@ class WeaveController extends DeveloperController
             'output_kind' => 'video', 'aspect_ratio' => $input['aspect_ratio'] ?? null, 'duration_seconds' => $input['duration_seconds'] ?? null,
             'duration_chosen' => isset($input['duration_seconds']) ? true : null, 'format' => $input['format'] ?? null, 'voice' => $input['voice'] ?? null,
             'style_pack' => $input['style_pack'] ?? null, 'effort' => $input['effort'] ?? null, 'no_captions' => ($input['captions'] ?? true) ? null : true,
+            'reference_match' => $input['reference_match'] ?? null,
         ], fn ($v) => $v !== null);
         $c = $this->conversations->create($user, OutputSettings::normalize($settings));
         foreach (array_unique($input['asset_ids'] ?? []) as $assetId) $this->conversations->attach($user, $c->id, (int) $assetId, 'auto', $this->version($request, $c->id));
@@ -63,6 +67,47 @@ class WeaveController extends DeveloperController
         $this->conversations->message($user, $c->id, ['content' => $input['brief'], 'idempotency_key' => 'weave:'.$key, 'expected_version' => $this->version($request, $c->id)]);
         $this->startPlanning($request, $c->id);
         return response()->json(['data' => $this->status($request, $c->id)], 201);
+    }
+
+    /**
+     * Templates the workspace can start from (Templates, 2026-10-16): finished videos with their kind, shape and length.
+     * Until Templates is public, an account sees the examples on Create's empty screen; staff see every template.
+     */
+    public function templates(Request $request): JsonResponse
+    {
+        $input = $this->validated($request, ['category' => 'sometimes|in:'.implode(',', array_keys(TemplateLibrary::CATEGORIES)), 'shape' => 'sometimes|in:9:16,16:9,1:1']);
+        $cards = collect(app(TemplateLibrary::class)->visible($request->user()))
+            ->filter(fn ($t) => (! isset($input['category']) || $t['category'] === $input['category']) && (! isset($input['shape']) || $t['shape'] === $input['shape']));
+        $about = DB::table('create_templates')->whereIn('id', $cards->pluck('id'))->get(['id', 'description', 'ask_hint'])->keyBy('id');
+        return response()->json(['data' => ['templates' => $cards->map(fn ($t) => array_filter(['id' => $t['id'], 'title' => $t['title'], 'kind' => $t['category_label'],
+            'style' => $t['style'], 'shape' => $t['shape'], 'seconds' => $t['seconds'], 'description' => $about[$t['id']]->description ?? null,
+            'asks_for' => $about[$t['id']]->ask_hint ?? null, 'watch_url' => $t['video_url'], 'in_plan' => ! $t['locked']], fn ($v) => $v !== null))->values(),
+            'follow_options' => TemplateLibrary::matchOptions()]]);
+    }
+
+    /**
+     * A video from a template, as "Make mine" in the app: the user's product, how closely to follow the template, the
+     * shape and their photos. Planning starts at once; the plan and its price come before anything is made.
+     */
+    public function fromTemplate(Request $request, string $templateId): JsonResponse
+    {
+        $input = $this->validated($request, [
+            'product' => 'required|string|min:3|max:2000', 'match' => 'sometimes|in:'.implode(',', TemplateLibrary::MATCHES),
+            'aspect_ratio' => 'sometimes|in:9:16,16:9,1:1,4:5', 'asset_ids' => 'sometimes|array|max:6', 'asset_ids.*' => 'integer|min:1',
+            'idempotency_key' => 'sometimes|string|max:100',
+        ]);
+        $user = $request->user();
+        $key = $input['idempotency_key'] ?? (string) Str::uuid();
+        $existing = DB::table('create_messages')->join('create_conversations', 'create_conversations.id', '=', 'create_messages.conversation_id')
+            ->where('create_conversations.workspace_id', $user->workspace_id)->where('create_messages.idempotency_key', 'weave:'.$key)->value('create_conversations.id');
+        if ($existing) return response()->json(['data' => $this->status($request, $existing)]);
+        $made = app(TemplateLibrary::class)->use($user, $templateId, ['product' => $input['product'], 'match' => $input['match'] ?? 'exact',
+            ...(isset($input['aspect_ratio']) ? ['aspect_ratio' => $input['aspect_ratio']] : []), 'idempotency_key' => 'weave-template:'.$key]);
+        // The user's photos go in as their own media, before the brief, so the plan reads them with it.
+        foreach (array_unique($input['asset_ids'] ?? []) as $assetId) $this->conversations->attach($user, $made['id'], (int) $assetId, 'source', $this->version($request, $made['id']));
+        $this->conversations->message($user, $made['id'], ['content' => $made['brief'], 'idempotency_key' => 'weave:'.$key, 'expected_version' => $this->version($request, $made['id'])]);
+        $this->startPlanning($request, $made['id']);
+        return response()->json(['data' => $this->status($request, $made['id'])], 201);
     }
 
     public function show(Request $request, string $id): JsonResponse
