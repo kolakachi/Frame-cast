@@ -6,7 +6,7 @@ import {skillCatalogue,readSkill} from '../skill-library.mjs';
 const directory=new URL('../guidance/',import.meta.url).pathname;
 test('upstream workflows are discoverable and paginated without loading all guidance',async()=>{
  const catalog=await skillCatalogue(directory);
- assert.equal(catalog.packages.find(p=>p.id==='hyperframes').commit,'385e9cf337c103d0918f9ea962c4e3859a2cc75f');
+ assert.equal(catalog.packages.find(p=>p.id==='hyperframes').commit,'4d6b5be33bda39c5f4572fbe383a3f5f6e68e315');
  assert.ok(catalog.packages.find(p=>p.id==='hyperframes').workflows.some(w=>w.name==='product-launch-video'));
  const first=await readSkill(directory,'skills/hyperframes/product-launch-video/SKILL.md');
  assert.match(first,/Next: .*#page=2/);assert.ok(first.length<13000);
