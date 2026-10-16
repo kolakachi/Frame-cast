@@ -43,7 +43,10 @@ export function timingFindings({rows,html,durations={},transcripts={}}){
   const d=durations[r.src];if(!Number.isFinite(d))continue;
   const rate=Number(r.playbackRate)||1,slot=r.end-r.start,offset=Number(attrs.get(r.id||r.elementId)?.['data-media-start'])||0;
   const plays=(d-offset)/rate,fit=attrs.get(r.id||r.elementId)?.['data-fit'];
-  if(slot>plays+0.1&&!['hold','loop'].includes(fit))errors.push({code:'media_shorter_than_slot',selector:'#'+(r.id||r.elementId),
+  // A sound that ends a little early leaves a short silence, not a frozen or blank picture: a re-voiced line 1.1 s
+  // shorter than its slot failed a template swap's preview (2026-10-16). Video stays exact; sound gets 10% or 1.5 s.
+  const slack=r.kind==='audio'?Math.max(1.5,slot*0.1):0.1;
+  if(slot>plays+slack&&!['hold','loop'].includes(fit))errors.push({code:'media_shorter_than_slot',selector:'#'+(r.id||r.elementId),
    message:`${r.src} plays ${plays.toFixed(2)} s but its slot is ${slot.toFixed(2)} s.`,
    fixHint:'Choose explicitly: shorten the slot to the clip, replace the clip, or add data-fit="hold" (freeze the last frame) or data-fit="loop" (with the loop attribute) to the element.'});
   const tag=(String(html).match(new RegExp('<[^>]*\\bid=["\']'+(r.id||r.elementId)+'["\'][^>]*>'))?.[0]||'').replace(/=\s*("[^"]*"|'[^']*')/g,'');

@@ -67,7 +67,10 @@ class CostEstimate
         // A plan amended before any video exists builds a whole new video: it is "creative" for the estimate, whatever
         // the planner called the amendment (GTM-1: a brand reply made a first build look like a small edit, 245 vs 734).
         if ($task === 'edit' && $row && ! DB::table('composition_revisions')->where('conversation_id', $row->conversation_id)->where('created_at', '<', $row->created_at)->exists()) $task = 'creative';
-        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $task, 'style' => $style]);
+        // A conversation started from a template (Templates, 2026-10-16) is priced from other template runs once there are
+        // three, without the style's weight: following a finished video is not building that style from scratch.
+        $template = $row && ! empty(json_decode((string) DB::table('create_conversations')->where('id', $row->conversation_id)->value('settings_json'), true)['template_id']);
+        return array_filter(['type' => $p['video_type'] ?? null, 'task' => $task, 'style' => $template ? null : $style, 'template' => $template ? 1 : null]);
     }
 
     /** The likely spread of the build agent's credits: the middle half of real runs of this kind (or around the formula). */
@@ -128,10 +131,12 @@ class CostEstimate
         $plans = DB::table('create_plans')->whereIn('id', $runs->pluck('input.plan.plan_id')->filter()->unique()->all())->pluck('plan_json', 'id')
             ->map(fn ($j) => json_decode((string) $j, true) ?: []);
         $runs = $runs->map(fn ($r) => $r + ['type' => $plans[$r['input']['plan']['plan_id'] ?? '']['video_type'] ?? null, 'task' => $plans[$r['input']['plan']['plan_id'] ?? '']['planner_task'] ?? null, 'style' => $r['input']['style_pack']['slug'] ?? null,
+            'template' => ! empty($r['input']['settings']['template_id']) ? 1 : null,
             'credits' => (int) DB::table('composition_attempts')->where('run_id', $r['id'])->whereIn('kind', ['agent', 'critic'])->sum('charged_credits')])->filter(fn ($r) => $r['credits'] > 0);
         // A style with three runs of its own decides first; then the video type and request, the type, any.
         $style = ! empty($kind['style']) ? [['style' => $kind['style']]] : [];
-        $wants = $styleOnly ? $style : [...$style, array_intersect_key($kind, ['type' => 1, 'task' => 1]), array_intersect_key($kind, ['type' => 1]), []];
+        $template = ! empty($kind['template']) ? [['template' => 1]] : [];
+        $wants = $styleOnly ? $style : [...$template, ...$style, array_intersect_key($kind, ['type' => 1, 'task' => 1]), array_intersect_key($kind, ['type' => 1]), []];
         foreach ($wants as $want) {
             if (count($want) !== count(array_filter($want))) continue;
             $spent = $runs->filter(fn ($r) => ! array_diff_assoc($want, array_intersect_key($r, $want)))->take(30)->pluck('credits')->sort()->values();

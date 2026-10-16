@@ -340,12 +340,13 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
 /** The source of the version an edit changes, for checks that hold the edit to what was asked; null for a new build, a
  * resumed build of the same plan, or the motion pass over an approved look (which adds the moves). */
 /** The brief asks for icons or 3D objects, so the art library should be searched before finishing. On an edit only the
- * latest request counts: a voice-only change was sent back to search for icons the version already had (2026-10-08). */
+ * latest request counts: a voice-only change was sent back to search for icons the version already had (2026-10-08), and
+ * only when it asks to add art: a template swap was sent back twice for "black on the stickers' fills" (2026-10-16). */
 export function artExpected(input={},art=null){
  if(!art?.items?.length)return false;
  const asks=/\b(icons?|3d|emoji|illustrations?|stickers?)\b/i;
  const users=(input.messages??[]).filter(m=>m.role==='user').map(m=>String(m.content??''));
- if(editBaseSources(input)!==null)return asks.test(users.at(-1)??'');
+ if(editBaseSources(input)!==null)return /\b(add|adding|include|put|insert|use|with|more|new|another|some)\b[^.\n]{0,40}\b(icons?|3d|emoji|illustrations?|stickers?)\b/i.test(users.at(-1)??'');
  return asks.test(JSON.stringify(input.plan?.scenes??[])+' '+JSON.stringify(input.plan?.callouts??input.plan?.on_screen_copy??[])+' '+users.join(' '));
 }
 

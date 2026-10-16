@@ -26,6 +26,9 @@ test('media shorter than its slot needs an explicit choice',()=>{
  assert.equal(timingFindings({rows:r,html:'<video class="clip" id="v1" src="short.mp4" data-fit="loop"></video>',durations:{'short.mp4':2}})[0].code,'loop_not_set');
  assert.deepEqual(timingFindings({rows:r,html:'<video class="clip" id="v1" src="short.mp4" data-fit="loop" loop muted></video>',durations:{'short.mp4':2}}),[]);
  assert.deepEqual(timingFindings({rows:[{...r[0],end:2}],html:h,durations:{'short.mp4':2}}),[],'a slot that fits needs nothing');
+ const voice=[{id:'vo',kind:'audio',src:'vo.wav',start:0.3,end:15}];
+ assert.deepEqual(timingFindings({rows:voice,html:'<audio class="clip" id="vo" src="vo.wav"></audio>',durations:{'vo.wav':13.58}}),[],'a re-voiced line a little shorter just ends early');
+ assert.equal(timingFindings({rows:voice,html:'<audio class="clip" id="vo" src="vo.wav"></audio>',durations:{'vo.wav':11}})[0].code,'media_shorter_than_slot','a bed that stops seconds early is still caught');
 });
 test('helpers read attributes, nested rows and multi-word phrases',()=>{
  assert.equal(attributesById(html).get('t1')['data-spoken'],'Save 20');

@@ -68,6 +68,9 @@ test('on an edit only the latest request decides whether the art library must be
  assert.equal(artExpected({plan,messages,base_bundle:{'index.html':'<b></b>'}},art),false,'a voice-only edit is not sent to search');
  assert.equal(artExpected({plan,messages:[...messages,{role:'user',content:'Add a 3D icon of a camera'}],base_bundle:{'index.html':'<b></b>'}},art),true,'an edit that asks for one does');
  assert.equal(artExpected({plan,messages},null),false,'no library, nothing to search');
+ const swap='Make this template for my product. Colours: Accent #111111 on the stickers\' fills where the orange was. Keep the 3D can.';
+ assert.equal(artExpected({plan,messages:[...messages,{role:'user',content:swap}],base_bundle:{'index.html':'<b></b>'}},art),false,'naming the stickers it has is not asking for new art');
+ assert.equal(artExpected({plan,messages:[...messages,{role:'user',content:'Put some sticker icons around the price'}],base_bundle:{'index.html':'<b></b>'}},art),true);
 });
 
 test('$100 explainer: moves in the code on a page that never loads the kit are sent back before finishing, with the cause',()=>{

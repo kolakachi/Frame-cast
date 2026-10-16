@@ -71,7 +71,7 @@ Result (run 7b22a17d, version 2 of aeb4755c; video `~/Downloads/template-test-vo
 - Where it went: six large early builder calls (about 470 cr) re-reading and re-writing the whole file; then waste the template didn't need:
   - a preview failed because the new voice was shorter than its slot (13.6 s vs 14.7 s);
   - the finish was refused twice by the "search the art library for icons or 3D" rule, which a swap never needs;
-  - the final check asked for three moves the plan named but the template never had, which cost a repair round.
+  - a repair round for a real fault the swap made: "ZERO SUGAR" was on screen 1.3 s and needs 1.5 s to read. (Earlier I wrote the final check demanded three moves the template never had; that was wrong: those were notes on the builder's previews and blocked nothing.)
 
 Conclusion: having the builder do the swap is cheaper but not cheap enough. Most of a template swap needs no model at all:
 
@@ -84,12 +84,18 @@ Conclusion: having the builder do the swap is cheaper but not cheap enough. Most
 
 Then render and run the usual checks (this is the exactly-with-swaps case above). The builder is called only when a check fails (a line too long for its slot, a photo that reads badly), as a small repair. That would put a no-generation template at about the voice cost plus one render, and a fixed price we can quote.
 
-Fix in any case (they hurt template runs and ordinary changes alike):
-- the art-library rule should not fire on a change that only swaps content;
-- final checks should judge a template run against the template's own moves, not plan wording it never had;
-- a re-voiced line that is shorter than its slot should be placed, not fail the preview.
+Fixed (2026-10-16), for template runs and ordinary changes alike:
+- the art-library rule fires on a change only when it asks to add art (it matched "the stickers' fills");
+- a sound that ends a little early (up to 10% of its slot or 1.5 s) no longer fails the preview; video stays exact;
+- template runs are their own kind in the estimate, learned from each other once there are three, without the style's weight.
 
 Note: version 1 of aeb4755c (revision 08fd1388) is the template; version 2 is this test.
+
+## Status (2026-10-16)
+
+Built (not deployed): the library (32 examples seeded, vault order kept), staff "Add to templates" in a side drawer, the Templates page and template page, "Make mine" following the reference options (exactly from a version copies it into the user's workspace as version 1; anything else attaches the template's video as the reference), the three fixes above. Tested in the browser locally: page, filters, our dropdown, phone width, add a version, Make mine → Create plans it and asks for what is missing.
+
+Not built yet: the no-builder production for exactly-with-swaps (step 4). Today an exact template run goes through the builder as a change; text-and-colour-only changes already become free edits.
 
 ## Build order
 

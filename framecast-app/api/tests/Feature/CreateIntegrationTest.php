@@ -2599,6 +2599,12 @@ class CreateIntegrationTest extends TestCase
         // Fix D: a busy style without three real runs of its own is scaled by its measured weight.
         $this->assertSame([578, 520], [$e::agent('standard', 15, ['style' => 'neo-brutalism']), $e::agent('standard', 15, ['style' => 'comic-book'])]);
         $this->assertSame(289, $e::agent('standard', 15, ['style' => 'glassmorphism']), 'a calm style keeps the base estimate');
+        // Templates: a conversation started from one is its own kind, priced without the style's weight.
+        $tc = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'template_id' => 'tabc']);
+        $planId = (string) \Illuminate\Support\Str::uuid();
+        DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $tc->id, 'message_id' => 1, 'brief_sequence' => 1, 'idempotency_key' => 'tp', 'request_hash' => 'h', 'provider' => 'fixture', 'status' => 'proposed', 'plan_json' => json_encode(['planner_task' => 'edit', 'video_type' => 'ad', 'style_route' => 'neo-brutalism']), 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(['type' => 'ad', 'task' => 'creative', 'template' => 1], $e::kindOf(['plan_id' => $planId]));
+        $this->assertSame(289, $e::agent('standard', 15, $e::kindOf(['plan_id' => $planId])));
         $this->assertSame([30, 75, 100, 145], [$e::planningCharge(60), $e::planningCharge(150), $e::planningCharge(200), $e::planningCharge(290)], 'half the real cost, with no cap');
         // Effort sets the build: Quick has no reviewer and 24 calls; every effort has a credit budget, not a call count.
         $quick = \App\Services\Create\PilotPolicy::class;
