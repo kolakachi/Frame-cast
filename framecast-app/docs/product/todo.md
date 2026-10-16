@@ -12,7 +12,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
-| DEDUCT-FALSE | A UGC take finished after the balance ran out is delivered and not charged: charge what is owed, or hold the delivery until topped up | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
 | CONNECTOR-LIST | List WyvStudio in MCP registries and connector directories (ChatGPT, Claude, Smithery and others) and skills.marketing | build + owner accounts |
