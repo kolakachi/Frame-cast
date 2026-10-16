@@ -12,7 +12,6 @@ in the section it belongs to. **build** = engineering, **owner** = a decision or
 
 | ID | Item | Next |
 |---|---|---|
-| CHECK-GUARD | A check that is wrong can stop a build with no video and the user charged (4 of 11 failed builds in 30 days). A blocking check that repeats with the same message after the builder changed what it points at becomes disputed: the build finishes, the note says what could not be confirmed, the dispute is recorded for review, and a build that still fails on a check we mark wrong is refunded | build (now) |
 | MOD-RETRY | A generated shot blocked by the model's moderation fails the build. Tell the user which shot was blocked and why, with a suggested different wording they can send; owner, 2026-10-16: "inform the user / recommend a different message" | build |
 | DEDUCT-FALSE | A UGC take finished after the balance ran out is delivered and not charged: charge what is owed, or hold the delivery until topped up | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |

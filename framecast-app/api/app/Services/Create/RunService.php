@@ -404,6 +404,8 @@ class RunService
                 elseif (preg_match('/\[vendor:(busy|content_refused|vendor_credit|vendor_config)\]/', $cause.' '.$result['summary'], $m)) $result['summary'] = \App\Services\Vendors\VendorAlerts::userMessage('anthropic', $m[1]);
                 elseif (preg_match('/(The image, voice and video models|Our AI model) (is|are) (busy right now|temporarily unavailable on our side)[^.]*\.[^.]*\.[^.]*\./', $cause, $m)) $result['summary'] = $m[0];
             }
+            // CHECK-GUARD: checks the build finished past, or kept failing on, are kept for review.
+            CheckDisputes::record($run, $status, $result, $status === 'preview_ready' ? ($revision ?? null) : null);
             DB::table('composition_runs')->where('id', $id)->update([
                 'status' => $status, 'stage' => mb_substr((string) $result['summary'], 0, 250), 'error' => in_array($status, ['preview_ready', 'step_ready'], true) ? null : $result['summary'],
                 'result_hash' => $fingerprint, 'updated_at' => now(),

@@ -145,6 +145,18 @@ test('the same findings after a repair come back with a plain note to change app
  const [first,second]=state.messages.filter(m=>m.role==='tool').map(m=>m.content);
  assert.equal(first.diagnostics.repeated,undefined);assert.equal(second.diagnostics.repeated,true);assert.match(second.diagnostics.note,/data-layout-allow-overlap/);
 });
+test('CHECK-GUARD: a check of ours that keeps failing after two repairs no longer stops the build (Parcelpath, 2026-10-16)',async()=>{
+ const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');const {reviewStatus}=await import('../review-status.mjs');
+ const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(tmpdir()+'/guard-');await writeFile(dir+'/index.html','<html></html>');
+ const steps=[1,2,3].flatMap(n=>[{type:'write',path:'index.html',content:`<html><div class="beat" data-beat="Step ${n}">${n}</div></html>`},{type:'preview',times:[1]}]);let i=0;
+ const wrong={ok:false,diagnostics:{ok:false,errors:[{code:'beats_unmarked',message:'No beat containers are marked, so their timing cannot follow the narration.'}]}};
+ const state=await runAgent({stateFile:dir+'/s.json',workspace:new Workspace(dir,[]),provider:{id:'t',maxCallUsd:0,complete:async()=>({text:JSON.stringify(steps[i++])})},context:{brief:'x'},limits:{calls:6,repairs:4,budgetUsd:0},requireVisualReview:true,
+  tools:{check:async()=>wrong,snapshot:async()=>({ok:true,providerImage:'data:image/png;base64,AA=='})}});
+ assert.equal(state.status,'preview_ready','delivered, not stopped');
+ assert.deepEqual(state.disputes.map(d=>[d.code,d.seen_at.length]),[['beats_unmarked',3]]);
+ assert.match(reviewStatus(state).findings.join(' '),/Not confirmed .*No beat containers/);
+});
 test('a cut-off reply gets a split-the-work hint and is never replayed in full',async()=>{
  const {runAgent}=await import('../runner.mjs');const {Workspace}=await import('../workspace.mjs');const {promptHistory}=await import('../prompt-context.mjs');
  const {mkdtemp,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');

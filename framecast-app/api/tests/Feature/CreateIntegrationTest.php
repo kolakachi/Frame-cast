@@ -50,6 +50,7 @@ class CreateIntegrationTest extends TestCase
         (require database_path('migrations/2026_10_07_010000_create_create_worker_assignments.php'))->up();
         (require database_path('migrations/2026_10_07_120000_add_notes_to_create_attachments.php'))->up();
         (require database_path('migrations/2026_10_16_120000_create_create_templates_table.php'))->up();
+        (require database_path('migrations/2026_10_16_200000_create_create_check_disputes_table.php'))->up();
         $this->workspace = Workspace::create(['name' => 'Local', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->owner = User::create(['email' => 'local@example.test', 'name' => 'Local', 'role' => 'owner', 'status' => 'active']);
         $this->owner->forceFill(['workspace_id' => $this->workspace->id])->save();
@@ -1022,6 +1023,32 @@ class CreateIntegrationTest extends TestCase
         $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => $summary, 'bundle' => ['index.html' => '<html></html>']], 'create/previews/test/v1.mp4', 'h');
         $this->assertLessThanOrEqual(255, mb_strlen(DB::table('composition_runs')->where('id', $run->id)->value('stage')), 'Postgres varchar(255)');
         $this->assertSame($summary, DB::table('composition_revisions')->where('run_id', $run->id)->value('summary'));
+    }
+
+    public function test_check_guard_records_disputes_and_a_check_marked_wrong_refunds_the_failed_build_once(): void
+    {
+        // Delivered past a disputed check: recorded with its version; nothing to refund (the user has the video).
+        [$c, , $run] = $this->admitted(); $claim = $this->runs->claim();
+        $dispute = ['code' => 'beats_unmarked', 'selector' => null, 'message' => 'No beat containers are marked.', 'seen_at' => [3, 4, 6]];
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'preview_ready', 'summary' => 'Ready.', 'bundle' => ['index.html' => '<html></html>'], 'check_disputes' => [$dispute, ['code' => 'Bad Code!']]], 'create/previews/test/v1.mp4', 'h');
+        $row = DB::table('create_check_disputes')->where('run_id', $run->id)->sole();
+        $this->assertSame(['delivered', 'beats_unmarked', '[3,4,6]'], [$row->outcome, $row->code, $row->seen_at]);
+        $this->assertSame(DB::table('composition_revisions')->where('run_id', $run->id)->value('id'), $row->revision_id);
+        $before = app(\App\Services\CreditService::class)->balance($this->owner->workspace_id);
+        $this->assertSame(0, \App\Services\Create\CheckDisputes::decide($row->id, 'wrong')['refunded']);
+
+        // A build that failed on a repeating check: marked wrong, its builder calls come back once; bought media stays.
+        [$c2, , $run2] = $this->admitted(); $claim2 = $this->runs->claim();
+        foreach ([['create_agent', 9], ['create_agent', 16], ['create_plan_media', 3]] as [$op, $cr]) \App\Models\CreditLedgerEntry::create(['workspace_id' => $this->owner->workspace_id, 'operation' => $op, 'credits' => $cr, 'balance_after' => 0, 'metadata' => ['composition_run_id' => $run2->id]]);
+        $this->runs->finish($run2->id, $claim2['lease_token'], ['status' => 'failed', 'summary' => 'This build stopped before it finished.', 'check_repeats' => [$dispute]], null, null);
+        $failed = DB::table('create_check_disputes')->where('run_id', $run2->id)->sole();
+        $this->assertSame('failed', $failed->outcome);
+        $this->assertSame(25, \App\Services\Create\CheckDisputes::refundable($run2->id));
+        $this->assertSame(0, \App\Services\Create\CheckDisputes::decide($failed->id, 'right')['refunded'], 'a correct check refunds nothing');
+        $this->assertSame(25, \App\Services\Create\CheckDisputes::decide($failed->id, 'wrong')['refunded']);
+        $this->assertSame(0, \App\Services\Create\CheckDisputes::decide($failed->id, 'wrong')['refunded'], 'refunded once');
+        $this->assertSame($before + 25, app(\App\Services\CreditService::class)->balance($this->owner->workspace_id));
+        $this->artisan('create:check-disputes', ['--all' => true])->expectsOutputToContain('beats_unmarked on failed')->assertSuccessful();
     }
 
     public function test_a_finished_build_whose_save_failed_can_be_recovered_without_repeating_or_charging(): void

@@ -34,6 +34,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {swapSummary} from './swap-summary.mjs';
 import {verifiedParts} from './claim-note.mjs';
+import {disputeLine,repeatingFindings} from './check-guard.mjs';
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const base=process.env.CREATE_API_URL??'http://localhost:8000';
 const url=new URL(base);
@@ -399,8 +400,10 @@ async function execute(run){
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
   const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js'&&n!=='wyv-illos.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
-  const result=freeEdit?{status:'preview_ready',summary:swapSummary(run.input,deliveryChecks),bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?(v=>fitSummary(v.text,cutNote(agentResult.state.edits)+(v.line?'\n\n'+v.line:'')))(verifiedParts(agentResult.state.summary??'',finalReview)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
+  const result=freeEdit?{status:'preview_ready',summary:swapSummary(run.input,deliveryChecks),bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?(v=>fitSummary(v.text,cutNote(agentResult.state.edits)+(v.line?'\n\n'+v.line:'')+(disputeLine(agentResult.state.disputes)?'\n\n'+disputeLine(agentResult.state.disputes):'')))(verifiedParts(agentResult.state.summary??'',finalReview)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
+  // CHECK-GUARD: what a check flagged that the build finished past; the API records it for review.
+  if(agentResult?.state?.disputes?.length)result.check_disputes=agentResult.state.disputes.slice(0,8);
   // What was heard settles the requirements that wait for listening, and its problems join Before you post.
   if(audioReview){
    result.delivery_checks={...(result.delivery_checks||{}),audio:{ok:audioReview.summary.ok,problems:audioReview.summary.problems.slice(0,6),script_coverage:audioReview.summary.script_coverage??null}};
@@ -438,6 +441,8 @@ async function execute(run){
   if(e.code==='SANDBOX_QUEUE_TIMEOUT'&&result.status==='failed')result.summary='The render queue stayed busy too long. Your saved assets are safe. Please try again later.';
   if(e.code==='VOICE_SWAP_UNFIT'&&result.status==='failed')result.summary=String(e.message).slice(0,400);
   if(e.code==='CREATE_DISK_CAPACITY'&&result.status==='failed')result.summary='This build stopped because the worker ran short of disk space. Existing assets and drafts are retained. Please try again after capacity is restored.';
+  // CHECK-GUARD: the findings that kept repeating before a failure, so a check we later mark wrong refunds the run.
+  try{const st=JSON.parse(await readFile(dir+'/agent-state.json','utf8'));const rep=repeatingFindings(st);if(rep.length)result.check_repeats=rep;}catch{/* no agent state: nothing repeated */}
   await writeFile(dir+'/failure.json',JSON.stringify({message:e.message,diagnostic:e.sandboxDiagnostic??null,...result}),{mode:0o600});
   // If completion may already be accepted, the server rejects a conflicting result.
   if(!lost)try{await finish(run,result);}catch{}

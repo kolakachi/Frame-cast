@@ -9,6 +9,7 @@ import {parseAction,hostPolicy,toolHostPolicy,toolDefinitions,actionFromToolUse}
 import {chainFor,mapThrough,compact,suggestCuts,removedWords,tightenRanges} from './transcript-map.mjs';
 import {rowsOf,timingFindings,duckingFindings,ambienceFindings,audioEdges,audioEdgeFindings,clipUsageFindings} from './timing-check.mjs';
 import {beatFindings} from './narration-timing.mjs';
+import {guardResult} from './check-guard.mjs';
 import {moveFindings} from './move-check.mjs';
 import {finishFindings} from './finish-lint.mjs';
 import {trimStale} from './history-trim.mjs';
@@ -386,6 +387,7 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
     else if(action.type==='preview') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
+      if(!result.ok)result=guardResult(state,result,state.revision);
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
       if(result.ok){state.checkedRevision=state.revision;const pacing=await softFindings(result.pacing);state.pacing={revision:state.revision,findings:pacing};
         // Fix A: a pass with no blocking finding starts the polish allowance; each later passing preview spends one.
@@ -395,6 +397,7 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
     else if(action.type==='check') {
       result=await bounded(()=>tools.check({signal:boundedSignal}));
       if(result.ok){const t=await timing();if(!t.ok)result=t;}
+      if(!result.ok)result=guardResult(state,result,state.revision);
       if(!result.ok)result=repeated(result);else {state.lastFindings=null;state.layoutAdvisories=[];}
       if(result.ok){state.checkedRevision=state.revision;result={...result,pacing:await softFindings(result.pacing)};state.pacing={revision:state.revision,findings:result.pacing};}
       else {state.checkedRevision=-1;if(++state.repairs>cap.repairs)throw Error('Composition repair limit reached');}
