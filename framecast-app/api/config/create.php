@@ -59,7 +59,9 @@ return [
     'final_look_model' => env('CREATE_FINAL_LOOK_MODEL', 'claude-sonnet-5-5'),
     // RD-14: a message on a delivered video is read for a fault the checks missed (a small model call, queued).
     'missed_defects' => env('CREATE_MISSED_DEFECTS', true),
-    'missed_defect_model' => env('CREATE_MISSED_DEFECT_MODEL', 'claude-haiku-5-5'),
+    // Haiku 5.5 thinks before it answers and spent the whole short reply on thinking (2026-10-16: RD-14 never recorded a
+    // fault): small text reads use the check model, which answers directly.
+    'missed_defect_model' => env('CREATE_MISSED_DEFECT_MODEL', env('CREATE_CHECK_MODEL', 'claude-haiku-4-5-20251001')),
     // How a reference video is read (todo G2): 'opus' sends every sheet to the creative model; 'split' has the check
     // model write per-frame facts and the creative model read them plus the motion frames. Default until the A/B decides.
     'study_mode' => env('CREATE_STUDY_MODE', 'opus'),

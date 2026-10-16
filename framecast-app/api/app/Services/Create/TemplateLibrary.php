@@ -105,6 +105,45 @@ class TemplateLibrary
             'title' => mb_substr((string) DB::table('create_conversations')->where('id', $conversationId)->value('title'), 0, 120)];
     }
 
+    /**
+     * "Write it for me" in the staff drawer: one small model call drafts the title, category, description and what the user
+     * is asked for, from the version's brief, plan and parts. Staff edit what comes back; nothing is saved here.
+     */
+    public function suggest(User $user, string $conversationId, string $revisionId): array
+    {
+        abort_unless(self::isStaff($user), 403);
+        abort_unless(DB::table('create_conversations')->where('id', $conversationId)->where('workspace_id', $user->workspace_id)->exists(), 404);
+        $revision = DB::table('composition_revisions')->where('conversation_id', $conversationId)->where('id', $revisionId)->firstOrFail();
+        $parts = self::partsOf($revision);
+        $run = $revision->run_id ? json_decode((string) DB::table('composition_runs')->where('id', $revision->run_id)->value('input_json'), true) : [];
+        $plan = $run['plan'] ?? [];
+        $brief = (string) DB::table('create_messages')->where('conversation_id', $conversationId)->where('role', 'user')->orderBy('sequence')->value('content');
+        $facts = ['brief' => mb_substr($brief, 0, 1500), 'plan_summary' => mb_substr((string) ($plan['summary'] ?? ''), 0, 600),
+            'scenes' => array_slice(array_map(fn ($s) => $s['what'], $parts['scenes']), 0, 10), 'text' => array_map(fn ($t) => $t['label'].': '.$t['default'], $parts['text']),
+            'pictures' => array_map(fn ($i) => $i['what'], $parts['images']), 'voiceover' => (bool) $parts['voice'], 'music' => (bool) $parts['music'],
+            'clips' => array_map(fn ($c) => $c['what'], $parts['clips']), 'style' => $parts['style'], 'shape' => $parts['shape'], 'seconds' => $parts['seconds']];
+        $prompt = "A finished WyvStudio video is becoming a template: other people will make the same video for their own product. Write the template's listing.\n\n"
+            ."The video, as made for its original product:\n".json_encode($facts, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)."\n\n"
+            ."Return JSON only: {\"title\": ..., \"category\": ..., \"description\": ..., \"ask_hint\": ...}\n"
+            ."- title: what the video is, for any product, at most 50 characters, no product or brand names from the original (\"Sneaker drop with an offer\", \"App tour in three features\").\n"
+            ."- category: one of ".implode(', ', array_keys(self::CATEGORIES))." (offer = product or sale ad, app = app or software showcase, explainer, ugc = a person talking to camera, announce = launch or news, footage = cut from the user's own video).\n"
+            ."- description: one or two plain sentences on what happens in the video and what it suits, for any product: name the beats and the look, not the original product. At most 220 characters.\n"
+            ."- ask_hint: the placeholder for the box where the user describes their product. Start with what to give (\"A link, or a few words about it.\"), then name what this template needs that a link might not give (an offer, app screens, a price), then a short example after \"e.g.\". At most 140 characters.\n"
+            ."Plain words, no hype, no exclamation marks.";
+        $key = (string) config('services.anthropic.key');
+        abort_if($key === '', 503, 'Suggestions are not available right now.');
+        try {
+            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(45)
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'),
+                    'max_tokens' => 1200, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+        } catch (\Throwable) { abort(503, 'Could not write a suggestion just now. Try again.'); }
+        abort_unless($r->successful(), 503, 'Could not write a suggestion just now. Try again.');
+        $out = \App\Services\Ugc\UgcPlan::decodeModelJson(collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('')) ?: [];
+        return array_filter(['title' => mb_substr(trim((string) ($out['title'] ?? '')), 0, 120),
+            'category' => isset(self::CATEGORIES[$out['category'] ?? '']) ? $out['category'] : null,
+            'description' => mb_substr(trim((string) ($out['description'] ?? '')), 0, 600), 'ask_hint' => mb_substr(trim((string) ($out['ask_hint'] ?? '')), 0, 300)]);
+    }
+
     public function update(User $user, string $id, array $fields): array
     {
         abort_unless(self::isStaff($user), 403);

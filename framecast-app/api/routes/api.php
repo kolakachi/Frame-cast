@@ -281,6 +281,7 @@ Route::prefix('v1')->group(function (): void {
             $templates = \App\Http\Controllers\Api\V1\Create\TemplateController::class;
             Route::get('/templates', [$templates, 'index']);
             Route::post('/templates', [$templates, 'store']);
+            Route::post('/templates/suggest', [$templates, 'suggest'])->middleware('throttle:30,1,create-template-suggest');
             Route::get('/templates/{id}', [$templates, 'show']);
             Route::patch('/templates/{id}', [$templates, 'update']);
             Route::delete('/templates/{id}', [$templates, 'destroy']);

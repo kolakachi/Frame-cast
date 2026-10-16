@@ -178,6 +178,27 @@ class CreateTemplatesTest extends TestCase
         $this->assertStringContainsString('following it exactly', $example['brief']);
     }
 
+    public function test_write_it_for_me_drafts_the_listing_from_the_version_for_staff_only(): void
+    {
+        [$conversation, $revision] = $this->version();
+        config(['services.anthropic.key' => 'k']);
+        $sent = null; $calls = 0;
+        Http::fake(['api.anthropic.com/*' => function ($request) use (&$sent, &$calls) {
+            $sent = $request->data();
+            if (++$calls > 1) return Http::response(['content' => [['type' => 'text', 'text' => '{"title":"X","category":"cooking","description":"D","ask_hint":"H"}']]]);
+            return Http::response(['content' => [['type' => 'text', 'text' => json_encode(['title' => 'Sneaker drop with an offer', 'category' => 'offer',
+                'description' => 'Bold blocks slam in: your product on a card, three reasons, the offer in a burst.', 'ask_hint' => 'A link, or a few words about it. Your offer too. e.g. yourshop.com/x, 20% off'])]]]);
+        }]);
+        $s = $this->library->suggest($this->staff, $conversation, $revision);
+        $this->assertSame(['Sneaker drop with an offer', 'offer'], [$s['title'], $s['category']]);
+        $this->assertStringStartsWith('A link', $s['ask_hint']);
+        $prompt = $sent['messages'][0]['content'];
+        $this->assertStringContainsString('Hook: NEW DROP', $prompt, 'it reads the version\'s parts');
+        $this->assertStringContainsString('Ridge 2 shoe, side profile', $prompt);
+        $this->rejected(403, fn () => $this->library->suggest($this->customer, $conversation, $revision));
+        $this->assertArrayNotHasKey('category', $this->library->suggest($this->staff, $conversation, $revision), 'an unknown category is dropped');
+    }
+
     public function test_a_launch_vault_limits_which_templates_can_be_used(): void
     {
         config(['create.templates_public' => true]);

@@ -72,8 +72,8 @@ class MissedDefects
         if ($key === '') return null;
         try {
             $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(60)
-                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.missed_defect_model', 'claude-haiku-5-5'),
-                    'max_tokens' => 400, 'messages' => [['role' => 'user', 'content' => $text]]]);
+                ->post('https://api.anthropic.com/v1/messages', ['model' => (string) config('create.missed_defect_model', 'claude-haiku-4-5-20251001'),
+                    'max_tokens' => 1200, 'messages' => [['role' => 'user', 'content' => $text]]]);
             if (! $r->successful()) {
                 Log::warning('missed defects: the call failed', ['status' => $r->status()]);
                 return null;

@@ -35,6 +35,13 @@ class TemplateController extends Controller
         return response()->json(['data' => $this->library->draft($r->user(), $conversationId, $revisionId)]);
     }
 
+    /** "Write it for me" (staff): a draft of the listing from the version, nothing saved. */
+    public function suggest(Request $r)
+    {
+        $input = $r->validate(['conversation_id' => 'required|uuid', 'revision_id' => 'required|uuid']);
+        return response()->json(['data' => $this->library->suggest($r->user(), $input['conversation_id'], $input['revision_id'])]);
+    }
+
     public function store(Request $r)
     {
         $input = $r->validate(self::fields(true) + ['conversation_id' => 'required|uuid', 'revision_id' => 'required|uuid']);
