@@ -81,7 +81,7 @@ export function audioForVerdict(summary){
  * Combines the measurements into checks. look: the vision verdict ({status:'checked'|'unverified', required, identity,
  * lettering, actions}); audio: the listening summary; moves: missing planned moves; blanks: unintended blank spans.
  */
-export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],flashes=[],expectsSpeech=false,generatedPeople=false}){
+export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],blanks=[],flashes=[],expectsSpeech=false,generatedPeople=false,media=null}){
  const checks=[];
  const add=(id,label,status,blocking,message,times=[])=>checks.push({id,label,status,blocking,message,times});
  // Approved words (narration or a take) in the delivered audio.
@@ -126,6 +126,15 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
     const wrong=[!heardVoice&&(noVoice?'a voice was heard':'the voice is missing'),!heardMusic&&(noMusic?'music was heard':'the music is missing')].filter(Boolean);
     if(!audio)add('required','Must appear: '+item,'unverified',true,'The final audio could not be listened to.');
     else add('required','Must appear: '+item,wrong.length?'fail':'pass',true,wrong.length?'In the final audio, '+wrong.join(' and ')+'.':'');
+    continue;
+   }
+   // A rule about how it is made ("No AI video clips", "no stock footage") is not something a frame shows: it is settled
+   // by what the build bought (the neo-brutalism proof, 2026-10-16, was blocked as "could not be confirmed by sight").
+   const rule=/\b(no|without|zero|avoid)\b[^.;]*?\b(clips?|footage|videos?|stock|images?|pictures?|photos?|stills?)\b/i.exec(item);
+   if(rule&&Array.isArray(media)){
+    const kinds=/stock/i.test(rule[0])?['stock_video','stock_image']:/\b(images?|pictures?|photos?|stills?)\b/i.test(rule[0])?['ai_image']:['generated_shot','animate_image','ugc_take','talking_shot','talking_take'];
+    const used=media.filter(m=>kinds.includes(m.kind)&&m.status==='succeeded');
+    add('required','Must appear: '+item,used.length?'fail':'pass',true,used.length?'The build used '+used.length+' '+(used.length>1?'items':'item')+' this rules out ('+[...new Set(used.map(m=>m.kind.replace(/_/g,' ')))].join(', ')+').':'');
     continue;
    }
    if(r.status==='missing')add('required','Must appear: '+item,'fail',true,'Not seen in the final video'+(r.note?' ('+r.note+')':'')+'.');
@@ -178,7 +187,7 @@ export async function finalChecks({file,duration,plan={},planMedia=[],audioSumma
   try{verdict=await look(await Promise.all(frames.map(async f=>({time:f.time,label:f.label,jpeg:await readFile(f.path)}))));}catch(e){verdict={status:'unverified',note:'the check request failed: '+String(e?.message||e).slice(0,100)};}finally{await cleanup();}
  }
  const expectsSpeech=plan.settings_audio!=='silent'&&((plan.narration||[]).length>0||planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded'));
- return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,flashes,expectsSpeech,generatedPeople});
+ return finalVerdict({plan,look:verdict??{status:'unverified'},audio:audioSummary,moves,reading,blanks,flashes,expectsSpeech,generatedPeople,media:planMedia});
 }
 
 /**

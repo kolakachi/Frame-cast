@@ -195,3 +195,14 @@ test('a single wrong frame is found and blocks (the build fixes it); a hard cut 
  const v=finalVerdict({blanks:[],flashes:flash});
  assert.equal(v.status,'blocked');assert.deepEqual(repairable(v).map(c=>c.id),['flash']);
 });
+
+test('a rule about how the video is made is settled by what was bought, not by sight', () => {
+ const plan={agreement:{required:['No AI video clips','Ridge 2 shoe shown on screen']}};
+ const look={status:'checked',required:[{id:'r1',status:'unclear',note:'cannot tell from frames'},{id:'r2',status:'present',time:0.5}]};
+ const ok=finalVerdict({plan,look,media:[{kind:'ai_image',status:'succeeded'},{kind:'voiceover',status:'succeeded'}]});
+ assert.equal(ok.checks.find(c=>c.label==='Must appear: No AI video clips').status,'pass');
+ const bad=finalVerdict({plan,look,media:[{kind:'generated_shot',status:'succeeded'}]});
+ const c=bad.checks.find(c=>c.label==='Must appear: No AI video clips');
+ assert.equal(c.status,'fail');assert.match(c.message,/generated shot/);
+ assert.equal(finalVerdict({plan:{agreement:{required:['No stock footage']}},look,media:[{kind:'stock_video',status:'succeeded'}]}).checks.find(c=>/stock/.test(c.label)).status,'fail');
+});
