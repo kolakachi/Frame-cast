@@ -1,0 +1,13 @@
+{
+ "slug": "glassmorphism",
+ "name": "Glassmorphism",
+ "when": "Showing an app or digital product as calm, modern and premium: an app showcase, a feature tour, a product update, a dashboard. Best when real UI is the hero.",
+ "video_types": [
+  "app showcase",
+  "feature tour",
+  "product update",
+  "SaaS ad"
+ ],
+ "look": "Frosted glass cards with thin light borders floating over soft drifting colour fields, real UI built in code, one card in focus at a time",
+ "pace": "Smooth and unhurried: cards glide in with depth, the camera drifts, 2-3 s per card"
+}

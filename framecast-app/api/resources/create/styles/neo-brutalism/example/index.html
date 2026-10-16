@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" data-composition-variables='[{"id":"headline","type":"string","label":"Hook","default":"NEW DROP"},{"id":"line_1","type":"string","label":"Product","default":"CHUNK RUNNER"},{"id":"line_2","type":"string","label":"Price","default":"$24.50"},{"id":"line_3","type":"string","label":"Reason 1","default":"Recycled sole"},{"id":"line_4","type":"string","label":"Reason 2","default":"All-day grip"},{"id":"line_5","type":"string","label":"Reason 3","default":"Ships today"},{"id":"line_6","type":"string","label":"Offer","default":"50% OFF"},{"id":"cta","type":"string","label":"Button","default":"SHOP NOW"},{"id":"color_background","type":"color","label":"Field","default":"#FFE14D"},{"id":"color_accent","type":"color","label":"Accent","default":"#FF6FB5"},{"id":"color_text","type":"color","label":"Ink","default":"#111111"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+<script src="wyv-motion.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+  <div id="field" class="clip" data-start="0" data-duration="15" data-track-index="0"></div>
+
+  <div id="s1" class="scene clip" data-start="0" data-duration="2.6" data-track-index="1">
+    <div class="block hook" id="hook">NEW DROP</div>
+    <div class="sticker" id="ship">FREE SHIPPING</div>
+  </div>
+
+  <div id="s2" class="scene clip" data-start="2.6" data-duration="3.6" data-track-index="1">
+    <div class="block card" id="card">
+      <div class="tag mono">DROP 07</div>
+      <svg viewBox="0 0 400 240" class="shoe"><circle cx="200" cy="110" r="95" fill="#FF6FB5" stroke="#111" stroke-width="8"/><path d="M60 170 C70 110 120 95 170 120 L230 140 C270 150 320 150 345 165 C360 175 355 200 330 200 H70 C55 200 55 185 60 170 Z" fill="#7FD6FF" stroke="#111" stroke-width="9" stroke-linejoin="round"/><path d="M60 188 H352" stroke="#111" stroke-width="9"/><path d="M150 125 l15 -25 M185 132 l15 -25 M220 140 l15 -25" stroke="#111" stroke-width="8" stroke-linecap="round"/></svg>
+      <div class="name" id="name">CHUNK RUNNER</div>
+    </div>
+    <div class="block price" id="price"><span class="was mono">WAS $49</span><span id="now">$24.50</span></div>
+  </div>
+
+  <div id="s3" class="scene clip" data-start="6.2" data-duration="3.4" data-track-index="1">
+    <div class="chips">
+      <div class="block chip c1" id="r1">Recycled sole</div>
+      <div class="block chip c2" id="r2">All-day grip</div>
+      <div class="block chip c3" id="r3">Ships today</div>
+    </div>
+  </div>
+
+  <div id="s4" class="scene clip" data-start="9.6" data-duration="5.4" data-track-index="1">
+    <div class="burst" id="burst"><svg viewBox="0 0 500 500"><path d="M250 20 L290 120 L390 60 L370 170 L480 190 L390 260 L470 350 L360 350 L370 460 L280 400 L250 490 L210 400 L120 460 L130 350 L30 350 L110 260 L20 190 L130 170 L110 60 L210 120 Z" fill="#FF5A36" stroke="#111" stroke-width="12" stroke-linejoin="round"/></svg><div class="burst-text" id="offer">50% OFF</div></div>
+    <div class="marquee" id="marquee"><div class="track mono" id="track">SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦ SALE ✦</div></div>
+    <div class="cta-row">
+      <div class="block btn" id="btn"><span id="cta">SHOP NOW</span> →</div>
+      <div class="block brand" id="brand">STOMP</div>
+    </div>
+  </div>
+</div>
+<script src="main.js"></script>
+<script>
+  window.__timelines["main"] = window.__wyvTl;
+</script>
+</body>
+</html>

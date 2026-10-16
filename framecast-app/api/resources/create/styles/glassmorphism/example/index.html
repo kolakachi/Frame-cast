@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" data-composition-variables='[{"id":"headline","type":"string","label":"City","default":"Lisbon"},{"id":"line_1","type":"string","label":"Condition","default":"Mostly sunny"},{"id":"line_2","type":"string","label":"Alert","default":"Rain starts in 20 minutes"},{"id":"line_3","type":"string","label":"Brand","default":"Skye"},{"id":"cta","type":"string","label":"Call to action","default":"Free on iOS and Android"},{"id":"color_background","type":"color","label":"Field","default":"#141A4A"},{"id":"color_accent","type":"color","label":"Accent","default":"#7CC4FF"},{"id":"color_text","type":"color","label":"Text","default":"#FFFFFF"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+<script src="wyv-motion.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+  <div id="mesh" class="clip" data-start="0" data-duration="15" data-track-index="0"></div>
+  <div id="world" class="clip" data-start="0" data-duration="15" data-track-index="1">
+
+    <div class="glass card-main" id="main">
+      <div class="row"><div><div class="city" id="city">Lisbon</div><div class="cond" id="cond">Mostly sunny</div></div>
+        <svg class="sun" viewBox="0 0 200 200"><circle cx="90" cy="90" r="46" fill="#FFD66B"/><path d="M60 150 h90 a32 32 0 0 0 -6 -63 a44 44 0 0 0 -84 12 a26 26 0 0 0 0 51 z" fill="#fff" opacity=".92"/></svg></div>
+      <div class="temp"><span id="deg">21</span>°</div>
+      <div class="range">H 24° · L 15°</div>
+    </div>
+
+    <div class="glass card-hours" id="hours">
+      <div class="label">Next hours</div>
+      <div class="hours">
+        <div class="h"><span>Now</span><b>21°</b></div><div class="h"><span>1 PM</span><b>22°</b></div><div class="h"><span>2 PM</span><b>23°</b></div>
+        <div class="h"><span>3 PM</span><b>20°</b></div><div class="h"><span>4 PM</span><b>17°</b></div>
+      </div>
+    </div>
+
+    <div class="glass alert" id="alert"><div class="dot"></div><div><b>Heads up</b><div id="alertText">Rain starts in 20 minutes</div></div></div>
+
+    <div class="glass close" id="close"><span class="brand" id="brand">Skye</span><span class="cta" id="cta">Free on iOS and Android</span></div>
+  </div>
+</div>
+<script src="main.js"></script>
+<script>
+  window.__timelines["main"] = window.__wyvTl;
+</script>
+</body>
+</html>

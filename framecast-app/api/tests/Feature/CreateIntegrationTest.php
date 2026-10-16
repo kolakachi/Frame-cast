@@ -108,6 +108,12 @@ class CreateIntegrationTest extends TestCase
         // RD-11: the whiteboard explainer pack, and the reference's timing as shares of its length.
         $wb = collect(\App\Services\Create\StylePacks::catalogue())->firstWhere('slug', 'whiteboard');
         $this->assertSame('Whiteboard explainer', $wb['name']);
+        // RD-48: the four full styles from the named looks, each with a worked example.
+        foreach (['neo-brutalism' => 'Neo-brutalism', 'glassmorphism' => 'Glassmorphism', 'isometric' => 'Isometric', 'comic-book' => 'Comic book'] as $slug => $name) {
+            $pack = collect(\App\Services\Create\StylePacks::catalogue())->firstWhere('slug', $slug);
+            $this->assertSame($name, $pack['name'] ?? null, $slug);
+            $this->assertTrue($pack['has_example'], $slug);
+        }
         $this->assertTrue($wb['has_example']);
         $t = \App\Services\Create\PlanService::timingBreakdown([['id' => 'm1', 'start' => 0, 'end' => 2.4, 'purpose' => 'sets up the promise'], ['id' => 'm2', 'start' => 2.4, 'end' => 20, 'purpose' => '']], 20);
         $this->assertSame(['m1 0-2.4 s, 12%: sets up the promise', 'm2 2.4-20 s, 88%'], $t['moments']);

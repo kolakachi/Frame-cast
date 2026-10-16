@@ -48,6 +48,6 @@ ITEMS = [
 ("RD-45","Create","Hook and copy cliche lint: Introducing, Unlock the power of, Game changer, placeholder names","designer-stack","idea","From the designer-stack review; S."),
 ("RD-46","Create","Design-tool selection move: selection box with handles, a WxH label, a cursor click","designer-stack","idea","From the designer-stack review; M."),
 ("RD-47","Create","Recipes for 20 named looks (particles to neo-brutalism) with their fonts, plus split-flap and mesh-gradient moves","Opus 5.5 motion-graphics prompt doc (YouTube), 2026-10-16","done","2026-10-16: kit/looks.md; a look the brief or plan names is pinned for the builder with its Google fonts, and lifts the avoid-generated-looks rule for that look only; WM.splitFlap and WM.mesh checked rendered."),
-("RD-48","Create","Full styles with worked examples: neo-brutalism, glassmorphism, isometric, comic book","Opus 5.5 motion-graphics prompt doc","next","Picked for paid-social teams; 1-2 h each."),
+("RD-48","Create","Full styles with worked examples: neo-brutalism, glassmorphism, isometric, comic book","Opus 5.5 motion-graphics prompt doc","done","2026-10-16: four style packs in the picker, each with rules and a 15 s worked example checked frame by frame; choosing one also pins its look recipe and fonts (Archivo Black and Space Mono, Bangers)."),
 ("RD-49","Create","Logo animation format (3-6 s, becomes the logo, last second still) and a transparent export (WebM with alpha)","Opus 5.5 motion-graphics prompt doc","next","Needs the render and download path; plan first."),
 ]

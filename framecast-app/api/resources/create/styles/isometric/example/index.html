@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" data-composition-variables='[{"id":"line_1","type":"string","label":"Stop 1","default":"Order placed"},{"id":"line_2","type":"string","label":"Stop 2","default":"Packed"},{"id":"line_3","type":"string","label":"Stop 3","default":"On its way"},{"id":"line_4","type":"string","label":"Stop 4","default":"Delivered"},{"id":"headline","type":"string","label":"Brand","default":"Parcelo"},{"id":"cta","type":"string","label":"Call to action","default":"Track every step"},{"id":"color_background","type":"color","label":"Ground","default":"#F6F0E6"},{"id":"color_accent","type":"color","label":"Accent","default":"#FF7A45"},{"id":"color_text","type":"color","label":"Text","default":"#26324B"}]'>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script src="gsap.min.js"></script>
+<script src="wyv-motion.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="15">
+  <div id="stage" class="clip" data-start="0" data-duration="15" data-track-index="0">
+    <svg id="svg" viewBox="0 0 1080 1920" width="1080" height="1920"><g id="world"></g></svg>
+  </div>
+  <div id="close" class="clip" data-start="12.2" data-duration="2.8" data-track-index="1">
+    <div class="brand" id="brand">Parcelo</div><div class="cta" id="cta">Track every step</div>
+  </div>
+</div>
+<script src="main.js"></script>
+<script>
+  window.__timelines["main"] = window.__wyvTl;
+</script>
+</body>
+</html>

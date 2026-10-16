@@ -1,0 +1,13 @@
+{
+ "slug": "comic-book",
+ "name": "Comic book",
+ "when": "A playful feature announcement or a problem-and-fix story told in a few panels: a new feature, a before and after, a customer's bad day turned good.",
+ "video_types": [
+  "feature announcement",
+  "problem and solution",
+  "story ad",
+  "launch"
+ ],
+ "look": "Comic panels with thick black borders and halftone shading, bold primary colours, speech bubbles and sound-effect bursts in comic lettering",
+ "pace": "Panel by panel: the camera moves into each panel for 3-4 s, sound effects stamp on the beat, then a pull back to the whole page"
+}

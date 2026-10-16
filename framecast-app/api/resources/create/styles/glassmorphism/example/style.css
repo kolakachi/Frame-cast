@@ -1,0 +1,25 @@
+@font-face{font-family:'Inter';src:url('inter.ttf') format('truetype');font-weight:100 900;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#141A4A;}
+#root{position:relative;width:100%;height:100%;overflow:hidden;font-family:'Inter',sans-serif;color:var(--color_text,#fff);}
+#mesh{position:absolute;inset:0;}
+#world{position:absolute;inset:0;}
+.glass{position:absolute;background:rgba(255,255,255,.16);backdrop-filter:blur(28px) saturate(140%);-webkit-backdrop-filter:blur(28px) saturate(140%);border:2px solid rgba(255,255,255,.38);border-radius:44px;box-shadow:0 30px 60px rgba(8,10,40,.28);}
+.card-main{left:90px;top:520px;width:900px;padding:56px 60px;}
+.row{display:flex;justify-content:space-between;align-items:flex-start;}
+.city{font-size:64px;font-weight:700;}
+.cond{font-size:40px;opacity:.8;margin-top:6px;}
+.sun{width:200px;height:200px;}
+.temp{font-size:300px;font-weight:200;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums;}
+.range{font-size:40px;opacity:.8;}
+.card-hours{left:90px;top:1250px;width:900px;padding:44px 50px;}
+.label{font-size:34px;opacity:.75;margin-bottom:24px;text-transform:none;}
+.hours{display:flex;justify-content:space-between;}
+.h{display:flex;flex-direction:column;align-items:center;gap:14px;font-size:36px;}
+.h b{font-size:56px;font-weight:700;}
+.alert{left:120px;top:250px;width:840px;padding:34px 40px;display:flex;gap:28px;align-items:center;font-size:40px;border-radius:36px;}
+.alert b{font-size:44px;}
+.dot{width:26px;height:26px;border-radius:50%;background:var(--color_accent,#7CC4FF);box-shadow:0 0 0 10px rgba(124,196,255,.25);flex:none;}
+.close{left:150px;top:1580px;width:780px;padding:48px;display:flex;flex-direction:column;align-items:center;gap:14px;}
+.brand{font-size:120px;font-weight:800;letter-spacing:-.03em;line-height:1;}
+.cta{font-size:40px;opacity:.85;}

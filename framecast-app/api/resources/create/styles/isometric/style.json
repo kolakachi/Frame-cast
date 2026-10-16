@@ -1,0 +1,13 @@
+{
+ "slug": "isometric",
+ "name": "Isometric",
+ "when": "Explaining a process, a journey or how something works step by step: an order reaching a door, data moving through a system, a service from sign-up to result.",
+ "video_types": [
+  "process explainer",
+  "how it works",
+  "onboarding",
+  "service explainer"
+ ],
+ "look": "A small isometric world in soft pastel colours, objects drawn as clean 30-degree blocks, a glowing item travelling between stops with labels",
+ "pace": "Steady: the camera glides from stop to stop, about 2.5-3 s a step, each label popping as the item arrives"
+}

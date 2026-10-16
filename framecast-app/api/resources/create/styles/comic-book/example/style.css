@@ -1,0 +1,20 @@
+@font-face{font-family:'Bangers';src:url('brand-bangers-400.ttf') format('truetype');}
+@font-face{font-family:'Inter';src:url('inter.ttf') format('truetype');font-weight:100 900;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#FFF8E6;}
+#root{position:relative;width:100%;height:100%;overflow:hidden;background:var(--color_background,#FFF8E6);font-family:'Bangers','Anton',sans-serif;color:var(--color_text,#111);}
+#world{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:0 0;}
+.panel{position:absolute;left:40px;width:1000px;border:12px solid #111;overflow:hidden;}
+.p1{top:40px;height:580px;background-color:#7FC8FF;background-image:radial-gradient(rgba(17,17,17,.22) 4px,transparent 4.5px);background-size:22px 22px;}
+.p2{top:650px;height:580px;background-color:#FF8A5C;background-image:radial-gradient(rgba(17,17,17,.2) 5px,transparent 5.5px);background-size:26px 26px;}
+.p3{top:1260px;height:620px;background-color:#B6F0C2;background-image:radial-gradient(rgba(17,17,17,.16) 4px,transparent 4.5px);background-size:22px 22px;}
+.art{position:absolute;inset:0;width:100%;height:100%;}
+.caption{position:absolute;left:150px;top:30px;padding:10px 22px;background:#FFE14D;border:7px solid #111;font-size:58px;letter-spacing:.02em;z-index:2;}
+.burst{position:absolute;left:470px;top:60px;width:360px;height:270px;}
+.burst svg{width:100%;height:100%;}
+.sfx{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:104px;color:var(--color_accent,#E83B2E);-webkit-text-stroke:6px #111;paint-order:stroke;transform:rotate(-8deg);}
+.bubble{position:absolute;left:400px;top:90px;width:400px;padding:36px 30px;background:#fff;border:9px solid #111;border-radius:60px;font-size:72px;line-height:1.05;text-align:center;}
+.bubble::after{content:'';position:absolute;left:70px;bottom:-62px;border:30px solid transparent;border-top:56px solid #111;}
+#close{position:absolute;left:0;right:0;top:760px;text-align:center;}
+.brand{display:inline-block;padding:20px 50px;background:#FFE14D;border:12px solid #111;font-size:170px;line-height:1;box-shadow:16px 16px 0 #111;}
+.cta{margin-top:40px;font-family:'Inter',sans-serif;font-weight:800;font-size:52px;}
