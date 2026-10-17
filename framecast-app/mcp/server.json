@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.wyvstudio/wyvstudio",
+  "title": "WyvStudio",
+  "description": "Make short branded ad and social videos from a product link, script or idea, in your chat.",
+  "version": "1.10.0",
+  "websiteUrl": "https://wyvstudio.com",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://app.wyvstudio.com/mcp"
+    }
+  ]
+}
