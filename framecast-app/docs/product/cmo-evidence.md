@@ -247,21 +247,25 @@ Record (with permission) or take notes in their exact words; add them to §5.
 
 ### The text version (owner, 2026-10-17: by email instead of calls, with a thank-you)
 
-One personal email, five questions, answered by reply. Send from hello@wyvstudio.com (webmail), one at a time, each
-with the person's name and what they made. When someone replies, tell Claude who; Claude adds the thank-you credits to
-their workspace on prod. Paste their replies (or the key lines) into §5 in their exact words.
+One personal email, five questions, answered by reply. Send from hello@wyvstudio.com (webmail), one at a time. When
+someone replies, tell Claude who; Claude adds the 500 thank-you credits to their workspace. Paste their replies (or the
+key lines) into §5 in their exact words.
 
-**For current customers (thank-you: 500 credits)**
+**Only what any account page shows.** The emails mention when someone joined and roughly how much they've used
+WyvStudio, never what their videos are about, so nobody feels watched. Refunders are left out (owner, 2026-10-17: they
+were emailed before and didn't reply).
 
-> Subject: 5 quick questions about your videos (500 credits as thanks)
+**For active customers (made several videos; thank-you: 500 credits)**
+
+> Subject: 5 quick questions (500 credits as thanks)
 >
-> Hi [name],
+> Hi [first name],
 >
-> I run WyvStudio. I saw you've been making [what they made: book promos / lessons for your coaching programme / ads
-> for your shop] with us, and I'd love to learn from you. No call, no pitch: just reply to this email with a few lines
-> for each question. As a thank-you, I'll add 500 credits to your account as soon as you reply.
+> I run WyvStudio. You've been with us since [month], and you're one of the people who use it most, so I'd love to
+> learn from you. No call, no pitch: just reply to this email with a few lines for each question. As a thank-you, I'll
+> add 500 credits to your account as soon as you reply.
 >
-> 1. What is the video for? Who watches it, and where do you post it?
+> 1. What do you make videos for? Who watches them, and where do you post them?
 > 2. Think of the last video you made with us. What did you do, step by step, and where did you get stuck or lose time?
 > 3. Before WyvStudio, how did you make these videos, and what did that cost you in money or time?
 > 4. What almost made you stop using WyvStudio, or what would make you stop?
@@ -271,38 +275,40 @@ their workspace on prod. Paste their replies (or the key lines) into §5 in thei
 > just say so.
 >
 > Thank you,
-> [name], WyvStudio
+> [your name], WyvStudio
 
-**For people who refunded (thank-you: a free ad made for their business)**
+**For quiet customers (bought, made little or nothing since; thank-you: 500 credits)**
 
-> Subject: Can I learn from you? (a free ad as thanks)
+> Subject: Quick question about your WyvStudio account (500 credits as thanks)
 >
-> Hi [name],
+> Hi [first name],
 >
-> You tried WyvStudio in [month] and it didn't work out for you. I'm sorry about that, and I'd like to understand what
-> went wrong so we fix it. No pitch and nothing to buy: just reply with a few lines for each question. As a thank-you,
-> I'll make you a free ad for your [business / book / channel] with our new version and send it to you.
+> I run WyvStudio. You joined us in [month], and I'd love to know how it's going, including if it hasn't been useful
+> yet. No call, no pitch: just reply with a few lines for each question. As a thank-you, I'll add 500 credits to your
+> account as soon as you reply.
 >
-> 1. What were you hoping to make with WyvStudio, and what for?
-> 2. What happened when you tried? Where did it go wrong?
-> 3. What did you use instead, and how is that going?
-> 4. What would a tool like ours have to do for you to pay for it?
-> 5. Anything else you'd like me to know?
+> 1. What were you hoping to make videos for when you joined? Who would watch them?
+> 2. What happened when you tried? Where did it get hard, or what got in the way?
+> 3. How are you making those videos now, if at all?
+> 4. What would WyvStudio need to do for you to use it every week?
+> 5. If you described WyvStudio to a friend in one sentence, what would you say?
 >
-> Thank you for your time,
-> [name], WyvStudio
+> Honest answers help most. And if it's fine for me to quote you (without your name), just say so.
+>
+> Thank you,
+> [your name], WyvStudio
 
-**For ws82 (Portuguese, current customer)**
+**For ws82 (Portuguese, active customer)**
 
-> Assunto: 5 perguntas rápidas sobre seus vídeos (500 créditos de agradecimento)
+> Assunto: 5 perguntas rápidas (500 créditos de agradecimento)
 >
 > Olá [nome],
 >
-> Eu cuido da WyvStudio. Vi que você está fazendo os vídeos da Mega da Virada para a sua Lotérica com a gente, e
+> Eu cuido da WyvStudio. Você está com a gente desde outubro e é uma das pessoas que mais usam a plataforma, então eu
 > gostaria muito de aprender com você. Sem ligação e sem venda: é só responder este e-mail com algumas linhas para cada
 > pergunta. Como agradecimento, vou adicionar 500 créditos à sua conta assim que você responder.
 >
-> 1. Para que serve o vídeo? Quem assiste e onde você publica?
+> 1. Para que você faz vídeos? Quem assiste e onde você publica?
 > 2. Pense no último vídeo que você fez com a gente. O que você fez, passo a passo, e onde travou ou perdeu tempo?
 > 3. Antes da WyvStudio, como você fazia esses vídeos e quanto isso custava em dinheiro ou tempo?
 > 4. O que quase fez você parar de usar a WyvStudio, ou o que faria você parar?
@@ -311,17 +317,17 @@ their workspace on prod. Paste their replies (or the key lines) into §5 in thei
 > Respostas sinceras ajudam mais, inclusive as críticas. E se eu puder citar você (sem o seu nome), é só dizer.
 >
 > Obrigado,
-> [nome], WyvStudio
+> [seu nome], WyvStudio
 
-**Who gets which**
+**Who gets which** (names and addresses are in God Mode; they are not kept in this repo)
 
-| Who | Version | Thank-you |
+| Workspace | Version | Joined |
 |---|---|---|
-| ws82 (lottery shop) | Portuguese | 500 credits |
-| ws68 (book author), ws45 (coaching programme), ws79 (health brand), ws59 (facts channel) | Current customer | 500 credits each |
-| ws77 (nonprofit channel), ws43 (election campaign), the 2026-10-15 refund | Refunded | A free template ad |
+| ws82 | Portuguese | October |
+| ws68, ws79, ws59, ws45 | Active | September (ws45: August) |
+| ws27, ws44, ws49, ws63, ws65, ws60, ws70, ws78 | Quiet | August or September |
 
-Cost: 2,500 credits for five customers (about $50 at pack prices, far less in real cost) and three template ads (cents).
+Cost: up to 6,500 credits if all 13 reply (500 each), which is about $120 at pack prices and far less in real cost.
 
 ## 9. Status
 
@@ -330,4 +336,4 @@ Cost: 2,500 credits for five customers (about $50 at pack prices, far less in re
 | Buyers, first session, refunds, customer words | Done (this page) |
 | Competitor ads | Done (§6) |
 | Market words | Done (§7) |
-| Interviews | Text version ready (§8): the owner sends the emails; Claude adds credits for each reply |
+| Customer emails | Ready (§8): 13 current customers in three versions; refunders left out; Claude adds credits for each reply |

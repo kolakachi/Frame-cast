@@ -26,7 +26,7 @@ rule.
 | # | Experiment | ICE | Who | Metric and target | Keep or kill |
 |---|---|---|---|---|---|
 | 1 | **Tracking:** a link convention (`utm_source` = tiktok, instagram, youtube, reddit, outreach, email, g2…; `utm_content` = the post or template), FUNNEL as a weekly query | 9·9·9 = 729 | Claude | Every new sign-up has a source; FUNNEL runs | Required, not tested |
-| 2 | **Customer emails** (CMO-EMAILS): 8 sent, replies into the evidence | 7·9·9 = 567 | Owner sends; Claude credits and quotes | 4 replies | — (learning, not a test) |
+| 2 | **Customer emails** (CMO-EMAILS): 13 current customers, replies into the evidence | 7·9·9 = 567 | Owner sends; Claude credits and quotes | 4 replies | — (learning, not a test) |
 | 3 | **FIRST-FIX:** block the empty product form; replace the sample about us with the buyer's own first ad; start new buyers in Create or a template | 10·8·6 = 480 | Claude (plan first, owner approves) | 80% of new sign-ups get their own video in the first session | Keep if above 60% after 20 sign-ups |
 | 4 | **Free listings:** G2, SaaSHub, AlternativeTo, Future Tools, the ChatGPT and Claude directories | 5·7·9 = 315 | Owner creates the accounts; Claude writes every entry | All submitted in week 1 | Free; keep |
 | 5 | **FREE-FIRST:** one free template ad per verified new workspace, watermarked | 9·7·5 = 315 | Claude (build) | 20 free first ads | Keep if 2+ purchases follow |
@@ -38,7 +38,7 @@ rule.
 ## 3. The two weeks, day by day
 
 **Week 1 (Oct 19–25): fix and measure**
-- Mon: tracking convention and FUNNEL query (Claude). Owner sends the 8 customer emails.
+- Mon: tracking convention and FUNNEL query (Claude). Owner sends the 13 customer emails.
 - Mon–Tue: FIRST-FIX plan to the owner; build once approved.
 - Tue: listings entries written (Claude); owner creates the accounts and submits.
 - Wed: Layla pilot: cost estimate to the owner, then 3 videos; check her face across them.
@@ -58,7 +58,7 @@ rule.
 
 | Item | When |
 |---|---|
-| Send the 8 customer emails (texts ready in cmo-evidence §8) | Mon Oct 19 |
+| Send the 13 customer emails (texts ready in cmo-evidence §8) | Mon Oct 19 |
 | Approve the FIRST-FIX plan | Tue Oct 20 |
 | Create accounts: G2, SaaSHub, AlternativeTo, Future Tools; TikTok, Instagram and YouTube brand accounts for Layla | Week 1 |
 | Approve the Layla pilot cost estimate | Wed Oct 21 |

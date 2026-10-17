@@ -14,7 +14,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item | Next |
 |---|---|---|
-| CMO-EMAILS | Owner sends the 8 question emails (cmo-evidence §8); Claude adds 500 credits per customer reply and makes the free ad for each refunder who replies | owner |
+| CMO-EMAILS | Owner sends the question emails to the 13 current customers (cmo-evidence §8: active, quiet and Portuguese versions; refunders left out); Claude adds 500 credits per reply | owner |
 | FIRST-FIX | First-session fixes before any traffic (`cmo-decisions.md` §0): block the empty product form, replace the auto-made "Wyvstudio Ad" sample with the buyer's own first ad (link or template), start new buyers in Create or a template rather than Classic. Plan first: changes onboarding | plan, then build |
 | CMO-3 | Run the two-week plan in `cmo-plan.md` (Oct 19 – Nov 1): tracking, FIRST-FIX, customer emails, listings, FREE-FIRST, Layla pilot, community answers, OUTREACH-5, message test; scoreboard reviewed Fridays | starts Mon Oct 19 |
 | TRACKING | Link convention (utm_source per channel, utm_content per post or template) and FUNNEL as a weekly query; every new sign-up gets a source | build, Mon Oct 19 |
