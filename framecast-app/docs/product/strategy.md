@@ -1,6 +1,6 @@
 # WyvStudio growth strategy
 
-Owner, 2026-10-16: "we need to have a strategy doc". This is how WyvStudio gets seen and bought. Who we sell to and how
+Owner, 2026-10-16: "we need to have a strategy doc". The story every post tells is in `brand-story.md` (draft). This is how WyvStudio gets seen and bought. Who we sell to and how
 we say it are in `positioning-roadmap.md`; this doc does not repeat them. The work it creates lives as rows in `todo.md`
 (the one list). Update this doc when a decision changes, not when a task is done.
 
