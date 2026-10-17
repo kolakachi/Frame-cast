@@ -18,8 +18,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 | FIRST-FIX | Done 2026-10-17 (`first-fix-plan.md`): sample off, product-form guard, templates link, and the free first ad (deploy the worker before pushing: the API asks it for the mark) | measure on the scoreboard |
 | CMO-3 | Run the two-week plan in `cmo-plan.md` (Oct 19 – Nov 1): tracking, FIRST-FIX, customer emails, listings, FREE-FIRST, Layla pilot, community answers, OUTREACH-5, message test; scoreboard reviewed Fridays | starts Mon Oct 19 |
 | FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
-| TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
-| SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one) | build |
+| TPL-LINK | A link that opens one template's free ad directly (sign up free, land on that template, UTM kept), for every post, answer and outreach message (`templates-growth-plan.md` §2; owner yes 2026-10-17) | build |
 | HTTPS-FIX | http://wyvstudio.com answers 200 instead of redirecting to https, and no HSTS header is sent. In Cloudflare → SSL/TLS → Edge Certificates: turn on Always Use HTTPS and HSTS. Five minutes | owner, in Cloudflare |
 | LINK-FIRST | "Paste your shop link → your first ad" as the free-first way in (after gojiberry.ai's "enter your website"): read the site's name, headline, colours, logo and a product photo, fill a template, make the free first video. Needs FREE-FIRST | owner OK on the design, then build |
 | LINK-FALLBACK | Firecrawl (hosted) as the fallback when a shop blocks our own fetch (429/403, empty JavaScript pages); our fetch stays first. Test on 10 links that failed on prod, with a monthly cost cap; needs an owner Firecrawl account | test, then build |
@@ -133,6 +132,8 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item |
 |---|---|
+| TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product"). At the Nov 1 review (`cmo-plan.md` §5 keeps template pages out until then; owner 2026-10-17) |
+| SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one). At the Nov 1 review |
 | CHECKOUT-SAVE | A follow-up when someone leaves checkout ("your $9 pass is still waiting", or a small offer); once traffic comes |
 | BENCH | The bench rounds: baseline (G1), speed targets (F1), motion regression (H1), engine bake-off (B2), re-render keeps the performance (B3), sequence route (B1), builder starts while clips render (F2), local acceptance (R1), wider audience behind a switch (R2) |
 | LOOP-COST | Creative Director loop cost levers: trim old tool output by rule; does planning earn its cost on Opus |

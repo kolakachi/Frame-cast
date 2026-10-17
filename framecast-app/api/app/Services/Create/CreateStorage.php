@@ -151,7 +151,8 @@ class CreateStorage
                 });
             }
             return true;
-        } finally { fclose($tmp); }
+        // The S3 driver may close the staged stream after a large upload (prod template import, 2026-10-17).
+        } finally { if (is_resource($tmp)) fclose($tmp); }
     }
 
     private function verifyObject(string $disk, string $key, string $sha, int $bytes): void
