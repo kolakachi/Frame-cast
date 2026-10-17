@@ -10,7 +10,7 @@ the owner says so. Measured by `growth:scoreboard`: the share of new sign-ups wi
 | **The sample** | Every new workspace gets a copy of project 48, "Wyvstudio Ad" (an ad about WyvStudio), from `ONBOARDING_SAMPLE_PROJECT_ID=48` in prod `api/.env`. It costs nothing, but it was the first "video" in 15 of 23 buyers' accounts, and every export of it looked like a first video in our numbers | `CloneSampleProjectJob`, `SampleProjectCloner` |
 | **Where buyers land** | Since 2026-10-12 the dashboard opens with "Make your first ad" (describe it or paste a link → Create, plan and price first). Paying buyers land there | `DashboardHome.vue`, `PaymentConfirmationView.vue` |
 | **Free sign-ups** | Create refuses free plans outright: the quote returns 402, "requires a plan with unwatermarked exports". So a free sign-up who uses "Make your first ad" hits a wall | `ConversationService` (approve), `CompositionOutputService` (save) |
-| **The Classic product form** | "Product name / description / link / audience" sends `Product Name: \nProduct Description: ` when left empty; 12 videos were made from nothing | `NewVideoWizard.vue` `buildSourceContentRaw` |
+| **The Classic product form** | Left empty, it would send only its labels (`Product Name: \nProduct Description: `) and generate from nothing. The 12 "empty forms" in buyers' accounts were actually "Start from scratch" projects (an empty editor), which stored those labels as their text; 5 of the 6 buyers who started that way refunded | `NewVideoWizard.vue` `buildSourceContentRaw` |
 | **Email** | Sign-up is by magic link, so every account has a verified email | `AuthController::magicLink` |
 
 **Baseline:** 14 of 48 sign-ups since August (29%) made a video of their own on day one; 0 of 3 in the latest week.
@@ -65,3 +65,12 @@ One free ad per workspace, for free plans, only from a template:
 1, 2 and 3 the same day (with tests); 4 next (API gate, the free counter, the watermark in the render, the version-card
 upgrade prompt, God Mode reset), tested locally end to end on a free test workspace before any push; then the
 scoreboard shows the effect from the following week.
+
+## Status (2026-10-17)
+
+| Item | Status |
+|---|---|
+| 1. Sample off | **Done on prod:** `ONBOARDING_SAMPLE_PROJECT_ID` commented out in prod `api/.env`; API and the default worker recreated (both read 0) |
+| 2. Product form guard | **Built and tested:** the wizard says "Add your product's name and a line about it, or paste its link." on an empty product form; the API refuses the same; "Start from scratch" stores no text |
+| 3. Templates link | **Built, checked in Chrome:** "Or start from a template →" under the first-ad box opens Templates |
+| 4. The free first ad | Next (FREE-FIRST) |

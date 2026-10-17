@@ -15,7 +15,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 | ID | Item | Next |
 |---|---|---|
 | CMO-EMAILS | Owner sends the question emails to the 13 current customers (cmo-evidence §8: active, quiet and Portuguese versions; refunders left out); Claude adds 500 credits per reply | owner |
-| FIRST-FIX | Plan ready: `first-fix-plan.md` (switch off the sample, guard the empty product form, templates link in the first-ad box, the free first ad from a template). Baseline: 29% of sign-ups make their own video on day one | owner approves the plan |
+| FIRST-FIX | Items 1–3 done 2026-10-17 (`first-fix-plan.md`: sample off on prod, product-form guard, templates link); item 4 is FREE-FIRST | item 4 next |
 | CMO-3 | Run the two-week plan in `cmo-plan.md` (Oct 19 – Nov 1): tracking, FIRST-FIX, customer emails, listings, FREE-FIRST, Layla pilot, community answers, OUTREACH-5, message test; scoreboard reviewed Fridays | starts Mon Oct 19 |
 | FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |

@@ -57,8 +57,9 @@ out below.
 
 - **Half the refunds never got a video of their own.** For them the first session failed outright.
 - **The other half got one quickly and left anyway:** the video didn't meet their bar (refund reasons below).
-- **12 empty product forms** were submitted in 6 workspaces: the Classic "Product Name: / Product Description:" form sent
-  blank, so a video was made from nothing. A small fix with an outsized effect on first impressions.
+- **6 buyers started with "Start from scratch"** (an empty Classic editor, 12 projects; the wizard stored the product
+  form's empty labels as their text). 5 of those 6 refunded: newcomers given a blank editor struggled. (Corrected
+  2026-10-17: these were not videos made from nothing.)
 - ws43 (a local election campaign) made 7 projects and never exported one: the clearest case of trying hard and failing.
 
 ## 4. Why they refunded (owner's export, 10 refunds, 2026-08-29 to 2026-10-15)

@@ -156,6 +156,7 @@ function startIdea(i) {
         <button v-for="(e, i) in FIRST_AD_EXAMPLES" :key="i" type="button" class="dh-first-eg" @click="firstAd = e">{{ ['Coffee subscription', 'App explainer', 'Customer review'][i] }}</button>
         <button type="submit" class="dh-first-go" :disabled="!firstAd.trim()">Make my first ad →</button>
       </div>
+      <router-link class="dh-first-tpl" :to="{ name: 'templates' }">Or start from a template → <span>a finished ad in minutes; change the words, photo and colours</span></router-link>
     </form>
 
     <div v-if="setup && !setupDone && setupHidden" class="dh-hd dh-hidden"><span>Set up your studio <b>{{ setup.done }} / {{ setup.total }}</b></span><button type="button" class="dh-link" @click="hideSetup(false)">Show setup</button></div>
@@ -306,4 +307,7 @@ button.dh-link{background:none;border:0;padding:0;font:inherit;font-size:13px;co
 .dh-first-eg:hover{color:var(--color-text-primary);border-color:var(--color-accent)}
 .dh-first-go{margin-left:auto;font:inherit;font-weight:600;font-size:14px;padding:10px 18px;border-radius:10px;border:0;background:var(--color-accent);color:#fff;cursor:pointer}
 .dh-first-go:disabled{opacity:.5;cursor:default}
+.dh-first-tpl{font-size:13.5px;font-weight:600;color:var(--color-accent);text-decoration:none;align-self:flex-start}
+.dh-first-tpl span{font-weight:400;color:var(--color-text-secondary);margin-left:4px}
+.dh-first-tpl:hover{text-decoration:underline}
 </style>

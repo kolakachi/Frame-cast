@@ -398,6 +398,10 @@ class ProjectCreationService
         if ($trimmed === '') {
             return 'Source content is required for the selected source type.';
         }
+        // A product form with only its labels is not a brief (FIRST-FIX, 2026-10-17).
+        if ($sourceType === 'product_description' && trim((string) preg_replace('/^\s*(Product Name|Product Description|Product URL|Target Audience):\s*$/mi', '', $trimmed)) === '') {
+            return "Add your product's name and a line about it, or paste its link.";
+        }
 
         if ($sourceType === 'url' && ! filter_var($trimmed, FILTER_VALIDATE_URL) && mb_strlen($trimmed) < 50) {
             return 'URL/article source requires a valid URL or at least 50 characters of article text.';

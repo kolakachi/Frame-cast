@@ -9,8 +9,9 @@ the customer emails (§8) may change them. Nothing here is built or published ye
 Half the AppSumo refunders never made a video of their own (§3), and every channel below sends people into the same
 first session. Three fixes come first, because sending traffic to a leaky first session wastes all of it:
 
-1. **No empty forms.** The Classic "Product Name: / Product Description:" form was sent blank 12 times in 6 workspaces
-   and made a video from nothing. Block an empty submit and ask for the product link instead.
+1. **No empty forms, and no blank editor for newcomers.** 6 buyers started with Classic's "Start from scratch" (an empty
+   editor); 5 refunded. Guard the product form against empty submits, and lead newcomers to the first-ad box or a
+   template instead.
 2. **No sample about us.** Every new workspace gets an auto-made "Wyvstudio Ad" about WyvStudio. Replace it with the
    buyer's own first ad: paste your product link (or pick a template), get your ad.
 3. **New buyers start in Create or a template, not Classic.** All four buyers who used Create are still active; the

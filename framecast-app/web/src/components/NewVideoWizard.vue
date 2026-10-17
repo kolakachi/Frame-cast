@@ -418,6 +418,11 @@ function buildSourceContentRaw(sourceType = wizardSourceType.value) {
   if (sourceType === 'prompt') return withCustomNicheContext(promptText.value.trim())
   if (sourceType === 'csv_topic') return withCustomNicheContext(csvText.value.trim())
   if (sourceType === 'images') return withCustomNicheContext(imageContext.value.trim())
+  // "Start from scratch" is an empty editor: no source text. It used to store the product form's empty labels, which
+  // read like a video made from nothing (FIRST-FIX, 2026-10-17).
+  if (sourceType === 'blank') return ''
+  // The product form needs a name and a line about it, or its link; empty labels alone are not a brief.
+  if (!productName.value.trim() && !productDescription.value.trim() && !productUrl.value.trim()) return ''
   return withCustomNicheContext([
     `Product Name: ${productName.value.trim()}`,
     `Product Description: ${productDescription.value.trim()}`,
@@ -1123,7 +1128,7 @@ async function submitWizardProject() {
 
   if (sourceType !== 'blank' && !rawContent && !hasMedia) {
     wizardCreateState.value = 'error'
-    wizardCreateError.value = 'Source content is required.'
+    wizardCreateError.value = sourceType === 'product_description' ? "Add your product's name and a line about it, or paste its link." : 'Source content is required.'
     return
   }
 
