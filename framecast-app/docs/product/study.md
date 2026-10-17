@@ -207,3 +207,22 @@ rule, "Arcads alternatives" is the largest; otherwise "AI ads vs hiring creators
 
 **Where to start:** the low-difficulty, do-it-now topics we can actually win: "product link to video ad", "product video
 for Shopify", "AI UGC" (difficulty 14), "UGC ad examples" (as template pages), "AI ads vs hiring creators".
+
+## 8. Posts reviewed (for the strategy session)
+
+Posts and tools the owner shared on 2026-10-16 and 17, each with a verdict. Nothing here is decided; the strategy
+session picks from it. Items already made into todo rows say so.
+
+| Post or tool | The idea | Verdict | Status |
+|---|---|---|---|
+| "3 LinkedIn profiles, 2 lead magnets a day" | Lead magnets on LinkedIn, comment to get it | Keep the lead-magnet loop (our templates); one channel, not three profiles | Strategy §3 (the loop) |
+| "$10k MRR is zero luck" | Pick a proven market, copy the obvious channel, one channel until 100 tries, stop building | Mostly right for us; we are in a proven market | Strategy §6 (one main channel, judged by volume) |
+| An AI presenter as the face (owner) | She does what a founder would do in public | Yes, openly AI, brand accounts only | PRESENTER |
+| Firecrawl | Reads any website, past bot blocking | Yes, as a fallback for blocked shop links and for "paste your link" | LINK-FALLBACK, LINK-FIRST |
+| Gojiberry | LinkedIn buying signals and automated outreach, about $99 a month | Later, with revenue; watch the same signals by hand now | Strategy channel 7 |
+| gojiberry.ai's homepage | "Enter your website", one free button, pages for each AI assistant | Copy the patterns | LINK-FIRST, AI-PAGES, HOME-CTA |
+| "AI GTM army" (Viktor) | Scout, research, offer, write, track; nothing sent without approval | Yes, run by Claude, 5 brands a week, each sent a real ad | OUTREACH-5 |
+| Official MCP Registry | One listing copied by many directories | Done: listed 2026-10-17 | Done |
+| "$13k/m iOS app" | Onboarding at 80–90%, trial reels, many ad formats, a checkout-abandon offer | Take the measurement and trial reels; the iPhone parts don't apply | FUNNEL, PRESENTER, CHECKOUT-SAVE |
+| FirstIndex ($2,000 a month) | Get named by ChatGPT and Google: pages, free tools, tracking AI answers | Do it ourselves; two new ideas: AI-WATCH (monthly check of what assistants say about us) and FREE-TOOL (a free hook generator) | Not yet in the todo |
+| "15,000 leads from one LinkedIn community" | Scrape a community's members with their personal emails and phones | No: against LinkedIn's terms, personal data without consent (GDPR risk), mass mail harms the domain; we engage in communities instead | Rejected |
