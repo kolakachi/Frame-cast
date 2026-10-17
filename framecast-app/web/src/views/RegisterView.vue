@@ -5,6 +5,7 @@ import { useAuthStore } from "../stores/auth";
 import api from "../services/api";
 import { peekBrief, clearBrief } from "../services/pendingBrief.js";
 import { conversion } from '../services/googleAds.js';
+import { templateFromLink } from '../composables/resumeCheckout.js';
 
 const authStore = useAuthStore();
 const route = useRoute();
@@ -44,7 +45,9 @@ const pendingPlanLabel = computed(() => PLAN_LABELS[pendingPlan.value] ?? "");
 // reopens with one env var and no redeploy of this page's logic.
 const checkingPolicy = ref(true);
 // "Make my first ad free" on the website (?free=1): no plan, straight to Templates for the free first ad.
-const freeStart = !!route.query.free;
+const freeStart = !!route.query.free || !!templateFromLink(route.query.template);
+// A post, answer or outreach link can name one template (?free=1&template=<id>): the free ad starts on it (TPL-LINK).
+const freeTemplate = templateFromLink(route.query.template);
 
 onMounted(async () => {
   const plan = route.query.pass ? "ugc_pass" : String(route.query.plan ?? "");
@@ -89,7 +92,7 @@ async function submit() {
     if (pendingPlan.value) {
       await router.replace({ name: 'continue-checkout', query: { plan: pendingPlan.value } });
     } else {
-      await router.replace({ name: freeStart ? 'templates' : 'dashboard' });
+      await router.replace(freeTemplate ? { name: 'template', params: { templateId: freeTemplate } } : { name: freeStart ? 'templates' : 'dashboard' });
     }
   } catch (err) {
     state.value = "error";

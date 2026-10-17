@@ -99,6 +99,8 @@ class VersionTransfer
             $c = DB::table('create_conversations')->where('id', $conversationId)->lockForUpdate()->first();
             DB::table('create_conversations')->where('id', $conversationId)->update(['head_revision_id' => $revisionId, 'version' => $c->version + 1, 'updated_at' => now()]);
         });
+        // The poster a build cuts when it finishes (an imported version has none; its template card showed a 404).
+        if ($artifact) \App\Jobs\MakeCreatePoster::dispatch($revisionId);
         $linked = $templateId ? $this->link($user, $templateId, $conversationId, $revisionId) : null;
         return ['conversation_id' => $conversationId, 'revision_id' => $revisionId, 'files' => count($copied), 'template' => $linked];
     }

@@ -69,6 +69,11 @@ export async function checkoutGate() {
   }
 }
 
+// A link that names one template (?template=<id>, TPL-LINK): its id when it looks like one, else null.
+export function templateFromLink(value) {
+  return typeof value === 'string' && /^[a-z0-9_-]{2,40}$/i.test(value) ? value : null
+}
+
 // The pages a free account can open (FreePlanScope on the server refuses the rest): Templates, its own free ad in
 // Create, upgrading, settings, onboarding and its past videos (to watch and download).
 export function freeAllows(to, gate) {

@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { readBriefHash, saveBrief } from '../services/pendingBrief.js'
-import { checkoutGate, freeAllows, forgetCheckoutGate } from '../composables/resumeCheckout'
+import { checkoutGate, freeAllows, forgetCheckoutGate, templateFromLink } from '../composables/resumeCheckout'
 // The Weave onboarding (2026-10-09) replaced the Classic first-video wizard (OnboardingView.vue, kept unrouted).
 import WelcomeView from '../views/WelcomeView.vue'
 import DashboardView from '../views/DashboardView.vue'
@@ -150,6 +150,8 @@ router.beforeEach(async function (to) {
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {
     if (to.query.pass || to.query.plan) return { name: 'continue-checkout', query: to.query }
+    // Already signed in and following a template link: straight to that template.
+    if (templateFromLink(to.query.template)) return { name: 'template', params: { templateId: templateFromLink(to.query.template) } }
     if (isSafeRedirect(to.query.redirect)) return to.query.redirect
     return { name: 'dashboard' }
   }
