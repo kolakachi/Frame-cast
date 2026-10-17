@@ -14,6 +14,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item | Next |
 |---|---|---|
+| FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
 | SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one) | build |
@@ -22,7 +23,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 | AI-PAGES | A page each for ChatGPT and Claude (what the connector does, how to add it), an "about WyvStudio for AI assistants" page and llms.txt, so assistants can name us. Free, about half a day | build |
 | HOME-CTA | One free-start button everywhere on the homepage ("Make your first ad free"), once FREE-FIRST is live | build, after FREE-FIRST |
 | OUTREACH-5 | Weekly batch of 5 brands, each sent a real ad made for them from a template (cents per ad, no builder): scout (stale ads in the Meta Ad Library, new launches), research, pick a template or skip, make the ad, draft the message; owner or marketer approves and sends every message from a WyvStudio address. Tracked on a private board (prospect data never in the repo); measured on sent, replies, customers. Supersedes PROOF's 330-credit builder version | build the first batch, then weekly |
-| PRESENTER | WyvStudio's AI presenter as the brand face (strategy.md §4): pick or make her, then 3 pilot videos (cost estimate first) to check her face holds; then the main channel, 3–5 short videos a week on brand TikTok, Reels, Shorts and X, judged after 100 videos | owner picks her, then build |
+| PRESENTER | WyvStudio's AI presenter as the brand face (strategy.md §4): pick or make her, then 3 pilot videos (cost estimate first) to check her face holds; then the main channel, 3–5 short videos a week on brand TikTok, Reels, Shorts and X, test hooks first with Instagram trial reels (shown to non-followers, no risk to the account); judged after 100 videos | owner picks her, then build |
 | LISTINGS | Free listings this week (study.md §3): G2 free profile (then ask Bob and neimar for reviews), SaaSHub, AlternativeTo, Future Tools, the ChatGPT/Claude connector directories; Product Hunt once the free first video exists. Apply to Online Geniuses and DTC FAM. The big AI directories are paid: skipped | owner accounts, Claude writes the entries |
 | COMMUNITY | Helpful answers with example videos in the checked communities (study.md), inside each group's rules; judged after 100 answers | marketer |
 | SHOPIFY-APP | Shopify App Store listing: a small app that turns a product into a video; plan first (requirements in study.md) | plan, after the loop |
@@ -129,6 +130,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item |
 |---|---|
+| CHECKOUT-SAVE | A follow-up when someone leaves checkout ("your $9 pass is still waiting", or a small offer); once traffic comes |
 | BENCH | The bench rounds: baseline (G1), speed targets (F1), motion regression (H1), engine bake-off (B2), re-render keeps the performance (B3), sequence route (B1), builder starts while clips render (F2), local acceptance (R1), wider audience behind a switch (R2) |
 | LOOP-COST | Creative Director loop cost levers: trim old tool output by rule; does planning earn its cost on Opus |
 | WEEKLY | Weekly ad batches, the habit a lean team needs |
