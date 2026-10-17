@@ -95,7 +95,7 @@ Never judged by how good the plan reads.
 | Step | Status |
 |---|---|
 | 1. Evidence | Done 2026-10-17: `cmo-evidence.md` (interviews wait on the owner's invitations) |
-| 2. Decisions | Drafted 2026-10-17: `cmo-decisions.md`; waits on the owner's five decisions (§5 there) |
+| 2. Decisions | Done 2026-10-17: `cmo-decisions.md` (owner accepted all; presenter Layla; US, Europe and emerging markets) |
 | 3. Two-week plan | Waits on step 2 |
 | 4. Scoreboard | Waits on step 2 |
 | 5. Start | Waits on the owner's go |

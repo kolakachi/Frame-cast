@@ -100,15 +100,15 @@ beats the presenter on free first ads per hour of work, it becomes the main chan
 **Proved wrong if:** after 100 presenter videos, fewer than 50 free first ads came from them; or in two weeks community
 answers or outreach bring more free first ads for the same effort.
 
-## 5. Decisions only the owner can make
+## 5. The owner's decisions (2026-10-17)
 
-| Decision | Recommendation |
+| Decision | Owner's answer |
 |---|---|
-| Accept the buyer (§1), including the agency segment as a second test | Yes |
-| Accept the offer (§2): free first ad, watermarked, download allowed, then pay once | Yes |
-| Accept the one line and the three pillars (§3), replacing the locked positioning statement once tests agree | Yes, after the message tests |
-| The presenter: which one, her name | Pick from our 63 presenters; 3 pilot videos with a cost estimate first |
-| Lead with emerging markets (Nigeria, India, the Philippines, Brazil) in outreach and communities | Yes for outreach and communities; the product and site stay global English |
+| The buyer (§1), with agencies as a second test | **Yes** |
+| The offer (§2): free first ad, watermarked, download allowed, then pay once | **Yes** |
+| The one line and three pillars (§3) | **Yes**; they replace the locked positioning statement once the message tests agree |
+| The presenter | **Layla**: one of our stock presenters (character 101, "Middle Eastern woman in her late twenties, warm honey skin, thick dark wavy hair, dramatic eyes, glam makeup"). Three pilot videos with a cost estimate first, to check her face holds |
+| Markets | **Emerging markets are a target, and so are the US and Europe, where our current buyers are.** Pay-once suits both: no monthly commitment anywhere. Outreach and communities cover both; the product and site stay global English |
 
 ## 6. What comes next
 

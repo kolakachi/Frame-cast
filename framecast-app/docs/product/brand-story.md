@@ -55,7 +55,7 @@ sell: every video makes something real, live, for a real kind of product.
 **Personality (proposed):** warm, quick and practical, a little cheeky about bad ads, never smug about customers.
 Think the friend who works in advertising and will look at your ad over coffee.
 
-**Name:** to choose. Short, easy to say in many languages, not a real person's name.
+**Name:** Layla (owner, 2026-10-17); our stock presenter, character 101.
 
 **How she talks:**
 - Plain words, short sentences, the customer's own words (from the customer-words bank once built).
@@ -95,6 +95,6 @@ Think the friend who works in advertising and will look at your ad over coffee.
 | Decision | Options |
 |---|---|
 | The origin | Tell "built in Africa, for every small business" (an edge in emerging markets; touches the owner staying out of view), or keep the origin about the customer's "before" only |
-| The presenter | Pick one of our 63 presenters or make a new one; her name; the personality above or another |
+| The presenter | Decided: Layla (2026-10-17). Still open: the personality above or another |
 | The one line | "Every small business deserves the ads big brands have", or another |
 | Chapter 3 | Whether "learn what won" extends to sending ads to Ads Manager as paused drafts, which changes the "we never run ads" line |
