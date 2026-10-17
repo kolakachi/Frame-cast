@@ -32,6 +32,10 @@ class VoiceSwap
         // Only what is said (and how) changes, line for line.
         $old = array_values(array_map('strval', (array) ($basePlan['narration'] ?? [])));
         $new = array_values(array_map('strval', (array) ($plan['narration'] ?? [])));
+        // A swap with the parts (a template's free ad, PartSwap) whose new words come in a different number of lines is
+        // re-split into the version's lines, each sized like the line it replaces (owner's free-ad test, 2026-10-17: the
+        // plan wrote 4 lines for a 5-line voice and the approval was refused).
+        if ($withParts && $old && $new && count($old) !== count($new)) $new = self::fitLines($new, $old) ?? $new;
         if (! $old || count($old) !== count($new)) return null;
         // The planner names the parts a change alters; only a change to the voice alone is swapped. (The on-screen copy
         // field is not used: change plans wrote notes into it, 2026-10-08.)
@@ -53,6 +57,42 @@ class VoiceSwap
         return ['old_src' => $narration[0], 'old_lines' => $old,
             // Lined up against what the new voice says, names as saved.
             'new_lines' => array_map(fn ($l) => PlanMediaExecutor::pronounce($l, $workspace), $new)];
+    }
+
+    /**
+     * The new words in as many lines as the old ones, each about as long as the line it replaces (by its share of all the
+     * old words). Null when there are fewer words than lines.
+     *
+     * @param list<string> $new
+     * @param list<string> $old
+     * @return list<string>|null
+     */
+    public static function fitLines(array $new, array $old): ?array
+    {
+        $n = count($old);
+        $text = trim(preg_replace('/\s+/u', ' ', implode(' ', $new)));
+        if ($n < 1 || count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY)) < $n) return null;
+        // Whole sentences first; then the longest is halved at its middle word, or the shortest neighbours joined.
+        $lines = preg_split('/(?<=[.!?])\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        $words = fn ($l) => preg_split('/\s+/u', trim($l), -1, PREG_SPLIT_NO_EMPTY);
+        while (count($lines) < $n) {
+            $longest = 0;
+            foreach ($lines as $k => $l) if (count($words($l)) > count($words($lines[$longest]))) $longest = $k;
+            $w = $words($lines[$longest]);
+            if (count($w) < 2) return null;
+            $half = intdiv(count($w), 2);
+            array_splice($lines, $longest, 1, [implode(' ', array_slice($w, 0, $half)), implode(' ', array_slice($w, $half))]);
+        }
+        while (count($lines) > $n) {
+            $best = 0; $size = PHP_INT_MAX;
+            for ($k = 0; $k < count($lines) - 1; $k++) {
+                $pair = count($words($lines[$k])) + count($words($lines[$k + 1]));
+                if ($pair < $size) { $size = $pair; $best = $k; }
+            }
+            array_splice($lines, $best, 2, [$lines[$best].' '.$lines[$best + 1]]);
+        }
+
+        return array_values($lines);
     }
 
     /** The first asset a derived file was made from (a spaced, sped or ducked copy of a voice leads back to the voice). */

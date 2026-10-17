@@ -230,6 +230,11 @@ class CreateTemplatesTest extends TestCase
         $problems = \App\Services\Create\Planning\PlanPrompt::problems(['swap' => ['voice' => true], 'narration' => ['1', '2', '3', '4'], 'scenes' => [['start' => 0, 'end' => 15]]], ['current_narration' => $five, 'settings' => ['duration_seconds' => 15]]);
         $this->assertStringContainsString("keep the version's 5 narration lines", $problems[0] ?? '');
         $this->assertSame([], \App\Services\Create\Planning\PlanPrompt::problems(['swap' => ['voice' => true], 'narration' => ['1', '2', '3', '4', '5']], ['current_narration' => $five, 'settings' => ['duration_seconds' => 15]]));
+        // A plan that still differs is re-split into the version's lines, keeping whole sentences where it can.
+        $this->assertSame(['AI-powered PDF reader?', 'Meet Lumio.', 'Lumio brings AI', 'to your PDFs.', 'Try it at lumiodocs.com.'],
+            \App\Services\Create\VoiceSwap::fitLines(['AI-powered PDF reader?', 'Meet Lumio.', 'Lumio brings AI to your PDFs.', 'Try it at lumiodocs.com.'], $five));
+        $this->assertSame(['One. Two.', 'Three.', 'Four.', 'Five.', 'Six.'], \App\Services\Create\VoiceSwap::fitLines(['One.', 'Two.', 'Three.', 'Four.', 'Five.', 'Six.'], $five));
+        $this->assertNull(\App\Services\Create\VoiceSwap::fitLines(['Hi there'], $five), 'fewer words than lines');
     }
 
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void
