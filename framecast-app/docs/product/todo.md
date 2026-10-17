@@ -14,7 +14,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item | Next |
 |---|---|---|
-| CMO-2 | Decisions from the evidence (`cmo-brief.md` step 2, `cmo-evidence.md`): one buyer, one offer, one message (messaging house), one main channel, each with what would prove it wrong. Owner sends the interview invitations (list and script in cmo-evidence §8) | owner's go; owner sends invitations |
+| CMO-2 | Decisions from the evidence (`cmo-brief.md` step 2, `cmo-evidence.md`): one buyer, one offer, one message (messaging house), one main channel, each with what would prove it wrong. Owner sends the 8 question emails (text version in cmo-evidence §8); Claude adds 500 credits per customer reply | owner's go; owner sends invitations |
 | FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |

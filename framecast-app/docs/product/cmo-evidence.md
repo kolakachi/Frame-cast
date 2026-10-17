@@ -245,6 +245,84 @@ service businesses 2. Outside the US: 8 (India 5, Brazil, the Philippines, Niger
 
 Record (with permission) or take notes in their exact words; add them to §5.
 
+### The text version (owner, 2026-10-17: by email instead of calls, with a thank-you)
+
+One personal email, five questions, answered by reply. Send from hello@wyvstudio.com (webmail), one at a time, each
+with the person's name and what they made. When someone replies, tell Claude who; Claude adds the thank-you credits to
+their workspace on prod. Paste their replies (or the key lines) into §5 in their exact words.
+
+**For current customers (thank-you: 500 credits)**
+
+> Subject: 5 quick questions about your videos (500 credits as thanks)
+>
+> Hi [name],
+>
+> I run WyvStudio. I saw you've been making [what they made: book promos / lessons for your coaching programme / ads
+> for your shop] with us, and I'd love to learn from you. No call, no pitch: just reply to this email with a few lines
+> for each question. As a thank-you, I'll add 500 credits to your account as soon as you reply.
+>
+> 1. What is the video for? Who watches it, and where do you post it?
+> 2. Think of the last video you made with us. What did you do, step by step, and where did you get stuck or lose time?
+> 3. Before WyvStudio, how did you make these videos, and what did that cost you in money or time?
+> 4. What almost made you stop using WyvStudio, or what would make you stop?
+> 5. If you described WyvStudio to a friend in one sentence, what would you say?
+>
+> Honest answers help most, including the critical ones. And if it's fine for me to quote you (without your name),
+> just say so.
+>
+> Thank you,
+> [name], WyvStudio
+
+**For people who refunded (thank-you: a free ad made for their business)**
+
+> Subject: Can I learn from you? (a free ad as thanks)
+>
+> Hi [name],
+>
+> You tried WyvStudio in [month] and it didn't work out for you. I'm sorry about that, and I'd like to understand what
+> went wrong so we fix it. No pitch and nothing to buy: just reply with a few lines for each question. As a thank-you,
+> I'll make you a free ad for your [business / book / channel] with our new version and send it to you.
+>
+> 1. What were you hoping to make with WyvStudio, and what for?
+> 2. What happened when you tried? Where did it go wrong?
+> 3. What did you use instead, and how is that going?
+> 4. What would a tool like ours have to do for you to pay for it?
+> 5. Anything else you'd like me to know?
+>
+> Thank you for your time,
+> [name], WyvStudio
+
+**For ws82 (Portuguese, current customer)**
+
+> Assunto: 5 perguntas rápidas sobre seus vídeos (500 créditos de agradecimento)
+>
+> Olá [nome],
+>
+> Eu cuido da WyvStudio. Vi que você está fazendo os vídeos da Mega da Virada para a sua Lotérica com a gente, e
+> gostaria muito de aprender com você. Sem ligação e sem venda: é só responder este e-mail com algumas linhas para cada
+> pergunta. Como agradecimento, vou adicionar 500 créditos à sua conta assim que você responder.
+>
+> 1. Para que serve o vídeo? Quem assiste e onde você publica?
+> 2. Pense no último vídeo que você fez com a gente. O que você fez, passo a passo, e onde travou ou perdeu tempo?
+> 3. Antes da WyvStudio, como você fazia esses vídeos e quanto isso custava em dinheiro ou tempo?
+> 4. O que quase fez você parar de usar a WyvStudio, ou o que faria você parar?
+> 5. Se você fosse descrever a WyvStudio para um amigo em uma frase, o que diria?
+>
+> Respostas sinceras ajudam mais, inclusive as críticas. E se eu puder citar você (sem o seu nome), é só dizer.
+>
+> Obrigado,
+> [nome], WyvStudio
+
+**Who gets which**
+
+| Who | Version | Thank-you |
+|---|---|---|
+| ws82 (lottery shop) | Portuguese | 500 credits |
+| ws68 (book author), ws45 (coaching programme), ws79 (health brand), ws59 (facts channel) | Current customer | 500 credits each |
+| ws77 (nonprofit channel), ws43 (election campaign), the 2026-10-15 refund | Refunded | A free template ad |
+
+Cost: 2,500 credits for five customers (about $50 at pack prices, far less in real cost) and three template ads (cents).
+
 ## 9. Status
 
 | Part | Status |
@@ -252,4 +330,4 @@ Record (with permission) or take notes in their exact words; add them to §5.
 | Buyers, first session, refunds, customer words | Done (this page) |
 | Competitor ads | Done (§6) |
 | Market words | Done (§7) |
-| Interviews | Invite list and script ready; the owner sends the invitations |
+| Interviews | Text version ready (§8): the owner sends the emails; Claude adds credits for each reply |
