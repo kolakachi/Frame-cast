@@ -96,6 +96,6 @@ Never judged by how good the plan reads.
 |---|---|
 | 1. Evidence | Done 2026-10-17: `cmo-evidence.md` (interviews wait on the owner's invitations) |
 | 2. Decisions | Done 2026-10-17: `cmo-decisions.md` (owner accepted all; presenter Layla; US, Europe and emerging markets) |
-| 3. Two-week plan | Waits on step 2 |
-| 4. Scoreboard | Waits on step 2 |
-| 5. Start | Waits on the owner's go |
+| 3. Two-week plan | Drafted 2026-10-17: `cmo-plan.md` (Oct 19 – Nov 1) |
+| 4. Scoreboard | In `cmo-plan.md` §1; reviewed Fridays |
+| 5. Start | Mon Oct 19 (owner's items in `cmo-plan.md` §4) |
