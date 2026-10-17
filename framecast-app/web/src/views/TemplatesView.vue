@@ -12,7 +12,7 @@ const router = useRouter(), authStore = useAuthStore()
 const me = ref(null), loading = ref(true), error = ref('')
 const templates = ref([]), categories = ref({}), isPublic = ref(false), staff = ref(false)
 // A free plan's free first ad (FREE-FIRST) starts from a template that has its own code: those carry a badge.
-const freeFirstOpen = ref(false)
+const freeFirstOpen = ref(false), freeFirstUsed = ref(false)
 const category = ref('all'), style = ref(''), shape = ref(''), search = ref('')
 
 const styleOptions = computed(() => [{ value: '', label: 'Any' }, ...[...new Set(templates.value.map(t => t.style).filter(Boolean))].sort().map(s => ({ value: s, label: s }))])
@@ -31,7 +31,7 @@ function logout() { authStore.clearSession(); router.push({ name: 'login' }) }
 
 onMounted(async () => {
   try { me.value = (await api.get('/me')).data?.data?.user ?? null } catch {}
-  try { const ff = (await api.get('/create/capabilities')).data.data.free_first; freeFirstOpen.value = !!ff && !ff.conversation_id } catch {}
+  try { const ff = (await api.get('/create/capabilities')).data.data.free_first; freeFirstOpen.value = !!ff && !ff.conversation_id; freeFirstUsed.value = !!ff?.conversation_id } catch {}
   try {
     const d = (await api.get('/create/templates')).data.data
     templates.value = d.templates; categories.value = d.categories; isPublic.value = d.public; staff.value = d.staff
@@ -55,6 +55,8 @@ onMounted(async () => {
         <header class="page-head">
           <div>
             <h1>Templates <span v-if="staff && !isPublic" class="staff-badge" title="Customers don't see Templates until it is made public">Staff only</span></h1>
+            <p v-if="freeFirstOpen" class="free-banner"><b>Make your first ad free.</b> Pick a template marked "Free first ad": it keeps the template's look with your words, colours and photos.</p>
+            <p v-else-if="freeFirstUsed" class="free-banner"><b>You've made your free first ad.</b> <a href="/continue?pass=1">Get the $9 Test Pass</a> to make more, with new shots, voices and presenters and no WyvStudio mark.</p>
             <p>Start from a finished video. Add your product and the Creative Director makes it yours.</p>
           </div>
           <label class="search">
@@ -133,6 +135,9 @@ onMounted(async () => {
 .lock{position:absolute;left:8px;bottom:8px;z-index:1;font-size:11px;padding:2px 6px;border-radius:4px;background:rgba(10,10,15,.8);color:#a1a1b5}
 .card-text{display:flex;flex-direction:column;gap:2px}
 .card-title{font-size:14px;font-weight:600}
+.free-banner{margin:6px 0 0;font-size:14px;color:var(--color-text-secondary);max-width:720px}
+.free-banner b{color:var(--color-text-primary)}
+.free-banner a{color:var(--color-accent);font-weight:600}
 .free-badge{position:absolute;top:10px;left:10px;font-size:11px;font-weight:700;letter-spacing:.03em;padding:4px 9px;border-radius:999px;background:var(--color-accent);color:#fff}
 .card-meta{font-size:12px;color:#8b8ba0}
 @media (prefers-reduced-motion:reduce){.card-media video{transition:none}}

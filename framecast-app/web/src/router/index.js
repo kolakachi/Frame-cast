@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { readBriefHash, saveBrief } from '../services/pendingBrief.js'
-import { checkoutGate } from '../composables/resumeCheckout'
+import { checkoutGate, freeAllows, forgetCheckoutGate } from '../composables/resumeCheckout'
 // The Weave onboarding (2026-10-09) replaced the Classic first-video wizard (OnboardingView.vue, kept unrouted).
 import WelcomeView from '../views/WelcomeView.vue'
 import DashboardView from '../views/DashboardView.vue'
@@ -184,8 +184,15 @@ router.beforeEach(async function (to) {
     !['super_admin', 'platform_admin', 'client', 'client_editor', 'client_admin', 'collaborator'].includes(authStore.user?.role) &&
     !impersonating()
   ) {
-    const gate = await checkoutGate()
-    if (gate?.required) return gate.plan ? { name: 'continue-checkout', query: { plan: gate.plan } } : { name: 'plans' }
+    let gate = await checkoutGate()
+    // A just-started free ad is not in the cached answer yet: ask again before turning it away.
+    if (gate?.freeOnly && to.name === 'create' && to.params.conversationId && gate.freeAd && String(gate.freeAd) !== String(to.params.conversationId)) { forgetCheckoutGate(); gate = await checkoutGate() }
+    // A free account opens its free ad, upgrading, settings and its past videos; elsewhere it goes to checkout when it
+    // signed up for a plan, else to Templates (owner, 2026-10-17).
+    const freeOpen = gate?.freeOnly && freeAllows(to, gate)
+    if (!freeOpen && gate?.required && gate.plan) return { name: 'continue-checkout', query: { plan: gate.plan } }
+    if (!freeOpen && gate?.freeOnly) return { name: 'templates' }
+    if (!freeOpen && gate?.required) return { name: 'plans' }
   }
 
   if (["client", "client_editor", "client_admin"].includes(authStore.user?.role) && to.name === "dashboard") return { name: "client-home" };

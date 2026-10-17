@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { peekBrief, clearBrief } from '../services/pendingBrief.js'
 import AppSidebar from '../components/AppSidebar.vue'
 import TemplateDrawer from '../components/create/TemplateDrawer.vue'
 // A template (mockup v2 template.html): watch it, add your product, pick how closely to follow it, "Make mine". Make
@@ -44,6 +45,7 @@ async function makeMine() {
     }
     busy.value = 'Sending your brief…'
     await api.post(`/create/conversations/${made.id}/messages`, { content: made.brief, expected_version: version, idempotency_key: `${key}:brief` })
+    clearBrief()
     // Create picks it up and plans: the plan and its price come before anything is made.
     router.push({ name: 'create', params: { conversationId: made.id }, query: { plan: '1' } })
   } catch (e) {
@@ -61,6 +63,8 @@ function logout() { authStore.clearSession(); router.push({ name: 'login' }) }
 onMounted(async () => {
   try { me.value = (await api.get('/me')).data?.data?.user ?? null } catch {}
   try { freeFirst.value = (await api.get('/create/capabilities')).data.data.free_first ?? null } catch {}
+  // The idea typed on the website's first box rides in: it becomes "Your product" for the free ad.
+  if (!product.value) product.value = peekBrief() || ''
   try {
     t.value = (await api.get(`/create/templates/${route.params.templateId}`)).data.data
     shape.value = t.value.shape

@@ -74,3 +74,18 @@ scoreboard shows the effect from the following week.
 | 2. Product form guard | **Built and tested:** the wizard says "Add your product's name and a line about it, or paste its link." on an empty product form; the API refuses the same; "Start from scratch" stores no text |
 | 3. Templates link | **Built, checked in Chrome:** "Or start from a template →" under the first-ad box opens Templates |
 | 4. The free first ad | **Built and tested end to end locally (2026-10-17):** a free plan's first "Exactly" from a template with its own code is claimed as its free ad (kept on the workspace); planning is not charged; the quote passes the free-plan gate only as a free swap; free edits work only there; the worker burns "Made with WyvStudio" into the render and strips it from the saved code; the version is marked watermarked and can be downloaded; Templates shows "Free first ad" badges (all 21 code-backed templates on prod qualify), the template page keeps the free ad to Exactly, and the version card offers the $9 Test Pass. Photo swaps go through the planner as for paid plans |
+
+## Free accounts, locked to the free ad and upgrading (owner, 2026-10-17)
+
+- **Cap:** the free ad's AI-planned changes are free up to 5; direct text and colour edits stay open (daily limit).
+- **What a free account can do:** Templates, its free ad, upgrading (Test Pass, packs, checkout), Settings, onboarding
+  (optional, as before) and its past videos (watch and download). Every other page goes to Templates; the sidebar shows
+  Templates, Your free ad, Your videos (when there are any), Upgrade and Settings. On the server (`FreePlanScope`),
+  making, changing or publishing anything outside Create is refused with the upgrade message; reading stays open; the
+  API and connector make only Create videos. Staff are never limited.
+- **Fixed on the way:** since 2026-10-13 every free account made after Sep 9 was sent to the plans page from every app
+  page, so a new free sign-up could not reach the free ad at all. A free account now opens its allowed pages; one that
+  signed up for a plan and left checkout is still sent back to checkout from anywhere else.
+- **The website's form** (wyvstudio.com and sales.wyvstudio.com; special.wyvstudio.com unchanged): "Make my first ad
+  free" signs up with no plan (`register?free=1`, the only entry that skips the plan) and lands on Templates; the idea
+  typed in the box becomes "Your product" on the template they pick. "or see prices" keeps the paid route.

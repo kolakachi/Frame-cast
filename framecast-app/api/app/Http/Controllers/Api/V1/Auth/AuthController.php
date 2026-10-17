@@ -78,6 +78,7 @@ class AuthController extends Controller
 
     private function startSignupOrMagicLink(Request $request, bool $register): JsonResponse
     {
+        $freeStart = (bool) rescue(fn () => $request->boolean('free'), false, false);
         $validated = $request->validate([
             'email' => ['required', 'email:rfc,dns'],
             'name' => [$register ? 'required' : 'nullable', 'string', 'max:255'],
@@ -95,7 +96,10 @@ class AuthController extends Controller
             // Plan chosen on the pricing page. A key only — the label shown in
             // the email is looked up server-side, so the client cannot put its
             // own text (a different price, say) into a mail sent by us.
-            'plan' => [$register && config('billing.require_plan_on_register') ? 'required' : 'nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(config('billing.kelviq.plan_labels', [])))],
+            // The website's "Make my first ad free" signs up with no plan: a free account makes one free ad from a
+            // template and can upgrade (FreeFirst, FreePlanScope; owner 2026-10-17). Every other entry still needs a plan.
+            'free' => ['sometimes', 'boolean'],
+            'plan' => [$register && config('billing.require_plan_on_register') && ! $freeStart ? 'required' : 'nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(config('billing.kelviq.plan_labels', [])))],
         ]);
 
         $validated['email'] = strtolower($validated['email']);

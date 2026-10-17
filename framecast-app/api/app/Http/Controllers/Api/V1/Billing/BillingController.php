@@ -64,6 +64,12 @@ class BillingController extends Controller
                     // while the free tier was genuinely on offer, which makes
                     // them the most reliable marker of a customer who was
                     // promised something we must not now take back.
+                    // A free account makes one free ad and can upgrade (FreePlanScope, FreeFirst; owner 2026-10-17):
+                    // the app keeps it to Templates, its free ad, upgrading, settings and its past videos.
+                    'free_only' => ($free = \App\Services\Create\FreeFirst::freePlan((int) $workspace->id) && ! in_array($user->role, ['super_admin', 'platform_admin'], true)),
+                    'free_ad_conversation_id' => $free ? \App\Services\Create\FreeFirst::conversationId((int) $workspace->id) : null,
+                    'has_past_videos' => $free && (\Illuminate\Support\Facades\DB::table('projects')->where('workspace_id', $workspace->id)->where('title', '!=', \App\Services\Analytics\Scoreboard::SAMPLE_TITLE)->exists()
+                        || \Illuminate\Support\Facades\DB::table('create_conversations')->where('workspace_id', $workspace->id)->whereNotNull('head_revision_id')->exists()),
                     'checkout_required' => (bool) (
                         ($workspace->plan_tier ?? 'free') === 'free'
                         && (int) ($workspace->credits_free_granted ?? 0) === 0

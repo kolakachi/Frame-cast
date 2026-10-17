@@ -43,6 +43,8 @@ const pendingPlanLabel = computed(() => PLAN_LABELS[pendingPlan.value] ?? "");
 // having chosen a plan. Asked of the server rather than hardcoded, so the tier
 // reopens with one env var and no redeploy of this page's logic.
 const checkingPolicy = ref(true);
+// "Make my first ad free" on the website (?free=1): no plan, straight to Templates for the free first ad.
+const freeStart = !!route.query.free;
 
 onMounted(async () => {
   const plan = route.query.pass ? "ugc_pass" : String(route.query.plan ?? "");
@@ -59,7 +61,7 @@ onMounted(async () => {
     const { data } = await api.get("/public/signup-policy");
     // No plan chosen and the gate is on: send them to pick one rather than
     // showing a form that would create an account they cannot use.
-    if (data?.data?.require_plan && !pendingPlan.value) {
+    if (data?.data?.require_plan && !pendingPlan.value && !freeStart) {
       window.location.href = "https://wyvstudio.com/#pricing";
       return;
     }
@@ -80,13 +82,14 @@ async function submit() {
       form.email,
       form.name,
       form.password || null,
-      pendingPlan.value || null
+      pendingPlan.value || null,
+      freeStart && !pendingPlan.value
     );
     conversion('signup', { value: 1, email: form.email });
     if (pendingPlan.value) {
       await router.replace({ name: 'continue-checkout', query: { plan: pendingPlan.value } });
     } else {
-      await router.replace({ name: 'dashboard' });
+      await router.replace({ name: freeStart ? 'templates' : 'dashboard' });
     }
   } catch (err) {
     state.value = "error";

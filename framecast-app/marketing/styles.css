@@ -159,6 +159,7 @@ textarea.field { resize: vertical; min-height: 92px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { min-height: 34px; padding: 0 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text-2); font: inherit; font-size: .84rem; cursor: pointer; }
 .chip:hover { color: var(--text); border-color: var(--line-2); }
+.composer-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .composer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 2px; }
 .hint { font-size: .86rem; color: var(--dim); }
 .hint strong { color: var(--done); font-weight: 600; }

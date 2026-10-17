@@ -75,6 +75,22 @@ class RegistrationCheckoutTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_the_websites_free_start_signs_up_without_a_plan_and_every_other_entry_still_needs_one(): void
+    {
+        // FREE-FIRST (owner, 2026-10-17): "Make my first ad free" sends free=1; nothing else skips the plan.
+        $sessions = $this->createMock(AuthSessionService::class);
+        $sessions->method('create')->willReturnCallback(fn ($user) => [(new AuthSession)->forceFill(['active_workspace_id' => $user->workspace_id]), 'refresh-test']);
+        $jwt = $this->createMock(JwtService::class);
+        $jwt->method('issue')->willReturn('access-test');
+        $controller = new AuthController($sessions, $jwt);
+        $post = fn (array $body) => Request::create('/api/v1/auth/register', 'POST', $body);
+        try { $controller->register($post(['name' => 'No Plan', 'email' => 'noplan@gmail.com'])); $this->fail('a plan-less sign-up passed'); }
+        catch (\Illuminate\Validation\ValidationException $e) { $this->assertArrayHasKey('plan', $e->errors()); }
+        $ok = $controller->register($post(['name' => 'Free Start', 'email' => 'freestart@gmail.com', 'free' => true]));
+        $this->assertSame(200, $ok->status());
+        $this->assertSame('free', Workspace::query()->latest('id')->first()->plan_tier);
+    }
+
     public function test_existing_email_cannot_receive_a_registration_session(): void
     {
         User::create(['workspace_id' => 1, 'email' => 'buyer@example.com', 'name' => 'Existing']);

@@ -1,4 +1,5 @@
 <script setup>
+import { checkoutGate } from '../composables/resumeCheckout';
 import api from "../services/api"
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import WhatsNew from './WhatsNew.vue'
@@ -101,7 +102,11 @@ const switchTargets = ref([]);
 const workspaceError = ref('');
 const activeWorkspaceId = computed(() => props.user?.workspace_id ?? null);
 const activeWorkspaceName = computed(() => switchTargets.value.find(w => Number(w.id) === Number(activeWorkspaceId.value))?.name || workspaceStore.workspaceName);
+// A free account sees only what it can use: Templates, its free ad, its past videos, upgrading and settings
+// (FreePlanScope, owner 2026-10-17).
+const freeGate = ref(null);
 onMounted(async () => {
+  try { freeGate.value = await checkoutGate(); } catch {}
   try { const caps = (await api.get('/create/capabilities')).data.data; createEnabled.value = caps.enabled; templatesOpen.value = !!caps.templates; templatesPublic.value = !!caps.templates_public; } catch { createEnabled.value = false; }
   try { switchTargets.value = (await api.get('/workspace-access')).data.data; }
   catch { workspaceError.value = 'Could not load workspaces. Refresh to retry.'; }
@@ -405,6 +410,26 @@ onBeforeUnmount(() => {
     <p v-if="workspaceError && !isCollapsed" class="workspace-error" role="alert">{{ workspaceError }}</p>
     <router-link v-if="!isCollapsed && switchTargets.some(w => Number(w.id) === Number(activeWorkspaceId) && w.is_client)" class="client-work-link" to="/client-work">Client brief &amp; requests →</router-link>
     <div class="sidebar-nav">
+      <template v-if="freeGate?.freeOnly">
+        <div class="nav-section-label">Your free ad</div>
+        <button :class="['nav-item', ['templates', 'template'].includes(activePage) ? 'active' : '']" type="button" data-tooltip="Templates" @click="nav('templates')">
+          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Templates
+        </button>
+        <button v-if="freeGate.freeAd" :class="['nav-item', activePage === 'create' ? 'active' : '']" type="button" data-tooltip="Your free ad" @click="router.push({ name: 'create', params: { conversationId: freeGate.freeAd } })">
+          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+          Your free ad
+        </button>
+        <button v-if="freeGate.hasPastVideos" :class="['nav-item', activePage === 'videos' ? 'active' : '']" type="button" data-tooltip="Your videos" @click="nav('videos')">
+          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M17 10l5-3v10l-5-3z"/></svg>
+          Your videos
+        </button>
+        <a class="nav-item nav-upgrade" href="/continue?pass=1" data-tooltip="Upgrade">
+          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          Upgrade
+        </a>
+      </template>
+      <template v-else>
       <div class="nav-section-label">Workspace</div>
       <button
         :class="['nav-item', activePage === 'dashboard' || activePage === 'client-home' ? 'active' : '']"
@@ -629,6 +654,8 @@ onBeforeUnmount(() => {
         Assets
       </button>
 
+      </template>
+
       <div class="nav-section-label">Account</div>
       <button
         :class="['nav-item', ['settings', 'channels'].includes(activePage) ? 'active' : '']"
@@ -763,7 +790,7 @@ onBeforeUnmount(() => {
   <!-- The five destinations from the mockup. Create sits in the middle and is
        an action rather than a route: it opens the same wizard the desktop
        header button does, so a video is made one way, not two. -->
-  <nav v-if="isMobile && !hideTabs" class="mshell-tabs">
+  <nav v-if="isMobile && !hideTabs && !freeGate?.freeOnly" class="mshell-tabs">
     <button
       v-for="t in TABS"
       :key="t.key"
@@ -1185,6 +1212,7 @@ onBeforeUnmount(() => {
   background: transparent;
   appearance: none;
 }
+.nav-upgrade { text-decoration: none; color: var(--color-accent) !important; font-weight: 600; }
 .nav-item:hover {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);

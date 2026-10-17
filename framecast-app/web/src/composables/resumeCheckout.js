@@ -59,10 +59,23 @@ export async function checkoutGate() {
   try {
     const { data } = await api.get('/billing/status')
     const billing = data?.data?.billing
-    const value = billing ? { required: Boolean(billing.checkout_required), plan: billing.checkout_plan || billing.pending_checkout?.plan || '' } : null
+    const value = billing ? { required: Boolean(billing.checkout_required), plan: billing.checkout_plan || billing.pending_checkout?.plan || '',
+      // A free account: its free ad, upgrading, settings and its past videos only (owner, 2026-10-17).
+      freeOnly: Boolean(billing.free_only), freeAd: billing.free_ad_conversation_id || null, hasPastVideos: Boolean(billing.has_past_videos) } : null
     gateCache = { at: Date.now(), value }
     return value
   } catch {
     return null
   }
+}
+
+// The pages a free account can open (FreePlanScope on the server refuses the rest): Templates, its own free ad in
+// Create, upgrading, settings, onboarding and its past videos (to watch and download).
+export function freeAllows(to, gate) {
+  if (['templates', 'template', 'plans', 'continue-checkout', 'payment-confirmation', 'settings', 'onboarding'].includes(to.name)) return true
+  if (to.name === 'videos') return gate.hasPastVideos
+  // Create opens only the free ad; a template's "Make my free ad" opens it with the new conversation's id before the
+  // gate has been asked again, so a conversation id that is not yet known is let through (the server keeps the rules).
+  if (to.name === 'create') return !!to.params.conversationId && (!gate.freeAd || String(to.params.conversationId) === String(gate.freeAd))
+  return false
 }

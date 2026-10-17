@@ -69,7 +69,7 @@ Route::prefix('v1/oauth')->group(function (): void {
 // Developer API: the only surface an API key can reach (see
 // AuthenticateWithJwt::API_KEY_NAMESPACE). Thin, versioned wrappers over the
 // same services the dashboard uses; sessions may call it too.
-Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class, 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class, \App\Http\Middleware\SerializeProjectMutation::class])->group(function (): void {
+Route::prefix('developer/v1')->middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class, \App\Http\Middleware\FreePlanScope::class, 'throttle.developer', \App\Http\Middleware\TrackApiOperation::class, \App\Http\Middleware\SerializeProjectMutation::class])->group(function (): void {
     Route::get('/capabilities', [\App\Http\Controllers\Api\Developer\V1\CapabilitiesController::class, 'show']);
     Route::post('/operations/{quoteId}/cancel', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'cancel']);
     Route::get('/operations/{quoteId}', [\App\Http\Controllers\Api\Developer\V1\OperationController::class, 'show']);
@@ -247,7 +247,7 @@ Route::prefix('v1')->group(function (): void {
     // Public share page for the /sample/<token> cold-DM motion.
     Route::get('/public/projects/{token}', [\App\Http\Controllers\Api\V1\Project\PublicShareController::class, 'show']);
 
-    Route::middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class])->group(function (): void {
+    Route::middleware(['auth.jwt', \App\Http\Middleware\GuardCompositionAccess::class, \App\Http\Middleware\FreePlanScope::class])->group(function (): void {
         Route::prefix('create')->group(function (): void {
             $controller = \App\Http\Controllers\Api\V1\Create\CreateController::class;
             Route::get('/capabilities', [$controller, 'capabilities']);
