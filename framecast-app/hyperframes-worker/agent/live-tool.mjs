@@ -134,6 +134,18 @@ else {
 // Reading time, blank frames and slow drift: advisory for the agent, shown to the user at delivery.
 // Pacing (reading time, blank frames, drift) is a note now: measured once at delivery, not on every check (~27 s each).
 if(operation==='check'&&result.ok&&settings.findings_block_finish===true)result.pacing=await pacing();
+// A template build is checked the way a free copy will be made (template-audit.mjs): words written into the code and
+// fields never shown fail the check, so the builder wires them before finishing; long text that runs out of its box
+// is a note (2026-10-17: two of the first three template builds wrote words into the code).
+if(operation==='check'&&result.ok&&settings.template_build===true)try{
+ const {audit}=await import('./template-audit.mjs');
+ const a=await audit({source:root,width:dims[0],height:dims[1],duration:settings.duration_seconds});
+ const blocking=[...a.leftovers.map(x=>'"'+x.text+'" at '+x.at+' s is written into the code: show it from a string composition variable'),
+  ...a.unseen.map(id=>'the variable '+id+' never shows on screen: wire it to the element that shows that text, or remove it'),
+  ...a.errors.map(e=>'the page throws: '+e)];
+ result.template_audit={passed:!blocking.length,blocking,overflow:a.overflow.map(o=>'"'+o.text+'" runs out of its box at '+o.at+' s when the text is 1.5 times longer: let it shrink to fit')};
+ if(blocking.length){result.ok=false;result.error='Template audit: a copy for another product would keep these words. Fix each, then check again.';}
+}catch(e){result.template_audit={passed:false,error:String(e.message||e).slice(0,300)};}
 if(operation==='strip'&&result.ok)try{
  // One image-sequence input and the tile filter: thirty separate inputs exhaust the sandbox's thread limit.
  const shots=(await readdir(out)).filter(n=>/^frame-\d+-at-[0-9.]+s\.png$/.test(n)).sort();

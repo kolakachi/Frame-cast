@@ -6,7 +6,7 @@
 //   when a user writes more than the sample did.
 // Run in the sandbox: node agent/template-audit.mjs <id>, reading /output/audit/<id> (a create:version export) and
 // writing result.json there. Text drawn on a canvas or baked into a picture is not seen (pictures are slots anyway).
-import {readFile,writeFile,mkdir,copyFile,readdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,copyFile,readdir,cp} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {serve} from './reads-check.mjs';
 
@@ -44,13 +44,17 @@ export function values(decls){
 /** Words on screen that are not markers: a word of two letters or more, or a price or percentage. */
 export function leftovers(texts){
  const out=new Set();
+ // A word that is part of a longer leftover ("best" in "The best coffee") is the same finding.
+ const keep=list=>list.filter(x=>!list.some(y=>y!==x&&y.length>x.length&&y.includes(x)));
  for(const t of texts){const rest=t.replace(/Z\s*Q\s*\d+/g,' ').replace(/\s+/g,' ').trim();
-  if(/[A-Za-zÀ-ɏ]{2,}/.test(rest)||/[$€£¥₦₹]\s*\d|\d\s*%/.test(rest))out.add(rest.slice(0,80));}
- return [...out];
+  // Letter-spaced words ("N E W · D R O P") count too: read with the spaces between single letters taken out.
+  const joined=rest.replace(/(?<=(?:^|\s)\p{L})\s(?=\p{L}(?:\s|$))/gu,'');
+  if(/[A-Za-zÀ-ɏ]{2,}/.test(joined)||/[$€£¥₦₹]\s*\d|\d\s*%/.test(joined))out.add(rest.slice(0,80));}
+ return keep([...out]);
 }
 
 /**
- * Long text that runs out of its box: out in the long pass for at least two samples in a row, at moments when the
+ * Long text that runs out of its box: out in the long pass for at least three samples in a row, at moments when the
  * same field's short marker was inside (an entrance or exit move takes text out of its box at any length).
  */
 export function overflowing(shortOut,longOut,step){
@@ -60,8 +64,9 @@ export function overflowing(shortOut,longOut,step){
  for(const o of longOut){const f=id(o.text);if(!f||shortAt.has(f+'@'+o.at))continue;(byField.get(f)??byField.set(f,[]).get(f)).push(o);}
  const found=[];
  for(const [,list] of byField){const times=[...new Set(list.map(o=>o.at))].sort((a,b)=>a-b);
-  const run=times.findIndex((t,i)=>i>0&&Math.abs(t-times[i-1]-step)<1e-6);
-  if(run>0)found.push({text:list.find(o=>o.at===times[run-1]).text,at:times[run-1]});}
+  // Three samples in a row (about 0.75 s): an entrance or exit move passes through a box edge faster than that.
+  const run=times.findIndex((t,i)=>i>1&&Math.abs(t-times[i-1]-step)<1e-6&&Math.abs(times[i-1]-times[i-2]-step)<1e-6);
+  if(run>1)found.push({text:list.find(o=>o.at===times[run-2]).text,at:times[run-2]});}
  return found;
 }
 
@@ -82,13 +87,15 @@ function sample(){
    const pts=[0.25,0.5,0.75].map(f=>[box.left+box.width*f,box.top+box.height/2]).filter(([x,y])=>x>=0&&y>=0&&x<W&&y<H);
    // Down the stack at a point: transparent layers (grain, vignettes, empty wrappers) are looked through; an opaque
    // panel or picture above the text covers it.
-   const covers=e=>{if(['IMG','VIDEO','CANVAS'].includes(e.tagName))return shown(e)>=0.5;const st=getComputedStyle(e);const m=st.backgroundColor.match(/rgba?\(([^)]+)\)/);
+   // A cut-out photo (PNG, WebP, SVG) is mostly transparent around the product: only solid pictures cover.
+   const covers=e=>{if(['VIDEO','CANVAS'].includes(e.tagName)||(e.tagName==='IMG'&&/\.jpe?g(\?|$)/i.test(e.currentSrc||e.src)))return shown(e)>=0.5;if(e.tagName==='IMG')return false;const st=getComputedStyle(e);const m=st.backgroundColor.match(/rgba?\(([^)]+)\)/);
     const alpha=m?(m[1].split(',')[3]===undefined?1:parseFloat(m[1].split(',')[3])):0;return (alpha>=0.5||st.backgroundImage!=='none')&&shown(e)>=0.5;};
    const seenAt=([x,y])=>{for(const hit of document.elementsFromPoint(x,y)){if(hit===el||el.contains(hit)||hit.contains(el))return true;if(covers(hit))return false;}return true;};
    // The words themselves must be in the frame (a wide wipe panel can overlap it while its text is off to the side).
    if(!pts.length||!pts.some(seenAt))continue;}
   // Letters split into their own spans (kinetic type) are read as the word they make.
-  if(own.length<=2&&el.parentElement)own=(el.parentElement.innerText||el.parentElement.textContent||'').replace(/\s+/g,' ').trim();
+  // (each letter may sit in its own wrapper: climb until there is more than a letter or two).
+  for(let up=el.parentElement,i=0;own.length<=2&&up&&up!==document.body&&i<4;up=up.parentElement,i++)own=(up.innerText||up.textContent||'').replace(/\s+/g,' ').trim();
   if(own)texts.push(own);if(pseudo)texts.push(pseudo);
   if(own){const rg=document.createRange();rg.selectNodeContents(el);const b=rg.getBoundingClientRect();if(b.width<2||b.height<2)continue;
    const clip=clipOf(el),c=clip?clip.getBoundingClientRect():{left:0,top:0,right:W,bottom:H};
@@ -132,7 +139,8 @@ async function scan({root,width,height,duration,step,browserPath,shotAt=null,sho
 export async function audit({source,width,height,duration,step=0.25,browserPath=process.env.HYPERFRAMES_BROWSER_PATH,shot=null}){
  const html=await readFile(source+'/index.html','utf8'),decls=declarations(html),v=values(decls);
  const run=async(vals,name,extra={})=>{const root='/tmp/audit-'+name;await mkdir(root,{recursive:true});
-  for(const f of await readdir(source))if(/^[a-zA-Z0-9_.-]+$/.test(f))await copyFile(source+'/'+f,root+'/'+f);
+  // The whole page folder (registry items sit in subfolders); the renderer's own cache folders are left out.
+  await cp(source,root,{recursive:true,filter:src=>!/\/\.[^/]+$/.test(src)||src===source});
   await writeFile(root+'/index.html',withValues(html,vals));
   // The same runtime files the render stages (GSAP, motion scripts, fonts, registry items), or nothing moves.
   const {stageRuntime}=await import('./stage-runtime.mjs');await stageRuntime(root);

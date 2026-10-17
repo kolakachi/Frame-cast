@@ -14,12 +14,13 @@ test('markers go into the text fields only, and the page keeps its other fields'
 
 test('a word or a price left on screen is written into the code; markers, counters and times are not (owner free ad, 2026-10-17)',()=>{
  assert.deepEqual(leftovers(['ZQ1','Z Q 2','01 / 04','00:12','ZQ3 ZQ4','wyvstudio.com','$39','25%','Northside Roasters']),['wyvstudio.com','$39','25%','Northside Roasters']);
+ assert.deepEqual(leftovers(['N E W · N E W D R O P ·','Z Q 3','0 1 / 0 4']),['N E W · N E W D R O P ·'],'a letter-spaced ticker is words');
 });
 
 test('long text counts as running out of its box only when it stays out and its short marker was inside',()=>{
  const shortOut=[{text:'ZQ1',at:0}];
- const longOut=[{text:'ZQ1 fresh daily',at:0},{text:'ZQ1 fresh daily',at:0.25},{text:'ZQ2 fresh',at:5},{text:'ZQ3 fresh',at:7},{text:'ZQ3 fresh',at:7.25}];
- assert.deepEqual(overflowing(shortOut,longOut,0.25),[{text:'ZQ3 fresh',at:7}]);
+ const longOut=[{text:'ZQ1 fresh daily',at:0},{text:'ZQ1 fresh daily',at:0.25},{text:'ZQ2 fresh',at:5},{text:'ZQ3 fresh',at:7},{text:'ZQ3 fresh',at:7.25},{text:'ZQ3 fresh',at:7.5},{text:'ZQ4 fresh',at:9},{text:'ZQ4 fresh',at:9.25}];
+ assert.deepEqual(overflowing(shortOut,longOut,0.25),[{text:'ZQ3 fresh',at:7}],'two samples is a move through the edge; three is overflow');
 });
 
 test('the code hash ignores asset ids, so an audit made locally holds on prod',()=>{
