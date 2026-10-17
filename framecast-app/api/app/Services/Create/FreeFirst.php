@@ -76,6 +76,8 @@ class FreeFirst
         if (($t->source ?? null) !== 'version' || empty($t->revision_id)) return false;
         $parts = json_decode((string) ($t->parts_json ?? ''), true) ?: [];
         foreach ((array) ($parts['clips'] ?? []) as $clip) if (in_array($clip['kind'] ?? '', self::AI_VIDEO, true)) return false;
+        // Footage of the template's own product has to be replaced with the user's, which a free swap cannot do.
+        if (! empty($parts['footage'])) return false;
 
         return true;
     }

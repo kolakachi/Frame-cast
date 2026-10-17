@@ -66,6 +66,9 @@ const captionMode = computed({
 })
 const paid = computed(() => capabilities.value?.paid_generation && capabilities.value?.mode === 'agent')
 const outputMeta = computed(() => {try{return JSON.parse(currentRevision.value?.metadata_json || '{}')}catch{return {}}})
+// The template as it came, before the user's changes (TemplateLibrary::copyVersion): not theirs to download, share,
+// schedule or send yet (owner's test, 2026-10-17).
+const isTemplateCopy = computed(() => !!outputMeta.value.template_id)
 // Delivery checks the worker ran on the final file, in plain words.
 const delivery_checks = computed(() => outputMeta.value?.delivery_checks || null)
 const checkIssues = computed(() => {
@@ -559,12 +562,16 @@ async function applyLevers() {
 }
 // A plan that only changes existing text and colours can be applied as a free edit.
 let freePlanKey = null
-async function applyPlanFreeEdit(values) {
+// A plan's free change is applied once: the button stays off while any build runs and after it was applied
+// (owner's test, 2026-10-17: it stayed live while the free change was rendering).
+const appliedFreeEdits = ref(new Set())
+async function applyPlanFreeEdit(values, messageId) {
   const head = conversation.value?.head_revision_id
-  if (!head || !values || !Object.keys(values).length) return
+  if (!head || !values || !Object.keys(values).length || active.value || appliedFreeEdits.value.has(messageId)) return
   await guarded(async () => {
     freePlanKey ||= crypto.randomUUID()
     await api.post(`${base()}/revisions/${head}/edits`, { expected_version: conversation.value.version, idempotency_key: freePlanKey, values })
+    appliedFreeEdits.value = new Set([...appliedFreeEdits.value, messageId])
     freePlanKey = null; selectedRevision.value = null; await refresh()
   })
 }
@@ -579,6 +586,12 @@ const revisions = computed(() => data.value?.revisions ?? [])
 const currentRevision = computed(() => revisions.value.find(r => r.id === (selectedRevision.value || conversation.value?.head_revision_id)))
 const currentNumber = computed(() => revisions.value.find(r => r.id === conversation.value?.head_revision_id)?.number)
 const isOldRevision = computed(() => currentRevision.value && currentRevision.value.id !== conversation.value?.head_revision_id)
+// A plan's free change already made: a version came after the plan's message (so a reload keeps the button off).
+function freeEditApplied(messageId) {
+  const msg = (data.value?.messages || []).find(x => x.id === messageId)
+  if (!msg?.created_at) return false
+  return (data.value?.revisions || []).some(r => r.created_at && r.created_at > msg.created_at)
+}
 const active = computed(() => data.value?.runs?.find(r => ['queued','running','cancel_requested','needs_attention'].includes(r.status)))
 watch(() => active.value?.id, now => { if (!now) autoRan.value = null })
 const canWrite = computed(() => ['owner','admin','editor','super_admin','platform_admin','client_admin','client_editor'].includes(auth.user?.role))
@@ -1581,7 +1594,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                         <b>This is a free change</b>
                         <span class="muted">It only edits text and colours already in your video. No model call, one render.</span>
                         <ul><li v-for="(v, k) in planByMessage[m.id].plan.free_edit" :key="k"><span class="muted">{{ (editableFields.find(f => f.id === k) || {}).label || k }}:</span> <span v-if="String(v).startsWith('#')" class="free-plan__swatch" :style="{ background: v }" /> {{ v }}</li></ul>
-                        <button type="button" class="btn btn--primary btn--sm" :disabled="locked || !canWrite" @click="applyPlanFreeEdit(planByMessage[m.id].plan.free_edit)">Apply for free</button>
+                        <button type="button" class="btn btn--primary btn--sm" :disabled="locked || !canWrite || !!active || appliedFreeEdits.has(m.id) || freeEditApplied(m.id)" @click="applyPlanFreeEdit(planByMessage[m.id].plan.free_edit, m.id)">{{ appliedFreeEdits.has(m.id) || freeEditApplied(m.id) ? 'Applied' : active ? 'Building…' : 'Apply for free' }}</button>
                       </div>
                   </div></div>
                   <template v-else>
@@ -1688,28 +1701,29 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                   <div class="result-actions">
                     <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--primary" :disabled="locked" @click="approveLook">Approve design & create video · review cost</button>
                     <button v-if="outputMeta.look && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="changeLook">Change the look</button>
-                    <button v-if="media && !outputMeta.look" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
-                    <button v-if="!outputMeta.look && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
+                    <button v-if="media && !outputMeta.look && !isTemplateCopy" type="button" class="btn btn--primary" @click="download">Download {{ imageOutput ? 'image' : paid ? 'video' : 'sample' }}</button>
+                    <button v-if="!outputMeta.look && !isTemplateCopy && needsAnotherRound && paid && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--outline" :disabled="locked" @click="keepImproving">Keep improving</button>
                     <button v-if="canChange" type="button" class="btn btn--outline" :disabled="locked" @click="changeOpen = true">Change…</button>
-                    <button v-if="media && !outputMeta.look && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked || conceptBusy" @click="conceptOpen = true">Make another concept</button>
+                    <button v-if="media && !outputMeta.look && !isTemplateCopy && canWrite && !isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked || conceptBusy" @click="conceptOpen = true">Make another concept</button>
                     <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="compare">Compare with current</button>
                     <button v-if="canWrite && isOldRevision && !conversation.archived_at" type="button" class="btn btn--ghost" :disabled="locked" @click="restore">Restore as a new version</button>
                     <button v-if="isOldRevision" type="button" class="btn btn--ghost" @click="selectedRevision = null">Back to current</button>
-                    <template v-if="!outputMeta.look && !imageOutput && media && canWrite && !conversation?.archived_at && paid">
+                    <template v-if="!outputMeta.look && !isTemplateCopy && !imageOutput && media && canWrite && !conversation?.archived_at && paid">
                       <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="copyShare">{{ sharing === 'share' ? 'Getting link…' : 'Copy share link' }}</button>
                       <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="scheduleNow">{{ sharing === 'schedule' ? 'Saving…' : 'Schedule' }}</button>
                       <button type="button" class="btn btn--outline" :disabled="locked || !!sharing" @click="approvalOpen = true; approvalResult = ''; approvalError = ''">Send for approval</button>
                     </template>
                     <button type="button" class="btn btn--ghost" @click="versionOpen = true">Details</button>
-                    <button v-if="isStaff && media && !outputMeta.look && !imageOutput" type="button" class="btn btn--ghost btn--staff" @click="templateNote = ''; templateOpen = true">Add to templates</button>
+                    <button v-if="isStaff && media && !outputMeta.look && !imageOutput && !isTemplateCopy" type="button" class="btn btn--ghost btn--staff" @click="templateNote = ''; templateOpen = true">Add to templates</button>
                   </div>
                   <p v-if="templateNote" class="result-hint" role="status">{{ templateNote }} <router-link :to="{ name: 'templates' }">See Templates →</router-link></p>
                   <p v-if="shareNote" class="result-hint result-share" role="status">{{ shareNote }}</p>
+                  <p v-if="isTemplateCopy && !isOldRevision" class="result-hint result-template">This is the template as it is. Tell us about your product below, or use Change…, and we'll make it yours.</p>
                   <div v-if="outputMeta.watermarked" class="free-ready" role="status">
                     <b>Your free first ad is ready.</b> It carries a small WyvStudio mark, and you can download it now.
                     Your next ad can use your own presenter, voice or footage, with no mark: <a href="/continue?pass=1">get the Test Pass, $9</a>.
                   </div>
-                  <p v-if="!outputMeta.look && !isOldRevision && canWrite" class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below, like “slower cuts” or “bigger captions”.</p>
+                  <p v-if="!outputMeta.look && !isOldRevision && canWrite && !isTemplateCopy" class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below, like “slower cuts” or “bigger captions”.</p>
                 </div>
               </div>
                 <p v-if="outputMeta.look && !isOldRevision" class="look-note">Storyboard preview — silent still frames, not your finished video. Request changes here, or review the cost to build the full video with motion and audio.</p>
@@ -2901,4 +2915,5 @@ label.tray-note{white-space:normal}
 .free-ready{margin-top:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--color-border-active);font-size:14px;line-height:1.45;color:var(--color-text-secondary)}
 .free-ready b{color:var(--color-text-primary)}
 .free-ready a{color:var(--color-accent);font-weight:600}
+.result-template{color:var(--color-text-primary)}
 </style>

@@ -175,6 +175,24 @@ class CreateTemplatesTest extends TestCase
         $this->assertFalse(\App\Services\Create\FreeFirst::freePlan($ws));
     }
 
+    public function test_footage_of_the_templates_own_product_is_listed_and_the_brief_says_to_replace_it(): void
+    {
+        // Owner's test, 2026-10-17: an app demo's screen recording was not listed, so a free change kept the old product.
+        [, $revision] = $this->version();
+        $row = DB::table('composition_revisions')->where('id', $revision)->first();
+        $bundle = json_decode($row->bundle_json, true);
+        $bundle['index.html'] = str_replace('</body>', '<video src="asset-901-'.str_repeat('a', 64).'.mp4"></video></body>', $bundle['index.html']);
+        if (! str_contains($bundle['index.html'], 'asset-901-')) $bundle['index.html'] .= '<video src="asset-901-'.str_repeat('a', 64).'.mp4"></video>';
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => json_encode($bundle)]);
+        $parts = TemplateLibrary::partsOf(DB::table('composition_revisions')->where('id', $revision)->first());
+        $this->assertSame([['asset_id' => 901, 'what' => 'a video clip', 'kind' => 'file']], $parts['footage']);
+        $this->assertContains('1 product recording to replace', TemplateLibrary::summary($parts));
+        $t = (object) ['title' => 'App demo', 'parts_json' => json_encode($parts)];
+        $this->assertStringContainsString("put my screen recording or footage of my product in its place", TemplateLibrary::brief($t, 'version', 'Lumio PDF reader'));
+        $this->assertStringContainsString('a reaction or presenter stays', TemplateLibrary::brief($t, 'version', 'Lumio PDF reader'));
+        $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode($parts)]), 'a free swap cannot replace footage');
+    }
+
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void
     {
         [$conversation, $revision, $files] = $this->version();

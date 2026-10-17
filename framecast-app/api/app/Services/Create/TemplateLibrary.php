@@ -207,6 +207,8 @@ class TemplateLibrary
         if (! empty($parts['voice'])) $lines[] = '- Voiceover: re-voice it with my words, same voice and pacing.';
         if (! empty($parts['music'])) $lines[] = '- Music: keep the track as it is.';
         if (! empty($parts['clips'])) $lines[] = '- Video clips: '.implode('; ', array_map(fn ($p) => $p['what'], $parts['clips'])).'. Make them new only if they show the old product.';
+        if (! empty($parts['footage'])) $lines[] = '- Footage of the template\'s own product: '.implode('; ', array_map(fn ($p) => $p['what'], $parts['footage']))
+            .'. This shows the old product: put my screen recording or footage of my product in its place, sized and timed the same, and keep everything around it as it is (a reaction or presenter stays). If I attached none, ask me for it before planning.';
         return implode("\n", $lines);
     }
 
@@ -256,9 +258,21 @@ class TemplateLibrary
         $music = $media->firstWhere('kind', 'music');
         $clips = $media->filter(fn ($m) => in_array($m['kind'] ?? '', ['generated_shot', 'animate_image', 'ugc_take', 'talking_take', 'talking_shot', 'stock_video', 'ai_video', 'broll'], true))
             ->map(fn ($m) => ['kind' => $m['kind'], 'what' => (string) ($m['description'] ?? $m['kind']), 'credits' => (int) ($m['credits'] ?? 0)])->values()->all();
+        // Footage the code plays that the build did not make: a screen recording on a phone, the user's own clip. It shows
+        // the template's own product, so the brief says to replace it (owner, 2026-10-17: an app demo's recording was not
+        // listed, and a free change swapped only the words around the old product's demo).
+        $made = array_keys(array_filter($bought, fn ($b) => in_array($b['kind'], ['generated_shot', 'animate_image', 'ugc_take', 'talking_take', 'talking_shot', 'stock_video', 'ai_video', 'broll'], true)));
+        $footage = [];
+        preg_match_all('/asset-(\d+)-[a-f0-9]{16,64}\.(?:mp4|mov|webm|m4v)/i', $code, $vids);
+        foreach (array_unique(array_map('intval', $vids[1])) as $assetId) {
+            $from = (int) ($files[$assetId]['derived_from_asset_id'] ?? 0);
+            if (in_array($assetId, $made, true) || ($from && in_array($from, $made, true))) continue;
+            $d = $describe($assetId);
+            $footage[] = ['asset_id' => $assetId, 'what' => $d['what'] === 'a picture' ? 'a video clip' : $d['what'], 'kind' => $d['kind']];
+        }
         $settings = $input['settings'] ?? [];
         return [
-            'text' => $text, 'colours' => $colours, 'fonts' => $fonts, 'images' => $images,
+            'text' => $text, 'colours' => $colours, 'fonts' => $fonts, 'images' => $images, 'footage' => $footage,
             'voice' => $voice ? ['what' => (string) ($voice['description'] ?? ''), 'voice' => $plan['voice'] ?? null, 'lines' => array_values(array_filter((array) ($plan['narration'] ?? []), 'is_string')), 'credits' => (int) ($voice['credits'] ?? 0)] : null,
             'music' => $music ? ['what' => (string) ($music['description'] ?? ''), 'credits' => (int) ($music['credits'] ?? 0)] : null,
             'clips' => $clips,
@@ -279,6 +293,7 @@ class TemplateLibrary
         if (! empty($parts['voice'])) $out[] = 'Voiceover';
         if (! empty($parts['music'])) $out[] = 'Music';
         if (! empty($parts['clips'])) $out[] = count($parts['clips']).' video '.(count($parts['clips']) === 1 ? 'clip' : 'clips');
+        if (! empty($parts['footage'])) $out[] = count($parts['footage']).' product '.(count($parts['footage']) === 1 ? 'recording' : 'recordings').' to replace';
         return $out;
     }
 
