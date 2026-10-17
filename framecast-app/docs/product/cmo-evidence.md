@@ -142,7 +142,72 @@ library was blocked; Pictory and faceless.so run no Meta ads; Meta shows no spen
 
 ## 7. The market's own words
 
-To fill in from research (verbatim community threads).
+58 verbatim quotes from 55 Reddit threads (Oct 2025 – Oct 2026), read through a public mirror; Facebook groups were not
+reachable. Some posts in r/FacebookAds and r/shopify look like disguised tool ads; plain promotion was dropped. Open any
+thread with `redd.it/<id>`. By tag: pain 28, objection 17, desired result 8, current workaround 5. By buyer: store
+owners 26, other owners 9, social media managers and marketers 9, media buyers and agencies 8, solo founders 4, local
+service businesses 2. Outside the US: 8 (India 5, Brazil, the Philippines, Nigeria).
+
+**Pain: ads die, and making new ones can't keep up**
+- "Our winning ads die after 7-10 days now." (r/FacebookAds, 1vw3zer, an in-house marketer at $25k a month)
+- "my problem is the creatives just die after a couple weeks and im not a designer so making fresh ones is slow and
+  expensive." (r/FacebookAds, 1tzcxiu, a store owner)
+- "how are you keeping new creatives coming without paying a freelancer every single time?" (same thread)
+- "Each time we add a new creative, next 2-3 days works fine, then… spend almost zero… How to escape from this loop?"
+  (r/FacebookAds, 1w0pgbe)
+
+**Pain: creators and shoots cost too much and take too long**
+- "brief a UGC creator ($200-300/video), wait 7-10 days for delivery, half the time the take doesn't match the brief"
+  (r/FacebookAds, 1vw3zer)
+- "I cannot justify a $5k video production budget." (r/ecommerce, 1o9gpcw, "My product is visual but my video ads look
+  amateur")
+- "There's nothing I'd like more than to NOT have to deal with UGC creators, licensing rights, negotiations" (r/shopify,
+  1uqfsq5, a store spending $5M a year on Meta)
+- "The problem is most of my clients can't be bothered to film their own content. I'm tired of chasing them" (r/PPC,
+  1vfr4rj, an agency for local home-service businesses)
+
+**Pain: no time, no team**
+- "For me as a solo-entrepreneur it is always about time… I am not able to produce content consistently."
+  (r/Entrepreneur, 1oq3m3c)
+- "three videos a day is a full time job that happens to not pay you." (r/smallbusiness, 1ujiq5a)
+- "I do not have a dedicated marketing budget or a team of content creators." (same thread)
+
+**Objection: AI looks fake, gets the product wrong, sounds off**
+- "the second a real person sees it close up it screams generated." (r/FacebookAds, 1u215y0)
+- "the ai spokesperson made it feel like a weird insurance commercial nobody asked for." (r/FacebookAds, 1vfr04r, an
+  agency)
+- "It can't (easily) get my products right." (r/shopify, 1uqfsq5)
+- "They always alucinate and transforms the item" (r/ecommerce, 1pmmcqs)
+- "I want my photos to be of my actual product so customer expectations and my product are aligned" (r/ecommerce,
+  1pegc3y)
+- "voices still clip, cadence is off" (r/smallbusiness, 1voawic)
+- "I dont want to learn and master a new platform." (r/shopify, 1uqfsq5)
+
+**Objection: agencies are expensive and opaque**
+- "can't justify a $500+/mo retainer for something I can't tell is working." (r/smallbusiness, 1voe65y)
+- "zero transparency into what they are actually doing, and I carry 100% of the financial risk" (r/smallbusiness,
+  1s7qfej)
+
+**Desired result**
+- "Don't need Hollywood quality, just clean product content." (r/ecommerce, 1pmmcqs)
+- "Is there an AI tool that can actually learn your brand (products, tone, past creatives, website, etc.) and then
+  generate complete ads that are actually usable?" (r/shopify, 1uxxtdm)
+- "Video of the product moving beats any photo." (r/smallbusiness, 1whohky)
+
+**Outside the US**
+- India: "I am just clicking product pictures and uploading, what platform should I use to create better videos" (a
+  saree seller, r/smallbusiness, 1whohky); a clothing brand's budget of ₹20–22k a month against an agency's ₹45k
+  (r/socialmedia, 1stbqta).
+- Brazil: "sou MUITO RUIM com marketing… não sei fazer anúncios, odeio gravar vídeos" ("I'm very bad at marketing… I
+  don't know how to make ads, I hate recording videos") (r/empreendedorismo, 1rvjy91).
+- Philippines: "I've been thinking of learning Facebook Ads on my own since I don't have the budget to hire a
+  specialist yet." (a photobooth business, r/phinvest, 1oozjda)
+- Nigeria: "I feel like I'm doing the work of an entire department for ₦100k a month." (an in-house social media
+  manager, r/Nigeria, 1uwzxqc)
+
+**The words that recur most:** "creative fatigue"; ads or creatives that **"die"** after N days; can't **"keep up"**;
+**"looks fake" / "screams generated" / "AI slop"**; **"burning cash"**; **"can't afford" / "can't justify"**;
+**"chasing"** clients or creators; **"consistently"**; **"authentic" / "real"**.
 
 ## 8. Interviews
 
@@ -186,5 +251,5 @@ Record (with permission) or take notes in their exact words; add them to §5.
 |---|---|
 | Buyers, first session, refunds, customer words | Done (this page) |
 | Competitor ads | Done (§6) |
-| Market words | In progress |
+| Market words | Done (§7) |
 | Interviews | Invite list and script ready; the owner sends the invitations |

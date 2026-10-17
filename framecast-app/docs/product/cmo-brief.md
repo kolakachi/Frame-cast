@@ -94,7 +94,7 @@ Never judged by how good the plan reads.
 
 | Step | Status |
 |---|---|
-| 1. Evidence | Not started; read-only, needs no decision |
+| 1. Evidence | Done 2026-10-17: `cmo-evidence.md` (interviews wait on the owner's invitations) |
 | 2. Decisions | Waits on step 1 |
 | 3. Two-week plan | Waits on step 2 |
 | 4. Scoreboard | Waits on step 2 |
