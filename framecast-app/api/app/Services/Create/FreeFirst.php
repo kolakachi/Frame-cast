@@ -15,6 +15,11 @@ use Illuminate\Support\Facades\DB;
  */
 class FreeFirst
 {
+    /** AI-planned changes in the free ad (owner, 2026-10-17): direct text and colour edits stay free past this. */
+    public const PLAN_LIMIT = 5;
+
+    public const PLAN_LIMIT_MESSAGE = 'Your free ad has used its 5 AI changes. You can still edit its text and colours for free with Edit; for more changes, new shots, voices and presenters, get the $9 Test Pass.';
+
     public const GATE = 'Your free first ad is made from a template: it changes the words, colours and photos. New shots, voices and presenters, and ads without the WyvStudio mark, come with the $9 Test Pass or a pack.';
 
     /** Whether the workspace's plan watermarks its videos (a free plan). */
@@ -54,5 +59,11 @@ class FreeFirst
     private static function kept(): bool
     {
         return \Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json');
+    }
+
+    /** How many AI plans the free ad has had (each planner call makes one). */
+    public static function plansUsed(string $conversationId): int
+    {
+        return DB::table('create_plans')->where('conversation_id', $conversationId)->count();
     }
 }

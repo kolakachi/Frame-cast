@@ -154,6 +154,14 @@ class CreateTemplatesTest extends TestCase
         $quote = \App\Models\ApiQuote::query()->where('workspace_id', $ws)->get()->first(fn ($q) => ! empty($q->payload_json['free_edit']));
         $this->assertTrue((bool) ($quote?->payload_json['watermark'] ?? false), 'the free ad renders with the WyvStudio mark');
 
+        // Its AI-planned changes are free up to 5; then the reply offers the Test Pass (free edits stay open).
+        $planning = app(\App\Services\Create\PlanService::class);
+        $planning->assertCanPayPlanning($this->customer, $first['id']);
+        foreach (range(1, \App\Services\Create\FreeFirst::PLAN_LIMIT) as $n) DB::table('create_plans')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $first['id'], 'message_id' => (string) Str::uuid(),
+            'brief_sequence' => $n, 'idempotency_key' => 'p'.$n, 'request_hash' => 'h'.$n, 'provider' => 'test', 'plan_json' => '{}', 'status' => 'superseded', 'created_at' => now(), 'updated_at' => now()]);
+        try { $planning->assertCanPayPlanning($this->customer, $first['id']); $this->fail('a sixth AI change was free'); }
+        catch (HttpException $e) { $this->assertSame([402, \App\Services\Create\FreeFirst::PLAN_LIMIT_MESSAGE], [$e->getStatusCode(), $e->getMessage()]); }
+
         // A paid plan is never marked, and every conversation is open to it.
         \App\Models\Workspace::whereKey($ws)->update(['plan_tier' => 'creator']);
         $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $first['id']));

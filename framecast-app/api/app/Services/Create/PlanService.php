@@ -45,9 +45,12 @@ class PlanService
     /** Planning is paid (at half its cost): a balance below a typical charge is asked to top up before planning starts. */
     public function assertCanPayPlanning(User $user, ?string $conversationId = null): void
     {
+        // The free first ad's planning is ours to pay (FreeFirst), up to its limit of AI changes, in every mode.
+        if ($conversationId && FreeFirst::applies((int) $user->workspace_id, $conversationId)) {
+            abort_if(FreeFirst::plansUsed($conversationId) >= FreeFirst::PLAN_LIMIT, 402, FreeFirst::PLAN_LIMIT_MESSAGE);
+            return;
+        }
         if (PilotPolicy::unlimited() || config('create.mode') === 'fixture') return;
-        // The free first ad's planning is ours to pay (FreeFirst).
-        if ($conversationId && FreeFirst::applies((int) $user->workspace_id, $conversationId)) return;
         $min = (int) config('create.planning_min_credits', 60);
         $available = (int) $this->conversations->creditAvailability($user)['available'];
         abort_if($available < $min, 402, sprintf('Top up to plan: planning usually takes up to %s credits and you have %s available.', number_format($min), number_format(max(0, $available))));
