@@ -35,7 +35,8 @@ class BillingController extends Controller
                     'plan_status'      => $workspace->plan_status ?? 'active',
                     'plan_renews_at'   => $workspace->plan_renews_at?->toIso8601String(),
                     'has_subscription' => (bool) ($workspace->kelviq_subscription_id || $workspace->kelviq_account_id),
-                    'topup_packs'      => config('billing.kelviq.topup_packs', []),
+                    // Free accounts upgrade (the Test Pass or a pack); top-ups are for paid accounts (owner, 2026-10-17).
+                    'topup_packs'      => \App\Services\Create\FreeFirst::freePlan((int) $workspace->id) ? [] : config('billing.kelviq.topup_packs', []),
                     // A checkout that was started and never completed. Drives
                     // the "finish your purchase" banner; null once they pay.
                     // What to charge them for when they are held: the
@@ -129,6 +130,11 @@ class BillingController extends Controller
             'lifetime' => ['sometimes', 'string', 'in:lifetime_entry,lifetime_starter,lifetime_creator,lifetime_agency'],
             'pass'     => ['sometimes', 'boolean'],
         ]);
+
+        if (! empty($validated['topup']) && \App\Services\Create\FreeFirst::freePlan((int) $workspace->id)) {
+            return response()->json(['error' => ['code' => 'upgrade_first',
+                'message' => 'Top-ups are for paid accounts. Upgrade with the $9 Test Pass or a pack to make more ads.']], 402);
+        }
 
         $planTiers  = config('billing.kelviq.plan_tiers', []);
         $topupPlans = config('billing.kelviq.topup_plans', []);

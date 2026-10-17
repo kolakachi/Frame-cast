@@ -181,7 +181,7 @@ class TemplateLibrary
                 && DB::table('composition_revisions')->where('id', $t->revision_id)->exists();
             if ($copy) $this->copyVersion($user, $c->id, $t);
             // A free plan's first "Exactly" from a template with its own code is its free first ad (FreeFirst).
-            if ($copy) FreeFirst::claim((int) $user->workspace_id, $c->id);
+            if ($copy && FreeFirst::templateFits($t)) FreeFirst::claim((int) $user->workspace_id, $c->id);
             else $this->attachReference($user, $c->id, $t, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'));
             $done = ['id' => $c->id, 'version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'),
                 'brief' => self::brief($t, $copy ? 'version' : $match, (string) $input['product'])];
@@ -300,7 +300,8 @@ class TemplateLibrary
                 'preview_url' => $video, 'video_url' => $video];
         }
         return ['id' => $t->id, 'title' => $t->title, 'category' => $t->category, 'category_label' => self::CATEGORIES[$t->category] ?? $t->category,
-            'style' => $t->style, 'shape' => $t->shape, 'seconds' => (int) $t->seconds, 'source' => $t->source, 'on_samples' => (bool) $t->on_samples, ...$media];
+            'style' => $t->style, 'shape' => $t->shape, 'seconds' => (int) $t->seconds, 'source' => $t->source, 'on_samples' => (bool) $t->on_samples,
+            'free_fit' => FreeFirst::templateFits($t), ...$media];
     }
 
     /**

@@ -85,7 +85,7 @@ onMounted(async () => {
               <video v-if="t.preview_url" :src="t.preview_url" muted loop playsinline preload="none" />
               <span class="duration">{{ duration(t.seconds) }}</span>
               <span v-if="t.locked" class="lock">Not in your plan</span>
-              <span v-else-if="freeFirstOpen && t.source === 'version'" class="free-badge">Free first ad</span>
+              <span v-else-if="freeFirstOpen && t.free_fit" class="free-badge">Free first ad</span>
             </div>
             <div class="card-text">
               <span class="card-title">{{ t.title }}</span>

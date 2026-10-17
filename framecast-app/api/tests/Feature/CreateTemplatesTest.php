@@ -162,6 +162,13 @@ class CreateTemplatesTest extends TestCase
         try { $planning->assertCanPayPlanning($this->customer, $first['id']); $this->fail('a sixth AI change was free'); }
         catch (HttpException $e) { $this->assertSame([402, \App\Services\Create\FreeFirst::PLAN_LIMIT_MESSAGE], [$e->getStatusCode(), $e->getMessage()]); }
 
+        // Free only from a template with its own code and no AI-made video (owner, 2026-10-17).
+        $fits = fn (array $t) => \App\Services\Create\FreeFirst::templateFits((object) $t);
+        $this->assertTrue($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'stock_video']]])]));
+        $this->assertFalse($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'ugc_take']]])]), 'a creator take is AI video');
+        $this->assertFalse($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'generated_shot']]])]));
+        $this->assertFalse($fits(['source' => 'video', 'revision_id' => null, 'parts_json' => null]), 'no code of its own');
+
         // A paid plan is never marked, and every conversation is open to it.
         \App\Models\Workspace::whereKey($ws)->update(['plan_tier' => 'creator']);
         $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $first['id']));

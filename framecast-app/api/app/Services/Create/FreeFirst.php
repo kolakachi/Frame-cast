@@ -66,4 +66,17 @@ class FreeFirst
     {
         return DB::table('create_plans')->where('conversation_id', $conversationId)->count();
     }
+
+    /** Clips a model made: a template built on them is not free (owner, 2026-10-17: they involve generating AI video). */
+    public const AI_VIDEO = ['ugc_take', 'generated_shot', 'animate_image', 'cutout_video', 'talking_photo', 'lip_sync', 'restyle'];
+
+    /** Whether a template can be a free first ad: it has its own code and no AI-made video in it. */
+    public static function templateFits(object $t): bool
+    {
+        if (($t->source ?? null) !== 'version' || empty($t->revision_id)) return false;
+        $parts = json_decode((string) ($t->parts_json ?? ''), true) ?: [];
+        foreach ((array) ($parts['clips'] ?? []) as $clip) if (in_array($clip['kind'] ?? '', self::AI_VIDEO, true)) return false;
+
+        return true;
+    }
 }

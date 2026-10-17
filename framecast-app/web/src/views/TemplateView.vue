@@ -17,7 +17,8 @@ const player = ref(null), playing = ref(false)
 const freeFirst = ref(null)
 const freeMode = computed(() => !!freeFirst.value && !freeFirst.value.conversation_id)
 const freeUsed = computed(() => !!freeFirst.value?.conversation_id)
-const freeFits = computed(() => t.value?.source === 'version')
+// Free only from a template with its own code and no AI-made video in it (owner, 2026-10-17).
+const freeFits = computed(() => t.value?.free_fit === true)
 let key = crypto.randomUUID()
 
 const eyebrow = computed(() => t.value ? `${t.value.category_label} · ${t.value.seconds} seconds · ${t.value.shape}` : '')
@@ -103,7 +104,7 @@ onMounted(async () => {
                 <button type="button" class="link" @click="removeTemplate">Remove</button>
                 <router-link v-if="t.conversation_id" class="link" :to="{ name: 'create', params: { conversationId: t.conversation_id } }">Open the original</router-link>
               </span>
-              <span class="eyebrow">{{ eyebrow }}</span>
+              <span class="eyebrow">{{ eyebrow }}<span v-if="freeMode && freeFits" class="free-pill">Free first ad</span></span>
               <h1>{{ t.title }}</h1>
               <p v-if="t.description" class="lede">{{ t.description }}</p>
               <span v-if="facts" class="facts">{{ facts }}</span>
@@ -118,7 +119,7 @@ onMounted(async () => {
             </div>
             <div v-else-if="freeMode && !freeFits" class="free-note">
               <b>Your free first ad starts from a template marked "Free first ad".</b>
-              <p>This one is made fresh for each product, which needs the $9 Test Pass or a pack.</p>
+              <p>This one makes new AI video or a fresh build for your product, which comes with the $9 Test Pass or a pack.</p>
               <div class="free-actions"><router-link class="btn-primary" :to="{ name: 'templates' }">See the free ones</router-link><a href="/continue?pass=1">Get the Test Pass, $9</a></div>
             </div>
             <form v-else class="use" @submit.prevent="makeMine">
@@ -187,10 +188,14 @@ onMounted(async () => {
 .info{flex:999 1 400px;min-width:0;max-width:520px;display:flex;flex-direction:column;gap:28px;padding-top:4px}
 .info-head{display:flex;flex-direction:column;gap:10px}
 .staff-row{display:flex;align-items:center;gap:12px;font-size:13px}
-.free-note{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:14px;border:1px solid var(--color-border-active)}
-.free-note p{margin:0;color:var(--color-text-secondary);font-size:14px}
-.free-actions{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:4px}
-.free-actions a:not(.btn-primary){font-size:14px;color:var(--color-accent)}
+.free-note{display:flex;flex-direction:column;gap:8px;padding:20px 22px;border-radius:16px;border:1px solid var(--color-border);background:var(--color-bg-card,rgba(255,255,255,.03))}
+.free-note b{font-size:16px;line-height:1.35;color:var(--color-text-primary)}
+.free-note p{margin:0;color:var(--color-text-secondary);font-size:14px;line-height:1.5}
+.free-actions{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:8px}
+.free-actions .btn-primary{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;text-decoration:none;white-space:nowrap}
+.free-actions a:not(.btn-primary){font-size:14px;font-weight:600;color:var(--color-accent);text-decoration:none}
+.free-actions a:not(.btn-primary):hover{text-decoration:underline}
+.free-pill{margin-left:10px;font-size:11px;font-weight:700;letter-spacing:.03em;padding:3px 9px;border-radius:999px;background:var(--color-accent,#ff6b35);color:#fff;vertical-align:middle}
 .staff-badge{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,107,53,.45);color:#ff6b35}
 .link{background:none;border:0;padding:0;color:#a1a1b5;font:inherit;font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .link:hover{color:#ececf3}
