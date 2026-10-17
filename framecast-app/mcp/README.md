@@ -90,3 +90,16 @@ product, how closely to follow it (exact, similar, inspired) and their photos. `
 Current implementation and deployment gates: [release closure](../docs/product/api-release-closure.md).
 The repeatable HTTP contract includes real timeout recovery, operation polling,
 identical-key replay, input schema rejection and API error forwarding.
+
+## MCP Registry
+
+Listed in the official MCP Registry as `com.wyvstudio/wyvstudio` (published 2026-10-17). The entry is `server.json`.
+When the connector changes, bump `version` in `server.json`, then:
+
+```sh
+KEY=$(openssl pkey -in ~/.config/wyvstudio/mcp-registry-key.pem -noout -text | grep -A3 "priv:" | tail -n +2 | tr -d ' :\n')
+mcp-publisher login dns --domain wyvstudio.com --private-key "$KEY" && mcp-publisher publish
+```
+
+Ownership is proved by the `v=MCPv1` TXT record on wyvstudio.com; keep it. The signing key lives on the owner's
+machine in `~/.config/wyvstudio/`, never in the repo.
