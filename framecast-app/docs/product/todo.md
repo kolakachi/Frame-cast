@@ -14,6 +14,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item | Next |
 |---|---|---|
+| CMO-1 | Evidence pass for the go-to-market (`cmo-brief.md` §5, step 1): funnel, sign-up sources, refunds, customer-words analysis of every brief and chat, 20 competitor ads, community threads verbatim, interview script and invite list. Read-only, no spending; FUNNEL is part of it | owner's go |
 | FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
 | FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
