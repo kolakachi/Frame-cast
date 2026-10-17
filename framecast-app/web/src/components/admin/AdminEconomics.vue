@@ -8,7 +8,7 @@ const data = ref(null), loading = ref(false), error = ref(''), days = ref(''), p
 const usd = n => (n < 0 ? '−$' : '$') + Math.abs(Number(n || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const rows = computed(() => [...(data.value?.rows || [])].sort((a, b) => (b[sort.value] ?? 0) - (a[sort.value] ?? 0)))
 const LABELS = { appsumo: 'AppSumo', affiliate: 'Affiliate', google_ads: 'Google Ads', referral: 'Friend referral', paid_social: 'Paid social', email: 'Email',
-  ai: 'AI assistant', search: 'Search', social: 'Social', other_site: 'Other site', direct: 'Direct', unknown: 'Unknown' }
+  outreach: 'Outreach', community: 'Community', listing: 'Listing', ai: 'AI assistant', search: 'Search', social: 'Social', other_site: 'Other site', direct: 'Direct', unknown: 'Unknown' }
 const label = c => LABELS[c] || c || '—'
 const since = computed(() => data.value ? new Date(data.value.full_cost_since.replace(' ', 'T') + 'Z').toLocaleDateString() : '')
 

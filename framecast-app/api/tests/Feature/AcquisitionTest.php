@@ -38,8 +38,12 @@ class AcquisitionTest extends TestCase
             'email' => [['utm_source' => 'beehiiv', 'utm_medium' => 'email']],
             'ai' => [['ref_host' => 'chatgpt.com'], ['ref_host' => 'gemini.google.com'], ['utm_source' => 'chatgpt.com'], ['ref_host' => 'perplexity.ai']],
             'search' => [['ref_host' => 'google.com'], ['ref_host' => 'google.co.uk'], ['ref_host' => 'duckduckgo.com'], ['ref_host' => 'bing.com']],
-            'social' => [['ref_host' => 'l.facebook.com'], ['ref_host' => 't.co'], ['utm_source' => 'linkedin'], ['ref_host' => 'youtube.com']],
-            'other_site' => [['ref_host' => 'producthunt.com'], ['utm_source' => 'launchpad']],
+            'social' => [['ref_host' => 'l.facebook.com'], ['ref_host' => 't.co'], ['utm_source' => 'linkedin'], ['ref_host' => 'youtube.com'], ['utm_source' => 'tiktok', 'utm_medium' => 'social'], ['ref_host' => 'reddit.com']],
+            // The two-week plan's tests (cmo-plan.md): one-to-one messages, community answers, directory listings.
+            'outreach' => [['utm_source' => 'outreach', 'utm_medium' => 'outreach', 'utm_content' => 'batch1']],
+            'community' => [['utm_source' => 'reddit', 'utm_medium' => 'community'], ['utm_source' => 'discord', 'utm_medium' => 'community']],
+            'listing' => [['ref_host' => 'producthunt.com'], ['ref_host' => 'g2.com'], ['utm_source' => 'saashub', 'utm_medium' => 'listing'], ['ref_host' => 'alternativeto.net']],
+            'other_site' => [['ref_host' => 'somebodysblog.com'], ['utm_source' => 'launchpad']],
             'direct' => [['landing' => '/', 'at' => '2026-10-12T09:00:00Z']],
             'unknown' => [[]],
         ];
@@ -76,5 +80,35 @@ class AcquisitionTest extends TestCase
         $r = Request::create('/x', 'POST', [], ['wyv_src' => rawurlencode(json_encode(['utm_source' => 'newsletter', 'utm_medium' => 'email'])), '_gcl_aw' => 'GCL.1760000000.Cj0KCQjw_fromcookie1']);
         $this->assertSame(['utm_source' => 'newsletter', 'utm_medium' => 'email', 'gclid' => 'Cj0KCQjw_fromcookie1'], Acquisition::fromRequest($r));
         $this->assertSame(['ref_host' => 'claude.ai', 'gclid' => 'Cj0KCQjw_fromcookie1'], Acquisition::fromRequest($r, ['ref_host' => 'claude.ai']), 'what the browser sent wins over the cookie');
+    }
+
+    public function test_the_scoreboard_counts_signups_by_source_first_day_own_videos_and_second_purchases(): void
+    {
+        Schema::table('appsumo_licenses', function (Blueprint $t) { $t->text('status')->nullable(); });
+        Schema::create('users', function (Blueprint $t) { $t->id(); $t->text('role')->nullable(); $t->integer('workspace_id')->nullable(); });
+        Schema::create('revenue_events', function (Blueprint $t) { $t->id(); $t->integer('workspace_id')->nullable(); $t->text('provider'); $t->decimal('refunded_usd')->default(0); $t->timestamp('occurred_at')->nullable(); $t->timestamps(); });
+        Schema::create('projects', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('title')->nullable(); });
+        Schema::create('export_jobs', function (Blueprint $t) { $t->id(); $t->integer('project_id'); $t->text('status'); $t->timestamp('completed_at')->nullable(); });
+        Schema::create('composition_runs', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); $t->text('status'); $t->timestamp('updated_at')->nullable(); });
+        DB::table('users')->insert(['role' => 'super_admin', 'workspace_id' => 1]);
+        DB::table('workspaces')->insert([
+            ['id' => 1, 'name' => 'Owner', 'acquisition_channel' => null, 'acquisition_json' => null, 'created_at' => '2026-10-20 09:00:00'],
+            ['id' => 2, 'name' => 'Made one', 'acquisition_channel' => 'community', 'acquisition_json' => '{"utm_source":"reddit","utm_medium":"community"}', 'created_at' => '2026-10-20 09:00:00'],
+            ['id' => 3, 'name' => 'Only the sample', 'acquisition_channel' => 'social', 'acquisition_json' => '{"utm_source":"tiktok"}', 'created_at' => '2026-10-21 09:00:00'],
+        ]);
+        DB::table('projects')->insert([['id' => 10, 'workspace_id' => 2, 'title' => 'My shop ad'], ['id' => 11, 'workspace_id' => 3, 'title' => 'Wyvstudio Ad']]);
+        DB::table('export_jobs')->insert([['project_id' => 10, 'status' => 'completed', 'completed_at' => '2026-10-20 10:00:00'], ['project_id' => 11, 'status' => 'completed', 'completed_at' => '2026-10-21 09:30:00']]);
+        DB::table('revenue_events')->insert([
+            ['workspace_id' => 2, 'provider' => 'kelviq', 'occurred_at' => '2026-10-20 11:00:00'],
+            ['workspace_id' => 2, 'provider' => 'kelviq', 'occurred_at' => '2026-10-22 11:00:00'],
+            ['workspace_id' => 1, 'provider' => 'kelviq', 'occurred_at' => '2026-10-22 11:00:00'],
+        ]);
+        $b = \App\Services\Analytics\Scoreboard::weeks('2026-10-19');
+        $w = $b['weeks'][0];
+        $this->assertSame(['2026-10-19', 2, 1, 2, 1], [$w['week'], $w['signups'], $w['own_video_first_day'], $w['purchases'], $w['bought_again']], 'staff left out; the sample is not an own video');
+        $this->assertSame(['community' => 1, 'social' => 1], $w['by_channel']);
+        $this->assertSame(['reddit' => 1, 'tiktok' => 1], $w['by_source']);
+        $this->assertSame(1, $b['bought_again_to_date']);
+        $this->artisan('growth:scoreboard', ['--since' => '2026-10-19'])->expectsOutputToContain('Teams that bought again, to date (the goal): 1')->assertSuccessful();
     }
 }
