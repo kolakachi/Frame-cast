@@ -21,6 +21,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 | LINK-FALLBACK | Firecrawl (hosted) as the fallback when a shop blocks our own fetch (429/403, empty JavaScript pages); our fetch stays first. Test on 10 links that failed on prod, with a monthly cost cap; needs an owner Firecrawl account | test, then build |
 | AI-PAGES | A page each for ChatGPT and Claude (what the connector does, how to add it), an "about WyvStudio for AI assistants" page and llms.txt, so assistants can name us. Free, about half a day | build |
 | HOME-CTA | One free-start button everywhere on the homepage ("Make your first ad free"), once FREE-FIRST is live | build, after FREE-FIRST |
+| OUTREACH-5 | Weekly batch of 5 brands, each sent a real ad made for them from a template (cents per ad, no builder): scout (stale ads in the Meta Ad Library, new launches), research, pick a template or skip, make the ad, draft the message; owner or marketer approves and sends every message from a WyvStudio address. Tracked on a private board (prospect data never in the repo); measured on sent, replies, customers. Supersedes PROOF's 330-credit builder version | build the first batch, then weekly |
 | PRESENTER | WyvStudio's AI presenter as the brand face (strategy.md §4): pick or make her, then 3 pilot videos (cost estimate first) to check her face holds; then the main channel, 3–5 short videos a week on brand TikTok, Reels, Shorts and X, judged after 100 videos | owner picks her, then build |
 | LISTINGS | Free listings this week (study.md §3): G2 free profile (then ask Bob and neimar for reviews), SaaSHub, AlternativeTo, Future Tools, the ChatGPT/Claude connector directories; Product Hunt once the free first video exists. Apply to Online Geniuses and DTC FAM. The big AI directories are paid: skipped | owner accounts, Claude writes the entries |
 | COMMUNITY | Helpful answers with example videos in the checked communities (study.md), inside each group's rules; judged after 100 answers | marketer |
@@ -94,7 +95,6 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 | ACADEMY | The academy's 30% coupon conflicts with AppSumo's best-deal rule |
 | OFFER-69 | The $69 sales offer |
 | AD-BUDGET | Ads test budget (recommended $1,000–1,500) |
-| PROOF | One free ad each for 15–20 brands already running video ads, then 2–3 short case studies (about 330 credits each) |
 | MONTHLY | A monthly plan for teams that need ads every week (decide once about 10 teams buy a second pack) |
 | UGC-DEFAULTS | Confirm (built that way): an explicit type beats the sample's; a pasted script's length wins; Rewrite with AI is free; saved characters from Library; old-form captions on by default, cuts re-anchored, shorter resumable timeout |
 | IN-APP-CHECKS | In the app: "never more than" shows a real hold (CR4); a vague change gets one question (S11); captions in Details (RF3); a screenshot reads as "change this moment" (FS7); a tab open across a deploy, the directions drawer, Details (O8) |
