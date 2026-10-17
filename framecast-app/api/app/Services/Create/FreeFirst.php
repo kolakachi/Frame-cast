@@ -106,10 +106,9 @@ class FreeFirst
         if (! empty($parts['footage'])) return false;
         // Text the swap cannot reach: fields the code never reads, or WyvStudio's own name written into the code.
         if (! empty($parts['dead_fields'])) return false;
-        // Words written into the code show on every copy whatever the fields say, so only audited templates are free
-        // (the code scan for WyvStudio's name is a hint, not proof: one template passed with it in the code).
-        $audited = config('create.free_templates');
-        if (is_array($audited) && ! in_array($t->id ?? null, $audited, true)) return false;
+        // Words written into the code show on every copy whatever the fields say, so only templates whose render audit
+        // passed are free (create:template-audit; the code scan for WyvStudio's name is a hint, not proof).
+        if (! (json_decode((string) ($t->free_audit_json ?? ''), true)['passed'] ?? false)) return false;
 
         return true;
     }

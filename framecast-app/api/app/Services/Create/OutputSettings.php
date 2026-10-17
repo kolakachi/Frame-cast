@@ -22,6 +22,8 @@ class OutputSettings
         'format'=>'sometimes|nullable|string|max:40',
         // The template this conversation was started from (Templates, 2026-10-16).
         'template_id'=>'sometimes|nullable|string|max:40',
+        // Staff building a template: every word a field, pictures as slots, nothing generated (TemplateBuild, 2026-10-17).
+        'template_build'=>'sometimes|boolean',
     ]; }
     public static function normalize(array $input): array {
         abort_if(array_diff(array_keys($input),array_filter(array_keys(self::rules()),fn($k)=>!str_contains($k,'.'))),422,'Unsupported output setting.');

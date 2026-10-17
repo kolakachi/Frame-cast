@@ -13,6 +13,19 @@ import {criticSystem,criticMessages,parseCriticVerdict} from './critic.mjs';
 import {voiceTiming} from './narration-timing.mjs';
 import {mapThrough} from './transcript-map.mjs';
 import {exactScaffold} from './scaffold.mjs';
+
+/** What a template build must hold to, so a copy can be made for another product without the builder. */
+export const TEMPLATE_RULES=[
+ 'This video becomes a template: other people make it for their own product by changing its composition variables, its pictures and its voice, never its code.',
+ 'Every word on screen comes from a string composition variable: headlines, product and brand names, prices, codes, dates, links, labels, buttons, stickers, tickers and the end card. No visible word is written into the HTML, the CSS or a script; repeated words read the same variable.',
+ 'Colours come from color variables (at least background, accent and text) through CSS custom properties.',
+ 'Every variable you declare is read by the page; give each a clear label (the user sees it) and a default that fits.',
+ 'The layout fits short and long values: each text block shrinks to fit its box (measure it and scale the font down; never overflow or clip) from 3 characters up to about twice the default length.',
+ 'Product pictures are image files the page shows with object-fit (a slot), so another photo can take their place; text never sits inside a picture.',
+ 'No generated video, UGC take or screen recording. Drawn shapes, icons and the art library are fine.',
+ 'Fonts are the runtime fonts or Google fonts only.',
+ 'When there is a voiceover, each line belongs to one scene, so a new voice can replace it line by line.',
+];
 import {googleFamilies,namedFamilies,fetchBrandFonts} from './brand-fonts.mjs';
 
 // The instruction only carries the sentences this run can use: a sentence about a thing the run does not have is context spent on nothing.
@@ -280,6 +293,9 @@ export async function executeCompositionAgent({directory,input,manifest,planMedi
    stylePack:input.style_pack?{route:input.style_pack.route,name:input.style_pack.name,rules:input.style_pack.rules,fingerprint:input.style_pack.fingerprint||null,
     exampleFiles:Object.keys(input.style_pack.example??{}).map(f=>'style-example/'+f),
     howToUse:'This is the craft the build starts from, not a template. Follow its rules. If exampleFiles are listed, read style-example/index.html once to learn its technique; never copy its layout wholesale. The fingerprint describes the example on six points: structure, opening, signature shot, camera path, score shape and ending. Use the fingerprint to identify techniques the brief asks to preserve and content it asks to replace; do not impose a numerical divergence quota. In your finish summary say which techniques you retained and how you changed the content. Explicit user colour/type direction and the approved plan take precedence over saved defaults; respect explicit brand locks and ask about conflicts. Borrowing reference motion does not automatically mean borrowing its palette.'}:null,
+   // Staff building a template (TemplateBuild, 2026-10-17): other people reuse this video by changing fields, pictures
+   // and the voice only, with no builder; the render audit (template-audit.mjs) fails any word written into the code.
+   templateBuild:settings.template_build===true?TEMPLATE_RULES:undefined,
    variantDirection:input.variant_direction??null,approvedFacts:[...(settings.approved_facts??[]),...(input.plan?.on_screen_copy??[])],settings,output:{width:dims[0],height:dims[1],durationSeconds:settings.duration_seconds??15},
    registry:catalog.length?{items:catalog.length,howToUse:'Search with the catalog action before hand-building any named visual; read kit/registry.md once before wiring an item.'}:null,
    // The brief or plan asks for icons, 3D objects or illustrations: the build is expected to look in the library first.

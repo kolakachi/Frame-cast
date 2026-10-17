@@ -34,7 +34,7 @@ class CreateTemplatesTest extends TestCase
             '2026_09_30_120000_create_create_plans', '2026_09_30_130000_add_create_provider_consent', '2026_10_01_120000_create_create_plan_media',
             '2026_10_01_130000_create_create_styles', '2026_10_03_150000_create_composition_trace_events', '2026_10_03_160000_widen_create_plan_media_item_index',
             '2026_10_06_230000_create_create_stored_files', '2026_10_07_000000_create_create_runtime_controls', '2026_10_07_120000_add_notes_to_create_attachments',
-            '2026_10_16_120000_create_create_templates_table'] as $m) (require database_path('migrations/'.$m.'.php'))->up();
+            '2026_10_16_120000_create_create_templates_table', '2026_10_17_220000_add_free_audit_to_create_templates'] as $m) (require database_path('migrations/'.$m.'.php'))->up();
         $ours = Workspace::create(['name' => 'WyvStudio', 'plan_tier' => 'agency', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $theirs = Workspace::create(['name' => 'Customer', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active', 'credits_monthly' => 100]);
         $this->staff = User::create(['email' => 'staff@example.test', 'name' => 'Staff', 'role' => 'super_admin', 'status' => 'active']);
@@ -131,7 +131,8 @@ class CreateTemplatesTest extends TestCase
         // FREE-FIRST (owner, 2026-10-17): the first template conversation of a free plan, as a free swap or free edit.
         [$conversation, $revision] = $this->version();
         $t = $this->library->add($this->staff, $conversation, $revision, ['title' => 'Sneaker drop', 'category' => 'offer']);
-        config(['create.templates_public' => true, 'create.free_templates' => null]);
+        config(['create.templates_public' => true]);
+        DB::table('create_templates')->where('id', $t['id'])->update(['free_audit_json' => json_encode(['passed' => true])]);
         if (! \Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json')) \Illuminate\Support\Facades\Schema::table('workspaces', fn ($t) => $t->text('onboarding_json')->nullable());
         \App\Models\Workspace::whereKey($this->customer->workspace_id)->update(['plan_tier' => 'free']);
         $ws = (int) $this->customer->workspace_id;
@@ -175,7 +176,7 @@ class CreateTemplatesTest extends TestCase
         catch (HttpException $e) { $this->assertSame([402, \App\Services\Create\FreeFirst::PLAN_LIMIT_MESSAGE], [$e->getStatusCode(), $e->getMessage()]); }
 
         // Free only from a template with its own code and no AI-made video (owner, 2026-10-17).
-        $fits = fn (array $t) => \App\Services\Create\FreeFirst::templateFits((object) $t);
+        $fits = fn (array $t) => \App\Services\Create\FreeFirst::templateFits((object) [...$t, 'free_audit_json' => json_encode(['passed' => true])]);
         $this->assertTrue($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'stock_video']]])]));
         $this->assertFalse($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'ugc_take']]])]), 'a creator take is AI video');
         $this->assertFalse($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'generated_shot']]])]));
@@ -263,11 +264,34 @@ class CreateTemplatesTest extends TestCase
         $this->assertTrue($parts['fixed_brand']);
         $this->assertSame(['headline'], array_column($parts['text'], 'id'), 'a dead field is not offered');
         $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode($parts)]));
-        // Only audited templates are free: one off the list is not, however clean its code looks.
+        // Only templates whose render audit passed are free, however clean their code looks.
         $clean = ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['text' => [['id' => 'headline']]])];
-        config(['create.free_templates' => ['tbdvabrrxr']]);
-        $this->assertTrue(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'id' => 'tbdvabrrxr']));
-        $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'id' => 'led2']));
+        $this->assertTrue(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'free_audit_json' => json_encode(['passed' => true])]));
+        $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'free_audit_json' => json_encode(['passed' => false, 'leftovers' => ['wyvstudio.com']])]));
+        $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'free_audit_json' => null]));
+    }
+
+    public function test_a_render_audit_is_recorded_only_for_the_templates_own_code_and_template_builds_are_staff_only(): void
+    {
+        [$conversation, $revision] = $this->version();
+        $t = $this->library->add($this->staff, $conversation, $revision, ['title' => 'Sneaker drop', 'category' => 'offer']);
+        $bundle = json_decode(DB::table('composition_revisions')->where('id', $revision)->value('bundle_json'), true);
+        $file = tempnam(sys_get_temp_dir(), 'audit');
+        // The audit of a copy whose files got new asset ids (moved from a local install) still matches.
+        $moved = array_map(fn ($text) => is_string($text) ? preg_replace('/asset-\d+-/', 'asset-77777-', $text) : $text, $bundle);
+        file_put_contents($file, json_encode(['passed' => true, 'leftovers' => [], 'unseen' => [], 'overflow' => [], 'bundle_hash' => \App\Services\Create\TemplateAudit::bundleHash($moved)]));
+        $this->artisan('create:template-audit', ['template' => $t['id'], 'result' => $file])->assertSuccessful();
+        $this->assertTrue(json_decode(DB::table('create_templates')->where('id', $t['id'])->value('free_audit_json'), true)['passed']);
+        file_put_contents($file, json_encode(['passed' => true, 'bundle_hash' => str_repeat('0', 64)]));
+        $this->artisan('create:template-audit', ['template' => $t['id'], 'result' => $file])->assertFailed();
+        $this->artisan('create:template-audit', ['template' => $t['id'], 'result' => $file, '--clear' => true])->assertSuccessful();
+        $this->assertNull(DB::table('create_templates')->where('id', $t['id'])->value('free_audit_json'));
+
+        // "Build as a template" is a staff setting.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->customer)->postJson('/api/v1/create/conversations', ['template_build' => true])->assertStatus(403);
+        $this->actingAs($this->staff)->postJson('/api/v1/create/conversations', ['template_build' => true])->assertStatus(201);
+        $this->assertStringContainsString('settings.template_build, when true', \App\Services\Create\Planning\PlanPrompt::system());
     }
 
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void

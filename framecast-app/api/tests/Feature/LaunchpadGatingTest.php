@@ -64,6 +64,7 @@ class LaunchpadGatingTest extends TestCase
         });
         // The done-for-you vault is the template library (Templates, 2026-10-16).
         (require database_path('migrations/2026_10_16_120000_create_create_templates_table.php'))->up();
+        (require database_path('migrations/2026_10_17_220000_add_free_audit_to_create_templates.php'))->up();
     }
 
     private function launch(): LaunchpadService

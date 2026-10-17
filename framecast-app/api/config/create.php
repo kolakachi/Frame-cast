@@ -109,9 +109,6 @@ return [
     // still take the worker's one sandbox slot in turn. Raise only after a measured load test on the worker host.
     // Templates (owner, 2026-10-16): the page is staff-only until this is on; then every template shows to everyone.
     'templates_public' => (bool) env('CREATE_TEMPLATES_PUBLIC', false),
-    // Templates a free account's free first ad may use: only those whose render audit showed every word on screen
-    // changes with its fields (docs/product/template-audit.md, 2026-10-17). null = no audit list (tests).
-    'free_templates' => ['tbdvabrrxr', 'lbaf5605f'],
     'max_running' => (int) env('CREATE_MAX_RUNNING', 1),
     'max_running_per_workspace' => (int) env('CREATE_MAX_RUNNING_PER_WORKSPACE', 1),
     // Local upload storage per workspace (bytes); a heavy test workspace can be given more with this variable.

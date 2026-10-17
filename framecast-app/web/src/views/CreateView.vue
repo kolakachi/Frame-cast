@@ -1918,6 +1918,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                       <div class="out-field out-wide"><span class="out-label">How closely to study it</span>
                         <UiSelect v-model="settingsDraft.reference_effort" label="How closely to study reference videos" :options="[{value:'',label:'Automatic'},{value:'standard',label:'Standard · quick'},{value:'high',label:'High · every clear change'},{value:'maximum',label:'Maximum · every frame that differs (slower)'}]" /></div>
                     </template>
+                    <label v-if="isStaff" class="out-check out-wide"><input v-model="settingsDraft.template_build" type="checkbox" /><span><b>Build as a template</b><small class="muted">Staff: every word on screen becomes a field and pictures become slots, so a copy can be made for another product without the builder. Check it with the template audit before marking it free.</small></span></label>
                     <label class="out-check out-wide"><input v-model="settingsDraft.motion_blur" type="checkbox" /><span><b>Motion blur on the final video</b><small class="muted">Smoother fast motion; the final render takes about twice as long.</small></span></label>
                   </template>
                 </div>

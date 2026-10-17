@@ -40,7 +40,34 @@ Contact sheets (local only): `$CLAUDE_JOB_DIR/tmp/audit-sheets/<id>.png`, origin
 - **Exact copies attached a reference:** since e3dc0ba6, an exact copy of a template that wasn't free-eligible also got
   the template's video attached as a reference. An exact copy never needs one; fixed.
 
-## The gate
+## The gate and the tool
 
-`config('create.free_templates')` lists the audited templates; `FreeFirst::templateFits` also needs every text field to
-be read by the code. A template joins the list only after a marker render shows every word changing.
+A template is free only when its render audit passed (`create_templates.free_audit_json.passed`) and every text field is
+read by its code (`FreeFirst::templateFits`). The two hand-audited templates were recorded by the migration.
+
+`ops/template_audit.sh <template id | revision uuid>` (local, free, no AI):
+- exports the version and runs `hyperframes-worker/agent/template-audit.mjs` in the render sandbox, which loads the
+  page with the render's runtime files and seeks through it twice:
+  - **short markers** (ZQ1, ZQ2…) in every text field: any other word in the frame, on top and readable, is
+    **written into the code**, and a field whose marker never shows is **never on screen**;
+  - **long values** (1.5× each sample's length): text that stays out of the frame or its clipping box for half a
+    second, while its short marker was inside, **runs out of its box**;
+  - a page script error fails the audit;
+- with a template id, records the result with `create:template-audit`, which checks the result is of the template's own
+  code (a hash that ignores asset ids, so a local audit can be recorded on prod after the move);
+- `node agent/template-audit.mjs <id> shot <seconds> [short|long]` in the sandbox saves a picture of a reported moment.
+
+Not seen: text drawn on a canvas or baked into a picture (pictures are slots anyway).
+
+### First tool results (2026-10-17)
+
+The tool agrees with the hand audit on leftovers. It also finds that both free templates break with longer copy:
+the whiteboard's step labels and highlight run out of their boxes, and the "Describe it." promo's end link runs off
+the frame at 1.5× its length. Both stay free (recorded by hand) until fixed.
+
+## Building templates from now on
+
+Staff tick **Build as a template** in Details (`settings.template_build`): the planner lists every on-screen word as
+copy and buys nothing generated, and the builder gets the template rules (`TEMPLATE_RULES` in composition-agent.mjs:
+every word a field, colours as fields, pictures as slots, text that fits short and long values, Google fonts only, a
+voiceover line per scene). Then run the audit; only a pass makes it free.
