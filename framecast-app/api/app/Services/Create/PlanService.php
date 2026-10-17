@@ -747,6 +747,10 @@ class PlanService
                 'allowed' => ['the text and colour values in current_variables', 'the user\'s attached photos in the picture slots of current_pictures', 'a new voiceover reading the new words (same voice and line count; included free)'],
                 'not_allowed' => ['generated pictures or video', 'new music or sound effects', 'new scenes, layout, timing or motion', 'presenters or AI footage', 'stock footage'],
             ]] : []),
+            // What the voice says now, line by line: a voice swap re-reads exactly this many lines (VoiceSwap).
+            'current_narration' => ($headRun = $c->head_revision_id ? ConversationService::revisionRunId($c->head_revision_id) : null)
+                ? array_values(array_filter((array) (json_decode((string) DB::table('composition_runs')->where('id', $headRun)->value('input_json'), true)['plan']['narration'] ?? []), 'is_string'))
+                : [],
             // The pictures of the current version, so a change that only puts the user's photos in their slots is a swap.
             'current_pictures' => $head ? PartSwap::described(PartSwap::pictures(json_decode($head, true) ?: []), (int) $user->workspace_id) : [],
             // Voices the narration may use: the catalogue by character, plus the workspace's own clone.

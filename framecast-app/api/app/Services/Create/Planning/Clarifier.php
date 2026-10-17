@@ -60,6 +60,15 @@ class Clarifier
     public function question(array $context, int $askedSoFar): ?string
     {
         if (config('create.mode') === 'fixture' || (string) config('services.anthropic.key') === '' || $askedSoFar >= self::MAX_QUESTIONS) return null;
+        // A free account's free ad only swaps the template's words, colours, photos and voice (FreeFirst): nothing is
+        // generated, so the only thing worth asking for is their product photos, when the template has picture slots and
+        // none are attached (owner's test, 2026-10-17: it offered to "generate a placeholder").
+        if (! empty($context['free_account'])) {
+            $hasPhotos = collect($context['files'] ?? [])->contains(fn ($f) => ($f['asset_type'] ?? '') === 'image' && ($f['purpose'] ?? '') === 'source');
+            $asked = collect($context['messages'] ?? [])->contains(fn ($m) => ($m['role'] ?? '') === 'assistant' && str_contains((string) ($m['content'] ?? ''), 'product photos'));
+            return ! empty($context['current_pictures']) && ! $hasPhotos && ! $asked && $askedSoFar === 0
+                ? 'Want your product photos in it? Attach them here, or reply "go without" to keep the template\'s pictures.' : null;
+        }
         $messages = collect($context['messages'] ?? [])->map(fn ($m) => strtoupper((string) $m['role']).': '.mb_substr((string) $m['content'], 0, 2000))->implode("\n");
         $files = collect($context['files'] ?? [])->map(fn ($f) => '- "'.$f['title'].'" ('.$f['asset_type'].', '.($f['purpose'] === 'source' ? 'goes in the video' : 'reference to follow').')'
             .(data_get($f, 'reference.summary') ? ': '.mb_substr((string) data_get($f, 'reference.summary'), 0, 300) : ''))->implode("\n");

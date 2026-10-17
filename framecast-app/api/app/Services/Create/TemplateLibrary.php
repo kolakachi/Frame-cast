@@ -184,14 +184,14 @@ class TemplateLibrary
             if ($copy && FreeFirst::templateFits($t)) FreeFirst::claim((int) $user->workspace_id, $c->id);
             else $this->attachReference($user, $c->id, $t, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'));
             $done = ['id' => $c->id, 'version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'),
-                'brief' => self::brief($t, $copy ? 'version' : $match, (string) $input['product'])];
+                'brief' => self::brief($t, $copy ? 'version' : $match, (string) $input['product'], $copy && FreeFirst::freePlan((int) $user->workspace_id) && FreeFirst::templateFits($t))];
             Cache::put($key, $done, now()->addDay());
             return $done;
         });
     }
 
     /** The brief "Make mine" sends: the user's own words, then what the template keeps and what it swaps. */
-    public static function brief(object $t, string $how, string $product): string
+    public static function brief(object $t, string $how, string $product, bool $free = false): string
     {
         $product = trim($product);
         if ($how === 'similar') return "Make a video like the template \"{$t->title}\" for my product: {$product}\n\nKeep its format, look and pacing, and tell my own story with my own shots. Use my attached photos where they fit.";
@@ -203,7 +203,8 @@ class TemplateLibrary
             .(! empty($parts['fonts']) ? ', the fonts ('.implode(', ', $parts['fonts']).')' : '').' and the length. Swap only what is about the product:'];
         if (! empty($parts['text'])) $lines[] = '- Text: '.implode('; ', array_map(fn ($p) => $p['label'].' "'.$p['default'].'"', $parts['text'])).'. Write mine in the same roles and about the same length.';
         if (! empty($parts['colours'])) $lines[] = '- Colours: '.implode('; ', array_map(fn ($p) => $p['label'].' '.$p['default'], $parts['colours'])).'. Use my brand colours in these roles if I have them and the words stay easy to read; otherwise keep these.';
-        if (! empty($parts['images'])) $lines[] = '- Pictures of the product: '.implode('; ', array_map(fn ($p) => $p['what'], $parts['images'])).'. Use my attached photos there; make a new picture only where I gave none.';
+        if (! empty($parts['images'])) $lines[] = '- Pictures of the product: '.implode('; ', array_map(fn ($p) => $p['what'], $parts['images'])).'. Use my attached photos there; '
+            .($free ? 'keep the template\'s own picture where I gave none (this is my free ad: nothing is generated).' : 'make a new picture only where I gave none.');
         if (! empty($parts['voice'])) $lines[] = '- Voiceover: re-voice it with my words, same voice and pacing.';
         if (! empty($parts['music'])) $lines[] = '- Music: keep the track as it is.';
         if (! empty($parts['clips'])) $lines[] = '- Video clips: '.implode('; ', array_map(fn ($p) => $p['what'], $parts['clips'])).'. Make them new only if they show the old product.';
@@ -372,7 +373,9 @@ class TemplateLibrary
                 'created_at' => now(), 'updated_at' => now()]);
             // The template's own requirements are about its old product; the user's brief sets new ones.
             $metadata = json_decode((string) ($revision->metadata_json ?? '{}'), true) ?: [];
-            unset($metadata['requirements'], $metadata['requirement_history']);
+            // The template's own build notes (its review, checks and suggestions) are not the user's to act on.
+            unset($metadata['requirements'], $metadata['requirement_history'], $metadata['creative_review'], $metadata['review'], $metadata['final_checks'],
+                $metadata['delivery_checks'], $metadata['media_suggestions']);
             $new = (string) Str::uuid();
             DB::table('composition_revisions')->insert(['id' => $new, 'conversation_id' => $conversationId, 'run_id' => $runId, 'number' => 1,
                 'bundle_json' => json_encode($bundle), 'bundle_hash' => hash('sha256', json_encode($bundle)),

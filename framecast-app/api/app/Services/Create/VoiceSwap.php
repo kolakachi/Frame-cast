@@ -59,7 +59,10 @@ class VoiceSwap
     private static function rootOf(int $assetId): int
     {
         for ($hops = 0; $hops < 12; $hops++) {
-            $from = (int) (json_decode((string) DB::table('assets')->where('id', $assetId)->value('metadata_json'), true)['derived_from_asset_id'] ?? 0);
+            $meta = json_decode((string) DB::table('assets')->where('id', $assetId)->value('metadata_json'), true) ?: [];
+            // A template's files are copied into the user's workspace (copied_from_asset_id) and between installs
+            // (imported_asset_id); both lead back to the voice the template's plan bought (owner's free-ad test, 2026-10-17).
+            $from = (int) ($meta['derived_from_asset_id'] ?? $meta['copied_from_asset_id'] ?? $meta['imported_asset_id'] ?? 0);
             if (! $from) return $assetId;
             $assetId = $from;
         }

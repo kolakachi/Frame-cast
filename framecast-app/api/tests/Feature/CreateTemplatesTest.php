@@ -201,6 +201,37 @@ class CreateTemplatesTest extends TestCase
         $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode($parts)]), 'a free swap cannot replace footage');
     }
 
+    public function test_a_free_ads_question_and_brief_never_offer_to_generate_anything(): void
+    {
+        // Owner's test, 2026-10-17: the free ad was asked for screens and offered "a placeholder".
+        config(['create.mode' => 'agent', 'services.anthropic.key' => 'test-key']);
+        $clarifier = app(\App\Services\Create\Planning\Clarifier::class);
+        $free = ['free_account' => ['allowed' => [], 'not_allowed' => []], 'messages' => [], 'files' => []];
+        $this->assertSame('Want your product photos in it? Attach them here, or reply "go without" to keep the template\'s pictures.',
+            $clarifier->question([...$free, 'current_pictures' => [['src' => 'a.png']]], 0));
+        $this->assertNull($clarifier->question([...$free, 'current_pictures' => []], 0), 'no picture slots: nothing to ask, no model call');
+        $this->assertNull($clarifier->question([...$free, 'current_pictures' => [['src' => 'a.png']], 'files' => [['asset_type' => 'image', 'purpose' => 'source', 'title' => 'p']]], 0), 'photos attached');
+        $t = (object) ['title' => 'Shoe drop', 'parts_json' => json_encode(['images' => [['what' => 'the shoe']]])];
+        $this->assertStringContainsString("keep the template's own picture where I gave none", TemplateLibrary::brief($t, 'version', 'Volt', true));
+        $this->assertStringContainsString('make a new picture only where I gave none', TemplateLibrary::brief($t, 'version', 'Volt'));
+    }
+
+    public function test_a_template_copys_voice_traces_back_to_the_voice_its_plan_bought_and_keeps_its_line_count(): void
+    {
+        // Owner's free-ad test, 2026-10-17: the copied narration was not found, so the voice swap failed and the gate refused.
+        $mk = fn (array $meta) => Asset::create(['workspace_id' => $this->customer->workspace_id, 'asset_type' => 'audio', 'title' => 'a', 'storage_url' => 'x://a',
+            'mime_type' => 'audio/wav', 'file_size_bytes' => 4, 'status' => 'active', 'restriction_scope' => 'workspace', 'metadata_json' => $meta])->id;
+        $voice = $mk([]);
+        $staffCopy = $mk(['imported_asset_id' => $voice]);
+        $userCopy = $mk(['copied_from_asset_id' => $staffCopy]);
+        $root = new \ReflectionMethod(\App\Services\Create\VoiceSwap::class, 'rootOf');
+        $this->assertSame($voice, $root->invoke(null, $userCopy));
+        $five = ['A', 'B', 'C', 'D', 'E'];
+        $problems = \App\Services\Create\Planning\PlanPrompt::problems(['swap' => ['voice' => true], 'narration' => ['1', '2', '3', '4'], 'scenes' => [['start' => 0, 'end' => 15]]], ['current_narration' => $five, 'settings' => ['duration_seconds' => 15]]);
+        $this->assertStringContainsString("keep the version's 5 narration lines", $problems[0] ?? '');
+        $this->assertSame([], \App\Services\Create\Planning\PlanPrompt::problems(['swap' => ['voice' => true], 'narration' => ['1', '2', '3', '4', '5']], ['current_narration' => $five, 'settings' => ['duration_seconds' => 15]]));
+    }
+
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void
     {
         [$conversation, $revision, $files] = $this->version();
