@@ -33,6 +33,9 @@ class FreeEditService
         $today = DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())
             ->whereNotNull('input_json->free_edit')->count();
         abort_if($today >= (int) config('create.free_edit_daily_limit', 60), 429, 'Today\'s free edits are used up. They reset at midnight.');
+        // A free plan edits only its free first ad, watermarked (FreeFirst).
+        $freePlan = FreeFirst::freePlan((int) $user->workspace_id);
+        abort_if($freePlan && ! FreeFirst::applies((int) $user->workspace_id, $id), 402, FreeFirst::GATE);
 
         $bundle['index.html'] = CompositionVariables::apply($bundle['index.html'], $declarations, $changes);
         $metadata = json_decode($revision->metadata_json ?? '{}', true);
@@ -49,6 +52,7 @@ class FreeEditService
                 'pilot_budget_id' => config('create.mode') === 'agent' ? config('create.pilot_budget_id') : null,
                 'input_files' => $files, 'base_bundle' => $bundle, 'base_bundle_hash' => hash('sha256', json_encode($bundle)), 'media_input' => null, 'plan' => null,
                 'settings' => $metadata['settings'] ?? json_decode($c->settings_json, true), 'mode' => config('create.mode'),
+                ...($freePlan ? ['watermark' => true, 'free_first' => true] : []),
             ]]);
         return $this->conversations->approve($user, $id, $quote->id, $key, false, false);
     }

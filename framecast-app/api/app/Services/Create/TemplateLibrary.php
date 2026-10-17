@@ -180,6 +180,8 @@ class TemplateLibrary
             $copy = $match === 'exact' && $t->source === 'version' && $t->revision_id
                 && DB::table('composition_revisions')->where('id', $t->revision_id)->exists();
             if ($copy) $this->copyVersion($user, $c->id, $t);
+            // A free plan's first "Exactly" from a template with its own code is its free first ad (FreeFirst).
+            if ($copy) FreeFirst::claim((int) $user->workspace_id, $c->id);
             else $this->attachReference($user, $c->id, $t, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'));
             $done = ['id' => $c->id, 'version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'),
                 'brief' => self::brief($t, $copy ? 'version' : $match, (string) $input['product'])];

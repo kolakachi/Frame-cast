@@ -204,8 +204,11 @@ class ConversationService
         $settings=json_decode($c->settings_json,true);
         if(config('create.mode')==='agent' && ($settings['output_kind']??'video')==='video') {
             $workspace=Workspace::findOrFail($user->workspace_id);
-            abort_if((\App\Services\WorkspaceUsageService::plans()[$workspace->plan_tier]['watermark']??true),402,'This local video pilot requires a plan with unwatermarked exports.');
+            // A free plan's one free first ad passes, as a free swap only (FreeFirst); everything else needs a paid plan.
+            $freeFirst = FreeFirst::applies((int) $user->workspace_id, $id);
+            abort_if(! $freeFirst && (\App\Services\WorkspaceUsageService::plans()[$workspace->plan_tier]['watermark']??true),402,FreeFirst::freePlan((int) $user->workspace_id) ? FreeFirst::GATE : 'This local video pilot requires a plan with unwatermarked exports.');
         }
+        $freeFirst ??= false;
         // A file still undecided by the time a price is asked for takes its usual role.
         app(AttachmentRoles::class)->resolve($user, $c, null, true);
         // Only what goes in the video or guides its look. A "current" file is a frame of the video being changed (Change this
@@ -236,7 +239,7 @@ class ConversationService
             abort(422, 'Inherited and new attachments exceed the local preview size limit.');
         }
         try {
-            return DB::transaction(function () use ($user, $id, $version, $files, $attachments, $buildStage, $assume) {
+            return DB::transaction(function () use ($user, $id, $version, $files, $attachments, $buildStage, $assume, $freeFirst) {
                 $c = $this->conversation($user, $id, true);
                 abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Review a fresh plan.');
                 $messages = DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'sequence', 'role', 'content'])->all();
@@ -442,7 +445,10 @@ class ConversationService
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),
                     // The craft the build starts from, frozen here so later edits to a pack never change this run.
                     'style_pack'=>$resolvedPack,
-                    'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture'];
+                    'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture',
+                    // The free first ad is watermarked; the worker marks the render, never the saved code.
+                    ...($freeFirst ? ['watermark' => true, 'free_first' => true] : [])];
+                abort_if($freeFirst && ! (($partSwap ?? null) && $partSwap["free"]), 402, FreeFirst::GATE);
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
                     'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['total_credits'] ?? $p['credits']*$p['max_calls'],$policy)),
                     'expires_at' => now()->addMinutes(10)]);

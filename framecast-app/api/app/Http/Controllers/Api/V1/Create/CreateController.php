@@ -20,7 +20,9 @@ class CreateController extends Controller
         if (! \App\Support\PlanGate::allows((int) $r->user()->workspace_id, 'create')) {
             return response()->json(['data' => ['enabled' => false, 'locked' => 'plan']]);
         }
-        return response()->json(['data' => ['enabled' => true, 'templates' => \App\Services\Create\TemplateLibrary::pageOpen($r->user()), 'templates_public' => (bool) config('create.templates_public'), 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
+        return response()->json(['data' => ['enabled' => true, 'templates' => \App\Services\Create\TemplateLibrary::pageOpen($r->user()), 'templates_public' => (bool) config('create.templates_public'),
+            // A free plan's one free first ad (FreeFirst): null for paid plans; its conversation once started.
+            'free_first' => \App\Services\Create\FreeFirst::freePlan((int) $r->user()->workspace_id) ? ['conversation_id' => \App\Services\Create\FreeFirst::conversationId((int) $r->user()->workspace_id)] : null, 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
             'uploads' => ['max_files'=>20,'max_file_bytes'=>config('create.input_file_bytes'),'max_total_bytes'=>config('create.input_total_bytes'),'mime_types'=>array_keys(AttachmentUploadService::TYPES)]]]);
     }
 
@@ -350,7 +352,7 @@ class CreateController extends Controller
         // A repeat of a plan already made (or under way) returns it as before.
         if (DB::table('create_plans')->where('conversation_id', $id)->where('idempotency_key', $key)->exists()) return;
         app(\App\Services\Create\ConversationService::class)->conversation($user, $id);
-        app(\App\Services\Create\PlanService::class)->assertCanPayPlanning($user);
+        app(\App\Services\Create\PlanService::class)->assertCanPayPlanning($user, $id);
     }
 
     public function plan(Request $r, string $id)

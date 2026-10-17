@@ -1705,6 +1705,10 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                   </div>
                   <p v-if="templateNote" class="result-hint" role="status">{{ templateNote }} <router-link :to="{ name: 'templates' }">See Templates →</router-link></p>
                   <p v-if="shareNote" class="result-hint result-share" role="status">{{ shareNote }}</p>
+                  <div v-if="outputMeta.watermarked" class="free-ready" role="status">
+                    <b>Your free first ad is ready.</b> It carries a small WyvStudio mark, and you can download it now.
+                    Your next ad can use your own presenter, voice or footage, with no mark: <a href="/continue?pass=1">get the Test Pass, $9</a>.
+                  </div>
                   <p v-if="!outputMeta.look && !isOldRevision && canWrite" class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below, like “slower cuts” or “bigger captions”.</p>
                 </div>
               </div>
@@ -2894,4 +2898,7 @@ label.tray-note{white-space:normal}
 .doc-pick__read small{display:block;margin-top:6px;color:var(--text-3,#8f95a1)}
 .doc-pick__sum{flex:1 1 auto;color:var(--text-3,#8f95a1)}
 .thumb--doc{display:grid;place-items:center;font:700 9px ui-monospace,Menlo,monospace;color:#fff;background:#8a3b3b}
+.free-ready{margin-top:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--color-border-active);font-size:14px;line-height:1.45;color:var(--color-text-secondary)}
+.free-ready b{color:var(--color-text-primary)}
+.free-ready a{color:var(--color-accent);font-weight:600}
 </style>

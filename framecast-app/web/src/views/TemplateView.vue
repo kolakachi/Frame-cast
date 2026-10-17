@@ -12,6 +12,11 @@ const route = useRoute(), router = useRouter(), authStore = useAuthStore()
 const me = ref(null), t = ref(null), loading = ref(true), error = ref('')
 const product = ref(''), photos = ref([]), shape = ref('9:16'), match = ref('exact'), busy = ref(''), editOpen = ref(false)
 const player = ref(null), playing = ref(false)
+// FREE-FIRST: a free plan's one free ad, from a template with its own code, kept to "Exactly" and its own shape.
+const freeFirst = ref(null)
+const freeMode = computed(() => !!freeFirst.value && !freeFirst.value.conversation_id)
+const freeUsed = computed(() => !!freeFirst.value?.conversation_id)
+const freeFits = computed(() => t.value?.source === 'version')
 let key = crypto.randomUUID()
 
 const eyebrow = computed(() => t.value ? `${t.value.category_label} · ${t.value.seconds} seconds · ${t.value.shape}` : '')
@@ -27,6 +32,7 @@ function play() { const v = player.value; if (!v) return; v.play().then(() => { 
 
 async function makeMine() {
   if (!product.value.trim()) { error.value = 'Tell us about your product: a link, or a few words about it.'; return }
+  if (freeMode.value) { match.value = 'exact'; shape.value = t.value.shape }
   error.value = ''; busy.value = 'Starting from the template…'
   try {
     const made = (await api.post(`/create/templates/${t.value.id}/use`, { product: product.value.trim(), match: match.value, aspect_ratio: shape.value, idempotency_key: key }, { timeout: 150000 })).data.data
@@ -54,6 +60,7 @@ function logout() { authStore.clearSession(); router.push({ name: 'login' }) }
 
 onMounted(async () => {
   try { me.value = (await api.get('/me')).data?.data?.user ?? null } catch {}
+  try { freeFirst.value = (await api.get('/create/capabilities')).data.data.free_first ?? null } catch {}
   try {
     t.value = (await api.get(`/create/templates/${route.params.templateId}`)).data.data
     shape.value = t.value.shape
@@ -100,6 +107,16 @@ onMounted(async () => {
             <hr class="divider" />
 
             <p v-if="t.locked" class="locked">This template isn't in your plan. Upgrade to use it, or start from one that is.</p>
+            <div v-else-if="freeUsed" class="free-note">
+              <b>You've made your free first ad.</b>
+              <p>Make more with the $9 Test Pass: your own words and photos, new shots, voices and presenters, and no WyvStudio mark.</p>
+              <div class="free-actions"><a class="btn-primary" href="/continue?pass=1">Get the Test Pass, $9</a><router-link :to="{ name: 'create', params: { conversationId: freeFirst.conversation_id } }">Open your free ad</router-link></div>
+            </div>
+            <div v-else-if="freeMode && !freeFits" class="free-note">
+              <b>Your free first ad starts from a template marked "Free first ad".</b>
+              <p>This one is made fresh for each product, which needs the $9 Test Pass or a pack.</p>
+              <div class="free-actions"><router-link class="btn-primary" :to="{ name: 'templates' }">See the free ones</router-link><a href="/continue?pass=1">Get the Test Pass, $9</a></div>
+            </div>
             <form v-else class="use" @submit.prevent="makeMine">
               <label class="field">
                 <span class="field-label">Your product</span>
@@ -112,7 +129,7 @@ onMounted(async () => {
                   <span>{{ photos.length ? `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'} added` : 'Add product photos' }}</span>
                   <input class="sr-only" type="file" accept="image/png,image/jpeg,image/webp" multiple @change="pickPhotos" />
                 </label>
-                <fieldset class="shape">
+                <fieldset v-if="!freeMode" class="shape">
                   <legend class="sr-only">Shape</legend>
                   <span aria-hidden="true">Shape</span>
                   <div class="seg">
@@ -121,7 +138,7 @@ onMounted(async () => {
                 </fieldset>
               </div>
 
-              <fieldset class="match">
+              <fieldset v-if="!freeMode" class="match">
                 <legend class="field-label">How closely to follow it</legend>
                 <div class="seg seg--wide">
                   <label v-for="m in t.matches" :key="m.value"><input v-model="match" type="radio" name="match" :value="m.value" />{{ m.label }}</label>
@@ -130,8 +147,9 @@ onMounted(async () => {
               </fieldset>
 
               <div class="submit">
-                <button type="submit" class="btn-primary" :disabled="!!busy">{{ busy || 'Make mine' }}</button>
-                <p class="fineprint">You’ll see the plan and the price before anything is made.</p>
+                <button type="submit" class="btn-primary" :disabled="!!busy">{{ busy || (freeMode ? 'Make my free ad' : 'Make mine') }}</button>
+                <p v-if="freeMode" class="fineprint">Free: your first ad keeps this template's look with your words, colours and photos, and a small WyvStudio mark.</p>
+                <p v-else class="fineprint">You’ll see the plan and the price before anything is made.</p>
                 <p v-if="error" class="error" role="alert">{{ error }}</p>
               </div>
             </form>
@@ -165,6 +183,10 @@ onMounted(async () => {
 .info{flex:999 1 400px;min-width:0;max-width:520px;display:flex;flex-direction:column;gap:28px;padding-top:4px}
 .info-head{display:flex;flex-direction:column;gap:10px}
 .staff-row{display:flex;align-items:center;gap:12px;font-size:13px}
+.free-note{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:14px;border:1px solid var(--color-border-active)}
+.free-note p{margin:0;color:var(--color-text-secondary);font-size:14px}
+.free-actions{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:4px}
+.free-actions a:not(.btn-primary){font-size:14px;color:var(--color-accent)}
 .staff-badge{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid rgba(255,107,53,.45);color:#ff6b35}
 .link{background:none;border:0;padding:0;color:#a1a1b5;font:inherit;font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .link:hover{color:#ececf3}

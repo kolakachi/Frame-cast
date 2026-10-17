@@ -11,6 +11,8 @@ import UiSelect from '../components/UiSelect.vue'
 const router = useRouter(), authStore = useAuthStore()
 const me = ref(null), loading = ref(true), error = ref('')
 const templates = ref([]), categories = ref({}), isPublic = ref(false), staff = ref(false)
+// A free plan's free first ad (FREE-FIRST) starts from a template that has its own code: those carry a badge.
+const freeFirstOpen = ref(false)
 const category = ref('all'), style = ref(''), shape = ref(''), search = ref('')
 
 const styleOptions = computed(() => [{ value: '', label: 'Any' }, ...[...new Set(templates.value.map(t => t.style).filter(Boolean))].sort().map(s => ({ value: s, label: s }))])
@@ -29,6 +31,7 @@ function logout() { authStore.clearSession(); router.push({ name: 'login' }) }
 
 onMounted(async () => {
   try { me.value = (await api.get('/me')).data?.data?.user ?? null } catch {}
+  try { const ff = (await api.get('/create/capabilities')).data.data.free_first; freeFirstOpen.value = !!ff && !ff.conversation_id } catch {}
   try {
     const d = (await api.get('/create/templates')).data.data
     templates.value = d.templates; categories.value = d.categories; isPublic.value = d.public; staff.value = d.staff
@@ -80,6 +83,7 @@ onMounted(async () => {
               <video v-if="t.preview_url" :src="t.preview_url" muted loop playsinline preload="none" />
               <span class="duration">{{ duration(t.seconds) }}</span>
               <span v-if="t.locked" class="lock">Not in your plan</span>
+              <span v-else-if="freeFirstOpen && t.source === 'version'" class="free-badge">Free first ad</span>
             </div>
             <div class="card-text">
               <span class="card-title">{{ t.title }}</span>
@@ -129,6 +133,7 @@ onMounted(async () => {
 .lock{position:absolute;left:8px;bottom:8px;z-index:1;font-size:11px;padding:2px 6px;border-radius:4px;background:rgba(10,10,15,.8);color:#a1a1b5}
 .card-text{display:flex;flex-direction:column;gap:2px}
 .card-title{font-size:14px;font-weight:600}
+.free-badge{position:absolute;top:10px;left:10px;font-size:11px;font-weight:700;letter-spacing:.03em;padding:4px 9px;border-radius:999px;background:var(--color-accent);color:#fff}
 .card-meta{font-size:12px;color:#8b8ba0}
 @media (prefers-reduced-motion:reduce){.card-media video{transition:none}}
 @media (max-width:860px){

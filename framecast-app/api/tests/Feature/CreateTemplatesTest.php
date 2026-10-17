@@ -126,6 +126,40 @@ class CreateTemplatesTest extends TestCase
         $this->assertCount(32, $this->library->page($this->staff)['templates']);
     }
 
+    public function test_a_free_plan_gets_one_free_first_ad_from_a_template_watermarked(): void
+    {
+        // FREE-FIRST (owner, 2026-10-17): the first template conversation of a free plan, as a free swap or free edit.
+        [$conversation, $revision] = $this->version();
+        $t = $this->library->add($this->staff, $conversation, $revision, ['title' => 'Sneaker drop', 'category' => 'offer']);
+        config(['create.templates_public' => true]);
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json')) \Illuminate\Support\Facades\Schema::table('workspaces', fn ($t) => $t->text('onboarding_json')->nullable());
+        \App\Models\Workspace::whereKey($this->customer->workspace_id)->update(['plan_tier' => 'free']);
+        $ws = (int) $this->customer->workspace_id;
+        $this->assertNull(\App\Services\Create\FreeFirst::conversationId($ws));
+        $first = $this->library->use($this->customer, $t['id'], ['product' => 'Volt Rush', 'match' => 'exact', 'idempotency_key' => 'f1']);
+        $second = $this->library->use($this->customer, $t['id'], ['product' => 'Volt Rush again', 'match' => 'exact', 'idempotency_key' => 'f2']);
+        $this->assertSame($first['id'], \App\Services\Create\FreeFirst::conversationId($ws));
+        $this->assertTrue(\App\Services\Create\FreeFirst::applies($ws, $first['id']));
+        $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $second['id']), 'one free ad: a second template conversation is not free');
+
+        // A free edit on anything but the free ad needs a paid plan; on the free ad it is allowed and watermarked.
+        $edits = app(\App\Services\Create\FreeEditService::class);
+        $head = fn ($id) => DB::table('create_conversations')->where('id', $id)->first();
+        $c2 = $head($second['id']);
+        try { $edits->apply($this->customer, $second['id'], $c2->head_revision_id, ['headline' => 'VOLT RUSH'], (int) $c2->version, 'e2'); $this->fail('a second free ad was allowed'); }
+        catch (HttpException $e) { $this->assertSame([402, \App\Services\Create\FreeFirst::GATE], [$e->getStatusCode(), $e->getMessage()]); }
+        $c1 = $head($first['id']);
+        try { $edits->apply($this->customer, $first['id'], $c1->head_revision_id, ['headline' => 'VOLT RUSH'], (int) $c1->version, 'e1'); }
+        catch (HttpException $e) { $this->assertNotSame(402, $e->getStatusCode(), 'the free ad is not refused for its plan: '.$e->getMessage()); }
+        $quote = \App\Models\ApiQuote::query()->where('workspace_id', $ws)->get()->first(fn ($q) => ! empty($q->payload_json['free_edit']));
+        $this->assertTrue((bool) ($quote?->payload_json['watermark'] ?? false), 'the free ad renders with the WyvStudio mark');
+
+        // A paid plan is never marked, and every conversation is open to it.
+        \App\Models\Workspace::whereKey($ws)->update(['plan_tier' => 'creator']);
+        $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $first['id']));
+        $this->assertFalse(\App\Services\Create\FreeFirst::freePlan($ws));
+    }
+
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void
     {
         [$conversation, $revision, $files] = $this->version();

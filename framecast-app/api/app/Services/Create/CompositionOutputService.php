@@ -23,7 +23,8 @@ class CompositionOutputService
             $image=($settings['output_kind']??'video')==='image';
             if($image && $revision->output_asset_id) return ['asset_id'=>$revision->output_asset_id];
             // The offline sample is unwatermarked. Never use it to bypass Free entitlements.
-            abort_if(!$image && (WorkspaceUsageService::plans()[$workspace->plan_tier]['watermark'] ?? true), 402, 'Your plan requires a watermarked export. Saving Create outputs is not available on this plan yet.');
+            // A free plan saves its free first ad, which was rendered with the WyvStudio mark (FreeFirst).
+            abort_if(!$image && ! ($metadata['watermarked'] ?? false) && (WorkspaceUsageService::plans()[$workspace->plan_tier]['watermark'] ?? true), 402, 'Your plan requires a watermarked export. Saving Create outputs is not available on this plan yet.');
             if ($revision->export_job_id) return $this->result($c->project_id, $revision);
             $user->setRelation('workspace',$workspace);
             $remaining = app(WorkspaceUsageService::class)->exportsRemaining($user);

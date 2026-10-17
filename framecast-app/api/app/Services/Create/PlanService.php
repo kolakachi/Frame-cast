@@ -43,9 +43,11 @@ class PlanService
     }
 
     /** Planning is paid (at half its cost): a balance below a typical charge is asked to top up before planning starts. */
-    public function assertCanPayPlanning(User $user): void
+    public function assertCanPayPlanning(User $user, ?string $conversationId = null): void
     {
         if (PilotPolicy::unlimited() || config('create.mode') === 'fixture') return;
+        // The free first ad's planning is ours to pay (FreeFirst).
+        if ($conversationId && FreeFirst::applies((int) $user->workspace_id, $conversationId)) return;
         $min = (int) config('create.planning_min_credits', 60);
         $available = (int) $this->conversations->creditAvailability($user)['available'];
         abort_if($available < $min, 402, sprintf('Top up to plan: planning usually takes up to %s credits and you have %s available.', number_format($min), number_format(max(0, $available))));
@@ -73,7 +75,7 @@ class PlanService
         abort_if($briefs->isEmpty(), 422, 'Add a brief first.');
         app(DiskSpace::class)->admission();
         // No daily cap: planning is billed and needs the balance to cover it (owner, 2026-10-06; removed 2026-10-08).
-        if ($executionToken === null) $this->assertCanPayPlanning($user);
+        if ($executionToken === null) $this->assertCanPayPlanning($user, $id);
 
         // What planning does is recorded step by step: shown live while it runs, then saved with the plan.
         // While our model account is failing (out of credit, a bad key), planning waits instead of failing.
@@ -279,7 +281,9 @@ class PlanService
             DB::table('create_plans')->where('conversation_id', $id)->where('status', 'proposed')->update(['status' => 'superseded', 'updated_at' => now()]);
             // Brand items the plan uses join the conversation's files, beside the brief they answer.
             BrandLibrary::attachUsed($id, array_column(array_filter($plan['reused'] ?? [], fn ($r) => ! empty($r['from_brand'])), 'asset_id'), (string) DB::table('create_messages')->where('conversation_id', $id)->where('role', 'user')->orderByDesc('sequence')->value('created_at'));
-            if (($charge = (int) ($plan['planning_charge']['charge'] ?? 0)) > 0) {
+            if (($charge = (int) ($plan['planning_charge']['charge'] ?? 0)) > 0 && FreeFirst::applies((int) $user->workspace_id, $id)) {
+                $plan['planning_charge'] = [...$plan['planning_charge'], 'charged' => 0, 'waived' => true];
+            } elseif ($charge > 0) {
                 $available = $this->conversations->creditAvailability($user)['available'];
                 // Subsidized, never free: the whole charge, or what is left when a rare plan costs more than the balance.
                 $take = min($charge, max(0, (int) $available));

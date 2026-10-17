@@ -15,10 +15,9 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 | ID | Item | Next |
 |---|---|---|
 | CMO-EMAILS | Owner sends the question emails to the 13 current customers (cmo-evidence §8: active, quiet and Portuguese versions; refunders left out); Claude adds 500 credits per reply | owner |
-| FIRST-FIX | Items 1–3 done 2026-10-17 (`first-fix-plan.md`: sample off on prod, product-form guard, templates link); item 4 is FREE-FIRST | item 4 next |
+| FIRST-FIX | Done 2026-10-17 (`first-fix-plan.md`): sample off, product-form guard, templates link, and the free first ad (deploy the worker before pushing: the API asks it for the mark) | measure on the scoreboard |
 | CMO-3 | Run the two-week plan in `cmo-plan.md` (Oct 19 – Nov 1): tracking, FIRST-FIX, customer emails, listings, FREE-FIRST, Layla pilot, community answers, OUTREACH-5, message test; scoreboard reviewed Fridays | starts Mon Oct 19 |
 | FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
-| FREE-FIRST | A free first video: every way in needs payment today. A text, colour and photo swap from a template costs us cents (no builder), so "make your first video free from a template" | owner decides the limits, then build |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product") | build |
 | SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one) | build |
 | HTTPS-FIX | http://wyvstudio.com answers 200 instead of redirecting to https, and no HSTS header is sent. In Cloudflare → SSL/TLS → Edge Certificates: turn on Always Use HTTPS and HSTS. Five minutes | owner, in Cloudflare |

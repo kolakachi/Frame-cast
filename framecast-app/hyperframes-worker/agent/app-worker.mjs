@@ -35,6 +35,7 @@ import {promisify} from 'node:util';
 import {swapSummary} from './swap-summary.mjs';
 import {verifiedParts} from './claim-note.mjs';
 import {disputeLine,repeatingFindings} from './check-guard.mjs';
+import {addMark,stripMark} from './free-mark.mjs';
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const base=process.env.CREATE_API_URL??'http://localhost:8000';
 const url=new URL(base);
@@ -141,6 +142,8 @@ async function execute(run){
    if(Object.keys(policy).join()!=='render'||policy.render.credits!==0||!run.input.base_bundle)throw Error('Invalid free edit contract');
    for(const [name,text] of Object.entries(run.input.base_bundle)){if(!/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(name))throw Error('Invalid bundle file');await writeFile(dir+'/project/'+name,text,{mode:0o600});}
    for(const file of manifest)if(file.purpose==='source')await copyFile(dir+'/inputs/'+file.path,dir+'/project/'+file.name);
+   // A free plan's free first ad renders with the WyvStudio mark; the saved code is stripped of it (free-mark.mjs).
+   if(run.input.watermark===true)await writeFile(dir+'/project/index.html',addMark(await readFile(dir+'/project/index.html','utf8')),{mode:0o600});
    stage='Applying your changes';
   }
   const viaGateway=paid&&run.input.execution_policy?.agent?.provider==='anthropic'&&!run.input.execution_policy?.media;
@@ -399,7 +402,7 @@ async function execute(run){
   // A user Stop after a checked version exists still delivers that version (the app accepts it while stopping).
   const report=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
   if(report.status!=='ready')throw Error('Render did not produce a verified output');
-  const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js'&&n!=='wyv-illos.js').sort().map(async n=>[n,await readFile(dir+'/project/'+n,'utf8')])));
+  const bundleFiles=async()=>Object.fromEntries(await Promise.all((await readdir(dir+'/project')).filter(n=>/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(n)&&n!=='gsap.min.js'&&n!=='wyv-motion.js'&&n!=='wyv-illos.js').sort().map(async n=>[n,n==='index.html'?stripMark(await readFile(dir+'/project/'+n,'utf8')):await readFile(dir+'/project/'+n,'utf8')])));
   const result=freeEdit?{status:'preview_ready',summary:swapSummary(run.input,deliveryChecks),bundle:await bundleFiles()}:{status:'preview_ready',summary:paid?(v=>fitSummary(v.text,cutNote(agentResult.state.edits)+(v.line?'\n\n'+v.line:'')+(disputeLine(agentResult.state.disputes)?'\n\n'+disputeLine(agentResult.state.disputes):'')))(verifiedParts(agentResult.state.summary??'',finalReview)):'Local integration sample ready. This fixed sample does not represent your prompt.',bundle:agentResult?.bundle??{'index.html':await readFile(dir+'/project/index.html','utf8')}};
   if(deliveryChecks)result.delivery_checks=deliveryChecks;
   // CHECK-GUARD: what a check flagged that the build finished past; the API records it for review.

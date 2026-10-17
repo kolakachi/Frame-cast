@@ -121,7 +121,7 @@ class ChangeService
         [$c, $rev, $run] = $this->revision($user, $conversationId, $revisionId);
         $c = $conversations->conversation($user, $conversationId);
         abort_unless((int) $c->version === (int) $input['expected_version'], 409, 'Conversation changed. Refresh before sending.');
-        app(PlanService::class)->assertCanPayPlanning($user);
+        app(PlanService::class)->assertCanPayPlanning($user, $conversationId);
         $parts = collect($this->parts($user, $conversationId, $revisionId)['parts'])->keyBy('id');
         $mmss = fn ($s) => sprintf('%d:%02d', intdiv((int) round($s), 60), (int) round($s) % 60);
         $lines = [];
