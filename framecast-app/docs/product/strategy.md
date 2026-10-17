@@ -95,7 +95,7 @@ do it until you have really tried").
 | 4 | **Community answers** (Reddit, Facebook groups) | Owners ask "how do I make an ad" there daily | Helpful answers with an example video, inside each group's rules | After 100 answers: no sign-ups from them |
 | 5 | **Boosts** | The cheapest paid test | $5–20 on a post that already did well unpaid | Cost per free first video above $2 |
 | 6 | **Shopify App Store** | Store owners look for tools inside Shopify | Plan first: a small app that turns a product into a video in one click (study.md has the requirements) | Plan, then owner decides |
-| 7 | **Later, with revenue:** paid creators, Google Ads (ADS-LP, AD-BUDGET), outreach with a free ad (PROOF) | Borrowed audiences and search intent | After channel 1 brings paying teams | Cost per paying team above one Creator pack ($157) |
+| 7 | **Later, with revenue:** paid creators, Google Ads (ADS-LP, AD-BUDGET), outreach with a free ad (PROOF); for outreach, try Gojiberry (about $99 a month, finds LinkedIn buying signals) from the company page, not the marketer's profile. Until then, watch the same signals by hand: help requests in communities, complaints about competitors, brands in the Meta Ad Library | Borrowed audiences and search intent | After channel 1 brings paying teams | Cost per paying team above one Creator pack ($157) |
 
 Not now:
 
