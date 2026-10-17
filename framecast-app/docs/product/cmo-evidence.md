@@ -95,7 +95,50 @@ And about what went wrong: "difficult and time-consuming", "too many workarounds
 
 ## 6. What competitors run
 
-To fill in from research (live ads from the Meta Ad Library and others).
+20 ads active on 2026-10-17, read from the Meta Ad Library (open any with `facebook.com/ads/library/?id=<id>`). LinkedIn's
+library was blocked; Pictory and faceless.so run no Meta ads; Meta shows no spend.
+
+| Advertiser | Hook (on screen or first line) | Offer | Aimed at | Ad id |
+|---|---|---|---|---|
+| Arcads | "This AI song ad was 100% made with Claude"; "Create high-quality AI ads in minutes instead of shooting new videos every week" | 3-day free trial | Brands and agencies | 1061462603370758 |
+| Arcads | "Claude can make unlimited UGC videos"; "With the Arcads MCP Connector, Claude can create AI video ads directly from your prompts" | — | AI-agent users | 3259347784269455 |
+| Arcads (via "Mr. Paid Social") | "14 insane ways to use AI video for your Meta ads"; "one product image = ads you can scale" | "Realistic ads for $10 each" | Meta advertisers | 25880119681682478 |
+| Creatify | "Stop waiting on an agency. Paste your product link… get 10 video ads ready to test" | "One link. Ten ads." | Brands | 1758300782137959 |
+| Creatify | "This looks real." "Realistic people." | A free ad (Creatify Studio) | Growing brands on paid social | 1122955007091833 |
+| Creatify (creators) | "AI avatars looked so fake… until now"; "Running an ecommerce or dropshipping business?" | — | Ecommerce sellers, creators | 1601435628128019 |
+| MakeUGC | "Create UGC ads without hiring creators, shipping products, or filming content" | First ad for $1 | Product sellers | 1000399046245503 |
+| MakeUGC | "Clone yourself with AI"; "Record yourself once. Run ads forever." | $1, cancel anytime | Founders | 1557504916008593 |
+| MakeUGC (creator) | "Andrew just made $10K this month… and he's not even real"; "I just stole my competitor's…" (Ad Remake) | — | Side-hustlers, ecommerce | 4473546122916611 |
+| HeyGen | "I posted all of these this week (without filming). All made from one selfie." | First 3 videos free | Experts and coaches | 1640770707668511 |
+| HeyGen (creator) | "Making a video used to take a week. Now it takes a sentence." | Start free, no card | Creators | 1051602637882438 |
+| Captions | Before/after: "my boring… viral"; "Editing takes forever." | — (app) | Talking-video creators | 2283294922484725 |
+| AdCreative.ai | "I took one simple photo of this shirt"; "No models, no studios" | 7-day trial, then 50% off | Fashion sellers | 1013777021207772 |
+| AdCreative.ai (Korean, Chinese) | "10 ad creatives free"; "clear, transparent pricing" | 10 free + 50% off yearly | Korean and Taiwanese businesses | 1336887708383151 |
+| invideo | "Stop prompting. Start directing." | Up to 50% off yearly | Freelancers and agencies | 3760393920766500 |
+| invideo (creator) | "How to make advertisement for fashion brands in 2026" | — | Fashion brands | 1003735822752877 |
+| OpenArt | "Kids YouTube + AI = $$$"; "Direct video the way you'd brief a team" | — | Side-hustle creators | 1908959736744960 |
+
+**What the market says:**
+- **Hooks:** "you can't tell it's AI"; "Claude can now make your ads" (Arcads, Creatify and invideo all lead with Claude
+  or their MCP connector); "no filming, no shoot, clone yourself"; "comment UGC and I'll DM you". Most run through paid
+  creators' own accounts, not the brand page.
+- **Pains named:** reshooting every week, the cost of creators, models and shipping product, waiting on agencies,
+  editing time, being on camera.
+- **Offers:** all subscriptions, opened by a tiny first step: $1 first ad (MakeUGC), 3 free videos (HeyGen), 3-day trial
+  (Arcads), 10 free creatives (AdCreative).
+- **Creatify already runs "One link. Ten ads."** with a free ad: our LINK-FIRST and AD-GRID ideas are already in the
+  market, so ours must be different, not first.
+
+**What nobody says (our openings):**
+1. **Checked before you see it.** No competitor promises the ad is accurate about the product, on-brand or checked;
+   "realistic" is the only quality claim. We plan, price and check every video.
+2. **Pay once, no subscription.** Every competitor sells a subscription; our packs are one-time.
+3. **Local and service businesses.** Everyone targets ecommerce, fashion, agencies, creators or side-hustlers; our
+   buyers include a lottery shop, a coach, an author and nonprofits.
+4. **African and other non-US English markets.** Competitors localise into French, Italian, Spanish, Portuguese, Korean,
+   Chinese and Hebrew; nothing for Nigeria, Kenya, Ghana, South Africa or the Philippines.
+5. **Faceless ads.** Nearly every competitor ad shows a human or an avatar; motion-graphic ads with no presenter get
+   almost no airtime, and faceless creators are our most common buyer type (§2).
 
 ## 7. The market's own words
 
@@ -142,5 +185,6 @@ Record (with permission) or take notes in their exact words; add them to §5.
 | Part | Status |
 |---|---|
 | Buyers, first session, refunds, customer words | Done (this page) |
-| Competitor ads, market words | In progress |
+| Competitor ads | Done (§6) |
+| Market words | In progress |
 | Interviews | Invite list and script ready; the owner sends the invitations |
