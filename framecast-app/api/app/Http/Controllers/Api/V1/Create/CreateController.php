@@ -131,6 +131,8 @@ class CreateController extends Controller
                 abort_if($c->archived_at || DB::table('composition_runs')->where('conversation_id',$id)->whereIn('status',ConversationService::ACTIVE)->exists(),409,'Wait for the current creation before changing settings.');
                 $settings=\App\Services\Create\OutputSettings::normalize(array_merge(json_decode($c->settings_json,true),$input['settings'],isset($input['settings']['duration_seconds'])?['duration_chosen'=>true]:[]));
                 abort_if(($settings['aspect_ratio'] ?? null) !== (json_decode($c->settings_json,true)['aspect_ratio'] ?? null) && \App\Services\Create\PlanService::formatLocked($id),409,'The format is set by the pictures already made for this plan. Start a new version to change it.');
+                if (\App\Services\Create\FreeFirst::applies((int) $r->user()->workspace_id, $id) && ($shape = \App\Services\Create\FreeFirst::copiedShape($id)))
+                    abort_if(($settings['aspect_ratio'] ?? null) !== $shape['aspect_ratio'] || (int) ($settings['duration_seconds'] ?? 0) !== $shape['duration_seconds'], 422, sprintf(\App\Services\Create\FreeFirst::SHAPE_KEPT, \App\Services\Create\FreeFirst::describeShape($shape)));
                 abort_if(!empty($settings['style_id']) && !DB::table('create_styles')->where('workspace_id',$r->user()->workspace_id)->where('id',$settings['style_id'])->exists(),422,'That style no longer exists.');
                 abort_unless($settings['output_kind']===(json_decode($c->settings_json,true)['output_kind']??'video'),422,'Start a new conversation for a different output type.');
                 $changes['settings_json']=json_encode($settings);

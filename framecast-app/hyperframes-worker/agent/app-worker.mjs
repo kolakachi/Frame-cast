@@ -142,6 +142,9 @@ async function execute(run){
    if(Object.keys(policy).join()!=='render'||policy.render.credits!==0||!run.input.base_bundle)throw Error('Invalid free edit contract');
    for(const [name,text] of Object.entries(run.input.base_bundle)){if(!/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(name))throw Error('Invalid bundle file');await writeFile(dir+'/project/'+name,text,{mode:0o600});}
    for(const file of manifest)if(file.purpose==='source')await copyFile(dir+'/inputs/'+file.path,dir+'/project/'+file.name);
+   // Brand fonts are not saved files: fetch the ones the version loads (template audit, 2026-10-17: free edits of
+   // templates in Space Mono or Archivo Black failed their render check on the missing font).
+   try{const families=familiesIn(run.input.base_bundle,await googleFamilies());if(families.length)await fetchBrandFonts(families,dir+'/project');}catch{/* the render check reports a missing font */}
    // A free plan's free first ad renders with the WyvStudio mark; the saved code is stripped of it (free-mark.mjs).
    if(run.input.watermark===true)await writeFile(dir+'/project/index.html',addMark(await readFile(dir+'/project/index.html','utf8')),{mode:0o600});
    stage='Applying your changes';

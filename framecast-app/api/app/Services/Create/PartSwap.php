@@ -100,6 +100,10 @@ class PartSwap
         // has its version before its first plan, which counts as "creative" planning (plannerTask).
         if (! is_array($swap) || ! $base || ! $plan || $step || ($plan['look_first'] ?? false)) return null;
         if (($settings['output_kind'] ?? 'video') !== 'video' || ($settings['video_mode'] ?? 'composition') !== 'composition') return null;
+        // A swap keeps the version's picture, so it can't change the shape or length (a new shape needs the builder).
+        $was = (array) ((json_decode((string) ($base->metadata_json ?? ''), true) ?: [])['settings'] ?? []);
+        if (isset($was['aspect_ratio']) && $was['aspect_ratio'] !== ($settings['aspect_ratio'] ?? null)) return null;
+        if (isset($was['duration_seconds']) && (int) $was['duration_seconds'] !== (int) ($settings['duration_seconds'] ?? 0)) return null;
         $voice = (bool) ($swap['voice'] ?? false);
         // The only thing a swap buys is a new voice, and only when the voice changes.
         if ($voice ? (count($planMedia) !== 1 || ! in_array($planMedia[0]['kind'] ?? '', VoiceSwap::KINDS, true)) : count($planMedia) !== 0) return null;

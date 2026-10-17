@@ -55,6 +55,32 @@ class FreeFirst
         return self::freePlan($workspaceId) && self::conversationId($workspaceId) === $conversationId;
     }
 
+    /**
+     * The shape and length a template copy was made at (its first version's settings). A swap changes words, pictures
+     * and the voice inside that picture, never its shape or length (owner's free-ad test, 2026-10-17: a "15-second
+     * vertical" brief set 9:16 on a square 20 s template and the render failed its size check).
+     */
+    public static function copiedShape(string $conversationId): ?array
+    {
+        $first = DB::table('composition_revisions')->where('conversation_id', $conversationId)->where('number', 1)->value('metadata_json');
+        $meta = json_decode((string) $first, true) ?: [];
+        if (empty($meta['template_id'])) return null;
+        $settings = (array) ($meta['settings'] ?? []);
+        $template = DB::table('create_templates')->where('id', $meta['template_id'])->first(['shape', 'seconds']);
+        $ratio = $settings['aspect_ratio'] ?? $template?->shape;
+        $seconds = $settings['duration_seconds'] ?? ($template ? max(5, min(30, (int) $template->seconds)) : null);
+        return $ratio && $seconds ? ['aspect_ratio' => (string) $ratio, 'duration_seconds' => (int) $seconds] : null;
+    }
+
+    /** "square, 20 seconds": how the conversation names a fixed shape. */
+    public static function describeShape(array $shape): string
+    {
+        $name = match ($shape['aspect_ratio']) { '1:1' => 'square', '16:9' => 'landscape', '4:5' => '4:5', default => 'vertical' };
+        return $name.', '.$shape['duration_seconds'].' seconds';
+    }
+
+    public const SHAPE_KEPT = 'Your free ad keeps the template\'s shape and length (%s): changing its words, pictures and voice doesn\'t change the layout. A paid plan can rebuild it in another shape.';
+
     /** Whether the workspace can keep it (the column every install has since onboarding; not every test schema does). */
     private static function kept(): bool
     {
@@ -79,7 +105,11 @@ class FreeFirst
         // Footage of the template's own product has to be replaced with the user's, which a free swap cannot do.
         if (! empty($parts['footage'])) return false;
         // Text the swap cannot reach: fields the code never reads, or WyvStudio's own name written into the code.
-        if (! empty($parts['dead_fields']) || ! empty($parts['fixed_brand'])) return false;
+        if (! empty($parts['dead_fields'])) return false;
+        // Words written into the code show on every copy whatever the fields say, so only audited templates are free
+        // (the code scan for WyvStudio's name is a hint, not proof: one template passed with it in the code).
+        $audited = config('create.free_templates');
+        if (is_array($audited) && ! in_array($t->id ?? null, $audited, true)) return false;
 
         return true;
     }

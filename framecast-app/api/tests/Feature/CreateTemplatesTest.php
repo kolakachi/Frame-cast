@@ -131,7 +131,7 @@ class CreateTemplatesTest extends TestCase
         // FREE-FIRST (owner, 2026-10-17): the first template conversation of a free plan, as a free swap or free edit.
         [$conversation, $revision] = $this->version();
         $t = $this->library->add($this->staff, $conversation, $revision, ['title' => 'Sneaker drop', 'category' => 'offer']);
-        config(['create.templates_public' => true]);
+        config(['create.templates_public' => true, 'create.free_templates' => null]);
         if (! \Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json')) \Illuminate\Support\Facades\Schema::table('workspaces', fn ($t) => $t->text('onboarding_json')->nullable());
         \App\Models\Workspace::whereKey($this->customer->workspace_id)->update(['plan_tier' => 'free']);
         $ws = (int) $this->customer->workspace_id;
@@ -141,6 +141,18 @@ class CreateTemplatesTest extends TestCase
         $this->assertSame($first['id'], \App\Services\Create\FreeFirst::conversationId($ws));
         $this->assertTrue(\App\Services\Create\FreeFirst::applies($ws, $first['id']));
         $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $second['id']), 'one free ad: a second template conversation is not free');
+
+        // The free ad keeps the template's shape and length: a brief's "10-second square" is not applied (owner's test,
+        // 2026-10-17: a "15-second vertical" brief on a square template failed the render's size check).
+        $this->assertSame(['aspect_ratio' => '9:16', 'duration_seconds' => 15], \App\Services\Create\FreeFirst::copiedShape($first['id']));
+        $sent = app(\App\Services\Create\ConversationService::class)->message($this->customer, $first['id'], ['content' => 'A 10-second square ad for Volt Rush',
+            'idempotency_key' => 'm1', 'expected_version' => (int) DB::table('create_conversations')->where('id', $first['id'])->value('version')]);
+        $settings = json_decode(DB::table('create_conversations')->where('id', $first['id'])->value('settings_json'), true);
+        $this->assertSame(['9:16', 15], [$settings['aspect_ratio'], $settings['duration_seconds']]);
+        $this->assertTrue(DB::table('create_messages')->where('conversation_id', $first['id'])->where('role', 'assistant')->where('content', 'like', "%keeps the template's shape and length (vertical, 15 seconds)%")->exists());
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->actingAs($this->customer)->patchJson('/api/v1/create/conversations/'.$first['id'], ['settings' => ['aspect_ratio' => '1:1'], 'expected_version' => (int) DB::table('create_conversations')->where('id', $first['id'])->value('version')])
+            ->assertStatus(422)->assertJsonFragment(['message' => sprintf(\App\Services\Create\FreeFirst::SHAPE_KEPT, 'vertical, 15 seconds')]);
 
         // A free edit on anything but the free ad needs a paid plan; on the free ad it is allowed and watermarked.
         $edits = app(\App\Services\Create\FreeEditService::class);
@@ -251,6 +263,11 @@ class CreateTemplatesTest extends TestCase
         $this->assertTrue($parts['fixed_brand']);
         $this->assertSame(['headline'], array_column($parts['text'], 'id'), 'a dead field is not offered');
         $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode($parts)]));
+        // Only audited templates are free: one off the list is not, however clean its code looks.
+        $clean = ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['text' => [['id' => 'headline']]])];
+        config(['create.free_templates' => ['tbdvabrrxr']]);
+        $this->assertTrue(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'id' => 'tbdvabrrxr']));
+        $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) [...$clean, 'id' => 'led2']));
     }
 
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void

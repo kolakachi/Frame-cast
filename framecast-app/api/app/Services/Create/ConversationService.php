@@ -119,6 +119,12 @@ class ConversationService
                 ->where('create_attachments.conversation_id', $id)->where('create_attachments.purpose', 'reference')->where('assets.asset_type', 'video')->exists();
             $inferred = BriefSettings::infer($input['content'], $settings, $referenceVideo);
             $replies = [];
+            // The free ad is a template copy: its shape and length stay the template's.
+            if (FreeFirst::applies((int) $user->workspace_id, $id) && ($shape = FreeFirst::copiedShape($id))
+                && array_intersect_key($inferred['changes'], $shape)) {
+                $inferred['changes'] = array_diff_key($inferred['changes'], $shape);
+                $replies[] = sprintf(FreeFirst::SHAPE_KEPT, FreeFirst::describeShape($shape));
+            }
             if ($inferred['changes'] !== []) {
                 $fromBrief = array_values(array_unique(array_merge((array) ($settings['from_brief'] ?? []), array_intersect(array_keys($inferred['changes']), ['aspect_ratio', 'duration_seconds', 'language', 'audio', 'captions', 'no_captions', 'reference_match']))));
                 $updates['settings_json'] = json_encode(OutputSettings::normalize(array_merge($settings, $inferred['changes'], ['from_brief' => $fromBrief], isset($inferred['changes']['duration_seconds']) ? ['duration_chosen' => true] : [])));
@@ -246,6 +252,11 @@ class ConversationService
                 abort_if(! count($messages), 422, 'Add a brief first.');
                 $base = $c->head_revision_id ? DB::table('composition_revisions')->where('conversation_id', $id)->where('id', $c->head_revision_id)->firstOrFail() : null;
                 $settings=json_decode($c->settings_json,true);
+                // A free ad renders at the template's shape and length, whatever an older brief set (fixes ads set before 2026-10-17).
+                if ($freeFirst && ($shape = FreeFirst::copiedShape($id)) && array_diff_assoc($shape, array_intersect_key($settings, $shape))) {
+                    $settings = array_merge($settings, $shape);
+                    DB::table('create_conversations')->where('id', $id)->update(['settings_json' => json_encode($settings)]);
+                }
                 $paid=config('create.mode')==='agent';
                 $policy=$paid ? PilotPolicy::execution($settings) : ['agent'=>['provider'=>'offline','model'=>'offline-contract-v1','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>6],'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.164','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>1]];
                 $policy=self::modelTest($policy,$settings,$user);

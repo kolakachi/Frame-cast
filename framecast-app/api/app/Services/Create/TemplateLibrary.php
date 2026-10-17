@@ -173,7 +173,8 @@ class TemplateLibrary
         if ($done = Cache::get($key)) return $done;
         return Cache::lock($key.':lock', 120)->block(60, function () use ($conversations, $user, $t, $match, $input, $key) {
             if ($done = Cache::get($key)) return $done;
-            $settings = ['aspect_ratio' => $input['aspect_ratio'] ?? $t->shape, 'duration_seconds' => max(5, min(30, (int) $t->seconds)),
+            // An exact copy keeps the template's shape; another option may pick one.
+            $settings = ['aspect_ratio' => $match === 'exact' && $t->source === 'version' ? $t->shape : ($input['aspect_ratio'] ?? $t->shape), 'duration_seconds' => max(5, min(30, (int) $t->seconds)),
                 'reference_match' => $match, 'template_id' => $t->id];
             $c = $conversations->create($user, $settings);
             DB::table('create_conversations')->where('id', $c->id)->update(['title' => mb_substr('From template: '.$t->title, 0, 120)]);
@@ -181,7 +182,7 @@ class TemplateLibrary
                 && DB::table('composition_revisions')->where('id', $t->revision_id)->exists();
             if ($copy) $this->copyVersion($user, $c->id, $t);
             // A free plan's first "Exactly" from a template with its own code is its free first ad (FreeFirst).
-            if ($copy && FreeFirst::templateFits($t)) FreeFirst::claim((int) $user->workspace_id, $c->id);
+            if ($copy) { if (FreeFirst::templateFits($t)) FreeFirst::claim((int) $user->workspace_id, $c->id); }
             else $this->attachReference($user, $c->id, $t, (int) DB::table('create_conversations')->where('id', $c->id)->value('version'));
             $done = ['id' => $c->id, 'version' => (int) DB::table('create_conversations')->where('id', $c->id)->value('version'),
                 'brief' => self::brief($t, $copy ? 'version' : $match, (string) $input['product'], $copy && FreeFirst::freePlan((int) $user->workspace_id) && FreeFirst::templateFits($t))];
