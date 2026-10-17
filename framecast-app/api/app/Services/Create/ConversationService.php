@@ -448,7 +448,8 @@ class ConversationService
                     'settings' => $settings, 'mode' => $paid ? 'agent' : 'fixture',
                     // The free first ad is watermarked; the worker marks the render, never the saved code.
                     ...($freeFirst ? ['watermark' => true, 'free_first' => true] : [])];
-                abort_if($freeFirst && ! (($partSwap ?? null) && $partSwap["free"]), 402, FreeFirst::GATE);
+                // The free ad is a swap: values, photos and, re-recorded free (approve grants its few credits), the voice.
+                abort_if($freeFirst && ! ($partSwap ?? null), 402, FreeFirst::GATE);
                 return ApiQuote::create(['id' => ApiQuote::newId(), 'workspace_id' => $user->workspace_id,
                     'created_by_user_id' => $user->id, 'payload_json' => $payload, 'credits_min' => 0, 'credits_max' => array_sum(array_map(fn($p)=>$p['total_credits'] ?? $p['credits']*$p['max_calls'],$policy)),
                     'expires_at' => now()->addMinutes(10)]);
@@ -494,6 +495,13 @@ class ConversationService
                 abort_if($c->archived_at, 409, 'Conversation is archived.');
                 $quote = ApiQuote::where('workspace_id', $user->workspace_id)->whereKey($quoteId)->lockForUpdate()->firstOrFail();
                 $p = $quote->payload_json;
+                // The free ad's new voiceover is ours to pay (FreeFirst, owner 2026-10-17): its few credits are granted
+                // once for this quote, then charged as usual.
+                if (! empty($p['free_first']) && ! empty($p['voice_swap']) && (int) $quote->credits_max > 0
+                    && FreeFirst::applies((int) $user->workspace_id, $id)
+                    && ! DB::table('credit_ledger')->where('operation', 'grant:free_first_voice:'.$quote->id)->exists()) {
+                    app(\App\Services\CreditService::class)->grant((int) $user->workspace_id, (int) $quote->credits_max, 'free_first_voice:'.$quote->id);
+                }
                 abort_unless(($p['kind'] ?? '') === 'composition_fixture' && ($p['conversation_id'] ?? '') === $id, 422, 'Wrong quote.');
                 abort_if(! empty($p['assumed']), 422, 'This price is a preview. Approve the step to start it.');
                 // While our account with a vendor this work needs is failing, it waits (VendorAlerts) instead of failing partway.

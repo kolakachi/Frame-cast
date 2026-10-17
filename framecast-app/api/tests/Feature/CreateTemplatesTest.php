@@ -169,6 +169,14 @@ class CreateTemplatesTest extends TestCase
         $this->assertFalse($fits(['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode(['clips' => [['kind' => 'generated_shot']]])]));
         $this->assertFalse($fits(['source' => 'video', 'revision_id' => null, 'parts_json' => null]), 'no code of its own');
 
+        // The planner is told it is working on a free account's free ad, and what it may change.
+        $context = (new \ReflectionMethod(\App\Services\Create\PlanService::class, 'context'))->invoke(app(\App\Services\Create\PlanService::class), $this->customer, DB::table('create_conversations')->where('id', $first['id'])->first());
+        $this->assertContains('generated pictures or video', $context['free_account']['not_allowed']);
+        $this->assertStringContainsString('a new voiceover', implode(' ', $context['free_account']['allowed']));
+        $other = (new \ReflectionMethod(\App\Services\Create\PlanService::class, 'context'))->invoke(app(\App\Services\Create\PlanService::class), $this->customer, DB::table('create_conversations')->where('id', $second['id'])->first());
+        $this->assertArrayNotHasKey('free_account', $other);
+        $this->assertStringContainsString('free_account, when present', \App\Services\Create\Planning\PlanPrompt::system());
+
         // A paid plan is never marked, and every conversation is open to it.
         \App\Models\Workspace::whereKey($ws)->update(['plan_tier' => 'creator']);
         $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $first['id']));

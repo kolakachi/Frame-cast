@@ -742,6 +742,11 @@ class PlanService
                     ...($d['type'] === 'string' ? ['max_chars' => PartSwap::maxChars((string) ($d['default'] ?? ''))] : [])],
                     array_values(array_filter(CompositionVariables::declarations((string) (json_decode($head, true)['index.html'] ?? '')), fn ($d) => in_array($d['type'] ?? '', ['string', 'color'], true))))
                 : [],
+            // A free account's free first ad (FreeFirst): what it may change, so the plan stays a swap (owner, 2026-10-17).
+            ...(FreeFirst::applies((int) $user->workspace_id, $c->id) ? ['free_account' => [
+                'allowed' => ['the text and colour values in current_variables', 'the user\'s attached photos in the picture slots of current_pictures', 'a new voiceover reading the new words (same voice and line count; included free)'],
+                'not_allowed' => ['generated pictures or video', 'new music or sound effects', 'new scenes, layout, timing or motion', 'presenters or AI footage', 'stock footage'],
+            ]] : []),
             // The pictures of the current version, so a change that only puts the user's photos in their slots is a swap.
             'current_pictures' => $head ? PartSwap::described(PartSwap::pictures(json_decode($head, true) ?: []), (int) $user->workspace_id) : [],
             // Voices the narration may use: the catalogue by character, plus the workspace's own clone.

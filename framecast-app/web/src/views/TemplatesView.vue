@@ -55,7 +55,7 @@ onMounted(async () => {
         <header class="page-head">
           <div>
             <h1>Templates <span v-if="staff && !isPublic" class="staff-badge" title="Customers don't see Templates until it is made public">Staff only</span></h1>
-            <p v-if="freeFirstOpen" class="free-banner"><b>Make your first ad free.</b> Pick a template marked "Free first ad": it keeps the template's look with your words, colours and photos.</p>
+            <p v-if="freeFirstOpen" class="free-banner"><b>Make your first ad free.</b> Pick a template marked "Free first ad": it keeps the template's look with your words, colours, photos and a new voiceover.</p>
             <p v-else-if="freeFirstUsed" class="free-banner"><b>You've made your free first ad.</b> <a href="/continue?pass=1">Get the $9 Test Pass</a> to make more, with new shots, voices and presenters and no WyvStudio mark.</p>
             <p>Start from a finished video. Add your product and the Creative Director makes it yours.</p>
           </div>

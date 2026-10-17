@@ -153,7 +153,7 @@ onMounted(async () => {
 
               <div class="submit">
                 <button type="submit" class="btn-primary" :disabled="!!busy">{{ busy || (freeMode ? 'Make my free ad' : 'Make mine') }}</button>
-                <p v-if="freeMode" class="fineprint">Free: your first ad keeps this template's look with your words, colours and photos, and a small WyvStudio mark.</p>
+                <p v-if="freeMode" class="fineprint">Free: your first ad keeps this template's look with your words, colours, photos and a new voiceover, and a small WyvStudio mark.</p>
                 <p v-else class="fineprint">You’ll see the plan and the price before anything is made.</p>
                 <p v-if="error" class="error" role="alert">{{ error }}</p>
               </div>
