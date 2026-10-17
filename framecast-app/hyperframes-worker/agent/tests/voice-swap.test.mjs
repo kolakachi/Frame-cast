@@ -48,3 +48,13 @@ test('an opening word the aligner missed is kept: the cut starts after the previ
  assert.equal(s[1].at,2.95,'placed so its first heard word still lands where the old one did (3.4 - 0.45)');
 });
 
+
+test('a re-split voice is one continuous take over the old narration, sped up a little only if longer (owner free-ad test, 2026-10-17)',async()=>{
+ const {continuousPlan}=await import('../voice-swap.mjs');
+ const seg=continuousPlan({oldStarts:[0.3,2,4,6,8],newStarts:[0.2,1.5,3.1,4.0,6.2],newEnds:[1.4,2.9,3.9,6.0,8.1],oldDuration:12,newDuration:8.6});
+ assert.equal(seg.length,1);
+ assert.deepEqual(seg[0],{from:0.12,to:8.3,at:0.22,tempo:1});
+ const fast=continuousPlan({oldStarts:[0.3,2],newStarts:[0.2,5],newEnds:[4.8,12.4],oldDuration:12,newDuration:12.6});
+ assert.ok(fast[0].tempo>1&&fast[0].tempo<=1.15);
+ assert.throws(()=>continuousPlan({oldStarts:[0.3,2],newStarts:[0.2,5],newEnds:[4.8,19],oldDuration:12,newDuration:20}),/needs the full editor/);
+});

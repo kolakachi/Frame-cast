@@ -35,7 +35,8 @@ class VoiceSwap
         // A swap with the parts (a template's free ad, PartSwap) whose new words come in a different number of lines is
         // re-split into the version's lines, each sized like the line it replaces (owner's free-ad test, 2026-10-17: the
         // plan wrote 4 lines for a 5-line voice and the approval was refused).
-        if ($withParts && $old && $new && count($old) !== count($new)) $new = self::fitLines($new, $old) ?? $new;
+        $refit = false;
+        if ($withParts && $old && $new && count($old) !== count($new) && ($fitted = self::fitLines($new, $old))) { $new = $fitted; $refit = true; }
         if (! $old || count($old) !== count($new)) return null;
         // The planner names the parts a change alters; only a change to the voice alone is swapped. (The on-screen copy
         // field is not used: change plans wrote notes into it, 2026-10-08.)
@@ -55,6 +56,8 @@ class VoiceSwap
         if (count($narration) !== 1) return null;
         $workspace = (int) $c->workspace_id;
         return ['old_src' => $narration[0], 'old_lines' => $old,
+            // Re-split lines are read as one continuous take: cutting them line by line broke sentences (voice-swap.mjs).
+            ...($refit ? ['continuous' => true] : []),
             // Lined up against what the new voice says, names as saved.
             'new_lines' => array_map(fn ($l) => PlanMediaExecutor::pronounce($l, $workspace), $new)];
     }

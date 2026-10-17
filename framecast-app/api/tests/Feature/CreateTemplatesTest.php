@@ -77,7 +77,7 @@ class CreateTemplatesTest extends TestCase
         DB::table('composition_runs')->insert(['id' => $run, 'conversation_id' => $conversation, 'workspace_id' => $this->staff->workspace_id, 'quote_id' => 'q_'.Str::random(8),
             'idempotency_key' => 'k'.Str::random(6), 'request_hash' => 'h', 'input_json' => json_encode($input), 'status' => 'preview_ready', 'stage' => 'Done', 'created_at' => now(), 'updated_at' => now()]);
         $html = '<!doctype html><html lang="en" data-composition-variables=\'[{"id":"headline","type":"string","label":"Hook","default":"NEW DROP"},{"id":"color_background","type":"color","label":"Field","default":"#FFE14D"}]\'>'
-            .'<body><img id="heroshoe" src="'.$files[0]['name'].'"><audio src="'.$files[1]['name'].'"></audio></body></html>';
+            .'<body><img id="heroshoe" src="'.$files[0]['name'].'"><audio src="'.$files[1]['name'].'"></audio><script>txt("hook", v.headline); paint(v.color_background);</script></body></html>';
         $bundle = ['index.html' => $html, 'style.css' => "@font-face{font-family:'Archivo Black';src:url(a.ttf)}"];
         $storage->put('create/previews/'.$run.'/v.mp4', 'video', ['visibility' => 'private']);
         DB::table('composition_revisions')->insert(['id' => $revision, 'conversation_id' => $conversation, 'run_id' => $run, 'number' => 1, 'bundle_json' => json_encode($bundle),
@@ -235,6 +235,22 @@ class CreateTemplatesTest extends TestCase
             \App\Services\Create\VoiceSwap::fitLines(['AI-powered PDF reader?', 'Meet Lumio.', 'Lumio brings AI to your PDFs.', 'Try it at lumiodocs.com.'], $five));
         $this->assertSame(['One. Two.', 'Three.', 'Four.', 'Five.', 'Six.'], \App\Services\Create\VoiceSwap::fitLines(['One.', 'Two.', 'Three.', 'Four.', 'Five.', 'Six.'], $five));
         $this->assertNull(\App\Services\Create\VoiceSwap::fitLines(['Hi there'], $five), 'fewer words than lines');
+    }
+
+    public function test_dead_fields_and_wyvstudio_written_into_the_code_are_found_and_keep_a_template_from_being_free(): void
+    {
+        // Owner's free-ad test, 2026-10-17: the cta field was never read, so the end card kept wyvstudio.com.
+        [, $revision] = $this->version();
+        $row = DB::table('composition_revisions')->where('id', $revision)->first();
+        $bundle = json_decode($row->bundle_json, true);
+        $decl = htmlspecialchars(json_encode([['id' => 'headline', 'type' => 'string', 'label' => 'Hook', 'default' => 'NEW DROP'], ['id' => 'cta', 'type' => 'string', 'label' => 'URL', 'default' => 'wyvstudio.com']]), ENT_QUOTES);
+        $bundle['index.html'] = "<html data-composition-variables='".$decl."'><body><div id=\"h\"></div><div id=\"url\">wyvstudio<span>.</span>com</div><script>txt('h', v.headline); // see https://example.com</script></body></html>";
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => json_encode($bundle)]);
+        $parts = TemplateLibrary::partsOf(DB::table('composition_revisions')->where('id', $revision)->first());
+        $this->assertSame(['cta'], $parts['dead_fields']);
+        $this->assertTrue($parts['fixed_brand']);
+        $this->assertSame(['headline'], array_column($parts['text'], 'id'), 'a dead field is not offered');
+        $this->assertFalse(\App\Services\Create\FreeFirst::templateFits((object) ['source' => 'version', 'revision_id' => 'r', 'parts_json' => json_encode($parts)]));
     }
 
     public function test_make_mine_exactly_starts_from_a_copy_of_the_version_in_the_users_workspace(): void

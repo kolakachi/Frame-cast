@@ -29,6 +29,21 @@ export function plan({oldStarts,newStarts,newEnds=[],oldDuration,newDuration,rul
  });
 }
 
+/**
+ * One continuous take (owner's free-ad test, 2026-10-17): when the new words were re-split to the old line count, cutting
+ * them line by line breaks sentences across slots and sounds chopped. The whole new read starts where the old narration
+ * started and runs to the end, sped up a little only if it is longer than the old narration's span.
+ */
+export function continuousPlan({oldStarts,newStarts,newEnds=[],oldDuration,newDuration,rules=RULES}){
+ const first=oldStarts.find(t=>Number.isFinite(t)),start=newStarts.find(t=>Number.isFinite(t));
+ if(!Number.isFinite(first)||!Number.isFinite(start))throw unfit('a line could not be found in one of the voices');
+ const last=[...newEnds].reverse().find(t=>Number.isFinite(t));
+ const from=Math.max(0,start-rules.lead),to=Number.isFinite(last)?Math.min(newDuration,last+rules.tail):newDuration;
+ const place=Math.max(0,first-rules.lead),slot=oldDuration-rules.tail-place,length=to-from,tempo=length>slot?length/slot:1;
+ if(slot<=0||tempo>rules.maxTempo+0.05)throw unfit(`the new voice is ${length.toFixed(2)} s against ${Math.max(0,slot).toFixed(2)} s`);
+ return [{from:+from.toFixed(3),to:+to.toFixed(3),at:+place.toFixed(3),tempo:+tempo.toFixed(4)}];
+}
+
 /** ffmpeg arguments: each segment trimmed, sped up if needed, delayed to its place and mixed; padded to the old length. */
 export function ffmpegArgs({input,segments,duration,output}){
  const n=segments.length,parts=[`[0:a]asplit=${n}${segments.map((_,i)=>`[s${i}]`).join('')}`];
@@ -60,7 +75,7 @@ export async function voiceSwap({project,bundle,swap,newVoice,listen,ffmpeg='ffm
  const oldStarts=alignScript(swap.old_lines,oldHeard?.words||[]).lineStarts,newAlign=alignScript(swap.new_lines,newHeard?.words||[]);
  const newStarts=newAlign.lineStarts,newEnds=newAlign.lineEnds;
  const [oldDuration,newDuration]=await Promise.all([seconds(oldFile,ffprobe),seconds(newFile,ffprobe)]);
- const segments=plan({oldStarts,newStarts,newEnds,oldDuration,newDuration});
+ const segments=(swap.continuous?continuousPlan:plan)({oldStarts,newStarts,newEnds,oldDuration,newDuration});
  const name='voice-aligned.wav';
  await run(ffmpeg,ffmpegArgs({input:newFile,segments,duration:oldDuration,output:project+'/'+name}),{timeout:120000});
  const sha256=createHash('sha256').update(await readFile(project+'/'+name)).digest('hex');
@@ -69,5 +84,5 @@ export async function voiceSwap({project,bundle,swap,newVoice,listen,ffmpeg='ffm
  const sped=segments.filter(s=>s.tempo>1).length;
  return {bundle:next,derived:[{path:name,derivedFrom:newVoice,operation:'space',params:{aligned_to:swap.old_src,lines:segments.length,sped},sha256}],
   // One revision, checked by the render and the final checks that follow (there is no builder review to report).
-  state:{status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:'I replaced the voice and lined each line up with where the old one started, so the picture and its timing are unchanged'+(sped?` (${sped} line${sped>1?'s':''} slightly quicker to fit)`:'')+'.'}};
+  state:{status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:swap.continuous?'I replaced the voice with one continuous read over the same stretch, so the picture and its timing are unchanged':'I replaced the voice and lined each line up with where the old one started, so the picture and its timing are unchanged'+(sped?` (${sped} line${sped>1?'s':''} slightly quicker to fit)`:'')+'.'}};
 }

@@ -271,9 +271,20 @@ class TemplateLibrary
             $d = $describe($assetId);
             $footage[] = ['asset_id' => $assetId, 'what' => $d['what'] === 'a picture' ? 'a video clip' : $d['what'], 'kind' => $d['kind']];
         }
+        // Text fields the code never reads (a swap changes nothing on screen), and WyvStudio's own name written into the
+        // code where no field can change it (owner's free-ad test, 2026-10-17: the end card kept wyvstudio.com).
+        $rest = preg_replace('/data-composition-variables=(\'[^\']*\'|"[^"]*")/', '', $code);
+        $dead = array_values(array_map(fn ($v) => $v['id'], array_filter($vars, fn ($v) => in_array($v['type'], ['string', 'color'], true)
+            && ! preg_match('/\b'.preg_quote((string) $v['id'], '/').'\b/', $rest))));
+        $uncommented = preg_replace(['#/\*.*?\*/#s', '#(?<![:"\'])//[^\n]*#', '#<!--.*?-->#s'], '', $rest);
+        $fixedBrand = (bool) preg_match('/wyv\s*studio|wyvstudio/i', (string) $uncommented);
+        // A dead field is not offered as a part: changing it would change nothing.
+        $text = array_values(array_filter($text, fn ($p) => ! in_array($p['id'], $dead, true)));
+        $colours = array_values(array_filter($colours, fn ($p) => ! in_array($p['id'], $dead, true)));
         $settings = $input['settings'] ?? [];
         return [
             'text' => $text, 'colours' => $colours, 'fonts' => $fonts, 'images' => $images, 'footage' => $footage,
+            'dead_fields' => $dead, 'fixed_brand' => $fixedBrand,
             'voice' => $voice ? ['what' => (string) ($voice['description'] ?? ''), 'voice' => $plan['voice'] ?? null, 'lines' => array_values(array_filter((array) ($plan['narration'] ?? []), 'is_string')), 'credits' => (int) ($voice['credits'] ?? 0)] : null,
             'music' => $music ? ['what' => (string) ($music['description'] ?? ''), 'credits' => (int) ($music['credits'] ?? 0)] : null,
             'clips' => $clips,

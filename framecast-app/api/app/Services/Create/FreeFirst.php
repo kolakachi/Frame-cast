@@ -78,6 +78,8 @@ class FreeFirst
         foreach ((array) ($parts['clips'] ?? []) as $clip) if (in_array($clip['kind'] ?? '', self::AI_VIDEO, true)) return false;
         // Footage of the template's own product has to be replaced with the user's, which a free swap cannot do.
         if (! empty($parts['footage'])) return false;
+        // Text the swap cannot reach: fields the code never reads, or WyvStudio's own name written into the code.
+        if (! empty($parts['dead_fields']) || ! empty($parts['fixed_brand'])) return false;
 
         return true;
     }
