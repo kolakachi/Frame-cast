@@ -424,7 +424,7 @@ onBeforeUnmount(() => {
           <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M17 10l5-3v10l-5-3z"/></svg>
           Your videos
         </button>
-        <a class="nav-item nav-upgrade" href="/continue?pass=1" data-tooltip="Upgrade">
+        <a class="nav-item nav-upgrade" href="/plans" data-tooltip="Upgrade">
           <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           Upgrade
         </a>

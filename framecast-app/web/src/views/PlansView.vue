@@ -19,6 +19,8 @@ const error = ref("");
 const checkoutPending = ref("");
 // The pass buys the UGC gate, so it is pointless to anyone who already has it.
 const hasUgcAccess = computed(() => workspaceStore.capabilities?.ugc_ads === true);
+// A free account's first upgrade is the Test Pass (owner, 2026-10-17): always offered to it.
+const freeAccount = computed(() => billing.value?.free_only === true);
 
 async function logout() { await authStore.logout(); router.push({ name: "login" }); }
 
@@ -243,12 +245,12 @@ onMounted(async () => {
           <!-- Deliberately a row under the packs, not a plan card: a $9 option
                sitting beside the packs anchors the whole product cheap. This
                only catches someone who was about to leave. -->
-          <div v-if="!hasUgcAccess" class="pass-row">
+          <div v-if="freeAccount || !hasUgcAccess" class="pass-row">
             <div>
-              <div class="pass-title">Just want to try UGC? <span class="pass-tag">$9 once</span></div>
-              <div class="pass-sub">600 credits — one 15-second ad, or two drafts. No watermark, no subscription. One per customer.</div>
+              <div class="pass-title">{{ freeAccount ? 'Start with the Test Pass' : 'Just want to try UGC?' }} <span class="pass-tag">$9 once</span></div>
+              <div class="pass-sub">{{ freeAccount ? '600 credits for your next ads: new shots, voices and presenters, and no WyvStudio mark. No subscription. One per customer.' : '600 credits — one 15-second ad, or two drafts. No watermark, no subscription. One per customer.' }}</div>
             </div>
-            <button class="plan-btn" :disabled="checkoutPending === 'pass'" @click="startCheckout({ pass: true }, 'pass')">
+            <button :class="['plan-btn', { 'pass-btn-main': freeAccount }]" :disabled="checkoutPending === 'pass'" @click="startCheckout({ pass: true }, 'pass')">
               {{ checkoutPending === 'pass' ? 'Starting…' : 'Get the Test Pass' }}
             </button>
           </div>
@@ -334,6 +336,7 @@ onMounted(async () => {
 .pw-arrow { align-self: center; font-size: 20px; color: var(--color-text-muted); }
 .pw-foot { margin: 12px 0 0; font-size: 12.5px; color: var(--color-text-muted); }
 @media (max-width: 620px) { .pw-arrow { display: none; } }
+.pass-btn-main { background: var(--color-accent, #ff6b35) !important; color: #fff !important; border: 0 !important; font: inherit; font-size: 15px; font-weight: 600; padding: 12px 18px; border-radius: 10px; cursor: pointer; }
 .pass-row {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
   margin: 18px auto 0; max-width: 760px; padding: 16px 20px; border-radius: 14px;
