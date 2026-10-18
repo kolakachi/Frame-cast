@@ -111,3 +111,11 @@ three-panel character sheet as reference (2.0 and 2.5). Refusals are free. With 
 plus her written description, it renders the setting, outfit and hair but a different woman's face, and it does not keep our
 voice track (its audio rhythm doesn't match the reference audio). Vessero shows AI actors on Seedance 2.0 from character
 sheets, so they likely use another provider or an authorised-likeness route; unknown.
+
+**Seedance face routes (research, 2026-10-18; BytePlus docs are script-rendered, so from third-party write-ups citing them):**
+Seedance accepts faces on BytePlus ModelArk directly (not via OpenRouter/Replicate, which pass only public URLs) in three ways:
+(1) the free **preset digital character library**, passed as `asset://` IDs (likely how Vessero casts its "AI actors");
+(2) **trusted outputs**: unedited Seedream 5.0 lite text-to-image images and Seedance 2.x videos/last frames from the same
+account, for 30 days; (3) **real-person assets** after the person's consent and verification (real-human or enterprise
+authentication). fal hosts Seedance 2.0 reference-to-video (up to 9 images, 3 audio) and says faces need "a separate
+approval process". Sources: docs.byteplus.com/en/docs/ModelArk/2608626, /2315856; seedrouter.ai; sume.com; fal.ai/seedance-2.0.
