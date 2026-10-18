@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.13.0'
+const VERSION = process.env.MCP_VERSION || '1.13.1'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -337,8 +337,8 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'estimate_video',
     {
-      title: 'Classic: estimate a video (free)',
-      description: 'Classic only (see the server instructions; Create via weave_start is the default). Price a scene-by-scene video before making it. Free. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
+      title: 'Estimate a Classic video',
+      description: 'Classic only (see the server instructions; Create via weave_start is the default). Price a scene-by-scene video before making it. Returns a quote_id with the credit range (min/max), scene count, balance, whether the workspace can afford it, and "chosen": the brand kit, channel, niche, character, music and voice it resolved to, by name. Show the quote and the choices to the user; create_video needs the quote_id and the quote expires in 10 minutes. You may pick styles, kits, channels, niches and voices yourself from the list_* tools when the user has not named one. Nothing is built or charged by estimating.',
       inputSchema: z.object({
         source_type: z.enum(SOURCE_TYPES).describe('"prompt": a brief WyvStudio writes a script from. "script": narration used as-is. "url": a web page or article text. "product_description": copy to sell a product. "images": 1–15 library images become the scenes (needs image_asset_ids and a prompt in content).'),
         content: z.string().min(10).max(10000).describe('The prompt, script, URL/article text, or product description.'),
@@ -453,7 +453,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'estimate_character_image',
     {
-      title: 'Estimate a character image (free)',
+      title: 'Estimate a character image',
       description: 'Price one generated image of a character (a new look, or a new reference photo). Returns a quote_id (10 minutes). Cheaper without a reference photo; with one, the image is generated to match it.',
       inputSchema: z.object({
         character_id: z.number().int(),
@@ -548,7 +548,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'ugc_brief',
     {
-      title: 'UGC ad: brief the director (free)',
+      title: 'UGC ad: brief the director',
       description: 'Start a UGC ad with the user\'s brief (product, audience, angle, any script, how names are said). The director answers with one question (answer it with ugc_reply, offering suggested_answers) or a pitch: what the video shows, its script, the presenter and model, and the credits. Free. Show the pitch to the user; change it with ugc_reply; make it with ugc_make.',
       inputSchema: z.object({ text: z.string().min(1).max(4000), ...ugcMessage }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -558,7 +558,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'ugc_reply',
     {
-      title: 'UGC ad: reply to the director (free)',
+      title: 'UGC ad: reply to the director',
       description: 'Answer the director\'s question, or ask for changes to the pitch ("make her older", "shorter", "say Lumora as loo-MOR-ah"). Returns the next question or a revised pitch. Free.',
       inputSchema: z.object({ chat_id: z.string().uuid(), text: z.string().min(1).max(4000), ...ugcMessage }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -595,7 +595,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'plan_ugc',
     {
-      title: 'Classic UGC Ads: plan an ad (free)',
+      title: 'Classic UGC Ads: plan an ad',
       description: 'Classic UGC Ads, for takes to test side by side (several actors or hooks). For a single UGC ad use ugc_brief (the UGC director). Turn a script or a brief into a shot plan for a UGC-style ad: shots with kind (on_camera, b_roll, reaction), narration, seconds and visual direction, plus the format it chose. Free. Pass the returned format and segments to estimate_ugc unchanged. Formats: direct_camera (one continuous talking take), demo, story, reaction, text_led; "auto" lets the planner pick. Optionally ask for alternate openings with variants_count.',
       inputSchema: z.object({
         script: z.string().max(1500).optional().describe('The narration, if the user has one.'),
@@ -616,7 +616,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'estimate_ugc',
     {
-      title: 'Classic UGC Ads: estimate (free)',
+      title: 'Classic UGC Ads: estimate',
       description: 'Price a plan from plan_ugc and get a quote_id (10 minutes). mode "composed": each shot generated and cut together, with one or more characters from list_characters (needs character_ids unless every shot is b_roll). mode "one_shot": a single continuous AI presenter take from a description or a character. CONSENT: before calling, ask the user to confirm they have the right to use any real person\'s likeness or voice in the ad, and pass consent: true only if they say so. Returns credits, takes used against the monthly allowance, and can_afford.',
       inputSchema: z.object({
         mode: z.enum(['composed', 'one_shot']),
@@ -697,7 +697,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'propose_edits',
     {
-      title: 'Propose edits (free)',
+      title: 'Propose edits',
       description: 'Validate a list of changes against the project\'s current revision and price the ones that spend credits (regenerate_voice, generate_image, edit_image, animate, regenerate_music). Returns a proposal_id (10 minutes), each change with its max credits, and the total. Nothing is applied. Show the user the changes and the total; apply_edits needs the proposal_id. Ops: update_scene {scene_id, settings}, reorder_scenes {scene_ids}, add_scene {...}, duplicate_scene, rewrite_scene {scene_id, mode}, regenerate_voice, swap_visual {scene_id, visual_asset_id|query}, generate_image {scene_id, model_key?, style?, prompt_override?}, edit_image {scene_id, instruction}, animate {scene_id, tier, ...}, cancel_animation, revert_animation, regenerate_music {scene_id, mood}, update_project {...}, generate_hooks, use_animation_history {scene_id, asset_id}, rerecord_all {scene_ids?}, restyle_all {style, scene_ids?, model_key?, custom_visual_style?}, animate_all {tier, scene_ids?, source_asset_id?, quality?, duration_seconds?, motion_prompt?, consent?}. Bulk actions must be proposed alone; preview includes eligibility, skips, per-scene costs and sharing. rewrite_scene is DIRECT APPLY after approval, not a preview. For reviewed text use update_scene.script_text. Image overrides configure a render that saves its prompt/style/model on success. Consult get_project_schema before configuring settings.',
       inputSchema: z.object({
         video_id: z.number().int(),
@@ -975,10 +975,10 @@ function buildServer(token, profile = 'full') {
     'weave_from_template',
     {
       title: 'Make a video from a template',
-      description: "Start a Create video from a template (weave_templates), like Make mine in the app: the user's product (a link or a few words, with any offer), how closely to follow the template (exact: the same video with their product, words, colours and photos; similar: its format, look and pacing, their own story; inspired: just the idea), the shape, and their photos (upload with upload_asset first). Planning starts at once and costs a few credits; following exactly with only text, colours and photos swapped is usually free to make. Then weave_status, and weave_approve with the user's yes, as for weave_start.",
+      description: "Starts planning a video from a template (weave_templates) for the user's product: what it is in their words, with any offer (a link is kept as text, not opened), how closely to follow the template (exact: the same video with their product, words, colours and photos; similar: its format, look and pacing, their own story; inspired: just the idea), the shape, and their photos (upload with upload_asset first). Planning starts at once and uses a few credits. Then weave_status, and weave_approve with the user's yes, as for weave_start.",
       inputSchema: z.object({
         template_id: z.string().regex(/^[A-Za-z0-9-]{1,40}$/).describe('The template id from the list of templates.'),
-        product: z.string().min(3).max(2000).describe("The user's product in their words: a link, or what it is, plus any offer."),
+        product: z.string().min(3).max(2000).describe("The user's product in their words: what it is, plus any offer. A link is kept as text, not opened."),
         match: z.enum(['exact', 'similar', 'inspired']).optional().describe('How closely to follow the template; exact by default.'),
         aspect_ratio: z.enum(['9:16', '16:9', '1:1', '4:5']).optional().describe("The template's own shape by default."),
         asset_ids: z.array(z.number().int().min(1)).max(6).optional().describe('Library asset ids of the product photos or logo to use.'),
