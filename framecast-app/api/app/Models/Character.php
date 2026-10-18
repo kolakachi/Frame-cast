@@ -13,7 +13,6 @@ class Character extends Model
         'name',
         'description',
         'appearance_json',
-        'sketch_json',
         'style',
         'gender',
         'age_group',
@@ -36,7 +35,6 @@ class Character extends Model
         return [
             'reference_asset_ids' => 'array',
             'appearance_json' => 'array',
-            'sketch_json' => 'array',
             'situations' => 'array',
             'is_auto' => 'boolean',
             'is_stock' => 'boolean',

@@ -7,13 +7,15 @@ use App\Models\Character;
 use App\Services\Generation\Image\CharacterImageAdapter;
 use App\Services\Media\StorageService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
  * A presenter's pencil character sheet (owner, 2026-10-18): how their look reaches Seedance, which declines any picture
  * it reads as a real person but renders a grayscale drawing as a real one (the Layla tests: hair, build and features
- * carry over; the face is a close resemblance, not an exact match). Made once from the character's own photo, kept on
- * the character, and made again only when that photo changes. Our cost (about $0.30), never the user's.
+ * carry over; the face is a close resemblance, not an exact match). Made once from the character's own photo, kept in
+ * character_sketches (internal: never an asset, never in the library), and made again only when that photo changes.
+ * Our cost (about $0.30), never the user's.
  */
 class CharacterSketch
 {
@@ -48,20 +50,11 @@ class CharacterSketch
             $png = ! empty($made['image_b64']) ? base64_decode((string) $made['image_b64'], true)
                 : (! empty($made['image_url']) ? @file_get_contents((string) $made['image_url']) : false);
             if (! is_string($png) || $png === '') return null;
-            $path = sprintf('characters/%d/sketch-%s.png', $character->getKey(), Str::uuid());
-            $asset = Asset::query()->create([
-                // Kept with the photo it was drawn from: a stock presenter has no workspace, its photo does (assets need one).
-                'workspace_id' => $photo->workspace_id ?? $character->workspace_id,
-                'asset_type' => 'image',
-                'title' => mb_substr($character->name.' — pencil character sheet', 0, 255),
-                'storage_url' => $this->storage->put($path, $png, ['ContentType' => 'image/png']),
-                'mime_type' => 'image/png',
-                'file_size_bytes' => strlen($png),
-                'tags' => ['character_sketch'],
-                'status' => 'active',
-            ]);
-            $character->forceFill(['sketch_json' => ['asset_id' => $asset->getKey(), 'from_asset_id' => (int) $character->reference_asset_id,
-                'made_at' => now()->toIso8601String()]])->save();
+            $url = $this->storage->put(sprintf('character-sketches/%d/%s.png', $character->getKey(), Str::uuid()), $png, ['ContentType' => 'image/png']);
+            DB::table('character_sketches')->updateOrInsert(
+                ['character_id' => $character->getKey(), 'from_asset_id' => (int) $character->reference_asset_id],
+                ['storage_url' => $url, 'created_at' => now(), 'updated_at' => now()],
+            );
 
             return $png;
         });
@@ -70,10 +63,9 @@ class CharacterSketch
     /** The saved sheet, while it was made from the character's current photo. */
     private function saved(Character $character): ?string
     {
-        $sketch = (array) ($character->sketch_json ?? []);
-        if ((int) ($sketch['from_asset_id'] ?? 0) !== (int) $character->reference_asset_id || empty($sketch['asset_id'])) return null;
-        $asset = Asset::query()->find((int) $sketch['asset_id']);
-        $bytes = $asset ? $this->storage->get((string) $asset->storage_url) : null;
+        $url = DB::table('character_sketches')->where('character_id', $character->getKey())
+            ->where('from_asset_id', (int) $character->reference_asset_id)->value('storage_url');
+        $bytes = $url ? $this->storage->get((string) $url) : null;
 
         return is_string($bytes) && $bytes !== '' ? $bytes : null;
     }

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\{DB, Schema, Storage};
 use Mockery;
 use Tests\TestCase;
 
-/** A presenter's pencil sheet is drawn once from their photo and kept, even for a stock presenter with no workspace. */
+/** A presenter's pencil sheet is drawn once from their photo and kept in its own table, never in the asset library. */
 class CharacterSketchTest extends TestCase
 {
     protected function setUp(): void
@@ -20,13 +20,14 @@ class CharacterSketchTest extends TestCase
         DB::purge('sketch_test');
         Storage::fake('minio');
         Schema::create('assets', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); foreach (['asset_type', 'title', 'storage_url', 'mime_type', 'file_size_bytes', 'tags', 'status', 'created_by_user_id'] as $c) $t->text($c)->nullable(); $t->timestamps(); });
-        Schema::create('characters', function (Blueprint $t) { $t->id(); $t->integer('workspace_id')->nullable(); $t->text('name'); $t->integer('reference_asset_id')->nullable(); $t->text('sketch_json')->nullable(); $t->timestamps(); });
+        Schema::create('characters', function (Blueprint $t) { $t->id(); $t->integer('workspace_id')->nullable(); $t->text('name'); $t->integer('reference_asset_id')->nullable(); $t->timestamps(); });
+        (require database_path('migrations/2026_10_19_010000_create_character_sketches.php'))->up();
         Storage::disk('minio')->put('stock/layla.jpg', 'layla-photo');
         DB::table('assets')->insert(['id' => 4105, 'workspace_id' => 1, 'asset_type' => 'image', 'storage_url' => 'minio://stock/layla.jpg', 'mime_type' => 'image/jpeg']);
         DB::table('characters')->insert(['id' => 101, 'workspace_id' => null, 'name' => 'Layla', 'reference_asset_id' => 4105]);
     }
 
-    public function test_a_stock_presenters_sheet_is_drawn_once_and_kept_with_their_photo(): void
+    public function test_a_stock_presenters_sheet_is_drawn_once_and_kept_out_of_the_library(): void
     {
         $images = Mockery::mock(CharacterImageAdapter::class);
         $images->shouldReceive('generate')->once()->withArgs(fn ($prompt, $style, $aspect, $options) => $aspect === '16:9'
@@ -38,9 +39,8 @@ class CharacterSketchTest extends TestCase
         $again = app(CharacterSketch::class)->uri(Character::find(101));
         $this->assertSame('data:image/png;base64,'.base64_encode('sheet-png'), $first);
         $this->assertSame($first, $again, 'drawn once');
-        $sheet = Character::find(101)->sketch_json;
-        $this->assertSame(4105, $sheet['from_asset_id']);
-        $this->assertSame(1, (int) DB::table('assets')->where('id', $sheet['asset_id'])->value('workspace_id'), 'with the photo\'s workspace');
+        $this->assertSame(1, DB::table('character_sketches')->where('character_id', 101)->where('from_asset_id', 4105)->count());
+        $this->assertSame(1, DB::table('assets')->count(), 'never an asset: the library shows only the photo');
     }
 
     public function test_a_new_photo_gets_a_new_sheet(): void

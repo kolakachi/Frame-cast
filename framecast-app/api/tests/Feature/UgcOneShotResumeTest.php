@@ -445,7 +445,7 @@ class UgcOneShotResumeTest extends TestCase
 
     public function test_a_seedance_cast_leads_with_their_pencil_sheets_and_the_prompt_names_each_one(): void
     {
-        Schema::create('characters', function (Blueprint $t) { $t->id(); $t->text('name')->nullable(); $t->text('reference_asset_id')->nullable(); $t->text('sketch_json')->nullable(); $t->timestamps(); });
+        Schema::create('characters', function (Blueprint $t) { $t->id(); $t->text('name')->nullable(); $t->text('reference_asset_id')->nullable(); $t->timestamps(); });
         DB::table('characters')->insert([['id' => 101, 'name' => 'Layla'], ['id' => 152, 'name' => 'Grace Kim']]);
         $sketch = Mockery::mock(\App\Services\Ugc\CharacterSketch::class);
         $sketch->shouldReceive('uri')->andReturnUsing(fn ($c) => 'data:sheet-'.$c->id);
