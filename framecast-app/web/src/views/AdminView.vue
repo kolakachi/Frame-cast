@@ -2258,7 +2258,7 @@ onMounted(() => {
                   <tbody>
                     <tr v-for="ws in dashData.top_spenders ?? []" :key="ws.id">
                       <td>
-                        <div class="cell-name">{{ ws.name }}</div>
+                        <div class="cell-name">{{ ws.name }}<span class="ws-num">ws{{ ws.id }}</span></div>
                       </td>
                       <td>
                         <span
@@ -2296,7 +2296,7 @@ onMounted(() => {
               <input
                 v-model="usersSearch"
                 class="search-input"
-                placeholder="Search name or email…"
+                placeholder="Search name, email or ws75…"
                 @input="usersFilter"
               />
               <select
@@ -2357,7 +2357,7 @@ onMounted(() => {
                       }}</span>
                     </td>
                     <td>
-                      <div class="cell-name">{{ u.workspace_name || "-" }}</div>
+                      <div class="cell-name">{{ u.workspace_name || "-" }}<span v-if="u.workspace_id" class="ws-num">ws{{ u.workspace_id }}</span></div>
                       <div
                         v-if="u.workspace_status"
                         :class="[
@@ -2641,7 +2641,7 @@ onMounted(() => {
               <input
                 v-model="wsSearch"
                 class="search-input"
-                placeholder="Search workspace…"
+                placeholder="Search workspace or ws75…"
                 @input="wsFilter"
               />
               <select v-model="wsPlan" class="filter-select" @change="wsFilter">
@@ -2683,7 +2683,7 @@ onMounted(() => {
                     :key="ws.id"
                   >
                     <td>
-                      <strong>{{ ws.name }}</strong>
+                      <strong>{{ ws.name }}</strong><span class="ws-num">ws{{ ws.id }}</span>
                     </td>
                     <td>
                       <select
@@ -3626,7 +3626,7 @@ onMounted(() => {
                 <tbody>
                   <tr v-for="ws in dashData?.top_spenders ?? []" :key="ws.id">
                     <td>
-                      <strong>{{ ws.name }}</strong>
+                      <strong>{{ ws.name }}</strong><span class="ws-num">ws{{ ws.id }}</span>
                     </td>
                     <td>
                       <span :class="['badge', planBadgeClass(ws.plan_tier)]">{{
@@ -7373,6 +7373,14 @@ tr:hover td {
 }
 .cell-name {
   font-weight: 600;
+}
+.ws-num {
+  margin-left: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  user-select: all;
 }
 .cell-sub {
   font-size: 11px;

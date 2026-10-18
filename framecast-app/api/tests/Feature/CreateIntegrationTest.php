@@ -2323,6 +2323,9 @@ class CreateIntegrationTest extends TestCase
         $this->assertNotContains('wsoff@example.test', $all);
         $this->assertEqualsCanonicalizing(['off@example.test', 'wsoff@example.test'], $emails('?status=suspended'));
         $this->assertNotContains('wsoff@example.test', $emails('?status=active'), 'an active person in a suspended workspace is suspended');
+        // A workspace number finds its people ("ws75", "75").
+        $this->assertSame(['on@example.test'], $emails('?search=ws'.$active->workspace_id));
+        $this->assertSame(['on@example.test'], $emails('?search='.$active->workspace_id));
         $summary = $this->actingAs($this->owner)->getJson('/api/v1/admin/overview')->assertOk()->json('data.summary');
         $this->assertSame(2, $summary['suspended_users']);
         $this->assertSame(User::whereNotIn('role', array_keys(User::CLIENT_SEATS))->count() - 2, $summary['total_users']);

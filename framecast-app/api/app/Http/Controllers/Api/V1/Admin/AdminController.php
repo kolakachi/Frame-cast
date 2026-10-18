@@ -51,6 +51,12 @@ class AdminController extends Controller
         ]);
     }
 
+    /** A workspace number typed in a search ("ws75", "WS 75", "#75" or "75"), or null. */
+    private static function workspaceNumber(string $search): ?int
+    {
+        return preg_match('/^\s*(?:ws\s*)?#?\s*(\d{1,9})\s*$/i', $search, $m) ? (int) $m[1] : null;
+    }
+
     /** Our customers: everyone but client seats (people an agency invited into its own client workspace). */
     private static function customers()
     {
@@ -99,9 +105,11 @@ class AdminController extends Controller
             ->whereNotIn('role', array_keys(User::CLIENT_SEATS))
             ->with('workspace:id,name,plan_tier,status')
             ->when($validated['search'] ?? null, function ($q, $s): void {
-                $q->where(function ($q) use ($s): void {
+                $ws = self::workspaceNumber($s);
+                $q->where(function ($q) use ($s, $ws): void {
                     $q->where('name', 'like', "%{$s}%")
-                      ->orWhere('email', 'like', "%{$s}%");
+                      ->orWhere('email', 'like', "%{$s}%")
+                      ->when($ws, fn ($q) => $q->orWhere('workspace_id', $ws));
                 });
             })
             // Suspended accounts (the person or their workspace) have their own page and are left out of the users
@@ -415,7 +423,8 @@ class AdminController extends Controller
             // things in one table and made the workspace count read high.
             ->whereNull('parent_workspace_id')
             ->withCount(['users', 'projects'])
-            ->when($validated['search'] ?? null, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
+            ->when($validated['search'] ?? null, fn ($q, $s) => $q->where(fn ($q) => $q->where('name', 'like', "%{$s}%")
+                ->when(self::workspaceNumber($s), fn ($q, $ws) => $q->orWhere('id', $ws))))
             ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
             ->when($validated['plan'] ?? null, fn ($q, $p) => $q->where('plan_tier', $p))
             ->orderByDesc('id')
