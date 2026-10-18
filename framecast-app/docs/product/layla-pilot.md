@@ -74,3 +74,12 @@ different way: Gemini TTS (voice Sulafat) with "Weave Studio" spelled out in the
 OpenRouter (720p 9:16, first frame = a still of Layla from the Omni video, $0.12/s); Sync lipsync-2-pro on each; the food ad
 between them. 15 s. Real cost about $2 ($1.20 OpenRouter, about $0.80 lip-sync). File: `~/Desktop/layla-pilot/layla-1-runway-test.mp4`.
 Runway has no audio and runs 2–10 s per clip, so longer videos need several clips.
+
+## Model test (2026-10-18, owner)
+
+Same lines on OpenRouter models, Layla's still as the first frame (files in `~/Desktop/layla-pilot/model-test/`). Owner's
+ranking: **HeyGen Video 1 best, then Hailuo 3**; Runway Gen-4.5 looked cartoonish. A fresh still from our character image
+model (gpt-image-2 from her reference, "phone selfie, real skin, no glam") made HeyGen look like a real person: the start
+image matters as much as the model. Day-in-the-life ("a day making ads for small shops", three stills) made on Hailuo 3
+and Veo 3.1 Lite; Veo accepted her face. Only Avatar IV and Seedance 2+ take our own voice; the others speak in a voice
+they make up. OpenRouter spend for all tests: $9.18 of $20.
