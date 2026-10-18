@@ -66,3 +66,11 @@ owner's yes.
 ## Result (2026-10-18)
 
 Made on prod (staff workspace): videos 2 and 3 on Omni held Layla's face and cut in the demo; video 1 on Seedance drifted (a different-looking woman) and skipped the demo, so it was remade on Omni (face right, demo skipped again by the shot planner) and the food ad was cut in by hand. Credits: 3,161 (759, 846, 914, plus the 642 redo). Real cost: $25.28, about $5 over the approved estimate because of the discarded first take and Omni's higher cost per video. Files for the marketer: `~/Desktop/layla-pilot/`. Lines not machine-checked: listen for "weave studio" and the exact wording before posting. No burned-in captions: add them in the posting app.
+
+## Runway test (2026-10-18, owner)
+
+The owner heard video 1 (Omni) say WyvStudio wrong: the director's "said as" note never reaches Omni's own speech. Remade video 1 a
+different way: Gemini TTS (voice Sulafat) with "Weave Studio" spelled out in the spoken line; two 5 s Runway Gen-4.5 clips via
+OpenRouter (720p 9:16, first frame = a still of Layla from the Omni video, $0.12/s); Sync lipsync-2-pro on each; the food ad
+between them. 15 s. Real cost about $2 ($1.20 OpenRouter, about $0.80 lip-sync). File: `~/Desktop/layla-pilot/layla-1-runway-test.mp4`.
+Runway has no audio and runs 2–10 s per clip, so longer videos need several clips.
