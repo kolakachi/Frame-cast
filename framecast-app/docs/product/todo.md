@@ -14,7 +14,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item | Next |
 |---|---|---|
-| CMO-EMAILS | Owner sends the question emails to the 13 current customers (cmo-evidence §8: active, quiet and Portuguese versions; refunders left out); Claude adds 500 credits per reply | owner |
+| CMO-EMAILS | **Sent 2026-10-18** (owner, from hello@, one at a time; refunders left out). When someone replies, the owner says who: Claude adds 500 credits that day and puts their words in `cmo-evidence.md` §5. **Fri Oct 23:** one one-question follow-up to anyone who hasn't replied ("What would make you make another video this month?", 500 credits still on), then stop | wait for replies; follow-up Oct 23 |
 | FIRST-FIX | Done 2026-10-17 (`first-fix-plan.md`): sample off, product-form guard, templates link, and the free first ad (deploy the worker before pushing: the API asks it for the mark) | measure on the scoreboard |
 | CMO-3 | Run the two-week plan in `cmo-plan.md` (Oct 19 – Nov 1): tracking, FIRST-FIX, customer emails, listings, FREE-FIRST, Layla pilot, community answers, OUTREACH-5, message test; scoreboard reviewed Fridays | starts Mon Oct 19 |
 | FUNNEL | Measure the first session: signed up → started a video → approved a plan → video delivered → downloaded or shared, with the step where people drop; target 80% reach a delivered video. From our database (PostHog needs the POSTHOG key). First, because every channel sends people into this | build |
