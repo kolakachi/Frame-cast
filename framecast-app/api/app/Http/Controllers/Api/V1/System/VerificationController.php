@@ -198,27 +198,29 @@ class VerificationController extends Controller
             return response()->json(['error' => ['message' => 'Contact support to close an agency account with client workspaces.']], 422);
         }
 
-        // Best-effort: revoke API tokens immediately so other sessions can't act.
-        \Illuminate\Support\Facades\DB::table('auth_sessions')
-            ->where('user_id', $user->getKey())
-            ->delete();
-
         // Cascade-delete domain data via workspace removal. If the workspace has
         // multiple users (future), only nuke it when this user is the last one.
-        if ($workspace) {
-            $otherUsers = User::query()
-                ->where('workspace_id', $workspace->getKey())
-                ->where('id', '!=', $user->getKey())
-                ->count();
-            if ($otherUsers === 0 && ! $workspace->parent_workspace_id && (int) $workspace->owner_user_id === (int) $user->id) {
-                $workspace->delete();
-            }
+        $eraseWorkspace = $workspace && ! $workspace->parent_workspace_id && (int) $workspace->owner_user_id === (int) $user->id
+            && ! User::query()->where('workspace_id', $workspace->getKey())->where('id', '!=', $user->getKey())->exists();
+        if ($eraseWorkspace && ($why = \App\Services\Account\WorkspaceEraser::blocked((int) $workspace->getKey()))) {
+            return response()->json(['error' => ['message' => $why]], 422);
         }
 
-        // Null the user's workspace pointer first to avoid FK confusion, then delete.
-        $user->workspace_id = null;
-        $user->save();
-        $user->delete();
+        // One transaction: Create's data first (its tables do not cascade), then the workspace and the person.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($user, $workspace, $eraseWorkspace): void {
+            // Revoke sessions so other devices can't act.
+            \Illuminate\Support\Facades\DB::table('auth_sessions')->where('user_id', $user->getKey())->delete();
+            $eraser = app(\App\Services\Account\WorkspaceEraser::class);
+            if ($eraseWorkspace) {
+                $eraser->eraseCreate($workspace);
+                $workspace->delete();
+            }
+            $eraser->handOver($user, $eraseWorkspace ? (int) $workspace->getKey() : null);
+            // Null the user's workspace pointer first to avoid FK confusion, then delete.
+            $user->workspace_id = null;
+            $user->save();
+            $user->delete();
+        });
 
         return response()->json([
             'data' => ['deleted' => true],

@@ -2271,6 +2271,37 @@ class CreateIntegrationTest extends TestCase
         $this->withToken(str_repeat('a', 64))->postJson($url, $payload)->assertStatus(409);
     }
 
+    public function test_deleting_an_account_removes_its_create_videos_and_refuses_a_template_source(): void
+    {
+        // 2026-10-18: Create's tables do not cascade from the workspace, so "Delete my account" failed for Create users.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'owner_user_id')) \Illuminate\Support\Facades\Schema::table('workspaces', fn ($t) => $t->unsignedBigInteger('owner_user_id')->nullable());
+        $ws = Workspace::create(['name' => 'Leaving', 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => 'active']);
+        $u = User::create(['email' => 'leaving@example.test', 'name' => 'Leaving', 'role' => 'owner', 'status' => 'active', 'workspace_id' => $ws->id]);
+        $ws->forceFill(['owner_user_id' => $u->id])->save();
+        $c = (string) \Illuminate\Support\Str::uuid(); $run = (string) \Illuminate\Support\Str::uuid(); $rev = (string) \Illuminate\Support\Str::uuid();
+        DB::table('create_conversations')->insert(['id' => $c, 'workspace_id' => $ws->id, 'created_by_user_id' => $u->id, 'title' => 'Mine', 'version' => 2, 'settings_json' => '{}', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('create_messages')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c, 'role' => 'user', 'content' => 'An ad', 'idempotency_key' => 'k', 'request_hash' => 'h', 'sequence' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('composition_runs')->insert(['id' => $run, 'conversation_id' => $c, 'workspace_id' => $ws->id, 'quote_id' => 'q_leaving', 'idempotency_key' => 'r', 'request_hash' => 'h', 'input_json' => '{}', 'status' => 'preview_ready', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('composition_revisions')->insert(['summary' => 'Mine', 'id' => $rev, 'conversation_id' => $c, 'run_id' => $run, 'number' => 1, 'bundle_json' => '{}', 'bundle_hash' => 'h', 'created_at' => now()]);
+        DB::table('composition_trace_events')->insert(['run_id' => $run, 'sequence' => 1, 'event_json' => '{}', 'created_at' => now()]);
+        DB::table('create_styles')->insert(['source' => 'manual', 'created_by_user_id' => $u->id, 'id' => (string) \Illuminate\Support\Str::uuid(), 'workspace_id' => $ws->id, 'name' => 'Mine', 'style_json' => '{}', 'created_at' => now(), 'updated_at' => now()]);
+
+        // A workspace holding a template's source is not erased (it would break the template).
+        $tpl = DB::table('create_templates')->insert(['id' => 'tsrc', 'title' => 'T', 'category' => 'offer', 'shape' => '9:16', 'seconds' => 10, 'position' => 1, 'source' => 'version',
+            'conversation_id' => $c, 'revision_id' => $rev, 'on_samples' => false, 'created_at' => now(), 'updated_at' => now()]);
+        $this->actingAs($u)->deleteJson('/api/v1/me', ['confirm_email' => 'leaving@example.test'])->assertStatus(422)
+            ->assertJsonPath('error.message', \App\Services\Account\WorkspaceEraser::TEMPLATE_SOURCE);
+        DB::table('create_templates')->where('id', 'tsrc')->delete();
+
+        $this->actingAs($u)->deleteJson('/api/v1/me', ['confirm_email' => 'leaving@example.test'])->assertOk()->assertJsonPath('data.deleted', true);
+        $this->assertFalse(User::whereKey($u->id)->exists());
+        $this->assertFalse(Workspace::whereKey($ws->id)->exists());
+        foreach (['create_conversations' => ['id', $c], 'create_messages' => ['conversation_id', $c], 'composition_runs' => ['id', $run],
+            'composition_revisions' => ['id', $rev], 'composition_trace_events' => ['run_id', $run], 'create_styles' => ['workspace_id', $ws->id]] as $table => [$col, $val])
+            $this->assertFalse(DB::table($table)->where($col, $val)->exists(), "$table left behind");
+    }
+
     public function test_suspended_accounts_have_their_own_admin_page_and_are_not_counted_among_users(): void
     {
         // Owner, 2026-10-18: suspended accounts (the person or their workspace) are listed apart and not counted.
