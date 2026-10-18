@@ -424,6 +424,8 @@ class ConversationService
                         $planMedia = []; $mediaEstimate = 0; $mediaCeiling = $realMediaCeiling = 0; $voiceSwap = null;
                     } else {
                         $voiceSwap = $partSwap['voice_swap'];
+                        // A free ad cannot fall back to the builder: the worker says what to shorten instead.
+                        if ($freeFirst && is_array($voiceSwap)) $voiceSwap['free'] = true;
                         if (isset($policy['plan_media'])) $policy['plan_media'] = ['credits' => $mediaEstimate, 'cost_limit_microusd' => $mediaEstimate * 4000, 'max_calls' => count($planMedia), 'total_credits' => $mediaEstimate] + $policy['plan_media'];
                         $mediaCeiling = $realMediaCeiling = $mediaEstimate;
                     }

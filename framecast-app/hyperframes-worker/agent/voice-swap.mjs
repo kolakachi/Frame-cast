@@ -44,6 +44,19 @@ export function continuousPlan({oldStarts,newStarts,newEnds=[],oldDuration,newDu
  return [{from:+from.toFixed(3),to:+to.toFixed(3),at:+place.toFixed(3),tempo:+tempo.toFixed(4)}];
 }
 
+/**
+ * How the new voice is placed: line by line first; when one line overruns its slot, one continuous read over the whole
+ * narration often still fits (the other lines are shorter). A free ad has no builder to fall back on, so its error says
+ * what to shorten (owner's free-ad test, 2026-10-18: line 5 was 4.39 s against a 3.85 s slot).
+ */
+export function fit(timing,swap={}){
+ if(swap.continuous===true)return {segments:continuousPlan(timing),continuous:true};
+ try{return {segments:plan(timing),continuous:false};}
+ catch(e){if(e.code!=='VOICE_SWAP_UNFIT')throw e;
+  try{return {segments:continuousPlan(timing),continuous:true};}
+  catch(e2){if(e2.code!=='VOICE_SWAP_UNFIT')throw e2;throw swap.free?tooLong(e.why):e;}}
+}
+
 /** ffmpeg arguments: each segment trimmed, sped up if needed, delayed to its place and mixed; padded to the old length. */
 export function ffmpegArgs({input,segments,duration,output}){
  const n=segments.length,parts=[`[0:a]asplit=${n}${segments.map((_,i)=>`[s${i}]`).join('')}`];
@@ -61,7 +74,8 @@ export function swapSrc(bundle,oldSrc,newSrc){
  return out;
 }
 
-function unfit(why){return Object.assign(Error('This change needs the full editor: '+why+'. Send it again and the video will be rebuilt with the new voice.'),{code:'VOICE_SWAP_UNFIT'});}
+function tooLong(why){return Object.assign(Error('The new voiceover is longer than the old one ('+why+'). Ask for shorter lines and it will fit.'),{code:'VOICE_SWAP_UNFIT',why});}
+function unfit(why){return Object.assign(Error('This change needs the full editor: '+why+'. Send it again and the video will be rebuilt with the new voice.'),{why,code:'VOICE_SWAP_UNFIT'});}
 
 const seconds=async(file,ffprobe)=>Number((await run(ffprobe,['-v','error','-show_entries','format=duration','-of','csv=p=0',file])).stdout.trim())||0;
 
@@ -75,7 +89,7 @@ export async function voiceSwap({project,bundle,swap,newVoice,listen,ffmpeg='ffm
  const oldStarts=alignScript(swap.old_lines,oldHeard?.words||[]).lineStarts,newAlign=alignScript(swap.new_lines,newHeard?.words||[]);
  const newStarts=newAlign.lineStarts,newEnds=newAlign.lineEnds;
  const [oldDuration,newDuration]=await Promise.all([seconds(oldFile,ffprobe),seconds(newFile,ffprobe)]);
- const segments=(swap.continuous?continuousPlan:plan)({oldStarts,newStarts,newEnds,oldDuration,newDuration});
+ const {segments,continuous}=fit({oldStarts,newStarts,newEnds,oldDuration,newDuration},swap);
  const name='voice-aligned.wav';
  await run(ffmpeg,ffmpegArgs({input:newFile,segments,duration:oldDuration,output:project+'/'+name}),{timeout:120000});
  const sha256=createHash('sha256').update(await readFile(project+'/'+name)).digest('hex');
@@ -84,5 +98,5 @@ export async function voiceSwap({project,bundle,swap,newVoice,listen,ffmpeg='ffm
  const sped=segments.filter(s=>s.tempo>1).length;
  return {bundle:next,derived:[{path:name,derivedFrom:newVoice,operation:'space',params:{aligned_to:swap.old_src,lines:segments.length,sped},sha256}],
   // One revision, checked by the render and the final checks that follow (there is no builder review to report).
-  state:{status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:swap.continuous?'I replaced the voice with one continuous read over the same stretch, so the picture and its timing are unchanged':'I replaced the voice and lined each line up with where the old one started, so the picture and its timing are unchanged'+(sped?` (${sped} line${sped>1?'s':''} slightly quicker to fit)`:'')+'.'}};
+  state:{status:'preview_ready',revision:1,checkedRevision:1,snapshotRevision:1,summary:continuous?'I replaced the voice with one continuous read over the same stretch, so the picture and its timing are unchanged':'I replaced the voice and lined each line up with where the old one started, so the picture and its timing are unchanged'+(sped?` (${sped} line${sped>1?'s':''} slightly quicker to fit)`:'')+'.'}};
 }

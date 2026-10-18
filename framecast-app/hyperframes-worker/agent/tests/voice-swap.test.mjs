@@ -58,3 +58,14 @@ test('a re-split voice is one continuous take over the old narration, sped up a 
  assert.ok(fast[0].tempo>1&&fast[0].tempo<=1.15);
  assert.throws(()=>continuousPlan({oldStarts:[0.3,2],newStarts:[0.2,5],newEnds:[4.8,19],oldDuration:12,newDuration:20}),/needs the full editor/);
 });
+
+test('a line that overruns its slot falls back to one continuous read; a free ad that still does not fit is told to shorten (2026-10-18)',async()=>{
+ const {fit}=await import('../voice-swap.mjs');
+ // Line 2 of 2 runs 4.4 s against a 3.85 s slot, but the whole read (6.4 s) fits the 11.6 s narration.
+ const timing={oldStarts:[0.3,6],newStarts:[0.3,2.1],newEnds:[1.9,6.5],oldDuration:10,newDuration:6.8};
+ const r=fit(timing,{});assert.equal(r.continuous,true);assert.equal(r.segments.length,1);
+ const tooLong={oldStarts:[0.3,6],newStarts:[0.3,2.1],newEnds:[1.9,13.5],oldDuration:10,newDuration:14};
+ assert.throws(()=>fit(tooLong,{free:true}),/longer than the old one .*Ask for shorter lines/);
+ assert.throws(()=>fit(tooLong,{}),/needs the full editor/);
+ assert.equal(fit({oldStarts:[0.3,4],newStarts:[0.3,4.2],newEnds:[3.5,7],oldDuration:10,newDuration:7.5},{}).continuous,false,'lines that fit stay line by line');
+});
