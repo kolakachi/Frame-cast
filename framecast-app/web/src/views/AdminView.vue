@@ -1662,6 +1662,12 @@ function navigate(view) {
 function money(v) {
   return `$${Number(v || 0).toFixed(2)}`;
 }
+// The day someone signed up, with the year ("Oct 12, 2026").
+function fmtJoined(v) {
+  if (!v) return "-";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(v));
+}
+
 function fmtDate(v) {
   if (!v) return "-";
   return new Intl.DateTimeFormat(undefined, {
@@ -2326,7 +2332,7 @@ onMounted(() => {
                 <thead>
                   <tr>
                     <th>User</th>
-                    <th>Plan</th>
+                    <th>Joined</th>
                     <th>Workspace</th>
                     <th>Projects</th>
                     <th>Exports</th>
@@ -2348,14 +2354,13 @@ onMounted(() => {
                         <div>
                           <div class="cell-name">{{ u.name || u.email }}</div>
                           <div class="cell-sub">{{ u.email }}</div>
+                          <span :class="['badge', 'user-plan', planBadgeClass(u.plan_tier)]">{{
+                            u.plan_tier || "-"
+                          }}</span>
                         </div>
                       </div>
                     </td>
-                    <td>
-                      <span :class="['badge', planBadgeClass(u.plan_tier)]">{{
-                        u.plan_tier || "-"
-                      }}</span>
-                    </td>
+                    <td class="cell-muted" :title="u.created_at">{{ fmtJoined(u.created_at) }}</td>
                     <td>
                       <div class="cell-name">{{ u.workspace_name || "-" }}<span v-if="u.workspace_id" class="ws-num">ws{{ u.workspace_id }}</span></div>
                       <div
@@ -7373,6 +7378,10 @@ tr:hover td {
 }
 .cell-name {
   font-weight: 600;
+}
+.user-plan {
+  margin-top: 4px;
+  display: inline-block;
 }
 .ws-num {
   margin-left: 6px;
