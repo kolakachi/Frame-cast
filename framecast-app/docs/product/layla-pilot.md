@@ -62,3 +62,7 @@ owner's yes.
 |---|---|
 | Approve the three scripts (or change any line) | ? |
 | Approve about 1,500–2,500 credits (about $9–15 real cost) | ? |
+
+## Result (2026-10-18)
+
+Made on prod (staff workspace): videos 2 and 3 on Omni held Layla's face and cut in the demo; video 1 on Seedance drifted (a different-looking woman) and skipped the demo, so it was remade on Omni (face right, demo skipped again by the shot planner) and the food ad was cut in by hand. Credits: 3,161 (759, 846, 914, plus the 642 redo). Real cost: $25.28, about $5 over the approved estimate because of the discarded first take and Omni's higher cost per video. Files for the marketer: `~/Desktop/layla-pilot/`. Lines not machine-checked: listen for "weave studio" and the exact wording before posting. No burned-in captions: add them in the posting app.
