@@ -85,3 +85,11 @@ food (Saffron Street; the dish photo generated, one nano-banana call). Sample br
 - Spend: about 3,100 credits charged in all (8 builds, 6 fixes, planning), $11–14 of real model and media cost.
 - Audit tuning from these builds: letter-spaced text is words; per-letter wrappers are climbed; cut-out photos don't
   cover text; overflow needs three samples in a row (entrances pass through a box edge faster).
+
+## The second batch (2026-10-18)
+
+Owner: new templates instead of repairing the near-clean ones (those stay paid-only). Eight more kinds: skincare steps,
+book or course launch, before and after, gift guide, new colour with sizes, only a few left, pop-up or event, how it
+works. With the audit inside the builder's check, 7 of 8 passed on the first build; the event's long type ran off the
+frame and passed after one fix. Six sample photos generated (nano-banana). About 2,000 credits. The whiteboard and
+"Describe it." templates left the free list (both broke on longer text): 16 free templates on prod.

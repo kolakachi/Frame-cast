@@ -28,9 +28,10 @@ template id in `utm_content` too, so the scoreboard shows which templates bring 
 
 `https://app.wyvstudio.com/register?free=1&template=txy6gnhc6k&utm_source=tiktok&utm_medium=social&utm_campaign=cmo-oct&utm_content=txy6gnhc6k`
 
-The ten free templates (2026-10-17): tm4y46f991 new drop, tqfeux4cjm sale countdown, tchfvlldst three reasons,
+The 16 free templates (2026-10-18): tm4y46f991 new drop, tqfeux4cjm sale countdown, tchfvlldst three reasons,
 taftdexczo problem then fix, t43ec0ghtj review card, tsalojjvj9 app on a phone, trn2ci5jiw local shop, txy6gnhc6k
-food, tbdvabrrxr whiteboard explainer, lbaf5605f "Describe it." promo.
+food, th3pa7yw2x skincare steps, tj15ai516t book or course launch, toxypsg7kv before and after, tugrgz32id gift guide,
+tyoqsjdk9h new colour with sizes, traodenqdu only a few left, ttikrpxqju pop-up or event, tx6w9hlt8t how it works.
 
 Arrivals from a listing site with no tags (g2.com, alternativeto.net, producthunt.com and others) are counted as a
 listing by their referring site.
