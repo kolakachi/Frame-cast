@@ -2271,6 +2271,32 @@ class CreateIntegrationTest extends TestCase
         $this->withToken(str_repeat('a', 64))->postJson($url, $payload)->assertStatus(409);
     }
 
+    public function test_suspended_accounts_have_their_own_admin_page_and_are_not_counted_among_users(): void
+    {
+        // Owner, 2026-10-18: suspended accounts (the person or their workspace) are listed apart and not counted.
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $this->owner->forceFill(['role' => 'super_admin'])->save();
+        // The admin pages also read spend, projects and exports; this test schema has none of them.
+        $stub = fn ($name, $columns) => \Illuminate\Support\Facades\Schema::hasTable($name) ?: \Illuminate\Support\Facades\Schema::create($name, $columns);
+        $stub('api_usage_events', function ($t) { $t->id(); $t->unsignedBigInteger('workspace_id')->nullable(); $t->string('provider')->nullable(); $t->decimal('estimated_cost_usd', 12, 6)->default(0); $t->timestamp('occurred_at')->nullable(); $t->timestamps(); });
+        $stub('projects', function ($t) { $t->id(); $t->unsignedBigInteger('workspace_id')->nullable(); $t->timestamps(); });
+        $stub('export_jobs', function ($t) { $t->id(); $t->unsignedBigInteger('project_id')->nullable(); $t->string('status')->nullable(); $t->timestamp('completed_at')->nullable(); $t->timestamp('queued_at')->nullable(); $t->timestamps(); });
+        $ws = fn ($status) => Workspace::create(['name' => 'W '.$status, 'plan_tier' => 'creator', 'plan_status' => 'active', 'status' => $status]);
+        $active = User::create(['email' => 'on@example.test', 'name' => 'On', 'role' => 'owner', 'status' => 'active', 'workspace_id' => $ws('active')->id]);
+        $userOff = User::create(['email' => 'off@example.test', 'name' => 'Off', 'role' => 'owner', 'status' => 'suspended', 'workspace_id' => $ws('active')->id]);
+        $wsOff = User::create(['email' => 'wsoff@example.test', 'name' => 'WsOff', 'role' => 'owner', 'status' => 'active', 'workspace_id' => $ws('suspended')->id]);
+        $emails = fn ($q) => collect($this->actingAs($this->owner)->getJson('/api/v1/admin/users'.$q)->assertOk()->json('data.users'))->pluck('email')->all();
+        $all = $emails('');
+        $this->assertContains('on@example.test', $all);
+        $this->assertNotContains('off@example.test', $all);
+        $this->assertNotContains('wsoff@example.test', $all);
+        $this->assertEqualsCanonicalizing(['off@example.test', 'wsoff@example.test'], $emails('?status=suspended'));
+        $this->assertNotContains('wsoff@example.test', $emails('?status=active'), 'an active person in a suspended workspace is suspended');
+        $summary = $this->actingAs($this->owner)->getJson('/api/v1/admin/overview')->assertOk()->json('data.summary');
+        $this->assertSame(2, $summary['suspended_users']);
+        $this->assertSame(User::whereNotIn('role', array_keys(User::CLIENT_SEATS))->count() - 2, $summary['total_users']);
+    }
+
     public function test_trajectory_view_is_admin_only_and_legacy_runs_report_missing_tool_history(): void
     {
         [$c, , $run] = $this->admitted();

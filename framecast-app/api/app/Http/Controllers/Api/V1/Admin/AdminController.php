@@ -31,8 +31,9 @@ class AdminController extends Controller
         return response()->json([
             'data' => [
                 'summary' => [
-                    'total_users' => User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS))->count(),
-                    'active_users' => User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS))->where('status', 'active')->count(),
+                    'total_users' => self::customers()->where('status', '!=', 'suspended')->whereDoesntHave('workspace', fn ($w) => $w->where('status', 'suspended'))->count(),
+                    'suspended_users' => self::customers()->where(fn ($q) => $q->where('status', 'suspended')->orWhereHas('workspace', fn ($w) => $w->where('status', 'suspended')))->count(),
+                    'active_users' => self::customers()->where('status', 'active')->whereDoesntHave('workspace', fn ($w) => $w->where('status', 'suspended'))->count(),
                     'total_workspaces' => Workspace::query()->whereNull('parent_workspace_id')->count(),
                     'total_projects' => Project::query()->count(),
                     'exports_today' => ExportJob::query()->where('status', 'completed')->whereDate('completed_at', today())->count(),
@@ -48,6 +49,12 @@ class AdminController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    /** Our customers: everyone but client seats (people an agency invited into its own client workspace). */
+    private static function customers()
+    {
+        return User::query()->whereNotIn('role', array_keys(User::CLIENT_SEATS));
     }
 
     public function users(Request $request): JsonResponse
@@ -97,7 +104,12 @@ class AdminController extends Controller
                       ->orWhere('email', 'like', "%{$s}%");
                 });
             })
-            ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
+            // Suspended accounts (the person or their workspace) have their own page and are left out of the users
+            // list and its count (owner, 2026-10-18).
+            ->when(($validated['status'] ?? null) === 'suspended',
+                fn ($q) => $q->where(fn ($q) => $q->where('status', 'suspended')->orWhereHas('workspace', fn ($w) => $w->where('status', 'suspended'))),
+                fn ($q) => $q->where('status', '!=', 'suspended')->whereDoesntHave('workspace', fn ($w) => $w->where('status', 'suspended'))
+                    ->when($validated['status'] ?? null, fn ($q, $s) => $q->where('status', $s)))
             ->when($validated['plan'] ?? null, fn ($q, $p) => $q->whereHas('workspace', fn ($q) => $q->where('plan_tier', $p)))
             ->orderByDesc('id');
 

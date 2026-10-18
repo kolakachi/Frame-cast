@@ -835,7 +835,7 @@ async function loadUsers() {
     const res = await api.get("/admin/users", {
       params: {
         search: usersSearch.value || undefined,
-        status: usersStatus.value || undefined,
+        status: activeView.value === "suspended" ? "suspended" : usersStatus.value || undefined,
         plan: usersPlan.value || undefined,
         page: usersPage.value,
         per_page: usersPerPage.value,
@@ -1634,7 +1634,10 @@ function navigate(view) {
     loadDashboard();
     loadSpendChart();
   }
-  if (view === "users") loadUsers();
+  if (view === "users" || view === "suspended") {
+    usersPage.value = 1;
+    loadUsers();
+  }
   if (view === "affiliates") loadAffiliates();
   if (view === "workspaces") loadWorkspaces();
   if (view === "client-workspaces") loadClientWorkspaces();
@@ -1753,6 +1756,21 @@ onMounted(() => {
             />
           </svg>
           Users
+        </button>
+        <!-- Suspended accounts have their own page and are not counted among users (owner, 2026-10-18). -->
+        <button
+          :class="['nav-item', activeView === 'suspended' ? 'active' : '']"
+          @click="navigate('suspended')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M18.364 5.636l-12.728 12.728M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          Suspended
         </button>
         <button
           :class="['nav-item', activeView === 'workspaces' ? 'active' : '']"
@@ -2057,7 +2075,7 @@ onMounted(() => {
                   {{ dashData.summary?.total_users ?? 0 }}
                 </div>
                 <div class="metric-sub">
-                  {{ dashData.summary?.active_users ?? 0 }} active
+                  {{ dashData.summary?.active_users ?? 0 }} active<template v-if="dashData.summary?.suspended_users"> · {{ dashData.summary.suspended_users }} suspended (not counted)</template>
                 </div>
               </div>
               <div class="metric-card blue">
@@ -2264,13 +2282,13 @@ onMounted(() => {
         </template>
 
         <!-- ═══ USERS ═══ -->
-        <template v-if="activeView === 'users'">
+        <template v-if="activeView === 'users' || activeView === 'suspended'">
           <div class="section">
             <div class="section-header">
-              <div class="section-title">All Users</div>
+              <div class="section-title">{{ activeView === 'suspended' ? 'Suspended accounts' : 'All Users' }}</div>
               <div class="section-actions">
                 <span class="meta-count"
-                  >{{ usersPagination.total ?? 0 }} users</span
+                  >{{ usersPagination.total ?? 0 }} {{ activeView === 'suspended' ? 'suspended' : 'users' }}</span
                 >
               </div>
             </div>
@@ -2282,6 +2300,7 @@ onMounted(() => {
                 @input="usersFilter"
               />
               <select
+                v-if="activeView === 'users'"
                 v-model="usersStatus"
                 class="filter-select"
                 @change="usersFilter"
@@ -2289,7 +2308,6 @@ onMounted(() => {
                 <option value="">All Status</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
-                <option value="suspended">Suspended</option>
               </select>
               <select
                 v-model="usersPlan"
