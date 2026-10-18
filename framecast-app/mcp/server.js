@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.11.0'
+const VERSION = process.env.MCP_VERSION || '1.12.0'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -34,7 +34,8 @@ const VERSION = process.env.MCP_VERSION || '1.11.0'
 // user's environment. Anything the user can see afterwards in WyvStudio
 // (a video, an asset, a character, an assistant conversation, a post) is a
 // write. destructiveHint marks what cannot be undone: cancelling an operation,
-// posting to a social account, and overwriting a character (no history).
+// posting to a social account, overwriting a character (no history), and a character
+// image that can replace the character's reference photo.
 // openWorldHint marks tools that reach outside WyvStudio for the user: a public
 // share link, a social post, or fetching a web page the user names (a product
 // link or a URL source). WyvStudio's own AI providers are not open world.
@@ -78,6 +79,36 @@ Undo
 
 Publishing
 - publish_video posts Classic exports. For a Create video, give the user its app_url to publish from WyvStudio, or weave_share for a watch link.
+`
+
+// The ChatGPT directory app connects to /mcp/app (owner, 2026-10-18, after OpenAI's review). It leaves out the tools
+// that run a list of operations behind one call (the Classic scene editor's proposals and the in-app assistant's
+// plans): the directory wants every action as its own tool. /mcp keeps the full set for custom connectors and Claude.
+const APP_EXCLUDED = new Set(['get_project_schema', 'propose_edits', 'apply_edits', 'ask_wyvstudio_assistant', 'apply_assistant_plan'])
+
+// Scoped to what the user asks WyvStudio for; no broad triggers (OpenAI's review asked for the instructions again).
+const APP_INSTRUCTIONS = `WyvStudio makes short branded videos and video ads in the user's own WyvStudio workspace.
+
+When the user asks WyvStudio to make a video
+- Use weave_start to plan it, weave_status to follow it, and weave_approve to show the price and, after the user agrees, build it.
+- If the user asks for WyvStudio Classic or a scene-by-scene video, use estimate_video, then create_video after the user agrees.
+- For a UGC-style ad with a presenter on camera, use ugc_brief, ugc_reply to answer its question or ask for changes, ugc_make after the user agrees, then ugc_status.
+- To start from an example, list them with weave_templates (share each watch_url), then weave_from_template.
+- To change a Create video, use weave_reply. Classic videos are edited in the WyvStudio app: give the user the video's app link.
+
+Approval
+- Call get_capabilities first to see the plan and balance.
+- weave_start and weave_from_template begin planning, which uses a few credits: tell the user before calling them.
+- Show every price and wait for the user's explicit yes before any step that spends credits. Never approve on the user's behalf.
+- Before a UGC video that uses a real person's likeness or voice, ask the user to confirm they have the rights.
+- If the balance is not enough, explain the options returned (a shorter or simpler video, or adding credits) and let the user choose.
+
+Timing
+- Planning takes a minute or two; a Create video usually takes 10 to 20 minutes and a Classic stock-footage video about 2 minutes. Check status every minute or two, and share the preview or result link when it is ready.
+
+Sharing and publishing
+- weave_share or share_video turns a public watch link on or off.
+- publish_video posts a Classic export only after the user confirms the account, caption and time. For a Create video, give the user its app_url to publish from WyvStudio.
 `
 
 // ── Developer API client ───────────────────────────────────────────────────
@@ -238,8 +269,10 @@ const VISUAL_MODES = ['stock', 'ai_images', 'ai_video', 'waveform']
 const ANIMATE_TIERS = ['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25']
 const ASPECT_RATIOS = ['9:16', '1:1', '16:9']
 
-function buildServer(token) {
-  const server = new McpServer({ name: 'wyvstudio', version: VERSION }, { instructions: INSTRUCTIONS })
+function buildServer(token, profile = 'full') {
+  const server = new McpServer({ name: 'wyvstudio', version: VERSION }, { instructions: profile === 'app' ? APP_INSTRUCTIONS : INSTRUCTIONS })
+  // The directory app's endpoint registers every tool except APP_EXCLUDED.
+  if (profile === 'app') { const register = server.registerTool.bind(server); server.registerTool = (name, ...rest) => (APP_EXCLUDED.has(name) ? undefined : register(name, ...rest)) }
 
   server.registerTool(
     'get_capabilities',
@@ -445,7 +478,7 @@ function buildServer(token) {
       title: 'Generate the quoted character image',
       description: 'SPENDS CREDITS (the quote\'s amount). Only after the user agreed. Returns a generation id; poll get_character_image every 10 seconds.',
       inputSchema: z.object({ character_id: z.number().int(), quote_id: z.string(), idempotency_key: z.string().max(128).optional() }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ character_id, quote_id, idempotency_key }) => call(token, 'POST', `/characters/${character_id}/images`, { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_character_image'),
   )
@@ -1009,17 +1042,21 @@ function buildServer(token) {
   return server
 }
 
-const handler = createMcpHandler((ctx) => {
+const handlerFor = (profile) => createMcpHandler((ctx) => {
   const token = ctx.authInfo?.token
   if (!token) throw new OAuthError(OAuthErrorCode.InvalidToken, 'Missing bearer token.')
-  return buildServer(token)
+  return buildServer(token, profile)
 })
+const handler = handlerFor('full')
+const appHandler = handlerFor('app')
 
 // ── HTTP ───────────────────────────────────────────────────────────────────
 
 // createMcpExpressApp already parses JSON bodies and validates Host/Origin.
 const app = createMcpExpressApp({ host: '0.0.0.0', allowedHosts: ALLOWED_HOSTS, jsonLimit: '12mb' })
 const node = toNodeHandler(handler)
+const appNode = toNodeHandler(appHandler)
+const APP_PUBLIC_URL = MCP_PUBLIC_URL ? MCP_PUBLIC_URL.replace(/\/$/, '') + '/app' : ''
 
 const oauth = Boolean(OAUTH_ISSUER && MCP_PUBLIC_URL)
 if (oauth) {
@@ -1038,9 +1075,9 @@ if (oauth) {
     token_endpoint_auth_methods_supported: ['none'],
     scopes_supported: ['videos'],
   }
-  app.use(mcpAuthMetadataRouter({
+  for (const url of [MCP_PUBLIC_URL, APP_PUBLIC_URL]) app.use(mcpAuthMetadataRouter({
     oauthMetadata,
-    resourceServerUrl: new URL(MCP_PUBLIC_URL),
+    resourceServerUrl: new URL(url),
     scopesSupported: ['videos'],
     resourceName: 'WyvStudio',
     dangerouslyAllowInsecureIssuerUrl: OAUTH_ISSUER.startsWith('http://'),
@@ -1050,8 +1087,21 @@ const auth = requireBearerAuth({
   verifier,
   ...(oauth ? { resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL(MCP_PUBLIC_URL)) } : {}),
 })
+const appAuth = requireBearerAuth({
+  verifier,
+  ...(oauth ? { resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL(APP_PUBLIC_URL)) } : {}),
+})
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, api: API_BASE_URL }))
+const logConnect = (req, endpoint) => {
+  const method = req.body?.method
+  if (method && !String(method).startsWith('notifications/') && method !== 'tools/call') {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || ''
+    const caller = token ? createHash('sha256').update(token).digest('hex').slice(0, 12) : 'anon'
+    console.log(JSON.stringify({ ts: new Date().toISOString(), rpc: method, endpoint, caller, kind: token.startsWith('wyv_oat_') ? 'oauth' : 'key' }))
+  }
+}
+app.all('/mcp/app', appAuth, (req, res) => { logConnect(req, 'app'); void appNode(req, res, req.body) })
 app.all('/mcp', auth, (req, res) => {
   // The handshake and listing are not tool calls, so logCall never sees
   // them; one line here shows what a client did on connect (initialize,

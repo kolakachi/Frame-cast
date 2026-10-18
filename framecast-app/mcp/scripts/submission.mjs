@@ -20,6 +20,7 @@ for (const t of scan) {
   for (const k of KEYS) if (typeof why[k] !== 'string' || !why[k].trim()) problems.push(`${t.name}: ${k} is empty`)
   tools[t.name] = { annotations: Object.fromEntries(HINTS.map(h => [h, t.annotations?.[h]])), justifications: Object.fromEntries(KEYS.map(k => [k, why[k]])) }
 }
-for (const name of Object.keys(reasons)) if (!scan.some(t => t.name === name)) problems.push(`${name}: justification for a tool the server does not list`)
+// The directory endpoint (/mcp/app) lists fewer tools than /mcp; extra justifications are only noted.
+for (const name of Object.keys(reasons)) if (!scan.some(t => t.name === name)) console.error(`note: ${name} is not listed by this endpoint`)
 if (problems.length) { console.error(problems.join('\n')); process.exit(1) }
 process.stdout.write(JSON.stringify({ ...base, tools }, null, 2) + '\n')

@@ -222,7 +222,7 @@
  "create_character_image": {
   "read_only_justification": "Generates a character image the user approved and adds it to their workspace, spending the quoted credits.",
   "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
-  "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+  "destructive_justification": "Marked destructive because, when used to edit a character's reference photo, it replaces the photo the character uses from then on; the old photo stays in the library but is no longer the character's reference."
  },
  "create_presenter_preview": {
   "read_only_justification": "Generates a presenter preview image the user approved and adds it to their library, spending the quoted credits.",
