@@ -132,6 +132,7 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item |
 |---|---|
+| HOOK-PACK | UGC hook pack (owner, 2026-10-18; after Jason Zhou's AI UGC guide): one demo plus 5–10 short presenter hooks to A/B test. Only the hook (5–8 s) is generated with the presenter; the demo uses the seller's product photos, footage or a screen recording with our voice and captions, made once and reused for every hook; one-call talking video where the model speaks natively (no separate lip-sync when not needed); our checks and captions on each. Priced per hook. Aim: a UGC variant from about $3 of our cost to about $1. Plan first (owner approves scope and price). At the Nov 1 review |
 | TPL-PAGES | Public template pages on wyvstudio.com: 39 indexable, shareable pages (video, description, "Make this for your product"). At the Nov 1 review (`cmo-plan.md` §5 keeps template pages out until then; owner 2026-10-17) |
 | SHARE-TPL | Share pages' "Make a video like this" opens the template behind the video (or the closest one). At the Nov 1 review |
 | CHECKOUT-SAVE | A follow-up when someone leaves checkout ("your $9 pass is still waiting", or a small offer); once traffic comes |
