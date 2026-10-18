@@ -50,7 +50,8 @@ class CharacterSketch
             if (! is_string($png) || $png === '') return null;
             $path = sprintf('characters/%d/sketch-%s.png', $character->getKey(), Str::uuid());
             $asset = Asset::query()->create([
-                'workspace_id' => $character->workspace_id,
+                // Kept with the photo it was drawn from: a stock presenter has no workspace, its photo does (assets need one).
+                'workspace_id' => $photo->workspace_id ?? $character->workspace_id,
                 'asset_type' => 'image',
                 'title' => mb_substr($character->name.' — pencil character sheet', 0, 255),
                 'storage_url' => $this->storage->put($path, $png, ['ContentType' => 'image/png']),

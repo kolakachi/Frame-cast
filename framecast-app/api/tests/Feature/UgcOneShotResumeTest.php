@@ -455,6 +455,7 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame(['data:sheet-101', 'data:sheet-152', 'product-a', 'place'], $this->refs[0], 'the sheets first, then the product and the place');
         $this->assertStringStartsWith('Cast: Reference images 1 to 2 are pencil character sheets of @Layla (image 1), @GraceKim (image 2).', $this->sentPrompts[0]);
         $this->assertStringContainsString('never the paper, the pencil style', $this->sentPrompts[0]);
+        $this->assertSame(['used' => [101, 152], 'missing' => []], $this->settings()['sketches']);
     }
 
     public function test_a_presenter_seedance_declines_is_not_reworded_and_the_take_says_why(): void

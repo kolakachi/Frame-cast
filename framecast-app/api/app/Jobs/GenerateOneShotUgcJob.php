@@ -160,7 +160,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // The cast's pencil sheets lead the references, each made once per character (a minute the first time).
             $sketchNames = [];
             if ($this->sketches !== [] && $this->engine === 'seedance25') {
-                [$sheets, $sketchNames] = $this->sketchSheets();
+                [$sheets, $sketchNames] = $this->sketchSheets($scene);
                 $this->refs = array_merge($sheets, $this->refs);
             }
             if ($this->checkFace && $this->referenceImages !== []) $this->faceRef = $this->faceClose($project);
@@ -1023,9 +1023,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
      *
      * @return array{0: list<string>, 1: list<string>}
      */
-    private function sketchSheets(): array
+    private function sketchSheets(Scene $scene): array
     {
-        $sheets = []; $names = [];
+        $sheets = []; $names = []; $missing = [];
         foreach ($this->sketches as $characterId) {
             $character = \App\Models\Character::query()->find($characterId);
             try {
@@ -1034,10 +1034,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 \Illuminate\Support\Facades\Log::warning('one-shot: no pencil sheet, the presenter goes as words', ['project_id' => $this->projectId, 'character_id' => $characterId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
                 $uri = null;
             }
-            if ($uri === null) continue;
+            if ($uri === null) { $missing[] = $characterId; continue; }
             $sheets[] = $uri;
             $names[] = (string) $character->name;
         }
+        // On the take's record, so a presenter who went as words is seen (2026-10-19: two canaries did, unnoticed).
+        $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
+            ['sketches' => ['used' => array_values(array_diff($this->sketches, $missing)), 'missing' => $missing]])])->save();
         return [$sheets, $names];
     }
 
