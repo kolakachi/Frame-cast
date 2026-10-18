@@ -471,7 +471,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'estimate_character_reference_edit',
     {
-      title: 'Estimate an edit to a character\'s reference photo (free)',
+      title: 'Estimate an edit to a character\'s reference photo',
       description: 'Price an AI edit of the character\'s uploaded reference photo: same person, pose and framing, changed only as instructed (outfit, background, hair, expression, product in hand). The result becomes the new reference photo unless set_as_reference is false. Returns a quote_id (10 minutes); generate it with create_character_image and poll get_character_image. Refuses with no_reference when the character has no photo yet.',
       inputSchema: z.object({
         character_id: z.number().int(),
@@ -765,7 +765,7 @@ function buildServer(token, profile = 'full') {
   server.registerTool(
     'ask_wyvstudio_assistant',
     {
-      title: 'Ask WyvStudio\'s assistant to plan an edit (free)',
+      title: 'Ask WyvStudio\'s assistant to plan an edit',
       description: 'For broad or vague edit requests ("make this more energetic", "tighten the middle", "give it a warmer voice"), hand the request to WyvStudio\'s in-app assistant. It knows the editor\'s tools and returns a plan: concrete actions with what each changes and its credits, plus a plan_id (10 minutes). Nothing is applied. Show the user the actions and total, then apply_assistant_plan if they agree. For precise, known changes prefer propose_edits.',
       inputSchema: z.object({
         video_id: z.number().int(),
