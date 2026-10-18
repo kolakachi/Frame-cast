@@ -2362,15 +2362,10 @@ onMounted(() => {
                     </td>
                     <td class="cell-muted" :title="u.created_at">{{ fmtJoined(u.created_at) }}</td>
                     <td>
-                      <div class="cell-name">{{ u.workspace_name || "-" }}<span v-if="u.workspace_id" class="ws-num">ws{{ u.workspace_id }}</span></div>
-                      <div
-                        v-if="u.workspace_status"
-                        :class="[
-                          'cell-sub',
-                          u.workspace_status !== 'active' ? 'text-red' : '',
-                        ]"
-                      >
-                        {{ u.workspace_status }}
+                      <div class="cell-name">{{ u.workspace_name || "-" }}</div>
+                      <div v-if="u.workspace_id" class="cell-sub">
+                        id:<span class="ws-id">{{ u.workspace_id }}</span>
+                        <template v-if="u.workspace_status"> · status:<span :class="u.workspace_status !== 'active' ? 'text-red' : ''">{{ u.workspace_status }}</span></template>
                       </div>
                     </td>
                     <td>{{ u.projects }}</td>
@@ -7382,6 +7377,9 @@ tr:hover td {
 .user-plan {
   margin-top: 4px;
   display: inline-block;
+}
+.ws-id {
+  user-select: all;
 }
 .ws-num {
   margin-left: 6px;
