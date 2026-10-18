@@ -119,3 +119,8 @@ Seedance accepts faces on BytePlus ModelArk directly (not via OpenRouter/Replica
 account, for 30 days; (3) **real-person assets** after the person's consent and verification (real-human or enterprise
 authentication). fal hosts Seedance 2.0 reference-to-video (up to 9 images, 3 audio) and says faces need "a separate
 approval process". Sources: docs.byteplus.com/en/docs/ModelArk/2608626, /2315856; seedrouter.ai; sume.com; fal.ai/seedance-2.0.
+
+**Stylised references (owner's research, 2026-10-18):** Seedance 2.5 accepted a 3D animated Layla and a grayscale pencil
+character sheet, refused a realistic oil-painting sheet ("may contain real person"). From the 3D image the clip stayed
+half-animated; from the pencil sheet it came out photoreal with her hair, brows and hoodie, but a different, thinner face
+with lighter skin: a resemblance, not Layla. Seedance also put the drawings and a phone screen into the scene.
