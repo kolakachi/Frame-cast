@@ -89,3 +89,18 @@ both OpenRouter (3 clips) and our Replicate route (1 clip), which refused her gl
 refusal tracked the photo, not the route. Before re-opening Veo Fast for presenters (fix f6dbabba blocks it), test more
 faces. Both Veo models add a second mug when the prompt says "sips her coffee" and the still already shows one: name the
 single mug in the prompt. Veo ends each clip with a short fade; trim about 0.4 s.
+
+## Description benchmark (2026-10-18, owner)
+
+Presenter description only: the production `CharacterAppearanceService` prompt on one close-up of Layla, two reads each by
+Opus 5.5 (current, Anthropic direct), Gemini 4 Argon and GPT-6.1 Sol (OpenRouter); each read drawn back into a face by
+gpt-image-2 from the text alone and scored by `UgcFaceCheck` (Haiku 4.5) against the close-up, twice.
+
+| | Read time | Cost per read | Face score (4 checks) |
+|---|---|---|---|
+| Opus 5.5 | 7 s | about $0.02 | 92, 92, 92, 88 |
+| Gemini 4 Argon | 11–12 s | about $0.006 | 92, 85, 92, 92 |
+| GPT-6.1 Sol | 12–14 s | about $0.004 | 92, 85, 92, 85 |
+
+No winner: the scores sit at the checker's ceiling, and by eye every drawn face is a close relative, not Layla. Words
+alone don't carry identity; a photo (first frame or reference) does. Files: `~/Desktop/layla-pilot/description-bench/`.
