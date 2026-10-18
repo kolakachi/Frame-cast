@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "app-6ab7894617f48191bfb94aa1fb02dbec",
-  "version": "1.1.0",
-  "description": "Make branded short videos and video ads from a chat: planned, priced and checked before anything is spent.",
+  "name": "wyvstudio",
+  "version": "1.1.1",
+  "description": "Make short marketing videos and video ads for your business from a chat.",
   "author": {
     "name": "KOLAWOLE ONYEKACHI LAWAL",
     "url": "https://wyvstudio.com"
@@ -13,9 +13,9 @@
       "interface": {
         "displayName": "WyvStudio",
         "shortDescription": "Branded video without a shoot",
-        "longDescription": "WyvStudio makes short branded videos and video ads without a shoot. Describe what you want, paste a product link, or start from a ready-made template, and WyvStudio's Creative Director plans the video in your brand: concept, scenes, script, voice and music. It also makes UGC-style ads with AI presenters or your own consented characters.\n\nConnected to ChatGPT, the assistant can plan a video, show you the price, build it after you approve, change it with you version by version, share a watch link, and, after you confirm the exact post, publish to a connected YouTube, TikTok, Instagram or Facebook account.\n\nSpending is never a surprise. Planning costs a few credits and the assistant says so first; anything more is priced before it runs and only starts after you approve that specific price. The same plan limits, credits and consent rules as the app apply.",
+        "longDescription": "WyvStudio makes short marketing videos and video ads for your business, without a camera or a shoot. Describe the video you want, paste a link to your product, or start from a ready-made ad template, and WyvStudio's Creative Director plans it in your brand: the concept, scenes, script, voiceover and music. It can also make UGC-style ads with AI presenters or with characters you have permission to use.\n\nIn ChatGPT, the assistant plans a video with you, shows you the plan, builds it once you approve, and changes it with you version by version. It can share a watch link and, after you confirm the exact post, publish to a YouTube, TikTok, Instagram or Facebook account you have connected.\n\nYou stay in control: you see the plan before anything is made, nothing is built until you approve it, and nothing is posted until you confirm it.",
         "developerName": "KOLAWOLE ONYEKACHI LAWAL",
-        "category": "Productivity",
+        "category": "Design",
         "capabilities": [
           "Plan and make videos",
           "Edit videos",
