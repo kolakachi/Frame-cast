@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "wyvstudio": {
+      "type": "streamable-http",
+      "url": "https://app.wyvstudio.com/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": { "mode": "dcr" },
+            "registrationUrl": "https://app.wyvstudio.com/api/v1/oauth/register",
+            "authorizationUrl": "https://app.wyvstudio.com/oauth/authorize",
+            "tokenUrl": "https://app.wyvstudio.com/api/v1/oauth/token",
+            "baseScopes": ["videos"]
+          }
+        }
+      }
+    }
+  }
+}

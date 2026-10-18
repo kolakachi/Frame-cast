@@ -6,6 +6,13 @@ marked **[owner]** need a decision or an asset only the owner can supply.
 Section 0 gives the portal steps; sections 1–7 hold the values for each
 portal tab.
 
+> **2026-10-18: the portal changed to Plugins.** A plugin is now a ZIP (Agent Plugins layout): `plugin.json` (listing,
+> starter prompts, test cases under `extensions.com.openai.review`), `mcp.json` (server URL and OAuth with dynamic client
+> registration) and `assets/`. Source: `mcp/plugin/`; build with
+> `cd mcp/plugin && zip -qr -X wyvstudio-plugin-<version>.zip plugin.json mcp.json assets`. Tool annotations are not in
+> the ZIP: the portal scans them from the live server (**Rescan**), so fix them in `mcp/server.js`. Raise `version` in
+> `plugin.json` for every upload. Reviewer credentials go in the portal's Review details, never in the ZIP.
+
 ## 0. How to submit (OpenAI's plugin submission portal)
 
 Source: developers.openai.com/plugins/deploy/submission and the app
