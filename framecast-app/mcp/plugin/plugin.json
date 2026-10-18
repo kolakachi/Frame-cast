@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "wyvstudio",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Make short marketing videos and video ads for your business from a chat.",
   "author": {
     "name": "KOLAWOLE ONYEKACHI LAWAL",
@@ -15,7 +15,7 @@
         "shortDescription": "Branded video without a shoot",
         "longDescription": "WyvStudio makes short marketing videos and video ads for your business, without a camera or a shoot. Describe the video you want, paste a link to your product, or start from a ready-made ad template, and WyvStudio's Creative Director plans it in your brand: the concept, scenes, script, voiceover and music. It can also make UGC-style ads with AI presenters or with characters you have permission to use.\n\nIn ChatGPT, the assistant plans a video with you, shows you the plan, builds it once you approve, and changes it with you version by version. It can share a watch link and, after you confirm the exact post, publish to a YouTube, TikTok, Instagram or Facebook account you have connected.\n\nYou stay in control: you see the plan before anything is made, nothing is built until you approve it, and nothing is posted until you confirm it.",
         "developerName": "KOLAWOLE ONYEKACHI LAWAL",
-        "category": "Design",
+        "category": "Creativity",
         "capabilities": [
           "Plan and make videos",
           "Edit videos",
