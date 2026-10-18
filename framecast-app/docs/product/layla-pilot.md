@@ -104,3 +104,10 @@ gpt-image-2 from the text alone and scored by `UgcFaceCheck` (Haiku 4.5) against
 
 No winner: the scores sit at the checker's ceiling, and by eye every drawn face is a close relative, not Layla. Words
 alone don't carry identity; a photo (first frame or reference) does. Files: `~/Desktop/layla-pilot/description-bench/`.
+
+**Seedance (2026-10-18):** OpenRouter's Seedance refuses every image of Layla that shows her face as "may contain real
+person" (InputImageSensitiveContentDetected.PrivacyInformation): the natural still as first frame (2.5), and a Vessero-style
+three-panel character sheet as reference (2.0 and 2.5). Refusals are free. With her face pixelated (reference) or no image,
+plus her written description, it renders the setting, outfit and hair but a different woman's face, and it does not keep our
+voice track (its audio rhythm doesn't match the reference audio). Vessero shows AI actors on Seedance 2.0 from character
+sheets, so they likely use another provider or an authorised-likeness route; unknown.
