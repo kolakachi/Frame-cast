@@ -30,7 +30,43 @@ class CharacterSketch
     {
         $bytes = $this->bytes($character);
 
-        return $bytes !== null ? 'data:image/png;base64,'.base64_encode($bytes) : null;
+        return $bytes !== null ? 'data:'.self::mime($bytes).';base64,'.base64_encode($bytes) : null;
+    }
+
+    /** The current sheet's file as it is stored, for admin: [bytes, row], or null when there is none for the current photo. */
+    public function current(Character $character): ?array
+    {
+        $row = $this->row($character);
+        $bytes = $row ? $this->storage->get((string) $row->storage_url) : null;
+
+        return is_string($bytes) && $bytes !== '' ? [$bytes, $row] : null;
+    }
+
+    /** Draw the sheet again from the current photo (admin's Remake), replacing the one in use. */
+    public function remake(Character $character, ?int $userId = null): ?string
+    {
+        DB::table('character_sketches')->where('character_id', $character->getKey())->where('from_asset_id', (int) $character->reference_asset_id)->delete();
+        $uri = $this->uri($character);
+        if ($uri !== null && $userId !== null) {
+            DB::table('character_sketches')->where('character_id', $character->getKey())->where('from_asset_id', (int) $character->reference_asset_id)->update(['made_by_user_id' => $userId]);
+        }
+
+        return $uri;
+    }
+
+    /** A sheet admin uploaded in place of the drawn one, for the character's current photo. */
+    public function upload(Character $character, string $bytes, string $extension, ?int $userId = null): void
+    {
+        $url = $this->storage->put(sprintf('character-sketches/%d/%s.%s', $character->getKey(), Str::uuid(), $extension), $bytes, ['ContentType' => self::mime($bytes)]);
+        DB::table('character_sketches')->updateOrInsert(
+            ['character_id' => $character->getKey(), 'from_asset_id' => (int) $character->reference_asset_id],
+            ['storage_url' => $url, 'source' => 'uploaded', 'made_by_user_id' => $userId, 'created_at' => now(), 'updated_at' => now()],
+        );
+    }
+
+    public static function mime(string $bytes): string
+    {
+        return str_starts_with($bytes, "\xFF\xD8") ? 'image/jpeg' : (str_starts_with($bytes, 'RIFF') ? 'image/webp' : 'image/png');
     }
 
     private function bytes(Character $character): ?string
@@ -53,7 +89,7 @@ class CharacterSketch
             $url = $this->storage->put(sprintf('character-sketches/%d/%s.png', $character->getKey(), Str::uuid()), $png, ['ContentType' => 'image/png']);
             DB::table('character_sketches')->updateOrInsert(
                 ['character_id' => $character->getKey(), 'from_asset_id' => (int) $character->reference_asset_id],
-                ['storage_url' => $url, 'created_at' => now(), 'updated_at' => now()],
+                ['storage_url' => $url, 'source' => 'drawn', 'created_at' => now(), 'updated_at' => now()],
             );
 
             return $png;
@@ -63,10 +99,12 @@ class CharacterSketch
     /** The saved sheet, while it was made from the character's current photo. */
     private function saved(Character $character): ?string
     {
-        $url = DB::table('character_sketches')->where('character_id', $character->getKey())
-            ->where('from_asset_id', (int) $character->reference_asset_id)->value('storage_url');
-        $bytes = $url ? $this->storage->get((string) $url) : null;
+        return $this->current($character)[0] ?? null;
+    }
 
-        return is_string($bytes) && $bytes !== '' ? $bytes : null;
+    private function row(Character $character): ?object
+    {
+        return DB::table('character_sketches')->where('character_id', $character->getKey())
+            ->where('from_asset_id', (int) $character->reference_asset_id)->first();
     }
 }

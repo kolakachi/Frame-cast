@@ -40,6 +40,12 @@ Route::get('/media/create-posters/{revisionId}', [\App\Http\Controllers\Api\V1\C
     ->middleware('signed')
     ->name('media.create.poster');
 
+// A presenter's pencil sheet for the admin Presenters page (never an asset, never in the library).
+Route::get('/media/character-sketches/{characterId}', [\App\Http\Controllers\Api\V1\Admin\AdminPresenterController::class, 'content'])
+    ->whereNumber('characterId')
+    ->middleware('signed')
+    ->name('media.character-sketch');
+
 Route::get('/media/assets/{assetId}/thumbnail', [AssetController::class, 'thumbnail'])
     ->whereNumber('assetId')
     ->middleware('signed')

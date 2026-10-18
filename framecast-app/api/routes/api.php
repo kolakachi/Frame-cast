@@ -598,6 +598,11 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/moderation/events/{eventId}', [\App\Http\Controllers\Api\V1\Admin\AdminModerationController::class, 'review'])->whereNumber('eventId');
 
             // SFX library
+            // Stock presenters' pencil sheets for Seedance (owner, 2026-10-19).
+            Route::get('/presenters', [\App\Http\Controllers\Api\V1\Admin\AdminPresenterController::class, 'index']);
+            Route::post('/presenters/sheets/missing', [\App\Http\Controllers\Api\V1\Admin\AdminPresenterController::class, 'makeMissing']);
+            Route::post('/presenters/{characterId}/sheet', [\App\Http\Controllers\Api\V1\Admin\AdminPresenterController::class, 'upload'])->whereNumber('characterId');
+            Route::post('/presenters/{characterId}/sheet/remake', [\App\Http\Controllers\Api\V1\Admin\AdminPresenterController::class, 'remake'])->whereNumber('characterId');
             Route::get('/sfx', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'index']);
             Route::post('/sfx', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'store']);
             Route::patch('/sfx/{soundId}', [\App\Http\Controllers\Api\V1\Admin\AdminSfxController::class, 'update'])->whereNumber('soundId');

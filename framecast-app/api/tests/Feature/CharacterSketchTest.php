@@ -22,6 +22,7 @@ class CharacterSketchTest extends TestCase
         Schema::create('assets', function (Blueprint $t) { $t->id(); $t->integer('workspace_id'); foreach (['asset_type', 'title', 'storage_url', 'mime_type', 'file_size_bytes', 'tags', 'status', 'created_by_user_id'] as $c) $t->text($c)->nullable(); $t->timestamps(); });
         Schema::create('characters', function (Blueprint $t) { $t->id(); $t->integer('workspace_id')->nullable(); $t->text('name'); $t->integer('reference_asset_id')->nullable(); $t->timestamps(); });
         (require database_path('migrations/2026_10_19_010000_create_character_sketches.php'))->up();
+        (require database_path('migrations/2026_10_19_020000_add_source_to_character_sketches.php'))->up();
         Storage::disk('minio')->put('stock/layla.jpg', 'layla-photo');
         DB::table('assets')->insert(['id' => 4105, 'workspace_id' => 1, 'asset_type' => 'image', 'storage_url' => 'minio://stock/layla.jpg', 'mime_type' => 'image/jpeg']);
         DB::table('characters')->insert(['id' => 101, 'workspace_id' => null, 'name' => 'Layla', 'reference_asset_id' => 4105]);

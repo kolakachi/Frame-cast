@@ -422,6 +422,7 @@ const topbarTitles = {
   audit: "Audit Log",
   failures: "Job Failures",
   storage: "Storage",
+  presenters: "Presenters",
   moderation: "Trust & Safety",
   mail: "Email",
 };
@@ -1313,6 +1314,104 @@ const storageSearch = ref("");
 const storagePlan = ref("");
 const storagePagination = ref({});
 
+// ── Presenters' pencil sheets (owner, 2026-10-19): what Seedance gets for each stock presenter ───────────────
+const presenters = ref([]);
+const presentersMissing = ref(0);
+const presentersCost = ref(0.3);
+const presentersLoading = ref(false);
+const presenterBusy = ref({});
+const presenterNote = ref("");
+const presenterFilter = ref("all");
+const confirmMissing = ref(false);
+const drawingFrom = {}; // the sheet date when Remake was pressed: a newer one means it is done
+let presenterPoll = null;
+const shownPresenters = computed(() =>
+  presenterFilter.value === "missing"
+    ? presenters.value.filter((p) => !p.sheet)
+    : presenters.value,
+);
+
+async function loadPresenters() {
+  presentersLoading.value = !presenters.value.length;
+  try {
+    const res = await api.get("/admin/presenters");
+    presenters.value = res.data?.data?.presenters ?? [];
+    presentersMissing.value = res.data?.data?.missing ?? 0;
+    presentersCost.value = res.data?.data?.cost_each_usd ?? 0.3;
+    for (const p of presenters.value) {
+      if (p.id in drawingFrom && (p.sheet?.made_at ?? null) !== drawingFrom[p.id]) {
+        delete drawingFrom[p.id];
+        presenterBusy.value = { ...presenterBusy.value, [p.id]: "" };
+      }
+    }
+  } finally {
+    presentersLoading.value = false;
+  }
+}
+
+// A sheet is drawn in the background (about a minute): the page checks back until it changes.
+function watchPresenters(rounds = 12) {
+  clearInterval(presenterPoll);
+  let left = rounds;
+  presenterPoll = setInterval(async () => {
+    if (activeView.value !== "presenters" || --left < 0) return clearInterval(presenterPoll);
+    await loadPresenters();
+  }, 15000);
+}
+
+async function uploadPresenterSheet(p, e) {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  presenterBusy.value = { ...presenterBusy.value, [p.id]: "Uploading…" };
+  presenterNote.value = "";
+  try {
+    const fd = new FormData();
+    fd.append("sheet", file);
+    const res = await api.post(`/admin/presenters/${p.id}/sheet`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+    presenters.value = res.data?.data?.presenters ?? presenters.value;
+    presentersMissing.value = res.data?.data?.missing ?? presentersMissing.value;
+    presenterNote.value = `${p.name}'s sheet replaced with your upload.`;
+  } catch (err) {
+    presenterNote.value = err?.response?.data?.message || "The upload did not go through.";
+  } finally {
+    presenterBusy.value = { ...presenterBusy.value, [p.id]: "" };
+  }
+}
+
+async function remakePresenterSheet(p) {
+  presenterBusy.value = { ...presenterBusy.value, [p.id]: "Drawing…" };
+  presenterNote.value = "";
+  drawingFrom[p.id] = p.sheet?.made_at ?? null;
+  try {
+    await api.post(`/admin/presenters/${p.id}/sheet/remake`);
+    presenterNote.value = `${p.name}'s sheet is being drawn again (about a minute, $${presentersCost.value.toFixed(2)}).`;
+    watchPresenters();
+  } catch (err) {
+    presenterNote.value = err?.response?.data?.message || "Could not start it.";
+    presenterBusy.value = { ...presenterBusy.value, [p.id]: "" };
+  }
+}
+
+async function makeMissingSheets() {
+  confirmMissing.value = false;
+  presenterNote.value = "";
+  try {
+    const res = await api.post("/admin/presenters/sheets/missing");
+    const n = res.data?.data?.queued ?? 0;
+    presenterNote.value = n ? `Drawing ${n} sheets in the background (about $${(n * presentersCost.value).toFixed(2)}).` : "Every presenter already has a sheet.";
+    if (n) watchPresenters(40);
+  } catch (err) {
+    presenterNote.value = err?.response?.data?.message || "Could not start it.";
+  }
+}
+
+function fmtSheetDate(v) {
+  if (!v) return "";
+  const d = new Date(String(v).replace(" ", "T") + (String(v).includes("Z") || String(v).includes("+") ? "" : "Z"));
+  return isNaN(d) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
 async function loadStorage() {
   storageLoading.value = true;
   try {
@@ -1651,6 +1750,7 @@ function navigate(view) {
     loadAudit();
   }
   if (view === "storage") loadStorage();
+  if (view === "presenters") loadPresenters();
   if (view === "moderation") loadModeration();
   if (view === "mail") {
     loadMailHistory();
@@ -1858,6 +1958,20 @@ onMounted(() => {
             />
           </svg>
           SFX Library
+        </button>
+        <button
+          :class="['nav-item', activeView === 'presenters' ? 'active' : '']"
+          @click="navigate('presenters')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 113.536 3.536L12.536 16.536 8 18l1-5z M4 20h16"
+            />
+          </svg>
+          Presenters
         </button>
         <button
           :class="['nav-item', activeView === 'affiliates' ? 'active' : '']"
@@ -3684,6 +3798,62 @@ onMounted(() => {
         </template>
 
         <!-- ═══ STORAGE ═══ -->
+        <template v-if="activeView === 'presenters'">
+          <div class="section">
+            <div class="section-header pr-head">
+              <div>
+                <div class="section-title">Pencil sheets</div>
+                <p class="pr-intro">
+                  How each stock presenter reaches Seedance: a pencil sheet drawn from their photo. Upload your own,
+                  or draw one again (about ${{ presentersCost.toFixed(2) }} each). Customers' own characters get theirs on first use.
+                </p>
+              </div>
+              <div class="pr-actions">
+                <select v-model="presenterFilter" class="pr-filter" aria-label="Show">
+                  <option value="all">All ({{ presenters.length }})</option>
+                  <option value="missing">No sheet yet ({{ presentersMissing }})</option>
+                </select>
+                <template v-if="presentersMissing">
+                  <button v-if="!confirmMissing" class="btn btn-ghost btn-sm" @click="confirmMissing = true">
+                    Make all missing
+                  </button>
+                  <span v-else class="pr-confirm">
+                    Draw {{ presentersMissing }} sheets, about ${{ (presentersMissing * presentersCost).toFixed(2) }}?
+                    <button class="btn btn-sm" @click="makeMissingSheets">Yes, draw them</button>
+                    <button class="btn btn-ghost btn-sm" @click="confirmMissing = false">Cancel</button>
+                  </span>
+                </template>
+              </div>
+            </div>
+            <p v-if="presenterNote" class="pr-note">{{ presenterNote }}</p>
+            <div v-if="presentersLoading" class="gm-spinner-wrap">Loading presenters…</div>
+            <div v-else class="pr-grid">
+              <div v-for="p in shownPresenters" :key="p.id" class="pr-card">
+                <div class="pr-pics">
+                  <img v-if="p.photo_url" :src="p.photo_url" :alt="`${p.name}'s photo`" class="pr-photo" loading="lazy" />
+                  <a v-if="p.sheet" :href="p.sheet.url" target="_blank" rel="noopener" class="pr-sheet-link">
+                    <img :src="p.sheet.url" :alt="`${p.name}'s pencil sheet`" class="pr-sheet" loading="lazy" />
+                  </a>
+                  <div v-else class="pr-sheet pr-empty">No sheet yet</div>
+                </div>
+                <div class="pr-meta">
+                  <b>{{ p.name }}</b>
+                  <span class="pr-muted">#{{ p.id }}<template v-if="p.sheet"> · {{ p.sheet.source === 'uploaded' ? 'uploaded' : 'drawn' }} {{ fmtSheetDate(p.sheet.made_at) }}</template></span>
+                </div>
+                <div class="pr-btns">
+                  <label class="btn btn-ghost btn-sm pr-upload">
+                    {{ presenterBusy[p.id] === 'Uploading…' ? 'Uploading…' : 'Upload sheet' }}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" hidden @change="uploadPresenterSheet(p, $event)" />
+                  </label>
+                  <button class="btn btn-ghost btn-sm" :disabled="!!presenterBusy[p.id]" @click="remakePresenterSheet(p)">
+                    {{ presenterBusy[p.id] === 'Drawing…' ? 'Drawing…' : p.sheet ? 'Remake' : 'Make sheet' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <template v-if="activeView === 'storage'">
           <div v-if="storageLoading && !storageData" class="gm-spinner-wrap">
             Loading storage data...
@@ -7406,6 +7576,23 @@ tr:hover td {
   padding: 40px;
   color: #6b7280;
 }
+.pr-head { align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.pr-intro { margin: 4px 0 0; color: var(--gm-muted); font-size: 13px; max-width: 62ch; }
+.pr-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pr-filter { background: var(--gm-bg-card); color: var(--gm-text); border: 1px solid var(--gm-border); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+.pr-confirm { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--gm-text); flex-wrap: wrap; }
+.pr-note { margin: 0 0 12px; font-size: 13px; color: var(--gm-text); }
+.pr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.pr-card { border: 1px solid var(--gm-border); border-radius: 10px; padding: 10px; background: var(--gm-bg-card); display: flex; flex-direction: column; gap: 8px; }
+.pr-pics { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: stretch; }
+.pr-photo, .pr-sheet { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; display: block; background: var(--gm-border); }
+.pr-sheet { object-fit: contain; background: #fff; }
+.pr-sheet-link { display: block; }
+.pr-empty { display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--gm-muted); background: transparent; border: 1px dashed var(--gm-border); }
+.pr-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--gm-text); }
+.pr-muted { color: var(--gm-muted); font-size: 12px; }
+.pr-btns { display: flex; gap: 6px; }
+.pr-upload { cursor: pointer; }
 .storage-bar-wrap {
   height: 8px;
   background: rgba(255, 255, 255, 0.08);

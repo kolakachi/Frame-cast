@@ -193,7 +193,7 @@ class UgcOneShotCompiler
                 $outfit = trim((string) ($style['speaker_wardrobes'][$n] ?? $style['wardrobe'] ?? ''));
                 $cast[] = $at.($about !== '' ? ' ('.$about.')' : '').($outfit !== '' ? ', wearing '.$outfit : '').', sits frame-'.($n === 1 ? 'left and looks slightly toward the right edge' : 'right and looks slightly toward the left edge');
             }
-            array_unshift($lines, 'The two people, together in one room and talking to each other, never into the lens: '.implode('; ', $cast).'. Each shot shows only the person who speaks in it.');
+            array_unshift($lines, 'The two people, together in one room and talking to each other, never into the lens: '.implode('; ', $cast).'. Each keeps their own outfit in every shot; they never dress alike. Each shot shows only the person who speaks in it.');
         }
 
         // A real demo clip is spliced over a mid-ad window in post, and the
@@ -207,8 +207,11 @@ class UgcOneShotCompiler
             ? ' Midway, the presenter says something that invites showing the product in action — \'here, let me show you\' — and keeps narrating naturally for a few seconds, then returns to talking to the camera. The presenter never holds up, tilts or points a phone, tablet or laptop screen toward the camera to show the product: any interface rendered on a device screen would come out as unreadable, wrong text. Keep every device screen off-camera or turned away — the real interface is shown only in the cutaway.'
             : '';
 
+        // A one-take skit's opening names nobody's clothes: each person's own outfit is in the cast line, and an outfit here
+        // dressed both speakers alike (canary 327, 2026-10-19: both in the burgundy henley meant for speaker 1).
+        $opening = $skit ? self::preamble(['wardrobe' => '', 'presenter' => 'two people, each described below with their own outfit,'] + $style) : self::preamble($style);
         return [
-            'prompt' => self::preamble($style)."
+            'prompt' => $opening."
 
 ".implode(' ', $lines).$demoLine.($dialogue === [] ? ' No speech, narration, singing or music. Preserve the described physical sounds.' : ' Say exactly the quoted words, including scripted numbers, and no others. Finish each line before cutting. Hold for a full second after the final word.')
                 .' '.self::ENDING."

@@ -109,5 +109,13 @@ class UgcSeedanceOpenRouterTest extends TestCase
         $this->assertStringContainsString('Cut to @GraceKim on camera, close on her face.', $single['prompt']);
         $this->assertStringContainsString('@GraceKim says: "One serum."', $single['prompt']);
         $this->assertSame('Did you change your routine? One serum.', $single['dialogue']);
+        $dressed = UgcOneShotCompiler::compileSingle([
+            ['kind' => 'on_camera', 'script_text' => 'Hi.', 'seconds' => 3, 'visual_brief' => 'at the counter', 'speaker' => 1],
+            ['kind' => 'on_camera', 'script_text' => 'Hello.', 'seconds' => 3, 'visual_brief' => 'at the counter', 'speaker' => 2],
+        ], ['ugc_type' => 'skit', 'wardrobe' => 'a burgundy henley', 'speaker_names' => [1 => 'Layla', 2 => 'Nadia'],
+            'speaker_wardrobes' => [1 => 'a burgundy henley', 2 => 'a light blue button-up shirt']]);
+        $this->assertSame(1, substr_count($dressed['prompt'], 'burgundy henley'), 'only Layla wears it (canary 327 put both in it)');
+        $this->assertStringContainsString('@Nadia, wearing a light blue button-up shirt', $dressed['prompt']);
+        $this->assertStringContainsString('they never dress alike', $dressed['prompt']);
     }
 }
