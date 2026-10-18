@@ -122,9 +122,12 @@ class UgcOneShotPricing
             'pronunciations' => '',
             'demo' => $demo,
         ];
-        if (($v['ugc_type'] ?? '') === 'skit') $engine = 'omni';
         \App\Services\Ugc\UgcComposition::resolve($user, $v['composition'] ?? []);
         $hasSources = collect($segments)->contains(fn ($s) => ($s['kind'] ?? '') === 'b_roll' && ($s['source'] ?? '') !== 'generate');
+        // As the controller: a skit is one Seedance take through OpenRouter unless Omni is asked for by name or it runs over 30 s.
+        if (($v['ugc_type'] ?? '') === 'skit') {
+            $engine = \App\Services\Generation\Video\ReplicateVeoAdapter::seedanceViaOpenRouter() && ($v['engine'] ?? null) !== 'omni' && ! $hasSources ? 'seedance25' : 'omni';
+        }
         $single = $engine === 'seedance25' && ! $hasSources ? UgcOneShotCompiler::compileSingle($segments, $style) : null;
         if ($demo && $single === null) {
             throw ValidationException::withMessages(['demo_asset_id' => 'A demo-embed ad must be 30 seconds or under — shorten the plan to include the demo clip.']);

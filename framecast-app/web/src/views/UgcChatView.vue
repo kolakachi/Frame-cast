@@ -789,6 +789,7 @@ onBeforeUnmount(() => {
                   <div v-if="runState(run) === 'generating'" class="uc-card uc-making">
                     <b>Making {{ run.name === 'A fitting presenter' ? 'your video' : `${run.name}'s video` }}</b>
                     <span class="uc-spin" aria-hidden="true"></span>
+                    <p v-if="run.fallback === 'omni'" class="uc-muted">Seedance couldn't use this presenter, so it's being made on Omni instead. Nothing was charged for the first try.</p>
                     <p class="uc-muted">Usually a few minutes. You can leave this page; it carries on, and it will be in My ads.</p>
                   </div>
                   <div v-else-if="runState(run) === 'ready'" class="uc-ready">

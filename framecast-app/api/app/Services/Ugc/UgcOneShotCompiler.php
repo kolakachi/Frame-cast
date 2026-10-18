@@ -162,10 +162,16 @@ class UgcOneShotCompiler
 
         $pron = PronunciationMap::parse((string) ($style['pronunciations'] ?? ''));
         $demo = ! empty($style['demo']);
+        // A skit in one take (Seedance, owner 2026-10-18): each shot and line names its speaker, as @Name.
+        $skit = ($style['ugc_type'] ?? '') === 'skit' && ! empty($style['speaker_names']);
+        $who = fn (array $beat): ?string => $skit && isset($style['speaker_names'][(int) ($beat['speaker'] ?? 0)])
+            ? '@'.(preg_replace('/\s+/', '', (string) $style['speaker_names'][(int) $beat['speaker']]) ?: 'Speaker'.(int) $beat['speaker']) : null;
         $lines = [];
         $dialogue = [];
         foreach ($beats as $j => $beat) {
-            $lines[] = ($j === 0 ? ucfirst(self::framing($beat)) : 'Cut to '.self::framing($beat)).'.';
+            $name = $who($beat);
+            $shot = $name !== null ? $name.' on camera, '.self::framing($beat) : self::framing($beat);
+            $lines[] = ($j === 0 ? ucfirst($shot) : 'Cut to '.$shot).'.';
             if (! empty($beat['motion_prompt'])) $lines[] = 'Action and sound: '.rtrim(trim($beat['motion_prompt']), '.').'.';
             // Two hands for the action: the phone is propped for this shot (take 283).
             if (self::twoHanded(($beat['motion_prompt'] ?? '').' '.($beat['visual_brief'] ?? ''))) $lines[] = 'For this shot the phone is propped on a surface, so both hands are free; no hand holds a phone.';
@@ -174,9 +180,20 @@ class UgcOneShotCompiler
             $said = PronunciationMap::apply(trim((string) ($beat['script_text'] ?? '')), $pron);
             if ($said !== '') {
                 $delivery = trim((string) ($beat['voice_direction'] ?? ''));
-                $lines[] = ($delivery !== '' ? 'The presenter says, '.lcfirst(rtrim($delivery, '.')).': ' : 'The presenter says: ').'"'.$said.'"';
+                $speaker = $name ?? 'The presenter';
+                $lines[] = ($delivery !== '' ? $speaker.' says, '.lcfirst(rtrim($delivery, '.')).': ' : $speaker.' says: ').'"'.$said.'"';
                 $dialogue[] = $said;
             }
+        }
+        if ($skit) {
+            $cast = [];
+            foreach ($style['speaker_names'] as $n => $speakerName) {
+                $at = '@'.(preg_replace('/\s+/', '', (string) $speakerName) ?: 'Speaker'.$n);
+                $about = trim((string) ($style['speakers'][$n] ?? ''));
+                $outfit = trim((string) ($style['speaker_wardrobes'][$n] ?? $style['wardrobe'] ?? ''));
+                $cast[] = $at.($about !== '' ? ' ('.$about.')' : '').($outfit !== '' ? ', wearing '.$outfit : '').', sits frame-'.($n === 1 ? 'left and looks slightly toward the right edge' : 'right and looks slightly toward the left edge');
+            }
+            array_unshift($lines, 'The two people, together in one room and talking to each other, never into the lens: '.implode('; ', $cast).'. Each shot shows only the person who speaks in it.');
         }
 
         // A real demo clip is spliced over a mid-ad window in post, and the

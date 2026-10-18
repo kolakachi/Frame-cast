@@ -10,6 +10,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\{Bus, DB, Schema};
 use Mockery;
+use App\Services\Ugc\UgcOneShotPricing;
 use Tests\TestCase;
 
 /** UGC Ads as a conversation (2026-10-10): ask only what is unclear, pitch one video with its price, "Make it" hands off once. */
@@ -481,6 +482,36 @@ class UgcChatTest extends TestCase
         $this->assertSame([42], $this->sceneRetries, 'only the failed shot is made again');
         $this->assertSame([], $this->handed, 'never remade whole: its finished shots were already paid for');
         $this->assertSame([], $this->deleted);
+    }
+
+    public function test_a_presenter_seedance_declines_is_made_on_omni_once_at_omnis_price(): void
+    {
+        $this->withoutMiddleware();
+        $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
+        $segments = [['kind' => 'on_camera', 'script_text' => 'Did you change your routine?', 'seconds' => 4, 'visual_brief' => 'Kitchen', 'speaker' => 1],
+            ['kind' => 'on_camera', 'script_text' => 'One serum.', 'seconds' => 3, 'visual_brief' => 'Kitchen', 'speaker' => 2]];
+        // A skit lists no models to pick from: its Omni price is worked out for the fallback.
+        DB::table('ugc_chat_messages')->insert([
+            ['id' => 800, 'chat_id' => $chat, 'role' => 'assistant', 'kind' => 'pitch', 'content' => 'A skit.', 'created_at' => now(), 'payload_json' => json_encode(['takes' => [[
+                'name' => 'Yara + Yara', 'mode' => 'one_shot', 'credits' => 300, 'engines' => [],
+                'request' => ['ugc_type' => 'skit', 'cast_character_ids' => [5, 5], 'format' => 'story', 'segments' => $segments, 'engine' => 'seedance25', 'credits' => 300]]]])],
+            ['id' => 801, 'chat_id' => $chat, 'role' => 'assistant', 'kind' => 'making', 'content' => 'Making it now.', 'created_at' => now(),
+                'payload_json' => json_encode(['pitch_id' => 800, 'runs' => [['run_id' => 'run-x', 'take_ids' => [301], 'name' => 'Yara + Yara', 'take' => 0, 'engine' => 'seedance25']]])],
+        ]);
+        DB::table('scenes')->insert(['project_id' => 301, 'scene_order' => 1, 'image_generation_settings_json' => json_encode(['last_error' => \App\Services\Generation\Video\OpenRouterVideoAdapter::FACE_DECLINED])]);
+        $this->takeStatus = 'needs_attention';
+
+        $this->actingAs($this->user())->getJson("/api/v1/ugc/chats/{$chat}")->assertOk();
+        $this->assertCount(1, $this->handed);
+        $this->assertSame('omni', $this->handed[0]['engine']);
+        $omni = UgcOneShotPricing::price($this->user(), ['engine' => 'omni'] + json_decode(DB::table('ugc_chat_messages')->where('id', 800)->value('payload_json'), true)['takes'][0]['request'],
+            \App\Services\Ugc\UgcPlan::normalise($segments, 'story'), app(CreditService::class))['quote'];
+        $this->assertSame($omni, (int) $this->handed[0]['credits']);
+        $run = json_decode(DB::table('ugc_chat_messages')->where('id', 801)->value('payload_json'), true)['runs'][0];
+        $this->assertSame(['omni', 'omni'], [$run['engine'], $run['fallback']]);
+
+        $this->actingAs($this->user())->getJson("/api/v1/ugc/chats/{$chat}")->assertOk();
+        $this->assertCount(1, $this->handed, 'once');
     }
 
     public function test_a_presenter_from_another_workspace_is_dropped(): void

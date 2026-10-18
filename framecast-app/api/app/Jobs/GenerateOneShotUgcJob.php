@@ -71,8 +71,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
         bool $storyboard = false,
         array $look = [],
         string $aspect = '9:16',
+        array $sketchCharacterIds = [],
     ) {
         $this->aspect = $aspect;
+        $this->sketches = array_values(array_map('intval', $sketchCharacterIds));
         $this->composition = $composition;
         $this->storyboard = $storyboard;
         $this->look = $look;
@@ -111,6 +113,10 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
     /** The take's shape (9:16, 1:1 on Seedance, or 16:9). A plain property for the same reason as runToken. */
     public string $aspect = '9:16';
+
+    /** Characters cast on Seedance through their pencil sheets (CharacterSketch, owner 2026-10-18), speaker order. A plain
+     *  property for the same reason as runToken. */
+    public array $sketches = [];
 
     /** The references the clips get: the take's own, with the dressed presenter in place of the cast photo when there is a look. */
     private array $refs = [];
@@ -151,6 +157,12 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 $reuse[$i] = $bytes;
             }
             $this->refs = $this->look !== [] ? $this->dressed($project, $scene, $storage) : $this->referenceImages;
+            // The cast's pencil sheets lead the references, each made once per character (a minute the first time).
+            $sketchNames = [];
+            if ($this->sketches !== [] && $this->engine === 'seedance25') {
+                [$sheets, $sketchNames] = $this->sketchSheets();
+                $this->refs = array_merge($sheets, $this->refs);
+            }
             if ($this->checkFace && $this->referenceImages !== []) $this->faceRef = $this->faceClose($project);
             $stills = $this->storyboard ? $this->stills($project, $scene, $storage) : [];
             $reviewRemakes = 0;
@@ -232,6 +244,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // Which reference is whom, by name (RD-03, Toonflow's @name): two people's pictures were mixed up (RD-02).
                     $chunk['prompt'] = self::castLine((string) ($chunk['speaker_name'] ?? ''), count($chunk['reference_images']), $dressed !== null, $dressed === null && $plate !== null)."\n\n".$chunk['prompt'];
                 }
+                if ($i === 0 && $sketchNames !== []) $chunk['prompt'] = self::sketchLine($sketchNames)."\n\n".$chunk['prompt'];
                 // A clip that opens on a new shot starts from the presenter and product photos when the engine takes
                 // them: the cut hides the change, and identity and packaging are re-anchored instead of drifting from
                 // clip to clip (2026-10-10: a face changed across a before/after). A clip carrying a shot on starts
@@ -263,6 +276,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // the read can be synced onto it after (owner, 2026-10-14: "for omni we can use lip sync").
                     $read = $sourceOnly ? null : $this->voiceRead($chunk, $i, $project, $temps);
                     if ($read !== null) $chunk['seconds'] = max(2, (int) ceil($read['seconds'] + 0.4));
+                    // Seedance hears the read as its audio reference instead of being lip-synced after.
+                    if ($read !== null && $this->engine === 'seedance25') $chunk['audio_ref'] = $read['path'];
                     $path = $sourceOnly
                         ? app(\App\Services\Ugc\UgcComposition::class)->source($chunk['source_media'], $chunk['seconds'], (float) ($chunk['source_offset'] ?? 0), $storage, $temps, ! empty($chunk['requires_audio']))
                         : $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
@@ -331,7 +346,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     // any trim, with the exact prompt it was given.
                     if ($this->tracing($chunk)) $this->trace($project, $scene, $storage, $i, ['prompt' => (string) $chunk['prompt'], 'sheet' => $chunk['sheet'] ?? null,
                         'seconds_asked' => $chunk['seconds'] ?? null, 'seconds_made' => self::seconds($path)], $path);
-                    if ($read !== null) $path = $this->lipsync($path, $read, $i, $temps);
+                    if ($read !== null && $this->engine === 'omni') $path = $this->lipsync($path, $read, $i, $temps);
                     $heard = $this->checkSpeech($path, (string) ($chunk['dialogue'] ?? ''), $i);
                     $keyColour = $this->composition['key_color'] ?? '0x00FF00';
                     if (! $sourceOnly && ($this->composition['layout'] ?? '') === 'green_screen' && ! \App\Services\Ugc\UgcComposition::hasGreenBackground($path, $keyColour)) {
@@ -344,7 +359,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
                         if (! \App\Services\Ugc\UgcComposition::hasGreenBackground($again, $keyColour)) {
                             throw new \RuntimeException('Segment '.($i + 1).' came back without the plain backdrop twice, so the presenter cannot be placed over your page. Nothing was charged. Try again, or make it as a testimonial instead.');
                         }
-                        if ($read !== null) $again = $this->lipsync($again, $read, $i, $temps);
+                        if ($read !== null && $this->engine === 'omni') $again = $this->lipsync($again, $read, $i, $temps);
                         $heard = $this->checkSpeech($again, (string) ($chunk['dialogue'] ?? ''), $i);
                         $path = $again;
                     }
@@ -878,7 +893,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
             $prompt = $softened ?? (string) $chunk['prompt'];
             if (in_array($this->faceRef, $chunkRefs, true)) $prompt .= "\n\nOne reference image is a close-up of the presenter's face: in every frame their face matches it exactly, the same person.";
-            $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution, [], $this->aspect);
+            $audio = ! empty($chunk['audio_ref']) ? $this->publicAudio((string) $chunk['audio_ref']) : null;
+            try {
+                $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution, [], $this->aspect, $audio['url'] ?? null);
+            } catch (\RuntimeException $e) {
+                if ($audio !== null) rescue(fn () => \Illuminate\Support\Facades\Storage::disk('minio')->delete($audio['path']), report: false);
+                throw $e;
+            }
             $scene->forceFill(['image_generation_settings_json' => array_merge(
                 $scene->refresh()->image_generation_settings_json ?? [],
                 // generation_started_at is the heartbeat the stuck-generation reaper reads.
@@ -887,7 +908,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
 
             try {
                 // Omni makes a clip in about 40 seconds; five minutes is a hang, not a slow clip.
-                $url = $veo->pollUntilDone($predictionId, $this->engine === 'omni' ? 300 : 600);
+                try {
+                    $url = $veo->pollUntilDone($predictionId, $this->engine === 'omni' ? 300 : 600);
+                } finally {
+                    if ($audio !== null) rescue(fn () => \Illuminate\Support\Facades\Storage::disk('minio')->delete($audio['path']), report: false);
+                }
                 if (($url === null || $url === '') && $attempt === 0) {
                     // A request the model never finished (take 306, 2026-10-15: one Omni clip "processing" for 30 minutes):
                     // cancelled and made once more, rather than failing the whole take.
@@ -898,6 +923,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
                 if ($url === null || $url === '') $veo->cancel($predictionId);
                 break;
             } catch (\RuntimeException $e) {
+                // Seedance would not render the presenter from their sheet: no rewording changes that, so the take stops here
+                // and the chat makes it on Omni (UgcChatService::fallBackToOmni).
+                if (str_contains($e->getMessage(), \App\Services\Generation\Video\OpenRouterVideoAdapter::FACE_DECLINED)) throw $e;
                 // Declined by moderation: the same shot in neutral words, tried once (RD-01, from Pixelle-Video).
                 if ($attempt === 0 && $softened === null && str_contains($e->getMessage(), 'declined this segment')
                     && ($softened = app(\App\Services\Ugc\UgcPromptSoften::class)->rewrite((string) $chunk['prompt'])) !== null) {
@@ -943,7 +971,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
     {
         $line = trim((string) ($chunk['dialogue'] ?? ''));
         $voice = $chunk['voice'] ?? null;
-        if ($this->engine !== 'omni' || ! config('services.ugc.omni_lipsync') || $line === '' || empty($voice['id'])) return null;
+        $voiced = $this->engine === 'omni' ? (bool) config('services.ugc.omni_lipsync') : ($this->engine === 'seedance25' && self::seedanceHearsVoice());
+        if (! $voiced || $line === '' || empty($voice['id'])) return null;
         try {
             $tts = app(\App\Services\Generation\TTS\TTSAdapter::class)->synthesize($line, 'en', (string) $voice['id'], (float) ($voice['speed'] ?? 1.0), [
                 'voice_prompt' => (string) ($voice['direction'] ?? ''), 'usage_context' => ['workspace_id' => (int) $project->workspace_id, 'project_id' => $project->id, 'purpose' => 'ugc_lipsync_read'],
@@ -965,6 +994,62 @@ class GenerateOneShotUgcJob implements ShouldQueue
             \Illuminate\Support\Facades\Log::warning('one-shot: line not read, Omni keeps its own voice', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
             return null;
         }
+    }
+
+    /** Seedance takes the presenter's read as an audio reference: through OpenRouter, with somewhere public to put it. */
+    public static function seedanceHearsVoice(): bool
+    {
+        return (bool) config('services.ugc.seedance_audio_ref') && \App\Services\Generation\Video\ReplicateVeoAdapter::seedanceViaOpenRouter()
+            && (string) config('services.openrouter.public_media_url', '') !== '';
+    }
+
+    /** The read on the public media disk for OpenRouter to fetch (it takes audio only by HTTPS URL); removed once the clip is made. */
+    private function publicAudio(string $localPath): ?array
+    {
+        if (! self::seedanceHearsVoice() || ! is_file($localPath)) return null;
+        $path = 'ugc-audio-ref/'.Str::uuid().'.wav';
+        try {
+            \Illuminate\Support\Facades\Storage::disk('minio')->put($path, (string) file_get_contents($localPath), ['ContentType' => 'audio/wav']);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('one-shot: the read could not be shared with Seedance, it speaks in its own voice', ['project_id' => $this->projectId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            return null;
+        }
+        return ['path' => $path, 'url' => rtrim((string) config('services.openrouter.public_media_url'), '/').'/'.$path];
+    }
+
+    /**
+     * The cast's pencil sheets (CharacterSketch) as data URIs, in speaker order, with their names. A character whose sheet
+     * cannot be made is left to the written description, as Seedance takes were before.
+     *
+     * @return array{0: list<string>, 1: list<string>}
+     */
+    private function sketchSheets(): array
+    {
+        $sheets = []; $names = [];
+        foreach ($this->sketches as $characterId) {
+            $character = \App\Models\Character::query()->find($characterId);
+            try {
+                $uri = $character ? app(\App\Services\Ugc\CharacterSketch::class)->uri($character) : null;
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('one-shot: no pencil sheet, the presenter goes as words', ['project_id' => $this->projectId, 'character_id' => $characterId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+                $uri = null;
+            }
+            if ($uri === null) continue;
+            $sheets[] = $uri;
+            $names[] = (string) $character->name;
+        }
+        return [$sheets, $names];
+    }
+
+    /** Which reference is whose pencil sheet, and that each is drawn identity only, rendered as a real person. */
+    public static function sketchLine(array $names): string
+    {
+        $ats = array_map(fn ($n) => '@'.(preg_replace('/\s+/', '', (string) $n) ?: 'Presenter'), array_values($names));
+        $which = count($ats) === 1
+            ? 'Reference image 1 is a pencil character sheet of '.$ats[0].', the presenter'
+            : 'Reference images 1 to '.count($ats).' are pencil character sheets of '.implode(', ', array_map(fn ($at, $k) => $at.' (image '.($k + 1).')', $ats, array_keys($ats)));
+        return 'Cast: '.$which.'. Render '.(count($ats) === 1 ? 'them' : 'each of them').' as a real, photorealistic person on camera with the face, hair and build drawn in '.(count($ats) === 1 ? 'the sheet' : 'their sheet')
+            .': take only their identity from it, never the paper, the pencil style, the pose or the clothes. No drawings, sketches or paper anywhere in the video. Any other reference images are the product and the place.';
     }
 
     /** The clip with the speaker's read synced onto its mouth; the clip as made when the sync fails. */

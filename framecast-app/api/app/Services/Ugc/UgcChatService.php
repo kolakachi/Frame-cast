@@ -558,7 +558,8 @@ final class UgcChatService
      * otherwise the same pitch is made again and the failed take removed. A failed take was never charged (charge on
      * success), so a retry costs only what is delivered.
      */
-    public function retry(Request $request, string $id, int $messageId, int $runIndex, ?string $engine = null): array
+    /** $fallback: made on Omni because Seedance declined the presenter (fallBackToOmni), priced as Omni would make it. */
+    public function retry(Request $request, string $id, int $messageId, int $runIndex, ?string $engine = null, bool $fallback = false): array
     {
         $chat = $this->chat($request->user(), $id);
         $lock = \Illuminate\Support\Facades\Cache::lock('ugc-chat-retry:'.$messageId.':'.$runIndex, 120);
@@ -607,6 +608,11 @@ final class UgcChatService
             $t = $pitch['takes'][$i] ?? abort(404, 'The pitch for this video is gone.');
             if ($engine !== null) {
                 $chosen = collect($t['engines'] ?? [])->first(fn ($e) => $e['key'] === $engine && $e['available']);
+                // A skit lists no models to pick from; its Omni fallback is priced here, as the controller will make it.
+                if ($chosen === null && $fallback && $engine === 'omni' && $t['mode'] === 'one_shot') {
+                    $price = UgcOneShotPricing::price($request->user(), ['engine' => 'omni'] + $t['request'], UgcPlan::normalise($t['request']['segments'], $t['request']['format']), $this->credits);
+                    $chosen = ['key' => 'omni', 'credits' => (int) $price['quote']];
+                }
                 if ($chosen === null || $t['mode'] !== 'one_shot') abort(422, 'That video model can\'t make this video.');
                 $t['request']['engine'] = $chosen['key']; $t['request']['credits'] = $chosen['credits'];
             }
@@ -621,7 +627,8 @@ final class UgcChatService
             }
             $making['runs'][$runIndex] = ['run_id' => $out['run_id'] ?? null, 'take_ids' => array_column($out['takes'] ?? [], 'id'), 'name' => $run['name'],
                 'credits' => (int) ($out['credits_quoted'] ?? $t['credits']), 'take' => $i, 'attempt' => $attempt,
-                'engine' => $t['mode'] === 'one_shot' ? (string) ($t['request']['engine'] ?? 'seedance25') : null];
+                'engine' => $t['mode'] === 'one_shot' ? (string) ($t['request']['engine'] ?? 'seedance25') : null]
+                + ($fallback ? ['fallback' => 'omni'] : []);
             DB::table('ugc_chat_messages')->where('id', $messageId)->update(['payload_json' => json_encode($making)]);
             return $this->show($request, $id);
         } finally {
@@ -629,10 +636,37 @@ final class UgcChatService
         }
     }
 
+    /**
+     * A video Seedance declined because it would not render the presenter is made on Omni instead, once and on its own
+     * (owner, 2026-10-18): the user is not asked, and pays only Omni's price, since the declined try was never charged.
+     */
+    private function fallBackToOmni(Request $request, string $id): void
+    {
+        foreach (DB::table('ugc_chat_messages')->where('chat_id', $id)->where('kind', 'making')->orderBy('id')->get(['id', 'payload_json']) as $m) {
+            $making = json_decode((string) $m->payload_json, true) ?: [];
+            foreach ($making['runs'] ?? [] as $i => $run) {
+                if (($run['engine'] ?? null) !== 'seedance25' || ! empty($run['fallback']) || empty($run['take_ids'])) continue;
+                $declined = \App\Models\Scene::query()->whereIn('project_id', array_map('intval', $run['take_ids']))->get()
+                    ->contains(fn ($s) => str_contains((string) (($s->image_generation_settings_json ?? [])['last_error'] ?? ''), \App\Services\Generation\Video\OpenRouterVideoAdapter::FACE_DECLINED));
+                if (! $declined) continue;
+                try {
+                    $this->retry($request, $id, (int) $m->id, (int) $i, 'omni', true);
+                } catch (\Throwable $e) {
+                    // Once only: a fallback that could not start leaves the declined video for the user to retry by hand.
+                    report($e);
+                    $making['runs'][$i]['fallback'] = 'failed';
+                    $making['runs'][$i]['fallback_error'] = mb_substr($e->getMessage(), 0, 200);
+                    DB::table('ugc_chat_messages')->where('id', $m->id)->update(['payload_json' => json_encode($making)]);
+                }
+            }
+        }
+    }
+
     /** The chat with its messages; a "making" message carries each video's live status from the pipeline. */
     public function show(Request $request, string $id): array
     {
         $chat = $this->chat($request->user(), $id);
+        $this->fallBackToOmni($request, $id);
         // What the user sent is shown as the same pills they attached: each file's name, kind and a preview.
         $rows = DB::table('ugc_chat_messages')->where('chat_id', $id)->orderBy('id')->get();
         $ids = $rows->where('role', 'user')->flatMap(fn ($m) => array_column(json_decode((string) $m->payload_json, true)['attachments'] ?? [], 'asset_id'))->unique()->all();

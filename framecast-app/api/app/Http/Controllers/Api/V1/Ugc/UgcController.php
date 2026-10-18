@@ -1091,6 +1091,9 @@ class UgcController extends Controller
         $presenter = trim((string) ($v['presenter_description'] ?? ''));
         $presenterImageAttached = false;
         $variantSeed = null;
+        // Characters whose pencil sheet goes to Seedance (CharacterSketch, owner 2026-10-18): the job makes any missing sheet.
+        $sketchCharacterIds = [];
+        $seedanceOpenRouter = \App\Services\Generation\Video\ReplicateVeoAdapter::seedanceViaOpenRouter();
         if (! empty($v['character_id'])) {
             $c = Character::query()->whereKey($v['character_id'])
                 ->where(fn ($q) => $q->where('workspace_id', $user->workspace_id)
@@ -1110,6 +1113,7 @@ class UgcController extends Controller
                 // close look-alike. Disclosed in the UI as a variant.
                 $presenter = app(\App\Services\Ugc\CharacterAppearanceService::class)->text($c);
                 $variantSeed = crc32('wyv-char-'.$c->getKey()) & 0x7FFFFFFF;
+                if ($seedanceOpenRouter && $c->reference_asset_id) $sketchCharacterIds = [(int) $c->getKey()];
             } elseif ($c) {
                 if ($presenter === '') {
                     $description = (string) $c->description;
@@ -1180,7 +1184,10 @@ class UgcController extends Controller
             $engine = 'veo_hq';
         }
 
-        if (($v['ugc_type'] ?? '') === 'skit') $engine = 'omni';
+        // A skit of up to 30 seconds is one Seedance take with both speakers' pencil sheets (owner, 2026-10-18), unless Omni
+        // was asked for by name (the fallback when Seedance declines a speaker); a longer one is made on Omni as before.
+        $skitOnSeedance = ($v['ugc_type'] ?? '') === 'skit' && $seedanceOpenRouter && $request->input('engine') !== 'omni' && $sourceMedia === [];
+        if (($v['ugc_type'] ?? '') === 'skit') $engine = $skitOnSeedance ? 'seedance25' : 'omni';
         // The Test Pass defaults to Seedance, which is what makes 600 credits
         // buy a whole ad. Casting a character is the one thing that overrides
         // it: a real face cannot be rendered by Seedance at all, so the take
@@ -1210,6 +1217,7 @@ class UgcController extends Controller
             $engine = 'seedance25';          // castless presenter take
             $presenterImageAttached = false; // no cast face alongside a demo
             $variantSeed = null;
+            $sketchCharacterIds = [];
         }
         // Pronunciation notes from the client brief respell brand/product
         // names in the spoken dialogue only (the voice model reads them).
@@ -1229,6 +1237,7 @@ class UgcController extends Controller
             'wardrobe' => trim((string) ($v['wardrobe'] ?? '')),
             'speaker_wardrobes' => ($v['ugc_type'] ?? '') === 'skit' && trim((string) ($v['wardrobe_2'] ?? '')) !== ''
                 ? [1 => trim((string) ($v['wardrobe'] ?? '')), 2 => trim((string) $v['wardrobe_2'])] : [],
+            'speaker_names' => $speakerNames,
             'pronunciations' => $pronNotes,
             'demo' => $demoStorageUrl !== null,
         ];
@@ -1242,9 +1251,10 @@ class UgcController extends Controller
         }
         // Seedance 2.5 makes the whole ad in one generation (≤30s) — the
         // purest one-take. Longer plans, or explicit choice, chain on Veo.
-        $single = $engine === 'seedance25' && $sourceMedia === [] && ($v['ugc_type'] ?? '') !== 'skit'
+        $single = $engine === 'seedance25' && $sourceMedia === [] && (($v['ugc_type'] ?? '') !== 'skit' || $skitOnSeedance)
             ? \App\Services\Ugc\UgcOneShotCompiler::compileSingle($segments, $style)
             : null;
+        if ($skitOnSeedance && $single !== null) $sketchCharacterIds = array_map('intval', $v['cast_character_ids']);
         // A demo-embed ad can only be the single Seedance take (video_in has
         // no Veo equivalent here) — refuse rather than silently dropping the
         // demo clip by falling back to the chained Veo path.
@@ -1324,7 +1334,10 @@ class UgcController extends Controller
         $chunks = $sheets !== [] ? \App\Services\Ugc\UgcActionSheet::apply($chunks, $sheets)
             : \App\Services\Ugc\UgcStaging::apply($chunks, app(\App\Services\Ugc\UgcStaging::class)->stage($chunks, $productNote));
         // Omni's speech is replaced by the speaker's own fixed voice, lip-synced (UgcVoices, ReplicateLipsyncAdapter).
-        if ($engine === 'omni' && ($v['ugc_type'] ?? '') !== 'asmr' && config('services.ugc.omni_lipsync', true)) {
+        // Seedance through OpenRouter takes the same fixed voice as its audio reference, so every take of a presenter sounds alike
+        // (owner, 2026-10-18); a skit's two voices cannot share one reference, so a skit keeps Seedance's own.
+        $seedanceVoice = $engine === 'seedance25' && $seedanceOpenRouter && config('services.ugc.seedance_audio_ref') && ! in_array($v['ugc_type'] ?? '', ['asmr', 'skit', 'pov_hook', 'reaction'], true);
+        if ($seedanceVoice || ($engine === 'omni' && ($v['ugc_type'] ?? '') !== 'asmr' && config('services.ugc.omni_lipsync', true))) {
             $cast = ($v['ugc_type'] ?? '') === 'skit' ? [1 => $v['cast_character_ids'][0] ?? null, 2 => $v['cast_character_ids'][1] ?? null] : [0 => $v['character_id'] ?? null];
             $chunks = \App\Services\Ugc\UgcVoices::assign($chunks, $segments, $cast, (string) $presenter);
         }
@@ -1453,6 +1466,7 @@ class UgcController extends Controller
                 && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
                 ? array_filter(['wardrobe' => $style['wardrobe'], 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
             $aspect,
+            $engine === 'seedance25' ? $sketchCharacterIds : [],
         )->afterCommit();
 
         $payload = ['data' => [

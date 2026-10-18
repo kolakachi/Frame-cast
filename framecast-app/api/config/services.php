@@ -133,6 +133,11 @@ return [
         // Follow the take, not the plan (UgcFollowOn): 'record' keeps the next clip's rewrite in the trace only, 'apply'
         // uses it, 'off' skips the step. Applied since take 295's rewrites read every clip right (owner, 2026-10-12).
         'follow_on' => env('UGC_FOLLOW_ON', 'apply'),
+        // Seedance 2.5 through OpenRouter (owner, 2026-10-18, a week's trial): presenters reach it as a pencil character sheet
+        // (CharacterSketch), skits of up to 30 seconds go to it too, and a presenter Seedance declines is made on Omni instead.
+        'seedance_openrouter' => (bool) env('UGC_SEEDANCE_OPENROUTER', false),
+        // The presenter's own read sent to Seedance as an audio reference, so every take has the same voice.
+        'seedance_audio_ref' => (bool) env('UGC_SEEDANCE_AUDIO_REF', true),
     ],
 
     'ai' => [
@@ -160,6 +165,14 @@ return [
 
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY'),
+    ],
+
+    // OpenRouter's video API (owner, 2026-10-18): Seedance 2.5 for UGC this week, in place of Replicate's.
+    'openrouter' => [
+        'api_key' => env('OPENROUTER_API_KEY', ''),
+        'url' => env('OPENROUTER_URL', 'https://openrouter.ai/api/v1'),
+        // Where files put on the public media disk (minio) can be fetched over HTTPS; OpenRouter takes audio only by URL.
+        'public_media_url' => rtrim((string) env('OPENROUTER_PUBLIC_MEDIA_URL', ''), '/'),
     ],
 
     'replicate' => [

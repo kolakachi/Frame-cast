@@ -38,7 +38,30 @@ class VendorUsageRecorder
         } elseif ($host === 'api.anthropic.com' && $path === '/v1/messages' && $response->getStatusCode() < 300) {
             $m = self::json($response);
             if ($m) self::anthropic($m);
+        } elseif ($host === 'openrouter.ai' && preg_match('#/api/v1/videos/[^/]+$#', $path) && $request->getMethod() === 'GET') {
+            $job = self::json($response);
+            if ($job) self::openrouterVideo($job);
         }
+    }
+
+    /** A finished OpenRouter video job (Seedance for UGC, 2026-10-18), recorded once at the cost OpenRouter reports. */
+    public static function openrouterVideo(array $job): void
+    {
+        $id = (string) ($job['id'] ?? '');
+        $status = (string) ($job['status'] ?? '');
+        if ($id === '' || ! in_array($status, ['completed', 'failed', 'cancelled', 'error'], true)) return;
+        if (! Cache::add('vendor-usage:openrouter:'.$id, 1, now()->addDays(3))) return;
+        app(ApiUsageService::class)->record(UsageContext::current() + [
+            'provider' => 'openrouter',
+            'service' => 'video',
+            'operation' => 'video',
+            'model' => (string) (Cache::get('openrouter-video-model:'.$id) ?? 'openrouter-video'),
+            'status' => $status === 'completed' ? 'succeeded' : 'failed',
+            'units' => 1,
+            'estimated_cost_usd' => round((float) ($job['usage']['cost'] ?? 0), 6),
+            'error_message' => $status === 'completed' ? null : mb_substr((string) json_encode($job['error'] ?? $status), 0, 300),
+            'metadata_json' => ['generation_id' => $id, 'price_basis' => 'reported'],
+        ]);
     }
 
     /** A finished prediction, recorded once however many times it is polled. */

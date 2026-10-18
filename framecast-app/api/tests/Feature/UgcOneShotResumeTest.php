@@ -443,6 +443,34 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertStringContainsString('close-up of the presenter\'s face', $this->sentPrompts[0]);
     }
 
+    public function test_a_seedance_cast_leads_with_their_pencil_sheets_and_the_prompt_names_each_one(): void
+    {
+        Schema::create('characters', function (Blueprint $t) { $t->id(); $t->text('name')->nullable(); $t->text('reference_asset_id')->nullable(); $t->text('sketch_json')->nullable(); $t->timestamps(); });
+        DB::table('characters')->insert([['id' => 101, 'name' => 'Layla'], ['id' => 152, 'name' => 'Grace Kim']]);
+        $sketch = Mockery::mock(\App\Services\Ugc\CharacterSketch::class);
+        $sketch->shouldReceive('uri')->andReturnUsing(fn ($c) => 'data:sheet-'.$c->id);
+        $this->app->instance(\App\Services\Ugc\CharacterSketch::class, $sketch);
+        $job = new GenerateOneShotUgcJob(7, 70, [['prompt' => 'A skit.', 'seconds' => 12]], 396, 'seedance25', ['product-a', 'place'], null, null, '720p', null, null, false, [], false, [], '9:16', [101, 152]);
+        $this->assertNull($this->run_($job));
+        $this->assertSame(['data:sheet-101', 'data:sheet-152', 'product-a', 'place'], $this->refs[0], 'the sheets first, then the product and the place');
+        $this->assertStringStartsWith('Cast: Reference images 1 to 2 are pencil character sheets of @Layla (image 1), @GraceKim (image 2).', $this->sentPrompts[0]);
+        $this->assertStringContainsString('never the paper, the pencil style', $this->sentPrompts[0]);
+    }
+
+    public function test_a_presenter_seedance_declines_is_not_reworded_and_the_take_says_why(): void
+    {
+        $veo = Mockery::mock(ReplicateVeoAdapter::class);
+        $veo->shouldReceive('start')->andReturnUsing(function () { $this->starts++; throw new \App\Services\Generation\ProviderFailed(\App\Services\Generation\Video\OpenRouterVideoAdapter::FACE_DECLINED); });
+        $this->app->instance(ReplicateVeoAdapter::class, $veo);
+        $soften = Mockery::mock(\App\Services\Ugc\UgcPromptSoften::class)->shouldNotReceive('rewrite')->getMock();
+        $this->app->instance(\App\Services\Ugc\UgcPromptSoften::class, $soften);
+        $error = $this->run_(new GenerateOneShotUgcJob(7, 70, [['prompt' => 'Hi.', 'seconds' => 8]], 396, 'seedance25', []));
+        $this->assertNotNull($error);
+        $this->assertSame(1, $this->starts, 'asked once: rewording does not change a face');
+        $this->assertStringContainsString(\App\Services\Generation\Video\OpenRouterVideoAdapter::FACE_DECLINED, $this->settings()['last_error']);
+        $this->assertSame([], $this->charged);
+    }
+
     public function test_saved_clips_of_a_take_that_no_longer_exists_are_swept(): void
     {
         Storage::disk('local')->put(GenerateOneShotUgcJob::partsDir(3, 999).'/abc/0.mp4', 'clip');

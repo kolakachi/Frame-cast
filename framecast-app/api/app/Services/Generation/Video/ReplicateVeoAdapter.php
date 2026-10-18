@@ -40,11 +40,23 @@ class ReplicateVeoAdapter
         return (string) config('services.replicate.api_token', '') !== '';
     }
 
-    /** @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame */
-    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = [], string $aspectRatio = '9:16'): string
+    /** Seedance through OpenRouter for the week's trial (owner, 2026-10-18); Replicate's otherwise. */
+    public static function seedanceViaOpenRouter(): bool
+    {
+        return (bool) config('services.ugc.seedance_openrouter') && app(OpenRouterVideoAdapter::class)->configured();
+    }
+
+    /**
+     * @param array<int, string> $referenceImages data URIs or URLs; Seedance-only, exclusive with a start frame
+     * @param ?string $audioUrl the presenter's read as an audio reference (Seedance through OpenRouter only)
+     */
+    public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = [], string $aspectRatio = '9:16', ?string $audioUrl = null): string
     {
         // Seedance 2.5 also makes square and 4:3 shapes (a split-screen half); the others are portrait or landscape.
         if (! in_array($aspectRatio, $engine === 'seedance25' ? ['9:16', '16:9', '1:1', '4:3', '3:4', '21:9'] : ['9:16', '16:9'], true)) throw new \InvalidArgumentException('This video model supports portrait or landscape.');
+        if ($engine === 'seedance25' && self::seedanceViaOpenRouter()) {
+            return 'or:'.app(OpenRouterVideoAdapter::class)->start($engine, $prompt, $seconds, $imageDataUri, $referenceImages, $seed, $resolution, $aspectRatio, $audioUrl);
+        }
         $model = self::ENGINES[$engine] ?? self::ENGINES['veo'];
 
         // Gemini Omni 1.1 accepts only prompt, image, last_frame,
@@ -140,12 +152,14 @@ class ReplicateVeoAdapter
     /** Stop a prediction we no longer wait for (one that hung), so it neither runs on nor bills. */
     public function cancel(string $predictionId): void
     {
+        if (str_starts_with($predictionId, 'or:')) return; // OpenRouter's video API has no cancel
         rescue(fn () => Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(20)
             ->post('https://api.replicate.com/v1/predictions/'.$predictionId.'/cancel'), report: false);
     }
 
     public function pollUntilDone(string $predictionId, int $maxSeconds = 600): ?string
     {
+        if (str_starts_with($predictionId, 'or:')) return app(OpenRouterVideoAdapter::class)->pollUntilDone(substr($predictionId, 3), max($maxSeconds, 900));
         $deadline = time() + $maxSeconds;
         while (time() < $deadline) {
             $p = Http::withToken((string) config('services.replicate.api_token'))
