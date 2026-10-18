@@ -94,6 +94,21 @@ Phrases buyers used about what they want (from briefs and messages; paraphrase-f
 And about what went wrong: "difficult and time-consuming", "too many workarounds", "the AI did not follow my prompt",
 "very basic".
 
+
+### Replies to the customer emails (sent 2026-10-18)
+
+- **ws60** (lifetime buyer, one trial video): "I have only used it once to make a trial video which looked good."
+  "For now I do not want to waste any credits until I know what it can be used for." "I only purchased it to go with
+  OfferIQ but so far have not completed any projects to use any videos." "I do have other similar tools with unlimited
+  use so at the moment building test products with them for practice." Back from holiday in about 3 weeks. 500 credits
+  added.
+- **ws82** (lottery shop, Brazil, most active Create user; was at 0 credits): handed the testing to a colleague and will
+  answer after the colleague reports on Monday Oct 19 (reply in Portuguese). 500 credits added.
+
+What they say: **credits feel like something to save, not spend, until the use is clear** ("not waste any credits"),
+and **unlimited-use tools are the comparison** for practice. A buyer who doesn't know what to make doesn't make
+anything: templates and the free first ad answer "what it can be used for".
+
 ## 6. What competitors run
 
 20 ads active on 2026-10-17, read from the Meta Ad Library (open any with `facebook.com/ads/library/?id=<id>`). LinkedIn's
