@@ -35,8 +35,16 @@ submission guidelines (developers.openai.com/apps-sdk/app-submission-guidelines)
    26 September. §4.2 carries more than that on purpose; the JSON ships the
    five and three that cover the credit, consent and external-post gates.
 
-   Rather than typing the 153 tool justifications into the form by hand,
+   Rather than typing the tool justifications into the form by hand,
    upload `chatgpt-app-submission.json` (beside this file) on the MCP tab.
+   **Rebuild it from the server, never by hand** (2026-10-18, after OpenAI
+   rejected v1.0.0 because annotations did not match behaviour):
+   `node mcp/scripts/list-tools.mjs mcp/server.js > tools.json` (where the MCP
+   node_modules are installed, e.g. inside the mcp container), then
+   `node mcp/scripts/submission.mjs tools.json docs/product/chatgpt-app-submission.json`.
+   It refuses when a tool lacks a justification or a hint is not true/false.
+   Justifications live in `mcp/submission-justifications.json`; the hint
+   policy is the comment at the top of `mcp/server.js`.
    It fills App Info, the per-tool justifications and Testing in one go, and
    validates clean against OpenAI's published schema. Regenerate it whenever
    the tool set changes — its annotations must match what Scan Tools reads

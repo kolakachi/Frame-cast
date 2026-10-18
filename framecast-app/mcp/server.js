@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.10.0'
+const VERSION = process.env.MCP_VERSION || '1.11.0'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -33,9 +33,12 @@ const VERSION = process.env.MCP_VERSION || '1.10.0'
 // and shows nowhere in the app; that bookkeeping is not a modification of the
 // user's environment. Anything the user can see afterwards in WyvStudio
 // (a video, an asset, a character, an assistant conversation, a post) is a
-// write. destructiveHint marks what cannot be undone from the API: cancelling
-// an operation and posting to a social account. openWorldHint marks tools
-// whose effect leaves WyvStudio: sharing and publishing.
+// write. destructiveHint marks what cannot be undone: cancelling an operation,
+// posting to a social account, and overwriting a character (no history).
+// openWorldHint marks tools that reach outside WyvStudio for the user: a public
+// share link, a social post, or fetching a web page the user names (a product
+// link or a URL source). WyvStudio's own AI providers are not open world.
+// Reviewed tool by tool against the API on 2026-10-18 after OpenAI's review.
 // All three of readOnlyHint, destructiveHint and openWorldHint are stated on
 // every tool, including the reads where destructiveHint is trivially false:
 // the app directory refuses a tool that leaves any of the three unsaid.
@@ -330,7 +333,7 @@ function buildServer(token) {
         quote_id: z.string().describe('From estimate_video.'),
         idempotency_key: z.string().max(128).optional().describe('Optional. A retry with the same key returns the same video instead of making another. Defaults to the quote_id, which is already single-use.'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ quote_id, idempotency_key }) => call(token, 'POST', '/videos', { quote_id, idempotency_key: idempotency_key || quote_id }, 'create_video'),
   )
@@ -357,7 +360,7 @@ function buildServer(token) {
     title: 'Preview a voice',
     description: 'Free fixed preview. For cloned voices this plays the original SOURCE SAMPLE, not newly synthesized clone audio. To hear generated narration, quote regenerate_voice on a scene. voice_id is the string id from list_voices.',
     inputSchema: z.object({ voice_id: z.string().max(150) }),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async args => call(token, 'POST', '/voices/preview', args, 'preview_voice'))
   server.registerTool('save_voice', {
     title: 'Save a reusable voice profile',
@@ -398,7 +401,7 @@ function buildServer(token) {
         consistency_method: z.enum(['quick', 'lora']).optional(),
         identity_strength: z.enum(['subtle', 'balanced', 'strong', 'locked']).optional(),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ character_id, ...rest }) => call(token, 'PATCH', `/characters/${character_id}`, rest, 'update_character'),
   )
@@ -503,7 +506,7 @@ function buildServer(token) {
       title: 'UGC ad: brief the director (free)',
       description: 'Start a UGC ad with the user\'s brief (product, audience, angle, any script, how names are said). The director answers with one question (answer it with ugc_reply, offering suggested_answers) or a pitch: what the video shows, its script, the presenter and model, and the credits. Free. Show the pitch to the user; change it with ugc_reply; make it with ugc_make.',
       inputSchema: z.object({ text: z.string().min(1).max(4000), ...ugcMessage }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async (args) => call(token, 'POST', '/ugc/chats', args, 'ugc_brief'),
   )
@@ -513,7 +516,7 @@ function buildServer(token) {
       title: 'UGC ad: reply to the director (free)',
       description: 'Answer the director\'s question, or ask for changes to the pitch ("make her older", "shorter", "say Lumora as loo-MOR-ah"). Returns the next question or a revised pitch. Free.',
       inputSchema: z.object({ chat_id: z.string().uuid(), text: z.string().min(1).max(4000), ...ugcMessage }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async ({ chat_id, ...args }) => call(token, 'POST', `/ugc/chats/${chat_id}/messages`, args, 'ugc_reply'),
   )
@@ -936,7 +939,7 @@ function buildServer(token) {
         asset_ids: z.array(z.number().int().min(1)).max(6).optional().describe('Library asset ids of the product photos or logo to use.'),
         idempotency_key: z.string().max(100).optional().describe('Repeat the same key to retry safely without starting a second video.'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ template_id, ...body }) => call(token, 'POST', `/weave/templates/${encodeURIComponent(template_id)}/videos`, body, 'weave_from_template'),
   )
@@ -958,7 +961,7 @@ function buildServer(token) {
       title: 'Reply to the Creative Director or ask for a change',
       description: "Send the user's answer to the Creative Director's question, a change to the plan before it is made, or a change to the finished video (\"make the logo bigger\", \"use a calmer voice\"). The Creative Director re-plans, which costs a few credits; the change itself is priced and approved with weave_approve like the first version. Then poll weave_status.",
       inputSchema: z.object({ id: weaveId, message: z.string().min(1).max(10000).describe("The user's answer or change, in their words."), idempotency_key: z.string().max(100).optional() }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ id, ...body }) => call(token, 'POST', `/weave/videos/${encodeURIComponent(id)}/messages`, body, 'weave_reply'),
   )
@@ -974,7 +977,7 @@ function buildServer(token) {
         look_token: z.string().regex(/^[a-f0-9]{64}$/).optional().describe('From weave_status when state is look_ready and the user approved the images.'),
         idempotency_key: z.string().max(100).optional(),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ id, quote_id, look_token, idempotency_key }) => quote_id
       ? call(token, 'POST', `/weave/videos/${encodeURIComponent(id)}/runs`, { quote_id, ...(idempotency_key ? { idempotency_key } : {}) }, 'weave_approve')

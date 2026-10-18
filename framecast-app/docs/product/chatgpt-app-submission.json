@@ -8,616 +8,796 @@
     "category": "PRODUCTIVITY"
   },
   "tools": {
+    "get_capabilities": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns the workspace's plan, credit balance and what it can make. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+      }
+    },
     "get_options": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Returns the fixed option keys estimate_video accepts: visual styles, animate tiers, pacing, aspect ratios, platform targets, languages, tone examples and audiogram settings. A GET over reference data that stores nothing.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns the fixed option lists video creation accepts (styles, pacing, shapes, languages). A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_brand_kits": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the workspace's own brand kits so one can be named by id. A GET; no kit is created, edited or applied.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the workspace's brand kits. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_channels": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the workspace's channels and their defaults. A GET; no channel is created or modified.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the workspace's channels. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_niches": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the available content niches with their default style, tone and music mood. A GET over reference data.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists content niches and their defaults. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_caption_presets": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the workspace's saved caption presets. A GET; no preset is created, changed or applied to a video.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the workspace's caption presets. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_characters": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the workspace's existing AI characters so one can be referenced by id. A GET; no character is created or altered.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
-      }
-    },
-    "get_capabilities": {
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
-      },
-      "justifications": {
-        "read_only_justification": "Reports the workspace's plan, credit balance, limits, supported inputs and per-scene prices. It is the opening call in most conversations and is a pure read: no credits move and no project changes.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the workspace's characters. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_library": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Pages the workspace's own uploaded assets by type, with optional title search. A GET; it uploads, alters and removes nothing.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the workspace's media library. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "list_voices": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the narration voices available to the workspace, being WyvStudio's catalogue plus the workspace's own saved and cloned voices. A GET; no voice is saved, cloned or removed.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the voices the workspace can use. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "estimate_video": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Prices a video and returns a quote_id. Nothing is built and no credits move. The single write is a quote row that expires in ten minutes and is never surfaced anywhere in the WyvStudio UI, so the workspace is unchanged as the user sees it.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Prices a video before it is made. The only write is a price quote that expires in 10 minutes and never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "create_video": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": true,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Creates a video in the workspace and spends credits up to the approved quote's maximum. The video is visible in WyvStudio afterwards, so this is a write by any reading. It is refused without a current quote_id the user approved.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds a new video. No existing project, asset or export is overwritten or removed, and the credits it spends were quoted and approved beforehand."
+        "read_only_justification": "Makes the video the user approved and saves it as a project in their workspace, spending up to the quoted credits.",
+        "open_world_justification": "When the user picks a web page as the video's source, WyvStudio fetches that page to read it, which reaches outside WyvStudio. Otherwise everything stays private inside the user's workspace; it posts nothing and creates no public link.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "upload_asset": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Stores file bytes as a new asset in the workspace library, which the user sees in the app afterwards.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It creates a new library asset and never replaces or deletes an existing one."
+        "read_only_justification": "Adds a file the user supplies to their media library.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "get_asset": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reads one owned asset and its transcription status. A GET scoped to the workspace; the asset is not modified.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns one library item's details. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "clone_voice": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Registers an uploaded sample as a new voice that persists in the workspace and is returned by list_voices. It also requires the caller to pass consent: true.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It adds a voice. No existing voice is overwritten or removed, and the source sample is left untouched."
+        "read_only_justification": "Creates a cloned voice in the user's workspace from a sample they supply, using their plan's clone allowance.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "preview_voice": {
       "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Free and it spends nothing, but it is a POST to the voices endpoint rather than a plain read, so it is marked a write rather than claiming to be inert. For a cloned voice it replays the original source sample; it synthesises no new audio.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Plays a sample of a voice. It spends no credits and changes nothing the user sees; it only remembers the sample's audio link for next time.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "save_voice": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Saves a catalogue voice as a reusable profile in the workspace. Free, but the profile persists and the user sees it afterwards.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Saves a voice to the user's workspace.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "create_character": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Creates a reusable character that persists in the workspace and counts against the plan's character limit. Where reference images show a real person it requires consent: true.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Creates a character in the user's workspace.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "update_character": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": true
       },
       "justifications": {
-        "read_only_justification": "Changes an existing character's name, description, references, consistency method or identity strength. Free, but the change persists and is visible in the app.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It edits fields on a character the user chose to change, which is the tool's stated purpose, and the character itself is never removed. No other record is affected."
+        "read_only_justification": "Changes a character's name, description or reference photos in the user's workspace.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Marked destructive because it overwrites the character's details and keeps no history, so the old values cannot be restored from WyvStudio."
       }
     },
     "estimate_character_image": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Prices one generated character image and returns a quote_id. No image is produced and no credits move; the only write is the ten-minute quote row, invisible in the app.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Prices a character image. The only write is a 10-minute price quote that never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "estimate_character_reference_edit": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Prices an AI edit of a character's uploaded reference photo. The photo is not touched, no edit is performed and no credits move; the only write is the ten-minute quote row.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Prices an edit to a character's reference photo. The only write is a 10-minute price quote that never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "create_character_image": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Generates a character image and spends the quoted credits. Only runs after the user approved the quote; the resulting image is added to the character.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Generates a character image the user approved and adds it to their workspace, spending the quoted credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "get_character_image": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reports the status of a character image generation that a different tool started. Polling only: it neither starts nor cancels work.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns the status and result of a character image already requested. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "analyze_ugc_reference": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reads an uploaded workspace video or audio file and returns its shape and beats as planning input. It derives a description; the source asset is unchanged and nothing is attached to a project.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Reads a video the user already uploaded and returns its shape and beats. It spends no credits; the only write is filling in that file's length if it was missing.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "estimate_presenter_preview": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Quotes a generated presenter portrait. No portrait is generated and no credits move; the only write is the ten-minute quote row.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Prices a presenter preview. The only write is a 10-minute price quote that never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "create_presenter_preview": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Generates a presenter portrait and spends the quoted credits, only after the user approved the quote.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Generates a presenter preview image the user approved and adds it to their library, spending the quoted credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+      }
+    },
+    "ugc_brief": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Starts a UGC chat in the user's workspace with their brief.",
+        "open_world_justification": "When the user gives a product link, WyvStudio fetches that web page and imports its product photos into the user's library, which reaches outside WyvStudio. It posts nothing and creates no public link.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+      }
+    },
+    "ugc_reply": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Adds the user's answer to their UGC chat.",
+        "open_world_justification": "When the user gives a product link, WyvStudio fetches that web page and imports its product photos into the user's library, which reaches outside WyvStudio. It posts nothing and creates no public link.",
+        "destructive_justification": "It adds a message to the chat and changes nothing that already exists."
+      }
+    },
+    "ugc_make": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Makes the UGC video the user approved, spending the quoted credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+      }
+    },
+    "ugc_status": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns a UGC chat and its progress. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "plan_ugc": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Turns a script or brief into a proposed shot plan and returns it for the user to approve. The plan is not saved as a project, nothing is generated and no take allowance is consumed.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Turns a brief into a shot plan and returns it. It writes nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "estimate_ugc": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Prices a shot plan and returns a quote_id. No takes are generated, no credits move and no monthly take allowance is used; the only write is the ten-minute quote row.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Prices UGC takes. The only write is a 10-minute price quote that never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "create_ugc": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Starts the takes an estimate_ugc quote described. It spends credits and consumes the plan's monthly take allowance, and only runs against a quote the user approved.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Makes the UGC takes the user approved, spending the quoted credits and plan takes.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
     "get_ugc_allowance": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reports whether UGC ads are enabled on the plan and how many takes remain this month. A pure read of entitlement state.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns how many UGC takes the plan still allows this month. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "get_project": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Returns the full editable state of a video: revision, settings and every scene. This is the read that precedes an edit, never the edit itself.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a video's current scenes and settings. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "get_project_schema": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Describes which editor operations are currently available on a video and why any is unavailable. Pure introspection; no project state changes.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns the list of edits the editor accepts. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "propose_edits": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Validates proposed changes against the project's current revision and prices the ones that would cost credits. Nothing is applied: apply_edits is a separate call the user has to approve. The only write is the priced proposal, which expires and is invisible in the app.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Checks and prices a list of edits without applying them. The only write is a 10-minute proposal that never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "apply_edits": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Applies the changes in a proposal to the project through the editor and spends credits up to the proposal's total. The project's revision moves and the user sees the result.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It changes the project the user asked it to change, action by action, and each priced change was shown and approved first. Nothing is deleted, and WyvStudio keeps the project's revision history."
+        "read_only_justification": "Applies the edits the user approved to their video, spending the quoted credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Every change is recorded in the video's edit history and can be undone with undo_edit."
       }
     },
     "export_video": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Renders a new export of the current project state and draws on the plan's export allowance. The new export appears in the video's export list.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It adds a new export alongside the existing ones rather than replacing them; list_exports continues to return the earlier renders."
+        "read_only_justification": "Starts an export of a video, using the plan's monthly exports.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds a new export file and leaves the video and earlier exports unchanged."
       }
     },
     "list_exports": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists every export of a video with status and download links. A GET; it starts no render and removes no file.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists a video's exports. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "estimate_retry": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Prices retrying the failed parts of a generation and returns a new authorised ceiling. No work restarts and no credits move; the only write is the quote row.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Prices a retry of a failed video. The only write is a 10-minute price quote that never shows in the app; no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "cancel_operation": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": true,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": true
       },
       "justifications": {
-        "read_only_justification": "Stops work that is still in flight and changes the operation's accounting state, releasing its unused reservation. The cancelled operation is visible in the app afterwards.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "Marked destructive deliberately. It fences out work that has not finished, and that cancellation cannot be reversed through the API: the abandoned work has to be quoted and paid for again. Nothing is deleted, but the user cannot undo it from here."
+        "read_only_justification": "Stops a paid operation that is still running and releases the credits not yet used.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Marked destructive because a cancelled operation cannot be resumed: the work that had not finished is dropped."
       }
     },
     "retry_video": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Restarts generation of a failed video, or resumes its failed parts, against an estimate_retry quote. It spends credits and changes the video's state.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It resumes or restarts work that had already failed, so there is no good state for it to overwrite."
+        "read_only_justification": "Re-makes the parts of a video that failed, spending the quoted credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It re-makes only the parts that failed; finished parts are kept, and the video can be deleted in the app."
       }
     },
     "ask_wyvstudio_assistant": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Free, and it applies nothing: it returns a plan with a ten-minute plan_id for the user to approve. It is marked a write because it persists an assistant conversation that the user can see in the WyvStudio app afterwards, and claiming read-only would misstate that.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It only adds. Nothing the user already had is overwritten or removed, and the connector exposes no delete tool."
+        "read_only_justification": "Asks WyvStudio's assistant for an edit plan; the question and answer are saved in the video's assistant chat in the app, so it is not read-only. Nothing is applied and no credits are spent.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Nothing in the video changes; it only adds turns to the assistant chat."
       }
     },
     "prepare_delivery": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Preflights sharing, an approval request or scheduling: it reports what would be required and what is missing. Nothing is shared, submitted or scheduled. share_video and publish_video are the tools that act.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Checks a video is ready to share or schedule and returns a link to the editor and a checklist. It sends, posts and schedules nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "Nothing in the user's workspace is created, changed or removed."
       }
     },
     "get_scene_preview": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Renders a JPEG of a scene's existing visual so the user can see it in the chat. It reads media the project already has; no new asset is stored against the project and no credits are charged.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a JPEG preview of one scene. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. The link it returns is private to the user, signed, and expires within hours; it is not a public share.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "get_character_preview": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Renders a JPEG of a character's existing reference photo or latest generated image. It reads media that already exists; nothing is generated or stored.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a JPEG preview of a character. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. The link it returns is private to the user, signed, and expires within hours; it is not a public share.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "get_asset_preview": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Renders a downsized JPEG of an image or video asset the workspace already owns. A read of existing media; no asset is created or altered.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a JPEG preview of a library item. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. The link it returns is private to the user, signed, and expires within hours; it is not a public share.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "share_video": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": true
+        "openWorldHint": true,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Changes the video's sharing state: a public watch link exists afterwards where none did, or stops existing. That state is visible in the app.",
-        "open_world_justification": "It mints, or revokes, a public watch link that anyone can open without logging in. The effect is visible outside WyvStudio and outside the user's account, which is exactly what openWorldHint is for.",
-        "destructive_justification": "Reversible in a single call: the same tool with enabled: false turns the link off again. Nothing is deleted and the export itself is untouched."
+        "read_only_justification": "Turns a video's public share link on or off.",
+        "open_world_justification": "It creates a public link anyone with the URL can open, outside WyvStudio.",
+        "destructive_justification": "Sharing can be turned off again with the same tool (enabled: false); nothing is deleted."
       }
     },
     "list_social_accounts": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the social accounts connected to the workspace with their ids. A read of connection state; it connects, disconnects and posts nothing.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Lists the social accounts the user connected. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "publish_video": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": true,
-        "openWorldHint": true
+        "openWorldHint": true,
+        "destructiveHint": true
       },
       "justifications": {
-        "read_only_justification": "Creates a post, or a scheduled post, on a connected external account, plus a matching record in the workspace.",
-        "open_world_justification": "It posts to a third-party account on YouTube, TikTok, Instagram or Facebook, so the effect lands entirely outside WyvStudio, on a public platform.",
-        "destructive_justification": "Marked destructive because a post that has gone live on an external platform cannot be recalled through this connector, which has no unpublish tool. That is why it refuses without confirm: true, after the user has approved the account, the caption and the time."
+        "read_only_justification": "Posts, or schedules, a video on a social account the user connected, and records the post in their workspace.",
+        "open_world_justification": "It posts to the user's YouTube, TikTok, Instagram or Facebook account, so the effect lands outside WyvStudio on a public platform.",
+        "destructive_justification": "Marked destructive because a post that has gone live cannot be recalled through this connector. It refuses without confirm: true, after the user has approved the account, the caption and the time."
+      }
+    },
+    "get_edit_history": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns a video's edit history. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+      }
+    },
+    "undo_edit": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Undoes the latest edit to the user's video.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Every change is recorded in the video's edit history and can be undone with undo_edit."
+      }
+    },
+    "redo_edit": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Re-applies an edit the user undid.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Every change is recorded in the video's edit history and can be undone with undo_edit."
       }
     },
     "get_post": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reports the status of a post made by publish_video. Polling only: it cannot create, edit or retract a post.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a social post's status. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "apply_assistant_plan": {
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Runs the actions in an approved assistant plan and spends credits up to the plan's total. The project changes and the user sees the result.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "It changes the project the user approved a plan for. Nothing is deleted, the plan's actions were itemised with their costs beforehand, and it refuses outright with revision_conflict if the project moved underneath it."
+        "read_only_justification": "Applies the assistant's plan the user approved to their video, spending the quoted credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Every change is recorded in the video's edit history and can be undone with undo_edit."
       }
     },
     "get_operation": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reads execution progress, known results and accounting state for a quote or plan id. Explicitly safe to poll; it neither advances nor cancels the work.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "The only thing it writes is a quote row that expires in ten minutes and never appears in the app. It overwrites and removes nothing, and an unused quote simply lapses at no cost."
+        "read_only_justification": "Returns the status of a paid operation. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "get_video_status": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Reports a video's progress and current stage. Polling only: it starts and stops nothing.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a video's progress. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
     "get_video_result": {
       "annotations": {
         "readOnlyHint": true,
-        "destructiveHint": false,
-        "openWorldHint": false
+        "openWorldHint": false,
+        "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Returns the selected completed MP4 as a private, time-limited download link. A read of a finished artefact; the export is not re-rendered and the file is not altered.",
-        "open_world_justification": "Runs entirely inside the user's own WyvStudio workspace, over the authenticated WyvStudio API. It contacts no third-party service and nothing it does is visible outside WyvStudio.",
-        "destructive_justification": "A read has nothing to destroy: the endpoint behind it only returns data. The connector as a whole exposes no tool that deletes a video, asset, character, voice or export."
+        "read_only_justification": "Returns a finished video and a download link. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. The link it returns is private to the user, signed, and expires within hours; it is not a public share.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+      }
+    },
+    "weave_start": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Starts a Create video in the user's workspace: it saves the brief and plans the video, spending a few credits for planning.",
+        "open_world_justification": "When the user gives a reference_url, WyvStudio fetches that page or video to read it, which reaches outside WyvStudio. It posts nothing and creates no public link.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+      }
+    },
+    "weave_templates": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Lists the templates the user can start from. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+      }
+    },
+    "weave_from_template": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Starts a Create video from a template in the user's workspace and plans it, spending a few credits for planning (none for a free account's first ad).",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+      }
+    },
+    "weave_status": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns a Create video's plan, price and progress. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+      }
+    },
+    "weave_reply": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Adds the user's change request to their Create video and re-plans it, spending a few credits for planning.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "Each change becomes a new version; earlier versions are kept and can be restored in the app."
+      }
+    },
+    "weave_approve": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Without a quote_id it returns the price only; with the quote_id the user approved it builds the video and spends up to that price. Because it can spend credits and adds a new version, it is not read-only.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+        "destructive_justification": "A build adds a new version of the video; earlier versions are kept and can be restored in the app."
+      }
+    },
+    "weave_list": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Lists the user's Create videos. A GET request that stores nothing and spends no credits.",
+        "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+        "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+      }
+    },
+    "weave_share": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Turns a Create video's public share link on or off and keeps the finished video in the user's library.",
+        "open_world_justification": "It creates a public link anyone with the URL can open, outside WyvStudio.",
+        "destructive_justification": "Sharing can be turned off again with the same tool; nothing is deleted."
       }
     }
   },
