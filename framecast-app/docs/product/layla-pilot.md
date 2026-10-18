@@ -83,3 +83,9 @@ model (gpt-image-2 from her reference, "phone selfie, real skin, no glam") made 
 image matters as much as the model. Day-in-the-life ("a day making ads for small shops", three stills) made on Hailuo 3
 and Veo 3.1 Lite; Veo accepted her face. Only Avatar IV and Seedance 2+ take our own voice; the others speak in a voice
 they make up. OpenRouter spend for all tests: $9.18 of $20.
+
+**Veo 3.1 Fast (2026-10-18):** with natural image-model stills (same hoodie all day), Veo 3.1 Fast accepted Layla's face on
+both OpenRouter (3 clips) and our Replicate route (1 clip), which refused her glam studio still on 2026-10-14 (E005). So the
+refusal tracked the photo, not the route. Before re-opening Veo Fast for presenters (fix f6dbabba blocks it), test more
+faces. Both Veo models add a second mug when the prompt says "sips her coffee" and the still already shows one: name the
+single mug in the prompt. Veo ends each clip with a short fade; trim about 0.4 s.
