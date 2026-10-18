@@ -19,8 +19,10 @@ class WorkspaceEraser
     public static function blocked(int $workspaceId): ?string
     {
         if (! Schema::hasTable('create_templates')) return null;
-        $owns = DB::table('create_templates')->whereNull('archived_at')
-            ->whereIn('conversation_id', DB::table('create_conversations')->where('workspace_id', $workspaceId)->select('id'))->exists();
+        // Compared as text: create_templates.conversation_id is a string, create_conversations.id a uuid on Postgres.
+        $sources = DB::table('create_templates')->whereNull('archived_at')->whereNotNull('conversation_id')->pluck('conversation_id')->map(fn ($id) => (string) $id)->all();
+        if (! $sources) return null;
+        $owns = DB::table('create_conversations')->where('workspace_id', $workspaceId)->pluck('id')->map(fn ($id) => (string) $id)->intersect($sources)->isNotEmpty();
         return $owns ? self::TEMPLATE_SOURCE : null;
     }
 
