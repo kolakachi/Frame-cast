@@ -644,19 +644,19 @@
         "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
-    "weave_start": {
+    "plan_video": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Starts a Create video in the user's workspace: it saves the brief and plans the video, spending a few credits for planning.",
+        "read_only_justification": "Starts a planned video in the user's workspace: it saves the brief and plans the video, spending a few credits for planning.",
         "open_world_justification": "When the user gives a reference_url, WyvStudio fetches that page or video to read it, which reaches outside WyvStudio. It posts nothing and creates no public link.",
         "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
-    "weave_templates": {
+    "list_video_templates": {
       "annotations": {
         "readOnlyHint": true,
         "openWorldHint": false,
@@ -668,43 +668,43 @@
         "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
-    "weave_from_template": {
+    "plan_video_from_template": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Starts a Create video from a template in the user's workspace and plans it, spending a few credits for planning (none for a free account's first ad).",
+        "read_only_justification": "Starts a planned video from a template in the user's workspace and plans it, spending a few credits for planning (none for a free account's first ad).",
         "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
         "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
       }
     },
-    "weave_status": {
+    "get_video_plan": {
       "annotations": {
         "readOnlyHint": true,
         "openWorldHint": false,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Returns a Create video's plan, price and progress. A GET request that stores nothing and spends no credits.",
+        "read_only_justification": "Returns a planned video's plan, price and progress. A GET request that stores nothing and spends no credits.",
         "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
         "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
-    "weave_reply": {
+    "change_video_plan": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Adds the user's change request to their Create video and re-plans it, spending a few credits for planning.",
+        "read_only_justification": "Adds the user's change request to their planned video and re-plans it, spending a few credits for planning.",
         "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
         "destructive_justification": "Each change becomes a new version; earlier versions are kept and can be restored in the app."
       }
     },
-    "weave_approve": {
+    "approve_video_plan": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
@@ -716,26 +716,26 @@
         "destructive_justification": "A build adds a new version of the video; earlier versions are kept and can be restored in the app."
       }
     },
-    "weave_list": {
+    "list_video_plans": {
       "annotations": {
         "readOnlyHint": true,
         "openWorldHint": false,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Lists the user's Create videos. A GET request that stores nothing and spends no credits.",
+        "read_only_justification": "Lists the user's planned videos. A GET request that stores nothing and spends no credits.",
         "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
         "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
       }
     },
-    "weave_share": {
+    "share_planned_video": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Turns a Create video's public share link on or off and keeps the finished video in the user's library.",
+        "read_only_justification": "Turns a planned video's public share link on or off and keeps the finished video in the user's library.",
         "open_world_justification": "It creates a public link anyone with the URL can open, outside WyvStudio.",
         "destructive_justification": "Sharing can be turned off again with the same tool; nothing is deleted."
       }

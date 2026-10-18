@@ -328,5 +328,45 @@
   "read_only_justification": "Posts, or schedules, a video on a social account the user connected, and records the post in their workspace.",
   "open_world_justification": "It posts to the user's YouTube, TikTok, Instagram or Facebook account, so the effect lands outside WyvStudio on a public platform.",
   "destructive_justification": "Marked destructive because a post that has gone live cannot be recalled through this connector. It refuses without confirm: true, after the user has approved the account, the caption and the time."
+ },
+ "plan_video": {
+  "read_only_justification": "Starts a planned video in the user's workspace: it saves the brief and plans the video, spending a few credits for planning.",
+  "open_world_justification": "When the user gives a reference_url, WyvStudio fetches that page or video to read it, which reaches outside WyvStudio. It posts nothing and creates no public link.",
+  "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+ },
+ "plan_video_from_template": {
+  "read_only_justification": "Starts a planned video from a template in the user's workspace and plans it, spending a few credits for planning (none for a free account's first ad).",
+  "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+  "destructive_justification": "It adds something new and changes nothing that already exists; what it makes can be deleted (or archived) in the app."
+ },
+ "list_video_templates": {
+  "read_only_justification": "Lists the templates the user can start from. A GET request that stores nothing and spends no credits.",
+  "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+  "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+ },
+ "get_video_plan": {
+  "read_only_justification": "Returns a planned video's plan, price and progress. A GET request that stores nothing and spends no credits.",
+  "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+  "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+ },
+ "change_video_plan": {
+  "read_only_justification": "Adds the user's change request to their planned video and re-plans it, spending a few credits for planning.",
+  "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+  "destructive_justification": "Each change becomes a new version; earlier versions are kept and can be restored in the app."
+ },
+ "approve_video_plan": {
+  "read_only_justification": "Without a quote_id it returns the price only; with the quote_id the user approved it builds the video and spends up to that price. Because it can spend credits and adds a new version, it is not read-only.",
+  "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page. Any AI it uses is a provider WyvStudio calls on its own behalf; nothing is sent to a third party for the user to see.",
+  "destructive_justification": "A build adds a new version of the video; earlier versions are kept and can be restored in the app."
+ },
+ "list_video_plans": {
+  "read_only_justification": "Lists the user's planned videos. A GET request that stores nothing and spends no credits.",
+  "open_world_justification": "It works only inside the user's own WyvStudio workspace, through the authenticated WyvStudio API: it posts nothing, creates no public link and fetches no outside web page.",
+  "destructive_justification": "A read has nothing to destroy: nothing in the workspace is created, changed or removed."
+ },
+ "share_planned_video": {
+  "read_only_justification": "Turns a planned video's public share link on or off and keeps the finished video in the user's library.",
+  "open_world_justification": "It creates a public link anyone with the URL can open, outside WyvStudio.",
+  "destructive_justification": "Sharing can be turned off again with the same tool; nothing is deleted."
  }
 }

@@ -25,7 +25,7 @@ const API_HOST_HEADER = process.env.WYV_API_HOST_HEADER || ''
 const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1').split(',').map(s => s.trim()).filter(Boolean)
 // Bump whenever the tool set changes: ChatGPT snapshots a plugin's tools per
 // reported version and only re-reads them for a new one.
-const VERSION = process.env.MCP_VERSION || '1.12.0'
+const VERSION = process.env.MCP_VERSION || '1.13.0'
 
 // Annotation policy. readOnlyHint is true only for tools that leave the
 // workspace as the user sees it unchanged: reads, previews, and estimates.
@@ -89,27 +89,32 @@ const APP_EXCLUDED = new Set(['get_project_schema', 'propose_edits', 'apply_edit
 // Scoped to what the user asks WyvStudio for; no broad triggers (OpenAI's review asked for the instructions again).
 const APP_INSTRUCTIONS = `WyvStudio makes short branded videos and video ads in the user's own WyvStudio workspace.
 
-When the user asks WyvStudio to make a video
-- Use weave_start to plan it, weave_status to follow it, and weave_approve to show the price and, after the user agrees, build it.
-- If the user asks for WyvStudio Classic or a scene-by-scene video, use estimate_video, then create_video after the user agrees.
-- For a UGC-style ad with a presenter on camera, use ugc_brief, ugc_reply to answer its question or ask for changes, ugc_make after the user agrees, then ugc_status.
-- To start from an example, list them with weave_templates (share each watch_url), then weave_from_template.
-- To change a Create video, use weave_reply. Classic videos are edited in the WyvStudio app: give the user the video's app link.
+- plan_video plans a video from the user's description; get_video_plan shows the plan and progress; approve_video_plan shows the price and, only after the user agrees, builds the video; change_video_plan sends the user's changes.
+- list_video_templates and plan_video_from_template start a video from an example.
+- When the user asks for WyvStudio Classic, use estimate_video and, after the user agrees, create_video.
+- For a UGC-style ad with a presenter on camera, use ugc_brief and ugc_reply, then ugc_make after the user agrees, then ugc_status.
 
-Approval
-- Call get_capabilities first to see the plan and balance.
-- weave_start and weave_from_template begin planning, which uses a few credits: tell the user before calling them.
-- Show every price and wait for the user's explicit yes before any step that spends credits. Never approve on the user's behalf.
-- Before a UGC video that uses a real person's likeness or voice, ask the user to confirm they have the rights.
-- If the balance is not enough, explain the options returned (a shorter or simpler video, or adding credits) and let the user choose.
-
-Timing
-- Planning takes a minute or two; a Create video usually takes 10 to 20 minutes and a Classic stock-footage video about 2 minutes. Check status every minute or two, and share the preview or result link when it is ready.
-
-Sharing and publishing
-- weave_share or share_video turns a public watch link on or off.
-- publish_video posts a Classic export only after the user confirms the account, caption and time. For a Create video, give the user its app_url to publish from WyvStudio.
+Before anything that uses the user's credits, show what it will cost and wait for the user's explicit agreement; never agree on the user's behalf. Planning a video uses a few credits, so say so before calling plan_video or plan_video_from_template. Before using a real person's likeness or voice, ask the user to confirm they have the rights. Post to a social account only after the user confirms the account, caption and time.
 `
+
+// The directory app's tool names are plain verbs ("weave" was an internal name; OpenAI's review, 2026-10-18).
+// /mcp keeps the old names for existing connections.
+const APP_NAMES = {
+  weave_start: 'plan_video', weave_from_template: 'plan_video_from_template', weave_templates: 'list_video_templates',
+  weave_status: 'get_video_plan', weave_reply: 'change_video_plan', weave_approve: 'approve_video_plan',
+  weave_list: 'list_video_plans', weave_share: 'share_planned_video',
+}
+const APP_TITLES = {
+  plan_video: 'Plan a video', plan_video_from_template: 'Plan a video from a template', list_video_templates: 'List video templates',
+  get_video_plan: "Get a planned video's plan and progress", change_video_plan: 'Change a planned video',
+  approve_video_plan: 'Price and build a planned video', list_video_plans: 'List planned videos', share_planned_video: 'Share a planned video',
+}
+// The same descriptions in the directory's words: new names, no "default" or broad triggers.
+const appText = (text) => String(text)
+  .replace('The default way to make any video, including UGC-style ads. ', 'Plans a short branded video or ad. ')
+  .replace('Classic only (see the server instructions; Create via weave_start is the default). ', 'For WyvStudio Classic, when the user asks for it. ')
+  .replace(/\bweave_[a-z_]+\b/g, (n) => APP_NAMES[n] || n)
+  .replace(/\bCreate videos\b/g, 'planned videos').replace(/\bCreate video\b/g, 'planned video')
 
 // ── Developer API client ───────────────────────────────────────────────────
 
@@ -272,7 +277,14 @@ const ASPECT_RATIOS = ['9:16', '1:1', '16:9']
 function buildServer(token, profile = 'full') {
   const server = new McpServer({ name: 'wyvstudio', version: VERSION }, { instructions: profile === 'app' ? APP_INSTRUCTIONS : INSTRUCTIONS })
   // The directory app's endpoint registers every tool except APP_EXCLUDED.
-  if (profile === 'app') { const register = server.registerTool.bind(server); server.registerTool = (name, ...rest) => (APP_EXCLUDED.has(name) ? undefined : register(name, ...rest)) }
+  if (profile === 'app') {
+    const register = server.registerTool.bind(server)
+    server.registerTool = (name, config, ...rest) => {
+      if (APP_EXCLUDED.has(name)) return undefined
+      const appName = APP_NAMES[name] || name
+      return register(appName, { ...config, title: APP_TITLES[appName] || config.title, description: appText(config.description) }, ...rest)
+    }
+  }
 
   server.registerTool(
     'get_capabilities',
@@ -916,7 +928,7 @@ function buildServer(token, profile = 'full') {
   const WEAVE_FORMATS = ['offer_ad', 'launch_promo', 'testimonial', 'explainer', 'listicle', 'product_demo', 'ugc_ad', 'before_after', 'tutorial', 'brand_story']
   // Every built-in style in api/resources/create/styles (a test keeps the two lists the same).
   const WEAVE_STYLES = ['collage-zine', 'comic-book', 'data-story', 'editorial-frame', 'glassmorphism', 'isometric', 'kinetic-type', 'launch-reel', 'mascot-explainer', 'neo-brutalism', 'product-ui', 'whiteboard']
-  const weaveId = z.string().uuid().describe('The Create video id from weave_start or weave_list.')
+  const weaveId = z.string().uuid().describe('The id of the planned video, from when it was planned or from the list of planned videos.')
 
   server.registerTool(
     'weave_start',
@@ -965,7 +977,7 @@ function buildServer(token, profile = 'full') {
       title: 'Make a video from a template',
       description: "Start a Create video from a template (weave_templates), like Make mine in the app: the user's product (a link or a few words, with any offer), how closely to follow the template (exact: the same video with their product, words, colours and photos; similar: its format, look and pacing, their own story; inspired: just the idea), the shape, and their photos (upload with upload_asset first). Planning starts at once and costs a few credits; following exactly with only text, colours and photos swapped is usually free to make. Then weave_status, and weave_approve with the user's yes, as for weave_start.",
       inputSchema: z.object({
-        template_id: z.string().regex(/^[A-Za-z0-9-]{1,40}$/).describe('The id from weave_templates.'),
+        template_id: z.string().regex(/^[A-Za-z0-9-]{1,40}$/).describe('The template id from the list of templates.'),
         product: z.string().min(3).max(2000).describe("The user's product in their words: a link, or what it is, plus any offer."),
         match: z.enum(['exact', 'similar', 'inspired']).optional().describe('How closely to follow the template; exact by default.'),
         aspect_ratio: z.enum(['9:16', '16:9', '1:1', '4:5']).optional().describe("The template's own shape by default."),
@@ -1007,7 +1019,7 @@ function buildServer(token, profile = 'full') {
       inputSchema: z.object({
         id: weaveId,
         quote_id: z.string().max(32).optional().describe('Only after the user approved this exact price.'),
-        look_token: z.string().regex(/^[a-f0-9]{64}$/).optional().describe('From weave_status when state is look_ready and the user approved the images.'),
+        look_token: z.string().regex(/^[a-f0-9]{64}$/).optional().describe('From the plan status when its state is look_ready and the user approved the images.'),
         idempotency_key: z.string().max(100).optional(),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

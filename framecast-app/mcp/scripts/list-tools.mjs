@@ -31,5 +31,5 @@ try {
   if (process.env.SHOW_INSTRUCTIONS) process.stderr.write(init.instructions + '\n')
   const tools = []; let cursor
   do { const page = await rpc('tools/list', cursor ? { cursor } : {}); tools.push(...page.tools); cursor = page.nextCursor } while (cursor)
-  process.stdout.write(JSON.stringify(tools.map(t => ({ name: t.name, annotations: t.annotations ?? null })), null, 1))
+  process.stdout.write(JSON.stringify(tools.map(t => ({ name: t.name, title: t.title, description: t.description, annotations: t.annotations ?? null })), null, 1))
 } finally { child.kill(); backend.close() }
