@@ -118,8 +118,12 @@ else if(operation==='render'){
  await writeFile(out+'/sounds.json',JSON.stringify(settings.audio==='silent'?{placed:[],skipped:'silent'}:await soundPass({root,width:dims[0],height:dims[1],duration:settings.duration_seconds,reference:settings.reference_sound??null})));
  // 24 fps unless the user chose 30 or 60; the deadline grows with the frames rendered: 1.5 s each, since a see-through
  // presenter clip over turning pages rendered at about 0.75 s a frame (2026-10-09) and ran out of the old 0.6 s.
- const fps=[24,30,60].includes(settings.frame_rate)?settings.frame_rate:24,frames=fps*(settings.motion_blur===true?(fps>=60?2:4):1)*settings.duration_seconds;
- result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,fps,timeoutMs:Math.max(300000,Math.min(1500000,frames*1500)),expected:{width:dims[0],height:dims[1],duration:settings.duration_seconds}});
+ // A page a little longer than approved because the presenter's speech needs it renders at its own length (render-length.mjs).
+ const {renderLength}=await import('./render-length.mjs');
+ const length=renderLength(await readFile(root+'/index.html','utf8').catch(()=>''),settings.duration_seconds);
+ const fps=[24,30,60].includes(settings.frame_rate)?settings.frame_rate:24,frames=fps*(settings.motion_blur===true?(fps>=60?2:4):1)*length;
+ result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,fps,timeoutMs:Math.max(300000,Math.min(1500000,frames*1500)),expected:{width:dims[0],height:dims[1],duration:length}});
+ if(length!==settings.duration_seconds)result={...result,length_note:`The video is ${length} s, not ${settings.duration_seconds} s: the presenter's lines need the extra time.`};
 }
 else {
  if(!/^\d+(\.\d+)?(,\d+(\.\d+)?){0,4}$/.test(times)||times.split(',').some(t=>Number(t)>30))throw Error('Invalid timestamps');

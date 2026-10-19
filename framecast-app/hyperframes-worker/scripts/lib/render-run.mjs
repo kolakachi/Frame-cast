@@ -65,7 +65,7 @@ export async function renderRun({motionBlur=false,fps=24,project, outputRoot, si
     }
     const probe = JSON.parse(await command('ffprobe',['-v','error','-show_streams','-show_format','-of','json',partial], 'probe'));
     const video = probe.streams.find(s => s.codec_type === 'video');
-    if(!video || video.r_frame_rate !== fps+'/1' || video.width !== expected.width || video.height !== expected.height || Math.abs(Number(probe.format.duration)-expected.duration) > .15 || (expected.audio && !probe.streams.some(s => s.codec_type === 'audio'))) throw Error('Rendered media does not match the approved dimensions, duration or audio requirement');
+    if(!video || video.r_frame_rate !== fps+'/1' || video.width !== expected.width || video.height !== expected.height || Math.abs(Number(probe.format.duration)-expected.duration) > .15 || (expected.audio && !probe.streams.some(s => s.codec_type === 'audio'))) {const e=Error('Rendered media does not match the approved dimensions, duration or audio requirement ('+(video?video.width+'x'+video.height+', ':'no video, ')+Number(probe.format.duration).toFixed(1)+' s against '+expected.width+'x'+expected.height+', '+expected.duration+' s)');e.code='RENDER_MISMATCH';e.rendered=Number(probe.format.duration);e.expected=expected.duration;throw e;}
     await command('ffmpeg',['-v','error','-xerror','-i',partial,'-f','null','-'], 'decode');
     assertActive();
     await rename(partial, artifact);
