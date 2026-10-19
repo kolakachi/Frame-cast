@@ -352,6 +352,36 @@ class CreateTemplatesTest extends TestCase
         app(\App\Services\Create\ConversationService::class)->attach($this->customer, $made['id'], $photo->id, 'source', $version + 1);
     }
 
+    public function test_a_cut_out_is_placed_where_the_templates_own_product_stands(): void
+    {
+        $dir = sys_get_temp_dir().'/fit-test-'.Str::random(6); @mkdir($dir);
+        // An opaque block on a transparent canvas, drawn by overlay (drawbox writes no alpha on ffmpeg 5.1).
+        $png = fn (string $name, string $canvas, string $block, int $x, int $y) => \Illuminate\Support\Facades\Process::run(['ffmpeg', '-v', 'error', '-y',
+            '-f', 'lavfi', '-i', 'color=c=black@0.0:s='.$canvas.',format=rgba', '-f', 'lavfi', '-i', 'color=c=red:s='.$block.',format=rgba',
+            '-filter_complex', "[0][1]overlay={$x}:{$y}:format=auto,format=rgba", '-frames:v', '1', $dir.'/'.$name])->throw();
+        $png('slot.png', '200x200', '40x120', 80, 40);   // the template's slim can, standing at y = 160
+        $png('jar.png', '300x200', '280x180', 10, 10);   // the new product: a wide jar filling its picture
+        $storage = app(CreateStorage::class);
+        $slotPath = 'create/uploads/'.$this->staff->workspace_id.'/'.Str::uuid().'/'.hash('sha256', 'slot').'.png';
+        $storage->put($slotPath, (string) file_get_contents($dir.'/slot.png'), ['visibility' => 'private']);
+        $run = (string) Str::uuid(); $rev = (string) Str::uuid();
+        DB::table('composition_runs')->insert(['id' => $run, 'conversation_id' => (string) Str::uuid(), 'workspace_id' => $this->staff->workspace_id, 'quote_id' => 'q_fit', 'idempotency_key' => 'kfit', 'request_hash' => 'h',
+            'input_json' => json_encode(['input_files' => [['name' => 'asset-7-'.str_repeat('a', 64).'.png', 'storage_path' => $slotPath]]]), 'status' => 'preview_ready', 'stage' => 'Done', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('composition_revisions')->insert(['id' => $rev, 'conversation_id' => (string) Str::uuid(), 'number' => 1, 'run_id' => $run,
+            'bundle_json' => json_encode(['index.html' => '<img id="can" src="asset-7-'.str_repeat('a', 64).'.png">']),
+            'bundle_hash' => 'b', 'artifact_path' => 'create/previews/'.$run.'/v.mp4', 'artifact_hash' => 'a', 'summary' => 'V1', 'metadata_json' => '{}', 'created_at' => now()]);
+        $fitted = \App\Services\Create\TemplateCutout::fitToSlot((object) ['head_revision_id' => $rev], (string) file_get_contents($dir.'/jar.png'));
+        $this->assertNotNull($fitted);
+        file_put_contents($dir.'/out.png', $fitted);
+        $box = new \ReflectionMethod(\App\Services\Create\TemplateCutout::class, 'box');
+        $size = new \ReflectionMethod(\App\Services\Create\TemplateCutout::class, 'size');
+        $this->assertSame(['w' => 200, 'h' => 200], $size->invoke(null, $dir.'/out.png'), 'the template\'s canvas');
+        ['w' => $w, 'h' => $h, 'x' => $x, 'y' => $y] = $box->invoke(null, $dir.'/out.png');
+        $this->assertLessThanOrEqual(51, $w, 'a quarter wider than the can at most');
+        $this->assertEqualsWithDelta(160, $y + $h, 2, 'standing where the can stood');
+        $this->assertEqualsWithDelta(100, $x + $w / 2, 3, 'centred on the can');
+    }
+
     public function test_make_mine_similar_or_from_a_video_attaches_the_template_as_the_reference(): void
     {
         [$conversation, $revision] = $this->version();
