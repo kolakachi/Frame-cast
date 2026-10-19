@@ -1415,6 +1415,18 @@
     // face. Each field's face is asked for at once (the page's fonts-ready then waits for it), then the fields are fitted.
     var start = function () {
       fitNow();
+      // The renderer writes a copy's own words after the page has loaded (the template's sample words first): fitted
+      // again whenever text changes, once per burst of changes. Only text and elements are watched, so the sizes the
+      // fit sets do not set it off again (MOOSH's "GREEN JASPER" rendered cut while the page first said "VOLT RUSH").
+      try {
+        if (window.MutationObserver) {
+          var queued = false;
+          new MutationObserver(function () {
+            if (queued) return; queued = true;
+            Promise.resolve().then(function () { queued = false; fitNow(); });
+          }).observe(document.body || document.documentElement, { childList: true, characterData: true, subtree: true });
+        }
+      } catch (e) {}
       try {
         var loads = [];
         fieldElements().forEach(function (el) {
