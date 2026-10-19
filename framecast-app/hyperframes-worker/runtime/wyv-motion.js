@@ -1287,10 +1287,11 @@
     var norm = function (t) { return String(t).replace(/\s+/g, ' ').trim().toLowerCase(); };
     return vals.map(norm).filter(function (v) { return v.length >= 2; });
   }
+  // The index of the field whose words t is (all of them, or whole words of them), or -1.
   function isFieldText(t, vals) {
-    if (t.length < 2) return false;
-    for (var i = 0; i < vals.length; i++) if (vals[i] === t || (' ' + vals[i] + ' ').indexOf(' ' + t + ' ') >= 0) return true;
-    return false;
+    if (t.length < 2) return -1;
+    for (var i = 0; i < vals.length; i++) if (vals[i] === t || (' ' + vals[i] + ' ').indexOf(' ' + t + ' ') >= 0) return i;
+    return -1;
   }
   // The box text must stay in: the nearest element (itself included) that clips, or a visible panel around it (its own
   // background, picture or border, smaller than the frame): a card's or button's words belong inside it.
@@ -1333,7 +1334,7 @@
     if (b.width < 2 || c.right - c.left < 2) return true;
     return b.left >= c.left - 2 && b.right <= c.right + 2;
   }
-  // The elements holding a string field's text (the innermost holding all of it; a phrase once, not word by word).
+  // The elements holding a string field's text (the innermost holding all of it), outer ones before the ones inside.
   function fieldElements() {
     if (!document.body || !document.createRange) return [];
     var vals = fieldValues();
@@ -1346,13 +1347,17 @@
       // Type cropped by the frame on purpose (giant wipes, or marked data-wyv-nofit by the page) is left as drawn.
       if (el.closest && el.closest('[data-wyv-nofit]')) continue;
       if (parseFloat(getComputedStyle(el).fontSize) >= Math.min(window.innerWidth, window.innerHeight) * 0.5) continue;
-      var t = norm(el.textContent);
-      if (!isFieldText(t, vals)) continue;
+      var t = norm(el.textContent), field = isFieldText(t, vals);
+      if (field < 0) continue;
+      el.__wyvField = field;
       var inner = false;
       for (var k = 0; k < el.children.length; k++) if (norm(el.children[k].textContent) === t) { inner = true; break; }
       if (!inner) found.push(el);
     }
-    return found.filter(function (el) { for (var e = el.parentElement; e; e = e.parentElement) if (found.indexOf(e) >= 0) return false; return true; });
+    // Outer first (document order): a phrase set smaller carries its words with it, and a word inside is fitted only if
+    // it still runs out of its own box (each word of a headline in its own reveal mask: "GREEN JASPER" fitted the
+    // frame as a whole while "JASPER" was cut by its mask, MOOSH, 2026-10-19).
+    return found;
   }
   WM.fitFields = function () {
     var done = [], found = fieldElements();
@@ -1375,6 +1380,7 @@
         var hidden = el.getBoundingClientRect();
         if (hidden.width < 1 && hidden.height < 1) return;
         // Each pass starts from the drawn size: a pass before the fonts loaded measured a wider stand-in face.
+        el.__wyvScale = 0;
         if (el.dataset.wyvFitFrom) { el.style.fontSize = el.dataset.wyvFitPrior || ''; delete el.dataset.wyvFitFrom; delete el.dataset.wyvFitPrior; }
         if (fits(el)) return;
         var size = parseFloat(getComputedStyle(el).fontSize);
@@ -1384,10 +1390,21 @@
         var lo = 0.3, hi = 1;
         for (var n = 0; n < 8; n++) { var mid = (lo + hi) / 2; el.style.fontSize = (size * mid) + 'px'; if (fits(el, true)) lo = mid; else hi = mid; }
         el.style.fontSize = (size * lo) + 'px';
+        el.__wyvScale = lo;
         done.push({ text: el.textContent.slice(0, 40), scale: Math.round(lo * 100) / 100 });
       } finally {
         shown.forEach(function (x) { x[0].style.display = x[1]; });
         lifted.forEach(function (x) { x[0].style.transform = x[1]; x[0].style.rotate = x[2]; x[0].style.scale = x[3]; x[0].style.translate = x[4]; });
+      }
+    });
+    // The words of one field drawn at one size stay at one size: a headline split over two lines shrinks together
+    // ("GREEN" would keep 94% while "JASPER" needed 78%).
+    found.forEach(function (el) {
+      var size = parseFloat(el.dataset.wyvFitFrom || getComputedStyle(el).fontSize), least = 1;
+      found.forEach(function (o) { if (o.__wyvField === el.__wyvField && o.__wyvScale && parseFloat(o.dataset.wyvFitFrom) === size) least = Math.min(least, o.__wyvScale); });
+      if (least < (el.__wyvScale || 1)) {
+        if (!el.dataset.wyvFitFrom) { el.dataset.wyvFitFrom = String(size); el.dataset.wyvFitPrior = el.style.fontSize || ''; }
+        el.style.fontSize = (size * least) + 'px'; el.__wyvScale = least;
       }
     });
     return done;
