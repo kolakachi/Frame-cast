@@ -107,7 +107,7 @@ class CreateTemplatesTest extends TestCase
         [$conversation, $revision] = $this->version();
         $this->rejected(403, fn () => $this->library->add($this->customer, $conversation, $revision, ['title' => 'x', 'category' => 'offer']));
         $draft = $this->library->draft($this->staff, $conversation, $revision);
-        $this->assertSame([['id' => 'headline', 'label' => 'Hook', 'default' => 'NEW DROP', 'max' => 10]], $draft['parts']['text']);
+        $this->assertSame([['id' => 'headline', 'label' => 'Hook', 'default' => 'NEW DROP', 'max' => 12]], $draft['parts']['text']);
         $this->assertSame('#FFE14D', $draft['parts']['colours'][0]['default']);
         $this->assertSame(['Archivo Black'], $draft['parts']['fonts']);
         $this->assertSame(['heroshoe', 'Ridge 2 shoe, side profile', 'ai_image'], [$draft['parts']['images'][0]['element'], $draft['parts']['images'][0]['what'], $draft['parts']['images'][0]['kind']]);
@@ -442,7 +442,11 @@ class CreateTemplatesTest extends TestCase
         $this->assertFalse($swap['voice']);
         $this->assertNull(\App\Services\Create\PartSwap::normalize($raw, $ctx, ['on_screen_words', 'pictures', 'timing']), 'timing needs the builder');
         $this->assertNull(\App\Services\Create\PartSwap::normalize([...$raw, 'values' => ['headline' => 'Freelance money, finally sorted?']], $ctx, ['on_screen_words', 'pictures']), 'text longer than its slot needs the builder');
-        $this->assertSame([10, 4, 24], [\App\Services\Create\PartSwap::maxChars('NEW DROP'), \App\Services\Create\PartSwap::maxChars('Go'), \App\Services\Create\PartSwap::maxChars('or saffronstreet.co')], 'a quarter more than the field (OUTREACH-5: a shop name 2 letters longer fell back to a full build)');
+        $this->assertSame([12, 4, 29, 24, 10, 10], [\App\Services\Create\PartSwap::maxChars('NEW DROP'), \App\Services\Create\PartSwap::maxChars('Go'),
+            \App\Services\Create\PartSwap::maxChars('or saffronstreet.co'), \App\Services\Create\PartSwap::maxChars('fieldwell.co'),
+            \App\Services\Create\PartSwap::maxChars('$45'), \App\Services\Create\PartSwap::maxChars('20%')],
+            'words that wrap half as long again, one word twice (beelitecandles.com where fieldwell.co stood), a price any currency (Rs 2,700 where $45 stood) (SWAP-SAFE)');
+        $this->assertTrue(\App\Services\Create\PartSwap::isNumber('Rs 2,700') === false && \App\Services\Create\PartSwap::isNumber('$45') && \App\Services\Create\PartSwap::isNumber('£32'));
         $this->assertNull(\App\Services\Create\PartSwap::normalize(['values' => ['headline' => 'X']], $ctx, ['on_screen_words', 'pictures']), 'a picture change with no picture to put in is not a swap');
         $this->assertNull(\App\Services\Create\PartSwap::normalize(['pictures' => [['from' => $files[0]['name'], 'to_asset_id' => 999]]], $ctx, ['pictures']), 'an image the user did not attach is not used');
 

@@ -61,3 +61,30 @@ can now be relaxed safely.
 - Templates with fixed letter tiles (the sale countdown's flip board) stay off the free list.
 - Planner slips (two fields swapped once, a confused question once) are watched, not fixed here: step 1 removes the
   main reason the planner swapped fields.
+
+## Approved 2026-10-19 with three additions, and what was built
+
+Owner: "yes approve SWAP-SAFE with 6, 7 and 8 added".
+
+6. **Making the same version again is a free re-render.** The planner sets `swap: {"rerender": true}` with no parts
+   touched; it renders the version as it is for 0 credits (it was priced as a full build, 1,005 credits). The render picks
+   up fixes made since, such as the motion kit's text fit.
+7. **A product that nearly disappears once cut out is flagged.** The cut-out measures how much of its own outline the
+   product fills; under 15% (a cord bracelet 6%, chain necklaces 10–14%; jars, idols and hoops 30–87%) the cut-out is
+   marked `cutout_thin`, and the planner still makes the swap but says in left_out that a worn or in-use photo in a photo
+   template ("Three reasons to buy") would show it better.
+8. **Prices take any currency.** A price or number field takes at least 10 characters ("Rs 2,700" where "$45" stood).
+
+Built (2026-10-19):
+
+- Field room (`PartSwap::maxChars`): one word twice the field's own (it cannot wrap, and the fit shrinks it); words that
+  wrap half as long again (an extra line can run past a mask, which the fit does not shrink: tested by the audit's long
+  pass); prices at least 10. The template audit's long-word pass uses the same room.
+- Shorter spoken lines (`SpokenFit`): at the quote, before the voice is bought, each new line's spoken length (syllables,
+  numbers, symbols, web addresses and street abbreviations as they are said) is compared with the line it replaces; one
+  more than 10% longer is rewritten shorter by the small model (Haiku 4.5, cached), and only used if it fits. A line the
+  worker measured too long on an earlier try is shortened by that measurement. The speed-up limit is 1.15x.
+- After a failed swap: the message says "send it again and that line will be said shorter (the words on screen stay),
+  or ask to rebuild (priced first)". Sending again stays a swap; only a request to rebuild uses the builder. Simplified
+  from the plan: the choice is in the message, not a new button.
+- The daily limit says "You've made 50 videos today. More tomorrow (the count resets at midnight UTC)."

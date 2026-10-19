@@ -56,7 +56,7 @@ test('a re-split voice is one continuous take over the old narration, sped up a 
  assert.deepEqual(seg[0],{from:0.12,to:8.3,at:0.22,tempo:1});
  const fast=continuousPlan({oldStarts:[0.3,2],newStarts:[0.2,5],newEnds:[4.8,12.4],oldDuration:12,newDuration:12.6});
  assert.ok(fast[0].tempo>1&&fast[0].tempo<=1.15);
- assert.throws(()=>continuousPlan({oldStarts:[0.3,2],newStarts:[0.2,5],newEnds:[4.8,19],oldDuration:12,newDuration:20}),/needs the full editor/);
+ assert.throws(()=>continuousPlan({oldStarts:[0.3,2],newStarts:[0.2,5],newEnds:[4.8,19],oldDuration:12,newDuration:20}),/too long for its moment/);
 });
 
 test('a line that overruns its slot falls back to one continuous read; a free ad that still does not fit is told to shorten (2026-10-18)',async()=>{
@@ -65,7 +65,16 @@ test('a line that overruns its slot falls back to one continuous read; a free ad
  const timing={oldStarts:[0.3,6],newStarts:[0.3,2.1],newEnds:[1.9,6.5],oldDuration:10,newDuration:6.8};
  const r=fit(timing,{});assert.equal(r.continuous,true);assert.equal(r.segments.length,1);
  const tooLong={oldStarts:[0.3,6],newStarts:[0.3,2.1],newEnds:[1.9,13.5],oldDuration:10,newDuration:14};
- assert.throws(()=>fit(tooLong,{free:true}),/longer than the old one .*Ask for shorter lines/);
- assert.throws(()=>fit(tooLong,{}),/needs the full editor/);
+ assert.throws(()=>fit(tooLong,{free:true}),/too long for its moment .*said shorter; the words on screen stay/);
+ assert.throws(()=>fit(tooLong,{}),/too long for its moment/);
  assert.equal(fit({oldStarts:[0.3,4],newStarts:[0.3,4.2],newEnds:[3.5,7],oldDuration:10,newDuration:7.5},{}).continuous,false,'lines that fit stay line by line');
+});
+
+test('SWAP-SAFE: a line 1.12x long is sped up rather than refused, and the message names what was measured', async () => {
+ const {plan, RULES} = await import('../voice-swap.mjs');
+ assert.equal(RULES.maxTempo, 1.15);
+ // Line 1 has a 2.0 s slot (next line at 2.3 s, less the lead) and takes about 2.2 s to say (with its tail): sped up under 1.15x.
+ const segs = plan({oldStarts: [0.3, 2.3], newStarts: [0.3, 2.6], newEnds: [2.25, 4], oldDuration: 6, newDuration: 4.5});
+ assert.ok(segs[0].tempo > 1 && segs[0].tempo <= 1.15);
+ assert.throws(() => plan({oldStarts: [0.3, 2.3], newStarts: [0.3, 3.5], newEnds: [3.3, 5], oldDuration: 6, newDuration: 5.5}), /line 1 takes [\d.]+ s to say against a [\d.]+ s slot/);
 });

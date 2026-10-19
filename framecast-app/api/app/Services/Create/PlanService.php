@@ -728,6 +728,8 @@ class PlanService
                 ...(in_array($asset->asset_type, ['audio', 'video'], true) && $a->purpose === 'source' && ($t = trim((string) $asset->transcript_text)) !== '' ? ['speech' => mb_substr($t, 0, 1500)] : []),
                 // What the file is and what the user wants from it (and, for a frame of their current video, its time).
                 ...(($n = json_decode((string) ($a->notes_json ?? ''), true)) ? ['notes' => array_intersect_key($n, array_flip(['kind', 'use', 'time', 'optional']))] : []),
+                // A cut-out whose product is thin or small (a cord bracelet): it nearly disappears in a product slot (SWAP-SAFE).
+                ...(data_get($asset->metadata_json, 'cutout_thin') ? ['cutout_thin' => true] : []),
                 // An SVG is checked against the rig contract when uploaded; only a character (or a rig-ready file) is a
                 // rig. A logo or icon SVG is just a crisp picture, so its missing layers are not reported.
                 ...(is_array(data_get($asset->metadata_json, 'rig')) && (data_get($asset->metadata_json, 'rig.ready') === true || data_get(json_decode((string) ($a->notes_json ?? ''), true), 'kind') === 'character') ? ['rig' => data_get($asset->metadata_json, 'rig')] : []),

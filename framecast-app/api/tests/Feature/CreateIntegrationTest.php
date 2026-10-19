@@ -5743,8 +5743,12 @@ class CreateIntegrationTest extends TestCase
         DB::table('composition_runs')->insert(['id' => $other, 'status' => 'failed', 'stage' => 'The layout did not pass render checks.', 'idempotency_key' => 'swap-failed', 'operation_id' => 'op_swapfailed', 'quote_id' => 'q_swapfailed', 'sequence' => 99, 'lease_hash' => null,
             'input_json' => json_encode(['plan' => ['plan_id' => 'new-plan'], 'voice_swap' => ['old_src' => 'x']])] + $failed);
         $this->assertNotNull($swap(), 'a swap that failed for another reason may simply be tried again');
-        DB::table('composition_runs')->where('id', $other)->update(['stage' => 'This change needs the full editor: line 2 is 3.10 s against a 2.40 s slot.']);
-        $this->assertNull($swap(), 'a swap that could not fit a line goes to the builder');
+        DB::table('composition_runs')->where('id', $other)->update(['stage' => 'The new voice is too long for its moment: line 2 takes 3.10 s to say against a 2.40 s slot.', 'created_at' => now()->subMinute()]);
+        // SWAP-SAFE: sent again it stays a swap (the line is said shorter); only asking to rebuild uses the builder.
+        $this->assertNotNull($swap(), 'a swap whose voice did not fit is tried again as a swap');
+        DB::table('create_messages')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'conversation_id' => $c->id, 'role' => 'user', 'sequence' => 900, 'content' => 'Rebuild it with the new voice.', 'idempotency_key' => 'swap-rebuild', 'request_hash' => 'h', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertNull($swap(), 'after the user asks to rebuild, the builder makes it');
+        DB::table('create_messages')->where('conversation_id', $c->id)->where('sequence', 900)->delete();
         DB::table('composition_runs')->where('id', $other)->delete();
         // A version imported from another server keeps no record of which file its voice was: the build's tagged voice track
         // stands in (the templates built locally and imported to prod, 2026-10-19), and an untagged one never does.

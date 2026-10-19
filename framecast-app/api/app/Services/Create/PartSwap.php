@@ -18,13 +18,23 @@ class PartSwap
     /** The parts a swap may touch (PlanPrompt's change_touches names). */
     public const TOUCHES = ['voice', 'on_screen_words', 'pictures'];
 
-    /** The longest new text a slot takes without the builder: about what it holds now. Display type is wide, so more room
-     *  is not safe ("money, sorted?" in a "paid social?" slot ran off the frame at 1.3x, 2026-10-16); the render's edge
-     *  check reports anything that still does not fit. */
-    /** How long a swapped text may be: a quarter more than the field's own (as the template's parts promise), at least 4. */
+    /**
+     * How long a swapped text may be (SWAP-SAFE, 2026-10-19). One word (a web address, a brand name) cannot wrap, and the
+     * motion kit sets text that runs out of its box smaller, so it may be twice the field's own; words that wrap may be
+     * half as long again (what the template audit's long pass tests: an extra line can run past a mask, which the kit
+     * does not shrink); a price or number takes any currency ("Rs 2,700" where "$45" stood). At least 4.
+     */
     public static function maxChars(string $current): int
     {
-        return max(4, (int) ceil(mb_strlen($current) * 1.25));
+        $current = trim($current); $n = mb_strlen($current);
+        if (self::isNumber($current)) return max(10, 2 * $n);
+        return max(4, preg_match('/\s/u', $current) ? (int) ceil($n * 1.5) : 2 * $n);
+    }
+
+    /** A price, count or percentage ("$45", "3", "20%"), as the template audit reads one. */
+    public static function isNumber(string $value): bool
+    {
+        return (bool) preg_match('/^[\s$€£¥₦₹+\-]*\d[\d.,\s]*[%x×]?$/iu', trim($value));
     }
 
     /** The version's pictures: each <img> whose file is a Create asset, once per file. */
@@ -65,6 +75,10 @@ class PartSwap
      */
     public static function normalize(mixed $raw, array $ctx, array $touches): ?array
     {
+        // The same version made again, with nothing changed: a free re-render (SWAP-SAFE, 2026-10-19: "render it again"
+        // was priced as a full build, 1,005 credits). The render picks up fixes since (the motion kit's text fit).
+        if (is_array($raw) && ($raw['rerender'] ?? false) === true && ! $touches)
+            return ['values' => [], 'pictures' => [], 'voice' => false, 'rerender' => true];
         if (! is_array($raw) || ! $touches || array_diff($touches, self::TOUCHES)) return null;
         $values = [];
         if (is_array($raw['values'] ?? null) && ! empty($ctx['current_variables'])) {

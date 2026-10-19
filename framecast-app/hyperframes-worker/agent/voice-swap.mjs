@@ -7,7 +7,8 @@ import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'no
 import {alignScript} from './audio-review.mjs';
 
 const run=promisify(execFile);
-export const RULES={lead:0.08,maxTempo:1.1,tail:0.2,gap:0.05};
+// A line may be sped up to 1.15x and still sound natural (SWAP-SAFE, 2026-10-19: 1.1x refused lines 1.19x and 1.23x long).
+export const RULES={lead:0.08,maxTempo:1.15,tail:0.2,gap:0.05};
 
 /** The cut and placement of each new line. starts: when each line begins in the old and new files (seconds). */
 export function plan({oldStarts,newStarts,newEnds=[],oldDuration,newDuration,rules=RULES}){
@@ -24,7 +25,7 @@ export function plan({oldStarts,newStarts,newEnds=[],oldDuration,newDuration,rul
   const from=Math.max(0,newStarts[i]-lead),to=Math.max(from,end);
   const place=Math.max(0,at-lead),slot=(i+1<n?oldStarts[i+1]-rules.lead:oldDuration-rules.tail)-place;
   const length=to-from,tempo=length>slot?length/slot:1;
-  if(slot<=0||tempo>rules.maxTempo)throw unfit(`line ${i+1} is ${length.toFixed(2)} s against a ${Math.max(0,slot).toFixed(2)} s slot`);
+  if(slot<=0||tempo>rules.maxTempo)throw unfit(`line ${i+1} takes ${length.toFixed(2)} s to say against a ${Math.max(0,slot).toFixed(2)} s slot`);
   return {from:+from.toFixed(3),to:+to.toFixed(3),at:+place.toFixed(3),tempo:+tempo.toFixed(4)};
  });
 }
@@ -40,7 +41,7 @@ export function continuousPlan({oldStarts,newStarts,newEnds=[],oldDuration,newDu
  const last=[...newEnds].reverse().find(t=>Number.isFinite(t));
  const from=Math.max(0,start-rules.lead),to=Number.isFinite(last)?Math.min(newDuration,last+rules.tail):newDuration;
  const place=Math.max(0,first-rules.lead),slot=oldDuration-rules.tail-place,length=to-from,tempo=length>slot?length/slot:1;
- if(slot<=0||tempo>rules.maxTempo+0.05)throw unfit(`the new voice is ${length.toFixed(2)} s against ${Math.max(0,slot).toFixed(2)} s`);
+ if(slot<=0||tempo>rules.maxTempo+0.05)throw unfit(`the new voice takes ${length.toFixed(2)} s to say against ${Math.max(0,slot).toFixed(2)} s`);
  return [{from:+from.toFixed(3),to:+to.toFixed(3),at:+place.toFixed(3),tempo:+tempo.toFixed(4)}];
 }
 
@@ -74,8 +75,10 @@ export function swapSrc(bundle,oldSrc,newSrc){
  return out;
 }
 
-function tooLong(why){return Object.assign(Error('The new voiceover is longer than the old one ('+why+'). Ask for shorter lines and it will fit.'),{code:'VOICE_SWAP_UNFIT',why});}
-function unfit(why){return Object.assign(Error('This change needs the full editor: '+why+'. Send it again and the video will be rebuilt with the new voice.'),{why,code:'VOICE_SWAP_UNFIT'});}
+// SWAP-SAFE: a voice too long for its moment is never rebuilt on its own. Sent again, the line is voiced shorter by what
+// was measured here (SpokenFit, API); only a request to rebuild uses the builder, priced first. A free ad has no builder.
+function tooLong(why){return Object.assign(Error('The new voiceover is too long for its moment ('+why+'). Send it again and that line will be said shorter; the words on screen stay.'),{code:'VOICE_SWAP_UNFIT',why});}
+function unfit(why){return Object.assign(Error('The new voice is too long for its moment: '+why+'. Send it again and that line will be said shorter (the words on screen stay), or ask to rebuild the video with the new voice (priced first).'),{why,code:'VOICE_SWAP_UNFIT'});}
 
 const seconds=async(file,ffprobe)=>Number((await run(ffprobe,['-v','error','-show_entries','format=duration','-of','csv=p=0',file])).stdout.trim())||0;
 

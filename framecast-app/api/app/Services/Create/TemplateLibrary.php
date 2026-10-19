@@ -225,7 +225,7 @@ class TemplateLibrary
         $code = implode("\n", array_filter($bundle, 'is_string'));
         $vars = CompositionVariables::declarations($html);
         $text = array_values(array_map(fn ($v) => ['id' => $v['id'], 'label' => $v['label'], 'default' => (string) ($v['default'] ?? ''),
-            'max' => max(4, (int) ceil(mb_strlen((string) ($v['default'] ?? '')) * 1.25))], array_filter($vars, fn ($v) => $v['type'] === 'string')));
+            'max' => PartSwap::maxChars((string) ($v['default'] ?? ''))], array_filter($vars, fn ($v) => $v['type'] === 'string')));
         $colours = array_values(array_map(fn ($v) => ['id' => $v['id'], 'label' => $v['label'], 'default' => (string) ($v['default'] ?? '')],
             array_filter($vars, fn ($v) => $v['type'] === 'color')));
         preg_match_all('/@font-face\s*\{[^}]*?font-family\s*:\s*[\'"]?([^;\'"}]+)/i', $code, $f);

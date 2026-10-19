@@ -282,6 +282,10 @@ class ConversationService
                 }
                 // Plan items the app buys before the build, each at its catalogue price, all under this one approval.
                 $plan = PlanService::forQuote($c);
+                // SWAP-SAFE: a swapped voice keeps the version's timing, so a line that would take clearly longer to say than
+                // the one it replaces is voiced shorter (the words on screen stay); one an earlier try measured, by that much.
+                if ($paid && $plan && $base && ! empty($plan['narration']) && (! empty($plan['swap']['voice']) || ($plan['change_touches'] ?? null) === ['voice']))
+                    $plan['narration'] = SpokenFit::fit(SpokenFit::baseNarration($base), array_values(array_map('strval', (array) $plan['narration'])), SpokenFit::measured($id));
                 if ($plan && $assume) foreach (['character_approval', 'storyboard_approval'] as $k) if (! empty($assume[$k])) $plan[$k] = (string) $assume[$k];
                 \App\Services\Create\Planning\PlannerReferenceInspector::verifyEvidence($plan ?? [], $files);
                 // The build budget follows what this plan is (its video type, a new video or a change), from real runs.
@@ -539,7 +543,7 @@ class ConversationService
                 if($p['mode']==='agent' && $free) { abort_unless(($p['execution_policy']['render']['credits']??1)===0 && count($p['execution_policy'])===1,422,'Invalid free edit.'); }
                 elseif($p['mode']==='agent') { abort_unless($providerApproved,422,'Confirm sending this brief and approved media to our AI providers.'); abort_unless(($p['pilot_budget_id']??null)===config('create.pilot_budget_id'),409,'Pilot approval changed. Get a fresh quote.'); PilotPolicy::admit($p['execution_policy']); }
                 abort_if(DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where(fn ($q) => $q->whereIn('status', ['queued', 'running', 'cancel_requested'])->orWhere(fn ($q) => $q->where('status', 'needs_attention')->where(fn ($q) => $q->where('conversation_id', $id)->orWhereNull('worker_stopped_at'))))->when($p['variant_group']??null,fn($q,$group)=>$q->where(fn($q)=>$q->whereNull('input_json->variant_group')->orWhere('input_json->variant_group','!=',$group)))->exists(), 409, 'Another creation is active or awaiting recovery.');
-                abort_if(! $free && DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->whereNull('input_json->free_edit')->count() >= (int) config('create.run_daily_limit', 10), 429, 'Local pilot daily limit reached.');
+                abort_if(! $free && DB::table('composition_runs')->where('workspace_id', $user->workspace_id)->where('created_at', '>=', now()->startOfDay())->whereNull('input_json->free_edit')->count() >= (int) config('create.run_daily_limit', 10), 429, 'You\'ve made '.(int) config('create.run_daily_limit', 10).' videos today. More tomorrow (the count resets at midnight UTC).');
                 if($p['mode']==='agent' && $providerApproved && ! $c->provider_consent_at) DB::table('create_conversations')->where('id',$id)->update(['provider_consent_at'=>now()]);
                 foreach ($p['input_files'] ?? [] as $file) {
                     abort_unless(Asset::where('workspace_id', $user->workspace_id)->whereKey($file['asset_id'])->where('status', '!=', 'archived')->exists(), 409, 'An attached asset is no longer available.');

@@ -55,9 +55,9 @@ class VoiceSwap
         $touches = (array) ($plan['change_touches'] ?? []);
         if ($withParts ? (! in_array('voice', $touches, true) || array_diff($touches, PartSwap::TOUCHES)) : $touches !== ['voice']) return null;
         // Beat names are not compared: a swap keeps the version exactly, and re-plans rename beats (brief 2, 2026-10-08).
-        // A swap that could not fit a line for this plan goes to the builder instead (any other failure may simply retry).
-        if (DB::table('composition_runs')->where('conversation_id', $c->id)->where('input_json->plan->plan_id', $plan['plan_id'] ?? '')
-            ->whereNotNull('input_json->voice_swap')->where('status', 'failed')->where('stage', 'like', '%needs the full editor%')->exists()) return null;
+        // A swap whose voice did not fit is tried again with that line said shorter (SpokenFit); it goes to the builder only
+        // when the user asks to rebuild after it (SWAP-SAFE, 2026-10-19: "send it again" used to rebuild at full price).
+        if (self::rebuildAsked((string) $c->id)) return null;
         // The narration clip in the version: the one audio file descended from the voice the base plan bought.
         $voiceAsset = DB::table('create_plan_media')->where('plan_id', $basePlan['plan_id'])->whereIn('kind', self::KINDS)->where('status', 'succeeded')
             ->get(['record_json'])->map(fn ($r) => (int) (json_decode((string) $r->record_json, true)['file']['asset_id'] ?? 0))->filter()->first();
@@ -74,6 +74,23 @@ class VoiceSwap
             ...($refit ? ['continuous' => true] : []),
             // Lined up against what the new voice says, names as saved.
             'new_lines' => array_map(fn ($l) => PlanMediaExecutor::pronounce($l, $workspace), $new)];
+    }
+
+    /** Whether the user asked to rebuild after a voice swap of this creation did not fit. */
+    public static function rebuildAsked(string $conversationId): bool
+    {
+        $failed = DB::table('composition_runs')->where('conversation_id', $conversationId)->whereNotNull('input_json->voice_swap')->where('status', 'failed')
+            ->where(fn ($q) => $q->where('stage', 'like', '%needs the full editor%')->orWhere('stage', 'like', '%too long for its moment%'))
+            ->orderByDesc('created_at')->value('created_at');
+        if (! $failed) return false;
+        return DB::table('create_messages')->where('conversation_id', $conversationId)->where('role', 'user')->where('created_at', '>=', $failed)
+            ->pluck('content')->contains(fn ($m) => self::asksRebuild((string) $m));
+    }
+
+    /** "Rebuild it", "do a full build", "remake the whole video": the user chooses the builder over a shorter line. */
+    public static function asksRebuild(string $message): bool
+    {
+        return (bool) preg_match('/\b(re-?build|full build|remake the (whole )?video|use the (full )?editor)\b/i', $message);
     }
 
     /**

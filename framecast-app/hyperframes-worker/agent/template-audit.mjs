@@ -6,8 +6,8 @@
 //   when a user writes more than the sample did;
 // - one unbreakable word per field (2026-10-19): a brand name or a web address cannot wrap the way "fresh daily goods"
 //   does, so a headline set big for "VOLT RUSH" cut "WicksNWax" and "MAPLE" off at its edge (OUTREACH-5). The word is as
-//   long as the field may be written (1.25x its default, as the planner allows), at most 12 letters where the default
-//   has spaces (a name inside a line), and must stay inside its box.
+//   long as the field may be written (PartSwap::maxChars: twice a one-word default, at most 12 letters where the
+//   default has spaces, a 10-character price in a price field), and must stay inside its box.
 // Run in the sandbox: node agent/template-audit.mjs <id>, reading /output/audit/<id> (a create:version export) and
 // writing result.json there. Text drawn on a canvas or baked into a picture is not seen (pictures are slots anyway).
 import {readFile,writeFile,mkdir,copyFile,readdir,cp} from 'node:fs/promises';
@@ -37,14 +37,14 @@ export function bundleHash(bundle){
  return createHash('sha256').update(names.map(n=>n+'\n'+bundle[n].replace(/asset-\d+-([0-9a-f]{64})/g,'asset-$1')).join('\n\0\n'),'utf8').digest('hex');
 }
 
-/** The longest single word a field must hold: what the planner may write (1.25x the default), and no more than a
- *  12-letter name where the default is several words. */
-/** A number or price field ("3", "$2.49", "20%"): tested with its marker, not a word. */
+/** A number or price field ("3", "$2.49", "20%"): tested with a price, not a word (PartSwap::isNumber). */
 export const isNumber=v=>/^[\s$€£¥₦₹+\-]*\d[\d.,\s]*[%x×]?$/i.test(String(v??'').trim());
 
+/** The longest single word a field must hold (PartSwap::maxChars, SWAP-SAFE 2026-10-19): twice a one-word default (a
+ *  web address, a brand name), and no more than a 12-letter name where the default is several words. */
 export function wordLength(value){
- const v=String(value??'').trim(),limit=Math.ceil(v.length*1.25);
- return Math.max(6,/\s/.test(v)?Math.min(12,limit):limit);
+ const v=String(value??'').trim();
+ return Math.max(6,/\s/.test(v)?Math.min(12,Math.ceil(v.length*1.5)):Math.min(30,v.length*2));
 }
 
 /** Short markers, long values and one long word for every text field. */
@@ -52,7 +52,8 @@ export function values(decls){
  const text=decls.filter(d=>d.type==='string'),short={},long={},word={};
  // Real letters, wide ones included: the marker leads so the field can be told apart.
  // A number field gets its marker only (as the short pass): a sale price is not a brand name.
- text.forEach((d,i)=>{const id='ZQ'+(i+1);word[d.id]=isNumber(d.default)?id:(id+'Wicksnwaxbourbonmaplemontyseleven').slice(0,Math.max(id.length+2,wordLength(d.default)));});
+ // A number field gets a price in another currency, as long as it may be written ("Rs 2,700" where "$45" stood).
+ text.forEach((d,i)=>{const id='ZQ'+(i+1);word[d.id]=isNumber(d.default)?(id+'Rs12,345,678').slice(0,Math.max(10,2*String(d.default??'').trim().length)):(id+'Wicksnwaxbourbonmaplemontysevenwax').slice(0,Math.max(id.length+2,wordLength(d.default)));});
  text.forEach((d,i)=>{const id='ZQ'+(i+1);short[d.id]=id;
   const want=isNumber(d.default)?0:Math.max(8,Math.min(60,Math.round(String(d.default??'').length*1.5)));let v=id;const words=['fresh','daily','goods','made','simple','better','store'];for(let i=0;v.length<want;i++)v+=' '+words[i%words.length];long[d.id]=v.slice(0,want);});
  return {short,long,word,markers:Object.fromEntries(text.map((d,i)=>['ZQ'+(i+1),d.id]))};

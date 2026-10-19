@@ -30,12 +30,14 @@ class TemplateCutout
             if (! is_string($bytes) || $bytes === '') return null;
             $png = app(PlanMediaExecutor::class)->cutoutBytes($bytes, (string) $photo->mime_type);
             if ($png === '') return null;
+            $thin = self::thin($png);
             $png = self::fitToSlot($conversation, $png) ?? $png;
             $path = sprintf('workspaces/%d/assets/cutouts/%s.png', $photo->workspace_id, Str::uuid());
             return Asset::query()->create([
                 'workspace_id' => $photo->workspace_id, 'asset_type' => 'image', 'title' => self::title($photo),
                 'storage_url' => $storage->put($path, $png, ['ContentType' => 'image/png']), 'mime_type' => 'image/png',
                 'file_size_bytes' => strlen($png), 'tags' => ['cutout'], 'status' => 'active', 'created_by_user_id' => $photo->created_by_user_id,
+                ...($thin ? ['metadata_json' => ['cutout_thin' => true]] : []),
             ]);
         } catch (\Throwable $e) {
             // Without it the photo still goes in as it is; the planner may then rebuild, as before.
@@ -92,6 +94,25 @@ class TemplateCutout
         }
     }
 
+    /**
+     * Whether the product fills little of its own outline once cut out: a cord bracelet across a white photo is a few
+     * pixels of string in a large box, and in a template's product slot it nearly disappears (MOOSH's Green Jasper
+     * bracelet, OUTREACH-5 2026-10-19). Under 15% of its box: the planner tells the user and suggests a photo.
+     */
+    public static function thin(string $png): bool
+    {
+        $in = tempnam(sys_get_temp_dir(), 'thin-').'.png';
+        try {
+            file_put_contents($in, $png);
+            $box = self::box($in);
+            return $box !== null && ($box['fill'] ?? 1.0) < 0.15;
+        } catch (\Throwable) {
+            return false;
+        } finally {
+            @unlink($in);
+        }
+    }
+
     /** @return array{w: int, h: int}|null */
     private static function size(string $path): ?array
     {
@@ -103,7 +124,7 @@ class TemplateCutout
      * Where the visible (non-transparent) pixels are, in the image's own pixels. The alpha channel is read as raw bytes at
      * up to 400 px and scanned here: ffmpeg's cropdetect differs between versions (5.1 on the servers skips frames).
      *
-     * @return array{w: int, h: int, x: int, y: int}|null
+     * @return array{w: int, h: int, x: int, y: int, fill: float}|null
      */
     private static function box(string $path): ?array
     {
@@ -114,17 +135,18 @@ class TemplateCutout
         $r = \Illuminate\Support\Facades\Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-i', $path, '-vf', "format=rgba,alphaextract,scale={$sw}:{$sh}", '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-']);
         $raw = $r->output();
         if (! $r->successful() || strlen($raw) < $sw * $sh) return null;
-        $x1 = $sw; $y1 = $sh; $x2 = -1; $y2 = -1;
+        $x1 = $sw; $y1 = $sh; $x2 = -1; $y2 = -1; $seen = 0;
         for ($y = 0; $y < $sh; $y++) {
             $row = substr($raw, $y * $sw, $sw);
             if (trim($row, "\x00\x01\x02\x03\x04\x05\x06\x07\x08") === '') continue;
-            for ($x = 0; $x < $sw; $x++) if (ord($row[$x]) > 8) { $x1 = min($x1, $x); $x2 = max($x2, $x); }
+            for ($x = 0; $x < $sw; $x++) if (ord($row[$x]) > 8) { $x1 = min($x1, $x); $x2 = max($x2, $x); $seen++; }
             $y1 = min($y1, $y); $y2 = max($y2, $y);
         }
         if ($x2 < 0) return null;
+        $fill = $seen / max(1, ($x2 - $x1 + 1) * ($y2 - $y1 + 1));
         $k = 1 / $scale;
         $x = (int) floor($x1 * $k); $y = (int) floor($y1 * $k);
-        return ['x' => $x, 'y' => $y, 'w' => min($size['w'] - $x, (int) ceil(($x2 - $x1 + 1) * $k)), 'h' => min($size['h'] - $y, (int) ceil(($y2 - $y1 + 1) * $k))];
+        return ['x' => $x, 'y' => $y, 'w' => min($size['w'] - $x, (int) ceil(($x2 - $x1 + 1) * $k)), 'h' => min($size['h'] - $y, (int) ceil(($y2 - $y1 + 1) * $k)), 'fill' => round($fill, 3)];
     }
 
     public static function title(Asset $photo): string

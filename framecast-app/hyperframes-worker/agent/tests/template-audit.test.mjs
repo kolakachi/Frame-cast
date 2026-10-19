@@ -35,12 +35,12 @@ test('a template build tells the builder that every word on screen is a field',(
 });
 
 test('one long word per field: as long as the planner may write it, a 12-letter name inside a line', () => {
- assert.equal(wordLength('voltrush.co'), 14, 'a web address: 1.25x, all one word');
+ assert.equal(wordLength('voltrush.co'), 22, 'a web address: twice, all one word');
  assert.equal(wordLength('VOLT RUSH'), 12, 'a two-word headline holds a 12-letter brand name');
  assert.equal(wordLength('Citrus energy, zero sugar.'), 12, 'a sentence holds a name, not a 33-letter word');
  assert.equal(wordLength('NEW'), 6, 'at least six letters');
  const v = values([{id: 'headline', type: 'string', default: 'VOLT RUSH'}, {id: 'cta', type: 'string', default: 'voltrush.co'}]);
- assert.deepEqual(v.word, {headline: 'ZQ1Wicksnwax', cta: 'ZQ2Wicksnwaxbo'});
+ assert.deepEqual(v.word, {headline: 'ZQ1Wicksnwax', cta: 'ZQ2Wicksnwaxbourbonmap'});
  assert.ok(!/\s/.test(v.word.headline), 'no space to wrap at');
 });
 
@@ -50,4 +50,10 @@ test('overflow is judged element by element: a hidden copy out of its box does n
  const shortOut = [3.75, 4, 4.25].map(copy);
  const wordOut = [3.75, 4, 4.25].flatMap(at => [{...copy(at), text: 'ZQ3Wicksnwax'}, real(at)]);
  assert.deepEqual(overflowing(shortOut, wordOut, 0.25).map(o => o.at), [3.75], 'the real headline is found once; its copy stays excused');
+});
+
+test('a price field is tested with a price in another currency, as long as PartSwap allows (at least 10)', () => {
+ const v = values([{id: 'price', type: 'string', default: '$45'}]);
+ assert.equal(v.word.price, 'ZQ1Rs12,34');
+ assert.equal(v.word.price.length, 10);
 });
