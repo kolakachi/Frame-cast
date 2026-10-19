@@ -69,3 +69,21 @@ rule.
 
 New features outside the loop (AD-GRID, Shopify app, ads to Ads Manager), paid creators, Google Ads, bulk outreach,
 template pages beyond what FREE-FIRST needs. They come back at the review if the numbers say so.
+
+## 6. How we post and ask (CMO decision, 2026-10-19)
+
+From Nicholas Dulait's "Distribution 101" (ChatSEO, $50K in a month, 95% organic): the parts that fit two weeks, no
+build, no cash. Decided by Claude as CMO on the owner's instruction ("You are the CMO, pick what serves us").
+
+| Rule | What we do | Who |
+|---|---|---|
+| **One platform pair, not four** | Layla posts on **TikTok and Instagram Reels** only, the same video on both. Shorts and X wait for the Nov 1 review | Marketer |
+| **Post for search, not the feed** | Before each post, look up the phrase people search (TikTok's Creator Search Insights, on the phone). Put it in 4 places: the first frame's on-screen text, the title, the caption, and 3–5 hashtags. Starting phrases: "how to make product ads", "video ad for small business", "AI ad maker", "UGC ad without filming" | Marketer finds the phrases; Claude writes them into each script |
+| **One ask, same words, same place** | Every post, answer and email ends with one line: **"Your first ad is free → [link]"**, the link carrying `utm_source` and `utm_content`. Nothing else is asked for. The homepage button (HOME-CTA) uses the same words | Everyone |
+| **Earn trust before linking (Reddit)** | 3 days of warm-up before the first answer with a link: an account with real history, 5 genuinely useful comments a day across the chosen subreddits, no links. Choose subreddits Google ranks for our phrases, not the biggest | Marketer |
+| **Copy what already works** | A "steal sheet": 20–30 recent organic posts each from 3 competitors' TikTok/Instagram (Arcads, Creatify, MakeUGC): hook, format, ask, what got views. Layla's hooks are remixed from it, never copied | Marketer collects (Wed–Thu); Claude turns it into Layla scripts |
+| **One result, used ten ways** | The first real number we earn (a free ad made in minutes, an outreach reply, a sale) becomes the hook on every channel. A post that does well is posted again after 2–3 weeks | Claude picks the number; marketer posts |
+
+Not taken now: agencies running a monthly "creative loop" for clients (Yarchi's one-person agency guide) are a good later
+audience for the connector ("your agent makes the fresh ads"), but this plan targets small sellers: it goes to the
+Nov 1 review. Daily posting for 3 months is the bar Dulait sets; two weeks only tells us which hooks to keep.
