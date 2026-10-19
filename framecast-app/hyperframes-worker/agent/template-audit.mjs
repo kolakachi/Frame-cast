@@ -116,6 +116,10 @@ async function scan({root,width,height,duration,step,browserPath,shotAt=null,sho
   // A script error leaves the page blank: nothing would be seen, so it is reported rather than read as a pass.
   const errors=[];page.on('pageerror',e=>errors.push(String(e.message||e).slice(0,200)));
   await page.goto('http://127.0.0.1:'+server.address().port+'/index.html',{waitUntil:'load',timeout:30000});
+  // What is under a point is asked of the browser, which skips layers with pointer-events:none: a frame of labels drawn
+  // above the scenes read as covered, so its fixed words were never seen (the skincare template's "Dewlane · Glow Serum",
+  // found in OUTREACH-5, 2026-10-19). Every element answers that question here; nothing is clicked.
+  await page.addStyleTag({content:'*{pointer-events:auto !important}'});
   await page.waitForFunction(()=>window.__player&&typeof window.__player.renderSeek==='function',{timeout:15000,polling:200});
   await page.evaluate(()=>{window.__player.enableRenderMode?.();return document.fonts?.ready;});
   // Pages often build their timeline once fonts are ready; seeking before that shows an empty page.

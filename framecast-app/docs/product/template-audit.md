@@ -93,3 +93,12 @@ book or course launch, before and after, gift guide, new colour with sizes, only
 works. With the audit inside the builder's check, 7 of 8 passed on the first build; the event's long type ran off the
 frame and passed after one fix. Six sample photos generated (nano-banana). About 2,000 credits. The whiteboard and
 "Describe it." templates left the free list (both broke on longer text): 16 free templates on prod.
+
+## Fixed text under a click-through layer (2026-10-19)
+
+The audit asks the browser what is under each point of a text, and the browser skips layers with `pointer-events:none`.
+The skincare template draws its top label ("Dewlane · Glow Serum") in such a layer, so the label read as covered by the
+scene underneath and the audit passed with an old brand on every copy (found making OUTREACH-5's Hinlura ad). The
+audit now makes every element answer that question (it injects `*{pointer-events:auto !important}`; nothing is
+clicked), and caught it at once: `Written into the code: Dewlane · Glow Serum`. The label was bound to the Wordmark
+and Product name fields on prod, and the 16 free templates were re-audited on prod's own code with the fix.
