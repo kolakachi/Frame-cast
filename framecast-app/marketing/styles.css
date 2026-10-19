@@ -394,3 +394,12 @@ html.anim .reveal.in { opacity: 1; transform: none; transition: opacity .5s ease
 /* Proof under the hero: three real ads, side by side */
 .proof-row { display: grid; grid-template-columns: repeat(3, minmax(0, 240px)); gap: 18px; }
 @media (max-width: 640px) { .proof-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } .proof-row figcaption { font-size: .8rem; } }
+
+/* HOME-CTA (2026-10-19): the free first ad on every main button; prices one click away. */
+.nav-free .cta-short { display: none; }
+@media (max-width: 520px) { .nav-free .cta-long { display: none; } .nav-free .cta-short { display: inline; } }
+.free-line { margin: 0 0 18px; font-size: 1.02rem; color: var(--text-2); }
+.free-line a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.free-line a:hover { text-decoration: underline; }
+.final .final-prices { color: var(--on-accent); opacity: .85; font-size: .98rem; text-decoration: underline; text-underline-offset: 3px; }
+.final .final-prices:hover { opacity: 1; }
