@@ -5745,6 +5745,14 @@ class CreateIntegrationTest extends TestCase
         $this->assertNotNull($swap(), 'a swap that failed for another reason may simply be tried again');
         DB::table('composition_runs')->where('id', $other)->update(['stage' => 'This change needs the full editor: line 2 is 3.10 s against a 2.40 s slot.']);
         $this->assertNull($swap(), 'a swap that could not fit a line goes to the builder');
+        DB::table('composition_runs')->where('id', $other)->delete();
+        // A version imported from another server keeps no record of which file its voice was: the build's tagged voice track
+        // stands in (the templates built locally and imported to prod, 2026-10-19), and an untagged one never does.
+        DB::table('create_plan_media')->where('plan_id', $basePlan)->delete();
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => json_encode(['index.html' => '<audio id="vo" class="clip" src="asset-'.$spaced.'-ab12.wav"></audio><audio id="music" src="asset-'.$music.'-cd34.wav"></audio>'])]);
+        $this->assertSame('asset-'.$spaced.'-ab12.wav', $swap()['old_src'] ?? null);
+        DB::table('composition_revisions')->where('id', $revision)->update(['bundle_json' => $bundle()]);
+        $this->assertNull($swap(), 'no record and no tagged voice: unclear which to swap');
     }
     public function test_a_plan_whose_heartbeat_stopped_is_caught_in_minutes_not_at_the_deadline(): void
     {

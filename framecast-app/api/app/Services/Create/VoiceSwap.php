@@ -19,6 +19,18 @@ class VoiceSwap
      * @return array{old_src: string, old_lines: list<string>, new_lines: list<string>}|null
      */
     /** $withParts: the voice is one part of a swap (PartSwap) that also sets text, colours or pictures. */
+    /** The audio files the build tagged as the voice (id "vo", "voice", "voiceover" or "narration"), once each. */
+    public static function taggedVoice(array $bundle): array
+    {
+        preg_match_all('/<audio\b[^>]*>/i', implode("\n", array_filter($bundle, 'is_string')), $tags);
+        $files = [];
+        foreach ($tags[0] as $tag) {
+            if (! preg_match('/\bid="(vo|voice|voiceover|narration)"/i', $tag) || ! preg_match('/\bsrc="(asset-\d+-[0-9a-f]+\.(?:wav|mp3|m4a))"/i', $tag, $src)) continue;
+            $files[] = $src[1];
+        }
+        return array_values(array_unique($files));
+    }
+
     public static function plan(object $c, ?object $base, ?array $plan, array $planMedia, array $settings, bool $step, bool $withParts = false): ?array
     {
         if (! $base || ! $plan || $step || ($plan['look_first'] ?? false) || (! $withParts && ($plan['planner_task'] ?? null) !== 'edit')) return null;
@@ -49,10 +61,12 @@ class VoiceSwap
         // The narration clip in the version: the one audio file descended from the voice the base plan bought.
         $voiceAsset = DB::table('create_plan_media')->where('plan_id', $basePlan['plan_id'])->whereIn('kind', self::KINDS)->where('status', 'succeeded')
             ->get(['record_json'])->map(fn ($r) => (int) (json_decode((string) $r->record_json, true)['file']['asset_id'] ?? 0))->filter()->first();
-        if (! $voiceAsset) return null;
         $bundle = json_decode((string) $base->bundle_json, true) ?: [];
         preg_match_all('/<audio\b[^>]*\bsrc="(asset-(\d+)-[0-9a-f]+\.(?:wav|mp3|m4a))"/i', implode("\n", array_map('strval', $bundle)), $m, PREG_SET_ORDER);
-        $narration = array_values(array_unique(array_map(fn ($x) => $x[1], array_filter($m, fn ($x) => self::rootOf((int) $x[2]) === $voiceAsset))));
+        $narration = $voiceAsset ? array_values(array_unique(array_map(fn ($x) => $x[1], array_filter($m, fn ($x) => self::rootOf((int) $x[2]) === $voiceAsset)))) : [];
+        // A version imported from another server (create:version import, the templates built locally) keeps its code and
+        // plan but not the record of which file its voice was: the one audio the build tagged as the voice stands in.
+        if (count($narration) !== 1) $narration = self::taggedVoice($bundle);
         if (count($narration) !== 1) return null;
         $workspace = (int) $c->workspace_id;
         return ['old_src' => $narration[0], 'old_lines' => $old,
