@@ -163,7 +163,11 @@ class ConversationService
     {
         $this->authorize($user, true);
         if ($purpose === 'reference') \App\Support\PlanGate::require((int) $user->workspace_id, 'reference_style');
-        DB::transaction(function () use ($user, $id, $assetId, $purpose, $version) {
+        // On an exact template copy, a product photo brings its cut-out (TemplateCutout), made before the change so the
+        // two go in together as one change of the conversation.
+        $photo = Asset::where('workspace_id', $user->workspace_id)->whereKey($assetId)->first();
+        $cutout = $photo ? TemplateCutout::for($this->conversation($user, $id, true), $photo, $purpose) : null;
+        DB::transaction(function () use ($user, $id, $assetId, $purpose, $version, $cutout) {
             $c = $this->conversation($user, $id, true);
             abort_if($c->archived_at || (int) $c->version !== $version, 409, 'Conversation changed. Refresh first.');
             $asset = Asset::where('workspace_id', $user->workspace_id)->whereKey($assetId)->firstOrFail();
@@ -175,6 +179,9 @@ class ConversationService
             DB::table('create_attachments')->updateOrInsert(['conversation_id' => $id, 'asset_id' => $assetId], [
                 'purpose' => $purpose, 'created_at' => now(), 'updated_at' => now(),
             ]);
+            if ($cutout && DB::table('create_attachments')->where('conversation_id', $id)->count() < 20) {
+                DB::table('create_attachments')->updateOrInsert(['conversation_id' => $id, 'asset_id' => $cutout->id], ['purpose' => 'source', 'created_at' => now(), 'updated_at' => now()]);
+            }
             DB::table('create_conversations')->where('id', $id)->update(['version' => $c->version + 1, 'updated_at' => now()]);
             // A reference video is studied in the background straight away, so planning reads a finished study.
             if ($purpose === 'reference' && $asset->asset_type === 'video' && config('create.mode') !== 'fixture') \App\Jobs\StudyCreateReference::dispatch($asset->id, \App\Services\Create\References\ReferenceStudy::coverageMode(json_decode($c->settings_json, true)['reference_effort'] ?? null))->afterCommit();

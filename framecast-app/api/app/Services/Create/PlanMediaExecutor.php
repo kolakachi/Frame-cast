@@ -60,6 +60,19 @@ class PlanMediaExecutor
         return ['path' => $this->fetch($cut, $dir.'/cutout.png'), 'mime' => 'image/png', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-'.Str::uuid(), 'extra' => []];
     }
 
+    /** A photo's background removed, as PNG bytes (TemplateCutout: a product photo for a template's cut-out slot). */
+    public function cutoutBytes(string $bytes, string $mime): string
+    {
+        $dir = sys_get_temp_dir().'/cutout-'.Str::uuid();
+        @mkdir($dir, 0700, true);
+        try {
+            $cut = $this->replicate('851-labs/background-remover', ['image' => $this->replicateUpload($bytes, $mime), 'format' => 'png', 'background_type' => 'rgba']);
+            return (string) file_get_contents($this->fetch($cut, $dir.'/cutout.png'));
+        } finally {
+            @unlink($dir.'/cutout.png'); @rmdir($dir);
+        }
+    }
+
     /**
      * A person cut out of a video (2026-10-09): Robust Video Matting returns the person's mask frame by frame; it is
      * merged with the original as the alpha of a VP9 WebM, which the render keeps see-through (tested: the background

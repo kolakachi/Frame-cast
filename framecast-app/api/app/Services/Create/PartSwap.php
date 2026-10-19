@@ -21,9 +21,10 @@ class PartSwap
     /** The longest new text a slot takes without the builder: about what it holds now. Display type is wide, so more room
      *  is not safe ("money, sorted?" in a "paid social?" slot ran off the frame at 1.3x, 2026-10-16); the render's edge
      *  check reports anything that still does not fit. */
+    /** How long a swapped text may be: a quarter more than the field's own (as the template's parts promise), at least 4. */
     public static function maxChars(string $current): int
     {
-        return max(4, mb_strlen($current) + 1);
+        return max(4, (int) ceil(mb_strlen($current) * 1.25));
     }
 
     /** The version's pictures: each <img> whose file is a Create asset, once per file. */

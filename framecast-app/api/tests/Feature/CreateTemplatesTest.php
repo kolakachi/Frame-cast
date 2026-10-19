@@ -326,6 +326,32 @@ class CreateTemplatesTest extends TestCase
         $this->assertStringContainsString('keep the track as it is', $made['brief']);
     }
 
+    public function test_a_product_photo_on_an_exact_template_copy_brings_its_cut_out_as_one_change(): void
+    {
+        [$conversation, $revision] = $this->version();
+        $t = $this->library->add($this->staff, $conversation, $revision, ['title' => 'Sneaker drop', 'category' => 'offer']);
+        config(['create.templates_public' => true]);
+        $made = $this->library->use($this->customer, $t['id'], ['product' => 'Volt Rush', 'match' => 'exact', 'idempotency_key' => 'cut1']);
+        \Illuminate\Support\Facades\Storage::fake('minio');
+        \Illuminate\Support\Facades\Storage::disk('minio')->put('photos/can.jpg', 'jpeg-bytes');
+        $photo = Asset::create(['workspace_id' => $this->customer->workspace_id, 'asset_type' => 'image', 'title' => 'Volt Rush can', 'storage_url' => 'minio://photos/can.jpg',
+            'mime_type' => 'image/jpeg', 'file_size_bytes' => 10, 'status' => 'active', 'restriction_scope' => 'workspace']);
+        $executor = \Mockery::mock(\App\Services\Create\PlanMediaExecutor::class);
+        $executor->shouldReceive('cutoutBytes')->once()->with('jpeg-bytes', 'image/jpeg')->andReturn('png-bytes');
+        $this->app->instance(\App\Services\Create\PlanMediaExecutor::class, $executor);
+        $version = (int) DB::table('create_conversations')->where('id', $made['id'])->value('version');
+
+        app(\App\Services\Create\ConversationService::class)->attach($this->customer, $made['id'], $photo->id, 'source', $version);
+        $attached = DB::table('create_attachments')->where('conversation_id', $made['id'])->pluck('purpose', 'asset_id');
+        $cut = Asset::where('title', 'Cut out · Volt Rush can')->first();
+        $this->assertNotNull($cut);
+        $this->assertSame(['image/png', (int) $this->customer->workspace_id], [$cut->mime_type, (int) $cut->workspace_id]);
+        $this->assertSame(['source', 'source'], [$attached[$photo->id], $attached[$cut->id]]);
+        $this->assertSame($version + 1, (int) DB::table('create_conversations')->where('id', $made['id'])->value('version'), 'one change, so the app\'s next message still matches');
+        // Attaching the cut-out itself, or the photo again, makes no second cut-out (the mock allows one call).
+        app(\App\Services\Create\ConversationService::class)->attach($this->customer, $made['id'], $photo->id, 'source', $version + 1);
+    }
+
     public function test_make_mine_similar_or_from_a_video_attaches_the_template_as_the_reference(): void
     {
         [$conversation, $revision] = $this->version();
@@ -386,7 +412,7 @@ class CreateTemplatesTest extends TestCase
         $this->assertFalse($swap['voice']);
         $this->assertNull(\App\Services\Create\PartSwap::normalize($raw, $ctx, ['on_screen_words', 'pictures', 'timing']), 'timing needs the builder');
         $this->assertNull(\App\Services\Create\PartSwap::normalize([...$raw, 'values' => ['headline' => 'Freelance money, finally sorted?']], $ctx, ['on_screen_words', 'pictures']), 'text longer than its slot needs the builder');
-        $this->assertSame([9, 4], [\App\Services\Create\PartSwap::maxChars('NEW DROP'), \App\Services\Create\PartSwap::maxChars('Go')]);
+        $this->assertSame([10, 4, 24], [\App\Services\Create\PartSwap::maxChars('NEW DROP'), \App\Services\Create\PartSwap::maxChars('Go'), \App\Services\Create\PartSwap::maxChars('or saffronstreet.co')], 'a quarter more than the field (OUTREACH-5: a shop name 2 letters longer fell back to a full build)');
         $this->assertNull(\App\Services\Create\PartSwap::normalize(['values' => ['headline' => 'X']], $ctx, ['on_screen_words', 'pictures']), 'a picture change with no picture to put in is not a swap');
         $this->assertNull(\App\Services\Create\PartSwap::normalize(['pictures' => [['from' => $files[0]['name'], 'to_asset_id' => 999]]], $ctx, ['pictures']), 'an image the user did not attach is not used');
 
