@@ -357,6 +357,13 @@ function planDirty(p) {
 // Generated video is priced by its route (engine and length), which the server resolves for the saved selections.
 const GENERATED = ['reference_sheet', 'generated_shot', 'ugc_take']
 function routedMedia(p) { return p.media_routed?.length ? p.media_routed : (p.plan.media || []) }
+// LENGTH-TARGET: when a presenter's take needs longer than the chosen length, the plan says how long the video runs.
+function planLengthNote(p) {
+  const chosen = Number(settingsNow.value.duration_seconds) || 15
+  const take = routedMedia(p).filter(m => m.kind === 'ugc_take').reduce((n, m) => n + (Number(m.seconds) || 0), 0)
+  if (take <= chosen + 0.5) return ''
+  return `This video runs about ${Math.min(Math.ceil(take), Math.round(chosen * 1.3))} s, not the ${chosen} s chosen: the presenter's lines need the time. The price is the same.`
+}
 function hasGenerated(p) { return routedMedia(p).some(m => GENERATED.includes(m.kind)) }
 function mediaMeta(md) {
   if (md.kind === 'reference_sheet') return 'Cast and world sheet: ' + (md.subjects || []).map(x => x.name).join(', ')
@@ -1384,7 +1391,9 @@ const playerShape = computed(() => ({ '16:9': 'landscape', '1:1': 'square', '4:5
 const versionPills = computed(() => {
   const st = settingsNow.value, out = []
   if (st.aspect_ratio && !imageOutput.value) out.push(st.aspect_ratio)
-  if (st.duration_seconds && !imageOutput.value && !outputMeta.value.look) out.push(st.duration_seconds + ' s')
+  // The real length when the presenter's lines made it longer than chosen (LENGTH-TARGET).
+  const real = outputMeta.value.delivery_checks?.seconds
+  if ((real || st.duration_seconds) && !imageOutput.value && !outputMeta.value.look) out.push(Math.round(real || st.duration_seconds) + ' s')
   const run = (data.value?.runs || []).find(r => r.id === currentRevision.value?.run_id)
   if (run?.spent_credits) out.push(Number(run.spent_credits).toLocaleString() + ' cr')
   return out
@@ -1601,6 +1610,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                     <p v-if="planByMessage[m.id].status === 'proposed'" class="plan-lead">{{ planByMessage[m.id].plan.summary }}</p>
                     <p v-for="q in (planByMessage[m.id].status === 'proposed' && !planByMessage[m.id].stale ? planByMessage[m.id].plan.checks || [] : [])" :key="q" class="plan-check">{{ q }}</p>
                     <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.creative_intent?.reason" class="plan-approach" label="Creative approach" :text="planByMessage[m.id].plan.creative_intent.reason" />
+                    <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planLengthNote(planByMessage[m.id])" class="plan-approach" label="Length" :text="planLengthNote(planByMessage[m.id])" />
                     <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief or details changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
                     <p v-if="isLivePlan(planByMessage[m.id]) && planByMessage[m.id].plan.assumptions?.length" class="plan-assumed"><b>Assumed:</b> {{ planByMessage[m.id].plan.assumptions.join(' · ') }}. Tell me if any is wrong.</p>

@@ -317,6 +317,8 @@ class RunService
         return ['ok' => (bool) ($c['ok'] ?? false), 'safe_area' => $items($c['safe_area'] ?? []), 'edges' => $items($c['edges'] ?? []), 'contrast' => $items($c['contrast'] ?? []),
             'pacing' => array_map(fn ($f, $raw) => [...$f, 'code' => in_array($raw['code'] ?? '', ['reading_time', 'blank_frames', 'still_stretch', 'small_text', 'mostly_empty'], true) ? $raw['code'] : 'reading_time'], $items($c['pacing'] ?? []), array_slice(array_values(array_filter(is_array($c['pacing'] ?? null) ? $c['pacing'] : [], 'is_array')), 0, 12)),
             'loudness' => ['status' => in_array($l['status'] ?? '', ['ok', 'levelled', 'silent', 'no_audio', 'check_failed'], true) ? $l['status'] : 'unknown', 'lufs' => $num($l['lufs'] ?? null), 'from' => $num($l['from'] ?? null), 'peak' => $num($l['peak'] ?? null)],
+            // The video's real length (LENGTH-TARGET: the chosen length is a target; a presenter's lines may run longer).
+            ...(is_numeric($c['seconds'] ?? null) ? ['seconds' => round((float) $c['seconds'], 1)] : []),
             // What the listening check heard, in plain words for Before you post.
             ...(is_array($c['audio'] ?? null) ? ['audio' => ['ok' => (bool) ($c['audio']['ok'] ?? false),
                 'problems' => array_values(array_slice(array_map(fn ($p) => mb_substr($p, 0, 200), array_filter((array) ($c['audio']['problems'] ?? []), 'is_string')), 0, 6)),

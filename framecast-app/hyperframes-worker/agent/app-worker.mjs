@@ -346,6 +346,8 @@ async function execute(run){
     const rendered=JSON.parse(await readFile(dir+'/render/result.json','utf8'));
     const loudness=await levelIfNeeded(path.join(root,'artifacts',rendered.directory.slice('/output/'.length),rendered.artifact),{silent:run.input.settings?.audio==='silent'});
     deliveryChecks=deliverySummary(run.input.look_first===true?{...sandbox,pacing:(sandbox.pacing||[]).filter(f=>f.code!=='still_stretch')}:sandbox,loudness);
+    // The real length goes with the version (LENGTH-TARGET): a presenter's lines may make it longer than chosen.
+    if(deliveryChecks&&Number.isFinite(rendered.rendered_seconds))deliveryChecks.seconds=rendered.rendered_seconds;
    }catch(error){if(sandboxStopUnconfirmed(error))throw error;deliveryChecks=null;await trace({phase:'review',status:'failed',summary:'Delivery checks unavailable',detail:error.message});}
    // Listen to the export: narration against the script, text against speech, voice over music, the ending.
    const plan=run.input.plan??{};

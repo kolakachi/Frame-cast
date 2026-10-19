@@ -96,4 +96,11 @@ class SwapSafeTest extends TestCase
         $this->assertGreaterThanOrEqual(mb_strlen('Rs 2,700'), PartSwap::maxChars('$45'));
         $this->assertSame(14, PartSwap::maxChars('VOLT RUSH'), 'words that wrap: half as long again');
     }
+
+    public function test_the_real_length_goes_with_the_version(): void
+    {
+        $checks = \App\Services\Create\RunService::deliveryChecks(['ok' => true, 'seconds' => 16.33]);
+        $this->assertSame(16.3, $checks['seconds'], 'LENGTH-TARGET: a presenter video that ran past its chosen 15 s shows 16 s');
+        $this->assertArrayNotHasKey('seconds', \App\Services\Create\RunService::deliveryChecks(['ok' => true]));
+    }
 }

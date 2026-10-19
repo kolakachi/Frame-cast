@@ -36,3 +36,15 @@ for 17 s inside a 15 s video: the planner sizes a take to the time its script ne
 ## Size
 
 About half a day: worker (render check, builder instruction), API (plan length note, version length), web (show it).
+
+## Built (2026-10-19, owner: "go build it")
+
+- **Builder:** the beat sheet from the presenter's or narrator's timed words (narration-timing.mjs) runs to the last word
+  when the voice runs past the chosen length, up to 30% over (15 s → at most 19.5 s), and says so (`chosen_seconds`);
+  the builder is told to make the page that long and never cut or speed up the speech.
+- **Render:** the page's own length is rendered and checked when it is up to 30% over the chosen length
+  (render-length.mjs); past that it is refused with the measured lengths and "retrying makes the same video".
+- **Real length:** stored with the version (`delivery_checks.seconds`) and shown on it ("16 s").
+- **Plan card:** when the presenter's takes need longer than chosen, a "Length" note says how long the video runs and
+  that the price is the same.
+- Tests: worker (beat sheet stretch, render length 30%), API (stored length). Price unchanged.

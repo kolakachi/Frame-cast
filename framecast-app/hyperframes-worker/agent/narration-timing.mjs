@@ -27,6 +27,10 @@ const words3=w=>(w||[]).map(x=>Array.isArray(x)?{text:x[0],start:x[1],end:x[2]}:
  */
 export function voiceTiming({scenes=[],lines=[],words=[],clipStart=0.3,videoSeconds,lead=LEAD}){
  const w=words3(words);
+ // LENGTH-TARGET (2026-10-19): the chosen length is a target. A voice that runs past it (a presenter take sized to its
+ // script) sets the video's length, up to 30% over, so every word is heard (a 15 s explainer's 17 s take was cut at 15).
+ const chosen=videoSeconds,lastWord=w.at(-1),heardEnd=lastWord?clipStart+Number(lastWord.end):null;
+ if(chosen&&heardEnd!==null&&heardEnd>chosen-0.1)videoSeconds=Math.min(+(Math.ceil((heardEnd+END_ROOM/3)*10)/10).toFixed(1),+(chosen*1.3).toFixed(1));
  const beats=scenes.map(s=>({label:s.label,starts_on:s.starts_on||null,planned:[Number(s.start)||0,Number(s.end)||0],heard_at:null,voiced:null}));
  let from=0;
  for(const b of beats){if(!b.starts_on)continue;const f=findPhrase(w,b.starts_on,from);if(f){b.heard_at=+(f.start).toFixed(2);from=f.index;}}
@@ -49,7 +53,7 @@ export function voiceTiming({scenes=[],lines=[],words=[],clipStart=0.3,videoSeco
    const prev=w[hit.index-1];points.push(+(((Number(prev.end)+hit.start)/2)).toFixed(2));f=hit.index;}
   if(points.length){const each=Math.min(MAX_PAUSE,+(spare/points.length).toFixed(2));suggestion={op:'space',insert:points.map(t=>[t,each]),adds:+(each*points.length).toFixed(2)};}
  }
- return {clip_start:clipStart,beats,voice_ends:voiceEnds,video_seconds:videoSeconds,spare_seconds:spare,suggestion};
+ return {clip_start:clipStart,beats,voice_ends:voiceEnds,video_seconds:videoSeconds,...(videoSeconds!==chosen?{chosen_seconds:chosen}:{}),spare_seconds:spare,suggestion};
 }
 
 /**
