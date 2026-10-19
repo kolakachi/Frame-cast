@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {declarations,withValues,values,leftovers,overflowing,bundleHash} from '../template-audit.mjs';
+import {declarations,withValues,values,leftovers,overflowing,bundleHash,wordLength} from '../template-audit.mjs';
 import {TEMPLATE_RULES} from '../composition-agent.mjs';
 
 const page=`<html lang="en" data-composition-variables='[{"id":"headline","type":"string","label":"Hook","default":"Where&apos;s my order?"},{"id":"cta","type":"string","label":"Link","default":"parcelpath.app"},{"id":"color_accent","type":"color","label":"Accent","default":"#ff0000"}]'><body></body></html>`;
@@ -32,4 +32,22 @@ test('the code hash ignores asset ids, so an audit made locally holds on prod',(
 test('a template build tells the builder that every word on screen is a field',()=>{
  assert.ok(TEMPLATE_RULES.some(r=>/Every word on screen comes from a string composition variable/.test(r)));
  assert.ok(TEMPLATE_RULES.some(r=>/No generated video/.test(r)));
+});
+
+test('one long word per field: as long as the planner may write it, a 12-letter name inside a line', () => {
+ assert.equal(wordLength('voltrush.co'), 14, 'a web address: 1.25x, all one word');
+ assert.equal(wordLength('VOLT RUSH'), 12, 'a two-word headline holds a 12-letter brand name');
+ assert.equal(wordLength('Citrus energy, zero sugar.'), 12, 'a sentence holds a name, not a 33-letter word');
+ assert.equal(wordLength('NEW'), 6, 'at least six letters');
+ const v = values([{id: 'headline', type: 'string', default: 'VOLT RUSH'}, {id: 'cta', type: 'string', default: 'voltrush.co'}]);
+ assert.deepEqual(v.word, {headline: 'ZQ1Wicksnwax', cta: 'ZQ2Wicksnwaxbo'});
+ assert.ok(!/\s/.test(v.word.headline), 'no space to wrap at');
+});
+
+test('overflow is judged element by element: a hidden copy out of its box does not excuse the real one', () => {
+ const copy = at => ({text: 'ZQ3', path: 'DIV#tear:2>SPAN:0', at});
+ const real = at => ({text: 'ZQ3Wicksnwax', path: 'DIV#nameBox:4>DIV:0>SPAN#n1:0', at});
+ const shortOut = [3.75, 4, 4.25].map(copy);
+ const wordOut = [3.75, 4, 4.25].flatMap(at => [{...copy(at), text: 'ZQ3Wicksnwax'}, real(at)]);
+ assert.deepEqual(overflowing(shortOut, wordOut, 0.25).map(o => o.at), [3.75], 'the real headline is found once; its copy stays excused');
 });

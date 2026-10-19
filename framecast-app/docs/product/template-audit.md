@@ -102,3 +102,18 @@ scene underneath and the audit passed with an old brand on every copy (found mak
 audit now makes every element answer that question (it injects `*{pointer-events:auto !important}`; nothing is
 clicked), and caught it at once: `Written into the code: Dewlane · Glow Serum`. The label was bound to the Wordmark
 and Product name fields on prod, and the 16 free templates were re-audited on prod's own code with the fix.
+
+## One long word per field (2026-10-19, TPL-AUDIT-WORDS)
+
+The long pass wrote "ZQ3 fresh daily goods", short words that wrap; a real brand name or web address does not
+("WicksNWax" and "MAPLE" were cut off in OUTREACH-5's ads, "montyseleven.co.uk" did not fit). A third pass now puts one
+unbreakable word in every text field, as long as the planner may write it (1.25x the default, at most 12 letters where
+the default has spaces), and fails a field whose word runs out of its box (`too_wide`). Three blind spots found on the
+way: overflow was excused field by field, so a hidden copy of a scene kept for a transition excused the real headline
+(now element by element); letters split for kinetic type were judged covered once pushed past the edge, so never
+measured (now measured as their word, on the part a viewer can see); and the font's line height read as text cut by a
+tight reveal mask (within 30% of the font size up and down is allowed). In template builds it is a note to the builder
+("let it shrink to fit"), not yet a block.
+
+Local run on the 16 free templates (prod's code, not recorded on prod): 11 cut a 12-letter name somewhere, 5 pass
+(skincare how-to, food dish, pop-up event, before/after, customer review). Checked by eye on four: real each time.

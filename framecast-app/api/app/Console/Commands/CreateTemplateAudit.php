@@ -30,11 +30,11 @@ class CreateTemplateAudit extends Command
         $bundle = json_decode((string) DB::table('composition_revisions')->where('id', $t->revision_id)->value('bundle_json'), true) ?: [];
         // The audit must be of this template's code (asset ids aside), or it says nothing about it.
         if (! hash_equals(TemplateAudit::bundleHash($bundle), (string) ($result['bundle_hash'] ?? ''))) { $this->error('The audit is of different code than this template.'); return self::FAILURE; }
-        $kept = array_intersect_key($result, array_flip(['passed', 'fields', 'leftovers', 'unseen', 'overflow', 'bundle_hash', 'at']));
+        $kept = array_intersect_key($result, array_flip(['passed', 'fields', 'leftovers', 'unseen', 'overflow', 'too_wide', 'bundle_hash', 'at']));
         DB::table('create_templates')->where('id', $t->id)->update(['free_audit_json' => json_encode($kept), 'updated_at' => now()]);
         $this->line(($result['passed'] ? 'PASSED' : 'FAILED')." {$t->id} ({$t->title})");
-        foreach (['leftovers' => 'Written into the code', 'unseen' => 'Fields never on screen', 'overflow' => 'Long text runs out of its box'] as $key => $label)
-            if (! empty($result[$key])) $this->line("  $label: ".implode(' | ', array_map(fn ($x) => is_array($x) ? ($x['text'] ?? json_encode($x)).(isset($x['at']) ? ' @'.$x['at'].'s' : '') : $x, array_slice($result[$key], 0, 12))));
+        foreach (['leftovers' => 'Written into the code', 'unseen' => 'Fields never on screen', 'overflow' => 'Long text runs out of its box', 'too_wide' => 'One long word runs out of its box'] as $key => $label)
+            if (! empty($result[$key])) $this->line("  $label: ".implode(' | ', array_map(fn ($x) => is_array($x) ? (isset($x['field']) ? $x['field'].': ' : '').($x['text'] ?? json_encode($x)).(isset($x['at']) ? ' @'.$x['at'].'s' : '') : $x, array_slice($result[$key], 0, 12))));
         return self::SUCCESS;
     }
 }

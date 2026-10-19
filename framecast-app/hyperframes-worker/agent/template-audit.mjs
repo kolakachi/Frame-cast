@@ -3,7 +3,11 @@
 // - short markers (ZQ1, ZQ2, ...) in every text field: any other word still on screen is written into the code and
 //   would stay on every copy (the owner's free ad kept "wyvstudio.com"); a field whose marker never shows does nothing;
 // - long values (about twice each default): text that runs off the frame or out of its clipping box would break
-//   when a user writes more than the sample did.
+//   when a user writes more than the sample did;
+// - one unbreakable word per field (2026-10-19): a brand name or a web address cannot wrap the way "fresh daily goods"
+//   does, so a headline set big for "VOLT RUSH" cut "WicksNWax" and "MAPLE" off at its edge (OUTREACH-5). The word is as
+//   long as the field may be written (1.25x its default, as the planner allows), at most 12 letters where the default
+//   has spaces (a name inside a line), and must stay inside its box.
 // Run in the sandbox: node agent/template-audit.mjs <id>, reading /output/audit/<id> (a create:version export) and
 // writing result.json there. Text drawn on a canvas or baked into a picture is not seen (pictures are slots anyway).
 import {readFile,writeFile,mkdir,copyFile,readdir,cp} from 'node:fs/promises';
@@ -33,12 +37,21 @@ export function bundleHash(bundle){
  return createHash('sha256').update(names.map(n=>n+'\n'+bundle[n].replace(/asset-\d+-([0-9a-f]{64})/g,'asset-$1')).join('\n\0\n'),'utf8').digest('hex');
 }
 
-/** Short markers and long values for every text field. */
+/** The longest single word a field must hold: what the planner may write (1.25x the default), and no more than a
+ *  12-letter name where the default is several words. */
+export function wordLength(value){
+ const v=String(value??'').trim(),limit=Math.ceil(v.length*1.25);
+ return Math.max(6,/\s/.test(v)?Math.min(12,limit):limit);
+}
+
+/** Short markers, long values and one long word for every text field. */
 export function values(decls){
- const text=decls.filter(d=>d.type==='string'),short={},long={};
+ const text=decls.filter(d=>d.type==='string'),short={},long={},word={};
+ // Real letters, wide ones included: the marker leads so the field can be told apart.
+ text.forEach((d,i)=>{const id='ZQ'+(i+1);word[d.id]=(id+'Wicksnwaxbourbonmaplemontyseleven').slice(0,Math.max(id.length+2,wordLength(d.default)));});
  text.forEach((d,i)=>{const id='ZQ'+(i+1);short[d.id]=id;
   const want=Math.max(8,Math.min(60,Math.round(String(d.default??'').length*1.5)));let v=id;const words=['fresh','daily','goods','made','simple','better','store'];for(let i=0;v.length<want;i++)v+=' '+words[i%words.length];long[d.id]=v.slice(0,want);});
- return {short,long,markers:Object.fromEntries(text.map((d,i)=>['ZQ'+(i+1),d.id]))};
+ return {short,long,word,markers:Object.fromEntries(text.map((d,i)=>['ZQ'+(i+1),d.id]))};
 }
 
 /** Words on screen that are not markers: a word of two letters or more, or a price or percentage. */
@@ -55,13 +68,16 @@ export function leftovers(texts){
 
 /**
  * Long text that runs out of its box: out in the long pass for at least three samples in a row, at moments when the
- * same field's short marker was inside (an entrance or exit move takes text out of its box at any length).
+ * same element's short marker was inside (an entrance or exit move takes text out of its box at any length).
+ * Element by element: a template that keeps hidden copies of a scene for a transition has the field's marker out of
+ * its box in those copies all the time, which excused the real headline (the WicksNWax ad, 2026-10-19).
  */
 export function overflowing(shortOut,longOut,step){
  const id=t=>(t.match(/Z\s*Q\s*(\d+)/)||[])[1];
- const shortAt=new Set(shortOut.map(o=>id(o.text)+'@'+o.at).filter(k=>!k.startsWith('undefined')));
+ const key=o=>o.path?o.path+'|'+id(o.text):id(o.text);
+ const shortAt=new Set(shortOut.filter(o=>id(o.text)).map(o=>key(o)+'@'+o.at));
  const byField=new Map();
- for(const o of longOut){const f=id(o.text);if(!f||shortAt.has(f+'@'+o.at))continue;(byField.get(f)??byField.set(f,[]).get(f)).push(o);}
+ for(const o of longOut){const f=id(o.text);if(!f||shortAt.has(key(o)+'@'+o.at))continue;const k=key(o);(byField.get(k)??byField.set(k,[]).get(k)).push(o);}
  const found=[];
  for(const [,list] of byField){const times=[...new Set(list.map(o=>o.at))].sort((a,b)=>a-b);
   // Three samples in a row (about 0.75 s): an entrance or exit move passes through a box edge faster than that.
@@ -74,33 +90,51 @@ export function overflowing(shortOut,longOut,step){
 function sample(){
  const W=innerWidth,H=innerHeight,texts=[],out=[];
  const shown=el=>{let o=1;for(let e=el;e&&e.nodeType===1;e=e.parentElement){const s=getComputedStyle(e);if(s.display==='none'||s.visibility==='hidden')return 0;o*=parseFloat(s.opacity);}return o;};
- const clipOf=el=>{for(let e=el.parentElement;e&&e!==document.body;e=e.parentElement){const s=getComputedStyle(e);if(/hidden|clip/.test(s.overflow+s.overflowX+s.overflowY))return e;}return null;};
+ const clipOf=el=>{for(let e=el;e&&e!==document.body;e=e.parentElement){const s=getComputedStyle(e);if(/hidden|clip/.test(s.overflow+s.overflowX+s.overflowY))return e;}return null;};
+ const measured=new Set();
+ // Down the stack at a point: transparent layers (grain, vignettes, empty wrappers) are looked through; an opaque
+ // panel or picture above the text covers it.
+ // A cut-out photo (PNG, WebP, SVG) is mostly transparent around the product: only solid pictures cover.
+ const covers=e=>{if(['VIDEO','CANVAS'].includes(e.tagName)||(e.tagName==='IMG'&&/\.jpe?g(\?|$)/i.test(e.currentSrc||e.src)))return shown(e)>=0.5;if(e.tagName==='IMG')return false;const st=getComputedStyle(e);const m=st.backgroundColor.match(/rgba?\(([^)]+)\)/);
+  const alpha=m?(m[1].split(',')[3]===undefined?1:parseFloat(m[1].split(',')[3])):0;return (alpha>=0.5||st.backgroundImage!=='none')&&shown(e)>=0.5;};
+ const seenAt=(el,[x,y])=>{for(const hit of document.elementsFromPoint(x,y)){if(hit===el||el.contains(hit)||hit.contains(el))return true;if(covers(hit))return false;}return true;};
  for(const el of document.body.querySelectorAll('*')){
   if(['SCRIPT','STYLE','NOSCRIPT','TITLE'].includes(el.tagName))continue;
   let own=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').replace(/\s+/g,' ').trim();
   const pseudo=['::before','::after'].map(p=>getComputedStyle(el,p).content).filter(c=>c&&/^["'].*["']$/.test(c)).map(c=>c.slice(1,-1)).join(' ').trim();
   if(!own&&!pseudo)continue;
+  // Letters split into their own spans (kinetic type) are read as the word they make (each letter may sit in its own
+  // wrapper: climb until there is more than a letter or two).
+  let host=el,word=own;
+  for(let up=el.parentElement,i=0;word&&word.length<=2&&up&&up!==document.body&&i<4;up=up.parentElement,i++){host=up;word=(up.innerText||up.textContent||'').replace(/\s+/g,' ').trim();}
+  // Does the text fit its box? Measured as the whole word, judged on the part a viewer could see (inside its clipping
+  // box and the frame): letters pushed wholly past the edge were judged covered one by one and never measured (the
+  // WicksNWax headline, 2026-10-19).
+  if(word&&!measured.has(host)&&shown(host)>=0.2){
+   const r=host.getBoundingClientRect(),rg=document.createRange();rg.selectNodeContents(host);const tb=rg.getBoundingClientRect(),b=tb.width>=2&&tb.height>=2?tb:r;
+   const clip=clipOf(host),c=clip?clip.getBoundingClientRect():{left:0,top:0,right:W,bottom:H};
+   const box={left:Math.max(0,c.left),top:Math.max(0,c.top),right:Math.min(W,c.right),bottom:Math.min(H,c.bottom)};
+   const vis={left:Math.max(b.left,box.left),top:Math.max(b.top,box.top),right:Math.min(b.right,box.right),bottom:Math.min(b.bottom,box.bottom)};
+   if(b.width>=2&&b.height>=2&&vis.right-vis.left>=1&&vis.bottom-vis.top>=1&&[0.25,0.5,0.75].some(f=>seenAt(host,[vis.left+(vis.right-vis.left)*f,(vis.top+vis.bottom)/2]))){
+    measured.add(host);
+    // Up and down, the text's box holds the font's whole line height, taller than its letters in display faces (Anton):
+    // a reveal mask cut to the letters reads as cutting them (the Jersey dish name). Within 30% of the font size is
+    // that; a hidden second line is more.
+    const dy=Math.max(2,parseFloat(getComputedStyle(el).fontSize)*0.3);
+    if(b.left<box.left-2||b.top<box.top-dy||b.right>box.right+2||b.bottom>box.bottom+dy){
+     // Where the element sits in the page, the same in every pass (only the words differ).
+     const path=[];for(let e=host;e&&e!==document.body;e=e.parentElement)path.unshift(e.tagName+(e.id?'#'+e.id:'')+':'+[...(e.parentElement?.children??[])].indexOf(e));
+     out.push({text:word.slice(0,40),path:path.join('>')});}}
+  }
+  // What a viewer could read now, letter by letter as before.
   const r=el.getBoundingClientRect();if(r.width<1||r.height<1||r.right<0||r.bottom<0||r.left>W||r.top>H)continue;
   if(shown(el)<0.2)continue;
   // Covered text is not seen: a panel on top hides it (the "Describe it." promo keeps an old word under its next scene).
   {const rg=document.createRange();rg.selectNodeContents(el);const b=rg.getBoundingClientRect(),box=b.width>=2&&b.height>=2?b:r;
    const pts=[0.25,0.5,0.75].map(f=>[box.left+box.width*f,box.top+box.height/2]).filter(([x,y])=>x>=0&&y>=0&&x<W&&y<H);
-   // Down the stack at a point: transparent layers (grain, vignettes, empty wrappers) are looked through; an opaque
-   // panel or picture above the text covers it.
-   // A cut-out photo (PNG, WebP, SVG) is mostly transparent around the product: only solid pictures cover.
-   const covers=e=>{if(['VIDEO','CANVAS'].includes(e.tagName)||(e.tagName==='IMG'&&/\.jpe?g(\?|$)/i.test(e.currentSrc||e.src)))return shown(e)>=0.5;if(e.tagName==='IMG')return false;const st=getComputedStyle(e);const m=st.backgroundColor.match(/rgba?\(([^)]+)\)/);
-    const alpha=m?(m[1].split(',')[3]===undefined?1:parseFloat(m[1].split(',')[3])):0;return (alpha>=0.5||st.backgroundImage!=='none')&&shown(e)>=0.5;};
-   const seenAt=([x,y])=>{for(const hit of document.elementsFromPoint(x,y)){if(hit===el||el.contains(hit)||hit.contains(el))return true;if(covers(hit))return false;}return true;};
    // The words themselves must be in the frame (a wide wipe panel can overlap it while its text is off to the side).
-   if(!pts.length||!pts.some(seenAt))continue;}
-  // Letters split into their own spans (kinetic type) are read as the word they make.
-  // (each letter may sit in its own wrapper: climb until there is more than a letter or two).
-  for(let up=el.parentElement,i=0;own.length<=2&&up&&up!==document.body&&i<4;up=up.parentElement,i++)own=(up.innerText||up.textContent||'').replace(/\s+/g,' ').trim();
-  if(own)texts.push(own);if(pseudo)texts.push(pseudo);
-  if(own){const rg=document.createRange();rg.selectNodeContents(el);const b=rg.getBoundingClientRect();if(b.width<2||b.height<2)continue;
-   const clip=clipOf(el),c=clip?clip.getBoundingClientRect():{left:0,top:0,right:W,bottom:H};
-   const box={left:Math.max(0,c.left),top:Math.max(0,c.top),right:Math.min(W,c.right),bottom:Math.min(H,c.bottom)};
-   if(b.left<box.left-2||b.top<box.top-2||b.right>box.right+2||b.bottom>box.bottom+2)out.push(own.slice(0,40));}
+   if(!pts.length||!pts.some(p=>seenAt(el,p)))continue;}
+  if(word)texts.push(word);if(pseudo)texts.push(pseudo);
  }
  return {texts,out};
 }
@@ -133,7 +167,7 @@ async function scan({root,width,height,duration,step,browserPath,shotAt=null,sho
   for(let t=0;t<=duration+1e-6;t+=step){
    const at=Math.round(t*100)/100;
    await page.evaluate(async s=>{await window.__player.renderSeek(s);if(window.__hfWaitForSeekCompletion)await window.__hfWaitForSeekCompletion();},at);
-   const s=await page.evaluate(sample);s.texts.forEach(x=>{if(!texts.has(x))texts.set(x,at);});s.out.forEach(text=>out.push({text,at}));
+   const s=await page.evaluate(sample);s.texts.forEach(x=>{if(!texts.has(x))texts.set(x,at);});s.out.forEach(o=>out.push({...o,at}));
   }
   return {texts:[...texts.keys()],firstAt:Object.fromEntries(texts),out,errors:[...new Set(errors)]};
  }finally{await browser.close();server.close();}
@@ -150,13 +184,16 @@ export async function audit({source,width,height,duration,step=0.25,browserPath=
   const {stageRuntime}=await import('./stage-runtime.mjs');await stageRuntime(root);
   return scan({root,width,height,duration,step,browserPath,...extra});};
  if(shot){await run(v[shot.which]??v.long,'shot',{shotAt:shot.at,shotPath:shot.path});return null;}
- const short=await run(v.short,'short'),long=await run(v.long,'long');
+ const short=await run(v.short,'short'),long=await run(v.long,'long'),word=await run(v.word,'word');
  const seen=new Set(short.texts.flatMap(t=>[...t.matchAll(/Z\s*Q\s*(\d+)/g)].map(m=>'ZQ'+m[1])));
  const unseen=Object.entries(v.markers).filter(([m])=>!seen.has(m)).map(([,id])=>id);
  const left=leftovers(short.texts).map(text=>({text,at:short.firstAt[short.texts.find(t=>t.includes(text))]??null}));
  const overflow=overflowing(short.out,long.out,step);
- const errors=[...new Set([...short.errors,...long.errors])];
- return {passed:!left.length&&!unseen.length&&!overflow.length&&!errors.length&&decls.some(d=>d.type==='string'),errors,fields:decls.filter(d=>d.type==='string').map(d=>d.id),leftovers:left,unseen,overflow,
+ const fieldOf=t=>v.markers['ZQ'+((t.match(/Z\s*Q\s*(\d+)/)||[])[1])]??null;
+ const tooWide=overflowing(short.out,word.out,step).map(o=>({...o,field:fieldOf(o.text),word:v.word[fieldOf(o.text)]??null}))
+  .filter((o,i,all)=>all.findIndex(x=>x.field===o.field)===i);
+ const errors=[...new Set([...short.errors,...long.errors,...word.errors])];
+ return {passed:!left.length&&!unseen.length&&!overflow.length&&!tooWide.length&&!errors.length&&decls.some(d=>d.type==='string'),errors,fields:decls.filter(d=>d.type==='string').map(d=>d.id),leftovers:left,unseen,overflow,too_wide:tooWide,
   seen:short.texts.slice(0,300)};
 }
 
@@ -170,10 +207,10 @@ if(import.meta.url===`file://${process.argv[1]}`){
  for(const [name,text] of Object.entries(manifest.bundle??{})){if(!/^[a-zA-Z0-9_-]+\.(html|css|js)$/.test(name))throw Error('Invalid bundle file');await writeFile(source+'/'+name,text);}
  for(const f of await readdir(dir+'/files').catch(()=>[]))if(/^[a-zA-Z0-9_.-]+$/.test(f)&&!/\.(wav|mp3)$/.test(f))await copyFile(dir+'/files/'+f,source+'/'+f);
  for(const f of await readdir(dir+'/fonts').catch(()=>[]))if(/^brand-[a-z0-9-]+\.ttf$/.test(f))await copyFile(dir+'/fonts/'+f,source+'/'+f);
- if(mode==='shot'){const t=Number(at);if(!Number.isFinite(t)||!['short','long'].includes(which))throw Error('shot <seconds> [short|long]');
+ if(mode==='shot'){const t=Number(at);if(!Number.isFinite(t)||!['short','long','word'].includes(which))throw Error('shot <seconds> [short|long|word]');
   await audit({source,width,height,duration:Number(settings.duration_seconds)||15,shot:{at:t,which,path:dir+'/shot-'+which+'-'+t+'.png'}});console.log(dir+'/shot-'+which+'-'+t+'.png');process.exit(0);}
  const result=await audit({source,width,height,duration:Number(settings.duration_seconds)||15});
  const hash=bundleHash(manifest.bundle);
  await writeFile(dir+'/result.json',JSON.stringify({...result,revision_id:manifest.revision_id,bundle_hash:hash,at:new Date().toISOString()},null,1));
- console.log(JSON.stringify({passed:result.passed,leftovers:result.leftovers.length,unseen:result.unseen.length,overflow:result.overflow.length}));
+ console.log(JSON.stringify({passed:result.passed,leftovers:result.leftovers.length,unseen:result.unseen.length,overflow:result.overflow.length,too_wide:result.too_wide.length}));
 }
