@@ -108,6 +108,7 @@ Measured on rendered frames (snapcn's motion rules): moving text looks cheap whe
 - Animate `scale`, `x`, `y` and opacity, never `fontSize`, `letterSpacing` or `lineHeight` (they reflow every frame and still snap).
 - Slow type moves (over about 0.5 s) use `WM.ease.heavy` or `cubic-bezier(.2,.6,.35,1)`, not `expo.out`/`power4.out`: those finish their travel early and then crawl, which renders as identical frames where the words stop dead. Fast punches and UI may keep them.
 - Counting numbers use `font-variant-numeric: tabular-nums`, so the width does not wobble as digits change.
+- Field text fits its box by itself: once the page has written its string composition variables, any of that text running out of its clipping box, its card or button (an element with its own background or border) or the frame is set smaller, down to 30%. Size type for the sample words and let a long brand name shrink. Text meant to run off the frame (not a giant wipe, which is left alone already) gets `data-wyv-nofit`.
 
 ## Good habits
 - One idea per interaction: move, then press, then show the result; leave about 0.3 s between them.

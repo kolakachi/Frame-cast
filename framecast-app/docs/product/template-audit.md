@@ -117,3 +117,20 @@ tight reveal mask (within 30% of the font size up and down is allowed). In templ
 
 Local run on the 16 free templates (prod's code, not recorded on prod): 11 cut a 12-letter name somewhere, 5 pass
 (skincare how-to, food dish, pop-up event, before/after, customer review). Checked by eye on four: real each time.
+
+## Field text fits its box (2026-10-19, owner: option A)
+
+One step in the shared motion kit (`WM.fitFields`, runtime/wyv-motion.js) instead of rebuilding templates: once a page
+has written its string fields, any field text that runs out of its clipping box, its card or button (an element with its
+own background or border) or the frame at the side is set smaller, aiming inside the padding and 4% in from the frame,
+never below 30%. Only text that is a field's words (a "SALE ✦ SALE" ribbon is not), not type drawn bigger than half the
+frame, not a giant wipe, not anything marked `data-wyv-nofit`. Measured at rest: every transform lifted, scenes not yet
+shown displayed for the measurement, each field's font asked for first (a browser loads a face only when visible text
+uses it), and each pass starts from the drawn size. Side to side only: up and down, a page stacks scenes it shows one
+at a time, so load-time positions are not screen positions.
+
+Checked: all 16 free templates' own sample designs and six of our recent Create videos are untouched; it shrank only real
+overflows ("WicksNWax" and "MARINA" in today's outreach ads). The audit then: 15 of 16 pass; the sale countdown fails on
+its End date flip board (fixed letter tiles cannot shrink). The long-word check now blocks template builds. Also: the card
+rule is the long-word check's only (the long pass keeps clip and frame, as since 2026-10-17), number and price fields are
+tested with numbers, and the audit measures words without the trailing space a wrapped line hangs past its edge.

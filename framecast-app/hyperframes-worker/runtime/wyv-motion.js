@@ -155,6 +155,8 @@
     giantWipe: function (tl, el, word, at, opts) {
       el = $(el); opts = opts || {};
       el.textContent = word;
+      // Bigger than the frame on purpose: never fitted (WM.fitFields).
+      if (el.setAttribute) el.setAttribute('data-wyv-nofit', '');
       tl.set(el, { autoAlpha: 1, xPercent: 110, filter: 'blur(0px)' }, at - 0.01)
         .to(el, { keyframes: [{ xPercent: 0, filter: 'blur(14px)', duration: 0.28, ease: 'expo.in' }, { xPercent: -120, filter: 'blur(0px)', duration: 0.5, ease: 'expo.out' }] }, at)
         .set(el, { autoAlpha: 0 }, at + 0.8);
@@ -1264,5 +1266,150 @@
       return cue;
     });
   };
+
+  /* Field text fits its box (HOME-CTA's free ads, owner 2026-10-19). A template is drawn for its sample words; a copy
+   * puts in the customer's own, and one long brand name or web address ("WicksNWax", "montyseleven.co.uk") cannot wrap,
+   * so a headline set big for "VOLT RUSH" ran off its card. Once the page has written its fields, any text that came
+   * from a string field and runs out of its clipping box, card or button (or the frame) at the side is set smaller until it fits, never below 30% of
+   * its size (a 12-letter name in a headline drawn for two short words needs about 40%). Only field text: a ribbon that repeats a word on purpose ("SALE ✦ SALE") is not a field's words and is left
+   * alone, and so is type drawn bigger than half the frame or marked data-wyv-nofit (a giant wipe). Measured at rest: the entrance transforms GSAP has applied are lifted for the measurement and put back.
+   * Runs when the page has loaded and again when its fonts are ready; text that already fits is never touched. */
+  function fieldValues() {
+    var vals = [];
+    try {
+      var raw = document.documentElement.getAttribute('data-composition-variables');
+      (JSON.parse(raw || '[]') || []).forEach(function (d) { if (d && d.type === 'string' && d['default'] != null) vals.push(String(d['default'])); });
+    } catch (e) {}
+    try {
+      var live = window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables();
+      if (live) Object.keys(live).forEach(function (k) { if (typeof live[k] === 'string') vals.push(live[k]); });
+    } catch (e) {}
+    var norm = function (t) { return String(t).replace(/\s+/g, ' ').trim().toLowerCase(); };
+    return vals.map(norm).filter(function (v) { return v.length >= 2; });
+  }
+  function isFieldText(t, vals) {
+    if (t.length < 2) return false;
+    for (var i = 0; i < vals.length; i++) if (vals[i] === t || (' ' + vals[i] + ' ').indexOf(' ' + t + ' ') >= 0) return true;
+    return false;
+  }
+  // The box text must stay in: the nearest element (itself included) that clips, or a visible panel around it (its own
+  // background, picture or border, smaller than the frame): a card's or button's words belong inside it.
+  // inner: the room to aim for once a text does not fit: inside its box's padding, or 4% in from the frame's sides (an
+  // entrance that grows the text a little must not push it off the frame).
+  function clipBox(el, inner) {
+    var W = window.innerWidth, H = window.innerHeight, c = null;
+    for (var e = el; e && e !== document.body && !c; e = e.parentElement) {
+      var st = getComputedStyle(e), r = e.getBoundingClientRect(), m = st.backgroundColor.match(/rgba?\(([^)]+)\)/);
+      var alpha = m ? (m[1].split(',')[3] === undefined ? 1 : parseFloat(m[1].split(',')[3])) : 0;
+      var clips = /hidden|clip/.test(st.overflow + st.overflowX + st.overflowY);
+      var panel = alpha >= 0.5 || st.backgroundImage !== 'none' || parseFloat(st.borderLeftWidth) >= 1 || parseFloat(st.borderTopWidth) >= 1;
+      if (clips || (panel && r.width < W * 0.95 && r.width >= 2)) {
+        var pl = parseFloat(st.borderLeftWidth) + (inner ? parseFloat(st.paddingLeft) : 0), pr = parseFloat(st.borderRightWidth) + (inner ? parseFloat(st.paddingRight) : 0);
+        c = { left: r.left + pl, top: r.top, right: r.right - pr, bottom: r.bottom };
+      }
+    }
+    if (!c) c = { left: 0, top: 0, right: W, bottom: H };
+    var m = inner ? W * 0.04 : 0;
+    return { left: Math.max(m, c.left), top: Math.max(0, c.top), right: Math.min(W - m, c.right), bottom: Math.min(H, c.bottom) };
+  }
+  // The box the words take, spaces left out: a wrapped line's trailing space hangs past the edge without showing.
+  function wordsBox(el) {
+    var b = null, walk = document.createTreeWalker(el, 4), node, m, rg = document.createRange(), re = /\S+/g;
+    while ((node = walk.nextNode())) {
+      re.lastIndex = 0;
+      while ((m = re.exec(node.nodeValue))) {
+        rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
+        var r = rg.getBoundingClientRect();
+        if (r.width < 1 && r.height < 1) continue;
+        b = b ? { left: Math.min(b.left, r.left), top: Math.min(b.top, r.top), right: Math.max(b.right, r.right), bottom: Math.max(b.bottom, r.bottom) } : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      }
+    }
+    if (b) b.width = b.right - b.left;
+    return b || { left: 0, top: 0, right: 0, bottom: 0, width: 0 };
+  }
+  WM.wordsBox = wordsBox;
+  function fits(el, inner) {
+    var b = wordsBox(el), c = clipBox(el, inner);
+    if (b.width < 2 || c.right - c.left < 2) return true;
+    return b.left >= c.left - 2 && b.right <= c.right + 2;
+  }
+  // The elements holding a string field's text (the innermost holding all of it; a phrase once, not word by word).
+  function fieldElements() {
+    if (!document.body || !document.createRange) return [];
+    var vals = fieldValues();
+    if (!vals.length) return [];
+    var norm = function (t) { return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(); };
+    var all = document.body.querySelectorAll('*'), found = [];
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (/^(SCRIPT|STYLE|SVG|svg|CANVAS|VIDEO|IMG)$/.test(el.tagName)) continue;
+      // Type cropped by the frame on purpose (giant wipes, or marked data-wyv-nofit by the page) is left as drawn.
+      if (el.closest && el.closest('[data-wyv-nofit]')) continue;
+      if (parseFloat(getComputedStyle(el).fontSize) >= Math.min(window.innerWidth, window.innerHeight) * 0.5) continue;
+      var t = norm(el.textContent);
+      if (!isFieldText(t, vals)) continue;
+      var inner = false;
+      for (var k = 0; k < el.children.length; k++) if (norm(el.children[k].textContent) === t) { inner = true; break; }
+      if (!inner) found.push(el);
+    }
+    return found.filter(function (el) { for (var e = el.parentElement; e; e = e.parentElement) if (found.indexOf(e) >= 0) return false; return true; });
+  }
+  WM.fitFields = function () {
+    var done = [], found = fieldElements();
+    found.forEach(function (el) {
+      // At rest: lift the inline transforms from the page down to its letters for the measurement (split letters start
+      // below their mask for an entrance).
+      // Every transform, written by GSAP or by the page's own CSS (a swinging price tag), so the box is the drawn one.
+      var lifted = [], lift = function (e) {
+        if (!e.style) return;
+        lifted.push([e, e.style.transform, e.style.rotate, e.style.scale, e.style.translate]);
+        e.style.transform = 'none'; e.style.rotate = 'none'; e.style.scale = 'none'; e.style.translate = 'none';
+      };
+      for (var e = el; e && e !== document.body; e = e.parentElement) lift(e);
+      // A scene not shown yet (display:none until its time) has no size: shown, unseen, while it is measured.
+      var shown = [];
+      for (var h = el; h && h !== document.body; h = h.parentElement) if (getComputedStyle(h).display === 'none') { shown.push([h, h.style.display]); h.style.display = 'block'; }
+      var inside = el.querySelectorAll('*');
+      for (var j = 0; j < inside.length; j++) lift(inside[j]);
+      try {
+        var hidden = el.getBoundingClientRect();
+        if (hidden.width < 1 && hidden.height < 1) return;
+        // Each pass starts from the drawn size: a pass before the fonts loaded measured a wider stand-in face.
+        if (el.dataset.wyvFitFrom) { el.style.fontSize = el.dataset.wyvFitPrior || ''; delete el.dataset.wyvFitFrom; delete el.dataset.wyvFitPrior; }
+        if (fits(el)) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        el.dataset.wyvFitPrior = el.style.fontSize || '';
+        if (!(size > 0)) return;
+        el.dataset.wyvFitFrom = String(size);
+        var lo = 0.3, hi = 1;
+        for (var n = 0; n < 8; n++) { var mid = (lo + hi) / 2; el.style.fontSize = (size * mid) + 'px'; if (fits(el, true)) lo = mid; else hi = mid; }
+        el.style.fontSize = (size * lo) + 'px';
+        done.push({ text: el.textContent.slice(0, 40), scale: Math.round(lo * 100) / 100 });
+      } finally {
+        shown.forEach(function (x) { x[0].style.display = x[1]; });
+        lifted.forEach(function (x) { x[0].style.transform = x[1]; x[0].style.rotate = x[2]; x[0].style.scale = x[3]; x[0].style.translate = x[4]; });
+      }
+    });
+    return done;
+  };
+  if (document.addEventListener && document.readyState !== undefined) {
+    var fitNow = function () { try { WM.fitFields(); } catch (e) {} };
+    // A browser loads a face when visible text first uses it: a field in a later scene would be measured in a stand-in
+    // face. Each field's face is asked for at once (the page's fonts-ready then waits for it), then the fields are fitted.
+    var start = function () {
+      fitNow();
+      try {
+        var loads = [];
+        fieldElements().forEach(function (el) {
+          var st = getComputedStyle(el);
+          loads.push(document.fonts.load(st.fontStyle + ' ' + st.fontWeight + ' ' + st.fontSize + ' ' + st.fontFamily, el.textContent || 'x').catch(function () {}));
+        });
+        if (loads.length) Promise.all(loads).then(fitNow).then(fitNow);
+      } catch (e) {}
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else setTimeout(start, 0);
+    // Twice once fonts are ready: the second pass runs after a page's own fonts-ready callbacks have written their text.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitNow).then(fitNow);
+  }
   window.WM = WM;
 })();

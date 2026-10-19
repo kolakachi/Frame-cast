@@ -142,9 +142,11 @@ if(operation==='check'&&result.ok&&settings.template_build===true)try{
  const a=await audit({source:root,width:dims[0],height:dims[1],duration:settings.duration_seconds});
  const blocking=[...a.leftovers.map(x=>'"'+x.text+'" at '+x.at+' s is written into the code: show it from a string composition variable'),
   ...a.unseen.map(id=>'the variable '+id+' never shows on screen: wire it to the element that shows that text, or remove it'),
-  ...a.errors.map(e=>'the page throws: '+e)];
- result.template_audit={passed:!blocking.length,blocking,overflow:[...a.overflow.map(o=>'"'+o.text+'" runs out of its box at '+o.at+' s when the text is 1.5 times longer: let it shrink to fit'),
-  ...(a.too_wide??[]).map(o=>'the variable '+o.field+' set to one long word ("'+o.word+'", a brand name or web address) runs out of its box at '+o.at+' s: let it shrink to fit its box')]};
+  ...a.errors.map(e=>'the page throws: '+e),
+  // A brand name or web address must fit (the kit sets field text smaller by itself; a box that cannot hold one long
+  // word, like a fixed board of letter tiles, needs room or a smaller size; 2026-10-19).
+  ...(a.too_wide??[]).map(o=>'the variable '+o.field+' set to one long word ("'+o.word+'", a brand name or web address) still runs out of its box at '+o.at+' s: give it room, or mark text meant to run off the frame data-wyv-nofit')];
+ result.template_audit={passed:!blocking.length,blocking,overflow:[...a.overflow.map(o=>'"'+o.text+'" runs out of its box at '+o.at+' s when the text is 1.5 times longer: let it shrink to fit')]};
  if(blocking.length){result.ok=false;result.error='Template audit: a copy for another product would keep these words. Fix each, then check again.';}
 }catch(e){result.template_audit={passed:false,error:String(e.message||e).slice(0,300)};}
 if(operation==='strip'&&result.ok)try{

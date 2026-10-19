@@ -39,6 +39,9 @@ export function bundleHash(bundle){
 
 /** The longest single word a field must hold: what the planner may write (1.25x the default), and no more than a
  *  12-letter name where the default is several words. */
+/** A number or price field ("3", "$2.49", "20%"): tested with its marker, not a word. */
+export const isNumber=v=>/^[\s$€£¥₦₹+\-]*\d[\d.,\s]*[%x×]?$/i.test(String(v??'').trim());
+
 export function wordLength(value){
  const v=String(value??'').trim(),limit=Math.ceil(v.length*1.25);
  return Math.max(6,/\s/.test(v)?Math.min(12,limit):limit);
@@ -48,9 +51,10 @@ export function wordLength(value){
 export function values(decls){
  const text=decls.filter(d=>d.type==='string'),short={},long={},word={};
  // Real letters, wide ones included: the marker leads so the field can be told apart.
- text.forEach((d,i)=>{const id='ZQ'+(i+1);word[d.id]=(id+'Wicksnwaxbourbonmaplemontyseleven').slice(0,Math.max(id.length+2,wordLength(d.default)));});
+ // A number field gets its marker only (as the short pass): a sale price is not a brand name.
+ text.forEach((d,i)=>{const id='ZQ'+(i+1);word[d.id]=isNumber(d.default)?id:(id+'Wicksnwaxbourbonmaplemontyseleven').slice(0,Math.max(id.length+2,wordLength(d.default)));});
  text.forEach((d,i)=>{const id='ZQ'+(i+1);short[d.id]=id;
-  const want=Math.max(8,Math.min(60,Math.round(String(d.default??'').length*1.5)));let v=id;const words=['fresh','daily','goods','made','simple','better','store'];for(let i=0;v.length<want;i++)v+=' '+words[i%words.length];long[d.id]=v.slice(0,want);});
+  const want=isNumber(d.default)?0:Math.max(8,Math.min(60,Math.round(String(d.default??'').length*1.5)));let v=id;const words=['fresh','daily','goods','made','simple','better','store'];for(let i=0;v.length<want;i++)v+=' '+words[i%words.length];long[d.id]=v.slice(0,want);});
  return {short,long,word,markers:Object.fromEntries(text.map((d,i)=>['ZQ'+(i+1),d.id]))};
 }
 
@@ -90,7 +94,12 @@ export function overflowing(shortOut,longOut,step){
 function sample(){
  const W=innerWidth,H=innerHeight,texts=[],out=[];
  const shown=el=>{let o=1;for(let e=el;e&&e.nodeType===1;e=e.parentElement){const s=getComputedStyle(e);if(s.display==='none'||s.visibility==='hidden')return 0;o*=parseFloat(s.opacity);}return o;};
- const clipOf=el=>{for(let e=el;e&&e!==document.body;e=e.parentElement){const s=getComputedStyle(e);if(/hidden|clip/.test(s.overflow+s.overflowX+s.overflowY))return e;}return null;};
+ // The box text must stay in: the nearest element (itself included) that clips, or a visible panel around it (its own
+ // background, picture or border, smaller than the frame): a card's or button's words belong inside it (the same rule
+ // as WM.fitFields, which sets field text smaller to fit; 2026-10-19).
+ const clipOf=(el,panels)=>{for(let e=el;e&&e!==document.body;e=e.parentElement){const s=getComputedStyle(e);if(/hidden|clip/.test(s.overflow+s.overflowX+s.overflowY))return e;if(!panels)continue;
+  const m=s.backgroundColor.match(/rgba?\(([^)]+)\)/),alpha=m?(m[1].split(',')[3]===undefined?1:parseFloat(m[1].split(',')[3])):0;
+  if((alpha>=0.5||s.backgroundImage!=='none'||parseFloat(s.borderLeftWidth)>=1||parseFloat(s.borderTopWidth)>=1)&&e.getBoundingClientRect().width<W*0.95&&e.getBoundingClientRect().width>=2)return e;}return null;};
  const measured=new Set();
  // Down the stack at a point: transparent layers (grain, vignettes, empty wrappers) are looked through; an opaque
  // panel or picture above the text covers it.
@@ -111,9 +120,15 @@ function sample(){
   // box and the frame): letters pushed wholly past the edge were judged covered one by one and never measured (the
   // WicksNWax headline, 2026-10-19).
   if(word&&!measured.has(host)&&shown(host)>=0.2){
-   const r=host.getBoundingClientRect(),rg=document.createRange();rg.selectNodeContents(host);const tb=rg.getBoundingClientRect(),b=tb.width>=2&&tb.height>=2?tb:r;
-   const clip=clipOf(host),c=clip?clip.getBoundingClientRect():{left:0,top:0,right:W,bottom:H};
-   const box={left:Math.max(0,c.left),top:Math.max(0,c.top),right:Math.min(W,c.right),bottom:Math.min(H,c.bottom)};
+   // The box the words take, spaces left out: a wrapped line's trailing space hangs past the edge without showing.
+   const r=host.getBoundingClientRect();let tb=null;{const walk=document.createTreeWalker(host,4),rg=document.createRange();let node;
+    while((node=walk.nextNode()))for(const m of node.nodeValue.matchAll(/\S+/g)){rg.setStart(node,m.index);rg.setEnd(node,m.index+m[0].length);const q=rg.getBoundingClientRect();if(q.width<1&&q.height<1)continue;
+     tb=tb?{left:Math.min(tb.left,q.left),top:Math.min(tb.top,q.top),right:Math.max(tb.right,q.right),bottom:Math.max(tb.bottom,q.bottom)}:{left:q.left,top:q.top,right:q.right,bottom:q.bottom};}
+    if(tb){tb.width=tb.right-tb.left;tb.height=tb.bottom-tb.top;}}
+   const b=tb&&tb.width>=2&&tb.height>=2?tb:r;
+   // Two boxes: what clips it (the long pass, as since 2026-10-17), and that or the card around it (the long word).
+   const boxOf=e=>{const c=e?e.getBoundingClientRect():{left:0,top:0,right:W,bottom:H};return {left:Math.max(0,c.left),top:Math.max(0,c.top),right:Math.min(W,c.right),bottom:Math.min(H,c.bottom)};};
+   const box=boxOf(clipOf(host,false)),pbox=boxOf(clipOf(host,true));
    const vis={left:Math.max(b.left,box.left),top:Math.max(b.top,box.top),right:Math.min(b.right,box.right),bottom:Math.min(b.bottom,box.bottom)};
    if(b.width>=2&&b.height>=2&&vis.right-vis.left>=1&&vis.bottom-vis.top>=1&&[0.25,0.5,0.75].some(f=>seenAt(host,[vis.left+(vis.right-vis.left)*f,(vis.top+vis.bottom)/2]))){
     measured.add(host);
@@ -121,10 +136,12 @@ function sample(){
     // a reveal mask cut to the letters reads as cutting them (the Jersey dish name). Within 30% of the font size is
     // that; a hidden second line is more.
     const dy=Math.max(2,parseFloat(getComputedStyle(el).fontSize)*0.3);
-    if(b.left<box.left-2||b.top<box.top-dy||b.right>box.right+2||b.bottom>box.bottom+dy){
+     const dx=2;
+    const outOf=x=>b.left<x.left-dx||b.top<x.top-dy||b.right>x.right+dx||b.bottom>x.bottom+dy,clipped=outOf(box),panel=outOf(pbox);
+    if(clipped||panel){
      // Where the element sits in the page, the same in every pass (only the words differ).
      const path=[];for(let e=host;e&&e!==document.body;e=e.parentElement)path.unshift(e.tagName+(e.id?'#'+e.id:'')+':'+[...(e.parentElement?.children??[])].indexOf(e));
-     out.push({text:word.slice(0,40),path:path.join('>')});}}
+     out.push({text:word.slice(0,40),path:path.join('>'),clipped,panel});}}
   }
   // What a viewer could read now, letter by letter as before.
   const r=el.getBoundingClientRect();if(r.width<1||r.height<1||r.right<0||r.bottom<0||r.left>W||r.top>H)continue;
@@ -188,9 +205,10 @@ export async function audit({source,width,height,duration,step=0.25,browserPath=
  const seen=new Set(short.texts.flatMap(t=>[...t.matchAll(/Z\s*Q\s*(\d+)/g)].map(m=>'ZQ'+m[1])));
  const unseen=Object.entries(v.markers).filter(([m])=>!seen.has(m)).map(([,id])=>id);
  const left=leftovers(short.texts).map(text=>({text,at:short.firstAt[short.texts.find(t=>t.includes(text))]??null}));
- const overflow=overflowing(short.out,long.out,step);
+ const clippedOut=l=>l.filter(o=>o.clipped!==false),panelOut=l=>l.filter(o=>o.panel!==false);
+ const overflow=overflowing(clippedOut(short.out),clippedOut(long.out),step);
  const fieldOf=t=>v.markers['ZQ'+((t.match(/Z\s*Q\s*(\d+)/)||[])[1])]??null;
- const tooWide=overflowing(short.out,word.out,step).map(o=>({...o,field:fieldOf(o.text),word:v.word[fieldOf(o.text)]??null}))
+ const tooWide=overflowing(panelOut(short.out),panelOut(word.out),step).map(o=>({...o,field:fieldOf(o.text),word:v.word[fieldOf(o.text)]??null}))
   .filter((o,i,all)=>all.findIndex(x=>x.field===o.field)===i);
  const errors=[...new Set([...short.errors,...long.errors,...word.errors])];
  return {passed:!left.length&&!unseen.length&&!overflow.length&&!tooWide.length&&!errors.length&&decls.some(d=>d.type==='string'),errors,fields:decls.filter(d=>d.type==='string').map(d=>d.id),leftovers:left,unseen,overflow,too_wide:tooWide,
