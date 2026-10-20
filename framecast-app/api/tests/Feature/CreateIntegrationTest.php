@@ -2826,8 +2826,8 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($available, (int) DB::table('api_operations')->where('id', $run->operation_id)->value('authorized_credits'));
         $agent = $input['execution_policy']['agent'];
         $this->assertGreaterThanOrEqual($min, $agent['credits']);
-        $this->assertLessThan(300, $agent['credits']);
-        $this->assertSame($agent['credits'] * 4000, $agent['cost_limit_microusd']);
+        $this->assertLessThanOrEqual(105, $agent['credits'], 'a $1.20 call is 105 credits at cost');
+        $this->assertSame($agent['credits'] * 11500, $agent['cost_limit_microusd'], 'the per-call ceiling at the build\'s own rate');
         $this->assertGreaterThanOrEqual((int) $q->payload_json['estimate'] - (int) ($q->payload_json['media_estimate'] ?? 0), $agent['total_credits'] - $agent['credits'], 'the likely cost fits under room less one ceiling');
         // Reaching it pauses the step: the run says so, and Retry continues it.
         $claim = $this->runs->claim();

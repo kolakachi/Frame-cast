@@ -59,14 +59,15 @@ class PilotPolicy
             // user's balance are what stop a build.
             $calls=['quick'=>24,'standard'=>100,'thorough'=>150][$level];
             $budget=CostEstimate::agentCeiling($level,(int)($settings['duration_seconds']??15));
-            return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>300,'effort'=>$effort,
+            // Each call holds its ceiling ($1.20) in at-cost credits: 105 (fair credits, 2026-10-20; was 300 at the peg).
+            return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>(int)ceil(1200000/CostEstimate::MICRO_PER_CREDIT),'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
                 'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'micro_per_credit'=>CostEstimate::MICRO_PER_CREDIT,'level'=>$level,'max_output_tokens'=>32000,'context_bytes'=>600000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
                 // The critic: a separate reviewer of short low-effort calls with the frames and the strip, on Thorough builds only
                 // (only they are reviewed, so Quick and Standard hold nothing for it).
-                ...($level==='thorough'?['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>75,'effort'=>'low','cost_limit_microusd'=>300000,'max_calls'=>4,'max_output_tokens'=>4096]]:[]),
+                ...($level==='thorough'?['critic'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>(int)ceil(300000/CostEstimate::MICRO_PER_CREDIT),'effort'=>'low','cost_limit_microusd'=>300000,'max_calls'=>4,'max_output_tokens'=>4096]]:[]),
                 'render'=>['provider'=>'offline','model'=>'hyperframes-0.8.164','credits'=>0,'cost_limit_microusd'=>0,'max_calls'=>3]];
         }
         return ['agent'=>['provider'=>'replicate','model'=>'anthropic/claude-4.5-sonnet','credits'=>75,

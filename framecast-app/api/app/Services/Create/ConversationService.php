@@ -12,8 +12,8 @@ class ConversationService
 {
     public const ACTIVE = ['queued', 'running', 'cancel_requested', 'needs_attention'];
     // The smallest per-call ceiling a credit-limited build gets: $0.60, above the dearest build call measured
-    // ($0.595 across 1,488 calls, 2026-09-26 to 10-06; median $0.07).
-    public const MIN_CALL_CREDITS = 150;
+    // ($0.595 across 1,488 calls, 2026-09-26 to 10-06; median $0.07), in at-cost credits (fair credits, 2026-10-20).
+    public const MIN_CALL_CREDITS = 53;
 
     public function creditAvailability(User $user): array
     {
@@ -563,7 +563,9 @@ class ConversationService
                     // The reviewer's rounds come out of what is left after the likely cost: fewer when that is short,
                     // none when nothing is (its spend is part of the estimate, so its hold must not block the start).
                     $critic = $p['execution_policy']['critic'] ?? null;
-                    $criticEach = $critic ? (int) ceil(((int) $critic['cost_limit_microusd']) / 4000) : 0;
+                    // Builder and reviewer credits at the build's own rate (11,500 µ$ at cost; 4,000 for a quote made before it).
+                    $mpc = (int) ($p['execution_policy']['agent']['micro_per_credit'] ?? CostEstimate::PEG_MICRO_PER_CREDIT);
+                    $criticEach = $critic ? (int) ceil(((int) $critic['cost_limit_microusd']) / $mpc) : 0;
                     $criticHold = $critic ? $criticEach * (int) $critic['max_calls'] : 0;
                     $fixed = (int) $quote->credits_max - $agentBudget - $criticHold;
                     $agentNeed = max(0, (int) ($p['estimate'] ?? 0) - (int) ($p['media_estimate'] ?? 0));
@@ -582,7 +584,7 @@ class ConversationService
                     $p['execution_policy']['agent']['total_credits'] = $room;
                     $call = max($callFloor, min((int) $p['execution_policy']['agent']['credits'], $room - $agentNeed));
                     $p['execution_policy']['agent']['credits'] = $call;
-                    $p['execution_policy']['agent']['cost_limit_microusd'] = $call * 4000;
+                    $p['execution_policy']['agent']['cost_limit_microusd'] = $call * $mpc;
                     $p['credit_limited'] = true;
                     $quote->update(['payload_json' => $p, 'credits_max' => $fixed + $criticHold + $room]);
                 }
