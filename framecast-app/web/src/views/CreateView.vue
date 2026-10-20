@@ -2321,15 +2321,20 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
             </div>
           </template>
           <div v-if="characterStep(stepPlan).subjects.length > 1" class="sb-thumbs"><button v-for="(sub, k) in characterStep(stepPlan).subjects" :key="sub.name" type="button" :class="{ 'is-on': k === subjectAt, 'has-note': subjectChanged(stepPlan, sub.name) }" :aria-label="sub.name" @click="subjectAt = k"><img v-for="img in characterStep(stepPlan).images.filter(i => i.label === sub.name).slice(0, 1)" :key="img.asset_id" :src="img.preview_url" alt="" /></button></div>
-          <template v-if="combinedSheet(stepPlan)">
-            <span class="pd-q">Frames</span>
-            <div v-for="(img, k) in sheetPanels(stepPlan)" :key="img.asset_id" class="sb-frame">
-              <div class="sb-stage"><img :src="img.preview_url" :alt="img.label" /></div>
-              <span class="pd-q">{{ img.label }}</span>
-              <p class="sb-shot">{{ frameShot(stepPlan, k) }}</p>
-              <p v-if="sheetIssue(stepPlan, img.label)" class="notice">{{ sheetIssue(stepPlan, img.label) }}</p>
-              <label class="cs-look"><span class="pd-q">Change this frame</span><textarea :id="'sheet-frame-' + (k + 1)" v-model="framesDraft[k + 1]" class="input pd-input grow" rows="2" maxlength="240" placeholder="e.g. phone in her left hand" :disabled="!stepEditable(stepPlan)" :aria-label="`Change frame ${k + 1}`" /></label>
+          <template v-if="combinedSheet(stepPlan) && sheetPanels(stepPlan).length">
+            <!-- The storyboard as a carousel, like the storyboard drawer: one frame at a time, arrows and thumbnails. -->
+            <div class="sb-frame">
+              <div class="sb-stage">
+                <img :src="sheetPanels(stepPlan)[frameAt]?.preview_url" :alt="sheetPanels(stepPlan)[frameAt]?.label" />
+                <button type="button" class="sb-nav sb-nav--prev" aria-label="Previous frame" :disabled="frameAt === 0" @click="frameAt--"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
+                <button type="button" class="sb-nav sb-nav--next" aria-label="Next frame" :disabled="frameAt >= sheetPanels(stepPlan).length - 1" @click="frameAt++"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></button>
+              </div>
+              <span class="pd-q">Frame {{ frameAt + 1 }} of {{ sheetPanels(stepPlan).length }}</span>
             </div>
+            <p class="sb-shot">{{ frameShot(stepPlan, frameAt) }}</p>
+            <p v-if="sheetIssue(stepPlan, sheetPanels(stepPlan)[frameAt]?.label)" class="notice">{{ sheetIssue(stepPlan, sheetPanels(stepPlan)[frameAt]?.label) }}</p>
+            <label class="cs-look"><span class="pd-q">Change this frame</span><textarea id="sheet-frame-note" v-model="framesDraft[frameAt + 1]" class="input pd-input grow" rows="2" maxlength="240" placeholder="e.g. phone in her left hand" :disabled="!stepEditable(stepPlan)" :aria-label="`Change frame ${frameAt + 1}`" /></label>
+            <div class="sb-thumbs"><button v-for="(img, k) in sheetPanels(stepPlan)" :key="img.asset_id" type="button" :class="{ 'is-on': k === frameAt, 'has-note': (framesDraft[k + 1] || '').trim() }" :aria-label="`Frame ${k + 1}`" @click="frameAt = k"><img :src="img.preview_url" alt="" /></button></div>
             <p v-if="sheetIssue(stepPlan, 'Sheet')" class="notice">{{ sheetIssue(stepPlan, 'Sheet') }}</p>
             <PlanNote label="How changes work" :text="`The cast and the frames are one picture. Change a look or a frame and the whole sheet is redrawn (about ${sheetCredits(stepPlan)} credits). Approving makes the video: each shot starts from its frame.`" />
           </template>
