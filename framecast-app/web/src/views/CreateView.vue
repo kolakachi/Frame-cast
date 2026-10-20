@@ -368,7 +368,10 @@ function hasGenerated(p) { return routedMedia(p).some(m => GENERATED.includes(m.
 function mediaMeta(md) {
   if (md.kind === 'reference_sheet') return 'Cast and world sheet: ' + (md.subjects || []).map(x => x.name).join(', ')
   if (md.kind === 'generated_shot') return [md.engine_label, md.seconds ? md.seconds + ' s' : '', md.beat, md.audio === 'speech' ? 'speaks a line' : ''].filter(Boolean).join(' · ')
-  if (md.kind === 'ugc_take') return ['UGC take', md.engine_label, md.seconds ? md.seconds + ' s' : '', (md.segments || []).length > 1 ? md.segments.length + ' parts joined' : ''].filter(Boolean).join(' · ')
+  // The presenter as this video wants them: what they wear, where, what they hold (dressed first for a lip-synced take).
+  if (md.kind === 'ugc_take') return ['UGC take', md.engine_label, md.seconds ? md.seconds + ' s' : '', (md.segments || []).length > 1 ? md.segments.length + ' parts joined' : '',
+    md.outfit ? 'wearing ' + md.outfit : '', md.setting ? 'at ' + md.setting : '', md.holding ? 'holding ' + md.holding : '',
+    md.dress_credits ? 'presenter dressed first (' + md.dress_credits + ' cr)' : ''].filter(Boolean).join(' · ')
   return ''
 }
 // Spend guard: a plan with costly generated media is confirmed explicitly before its cost is reviewed.

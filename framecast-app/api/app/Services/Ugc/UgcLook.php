@@ -29,9 +29,9 @@ class UgcLook
      *
      * @return array{uri: string, score: int|null}|null
      */
-    public function make(string $presenter, ?string $place, string $wardrobe, string $placeText, string $aspect = '9:16'): ?array
+    public function make(string $presenter, ?string $place, string $wardrobe, string $placeText, string $aspect = '9:16', string $holding = ''): ?array
     {
-        $prompt = self::prompt($wardrobe, $placeText, $place !== null);
+        $prompt = self::prompt($wardrobe, $placeText, $place !== null, $holding);
         $best = null;
         for ($try = 0; $try < 2; $try++) {
             try {
@@ -51,14 +51,15 @@ class UgcLook
         return $best;
     }
 
-    public static function prompt(string $wardrobe, string $placeText, bool $hasPlace): string
+    /** $holding: a product in their hand (Create's lip-synced presenter, 2026-10-20); UGC takes keep hands empty. */
+    public static function prompt(string $wardrobe, string $placeText, bool $hasPlace, string $holding = ''): string
     {
         $place = trim((string) preg_replace('/^this kind of place:\s*/i', '', $placeText));
 
         return 'A natural phone photo of the person in image 1: exactly the same face, skin tone, hair, any head covering and age. '
             .'They wear '.rtrim($wardrobe, '.').'. '
             .($place !== '' ? 'They are in '.rtrim($place, '.').($hasPlace ? ', the same kind of place as image 2 with the same feel, but your own version of it: its own layout and everyday details' : '').'. ' : '')
-            .'Seen from the waist up, facing the camera at eye level, relaxed and friendly, hands empty and resting naturally. '
+            .'Seen from the waist up, facing the camera at eye level, relaxed and friendly, '.(trim($holding) !== '' ? 'holding '.rtrim(trim($holding), '.').' naturally, clearly visible. ' : 'hands empty and resting naturally. ')
             .'Soft natural light, real skin texture, an ordinary lived-in room with plain walls and objects, free of writing and logos.';
     }
 }

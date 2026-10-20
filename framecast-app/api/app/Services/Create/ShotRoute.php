@@ -41,7 +41,7 @@ class ShotRoute
     public const PANEL_CREDITS = 35;
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256', 'screen'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256', 'screen', 'outfit', 'setting', 'holding', 'dress_credits'];
 
     /**
      * The storyboard: one panel per generated shot, drawn from the cast, showing the shot's opening moment (its
@@ -121,6 +121,11 @@ class ShotRoute
             'end_state' => $s($m['end_state'] ?? '', 160) ?: null,
             // A shot made to carry the real app on an in-world screen (a still, blank, glowing device screen).
             'screen' => ! empty($m['screen']) ? true : null,
+            // A take's presenter as this video wants them (2026-10-20): what they wear, where they are, what they hold.
+            // A lip-synced take (the user's cloned voice) animates one picture, so the presenter is dressed first.
+            'outfit' => $s($m['outfit'] ?? '', 160) ?: null,
+            'setting' => $s($m['setting'] ?? '', 160) ?: null,
+            'holding' => $s($m['holding'] ?? '', 120) ?: null,
         ], fn ($v) => $v !== null);
     }
 
@@ -338,9 +343,14 @@ class ShotRoute
         if (($ctx['voice'] ?? null) === 'clone') {
             $secs = (int) ceil(self::speechSeconds(implode(' ', $lines), (string) ($ctx['language'] ?? 'en')) + 1);
             $label = 'Lip-sync to your cloned voice';
+            // Lip-sync moves the mouth of one picture: an outfit, place or prop other than the photo's is made first, as a
+            // photo of the same person dressed for this video (UgcLook), and priced here (2026-10-20: a presenter asked
+            // for "a casual shirt at his tech desk, holding the headphones" stayed outdoors before a banner).
+            $dress = ($item['outfit'] ?? '') !== '' || ($item['setting'] ?? '') !== '' || ($item['holding'] ?? '') !== '' ? CreditService::AI_CHARACTER : 0;
             return array_filter(['engine' => 'lipsync', 'engine_label' => $label, 'presenter' => $presenter, 'speech_mode' => 'cloned_lipsync',
                 'segments' => [['lines' => $lines, 'seconds' => $secs]], 'seconds' => $secs, 'aspect' => $ctx['aspect_ratio'] ?? '9:16',
-                'credits' => CreditService::spokespersonCost((float) $secs),
+                'dress_credits' => $dress ?: null,
+                'credits' => CreditService::spokespersonCost((float) $secs) + $dress,
                 'problem' => $presenter === 'none' ? 'A lip-synced take needs a presenter image: attach your photo or add the presenter to the sheet.' : null], fn ($v) => $v !== null);
         }
         $engine = in_array($item['engine'] ?? null, self::TAKE_ENGINES, true) ? $item['engine'] : 'omni';

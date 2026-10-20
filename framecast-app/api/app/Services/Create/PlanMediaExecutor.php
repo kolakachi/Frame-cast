@@ -595,6 +595,18 @@ class PlanMediaExecutor
     }
 
     /** The still a shot starts from: the user's photo or one approved sheet subject, by name. */
+    /** The take's presenter picture: the user's photo, or the presenter on the approved sheet. @return array{0: string, 1: string} */
+    private function presenterPhoto(array $shot, array $ctx): array
+    {
+        if (($shot['presenter'] ?? '') === 'avatar') {
+            $photo = collect($ctx['source_images'] ?? [])->first();
+            if (! $photo) throw new RuntimeException('This take uses your photo, but none is attached.');
+            return [(string) file_get_contents($photo), (string) (new \finfo(FILEINFO_MIME_TYPE))->file($photo)];
+        }
+        $f = $ctx['sheet_files'][0] ?? throw new RuntimeException('The take has no presenter image.');
+        return [(string) app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), (string) $f['mime_type']];
+    }
+
     private function firstFrame(array $shot, array $ctx): string
     {
         if (($shot['first_frame'] ?? '') === 'avatar') {
@@ -655,9 +667,18 @@ class PlanMediaExecutor
             $audio = $file ? Asset::find((int) ($file['asset_id'] ?? 0)) : null;
             $bytes = $audio?->storage_url ? app(StorageService::class)->get((string) $audio->storage_url) : null;
             if (! is_string($bytes) || $bytes === '') throw new RuntimeException('The cloned narration is not ready, so the take cannot be lip-synced.');
-            $presenter = ($shot['presenter'] ?? '') === 'avatar' ? $this->firstFrame(['first_frame' => 'avatar'], $ctx)
-                : (($f = $ctx['sheet_files'][0] ?? null) ? $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']) : throw new RuntimeException('The take has no presenter image.'));
-            return app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($presenter, $this->replicateUpload($bytes, (string) ($audio->mime_type ?: 'audio/wav')), null);
+            [$photo, $photoMime] = $this->presenterPhoto($shot, $ctx);
+            // Lip-sync moves the mouth of this one picture: an outfit, place or prop the video asks for is put on the
+            // presenter first, in a photo of the same person (UgcLook, face-checked), or it would never appear
+            // (2026-10-20: "a casual shirt at his tech desk, holding the headphones" stayed outdoors before a banner).
+            if (($shot['outfit'] ?? '') !== '' || ($shot['setting'] ?? '') !== '' || ($shot['holding'] ?? '') !== '') {
+                $dressed = app(\App\Services\Ugc\UgcLook::class)->make('data:'.$photoMime.';base64,'.base64_encode($photo), null,
+                    (string) (($shot['outfit'] ?? '') !== '' ? $shot['outfit'] : 'the same clothes as in image 1'), (string) ($shot['setting'] ?? ''),
+                    (string) ($ctx['aspect_ratio'] ?? $shot['aspect'] ?? '9:16'), (string) ($shot['holding'] ?? ''));
+                if (! $dressed) throw new RuntimeException('The presenter could not be dressed for this video, so the take was not made. Try again.');
+                [$photo, $photoMime] = [(string) base64_decode(substr($dressed['uri'], strpos($dressed['uri'], ',') + 1)), 'image/png'];
+            }
+            return app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($this->replicateUpload($photo, $photoMime), $this->replicateUpload($bytes, (string) ($audio->mime_type ?: 'audio/wav')), null);
         }
         if ($kind === 'ugc_take') {
             $seg = ($shot['segments'] ?? [])[$k] ?? throw new RuntimeException('The take has no part '.($k + 1).'.');
