@@ -121,20 +121,26 @@ class FairCreditsTest extends TestCase
         $adapter = \Mockery::mock(\App\Services\Generation\Image\NanoBananaProImageAdapter::class);
         $adapter->shouldReceive('generate')->andReturnUsing(function ($prompt, $style, $aspect, $options) use (&$sent) { $sent = [$prompt, $options]; throw new \RuntimeException('stop here'); });
         $this->app->instance(\App\Services\Generation\Image\NanoBananaProImageAdapter::class, $adapter);
-        $ctx = ['workspace_id' => 1, 'aspect_ratio' => '9:16', 'character_style' => 'photoreal', 'character_style_images' => [], 'source_images' => [$dir.'/layla.jpg', $dir.'/bottle.jpg'],
+        $ctx = ['workspace_id' => 1, 'aspect_ratio' => '9:16', 'character_style' => '', 'character_style_images' => [], 'source_images' => [$dir.'/layla.jpg', $dir.'/bottle.jpg'],
             'cutout_files' => [['name' => 'asset-1.jpg', 'title' => 'Stock actor — Layla', 'path' => $dir.'/layla.jpg'], ['name' => 'asset-2.jpg', 'title' => 'bottle.jpg', 'path' => $dir.'/bottle.jpg']],
             'shot' => ['subjects' => [['name' => 'Layla', 'kind' => 'character', 'looks' => 'late-twenties woman, long dark wavy hair', 'avatar' => true],
                 ['name' => 'Fieldwell bottle', 'kind' => 'product', 'looks' => 'sage-green steel bottle', 'photo' => 'bottle.jpg']],
                 'board_panels' => [['label' => 'Panel 1', 'description' => 'Layla sips on a gym bench', 'refs' => ['Layla', 'Fieldwell bottle']], ['label' => 'Panel 2', 'description' => 'The bottle by a stream', 'refs' => ['Fieldwell bottle']]]]];
-        try { app(\App\Services\Create\PlanMediaExecutor::class)->produce('reference_sheet', 'real-life sport look', $ctx, $dir); } catch (\Throwable $e) { if (! $sent) fwrite(STDERR, get_class($e).': '.$e->getMessage()); }
-        $this->assertNotNull($sent, 'the sheet was asked for');
-        [$prompt, $options] = $sent;
+        $draw = function (string $look) use ($ctx, $dir, &$sent) { $sent = null; try { app(\App\Services\Create\PlanMediaExecutor::class)->produce('reference_sheet', $look, $ctx, $dir); } catch (\Throwable $e) { if (! $sent) fwrite(STDERR, get_class($e).': '.$e->getMessage()."\n"); } return $sent; };
+        // A photographic look: Layla is not drawn, her photo is her cast picture and every frame copies it.
+        [$prompt, $options] = $draw('real-life sport look');
         $this->assertSame('4K', $options['resolution']);
         $this->assertCount(2, $options['reference_image_urls'], 'her photo and the bottle\'s photo');
+        $this->assertStringContainsString('Layla is the person in image 1, their own photo', $prompt);
+        $this->assertStringContainsString('Fieldwell bottle (cell 1, drawn from image 2) is one specific product', $prompt);
+        $this->assertStringContainsString('In this cell: Layla exactly as in image 1, Fieldwell bottle exactly as in cell 1.', $prompt);
+        $this->assertStringContainsString('In this cell: Fieldwell bottle exactly as in cell 1.', $prompt);
+        $this->assertStringContainsString('grid of 2 columns and 2 rows', $prompt, 'the bottle and two frames: three cells');
+        $this->assertStringNotContainsString('Layla, a reference picture', $prompt);
+        // An illustrated look draws her in its style, in her own cell.
+        [$prompt] = $draw('anime night market look');
         $this->assertStringContainsString('Layla (cell 1, drawn from image 1) is one specific person', $prompt);
-        $this->assertStringContainsString('Fieldwell bottle (cell 2, drawn from image 2) is one specific product', $prompt);
         $this->assertStringContainsString('In this cell: Layla exactly as in cell 1, Fieldwell bottle exactly as in cell 2.', $prompt);
-        $this->assertStringContainsString('In this cell: Fieldwell bottle exactly as in cell 2.', $prompt);
         array_map('unlink', glob($dir.'/*')); @rmdir($dir);
     }
 }

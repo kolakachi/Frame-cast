@@ -426,6 +426,9 @@ class PlanMediaExecutor
      * the cast's files and the panels' files. A person is drawn from their photo and a product from its own photo, so
      * face and colour hold; then the likeness, the product's look and each panel are checked before the user sees it.
      */
+    /** Looks that are drawn, not photographed: a person in them is drawn in the look, never shown by their photo. */
+    private const DRAWN_LOOK = '/anime|cartoon|illustrat|comic|manga|pixel|clay|\b3d\b|watercolou?r|sketch|hand[- ]drawn|vector|flat design|isometric|paper ?cut|doodle|chibi|toon|painted|painting|line art|halftone|storybook|mascot/i';
+
     private function combinedSheet(string $description, array $ctx, string $dir): array
     {
         $subjects = array_values($ctx['shot']['subjects']); $panels = array_values($ctx['shot']['board_panels']);
@@ -447,23 +450,31 @@ class PlanMediaExecutor
         foreach (array_slice($ctx['character_style_images'] ?? [], 0, 4 - count($refs)) as $img) { $refs[] = $img; $roles[] = 'a style reference only: match its rendering, palette and light, not its people, text or branding'; }
         // Who everyone is, once, tied to their own cell and the image they are drawn from; each frame then names who is in it.
         $imageOf = []; foreach (array_keys($photoOf) as $n => $k) $imageOf[$k] = $n + 1;
+        // A person the user gave a photo of, in a photographic look, is not drawn: their photo is their cast picture and
+        // every frame is drawn from it (2026-10-20: drawn cast cells scored 42 against the photo; frames copy the drawing).
+        // An illustrated look still draws them, so they match its style.
+        $photoreal = ! preg_match(self::DRAWN_LOOK, $description.' '.$style);
+        $asPhoto = array_filter($photoOf, fn ($photo, $k) => $photoreal && ($subjects[$k]['kind'] ?? 'character') === 'character', ARRAY_FILTER_USE_BOTH);
+        $cellOf = []; foreach (array_keys($subjects) as $k) if (! isset($asPhoto[$k])) $cellOf[$k] = count($cellOf);
+        $where = fn (int $k) => isset($asPhoto[$k]) ? 'image '.$imageOf[$k] : 'cell '.($cellOf[$k] + 1);
         $identity = [];
         foreach ($subjects as $k => $sub) {
             $from = isset($imageOf[$k]) ? ', drawn from image '.$imageOf[$k] : '';
+            if (isset($asPhoto[$k])) { $identity[] = $sub['name'].' is the person in image '.$imageOf[$k].', their own photo: in every cell they appear in they are exactly that person, with the same face shape, eyes, nose, lips, jaw, eyebrows, skin tone, hairline, hair colour, length and texture, age and build. Their clothes suit each cell; their face and body never change.'; continue; }
             $identity[] = match ($sub['kind'] ?? 'character') {
-                'character' => $sub['name'].' (cell '.($k + 1).$from.') is one specific person: '.$sub['looks'].'. The same face shape, eyes, nose, lips, jaw, eyebrows, skin tone, hairline, hair colour, length and texture, age and build in every cell.',
-                'product' => $sub['name'].' (cell '.($k + 1).$from.') is one specific product: '.$sub['looks'].'. The same shape, proportions, colours, finish, cap and label in every cell.',
-                default => $sub['name'].' (cell '.($k + 1).$from.') is one specific place: '.$sub['looks'].'. The same architecture, colours and objects in every cell it appears in.',
+                'character' => $sub['name'].' (cell '.($cellOf[$k] + 1).$from.') is one specific person: '.$sub['looks'].'. The same face shape, eyes, nose, lips, jaw, eyebrows, skin tone, hairline, hair colour, length and texture, age and build in every cell.',
+                'product' => $sub['name'].' (cell '.($cellOf[$k] + 1).$from.') is one specific product: '.$sub['looks'].'. The same shape, proportions, colours, finish, cap and label in every cell.',
+                default => $sub['name'].' (cell '.($cellOf[$k] + 1).$from.') is one specific place: '.$sub['looks'].'. The same architecture, colours and objects in every cell it appears in.',
             };
         }
         $byName = []; foreach ($subjects as $k => $sub) $byName[mb_strtolower($sub['name'])] = $k;
-        $castIn = function (array $p) use ($subjects, $byName): string {
+        $castIn = function (array $p) use ($subjects, $byName, $where): string {
             $refs = array_map(fn ($r) => mb_strtolower(preg_replace('/^sheet:/', '', (string) $r)), (array) ($p['refs'] ?? ['sheet']));
             $ks = in_array('sheet', $refs, true) ? array_keys($subjects) : array_values(array_filter(array_map(fn ($r) => $r === 'avatar' ? array_search(true, array_map(fn ($s) => ! empty($s['avatar']), $subjects), true) : ($byName[$r] ?? false), $refs), fn ($k) => $k !== false));
-            return $ks ? ' In this cell: '.implode(', ', array_map(fn ($k) => $subjects[$k]['name'].' exactly as in cell '.($k + 1), array_unique($ks))).'.' : '';
+            return $ks ? ' In this cell: '.implode(', ', array_map(fn ($k) => $subjects[$k]['name'].' exactly as in '.$where($k), array_unique($ks))).'.' : '';
         };
         $cells = [];
-        foreach ($subjects as $sub) $cells[] = ['text' => $sub['name'].', a reference picture: '.$sub['looks'].'. '.match ($sub['kind'] ?? 'character') {
+        foreach ($subjects as $k => $sub) if (! isset($asPhoto[$k])) $cells[] = ['text' => $sub['name'].', a reference picture: '.$sub['looks'].'. '.match ($sub['kind'] ?? 'character') {
             'place' => 'An empty establishing view of this place: no people, nothing happening, its architecture, light and recurring objects clearly visible.',
             'product' => 'The product alone in a three-quarter view on a plain surface, its shape, materials, colours and any real label clearly visible.',
             default => (($sub['framing'] ?? 'full') === 'portrait' ? 'A head-and-shoulders portrait' : 'The whole figure').', standing relaxed in a three-quarter view, neutral expression, evenly lit.',
@@ -489,19 +500,21 @@ class PlanMediaExecutor
         $castFiles = []; $boardFiles = [];
         foreach ($subjects as $k => $sub) {
             $out = $dir.'/sheet-'.$k.'.png';
-            if (! CombinedSheet::cut($sheet, $rects[$k], $aspect, $out)) throw new RuntimeException('The combined sheet could not be cut. Try again.');
+            // A person shown by their own photo keeps it as their cast picture (as a PNG, like the cut cells).
+            if (isset($asPhoto[$k])) { Process::timeout(60)->run(['ffmpeg', '-v', 'error', '-y', '-i', $asPhoto[$k], '-frames:v', '1', $out]); if (! is_file($out)) throw new RuntimeException('The photo of '.$sub['name'].' could not be read. Try again.'); }
+            elseif (! CombinedSheet::cut($sheet, $rects[$cellOf[$k]], $aspect, $out)) throw new RuntimeException('The combined sheet could not be cut. Try again.');
             $castFiles[] = ['path' => $out, 'title' => 'Sheet · '.$sub['name'], 'pose' => $sub['name']];
         }
         foreach ($panels as $j => $p) {
             $out = $dir.'/panel-'.$j.'.png';
-            if (! CombinedSheet::cut($sheet, $rects[count($subjects) + $j], $aspect, $out)) throw new RuntimeException('The combined sheet could not be cut. Try again.');
+            if (! CombinedSheet::cut($sheet, $rects[count($cellOf) + $j], $aspect, $out)) throw new RuntimeException('The combined sheet could not be cut. Try again.');
             $boardFiles[] = ['path' => $out, 'title' => $p['label'].(! empty($p['beat']) ? ' · '.$p['beat'] : ''), 'pose' => $p['label']];
         }
         // The panels' keys, as the storyboard computes them from this cast: it then reuses them instead of drawing.
         $cast = array_map(fn ($f, $k) => ['sha256' => hash_file('sha256', $f['path']), 'subject' => $subjects[$k]['name']], $castFiles, array_keys($castFiles));
         $hashes = array_map(fn ($p) => Storyboard::panelHash($p, $cast, $style, (string) ($p['aspect'] ?? $aspect), CharacterApproval::sourceIdentity($ctx)), $panels);
         $checks = $this->panelChecks($boardFiles, $panels, (array) ($ctx['agreement']['required'] ?? []));
-        $checks['panels'] = [...$this->castChecks($subjects, $castFiles, $photoOf), ...$this->frameLikeness($subjects, $panels, $boardFiles, $photoOf, $byName), ...$checks['panels'], ...($gridNote ? [['panel' => 'Sheet', 'ok' => false, 'issue' => $gridNote]] : [])];
+        $checks['panels'] = [...$this->castChecks($subjects, $castFiles, array_diff_key($photoOf, $asPhoto)), ...$this->frameLikeness($subjects, $panels, $boardFiles, $photoOf, $byName), ...$checks['panels'], ...($gridNote ? [['panel' => 'Sheet', 'ok' => false, 'issue' => $gridNote]] : [])];
         if (collect($checks['panels'])->contains('ok', false)) $checks['status'] = 'issues';
         $first = array_shift($castFiles);
         return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(), 'extra' => $castFiles,
