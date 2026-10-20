@@ -17,3 +17,10 @@ test('the kit never contains a closing script tag (HyperFrames inlines scripts i
  assert.ok(!/<\/script/i.test(src),'a literal closing script tag ends the inlined script early and breaks every build that loads the kit');
 });
 test('the signature-move recipes exist',()=>{for(const k of ['giantWipe','stamp','field'])assert.equal(typeof window.WM[k],'function',k);});
+test('a morph marks the narrowest box it becomes, so the text fit uses it (SWAP-SAFE canary: a web address overflowed its pill)',()=>{
+ const attrs={},el={setAttribute:(k,v)=>{attrs[k]=String(v);}},tl={set(){return tl;},to(){return tl;}};
+ window.WM.morph(tl,el,[{at:1,width:440,height:460,borderRadius:28},{at:2,width:400,height:116,borderRadius:58}]);
+ assert.deepEqual(attrs,{'data-wyv-fit-w':'400','data-wyv-fit-h':'116','data-wyv-fit-r':'58'});
+ const none={};window.WM.morph(tl,{setAttribute:(k,v)=>{none[k]=v;}},[{at:1,opacity:1}]);
+ assert.deepEqual(none,{},'a morph that keeps its size marks nothing');
+});

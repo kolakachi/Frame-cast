@@ -121,6 +121,15 @@
        states: [{at, width, height, borderRadius, backgroundColor, x, y}] */
     morph: function (tl, el, states) {
       el = $(el);
+      // The narrowest box it becomes, for the text fit (WM.fitFields measures at rest, before the morph: a web address
+      // that fit the 440 px card overflowed the 400 px pill it became, SWAP-SAFE canary 2026-10-20).
+      var widths = states.filter(function (s) { return typeof s.width === 'number'; });
+      if (el && widths.length) {
+        var narrow = widths.reduce(function (a, b) { return b.width < a.width ? b : a; });
+        el.setAttribute('data-wyv-fit-w', narrow.width);
+        if (typeof narrow.height === 'number') el.setAttribute('data-wyv-fit-h', narrow.height);
+        if (typeof narrow.borderRadius === 'number') el.setAttribute('data-wyv-fit-r', narrow.borderRadius);
+      }
       states.forEach(function (s, i) {
         var props = Object.assign({}, s); delete props.at;
         if (i === 0) tl.set(el, props, s.at);
@@ -1304,9 +1313,17 @@
       var alpha = m ? (m[1].split(',')[3] === undefined ? 1 : parseFloat(m[1].split(',')[3])) : 0;
       var clips = /hidden|clip/.test(st.overflow + st.overflowX + st.overflowY);
       var panel = alpha >= 0.5 || st.backgroundImage !== 'none' || parseFloat(st.borderLeftWidth) >= 1 || parseFloat(st.borderTopWidth) >= 1;
-      if (clips || (panel && r.width < W * 0.95 && r.width >= 2)) {
+      if (clips || (panel && r.width < W * 0.95 && r.width >= 2) || e.hasAttribute('data-wyv-fit-w')) {
         var pl = parseFloat(st.borderLeftWidth) + (inner ? parseFloat(st.paddingLeft) : 0), pr = parseFloat(st.borderRightWidth) + (inner ? parseFloat(st.paddingRight) : 0);
         c = { left: r.left + pl, top: r.top, right: r.right - pr, bottom: r.bottom };
+        // A box morphed narrower later (WM.morph): fit to its narrowest size, centred where it is; a pill's rounded ends
+        // are not room for words.
+        var fw = parseFloat(e.getAttribute('data-wyv-fit-w'));
+        if (fw > 0 && fw < r.width) {
+          var mid = (r.left + r.right) / 2, fh = parseFloat(e.getAttribute('data-wyv-fit-h')) || r.height, fr = parseFloat(e.getAttribute('data-wyv-fit-r')) || 0;
+          var round = inner && fr >= 0.3 * fh ? Math.min(fr, fh / 2) * 0.6 : 0;
+          c.left = Math.max(c.left, mid - fw / 2 + pl + round); c.right = Math.min(c.right, mid + fw / 2 - pr - round);
+        }
       }
     }
     if (!c) c = { left: 0, top: 0, right: W, bottom: H };
