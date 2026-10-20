@@ -25,16 +25,22 @@ class CombinedSheet
      * The prompt for the whole sheet. $cells: [['kind' => 'subject'|'panel', 'text' => what the cell shows]], in reading
      * order; $refs: what each reference image is, in order (image 1 first).
      */
-    public static function prompt(array $cells, array $refs, string $look, string $treatment, string $aspect): string
+    /**
+     * $identity: one fixed rule per person or product (who they are, which cell shows them, which image they come from),
+     * repeated before the cells so every frame copies the same face and the same product (2026-10-20: the presenter's
+     * face shifted between her cast cell and a frame).
+     */
+    public static function prompt(array $cells, array $refs, string $look, string $treatment, string $aspect, array $identity = []): string
     {
         [$cols, $rows] = self::layout(count($cells));
         $lines = [];
         foreach (array_values($cells) as $k => $c) $lines[] = 'Cell '.($k + 1).': '.$c['text'];
         for ($k = count($cells); $k < $cols * $rows; $k++) $lines[] = 'Cell '.($k + 1).': plain light grey, empty.';
         return 'One image laid out as a grid of '.$cols.' columns and '.$rows.' rows: '.($cols * $rows).' equal cells, each '.$aspect.', separated by thin plain white gutters, read left to right, top to bottom. '
-            .'Each cell is a separate, complete picture filling its cell edge to edge, in the same look: '.trim($look).($treatment !== '' ? ' Treatment: '.$treatment.'.' : '').' '
+            .'Each cell is a separate, complete picture filling its cell edge to edge, in the same look: '.rtrim(trim($look), '.').'.'.($treatment !== '' ? ' Treatment: '.$treatment.'.' : '').' '
             .($refs ? implode(' ', array_map(fn ($r, $i) => 'Image '.($i + 1).' is '.$r.'.', $refs, array_keys($refs))).' ' : '')
-            .'Every person, product and place looks exactly the same in every cell it appears in. '
+            .'This is the cast and storyboard sheet of one video: the same people and the same product appear in several cells, and each must be the very same individual or object in every cell, as if photographed on the same day. '
+            .($identity ? 'Identity, which never changes between cells: '.implode(' ', $identity).' Only pose, expression, framing and light change from cell to cell; clothes change only where a cell says so, otherwise each person wears what they wear in their own cell. Show each person\'s face clearly enough to recognise them unless a cell says otherwise. ' : 'Every person, product and place looks exactly the same in every cell it appears in. ')
             .implode(' ', $lines)
             .' No text, letters, numbers, labels, captions, logos or borders inside any cell.';
     }

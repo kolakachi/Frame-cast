@@ -445,6 +445,23 @@ class PlanMediaExecutor
                 : 'the '.$sub['kind'].' '.$sub['name'].': keep its exact shape, colours, materials and any real label';
         }
         foreach (array_slice($ctx['character_style_images'] ?? [], 0, 4 - count($refs)) as $img) { $refs[] = $img; $roles[] = 'a style reference only: match its rendering, palette and light, not its people, text or branding'; }
+        // Who everyone is, once, tied to their own cell and the image they are drawn from; each frame then names who is in it.
+        $imageOf = []; foreach (array_keys($photoOf) as $n => $k) $imageOf[$k] = $n + 1;
+        $identity = [];
+        foreach ($subjects as $k => $sub) {
+            $from = isset($imageOf[$k]) ? ', drawn from image '.$imageOf[$k] : '';
+            $identity[] = match ($sub['kind'] ?? 'character') {
+                'character' => $sub['name'].' (cell '.($k + 1).$from.') is one specific person: '.$sub['looks'].'. The same face shape, eyes, nose, lips, jaw, eyebrows, skin tone, hairline, hair colour, length and texture, age and build in every cell.',
+                'product' => $sub['name'].' (cell '.($k + 1).$from.') is one specific product: '.$sub['looks'].'. The same shape, proportions, colours, finish, cap and label in every cell.',
+                default => $sub['name'].' (cell '.($k + 1).$from.') is one specific place: '.$sub['looks'].'. The same architecture, colours and objects in every cell it appears in.',
+            };
+        }
+        $byName = []; foreach ($subjects as $k => $sub) $byName[mb_strtolower($sub['name'])] = $k;
+        $castIn = function (array $p) use ($subjects, $byName): string {
+            $refs = array_map(fn ($r) => mb_strtolower(preg_replace('/^sheet:/', '', (string) $r)), (array) ($p['refs'] ?? ['sheet']));
+            $ks = in_array('sheet', $refs, true) ? array_keys($subjects) : array_values(array_filter(array_map(fn ($r) => $r === 'avatar' ? array_search(true, array_map(fn ($s) => ! empty($s['avatar']), $subjects), true) : ($byName[$r] ?? false), $refs), fn ($k) => $k !== false));
+            return $ks ? ' In this cell: '.implode(', ', array_map(fn ($k) => $subjects[$k]['name'].' exactly as in cell '.($k + 1), array_unique($ks))).'.' : '';
+        };
         $cells = [];
         foreach ($subjects as $sub) $cells[] = ['text' => $sub['name'].', a reference picture: '.$sub['looks'].'. '.match ($sub['kind'] ?? 'character') {
             'place' => 'An empty establishing view of this place: no people, nothing happening, its architecture, light and recurring objects clearly visible.',
@@ -453,13 +470,13 @@ class PlanMediaExecutor
         }];
         foreach ($panels as $p) {
             $toCamera = (bool) preg_match('/\b(to|into|at) (the )?(camera|lens|viewer)\b/i', (string) ($p['gaze'] ?? ''));
-            $cells[] = ['text' => 'the opening moment of a shot: '.trim((string) ($p['description'] ?? '')).'.'
+            $cells[] = ['text' => 'the opening moment of a shot: '.trim((string) ($p['description'] ?? '')).'.'.$castIn($p)
                 .(! empty($p['action']) ? ' Action (its first moment): '.$p['action'].'.' : '').(! empty($p['gaze']) ? ' Gaze: '.$p['gaze'].'.' : '')
                 .(! empty($p['camera']) ? ' Camera and framing: '.$p['camera'].'.' : '').(! empty($p['screen']) ? ' The device screen is blank, evenly lit and bright, facing the camera.' : '')
                 .(! empty($p['note']) ? ' Correction from the user, which overrides the rest: '.$p['note'].'.' : '').($toCamera ? '' : ' Nobody looks into the camera.')];
         }
         [$cols, $rows] = CombinedSheet::layout(count($cells));
-        $prompt = CombinedSheet::prompt($cells, $roles, $description, $style, $aspect);
+        $prompt = CombinedSheet::prompt($cells, $roles, $description, $style, $aspect, $identity);
         $urls = array_map(fn ($f) => $this->replicateUpload((string) file_get_contents($f), $mime($f)), $refs);
         $sheet = $dir.'/combined.png'; $gridNote = null;
         foreach ([0, 1] as $try) {
@@ -484,7 +501,7 @@ class PlanMediaExecutor
         $cast = array_map(fn ($f, $k) => ['sha256' => hash_file('sha256', $f['path']), 'subject' => $subjects[$k]['name']], $castFiles, array_keys($castFiles));
         $hashes = array_map(fn ($p) => Storyboard::panelHash($p, $cast, $style, (string) ($p['aspect'] ?? $aspect), CharacterApproval::sourceIdentity($ctx)), $panels);
         $checks = $this->panelChecks($boardFiles, $panels, (array) ($ctx['agreement']['required'] ?? []));
-        $checks['panels'] = [...$this->castChecks($subjects, $castFiles, $photoOf), ...$checks['panels'], ...($gridNote ? [['panel' => 'Sheet', 'ok' => false, 'issue' => $gridNote]] : [])];
+        $checks['panels'] = [...$this->castChecks($subjects, $castFiles, $photoOf), ...$this->frameLikeness($subjects, $panels, $boardFiles, $photoOf, $byName), ...$checks['panels'], ...($gridNote ? [['panel' => 'Sheet', 'ok' => false, 'issue' => $gridNote]] : [])];
         if (collect($checks['panels'])->contains('ok', false)) $checks['status'] = 'issues';
         $first = array_shift($castFiles);
         return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(), 'extra' => $castFiles,
@@ -509,6 +526,27 @@ class PlanMediaExecutor
                 continue;
             }
             if ($v = $this->sameThing($photo, $cell, (string) $sub['name'])) $out[] = ['panel' => $sub['name'], 'ok' => $v['ok'], 'issue' => $v['issue']];
+        }
+        return $out;
+    }
+
+    /**
+     * Each frame a person with a photo appears in, scored against that photo (2026-10-20: the presenter's face shifted in
+     * a frame though her cast cell passed). A small face scores lower, so only under 60 is flagged, beside the frame.
+     */
+    private function frameLikeness(array $subjects, array $panels, array $boardFiles, array $photoOf, array $byName): array
+    {
+        $uri = fn (string $f) => 'data:'.(new \finfo(FILEINFO_MIME_TYPE))->file($f).';base64,'.base64_encode((string) file_get_contents($f));
+        $out = [];
+        foreach ($panels as $j => $p) {
+            $refs = array_map(fn ($r) => mb_strtolower(preg_replace('/^sheet:/', '', (string) $r)), (array) ($p['refs'] ?? ['sheet']));
+            foreach ($photoOf as $k => $photo) {
+                $sub = $subjects[$k];
+                if (($sub['kind'] ?? 'character') !== 'character' || ! isset($boardFiles[$j])) continue;
+                if (! in_array('sheet', $refs, true) && ! in_array(mb_strtolower($sub['name']), $refs, true) && ! (in_array('avatar', $refs, true) && ! empty($sub['avatar']))) continue;
+                $score = app(\App\Services\Ugc\UgcFaceCheck::class)->scoreImage($uri($photo), $uri($boardFiles[$j]['path']));
+                if ($score !== null && $score < 60) $out[] = ['panel' => (string) $p['label'], 'ok' => false, 'issue' => $sub['name'].' looks different here (likeness '.$score.' of 100)'];
+            }
         }
         return $out;
     }
@@ -573,7 +611,7 @@ class PlanMediaExecutor
                     .(! empty($panel['camera']) ? ' Camera and framing: '.$panel['camera'].'.' : '')
                     .(! empty($panel['screen']) ? ' The device screen is blank, evenly lit and bright, fully visible and facing the camera.' : '')
                     .(! empty($panel['note']) ? ' Correction from the user, which overrides the rest: '.$panel['note'].'.' : '')
-                    .($refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Keep every referenced character, place and product exactly as shown, but in this scene\'s pose and place: the references show identity, not a pose.' : '')
+                    .($refs ? ' References: '.implode('; ', array_map(fn ($r, $i) => '[Image'.($i + 1).'] is '.$r['name'], $refs, array_keys($refs))).'. Each referenced person is that exact person: the same face shape, eyes, nose, lips, jaw, eyebrows, skin tone, hairline, hair colour, length and texture, age and build; each product the same shape, colours, finish and label; each place the same architecture and colours. Only the pose, expression, framing and light are this scene\'s own: the references show identity, not a pose. Show each person\'s face clearly enough to recognise them unless the shot says otherwise.' : '')
                     .($toCamera ? '' : ' People never look into the camera.').($style !== '' ? ' Look: '.$style.'.' : '').' One frame, no panel borders, no text, no captions, no numbers, no logos.';
                 $jobs[$k] = [$prompt, $style ?: 'cinematic', (string) ($panel['aspect'] ?? $aspect), array_column($refs, 'url')];
                 $keys[$k] = $h;
