@@ -22,13 +22,21 @@ class CostEstimate
     public const SCALE = ['quick' => 0.4, 'standard' => 1.0, 'thorough' => 1.9];
     public const CEILING_TIMES = 5;
     /**
+     * Fair credits 2.1/2.2 (owner, 2026-10-20): the builder and planning are charged at what the model costs us, with
+     * no markup: one credit per 11,500 µ$ (1.15¢, what we keep from a yearly-plan credit after fees), rounded once per
+     * build and once per plan. Media keeps its catalogue price (4,000 µ$ a credit at the peg).
+     */
+    public const MICRO_PER_CREDIT = 11500;
+    /** The peg the builder was charged at before 2026-10-20 (and media still is): old estimates are converted by it. */
+    public const PEG_MICRO_PER_CREDIT = 4000;
+    /**
      * Fix D (2026-10-16 proof: neo-brutalism spent 844 builder credits against a 340 quote, blueprint 499 against 216):
      * styles with many separate elements take more builder rounds. Until a style has three real runs of its own, its
      * estimate is scaled by this measured guess; with three, its own median replaces it.
      */
     public const STYLE_WEIGHT = ['neo-brutalism' => 2.0, 'comic-book' => 1.8, 'isometric' => 1.8, 'collage-zine' => 1.6, 'whiteboard' => 1.4];
-    /** Room for a few of the dearest calls (each may cost up to $1.20) even on a short Quick build. */
-    public const CEILING_FLOOR = 1000;
+    /** Room for a few of the dearest calls (each may cost up to $1.20) even on a short Quick build: $4, as before. */
+    public const CEILING_FLOOR = 350;
 
     public static function effort(array $settings): string
     {
@@ -41,7 +49,8 @@ class CostEstimate
         $learned = self::learned($effort, $seconds, $kind);
         if ($learned !== null) return (int) round($learned * self::styleWeight($effort, $seconds, $kind));
         $seconds = max(5, min(60, $seconds));
-        return (int) round((120 + 0.75 * $seconds * $seconds) * (self::SCALE[$effort] ?? 1.0) * self::styleWeight($effort, $seconds, $kind));
+        // The curve was measured in peg credits; converted to at-cost credits.
+        return (int) round((120 + 0.75 * $seconds * $seconds) * (self::SCALE[$effort] ?? 1.0) * self::styleWeight($effort, $seconds, $kind) * self::PEG_MICRO_PER_CREDIT / self::MICRO_PER_CREDIT);
     }
 
     /** The style's weight when it has no three real runs of its own (their median already carries it). */
@@ -55,6 +64,33 @@ class CostEstimate
     public static function agentCeiling(string $effort, int $seconds, array $kind = []): int
     {
         return max(self::CEILING_FLOOR, self::CEILING_TIMES * self::agent($effort, $seconds, $kind));
+    }
+
+    /**
+     * What planning usually costs at cost (fair credits 2.4): the middle half of the last 60 plans' real cost, as
+     * [low, high] credits; plans charged before 2026-10-20 are converted from their peg credits. Kept 10 minutes.
+     */
+    public static function planningRange(): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember('create:planning-range', 600, function () {
+            $credits = DB::table('create_plans')->orderByDesc('created_at')->limit(60)->pluck('plan_json')
+                ->map(fn ($j) => (array) (json_decode((string) $j, true)['planning_charge'] ?? []))
+                ->map(fn ($c) => ! empty($c['at_cost']) ? (int) ($c['cost_credits'] ?? 0) : (int) ceil((int) ($c['cost_credits'] ?? 0) * self::PEG_MICRO_PER_CREDIT / self::MICRO_PER_CREDIT))
+                ->filter(fn ($c) => $c > 0)->sort()->values();
+            if ($credits->count() < 5) return [10, 60];
+            return [(int) $credits[intdiv($credits->count(), 4)], (int) $credits[intdiv(3 * $credits->count(), 4)]];
+        });
+    }
+
+    /**
+     * The build's spending limit: the ceiling, or the lower limit the user set in Details (build_ceiling_credits), never
+     * under the estimate, so a set limit still leaves room for a typical build (fair credits 2.3, 2026-10-20).
+     */
+    public static function buildCeiling(string $effort, int $seconds, array $kind = [], array $settings = []): int
+    {
+        $ceiling = self::agentCeiling($effort, $seconds, $kind);
+        $set = $settings['build_ceiling_credits'] ?? null;
+        return is_numeric($set) ? max(self::agent($effort, $seconds, $kind), min($ceiling, (int) $set)) : $ceiling;
     }
 
     /** What kind of build a plan is: its video type and whether it makes a new video or changes one. */
@@ -83,10 +119,23 @@ class CostEstimate
         return [(int) round($mid * 0.8), (int) round($mid * 1.8)];
     }
 
-    /** Half the plan's real cost (owner, 2026-10-06: no cap). $credits is its real cost in credits. */
-    public static function planningCharge(int $credits): int
+    /** Planning at cost (fair credits 2.2, 2026-10-20; was half its cost at the peg): $micro is its real cost in µ$. */
+    public static function planningCharge(int $micro): int
     {
-        return (int) ceil(max(0, $credits) / 2);
+        return (int) ceil(max(0, $micro) / self::MICRO_PER_CREDIT);
+    }
+
+    /**
+     * What a builder or reviewer call is charged: the build's running total of real cost at cost, less what its earlier
+     * calls were charged, so the whole build is rounded once (fair credits 2.1). Repair rounds are never counted.
+     */
+    public static function buildCharge(string $runId, string $attemptId, int $cost, int $limit): int
+    {
+        $earlier = DB::table('composition_attempts')->where('run_id', $runId)->where('id', '!=', $attemptId)->whereIn('kind', ['agent', 'critic'])
+            ->whereNotNull('result_hash')->where(fn ($q) => $q->whereNull('attempt_key')->orWhere('attempt_key', 'not like', 'repair%'))
+            ->selectRaw('coalesce(sum(cost_microusd), 0) as cost, coalesce(sum(charged_credits), 0) as charged')->first();
+        $due = (int) ceil(((int) $earlier->cost + max(0, $cost)) / self::MICRO_PER_CREDIT) - (int) $earlier->charged;
+        return max(0, min($limit, $due));
     }
 
     /**
@@ -96,13 +145,19 @@ class CostEstimate
      */
     public static function callCredits(array $call, ?string $model = null): int
     {
+        return (int) ceil(self::callMicro($call, $model) / self::PEG_MICRO_PER_CREDIT);
+    }
+
+    /** A model call's real cost in µ$ from its tokens, at the rates of the model that ran it. */
+    public static function callMicro(array $call, ?string $model = null): int
+    {
         $model = $model !== null ? (string) preg_replace('#^anthropic[:/]#', '', $model) : '';
         $r = ($model !== '' ? config('create.model_rates.'.$model) : null) ?? config('create.anthropic_rates');
         $tokens = ($call['input_tokens'] ?? 0) + ($call['cache_write_tokens'] ?? 0) + ($call['cache_read_tokens'] ?? 0);
         if (isset($r['long_above'], $r['long']) && $tokens > (int) $r['long_above']) $r = $r['long'];
         $micro = ($call['input_tokens'] ?? 0) * $r['input'] + ($call['output_tokens'] ?? 0) * $r['output']
             + ($call['cache_write_tokens'] ?? 0) * ($r['cache_write'] ?? $r['input']) + ($call['cache_read_tokens'] ?? 0) * ($r['cache_read'] ?? 0);
-        return (int) ceil($micro / 4000);
+        return (int) ceil($micro);
     }
 
     /**
@@ -139,7 +194,9 @@ class CostEstimate
             ->map(fn ($j) => json_decode((string) $j, true) ?: []);
         $runs = $runs->map(fn ($r) => $r + ['type' => $plans[$r['input']['plan']['plan_id'] ?? '']['video_type'] ?? null, 'task' => $plans[$r['input']['plan']['plan_id'] ?? '']['planner_task'] ?? null, 'style' => $r['input']['style_pack']['slug'] ?? null,
             'template' => ! empty($r['input']['settings']['template_id']) ? 1 : null,
-            'credits' => (int) DB::table('composition_attempts')->where('run_id', $r['id'])->whereIn('kind', ['agent', 'critic'])->sum('charged_credits')])->filter(fn ($r) => $r['credits'] > 0);
+            // What the build would cost at cost (fair credits): its real cost, repairs left out, whatever it was charged then.
+            'credits' => (int) ceil((int) DB::table('composition_attempts')->where('run_id', $r['id'])->whereIn('kind', ['agent', 'critic'])
+                ->where(fn ($q) => $q->whereNull('attempt_key')->orWhere('attempt_key', 'not like', 'repair%'))->sum('cost_microusd') / self::MICRO_PER_CREDIT)])->filter(fn ($r) => $r['credits'] > 0);
         // A style with three runs of its own decides first; then the video type and request, the type, any.
         $style = ! empty($kind['style']) ? [['style' => $kind['style']]] : [];
         $template = ! empty($kind['template']) ? [['template' => 1]] : [];

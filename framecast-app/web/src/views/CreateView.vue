@@ -123,6 +123,8 @@ function openSettings() {try{settingsDraft.value={...settingsDraft.value,...JSON
 const workspaceStore = useWorkspaceStore()
 const credits = computed(() => workspaceStore.usage?.credits_balance)
 const creditAvailability = computed(() => data.value?.credit_availability)
+// Fair credits 2.4: what planning usually costs, before sending (charged at what the AI costs us, shown as it plans).
+const planningNote = computed(() => { const r = data.value?.planning_range; return Array.isArray(r) ? `Planning usually costs ${r[0]}–${r[1]} credits, what the AI costs us, shown as it plans.` : 'Planning costs what the AI costs us, shown as it plans.' })
 const quoteCreditAvailability = computed(() => quote.value?.credit_availability || creditAvailability.value)
 // One number everywhere: the balance, as the dashboard shows it. Holds for unfinished work are explained, not subtracted.
 const balance = computed(() => creditAvailability.value?.total ?? (credits.value ?? null))
@@ -733,6 +735,13 @@ async function saveNote() {
 }
 const ceilingDraft = ref(0)
 watch(() => quote.value?.media_ceiling, v => { if (typeof v === 'number') ceilingDraft.value = v }, { immediate: true })
+// The build's spending limit (fair credits 2.3): lowered here, never under the build's estimate.
+const buildCeilingDraft = ref(0)
+watch(() => quote.value?.build_ceiling, v => { if (typeof v === 'number') buildCeilingDraft.value = v }, { immediate: true })
+async function setBuildCeiling() {
+  const v = Math.max(quote.value?.build_estimate || 0, Math.round(Number(buildCeilingDraft.value) || 0))
+  await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { build_ceiling_credits: v } }); quote.value = null; await refresh(); await plan() })
+}
 async function setCeiling() {
   const v = Math.max(quote.value?.media_estimate || 0, Math.round(Number(ceilingDraft.value) || 0))
   await guarded(async () => { await api.patch(base(), { expected_version: conversation.value.version, settings: { media_ceiling_credits: v } }); quote.value = null; await refresh(); await plan() })
@@ -1242,8 +1251,9 @@ function approveLabel(p) {
   if (!paid.value) return 'Approve local sample'
   if (needsCharacterCheck(p)) return 'Approve'
   const pr = planPrice.value[p.id]
-  if (planDirty(p)) return pr?.quote ? `Save and approve · ${priceText(pr.quote)}` : 'Save and approve'
-  if (pr?.quote) return `${startsWithCharacter(p) ? 'Approve · draw the character' : storyboardFirst(p) ? 'Approve storyboard' : 'Approve'} · ${priceText(pr.quote)}`
+  if (planDirty(p)) return pr?.quote ? `Save and approve · ${priceText(pr.quote)}${upTo(pr.quote)}` : 'Save and approve'
+  // Fair credits 2.3: the button says the most this approval can spend, not only the likely price.
+  if (pr?.quote) return `${startsWithCharacter(p) ? 'Approve · draw the character' : storyboardFirst(p) ? 'Approve storyboard' : 'Approve'} · ${priceText(pr.quote)}${upTo(pr.quote)}`
   return pr?.error ? 'Approve' : 'Pricing…'
 }
 const approveBlocked = p => paid.value && !needsCharacterCheck(p) && !!planPrice.value[p.id]?.loading
@@ -1476,7 +1486,7 @@ async function retryRun(run) {
   try { await guarded(async () => { await api.post(`${base()}/runs/${run.id}/retry`, { idempotency_key: crypto.randomUUID() }); await refresh(); await loadHistory() }) }
   finally { retrying.value = false }
 }
-// Which files the plan puts in the video and which it follows; switching one re-plans (which is charged, at half price).
+// Which files the plan puts in the video and which it follows; switching one re-plans (which is charged, at cost).
 const planFiles = computed(() => (data.value?.attachments || []).filter(a => ['source', 'reference'].includes(a.purpose)))
 async function switchRole(f) {
   await guarded(async () => {
@@ -1540,10 +1550,11 @@ const ceilingOf = q => q.ceiling ?? q.credits_max
 const rangeOf = q => Array.isArray(q.estimate_range) && q.estimate_range[0] < q.estimate_range[1] && q.estimate_range[1] < ceilingOf(q) ? q.estimate_range : null
 const priceText = q => rangeOf(q) ? `about ${rangeOf(q)[0].toLocaleString()}–${rangeOf(q)[1].toLocaleString()} cr` : q.estimate && q.estimate < ceilingOf(q) ? `about ${q.estimate.toLocaleString()} cr` : `${(q.estimate || ceilingOf(q)).toLocaleString()} cr`
 const ceilingText = q => q.estimate && q.estimate < ceilingOf(q) ? `never more than ${ceilingOf(q).toLocaleString()}` : 'exact'
+const upTo = q => q.estimate && q.estimate < ceilingOf(q) ? ` · up to ${ceilingOf(q).toLocaleString()}` : ''
 // The bill, stage by stage: each plan's charge, then each step and the video at what they spent.
 const spendRows = computed(() => {
   const rows = []
-  for (const p of plans.value) { const c = p.plan.planning_charge; if (c) rows.push({ label: 'Planning', text: c.waived ? 'waived' : `${c.charged} cr (half price)`, cr: c.charged || 0, at: p.created_at }) }
+  for (const p of plans.value) { const c = p.plan.planning_charge; if (c) rows.push({ label: 'Planning', text: c.waived ? 'waived' : `${c.charged} cr (${c.at_cost ? 'at cost' : 'half price'})`, cr: c.charged || 0, at: p.created_at }) }
   for (const r of data.value?.runs || []) if (Number(r.spent_credits) > 0) rows.push({ label: STEP_NAMES[r.build_stage] ? STEP_NAMES[r.build_stage].replace(/^The /, '').replace(/^./, c => c.toUpperCase()) : 'Build', text: `${Number(r.spent_credits).toLocaleString()} cr`, cr: Number(r.spent_credits), at: r.created_at })
   return rows.sort((a, b) => String(a.at).localeCompare(String(b.at)))
 })
@@ -1813,6 +1824,13 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                     <button v-if="ceilingDraft !== quote.media_ceiling" type="button" class="quiet quiet--sm" :disabled="busy" @click="setCeiling">Set</button>
                     <small class="muted">The agent may buy more media under this ceiling; anything over it waits for your approval.</small>
                   </div>
+                  <div v-if="quote.paid && quote.build_ceiling" class="ceiling-line">
+                    <span class="muted">Build: estimated {{ quote.build_estimate }} credits · spend up to</span>
+                    <input id="build-ceiling" v-model.number="buildCeilingDraft" type="number" min="0" max="20000" step="10" class="input input--sm" aria-label="Build spending limit in credits" />
+                    <span class="muted">credits</span>
+                    <button v-if="buildCeilingDraft !== quote.build_ceiling" type="button" class="quiet quiet--sm" :disabled="busy" @click="setBuildCeiling">Set</button>
+                    <small class="muted">The builder is charged what its AI calls cost us, never more than this. A build that reaches it pauses, keeps its work, and Retry continues it.</small>
+                  </div>
                   <div class="cost-line"><b>{{ quote.paid ? `Up to ${ceilingOf(quote)} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
                   <p v-if="quoteCreditAvailability" class="muted">Balance {{ quoteCreditAvailability.total.toLocaleString() }}<template v-if="quoteCreditAvailability.reserved"> · {{ quoteCreditAvailability.reserved.toLocaleString() }} held for unfinished work · {{ quoteCreditAvailability.available.toLocaleString() }} free for this approval</template>. Checked again when you approve.</p>
                   <span class="spacer" />
@@ -1873,7 +1891,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
               </div>
             </form>
             <p v-if="siteBrief" class="composer-note">Nothing runs until you press Make the plan.</p>
-            <p v-else class="composer-note">Planning costs a few credits (half its cost, shown as it plans). Text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
+            <p v-else class="composer-note">{{ planningNote }} Text or colour changes are free. Small jobs under 15 credits just run and show their cost; anything more is quoted first. Uploads stay private.</p>
           </div>
           <p v-if="error && (!canWrite || conversation?.archived_at)" class="create-error" role="alert">{{ error }}</p>
           <section v-if="showSamples" class="samples" aria-labelledby="samples-title">

@@ -290,7 +290,7 @@ class ConversationService
                 \App\Services\Create\Planning\PlannerReferenceInspector::verifyEvidence($plan ?? [], $files);
                 // The build budget follows what this plan is (its video type, a new video or a change), from real runs.
                 $buildKind = CostEstimate::kindOf($plan);
-                if ($paid && ! PilotPolicy::unlimited() && isset($policy['agent']['level'])) $policy['agent']['total_credits'] = CostEstimate::agentCeiling($policy['agent']['level'], (int) ($settings['duration_seconds'] ?? 15), $buildKind);
+                if ($paid && ! PilotPolicy::unlimited() && isset($policy['agent']['level'])) $policy['agent']['total_credits'] = CostEstimate::buildCeiling($policy['agent']['level'], (int) ($settings['duration_seconds'] ?? 15), $buildKind, $settings);
                 $planMedia = $paid && ($settings['output_kind'] ?? 'video') === 'video' && ($settings['video_mode'] ?? 'composition') === 'composition' && $plan
                     ? collect($plan['media'] ?? [])->filter(fn ($m) => in_array($m['kind'] ?? '', PlanMediaExecutor::KINDS, true))
                         ->map(function ($m, $i) use ($settings, $user, $plan) {
@@ -461,9 +461,12 @@ class ConversationService
                     // The likely spread (the middle half of real builds of this kind), shown as "about X–Y".
                     'estimate_range'=>$paid && ! $step && isset($policy['agent']) ? array_map(fn ($c) => $mediaEstimate + $c, CostEstimate::agentRange(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind)) : null,
                     // What a real (not unlimited-test) hold would be, for "never more than" while testing without limits.
-                    'shown_ceiling'=>$realMediaCeiling + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::agentCeiling(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : 0),
+                    'shown_ceiling'=>$realMediaCeiling + ($paid && ! $step && isset($policy['agent']) ? CostEstimate::buildCeiling(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind, $settings) : 0),
                     'effort'=>CostEstimate::effort($settings),
                     'build_stage'=>$step ?? ($lookFirst ? 'storyboard' : 'full_video'), 'step'=>$step, 'media_only'=>$step !== null, 'assumed'=>(bool) $assume, 'look_first'=>$lookFirst, 'from_look'=>$step ? false : $fromLook, 'media_estimate'=>$mediaEstimate, 'media_ceiling'=>$mediaCeiling,
+                    // The build's own likely cost and limit, for the limit the user may lower in Details (fair credits 2.3).
+                    'build_estimate'=>$paid && ! $step && isset($policy['agent']) ? CostEstimate::agent(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind) : null,
+                    'build_ceiling'=>$paid && ! $step && isset($policy['agent']) ? CostEstimate::buildCeiling(CostEstimate::effort($settings), (int) ($settings['duration_seconds'] ?? 15), $buildKind, $settings) : null,
                     // RD-14: approved checks from faults users found that the checks had missed; the visual reviewer runs them.
                     'house_checks'=>MissedDefects::approved(),
                     'style_notes'=>app(StyleNotes::class)->for((int) $user->workspace_id, StyleNotes::keyFor(['style_pack'=>$resolvedPack, 'settings'=>$settings])),

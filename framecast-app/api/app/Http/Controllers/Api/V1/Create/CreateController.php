@@ -88,6 +88,8 @@ class CreateController extends Controller
         return response()->json(['data' => [
             'conversation' => $c,
             'credit_availability' => $this->service->creditAvailability($r->user()),
+            // What planning usually costs, shown under the message box before sending (fair credits 2.4).
+            'planning_range' => \App\Services\Create\CostEstimate::planningRange(),
             // What Details may change now: the format is fixed once the current plan has bought pictures or clips.
             'settings_locks' => ['format' => \App\Services\Create\PlanService::formatLocked($id)],
             // A question asked before planning is marked, so the conversation can offer to skip it.

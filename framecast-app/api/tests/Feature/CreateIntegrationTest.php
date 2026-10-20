@@ -1828,7 +1828,9 @@ class CreateIntegrationTest extends TestCase
         $verdict = app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $cr['id'], ['prompt' => 'critic call 1', 'system' => 'critic', 'max_tokens' => 2048, 'image' => null, 'messages_json' => $messagesJson, 'tools_json' => '[]']);
         $this->assertSame('end_turn', $verdict['stop_reason']);
         $settled = DB::table('composition_attempts')->where('id', $cr['id'])->first();
-        $this->assertSame((int) ceil($settled->cost_microusd / 4000), (int) $settled->charged_credits, 'a critic call is charged its real cost, not its reservation');
+        // Fair credits 2.1: the builder and its reviewer at cost, the build rounded once over all its calls.
+        $calls = DB::table('composition_attempts')->where('run_id', $run->id)->whereIn('kind', ['agent', 'critic'])->get();
+        $this->assertSame((int) ceil($calls->sum('cost_microusd') / 11500), (int) $calls->sum('charged_credits'), 'a critic call is charged its real cost, not its reservation');
         $this->assertLessThan(25, (int) $settled->charged_credits);
         Http::assertSent(fn ($r) => $r['max_tokens'] === 2048 && $r['output_config']['effort'] === 'low' && ! isset($r['tools']));
         $this->rejected(409, fn () => app(\App\Services\Create\AnthropicGateway::class)->complete($run->id, $claim['lease_token'], $b['id'], ['prompt' => 'p', 'system' => 'sys', 'max_tokens' => 4096, 'image' => null, 'messages_json' => json_encode([['role' => 'user', 'content' => [['type' => 'document']]]]), 'tools_json' => '[]']));
@@ -2693,23 +2695,26 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([], \App\Services\Create\BrandLibrary::items((int) $this->workspace->id));
     }
 
-    public function test_costs_are_estimated_per_stage_and_planning_is_half_price_capped(): void
+    public function test_costs_are_estimated_per_stage_and_planning_is_at_cost(): void
     {
         $e = \App\Services\Create\CostEstimate::class;
-        // Until enough real runs exist, the curve fitted to the measured runs: about 290 for 15 s, 800 for 30 s at Standard.
-        $this->assertSame([289, 795, 116, 1511], [$e::agent('standard', 15), $e::agent('standard', 30), $e::agent('quick', 15), $e::agent('thorough', 30)]);
-        $this->assertSame([1445, 3975, 1000], [$e::agentCeiling('standard', 15), $e::agentCeiling('standard', 30), $e::agentCeiling('quick', 15)], 'five times the estimate, never under 1,000');
-        $this->assertSame([231, 520], $e::agentRange('standard', 15), 'without real runs, a spread around the curve');
+        // Until enough real runs exist, the curve fitted to the measured runs (about 290 peg credits for 15 s, 800 for 30 s at
+        // Standard), at cost since fair credits: a peg credit is 4,000 µ$, an at-cost credit 11,500.
+        $this->assertSame([100, 277, 40, 525], [$e::agent('standard', 15), $e::agent('standard', 30), $e::agent('quick', 15), $e::agent('thorough', 30)]);
+        $this->assertSame([500, 1385, 350], [$e::agentCeiling('standard', 15), $e::agentCeiling('standard', 30), $e::agentCeiling('quick', 15)], 'five times the estimate, never under 350 ($4)');
+        $this->assertSame([80, 180], $e::agentRange('standard', 15), 'without real runs, a spread around the curve');
         // Fix D: a busy style without three real runs of its own is scaled by its measured weight.
-        $this->assertSame([578, 520], [$e::agent('standard', 15, ['style' => 'neo-brutalism']), $e::agent('standard', 15, ['style' => 'comic-book'])]);
-        $this->assertSame(289, $e::agent('standard', 15, ['style' => 'glassmorphism']), 'a calm style keeps the base estimate');
+        $this->assertSame([201, 181], [$e::agent('standard', 15, ['style' => 'neo-brutalism']), $e::agent('standard', 15, ['style' => 'comic-book'])]);
+        $this->assertSame(100, $e::agent('standard', 15, ['style' => 'glassmorphism']), 'a calm style keeps the base estimate');
+        // Fair credits 2.3: a limit set in Details lowers the build's ceiling, never under its estimate.
+        $this->assertSame([300, 100, 500], [$e::buildCeiling('standard', 15, [], ['build_ceiling_credits' => 300]), $e::buildCeiling('standard', 15, [], ['build_ceiling_credits' => 20]), $e::buildCeiling('standard', 15, [], ['build_ceiling_credits' => 9000])]);
         // Templates: a conversation started from one is its own kind, priced without the style's weight.
         $tc = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'template_id' => 'tabc']);
         $planId = (string) \Illuminate\Support\Str::uuid();
         DB::table('create_plans')->insert(['id' => $planId, 'conversation_id' => $tc->id, 'message_id' => 1, 'brief_sequence' => 1, 'idempotency_key' => 'tp', 'request_hash' => 'h', 'provider' => 'fixture', 'status' => 'proposed', 'plan_json' => json_encode(['planner_task' => 'edit', 'video_type' => 'ad', 'style_route' => 'neo-brutalism']), 'created_at' => now(), 'updated_at' => now()]);
         $this->assertSame(['type' => 'ad', 'task' => 'creative', 'template' => 1], $e::kindOf(['plan_id' => $planId]));
-        $this->assertSame(289, $e::agent('standard', 15, $e::kindOf(['plan_id' => $planId])));
-        $this->assertSame([30, 75, 100, 145], [$e::planningCharge(60), $e::planningCharge(150), $e::planningCharge(200), $e::planningCharge(290)], 'half the real cost, with no cap');
+        $this->assertSame(100, $e::agent('standard', 15, $e::kindOf(['plan_id' => $planId])));
+        $this->assertSame([0, 1, 2, 39], [$e::planningCharge(0), $e::planningCharge(11500), $e::planningCharge(11501), $e::planningCharge(447500)], 'the real cost in µ$, a credit per 11,500, rounded up once');
         // Effort sets the build: Quick has no reviewer and 24 calls; every effort has a credit budget, not a call count.
         $quick = \App\Services\Create\PilotPolicy::class;
         config(['create.agent_provider' => 'anthropic', 'services.anthropic.key' => 'k', 'create.mode' => 'agent', 'create.paid_execution_enabled' => true, 'create.pilot_budget_id' => 'e3-test', 'create.pilot_budget_microusd' => 5000000]);
@@ -2719,7 +2724,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([150, 'high', 4], [$t['agent']['max_calls'], $t['agent']['effort'], $t['critic']['max_calls']]);
         $this->assertThrows(fn () => \App\Services\Create\OutputSettings::normalize(['effort' => 'extreme']), \Illuminate\Validation\ValidationException::class);
 
-        // Planning: billed at half its real tokens' cost when the plan arrives; subsidized, never free.
+        // Planning: billed at its real tokens' cost when the plan arrives (fair credits 2.2); never free.
         config(['create.planner' => 'anthropic', 'create.mode' => 'agent']);
         $reply = ['summary' => 'A kinetic launch video', 'scenes' => [['label' => 'Hook', 'start' => 0, 'end' => 15, 'idea' => 'Title lands']]];
         $plan = fn ($id) => ['id' => $id, 'content' => [['type' => 'text', 'text' => json_encode($reply)]], 'usage' => ['input_tokens' => 100000, 'output_tokens' => 2000]];
@@ -2729,16 +2734,17 @@ class CreateIntegrationTest extends TestCase
         $this->conversations->message($this->owner, $c->id, ['content' => 'A launch video for my desk.', 'expected_version' => 0, 'idempotency_key' => 'b1']);
         $service = app(\App\Services\Create\PlanService::class);
         $first = $service->propose($this->owner, $c->id, 1, 'pc-1');
-        // 100,000 input and 2,000 output tokens at the gateway's tariff: 110 credits; the question check 2 more; billed half.
-        $this->assertSame(['cost_credits' => 112, 'parts' => ['planner' => 110, 'questions' => 2], 'charge' => 56, 'charged' => 56, 'waived' => false], $first['plan']['planning_charge']);
-        $this->assertSame(44, $this->conversations->creditAvailability($this->owner)['available']);
+        // 100,000 input and 2,000 output Opus tokens: 440,000 µ$; the Sonnet question check 7,500 more; 447,500 µ$ at cost is 39.
+        $this->assertSame(['cost_credits' => 39, 'parts' => ['planner' => 38, 'questions' => 1], 'charge' => 39, 'at_cost' => true, 'charged' => 39, 'waived' => false], $first['plan']['planning_charge']);
+        $this->assertSame(61, $this->conversations->creditAvailability($this->owner)['available']);
+        $this->workspace->refresh(); $this->workspace->update(['credits_monthly' => (int) $this->workspace->credits_monthly - 2]);
         $this->conversations->message($this->owner, $c->id, ['content' => 'Bigger title.', 'expected_version' => (int) $this->conversations->conversation($this->owner, $c->id)->version, 'idempotency_key' => 'b2']);
-        // 44 left is below a typical planning charge (60): asked to top up before anything is spent.
+        // 59 left is below a typical planning charge (60): asked to top up before anything is spent.
         $this->rejected(402, fn () => $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'pc-2'));
         $this->workspace->update(['credits_monthly' => (int) $this->workspace->credits_monthly + 20]);
         $second = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'pc-2');
         $this->assertFalse($second['plan']['planning_charge']['waived']);
-        $this->assertSame(min($second['plan']['planning_charge']['charge'], 64), $second['plan']['planning_charge']['charged'], 'the whole charge, or what is left; never free');
+        $this->assertSame(min($second['plan']['planning_charge']['charge'], 79), $second['plan']['planning_charge']['charged'], 'the whole charge, or what is left; never free');
         $this->assertGreaterThanOrEqual(0, $this->conversations->creditAvailability($this->owner)['available']);
     }
 
@@ -2781,7 +2787,7 @@ class CreateIntegrationTest extends TestCase
             DB::table('composition_runs')->insert(['id' => $runId, 'conversation_id' => $c->id, 'workspace_id' => $this->workspace->id, 'quote_id' => substr(md5($runId), 0, 32), 'idempotency_key' => 'r'.$runId, 'request_hash' => str_repeat('b', 64),
                 'input_json' => json_encode(['build_stage' => 'full_video', 'settings' => ['duration_seconds' => 15], 'plan' => ['plan_id' => $planId]]), 'status' => 'preview_ready', 'created_at' => now(), 'updated_at' => now()]);
             DB::table('composition_attempts')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'run_id' => $runId, 'operation_id' => substr(md5($runId), 0, 32), 'attempt_key' => 'a1', 'request_hash' => str_repeat('c', 64),
-                'kind' => 'agent', 'provider' => 'anthropic', 'model' => 'm', 'status' => 'succeeded', 'credit_limit' => 1000, 'cost_limit_microusd' => 1, 'charged_credits' => $credits, 'created_at' => now(), 'updated_at' => now()]);
+                'kind' => 'agent', 'provider' => 'anthropic', 'model' => 'm', 'status' => 'succeeded', 'credit_limit' => 1000, 'cost_limit_microusd' => $credits * 11500, 'cost_microusd' => $credits * 11500, 'charged_credits' => $credits, 'created_at' => now(), 'updated_at' => now()]);
         };
         foreach ([100, 120, 140] as $cr) $seed('footage_motion', 'edit', $cr);
         foreach ([400, 500, 600] as $cr) $seed('motion_graphics', 'creative', $cr);
@@ -2791,7 +2797,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame([400, 600], $e::agentRange('standard', 15, ['type' => 'motion_graphics', 'task' => 'creative']), 'the middle half of real builds');
         $this->assertSame(500, $e::agent('standard', 15, ['type' => 'motion_graphics', 'task' => 'edit']), 'two of a kind is too few: the same type decides');
         $this->assertSame(200, $e::agent('standard', 15, ['type' => 'ugc_motion']), 'an unseen type: every similar run');
-        $this->assertSame(795, $e::agent('standard', 30, ['type' => 'motion_graphics']), 'no runs of a similar length: the curve');
+        $this->assertSame(277, $e::agent('standard', 30, ['type' => 'motion_graphics']), 'no runs of a similar length: the curve');
     }
 
     public function test_a_step_starts_on_what_is_available_when_it_covers_the_likely_cost_and_pauses_at_it(): void
@@ -3758,9 +3764,9 @@ class CreateIntegrationTest extends TestCase
         // The worker cannot send a different call from the one it recorded.
         $this->rejected(409,fn()=>$gateway->complete($run->id,$claim['lease_token'],$a['id'],['prompt'=>'Other','system'=>'Rules/1','max_tokens'=>1024]));
         $out=$gateway->complete($run->id,$claim['lease_token'],$a['id'],$call);
-        // 10000*4 + 2000*20 + 4000*5 = 100000 microdollars -> 25 credits at the pilot tariff.
-        $this->assertSame(['{"type":"finish"}',100000,25],[$out['text'],$out['cost_microusd'],$out['charged_credits']]);
-        $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
+        // 10000*4 + 2000*20 + 4000*5 = 100000 microdollars -> 9 credits at cost (fair credits 2.1: 11,500 µ$ a credit).
+        $this->assertSame(['{"type":"finish"}',100000,9],[$out['text'],$out['cost_microusd'],$out['charged_credits']]);
+        $this->assertSame(991,(int)$this->workspace->fresh()->credits_monthly);
         Http::assertSent(fn($r)=>$r->hasHeader('x-api-key','test-key')&&$r['model']==='claude-opus-5-5'&&$r['system'][0]['cache_control']['type']==='ephemeral'&&$r['output_config']['effort']==='medium');
         $this->assertSame($out, $gateway->complete($run->id,$claim['lease_token'],$a['id'],$call), 'Lost delivery replays the saved response without another provider call');
         Http::assertSentCount(1);
@@ -3773,7 +3779,7 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(503,fn()=>$gateway->complete($run->id,$claim['lease_token'],$b['id'],$call));
         $row=DB::table('composition_attempts')->where('id',$b['id'])->first();
         $this->assertSame(['failed','req_011refused',0],[$row->status,$row->prediction_id,(int)$row->charged_credits]);
-        $this->assertSame(975,(int)$this->workspace->fresh()->credits_monthly);
+        $this->assertSame(991,(int)$this->workspace->fresh()->credits_monthly);
         // Over HTTP, surrounding whitespace survives the app's string trimming, so the hash still matches.
         $raw=['prompt'=>"  Build it\n",'system'=>"Rules/1\n",'max_tokens'=>1024,'image'=>null];
         $c=$attempts->begin($run->id,$claim['lease_token'],'agent-3','agent',hash('sha256',json_encode(['prompt'=>$raw['prompt'],'system'=>$raw['system'],'maxTokens'=>1024,'image'=>null],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)));
@@ -4757,7 +4763,8 @@ class CreateIntegrationTest extends TestCase
         $verified=$verifier->metered(DB::table('composition_attempts')->first());
         $this->assertSame(4500,$verified->costMicrousd);
         $result=$attempts->settle($run->id,$claim['lease_token'],$a['id'],$verified->result(),$verified);
-        $this->assertSame(2,$result['charged_credits']);
+        // 4,500 µ$ at cost (fair credits 2.1): one credit.
+        $this->assertSame(1,$result['charged_credits']);
         $this->assertTrue($attempts->settle($run->id,$claim['lease_token'],$a['id'],$verified->result(),$verified)['replayed']);
         $this->assertSame(1,DB::table('credit_ledger')->count());
         $receipt['input']['prompt']='different';Http::swap(new \Illuminate\Http\Client\Factory);Http::fake(['api.replicate.com/*'=>Http::response($receipt)]);

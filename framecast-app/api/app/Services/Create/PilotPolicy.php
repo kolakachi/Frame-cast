@@ -61,7 +61,7 @@ class PilotPolicy
             $budget=CostEstimate::agentCeiling($level,(int)($settings['duration_seconds']??15));
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>300,'effort'=>$effort,
                 // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
-                'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'level'=>$level,'max_output_tokens'=>32000,'context_bytes'=>600000,
+                'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'micro_per_credit'=>CostEstimate::MICRO_PER_CREDIT,'level'=>$level,'max_output_tokens'=>32000,'context_bytes'=>600000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
                 // The critic: a separate reviewer of short low-effort calls with the frames and the strip, on Thorough builds only
@@ -77,7 +77,7 @@ class PilotPolicy
     public static function ceiling(array $policy): int
     {
         // Plan items have exact catalogue prices, so their ceiling is their total at the peg, not the priciest item times the count.
-        return array_sum(array_map(fn($p)=>isset($p['total_credits'])?$p['total_credits']*4000:$p['cost_limit_microusd']*$p['max_calls'],$policy));
+        return array_sum(array_map(fn($p)=>isset($p['total_credits'])?$p['total_credits']*(int)($p['micro_per_credit']??CostEstimate::PEG_MICRO_PER_CREDIT):$p['cost_limit_microusd']*$p['max_calls'],$policy));
     }
 
     /** Caller holds pool/workspace locks. Global lock also serializes distinct workspaces. */

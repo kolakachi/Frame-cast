@@ -99,7 +99,7 @@ class ChangeService
         $key = 'suggest:'.$c->id.':'.Str::uuid();
         PlanningCosts::begin($key);
         PlanningCosts::call('suggest', $model, (array) $r->json('usage', []));
-        $credits = CostEstimate::planningCharge((int) ceil(array_sum(PlanningCosts::take($key)) / 4000));
+        $credits = CostEstimate::planningCharge((int) array_sum(PlanningCosts::take($key)));
         PlanningCosts::end();
         $charged = 0;
         if ($credits > 0 && ($take = min($credits, $available)) > 0 && app(CreditService::class)->deduct((int) $user->workspace_id, $take, 'create_suggest', ['conversation_id' => $c->id, 'revision_id' => $revisionId])) $charged = $take;

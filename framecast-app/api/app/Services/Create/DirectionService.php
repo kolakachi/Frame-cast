@@ -61,10 +61,10 @@ class DirectionService
             fn ($d) => isset($d['idea'], $d['name']) && ! in_array(mb_strtolower($d['name']), $names, true)));
         abort_unless($new, 502, 'Could not think of more ways just now. Try again in a moment.');
 
-        // Billed like planning: half the call's real cost, from the balance (never more than is left).
+        // Billed like planning: the call's real cost, from the balance (never more than is left).
         PlanningCosts::begin('directions:'.$planId);
         PlanningCosts::call('directions', $model, (array) $r->json('usage', []));
-        $credits = CostEstimate::planningCharge((int) ceil(array_sum(PlanningCosts::take('directions:'.$planId)) / 4000));
+        $credits = CostEstimate::planningCharge((int) array_sum(PlanningCosts::take('directions:'.$planId)));
         PlanningCosts::end();
         $charged = 0;
         if ($credits > 0 && ($take = min($credits, $available)) > 0 && app(CreditService::class)->deduct((int) $user->workspace_id, $take, 'create_directions', ['conversation_id' => $c->id, 'plan_id' => $planId])) $charged = $take;

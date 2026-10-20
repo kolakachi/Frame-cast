@@ -60,4 +60,23 @@ class FairCreditsPart1Test extends TestCase
         $this->assertSame(112, RunService::refundFailedBuild($run), 'the builder calls come back; the bought clip is kept for Retry');
         $this->assertSame(0, RunService::refundFailedBuild($run), 'never twice');
     }
+
+    public function test_the_builder_is_charged_at_cost_and_the_build_is_rounded_once(): void
+    {
+        config(['database.default' => 'fair_test2', 'database.connections.fair_test2' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']]);
+        DB::purge('fair_test2');
+        Schema::create('composition_attempts', function (Blueprint $t) { $t->string('id')->primary(); $t->string('run_id'); $t->string('kind'); $t->string('attempt_key')->nullable();
+            $t->string('result_hash')->nullable(); $t->bigInteger('cost_microusd')->nullable(); $t->integer('charged_credits')->default(0); });
+        // The Beats build's nine builder calls ($0.8287): 73 credits in all at 11,500 µ$ a credit (per-call rounding made 77).
+        $total = 0;
+        foreach ([283561, 163503, 54049, 69849, 54963, 47953, 63277, 56501, 35028] as $k => $cost) {
+            $charge = CostEstimate::buildCharge('run-b', 'a'.$k, $cost, 300);
+            DB::table('composition_attempts')->insert(['id' => 'a'.$k, 'run_id' => 'run-b', 'kind' => 'agent', 'attempt_key' => 'agent-'.$k, 'result_hash' => 'h', 'cost_microusd' => $cost, 'charged_credits' => $charge]);
+            $total += $charge;
+        }
+        $this->assertSame(73, $total);
+        // A repair round is never counted: its cost is ours.
+        DB::table('composition_attempts')->insert(['id' => 'r1', 'run_id' => 'run-b', 'kind' => 'agent', 'attempt_key' => 'repair-1', 'result_hash' => 'h', 'cost_microusd' => 500000, 'charged_credits' => 0]);
+        $this->assertSame(1, CostEstimate::buildCharge('run-b', 'a9', 20000, 300), 'the next call pays only its own share; the repair is not counted');
+    }
 }

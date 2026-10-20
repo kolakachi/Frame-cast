@@ -257,21 +257,23 @@ class PlanService
         $activity->relabel($task === 'edit' ? 'Updated the plan' : 'Planned '.$shots.' '.($shots === 1 ? 'shot' : 'shots'));
         // The planner's own short account of what it took from the files and chose.
         foreach (array_slice(array_filter((array) ($result['plan']['highlights'] ?? []), 'is_string'), 0, 3) as $line) $activity->item($line);
-        // Planning is billed at half its real cost (its model calls at the gateway's tariff), never free: a plan starts
+        // Planning is billed at its real cost (its model calls at the rates of the model that ran), never free: a plan starts
         // only when the balance covers a typical charge (assertCanPayPlanning).
         // The questions, file sorting and reference study before it count too (PlanningCosts), each part shown.
-        $parts = ['planner' => array_sum(array_map(fn ($call) => CostEstimate::callCredits((array) $call, (string) ($result['provider'] ?? '')), (array) ($result['usage']['calls'] ?? [])))]
-            + array_map(fn ($micro) => (int) ceil($micro / 4000), PlanningCosts::take($id));
-        $planningCredits = array_sum($parts);
+        // Fair credits 2.2 (2026-10-20): at cost, one rounding for the whole plan; each part shown in the same credits.
+        $micro = ['planner' => array_sum(array_map(fn ($call) => CostEstimate::callMicro((array) $call, (string) ($result['provider'] ?? '')), (array) ($result['usage']['calls'] ?? [])))]
+            + PlanningCosts::take($id);
+        $parts = array_map(fn ($m) => (int) round($m / CostEstimate::MICRO_PER_CREDIT), $micro);
+        $planningCredits = CostEstimate::planningCharge((int) array_sum($micro));
         // The settings this plan was made for: changing one of them in Details makes the plan out of date.
         $plan['settings_basis'] = self::settingsBasis(json_decode((string) $c->settings_json, true) ?: []);
         // C1 and C7 (owner, 2026-10-09): the first plan says what it was made for and asks to keep it, with no extra buttons.
         $plan['checks'] = $task === 'edit' ? [] : self::firstPlanChecks($c, $plan);
-        $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'parts' => $parts, 'charge' => CostEstimate::planningCharge($planningCredits), 'charged' => 0, 'waived' => false];
+        $plan['planning_charge'] = ['cost_credits' => $planningCredits, 'parts' => $parts, 'charge' => $planningCredits, 'at_cost' => true, 'charged' => 0, 'waived' => false];
         // Fair credits 1.2 (2026-10-20): a text or colour change sent in chat is a free edit, so its planning is free too,
         // as it is from the edit controls (a headline-only change was charged 45 credits).
         if (! empty($plan['free_edit'])) $plan['planning_charge'] = [...$plan['planning_charge'], 'charge' => 0, 'waived' => true];
-        if ($plan['planning_charge']['charge'] > 0) $activity->item('Planning · '.$plan['planning_charge']['charge'].' credits (half price)');
+        if ($plan['planning_charge']['charge'] > 0) $activity->item('Planning · '.$plan['planning_charge']['charge'].' credits (at cost)');
         $plan['activity'] = $activity->finish();
         } catch (\Throwable $e) {
             $activity->abandon();
