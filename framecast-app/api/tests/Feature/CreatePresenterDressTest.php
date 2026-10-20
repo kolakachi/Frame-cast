@@ -69,4 +69,19 @@ class CreatePresenterDressTest extends TestCase
         Http::assertNotSent(fn ($r) => str_contains((string) $r->body(), 'RAW-PHOTO-OUTDOORS'));
         @unlink($photo);
     }
+
+    public function test_a_generated_voice_take_is_told_the_clothes_place_and_prop(): void
+    {
+        config(['database.default' => 'dress_test', 'database.connections.dress_test' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+            'services.replicate.api_token' => 'test']);
+        DB::purge('dress_test');
+        $veo = \Mockery::mock(\App\Services\Generation\Video\ReplicateVeoAdapter::class);
+        $veo->shouldReceive('start')->once()->withArgs(fn ($prompt) => str_contains($prompt, 'They wear a casual blue shirt.') && str_contains($prompt, 'They are at a tech office desk.')
+            && str_contains($prompt, 'They hold Beats Solo headphones, clearly visible.'))->andReturn('omni-1');
+        $this->app->instance(\App\Services\Generation\Video\ReplicateVeoAdapter::class, $veo);
+        $ctx = ['plan_id' => 'plan-1', 'workspace_id' => 1, 'aspect_ratio' => '9:16', 'language' => 'en',
+            'shot' => ['engine' => 'omni', 'presenter' => 'none', 'seconds' => 5, 'segments' => [['lines' => ['They are called Beats Solo.'], 'seconds' => 5]],
+                'outfit' => 'a casual blue shirt', 'setting' => 'a tech office desk', 'holding' => 'Beats Solo headphones']];
+        $this->assertSame('omni-1', app(PlanMediaExecutor::class)->startJob('ugc_take', 'A creator at his desk', $ctx, 0));
+    }
 }

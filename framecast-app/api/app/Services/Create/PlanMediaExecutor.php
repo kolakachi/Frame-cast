@@ -688,7 +688,10 @@ class PlanMediaExecutor
                 default => [],
             };
             $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
-            $prompt = trim($description).($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person; the image decides who they are, whatever "he" or "she" the direction says.' : '')
+            // The presenter's clothes, place and prop as this video asks; the image decides only who they are.
+            $dress = implode(' ', array_filter([($shot['outfit'] ?? '') !== '' ? 'They wear '.rtrim($shot['outfit'], '.').'.' : null,
+                ($shot['setting'] ?? '') !== '' ? 'They are at '.rtrim($shot['setting'], '.').'.' : null, ($shot['holding'] ?? '') !== '' ? 'They hold '.rtrim($shot['holding'], '.').', clearly visible.' : null]));
+            $prompt = trim($description).($dress !== '' ? ' '.$dress : '').($refs ? ' The presenter is '.$refs[0]['name'].' - keep this exact person; the image decides who they are, whatever "he" or "she" the direction says.' : '')
                 .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
                 .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
                 .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');

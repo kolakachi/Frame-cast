@@ -364,14 +364,19 @@ function planLengthNote(p) {
   if (take <= chosen + 0.5) return ''
   return `This video runs about ${Math.min(Math.ceil(take), Math.round(chosen * 1.3))} s, not the ${chosen} s chosen: the presenter's lines need the time. The price is the same.`
 }
+// The presenter as this video shows them: what they wear, where they are, what they hold. A lip-synced take (the
+// user's cloned voice) is dressed first, as its own priced picture.
+function planPresenterNote(p) {
+  const take = routedMedia(p).find(m => m.kind === 'ugc_take' && (m.outfit || m.setting || m.holding))
+  if (!take) return ''
+  const look = [take.outfit && 'wearing ' + take.outfit, take.setting && 'at ' + take.setting, take.holding && 'holding ' + take.holding].filter(Boolean).join(', ')
+  return 'The presenter appears ' + look + '.' + (take.dress_credits ? ` They are photographed this way from their photo first (${take.dress_credits} credits, in the price), then speak in your voice.` : '')
+}
 function hasGenerated(p) { return routedMedia(p).some(m => GENERATED.includes(m.kind)) }
 function mediaMeta(md) {
   if (md.kind === 'reference_sheet') return 'Cast and world sheet: ' + (md.subjects || []).map(x => x.name).join(', ')
   if (md.kind === 'generated_shot') return [md.engine_label, md.seconds ? md.seconds + ' s' : '', md.beat, md.audio === 'speech' ? 'speaks a line' : ''].filter(Boolean).join(' · ')
-  // The presenter as this video wants them: what they wear, where, what they hold (dressed first for a lip-synced take).
-  if (md.kind === 'ugc_take') return ['UGC take', md.engine_label, md.seconds ? md.seconds + ' s' : '', (md.segments || []).length > 1 ? md.segments.length + ' parts joined' : '',
-    md.outfit ? 'wearing ' + md.outfit : '', md.setting ? 'at ' + md.setting : '', md.holding ? 'holding ' + md.holding : '',
-    md.dress_credits ? 'presenter dressed first (' + md.dress_credits + ' cr)' : ''].filter(Boolean).join(' · ')
+  if (md.kind === 'ugc_take') return ['UGC take', md.engine_label, md.seconds ? md.seconds + ' s' : '', (md.segments || []).length > 1 ? md.segments.length + ' parts joined' : ''].filter(Boolean).join(' · ')
   return ''
 }
 // Spend guard: a plan with costly generated media is confirmed explicitly before its cost is reviewed.
@@ -1613,6 +1618,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                     <p v-if="planByMessage[m.id].status === 'proposed'" class="plan-lead">{{ planByMessage[m.id].plan.summary }}</p>
                     <p v-for="q in (planByMessage[m.id].status === 'proposed' && !planByMessage[m.id].stale ? planByMessage[m.id].plan.checks || [] : [])" :key="q" class="plan-check">{{ q }}</p>
                     <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].plan.creative_intent?.reason" class="plan-approach" label="Creative approach" :text="planByMessage[m.id].plan.creative_intent.reason" />
+                    <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planPresenterNote(planByMessage[m.id])" class="plan-approach" label="Presenter" :text="planPresenterNote(planByMessage[m.id])" />
                     <PlanNote v-if="planByMessage[m.id].status === 'proposed' && planLengthNote(planByMessage[m.id])" class="plan-approach" label="Length" :text="planLengthNote(planByMessage[m.id])" />
                     <p v-if="planByMessage[m.id].status === 'proposed' && planByMessage[m.id].stale" class="plan-lead muted">Your brief or details changed after this plan. <button v-if="canWrite" type="button" class="quiet quiet--sm" :disabled="locked || planning" @click="makePlan">{{ planning ? 'Planning…' : 'Plan again' }}</button></p>
                     <p v-else-if="isLivePlan(planByMessage[m.id]) && !active" class="plan-lead">Here’s the plan. Open it to change the copy, voice or look, or approve and I’ll start.</p>
