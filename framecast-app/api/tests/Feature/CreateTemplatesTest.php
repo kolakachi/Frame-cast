@@ -462,6 +462,11 @@ class CreateTemplatesTest extends TestCase
         $this->assertSame('VOLT RUSH', collect(\App\Services\Create\CompositionVariables::declarations($html))->firstWhere('id', 'headline')['default']);
         $this->assertStringContainsString($files[1]['name'], $html, 'the voice is kept');
         $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, $plan, [['kind' => 'music']], ['output_kind' => 'video'], false, $captured), 'buying anything but a voice is a build');
+        // SWAP-SAFE canary: a swap that keeps the voice may list the version's own narration; it stays free, never a build.
+        $kept = [...$plan, 'narration' => \App\Services\Create\SpokenFit::baseNarration($base)];
+        $this->assertTrue(\App\Services\Create\PartSwap::forQuote($c, $base, $kept, [['kind' => 'voiceover']], ['output_kind' => 'video'], false, $captured)['free'] ?? false, 'the unchanged narration is not bought again');
+        $this->assertTrue(\App\Services\Create\PartSwap::forQuote($c, $base, [...$plan, 'narration' => ['Written words the voice says shorter.']], [['kind' => 'voiceover']], ['output_kind' => 'video'], false, $captured)['free'] ?? false, 'a plan that leaves the voice alone keeps it, whatever its written lines');
+        $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, [...$plan, 'change_touches' => ['on_screen_words', 'voice'], 'narration' => ['A new line nobody voiced.']], [['kind' => 'voiceover']], ['output_kind' => 'video'], false, $captured), 'a changed voice is never kept free');
         $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, [...$plan, 'swap' => [...$swap, 'voice' => true], 'change_touches' => ['voice', 'pictures']], [], ['output_kind' => 'video'], false, $captured), 'a new voice must be in the plan');
         $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, $base, $plan, [], ['output_kind' => 'video'], false, []), 'the photo must be among the run\'s files');
         $this->assertNull(\App\Services\Create\PartSwap::forQuote($c, null, $plan, [], ['output_kind' => 'video'], false, $captured), 'a first video is built');

@@ -120,8 +120,16 @@ class PartSwap
         if (isset($was['aspect_ratio']) && $was['aspect_ratio'] !== ($settings['aspect_ratio'] ?? null)) return null;
         if (isset($was['duration_seconds']) && (int) $was['duration_seconds'] !== (int) ($settings['duration_seconds'] ?? 0)) return null;
         $voice = (bool) ($swap['voice'] ?? false);
-        // The only thing a swap buys is a new voice, and only when the voice changes.
-        if ($voice ? (count($planMedia) !== 1 || ! in_array($planMedia[0]['kind'] ?? '', VoiceSwap::KINDS, true)) : count($planMedia) !== 0) return null;
+        // The only thing a swap buys is a new voice, and only when the voice changes. A swap that keeps the voice may
+        // still list the version's narration, unchanged: it is not bought again (SWAP-SAFE canary 2026-10-20: a free
+        // re-render of a voiced copy was quoted as a 355-credit build because its plan carried the narration).
+        $voiceItems = array_filter($planMedia, fn ($m) => in_array($m['kind'] ?? '', VoiceSwap::KINDS, true));
+        if (count($voiceItems) !== count($planMedia)) return null;
+        if ($voice && count($voiceItems) !== 1) return null;
+        // Its own narration is what the version says (its run keeps the lines as spoken, maybe shortened by SpokenFit), so
+        // only a plan that says the voice changes is held to it.
+        if (! $voice && $voiceItems && in_array('voice', (array) ($plan['change_touches'] ?? []), true)
+            && array_map('trim', array_map('strval', (array) ($plan['narration'] ?? []))) !== array_map('trim', SpokenFit::baseNarration($base))) return null;
         $voiceSwap = $voice ? VoiceSwap::plan($c, $base, $plan, $planMedia, $settings, $step, true) : null;
         if ($voice && ! $voiceSwap) return null;
         $bundle = json_decode((string) $base->bundle_json, true) ?: [];
