@@ -64,10 +64,14 @@ export function unintendedBlanks(spans,duration){
  return spans.filter(s=>!(s.start<=0.05&&s.end<=0.2)&&!(duration&&s.end>=duration-0.05&&s.end-s.start<=0.6));
 }
 
+export const MAX_LOOK_FRAMES=40;
+
 /** Frames spread over the video for the look check, plus extra [{time, label}] (a shot's own frames): [{time, path, label?}]. */
 export async function sampleFrames(file,duration,{count=16,extra=[],ffmpeg='ffmpeg'}={}){
  const dir=await mkdtemp(tmpdir()+'/final-frames-'),n=Math.max(4,Math.min(count,Math.round(duration*1.2)));
- const times=[...Array.from({length:n},(_,k)=>({time:+((duration*(k+0.5))/n).toFixed(2)})),...extra];
+ // At most MAX_LOOK_FRAMES in all: the app takes 40 frames in one look (fair credits 1.5, 2026-10-20: over 20 the
+ // server refused the upload and the picture checks never ran).
+ const times=[...Array.from({length:n},(_,k)=>({time:+((duration*(k+0.5))/n).toFixed(2)})),...extra].slice(0,MAX_LOOK_FRAMES);
  const out=[];
  for(const [k,f] of times.entries()){const p=dir+'/f'+k+'.jpg';try{await run(ffmpeg,['-hide_banner','-loglevel','error','-y','-ss',String(f.time),'-i',file,'-frames:v','1','-vf','scale=384:-2','-q:v','6',p],{timeout:30000});out.push({...f,path:p});}catch{/* a frame that cannot be read is left out */}}
  return {frames:out,cleanup:()=>rm(dir,{recursive:true,force:true})};

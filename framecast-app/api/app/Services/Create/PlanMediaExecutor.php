@@ -52,12 +52,32 @@ class PlanMediaExecutor
     {
         $name = rtrim((string) (preg_split('/\s+/', trim($description))[0] ?? ''), ':,.;');
         // A named file of the run, else the image bought just before it in this plan (a stock or generated image).
-        $file = collect($ctx['cutout_files'] ?? [])->firstWhere('name', $name) ?? ($ctx['cutout_latest'] ?? null);
+        $file = self::namedFile($description, (array) ($ctx['cutout_files'] ?? [])) ?? ($ctx['cutout_latest'] ?? null);
         if (! $file || ! is_file($file['path'])) throw new \InvalidArgumentException('Name the image to cut out by its file name (one this run has), or buy the image earlier in the plan: '.mb_substr($name, 0, 80));
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file['path']);
         if (! in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) throw new \InvalidArgumentException('Only a PNG, JPEG or WebP image can be cut out.');
         $cut = $this->replicate('851-labs/background-remover', ['image' => $this->replicateUpload((string) file_get_contents($file['path']), $mime), 'format' => 'png', 'background_type' => 'rgba']);
-        return ['path' => $this->fetch($cut, $dir.'/cutout.png'), 'mime' => 'image/png', 'title' => 'Cut out · '.mb_substr($name, 0, 60), 'provider_id' => 'cutout-'.Str::uuid(), 'extra' => []];
+        $path = $this->fetch($cut, $dir.'/cutout.png');
+        // A cut-out that removed nothing is not a cut-out: it fails, so it is not charged (fair credits 1.4).
+        if (TemplateCutout::removedNothing((string) file_get_contents($path))) throw new RuntimeException('Nothing could be cut out of '.mb_substr(basename((string) ($file['title'] ?? '') ?: $name), 0, 80).': the picture came back whole, so it was not used or charged.');
+        return ['path' => $path, 'mime' => 'image/png', 'title' => 'Cut out · '.mb_substr((string) (($file['title'] ?? '') ?: $name), 0, 60), 'provider_id' => 'cutout-'.Str::uuid(), 'extra' => []];
+    }
+
+    /**
+     * The run's file a cut-out description names: by its stored name or its title, anywhere in the description, the
+     * longest match first; null when it names none (the cut-out then takes the image bought just before it). Fair
+     * credits 1.6 (2026-10-20): only the first word was compared, so "Beats Solo 4 - Wireless….jpg" matched nothing
+     * and storyboard panel 1 was cut out instead of the headphones.
+     */
+    public static function namedFile(string $description, array $files): ?array
+    {
+        $text = mb_strtolower($description); $first = mb_strtolower(rtrim((string) (preg_split('/\s+/', trim($description))[0] ?? ''), ':,.;'));
+        $best = null; $len = 0;
+        foreach ($files as $f) foreach ([(string) ($f['name'] ?? ''), (string) ($f['title'] ?? '')] as $label) {
+            $l = mb_strtolower(trim($label)); $stem = (string) preg_replace('/\.[a-z0-9]{2,4}$/', '', $l);
+            foreach (array_unique([$l, $stem]) as $want) if (mb_strlen($want) >= 3 && ($want === $first || str_contains($text, $want)) && mb_strlen($want) > $len) { $best = $f; $len = mb_strlen($want); }
+        }
+        return $best;
     }
 
     /** A photo's background removed, as PNG bytes (TemplateCutout: a product photo for a template's cut-out slot). */
@@ -81,7 +101,7 @@ class PlanMediaExecutor
     private function cutoutVideo(string $description, array $ctx, string $dir): array
     {
         $name = rtrim((string) (preg_split('/\s+/', trim($description))[0] ?? ''), ':,.;');
-        $file = collect($ctx['cutout_files'] ?? [])->firstWhere('name', $name) ?? ($ctx['cutout_latest_video'] ?? null);
+        $file = self::namedFile($description, (array) ($ctx['cutout_files'] ?? [])) ?? ($ctx['cutout_latest_video'] ?? null);
         if (! $file || ! is_file($file['path'])) throw new \InvalidArgumentException('Name the video to cut out by its file name (one this run has), or buy the take or clip earlier in the plan: '.mb_substr($name, 0, 80));
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file['path']);
         if (! in_array($mime, ['video/mp4', 'video/quicktime', 'video/webm'], true)) throw new \InvalidArgumentException('Only an MP4, MOV or WebM video can be cut out.');

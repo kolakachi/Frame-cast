@@ -380,7 +380,7 @@ class PlanMediaService
         $bought = DB::table('create_plan_media')->where('run_id', $run->id)->where('status', 'succeeded')->pluck('record_json')
             ->flatMap(fn ($r) => array_filter([json_decode((string) $r, true)['file'] ?? null, ...(json_decode((string) $r, true)['more_files'] ?? [])]))->all();
         $cutoutFiles = collect([...($input['input_files'] ?? []), ...($input['derived_files'] ?? []), ...$bought])->filter(fn ($f) => is_array($f) && ! empty($f['name']) && ! empty($f['storage_path']))
-            ->map(fn ($f) => ['name' => $f['name'], 'path' => app(CreateStorage::class)->path($f['storage_path'])])->values()->all();
+            ->map(fn ($f) => ['name' => $f['name'], 'title' => (string) ($f['title'] ?? ''), 'path' => app(CreateStorage::class)->path($f['storage_path'])])->values()->all();
         // An image bought earlier in this plan (a stock or generated image) is what a cutout means when it names no file
         // the run has: the planner cannot know a bought file's name in advance.
         // This plan's images, bought by this run or an earlier one (a retried build reuses them without a new row).

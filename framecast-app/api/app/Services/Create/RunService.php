@@ -145,6 +145,20 @@ class RunService
 
     // 'run' is the sandbox program runner: its files may be generated from scratch, so they can have no parent.
     // 'library' is an item from the art library (a 3D object the build placed): it has no parent either.
+    /**
+     * Refunds the builder and reviewer credits a failed run was charged, once (the ledger row is the guard). Returns the
+     * credits refunded.
+     */
+    public static function refundFailedBuild(object $run): int
+    {
+        $op = 'create-failed:'.$run->id;
+        if (DB::table('credit_ledger')->where('operation', 'refund:'.$op)->exists()) return 0;
+        $credits = (int) DB::table('composition_attempts')->where('run_id', $run->id)->whereIn('kind', ['agent', 'critic'])->sum('charged_credits');
+        if ($credits <= 0) return 0;
+        app(\App\Services\CreditService::class)->refund((int) $run->workspace_id, $credits, $op);
+        return $credits;
+    }
+
     public const OUT_OF_CREDITS = 'Paused: this step used the credits set aside for it. Everything it finished is kept. Top up if needed, then press Retry to continue where it stopped.';
 
     public const DERIVED_OPS = ['trim', 'cut', 'remove_silence', 'clean_audio', 'loudness', 'stabilize', 'speed', 'crop', 'frame', 'grade', 'duck', 'fade', 'space', 'run', 'library'];
@@ -411,6 +425,11 @@ class RunService
                 elseif (preg_match('/\[vendor:(busy|content_refused|vendor_credit|vendor_config)\]/', $cause.' '.$result['summary'], $m)) $result['summary'] = \App\Services\Vendors\VendorAlerts::userMessage('anthropic', $m[1]);
                 elseif (preg_match('/(The image, voice and video models|Our AI model) (is|are) (busy right now|temporarily unavailable on our side)[^.]*\.[^.]*\.[^.]*\./', $cause, $m)) $result['summary'] = $m[0];
             }
+            // Fair credits 1.3 (2026-10-20): a build that fails is our fault unless it paused on its own credits, so its
+            // builder calls are refunded at once (5 failed builds kept 1,272 credits in 30 days). Bought media stays
+            // charged: it is kept and used again by Retry, never bought twice.
+            if ($status === 'failed' && ($result['summary'] ?? null) !== self::OUT_OF_CREDITS && ($back = self::refundFailedBuild($run)) > 0)
+                $result['summary'] = rtrim((string) $result['summary']).' The '.$back.' credits for the build were refunded.';
             // CHECK-GUARD: checks the build finished past, or kept failing on, are kept for review.
             CheckDisputes::record($run, $status, $result, $status === 'preview_ready' ? ($revision ?? null) : null);
             DB::table('composition_runs')->where('id', $id)->update([

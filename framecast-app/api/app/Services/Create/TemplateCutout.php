@@ -113,6 +113,24 @@ class TemplateCutout
         }
     }
 
+    /**
+     * Whether the background remover found nothing to remove: the result is still the whole picture, opaque edge to edge
+     * (fair credits 1.4, 2026-10-20: a gym scene "cut out" came back as itself and was charged as the product cut-out).
+     */
+    public static function removedNothing(string $png): bool
+    {
+        $in = tempnam(sys_get_temp_dir(), 'whole-').'.png';
+        try {
+            file_put_contents($in, $png);
+            $size = self::size($in); $box = self::box($in);
+            return $size !== null && $box !== null && $box['w'] * $box['h'] >= 0.97 * $size['w'] * $size['h'] && ($box['fill'] ?? 0) >= 0.97;
+        } catch (\Throwable) {
+            return false;
+        } finally {
+            @unlink($in);
+        }
+    }
+
     /** @return array{w: int, h: int}|null */
     private static function size(string $path): ?array
     {

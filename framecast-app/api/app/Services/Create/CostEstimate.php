@@ -89,12 +89,19 @@ class CostEstimate
         return (int) ceil(max(0, $credits) / 2);
     }
 
-    /** A model call's real cost in credits from its tokens, at the tariff the gateway charges (create.anthropic_rates). */
-    public static function callCredits(array $call): int
+    /**
+     * A model call's real cost in credits from its tokens, at the rates of the model that ran it (create.model_rates),
+     * else the gateway's tariff. Fair credits 1.1 (2026-10-20): Sonnet plans were priced at Opus rates, 883 credits
+     * too much over 30 days.
+     */
+    public static function callCredits(array $call, ?string $model = null): int
     {
-        $r = config('create.anthropic_rates');
+        $model = $model !== null ? (string) preg_replace('#^anthropic[:/]#', '', $model) : '';
+        $r = ($model !== '' ? config('create.model_rates.'.$model) : null) ?? config('create.anthropic_rates');
+        $tokens = ($call['input_tokens'] ?? 0) + ($call['cache_write_tokens'] ?? 0) + ($call['cache_read_tokens'] ?? 0);
+        if (isset($r['long_above'], $r['long']) && $tokens > (int) $r['long_above']) $r = $r['long'];
         $micro = ($call['input_tokens'] ?? 0) * $r['input'] + ($call['output_tokens'] ?? 0) * $r['output']
-            + ($call['cache_write_tokens'] ?? 0) * $r['cache_write'] + ($call['cache_read_tokens'] ?? 0) * $r['cache_read'];
+            + ($call['cache_write_tokens'] ?? 0) * ($r['cache_write'] ?? $r['input']) + ($call['cache_read_tokens'] ?? 0) * ($r['cache_read'] ?? 0);
         return (int) ceil($micro / 4000);
     }
 
