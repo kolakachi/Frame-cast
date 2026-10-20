@@ -620,6 +620,12 @@ final class UgcChatService
             $out = $this->call($request, fn (UgcController $c, Request $r) => $t['mode'] === 'one_shot'
                 ? app()->call([$c, 'generateOneShot'], ['request' => $r]) : app()->call([$c, 'generate'], ['request' => $r]), $payload);
             if (isset($out['error'])) abort(422, $out['error']['message'] ?? 'It could not be started again.');
+            // The automatic Omni remake never costs more than the user approved (fair credits 4.1, 2026-10-20: a 766-credit
+            // remake of a 660-credit approval): the rest is ours, given back at once and taken off the take's hold.
+            if ($fallback && ($approved = (int) ($run['credits'] ?? 0)) > 0 && (int) ($out['credits_quoted'] ?? 0) > $approved) {
+                $this->capHold((int) ($out['takes'][0]['id'] ?? 0), (int) $out['credits_quoted'] - $approved, (int) $request->user()->workspace_id);
+                $out['credits_quoted'] = $approved;
+            }
             // The failed take goes; nothing was charged for it.
             foreach ($run['take_ids'] ?? [] as $old) {
                 try { $this->call($request, fn ($c, Request $r) => app()->call([app(\App\Http\Controllers\Api\V1\Project\ProjectController::class), 'destroy'], ['request' => $r, 'projectId' => (int) $old]), [], 'DELETE'); }
@@ -634,6 +640,23 @@ final class UgcChatService
         } finally {
             $lock->release();
         }
+    }
+
+    /** Gives back $over of a take's hold, once: what an automatic remake costs above the approved price. */
+    private function capHold(int $projectId, int $over, int $workspaceId): void
+    {
+        if ($projectId <= 0 || $over <= 0) return;
+        DB::transaction(function () use ($projectId, $over, $workspaceId) {
+            $scene = DB::table('scenes')->where('project_id', $projectId)->orderBy('scene_order')->lockForUpdate()->first(['id', 'image_generation_settings_json']);
+            if (! $scene) return;
+            $settings = json_decode((string) $scene->image_generation_settings_json, true) ?: [];
+            $back = min($over, (int) ($settings['oneshot_held'] ?? 0));
+            if ($back <= 0 || ! empty($settings['fallback_capped'])) return;
+            $settings['oneshot_held'] = (int) $settings['oneshot_held'] - $back;
+            $settings['fallback_capped'] = $back;
+            DB::table('scenes')->where('id', $scene->id)->update(['image_generation_settings_json' => json_encode($settings), 'updated_at' => now()]);
+            app(\App\Services\CreditService::class)->refund($workspaceId, $back, 'ugc-fallback-cap:'.$scene->id);
+        });
     }
 
     /**
@@ -695,7 +718,7 @@ final class UgcChatService
             if ($m->kind === 'making') {
                 foreach ($payload['runs'] ?? [] as $i => $run) {
                     $takes = $run['run_id'] ? $this->call($request, fn (UgcController $c, Request $r) => app()->call([$c, 'takes'], ['request' => $r]), ['run' => $run['run_id']], 'GET') : [];
-                    $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'aspect', 'credits', 'format', 'revision_export_id'])), $takes['takes'] ?? []);
+                    $payload['runs'][$i]['takes'] = array_map(fn ($t) => array_intersect_key($t, array_flip(['id', 'status', 'thumbnail_url', 'thumbnail_type', 'aspect', 'credits', 'format', 'revision_export_id', 'note'])), $takes['takes'] ?? []);
                     // Refused by the video model's moderation (not a fault of ours): the chat offers another model for it.
                     $declinedScene = collect($takes['takes'] ?? [])->filter(fn ($t) => ($t['status'] ?? '') === 'needs_attention')
                         ->map(fn ($t) => \App\Models\Scene::query()->where('project_id', (int) $t['id'])->orderBy('scene_order')->first()?->image_generation_settings_json ?? [])

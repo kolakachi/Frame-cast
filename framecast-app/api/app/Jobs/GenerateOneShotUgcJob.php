@@ -124,6 +124,11 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** A close-up of the cast presenter's face from their own photo (UgcFaceCrop), sent beside the dressed picture. */
     private ?string $faceRef = null;
 
+    /** Parts that failed and shipped without (fair credits 4.2): segment => planned seconds of a read not lip-synced. */
+    private array $undeliveredVoice = [];
+
+    private bool $musicMissed = false;
+
     public function handle(ReplicateVeoAdapter $veo, StorageService $storage, CreditService $credits): void
     {
         $project = Project::query()->find($this->projectId);
@@ -525,6 +530,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if (! $delivered) {
                 return;
             }
+            $this->refundUndelivered();
 
             // Delivered: the saved clips stay for SECTION_DAYS, for section remakes (ugc:prune-oneshot-parts removes them).
             $this->learnFrom('delivered', (string) $asset->storage_url, null);
@@ -865,6 +871,24 @@ class GenerateOneShotUgcJob implements ShouldQueue
     /** Make one segment on the provider (one automatic retry on a bare transport error) and download it. */
     private function generateSegment(ReplicateVeoAdapter $veo, Scene $scene, int $i, array $chunk, ?string $startFrame, array &$temps, ?string $continuity = null): string
     {
+        // A clip the provider already made for this exact shot, whose download failed, is fetched instead of bought again
+        // (fair credits 4.3, 2026-10-20: a retry after a failed download paid for the same clip twice).
+        $clipKey = sha1(json_encode([(string) ($chunk['prompt'] ?? ''), $chunk['seconds'] ?? null, $this->engine, $i, $this->aspect]));
+        $saved = ($scene->refresh()->image_generation_settings_json ?? [])['oneshot_output'] ?? null;
+        if (is_array($saved) && ($saved['key'] ?? '') === $clipKey) {
+            $kept = tempnam(sys_get_temp_dir(), 'oneshot-').'.mp4';
+            $temps[] = $kept;
+            $got = ! empty($saved['url']) && $this->download((string) $saved['url'], $kept);
+            if (! $got && ! empty($saved['prediction_id'])) {
+                $fresh = rescue(fn () => $veo->pollUntilDone((string) $saved['prediction_id'], 30), null, false);
+                $got = is_string($fresh) && $fresh !== '' && $this->download($fresh, $kept);
+            }
+            if ($got) {
+                $this->forgetOutput($scene);
+                \Illuminate\Support\Facades\Log::info('one-shot: a clip already made was fetched, not bought again', ['project_id' => $this->projectId, 'segment' => $i + 1]);
+                return $kept;
+            }
+        }
         // Provider containers occasionally die with a bare transport
         // error (httpx.ReadError, empty error string) — transient, and
         // worth one automatic retry before failing a multi-segment
@@ -951,14 +975,62 @@ class GenerateOneShotUgcJob implements ShouldQueue
             throw $lastTransient ?? new \RuntimeException(sprintf('Segment %d of %d did not finish in time. Retry the take — nothing was charged.', $i + 1, count($this->chunks)));
         }
 
+        // Where the made clip is, kept until it is safely downloaded: a retry fetches it instead of paying again.
+        $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [],
+            ['oneshot_output' => ['key' => $clipKey, 'url' => $url, 'prediction_id' => $predictionId ?? null]])])->save();
         $path = tempnam(sys_get_temp_dir(), 'oneshot-').'.mp4';
         $temps[] = $path;
-        file_put_contents($path, file_get_contents($url));
-        if (! filesize($path)) {
-            throw new \RuntimeException(sprintf('Segment %d came back empty.', $i + 1));
+        if (! $this->download($url, $path)) {
+            throw new \RuntimeException(sprintf('Segment %d was made but could not be downloaded. Retry the take: the clip is kept and will not be bought again.', $i + 1));
         }
+        $this->forgetOutput($scene);
 
         return $path;
+    }
+
+    /**
+     * What the take charged for but did not deliver comes back, once, and the take says so (fair credits 4.2,
+     * 2026-10-20): a read that could not be lip-synced (the presenter keeps the model's own voice there; 12 credits a
+     * planned second) and a music bed that could not be made (2 credits).
+     */
+    private function refundUndelivered(): void
+    {
+        $seconds = array_sum($this->undeliveredVoice);
+        $voice = $seconds > 0 ? (int) ceil($seconds) * CreditService::VIDEO_LIPSYNC_PER_SECOND : 0;
+        $music = $this->musicMissed ? CreditService::AI_MUSIC : 0;
+        $back = min($this->credits, $voice + $music);
+        if ($back <= 0) return;
+        $op = 'ugc-undelivered:'.$this->sceneId.':'.substr(sha1((string) ($this->runToken ?? $this->projectId)), 0, 10);
+        if (DB::table('credit_ledger')->where('operation', 'refund:'.$op)->exists()) return;
+        $workspaceId = (int) DB::table('projects')->where('id', $this->projectId)->value('workspace_id');
+        if ($workspaceId <= 0) return;
+        app(CreditService::class)->refund($workspaceId, $back, $op);
+        $parts = count($this->undeliveredVoice);
+        $note = trim(($voice > 0 ? 'Your read could not be synced to the presenter in '.($parts === 1 ? 'one part' : $parts.' parts').', so they speak in the model\'s own voice there. Remake '.($parts === 1 ? 'that section' : 'those sections').' to try your voice again. ' : '')
+            .($music > 0 ? 'The music could not be made, so the video plays without it. ' : '').$back.' credits came back for what was not delivered.');
+        Scene::query()->whereKey($this->sceneId)->get()->each(fn (Scene $scene) => $scene->forceFill([
+            'image_generation_settings_json' => array_merge($scene->image_generation_settings_json ?? [], ['undelivered_note' => $note, 'undelivered_credits' => $back])])->save());
+    }
+
+    /** Downloads a made clip, a few tries with a short wait; false when it never arrives whole. */
+    private function download(string $url, string $path): bool
+    {
+        for ($try = 0; $try < 3; $try++) {
+            try {
+                $bytes = preg_match('#^https?://#i', $url) ? \Illuminate\Support\Facades\Http::timeout(180)->get($url)->throw()->body() : (string) @file_get_contents($url);
+                if ($bytes !== '') { file_put_contents($path, $bytes); if (filesize($path) > 0) return true; }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('one-shot: a clip download failed', ['project_id' => $this->projectId, 'try' => $try + 1, 'error' => mb_substr($e->getMessage(), 0, 160)]);
+            }
+            if (! app()->runningUnitTests()) sleep(3 * ($try + 1));
+        }
+        return false;
+    }
+
+    private function forgetOutput(Scene $scene): void
+    {
+        $settings = $scene->refresh()->image_generation_settings_json ?? [];
+        if (isset($settings['oneshot_output'])) { unset($settings['oneshot_output']); $scene->forceFill(['image_generation_settings_json' => $settings])->save(); }
     }
 
     /**
@@ -1072,6 +1144,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             return $synced;
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('one-shot: lip-sync failed, Omni keeps its own voice', ['project_id' => $this->projectId, 'segment' => $i + 1, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            // Not delivered, so not charged (fair credits 4.2): its seconds come back when the take is delivered.
+            $this->undeliveredVoice[$i] = (float) ($this->chunks[$i]['seconds'] ?? $read['seconds'] ?? 0);
             return $clip;
         }
     }
@@ -1093,6 +1167,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if (! $run->successful() || ! filesize($out)) throw new \RuntimeException('the mix failed');
             return $out;
         } catch (\Throwable $e) {
+            $this->musicMissed = true; // not delivered, so not charged (fair credits 4.2)
             \Illuminate\Support\Facades\Log::warning('one-shot: music bed not added', ['project_id' => $this->projectId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
             return $path;
         }
@@ -1517,7 +1592,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if (! is_array($recipe) || (int) ($recipe['sceneId'] ?? 0) !== (int) $scene->getKey() || empty($recipe['chunks'])) return 'not_resumable';
             // A failed take gave its credits back: they are held again as it resumes, or it does not resume.
             if ((int) ($settings['oneshot_held'] ?? 0) <= 0) {
-                if (! self::hold($scene, (int) $project->workspace_id, (int) $recipe['credits'])) return 'short';
+                // An automatic Omni remake capped at the approved price stays capped when it resumes (fair credits 4.1).
+                if (! self::hold($scene, (int) $project->workspace_id, max(0, (int) $recipe['credits'] - (int) ($settings['fallback_capped'] ?? 0)))) return 'short';
                 $settings = $scene->refresh()->image_generation_settings_json ?? [];
             }
             $token = (string) Str::uuid();

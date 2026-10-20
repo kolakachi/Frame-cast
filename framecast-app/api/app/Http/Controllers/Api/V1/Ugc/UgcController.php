@@ -112,7 +112,9 @@ class UgcController extends Controller
                 'revision_export_id' => data_get($project->visual_brief, 'ugc_revision_export_id'),
                 'pending' => $pending,
                 'working' => $working,
-                'status' => $failed ? 'needs_attention' : ($pending ? 'generating' : 'ready_for_review')];
+                'status' => $failed ? 'needs_attention' : ($pending ? 'generating' : 'ready_for_review'),
+                // What a delivered take charged for but could not deliver, and gave back (fair credits 4.2).
+                'note' => (string) (($project->scenes->first()?->image_generation_settings_json ?? [])['undelivered_note'] ?? '') ?: null];
             if ($detail) {
                 $row['scene_rows'] = $sceneRows;
             }

@@ -21,6 +21,7 @@ class UgcOneShotResumeTest extends TestCase
     private ?int $failOn = null;
     private ?int $hangOn = null;
     private ?int $declineOn = null;
+    private ?int $remoteOn = null;
     private array $cancelled = [];
     private array $charged = [];
     private array $refunded = [];
@@ -69,6 +70,7 @@ class UgcOneShotResumeTest extends TestCase
             if ($this->hangOn !== null && $id === 'pred-'.$this->hangOn) return null;
             if ($this->declineOn !== null && $id === 'pred-'.$this->declineOn) throw new \App\Services\Generation\ProviderFailed('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
             if ($this->onPoll) ($this->onPoll)();
+            if ($this->remoteOn !== null && $id === 'pred-'.$this->remoteOn) return 'https://replicate.delivery/test/clip-'.$this->remoteOn.'.mp4';
             return $this->clip;
         });
         $veo->shouldReceive('cancel')->andReturnUsing(function ($id) { $this->cancelled[] = $id; });
@@ -903,5 +905,53 @@ class UgcOneShotResumeTest extends TestCase
         $this->run_($this->job($chunks));
         $this->assertStringContainsString('ADAPTED SHOT', $this->sentPrompts[1], 'apply: the next clip continues from how this one really ended');
         $this->assertSame('kept to plan', $this->settings()['trace']['1']['follow_on']['why']);
+    }
+
+    public function test_a_clip_made_but_not_downloaded_is_fetched_on_the_retry_not_bought_again(): void
+    {
+        // Fair credits 4.3 (2026-10-20): the provider made clip 3, its download failed; the retry paid for it again.
+        $this->remoteOn = 3;
+        \Illuminate\Support\Facades\Http::fake(['replicate.delivery/*' => \Illuminate\Support\Facades\Http::sequence()
+            ->push('', 500)->push('', 500)->push('', 500)->push((string) file_get_contents($this->clip), 200)]);
+        $e = $this->run_($this->job());
+        $this->assertNotNull($e);
+        $this->assertStringContainsString('could not be downloaded', (string) $this->settings()['last_error']);
+        $this->assertSame('https://replicate.delivery/test/clip-3.mp4', $this->settings()['oneshot_output']['url'], 'where the made clip is, kept');
+        $this->assertSame(3, $this->starts);
+        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
+        $resumed = null;
+        Bus::assertDispatched(GenerateOneShotUgcJob::class, function ($job) use (&$resumed) { $resumed = $job; return true; });
+        $this->assertNull($this->run_($resumed));
+        $this->assertSame(3, $this->starts, 'clip 3 was fetched, not made and paid for again');
+        $this->assertArrayNotHasKey('oneshot_output', $this->settings(), 'forgotten once it is safely in');
+        $this->assertNotNull(Scene::query()->find(70)->visual_asset_id);
+    }
+
+    public function test_a_read_not_lip_synced_and_music_not_made_are_given_back_and_said(): void
+    {
+        // Fair credits 4.2: shipped without the user's voice in one part (8 s) and without music; 8 x 12 + 2 come back.
+        $job = $this->job(null, 'tok-1');
+        $set = function (string $prop, $value) use ($job) { $r = new \ReflectionProperty($job, $prop); $r->setAccessible(true); $r->setValue($job, $value); };
+        $set('undeliveredVoice', [1 => 8.0]); $set('musicMissed', true);
+        $refund = new \ReflectionMethod($job, 'refundUndelivered'); $refund->setAccessible(true);
+        $refund->invoke($job);
+        $this->assertSame([98], $this->refunded);
+        $note = $this->settings()['undelivered_note'];
+        $this->assertStringContainsString('could not be synced to the presenter in one part', $note);
+        $this->assertStringContainsString('The music could not be made', $note);
+        $this->assertStringContainsString('98 credits came back', $note);
+        $this->assertSame(98, $this->settings()['undelivered_credits']);
+    }
+
+    public function test_an_automatic_omni_remake_never_costs_more_than_approved(): void
+    {
+        // Fair credits 4.1: a 766-credit Omni remake of a 660-credit approval gives 106 back at once and holds 660.
+        DB::table('scenes')->where('id', 70)->update(['image_generation_settings_json' => json_encode(['oneshot_held' => 766])]);
+        $cap = new \ReflectionMethod(\App\Services\Ugc\UgcChatService::class, 'capHold'); $cap->setAccessible(true);
+        $chat = app(\App\Services\Ugc\UgcChatService::class);
+        $cap->invoke($chat, 7, 106, 3);
+        $cap->invoke($chat, 7, 106, 3);
+        $this->assertSame([106], $this->refunded, 'once');
+        $this->assertSame([660, 106], [$this->settings()['oneshot_held'], $this->settings()['fallback_capped']]);
     }
 }
