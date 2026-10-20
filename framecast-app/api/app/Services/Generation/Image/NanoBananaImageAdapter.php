@@ -135,6 +135,8 @@ class NanoBananaImageAdapter implements ImageGenerationAdapter
         if (! empty($refs)) {
             $input['image_input'] = $refs;
         }
+        // Nano Banana Pro draws at 1K, 2K (its default) or 4K: the combined sheet is one 4K picture cut into cells.
+        if (in_array($options['resolution'] ?? null, ['1K', '2K', '4K'], true)) $input['resolution'] = $options['resolution'];
         return $input;
     }
 

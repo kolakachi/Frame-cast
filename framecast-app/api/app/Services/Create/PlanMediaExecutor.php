@@ -381,6 +381,7 @@ class PlanMediaExecutor
     {
         $subjects = $ctx['shot']['subjects'] ?? [];
         if (! $subjects) throw new RuntimeException('The sheet lists no subjects. Plan again.');
+        if (! empty($ctx['shot']['board_panels'])) return $this->combinedSheet($description, $ctx, $dir);
         $style = array_map(fn ($image) => $this->replicateUpload((string) file_get_contents($image), (new \finfo(FILEINFO_MIME_TYPE))->file($image)), array_slice($ctx['character_style_images'] ?? [], 0, 3));
         $avatar = collect($ctx['source_images'] ?? [])->first();
         $files = []; $jobs = []; $keys = [];
@@ -418,6 +419,119 @@ class PlanMediaExecutor
         return ['path' => $first['path'], 'mime' => (new \finfo(FILEINFO_MIME_TYPE))->file($first['path']), 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(),
             'extra' => $files, 'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT,
             'subject_keys' => array_values($keys), 'credits' => $drawn * CapabilityCatalogue::CHARACTER_MASTER_CREDITS];
+    }
+
+    /**
+     * The combined sheet (fair credits 3, 2026-10-20): the cast and every storyboard panel as one 4K picture, cut into
+     * the cast's files and the panels' files. A person is drawn from their photo and a product from its own photo, so
+     * face and colour hold; then the likeness, the product's look and each panel are checked before the user sees it.
+     */
+    private function combinedSheet(string $description, array $ctx, string $dir): array
+    {
+        $subjects = array_values($ctx['shot']['subjects']); $panels = array_values($ctx['shot']['board_panels']);
+        $aspect = (string) ($ctx['aspect_ratio'] ?? '9:16'); $style = (string) ($ctx['character_style'] ?? '');
+        $avatar = collect($ctx['source_images'] ?? [])->first(); $mime = fn (string $f) => (string) (new \finfo(FILEINFO_MIME_TYPE))->file($f);
+        // The pictures it is drawn from: the user's photo for their person, a subject's own photo (named, or the one other
+        // photo for a product), then style images; at most four.
+        $refs = []; $roles = []; $photoOf = [];
+        foreach ($subjects as $k => $sub) {
+            $photo = null;
+            if (! empty($sub['avatar']) && $avatar) $photo = $avatar;
+            elseif (! empty($sub['photo']) && ($f = self::namedFile((string) $sub['photo'], (array) ($ctx['cutout_files'] ?? [])))) $photo = $f['path'];
+            elseif (($sub['kind'] ?? '') === 'product' && count($others = array_values(array_filter($ctx['source_images'] ?? [], fn ($p) => $p !== $avatar))) === 1) $photo = $others[0];
+            if (! $photo || ! is_file($photo) || count($refs) >= 3) continue;
+            $refs[] = $photo; $photoOf[$k] = $photo;
+            $roles[] = ($sub['kind'] ?? 'character') === 'character' ? 'the person '.$sub['name'].': keep their exact face, skin tone, hair and build'
+                : 'the '.$sub['kind'].' '.$sub['name'].': keep its exact shape, colours, materials and any real label';
+        }
+        foreach (array_slice($ctx['character_style_images'] ?? [], 0, 4 - count($refs)) as $img) { $refs[] = $img; $roles[] = 'a style reference only: match its rendering, palette and light, not its people, text or branding'; }
+        $cells = [];
+        foreach ($subjects as $sub) $cells[] = ['text' => $sub['name'].', a reference picture: '.$sub['looks'].'. '.match ($sub['kind'] ?? 'character') {
+            'place' => 'An empty establishing view of this place: no people, nothing happening, its architecture, light and recurring objects clearly visible.',
+            'product' => 'The product alone in a three-quarter view on a plain surface, its shape, materials, colours and any real label clearly visible.',
+            default => (($sub['framing'] ?? 'full') === 'portrait' ? 'A head-and-shoulders portrait' : 'The whole figure').', standing relaxed in a three-quarter view, neutral expression, evenly lit.',
+        }];
+        foreach ($panels as $p) {
+            $toCamera = (bool) preg_match('/\b(to|into|at) (the )?(camera|lens|viewer)\b/i', (string) ($p['gaze'] ?? ''));
+            $cells[] = ['text' => 'the opening moment of a shot: '.trim((string) ($p['description'] ?? '')).'.'
+                .(! empty($p['action']) ? ' Action (its first moment): '.$p['action'].'.' : '').(! empty($p['gaze']) ? ' Gaze: '.$p['gaze'].'.' : '')
+                .(! empty($p['camera']) ? ' Camera and framing: '.$p['camera'].'.' : '').(! empty($p['screen']) ? ' The device screen is blank, evenly lit and bright, facing the camera.' : '')
+                .(! empty($p['note']) ? ' Correction from the user, which overrides the rest: '.$p['note'].'.' : '').($toCamera ? '' : ' Nobody looks into the camera.')];
+        }
+        [$cols, $rows] = CombinedSheet::layout(count($cells));
+        $prompt = CombinedSheet::prompt($cells, $roles, $description, $style, $aspect);
+        $urls = array_map(fn ($f) => $this->replicateUpload((string) file_get_contents($f), $mime($f)), $refs);
+        $sheet = $dir.'/combined.png'; $gridNote = null;
+        foreach ([0, 1] as $try) {
+            $key = hash('sha256', json_encode([$prompt, $aspect, '4K', array_map(fn ($f) => hash_file('sha256', $f), $refs), $try]));
+            $this->drawKept([0 => [$prompt, $style ?: 'cinematic', $aspect, $urls, ['resolution' => '4K']]], [0 => $key], [0 => $sheet], (int) ($ctx['workspace_id'] ?? 0), [0 => 'The combined sheet']);
+            if ($rects = CombinedSheet::cells($sheet, $cols, $rows)) break;
+        }
+        // Drawn twice without a clean grid: cut on the even grid, and say so beside the pictures.
+        if (! $rects) { $rects = CombinedSheet::evenCells($sheet, $cols, $rows); $gridNote = 'The sheet\'s grid came out uneven, so it was cut on an even grid: check each picture\'s edges.'; }
+        $castFiles = []; $boardFiles = [];
+        foreach ($subjects as $k => $sub) {
+            $out = $dir.'/sheet-'.$k.'.png';
+            if (! CombinedSheet::cut($sheet, $rects[$k], $aspect, $out)) throw new RuntimeException('The combined sheet could not be cut. Try again.');
+            $castFiles[] = ['path' => $out, 'title' => 'Sheet · '.$sub['name'], 'pose' => $sub['name']];
+        }
+        foreach ($panels as $j => $p) {
+            $out = $dir.'/panel-'.$j.'.png';
+            if (! CombinedSheet::cut($sheet, $rects[count($subjects) + $j], $aspect, $out)) throw new RuntimeException('The combined sheet could not be cut. Try again.');
+            $boardFiles[] = ['path' => $out, 'title' => $p['label'].(! empty($p['beat']) ? ' · '.$p['beat'] : ''), 'pose' => $p['label']];
+        }
+        // The panels' keys, as the storyboard computes them from this cast: it then reuses them instead of drawing.
+        $cast = array_map(fn ($f, $k) => ['sha256' => hash_file('sha256', $f['path']), 'subject' => $subjects[$k]['name']], $castFiles, array_keys($castFiles));
+        $hashes = array_map(fn ($p) => Storyboard::panelHash($p, $cast, $style, (string) ($p['aspect'] ?? $aspect), CharacterApproval::sourceIdentity($ctx)), $panels);
+        $checks = $this->panelChecks($boardFiles, $panels, (array) ($ctx['agreement']['required'] ?? []));
+        $checks['panels'] = [...$this->castChecks($subjects, $castFiles, $photoOf), ...$checks['panels'], ...($gridNote ? [['panel' => 'Sheet', 'ok' => false, 'issue' => $gridNote]] : [])];
+        if (collect($checks['panels'])->contains('ok', false)) $checks['status'] = 'issues';
+        $first = array_shift($castFiles);
+        return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(), 'extra' => $castFiles,
+            'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT, 'board' => $boardFiles, 'board_hashes' => $hashes,
+            'board_labels' => array_column($panels, 'label'), 'panel_checks' => $checks, 'credits' => CapabilityCatalogue::COMBINED_SHEET_CREDITS];
+    }
+
+    /**
+     * The cast cells against the photos they were drawn from: a person's likeness (the UGC face check, under 70 is
+     * flagged) and a product's or place's look (its shape and colours, a small vision check). [] when there are none.
+     */
+    private function castChecks(array $subjects, array $castFiles, array $photoOf): array
+    {
+        $uri = fn (string $f) => 'data:'.(new \finfo(FILEINFO_MIME_TYPE))->file($f).';base64,'.base64_encode((string) file_get_contents($f));
+        $out = [];
+        foreach ($photoOf as $k => $photo) {
+            $sub = $subjects[$k]; $cell = $castFiles[$k]['path'] ?? null;
+            if (! $cell) continue;
+            if (($sub['kind'] ?? 'character') === 'character') {
+                $score = app(\App\Services\Ugc\UgcFaceCheck::class)->scoreImage($uri($photo), $uri($cell));
+                if ($score !== null) $out[] = ['panel' => $sub['name'], 'ok' => $score >= 70, 'issue' => $score >= 70 ? '' : 'does not look enough like their photo (likeness '.$score.' of 100)'];
+                continue;
+            }
+            if ($v = $this->sameThing($photo, $cell, (string) $sub['name'])) $out[] = ['panel' => $sub['name'], 'ok' => $v['ok'], 'issue' => $v['issue']];
+        }
+        return $out;
+    }
+
+    /** Whether a drawn product or place is the one in its photo (shape, colours, label): ['ok', 'issue'] or null. */
+    private function sameThing(string $photo, string $drawn, string $name): ?array
+    {
+        $key = (string) config('services.anthropic.key');
+        if ($key === '') return null;
+        $img = function (string $f) { $small = $f.'.same.jpg'; Process::timeout(30)->run(['ffmpeg', '-v', 'error', '-y', '-i', $f, '-vf', 'scale=512:-2', '-q:v', '5', $small]);
+            $b = is_file($small) ? base64_encode((string) file_get_contents($small)) : ''; @unlink($small); return $b; };
+        [$a, $b] = [$img($photo), $img($drawn)];
+        if ($a === '' || $b === '') return null;
+        try {
+            $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(60)->post('https://api.anthropic.com/v1/messages', [
+                'model' => (string) config('create.check_model', 'claude-haiku-4-5-20251001'), 'max_tokens' => 200, 'messages' => [['role' => 'user', 'content' => [
+                    ['type' => 'text', 'text' => 'Image 1 is a real photo of '.$name.'. Image 2 is a drawing meant to show the same thing. Is image 2 clearly the same thing, with the same main colours and shape? Ignore style, angle and background. Reply with JSON only: {"ok": true|false, "issue": "what differs, in under 12 words, or empty"}'],
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => $a]],
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => $b]]]]]]);
+            $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+            $json = json_decode((string) substr($text, (int) strpos($text, '{'), (int) strrpos($text, '}') - (int) strpos($text, '{') + 1), true);
+        } catch (\Throwable) { return null; }
+        return is_bool($json['ok'] ?? null) ? ['ok' => $json['ok'], 'issue' => $json['ok'] ? '' : mb_substr(trim((string) ($json['issue'] ?? 'differs from its photo')), 0, 120)] : null;
     }
 
     /**
@@ -487,7 +601,7 @@ class PlanMediaExecutor
         $tasks = [];
         // Each job reports its own failure, so the ones that finished are not lost with it.
         foreach ($jobs as $k => $j) $tasks[$k] = static function () use ($j) {
-            try { return app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($j[0], $j[1], $j[2], ['reference_image_urls' => $j[3]]); }
+            try { return app(\App\Services\Generation\Image\NanoBananaProImageAdapter::class)->generate($j[0], $j[1], $j[2], ['reference_image_urls' => $j[3]] + (array) ($j[4] ?? [])); }
             catch (\Throwable $e) { return ['error' => mb_substr($e->getMessage(), 0, 300)]; }
         };
         $results = count($tasks) === 1 || app()->runningUnitTests() ? array_map(fn ($t) => $t(), $tasks) : \Illuminate\Support\Facades\Concurrency::run($tasks);

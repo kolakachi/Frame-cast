@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\{DB, Schema};
 use Tests\TestCase;
 
 /**
- * Fair credits, Part 1 (owner, 2026-10-20): no charge for broken work. Cases from the Beats audit and the prod check of
+ * Fair credits (owner, 2026-10-20): no charge for broken work (part 1), AI at cost (part 2), the combined sheet (part 3). Cases from the Beats audit and the prod check of
  * the cost audit: Sonnet plans priced at Opus rates, a gym scene "cut out" as the headphones, failed builds that kept
  * their credits.
  */
-class FairCreditsPart1Test extends TestCase
+class FairCreditsTest extends TestCase
 {
     public function test_planning_is_priced_at_the_model_that_ran(): void
     {
@@ -78,5 +78,34 @@ class FairCreditsPart1Test extends TestCase
         // A repair round is never counted: its cost is ours.
         DB::table('composition_attempts')->insert(['id' => 'r1', 'run_id' => 'run-b', 'kind' => 'agent', 'attempt_key' => 'repair-1', 'result_hash' => 'h', 'cost_microusd' => 500000, 'charged_credits' => 0]);
         $this->assertSame(1, CostEstimate::buildCharge('run-b', 'a9', 20000, 300), 'the next call pays only its own share; the repair is not counted');
+    }
+
+    public function test_the_combined_sheet_is_cut_along_its_gutters(): void
+    {
+        // A 3x3 sheet of 9:16 cells (90x160) with 8 px white gutters, as the model draws it.
+        $dir = sys_get_temp_dir(); $sheet = $dir.'/grid-'.uniqid().'.png';
+        $w = 3 * 90 + 2 * 8; $h = 3 * 160 + 2 * 8;
+        // Darkish cells (the gutters are the only bright, even lines).
+        $boxes = implode(',', array_map(fn ($k) => 'drawbox=x='.(($k % 3) * 98).':y='.(intdiv($k, 3) * 168).':w=90:h=160:color=0x'.sprintf('%02x%02x%02x', 40 + $k * 15, 120 - $k * 9, 60 + $k * 10).':t=fill', range(0, 8)));
+        exec('ffmpeg -v error -y -f lavfi -i color=c=white:s='.$w.'x'.$h.' -vf '.escapeshellarg($boxes).' -frames:v 1 '.escapeshellarg($sheet));
+        $this->assertSame([3, 3], \App\Services\Create\CombinedSheet::layout(6));
+        $this->assertSame([2, 2], \App\Services\Create\CombinedSheet::layout(4));
+        $cells = \App\Services\Create\CombinedSheet::cells($sheet, 3, 3);
+        $this->assertNotNull($cells, 'the gutters are found');
+        $this->assertCount(9, $cells);
+        foreach ($cells as $k => $cell) {
+            $this->assertEqualsWithDelta(($k % 3) * 98, $cell['x'], 4, "cell $k starts at its column");
+            $this->assertEqualsWithDelta(intdiv($k, 3) * 168, $cell['y'], 4, "cell $k starts at its row");
+        }
+        $out = $dir.'/cell-'.uniqid().'.png';
+        $this->assertTrue(\App\Services\Create\CombinedSheet::cut($sheet, $cells[4], '9:16', $out));
+        [$cw, $ch] = getimagesize($out);
+        $this->assertEqualsWithDelta(9 / 16, $cw / $ch, 0.02, 'a cell keeps the video\'s shape');
+        // A picture with no gutters is not a grid.
+        $plain = $dir.'/plain-'.uniqid().'.png';
+        exec('ffmpeg -v error -y -f lavfi -i testsrc2=s=288x512 -frames:v 1 '.escapeshellarg($plain));
+        $this->assertNull(\App\Services\Create\CombinedSheet::cells($plain, 3, 3));
+        $this->assertCount(9, \App\Services\Create\CombinedSheet::evenCells($plain, 3, 3), 'it is then cut on the even grid');
+        @unlink($sheet); @unlink($out); @unlink($plain);
     }
 }

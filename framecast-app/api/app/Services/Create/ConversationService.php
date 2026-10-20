@@ -334,7 +334,8 @@ class ConversationService
                     $characterOk = $character && hash_equals($character['token'], (string) ($plan['character_approval'] ?? ''));
                     $hasBoard = collect($planMedia)->contains('kind', 'storyboard');
                     $board = $characterOk && $hasBoard ? CharacterApproval::board($plan, $settings, (int) $user->workspace_id, $files, $character) : null;
-                    $boardOk = ! $hasBoard || ($board && hash_equals($board['token'], (string) ($plan['storyboard_approval'] ?? '')));
+                    // Panels drawn on the combined sheet are approved with it (fair credits 3).
+                    $boardOk = ! $hasBoard || ($board && (! empty($board['in_sheet']) || hash_equals($board['token'], (string) ($plan['storyboard_approval'] ?? ''))));
                     if ($buildStage === null || $stage === 'storyboard') $stage = ! $characterOk ? 'character' : (! $boardOk ? 'storyboard' : 'full_video');
                     if ($stage === 'storyboard') abort_unless($characterOk, 422, 'Approve the character before the storyboard is drawn.');
                     if (in_array($stage, ['character', 'storyboard'], true)) $step = $stage;

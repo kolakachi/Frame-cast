@@ -68,6 +68,13 @@ class CapabilityCatalogue
     /** Nano Banana Pro at 35 credits an image: a base character plus up to 5 poses. Cut-outs are negligible. */
     public const POSE_CREDITS = 210;
     public const CHARACTER_MASTER_CREDITS = 35;
+    /**
+     * The combined sheet (fair credits 3, 2026-10-20): the cast and every storyboard panel drawn as one 4K Nano Banana
+     * Pro picture and cut into cells, instead of one 2K image each (six images, 210 credits, on the Beats video).
+     */
+    public const COMBINED_SHEET_CREDITS = 75;
+    /** The most cells one combined sheet holds: a 3×3 grid of the video's own shape. */
+    public const COMBINED_SHEET_CELLS = 9;
     public const CHARACTER_VARIANT_CREDITS = 35;
 
     /** One second of padding so the bed covers the whole video. */

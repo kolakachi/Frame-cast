@@ -45,10 +45,14 @@ class Storyboard
         return $files ? array_map(fn ($f, $k) => $f + ['subject' => $r['poses'][$k] ?? null], $files, array_keys($files)) : null;
     }
 
-    /** Panels already drawn in this creation, by panel hash: [hash => file]. */
+    /** Panels already drawn in this creation, by panel hash: [hash => file]; a combined sheet's panels count too. */
     public static function prior(string $conversationId): array
     {
         $out = [];
+        foreach (DB::table('create_plan_media')->where('conversation_id', $conversationId)->where('kind', 'reference_sheet')->where('status', 'succeeded')->orderBy('updated_at')->get() as $row) {
+            $r = json_decode((string) $row->record_json, true) ?: [];
+            foreach ((array) ($r['board_hashes'] ?? []) as $k => $h) if (isset($r['board_files'][$k])) $out[$h] = $r['board_files'][$k];
+        }
         foreach (DB::table('create_plan_media')->where('conversation_id', $conversationId)->where('kind', 'storyboard')->where('status', 'succeeded')->orderBy('updated_at')->get() as $row) {
             $r = json_decode((string) $row->record_json, true) ?: [];
             $files = array_values(array_filter([$r['file'] ?? null, ...($r['more_files'] ?? [])]));

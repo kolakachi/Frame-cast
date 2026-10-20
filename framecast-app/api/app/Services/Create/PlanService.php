@@ -507,10 +507,15 @@ class PlanService
         $board = $candidate ? CharacterApproval::board(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), (int) $c->workspace_id, null, $candidate) : null;
         // A talking face or a ready rig attached to the conversation performs without new media.
         $performers = CharacterPerformance::performers($c->id);
-        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => array_map(fn ($img, $k) => $img + ['label' => $candidate['names'][$k] ?? null], $candidate['images'], array_keys($candidate['images'])),
+        // A combined sheet shows its cast and its panels together, approved once (fair credits 3).
+        $inSheet = ! empty($board['in_sheet']);
+        $castImages = $candidate ? array_map(fn ($img, $k) => $img + ['label' => $candidate['names'][$k] ?? null], $candidate['images'], array_keys($candidate['images'])) : [];
+        return ['performance_issues' => CharacterPerformance::issues(self::quotePlan($p, $row->id), json_decode($c->settings_json, true), self::selectedMedia($p), $performers), 'character_preview' => $candidate ? ['token' => $candidate['token'], 'images' => [...$castImages, ...($inSheet ? $board['images'] : [])],
+            'combined' => $inSheet, 'panel_checks' => $inSheet ? $board['panel_checks'] : null,
             'approved' => hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? '')), 'kind' => $candidate['kind'] ?? null,
             'looks' => $p['selections']['character_looks'] ?? [], 'subjects' => ShotRoute::sheet(collect($p['media'] ?? [])->firstWhere('kind', 'reference_sheet') ?? [])['subjects']] : null,
-            'storyboard_preview' => $board ? ['token' => $board['token'], 'images' => $board['images'], 'approved' => hash_equals($board['token'], (string) ($p['selections']['storyboard_approval'] ?? '')),
+            'storyboard_preview' => $board ? ['token' => $board['token'], 'images' => $board['images'], 'in_sheet' => $inSheet,
+                'approved' => $inSheet ? hash_equals($candidate['token'], (string) ($p['selections']['character_approval'] ?? '')) : hash_equals($board['token'], (string) ($p['selections']['storyboard_approval'] ?? '')),
                 'panel_checks' => $board['panel_checks'], 'panel_notes' => $p['selections']['panel_notes'] ?? []] : null, 'id' => $row->id, 'message_id' => $row->message_id, 'status' => $row->status, 'provider' => $row->provider,
             'stale' => $row->status === 'proposed' && $this->stale($row, $c), 'plan' => json_decode($row->plan_json, true), 'created_at' => $row->created_at, 'built' => self::built($row->id), 'approved' => self::approved($row->id),
             // What would be bought as the selections stand: generated shots with their engine, length and price.
@@ -1186,6 +1191,8 @@ class PlanService
             try { $free = CompositionVariables::validate($decls, $raw['free_edit']); } catch (\Symfony\Component\HttpKernel\Exception\HttpException) { $free = []; }
         }
         $plan['free_edit'] = $free ?: null;
+        // Fair credits 3: whether this plan draws its cast and storyboard as one combined sheet, fixed when it is made.
+        $plan['combined_sheet'] = config('create.combined_sheet') || in_array($workspaceId, (array) config('create.combined_sheet_workspaces', []), true) ? true : null;
         $plan['new_wording'] = self::newWording([...$callouts, ...$narration], $ctx);
         // On a change, the parts it alters (owner's component rule); unknown or empty means "treat as a full edit".
         $plan['change_touches'] = array_values(array_unique(array_intersect(array_map(fn ($t) => is_string($t) ? strtolower(trim($t)) : '', (array) ($raw['change_touches'] ?? [])), ['voice', 'music', 'sound_effects', 'on_screen_words', 'pictures', 'timing', 'people'])));
@@ -1307,6 +1314,14 @@ class PlanService
             // The storyboard is drawn right after the cast it depends on.
             $board = ShotRoute::storyboard(array_values(array_filter($items, fn ($m) => $m['kind'] === 'generated_shot')), (array) ($plan['selections']['panel_notes'] ?? []));
             $at = array_search('reference_sheet', array_column($items, 'kind'), true);
+            // Fair credits 3 (2026-10-20): the cast and the panels are drawn as one combined sheet and approved together,
+            // when they fit its grid. The storyboard then reuses the sheet's panels for nothing.
+            // A cast carried from an earlier plan stays as it is (its people are kept): only its new panels are drawn.
+            if (! empty($plan['combined_sheet']) && empty($items[$at]['carried']) && count($items[$at]['subjects'] ?? []) + count($board['panels']) <= \App\Services\Create\CapabilityCatalogue::COMBINED_SHEET_CELLS) {
+                $items[$at]['board_panels'] = $board['panels'];
+                $items[$at]['credits'] = \App\Services\Create\CapabilityCatalogue::COMBINED_SHEET_CREDITS;
+                $board = [...$board, 'credits' => 0, 'in_sheet' => true, 'description' => 'The storyboard panels, drawn on the combined sheet'];
+            }
             array_splice($items, $at + 1, 0, [$board]);
         }
         // A UGC take speaks the script itself: no separate narration is bought, unless a cloned voice is selected, when

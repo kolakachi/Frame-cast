@@ -107,7 +107,7 @@ Reply with one JSON object and nothing else:
  "decisions": [{"id": string, "question": string, "options": [{"requirement_ids":[string],"id": string, "label": string, "detail": string, "kind": "included"|"media", "tool": string|null, "subject": "source"|"approved_character"}]}],
  "kept_as_is": [string],
  "media": [{"requirement_ids":[string],"kind": string, "description": string (for generated_shot: the shot as a director's brief: subject, action, camera move, light, mood, in the look; for reference_sheet: the look of the whole video; for ugc_take: the presenter, setting and delivery), "subject": "source"|"approved_character",
-   generated_shot adds "engine", "seconds", "refs", "first_frame", "audio", "line", "aspect", "beat", "why", "action", "gaze", "camera", "end_state", "screen"; reference_sheet adds "subjects": [{"name", "kind": "character"|"place"|"product", "looks", "framing": "full"|"portrait", "avatar"}]; ugc_take adds "presenter", "engine", "lines", "aspect", "beat", "why", "outfit", "setting", "holding"}],
+   generated_shot adds "engine", "seconds", "refs", "first_frame", "audio", "line", "aspect", "beat", "why", "action", "gaze", "camera", "end_state", "screen"; reference_sheet adds "subjects": [{"name", "kind": "character"|"place"|"product", "looks", "framing": "full"|"portrait", "avatar", "photo" (the attached file that shows this product or place, by its name, so it is drawn from it)}]; ugc_take adds "presenter", "engine", "lines", "aspect", "beat", "why", "outfit", "setting", "holding"}],
  "left_out": string,
  "agreement": {"preserve": [string], "replace": [string], "flexible": [string], "required": [string]},
  "narration": [string] (the spoken script, one line per beat; [] for no voice),

@@ -729,7 +729,8 @@ class CreateIntegrationTest extends TestCase
 
     public function test_the_character_and_the_storyboard_are_separate_approved_steps_and_a_note_redraws_one_panel(): void
     {
-        $this->pilot(); config(['create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000, 'services.anthropic.key' => '']);
+        // The separate steps (a carried cast, or more than nine cells); the combined sheet has its own test.
+        $this->pilot(); config(['create.combined_sheet' => false, 'create.combined_sheet_workspaces' => [], 'create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000, 'services.anthropic.key' => '']);
         $c = $this->brief();
         $service = app(\App\Services\Create\PlanService::class);
         $plan = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-board');
@@ -826,6 +827,71 @@ class CreateIntegrationTest extends TestCase
     }
 
     private function collectDrawn(array $drawn): array { return $drawn; }
+
+    public function test_the_combined_sheet_draws_the_cast_and_the_storyboard_once_and_one_approval_makes_the_video(): void
+    {
+        // Fair credits 3 (owner, 2026-10-20): one 4K picture for the cast and every panel, approved once.
+        $this->pilot(); config(['create.combined_sheet' => true, 'create.planner' => 'offline', 'create.pilot_budget_microusd' => 50_000_000, 'services.anthropic.key' => '']);
+        $c = $this->brief();
+        $service = app(\App\Services\Create\PlanService::class);
+        $plan = $service->propose($this->owner, $c->id, (int) $this->conversations->conversation($this->owner, $c->id)->version, 'plan-combined');
+        $json = json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true);
+        $json['media'] = [
+            ['kind' => 'reference_sheet', 'description' => 'anime night', 'subjects' => [['name' => 'Maya', 'kind' => 'character', 'looks' => 'red coat'], ['name' => 'Shop', 'kind' => 'place', 'looks' => 'candle shop']], 'credits' => 70],
+            ['kind' => 'generated_shot', 'description' => 'Maya lights a candle', 'engine' => 'seedance25', 'refs' => ['Maya', 'Shop'], 'action' => 'she lights the wick', 'gaze' => 'on the flame', 'seconds' => 5, 'credits' => 1],
+            ['kind' => 'generated_shot', 'description' => 'Maya reads her phone', 'engine' => 'omni', 'refs' => ['Maya'], 'action' => 'she reads the post', 'gaze' => 'on her phone', 'seconds' => 5, 'credits' => 1]];
+        $json['shot_context'] = ['has_avatar' => false, 'aspect_ratio' => '9:16', 'language' => 'en'];
+        $json['look_first'] = $json['selections']['look_first'] = true;
+        DB::table('create_plans')->where('id', $plan['id'])->update(['plan_json' => json_encode($json)]);
+        $version = fn () => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+
+        // One step draws the sheet, priced as one picture, with both panels on it.
+        $look = $this->conversations->quote($this->owner, $c->id, $version());
+        $sheetItem = collect($look->payload_json['plan_media'])->firstWhere('kind', 'reference_sheet');
+        $this->assertSame(['character', \App\Services\Create\CapabilityCatalogue::COMBINED_SHEET_CREDITS, 2], [$look->payload_json['step'], $sheetItem['credits'], count($sheetItem['board_panels'])]);
+        app()->instance(\App\Services\Create\PlanMediaExecutor::class, new class extends \App\Services\Create\PlanMediaExecutor {
+            public function __construct() {}
+            public function produce(string $kind, string $description, array $ctx, string $dir): array {
+                $png = function ($tag) use ($dir) { $p = $dir.'/'.$tag.'.png'; \Illuminate\Support\Facades\Process::run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x'.substr(md5($tag), 0, 6).':s=8x8', '-frames:v', '1', $p]); return $p; };
+                $maya = $png('maya'); $shop = $png('shop');
+                $cast = [['sha256' => hash_file('sha256', $maya), 'subject' => 'Maya'], ['sha256' => hash_file('sha256', $shop), 'subject' => 'Shop']];
+                $panels = $ctx['shot']['board_panels'];
+                return ['path' => $maya, 'mime' => 'image/png', 'title' => 'Sheet · Maya', 'provider_id' => 'sheet-1', 'extra' => [['path' => $shop, 'title' => 'Sheet · Shop', 'pose' => 'Shop']],
+                    'poses' => ['Maya', 'Shop'], 'character_contract' => \App\Services\Create\CharacterApproval::CONTRACT,
+                    'board' => array_map(fn ($p, $k) => ['path' => $png('panel-'.$k), 'title' => $p['label'], 'pose' => $p['label']], $panels, array_keys($panels)),
+                    'board_hashes' => array_map(fn ($p) => \App\Services\Create\Storyboard::panelHash($p, $cast, (string) $ctx['character_style'], $p['aspect'] ?? '9:16', \App\Services\Create\CharacterApproval::sourceIdentity($ctx)), $panels),
+                    'board_labels' => array_column($panels, 'label'), 'panel_checks' => ['status' => 'issues', 'panels' => [['panel' => 'Maya', 'ok' => false, 'issue' => 'does not look enough like their photo (likeness 61 of 100)']]],
+                    'credits' => \App\Services\Create\CapabilityCatalogue::COMBINED_SHEET_CREDITS];
+            }
+        });
+        $run = $this->conversations->approve($this->owner, $c->id, $look->id, 'approve-combined', true);
+        $claim = $this->runs->claim();
+        app(\App\Services\Create\PlanMediaService::class)->produce($run->id, $claim['lease_token'], 0);
+        $this->runs->finish($run->id, $claim['lease_token'], ['status' => 'step_ready', 'summary' => 'The cast and storyboard are ready for you to check.'], null, null);
+
+        // The user sees the cast and the frames together, with what the checks found.
+        $present = fn () => $service->present(DB::table('create_plans')->where('id', $plan['id'])->first(), DB::table('create_conversations')->where('id', $c->id)->first());
+        $shown = $present()['character_preview'];
+        $this->assertSame(['Maya', 'Shop', 'Panel 1', 'Panel 2'], array_column($shown['images'], 'label'));
+        $this->assertTrue($shown['combined']);
+        $this->assertSame('does not look enough like their photo (likeness 61 of 100)', $shown['panel_checks']['panels'][0]['issue']);
+        $this->assertTrue($present()['storyboard_preview']['in_sheet']);
+        $this->assertFalse($present()['storyboard_preview']['approved'], 'not before the sheet is approved');
+
+        // One approval: the next step is the video itself, and the storyboard costs nothing (its panels are on the sheet).
+        $next = $this->conversations->quote($this->owner, $c->id, $version(), null, ['character_approval' => $shown['token']]);
+        $this->assertNull($next->payload_json['step']);
+        $this->assertSame(0, collect($next->payload_json['plan_media'])->firstWhere('kind', 'storyboard')['credits'] ?? 0);
+        $this->withoutMiddleware(\App\Http\Middleware\AuthenticateWithJwt::class);
+        $started = $this->actingAs($this->owner)->postJson("/api/v1/create/conversations/$c->id/plans/{$plan['id']}/approve-step",
+            ['step' => 'character', 'token' => $shown['token'], 'expected_version' => $version(), 'max_credits' => $next->credits_max, 'idempotency_key' => 'combined-video'])->assertStatus(202);
+        $this->assertSame('full_video', $started->json('data.build_stage'));
+        $this->assertTrue($present()['storyboard_preview']['approved'], 'approved with the sheet');
+        // The video is made from the sheet's cast and its panels.
+        $files = \App\Services\Create\CharacterApproval::requireApproved(\App\Services\Create\PlanService::quotePlan(json_decode(DB::table('create_plans')->where('id', $plan['id'])->value('plan_json'), true), $plan['id']),
+            json_decode(DB::table('create_conversations')->where('id', $c->id)->value('settings_json'), true), (int) $this->workspace->id);
+        $this->assertSame(['Maya', 'Shop', 'Panel 1', 'Panel 2'], $files['names']);
+    }
 
     public function test_a_run_that_stops_while_a_clip_renders_hands_it_to_the_next_run_without_a_hold(): void
     {

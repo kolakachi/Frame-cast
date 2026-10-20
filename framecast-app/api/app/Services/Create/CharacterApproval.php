@@ -103,6 +103,7 @@ class CharacterApproval
             $input = json_decode((string) DB::table('composition_runs')->where('id', DB::table('create_plan_media')->where('id', $character['media_id'])->value('run_id'))->value('input_json'), true) ?: [];
             $sourceFiles = $input['input_files'] ?? [];
         }
+        if ($inSheet = self::boardInSheet($plan, $settings, $workspace, $sourceFiles, $character, $board)) return $inSheet;
         $boardHash = self::mediaHash($board + ['cast_sha256' => Storyboard::castSha($character['files'])], ['narration' => $plan['narration'] ?? [], 'voice' => $plan['voice'] ?? null,
             'aspect_ratio' => $settings['aspect_ratio'] ?? '9:16', 'character_style' => $plan['character_style'] ?? '', 'source_files' => $sourceFiles]);
         $row = DB::table('create_plan_media')->where('plan_id', $plan['plan_id'])->where('kind', 'storyboard')->where('description_hash', $boardHash)->where('status', 'succeeded')->first();
@@ -118,6 +119,33 @@ class CharacterApproval
         }
         $token = hash('sha256', json_encode([$plan['plan_id'], 'board', $character['token'], $boardHash, array_map(fn ($f) => [$f['asset_id'], $f['sha256']], $panels)]));
         return ['token' => $token, 'images' => $images, 'media_id' => $row->id, 'files' => $panels, 'names' => $b['poses'] ?? [], 'panel_checks' => $b['panel_checks'] ?? null];
+    }
+
+    /**
+     * The storyboard drawn on the combined sheet (fair credits 3): when the approved sheet carries every panel this plan
+     * asks for, the panels are those cells and they are approved with the sheet, never in a second step.
+     */
+    private static function boardInSheet(array $plan, array $settings, int $workspace, array $sourceFiles, array $character, array $board): ?array
+    {
+        $r = json_decode((string) DB::table('create_plan_media')->where('id', $character['media_id'])->value('record_json'), true) ?: [];
+        if (empty($r['board_files']) || empty($r['board_hashes'])) return null;
+        $cast = array_map(fn ($f, $k) => $f + ['subject' => $character['names'][$k] ?? null], $character['files'], array_keys($character['files']));
+        $sources = self::sourceIdentity(['source_files' => $sourceFiles]); $aspect = (string) ($settings['aspect_ratio'] ?? '9:16');
+        $files = []; $names = [];
+        foreach ((array) ($board['panels'] ?? []) as $p) {
+            $at = array_search(Storyboard::panelHash($p, $cast, (string) ($plan['character_style'] ?? ''), (string) ($p['aspect'] ?? $aspect), $sources), $r['board_hashes'], true);
+            if ($at === false || ! isset($r['board_files'][$at])) return null;
+            $files[] = $r['board_files'][$at]; $names[] = $r['board_labels'][$at] ?? $p['label'] ?? null;
+        }
+        if (! $files) return null;
+        $images = [];
+        foreach ($files as $k => $f) {
+            $a = Asset::where('workspace_id', $workspace)->where('status', '!=', 'archived')->find($f['asset_id']);
+            if (! $a || $a->asset_type !== 'image') return null;
+            $images[] = ['asset_id' => (int) $a->id, 'name' => $a->title, 'label' => $names[$k], 'preview_url' => app(StorageService::class)->url($a->storage_url)];
+        }
+        return ['token' => hash('sha256', json_encode([$plan['plan_id'], 'board-in-sheet', $character['token']])), 'images' => $images, 'media_id' => $character['media_id'],
+            'files' => $files, 'names' => $names, 'panel_checks' => $r['panel_checks'] ?? null, 'in_sheet' => true];
     }
 
     /** The character is approved (the step before the storyboard). */
@@ -140,7 +168,8 @@ class CharacterApproval
             'Review and approve the character before generating poses or the full video.');
         if ($candidate['kind'] === 'reference_sheet' && collect($plan['media'] ?? [])->contains('kind', 'storyboard')) {
             $board = self::board($plan, $settings, $workspace, $sourceFiles, $candidate);
-            abort_unless($board && hash_equals($board['token'], (string) ($plan['storyboard_approval'] ?? '')), 422, 'Review and approve the storyboard before the video is made.');
+            // Panels drawn on the combined sheet are approved with it.
+            abort_unless($board && (! empty($board['in_sheet']) || hash_equals($board['token'], (string) ($plan['storyboard_approval'] ?? ''))), 422, 'Review and approve the storyboard before the video is made.');
             $candidate['names'] = [...array_pad($candidate['names'], count($candidate['files']), null), ...$board['names']];
             $candidate['files'] = [...$candidate['files'], ...$board['files']];
             $candidate['panel_checks'] = $board['panel_checks'];

@@ -85,6 +85,7 @@ class PlanMediaService
             $record['requirement_ids'] = $item['requirement_ids'] ?? [];
             if (! empty($record['file'])) $record['file'] = app(RunService::class)->reuseGenerated($runId, $lease, $record['file']);
             foreach ($record['more_files'] ?? [] as $k => $f) $record['more_files'][$k] = app(RunService::class)->reuseGenerated($runId, $lease, $f);
+            foreach ($record['board_files'] ?? [] as $k => $f) $record['board_files'][$k] = app(RunService::class)->reuseGenerated($runId, $lease, $f);
             return [...$record, 'reused' => true, 'charged_credits' => 0];
         }
 
@@ -156,6 +157,10 @@ class PlanMediaService
             $more = [];
             foreach ($made['extra'] ?? [] as $x) $more[] = app(RunService::class)->generated($runId, $lease, $x['path'], $x['title'],
                 ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => $item['kind'], 'pose' => $x['pose'] ?? null], 'provider_id' => $made['provider_id']]);
+            // A combined sheet's storyboard panels, stored beside its cast (fair credits 3).
+            $board = [];
+            foreach ($made['board'] ?? [] as $x) $board[] = app(RunService::class)->generated($runId, $lease, $x['path'], $x['title'],
+                ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => 'storyboard', 'pose' => $x['pose'] ?? null], 'provider_id' => $made['provider_id']]);
             $id = preg_replace('/[^a-zA-Z0-9_-]/', '-', $made['provider_id']);
             $attempts->bindPrediction($runId, $lease, $attempt['id'], substr($id.'-'.substr($attempt['id'], 0, 8), 0, 160));
             // An item that reports what it actually made (a storyboard reusing unchanged panels) is charged for that, never above the quote.
@@ -166,7 +171,7 @@ class PlanMediaService
             $record = ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null,
                 'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
                 'character_contract' => $made['character_contract'] ?? null, 'master_sha256' => $made['master_sha256'] ?? null,
-                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks', 'subject_keys']))];
+                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks', 'subject_keys', 'board_hashes', 'board_labels'])), ...($board ? ['board_files' => $board] : [])];
             $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
             $recorded = true;
             return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];

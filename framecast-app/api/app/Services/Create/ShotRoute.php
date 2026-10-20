@@ -41,7 +41,7 @@ class ShotRoute
     public const PANEL_CREDITS = 35;
 
     /** Fields a routed item carries from the plan to the build. */
-    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256', 'screen', 'outfit', 'setting', 'holding', 'dress_credits'];
+    public const ROUTE_KEYS = ['engine', 'engine_label', 'seconds', 'refs', 'first_frame', 'audio', 'line', 'aspect', 'segments', 'presenter', 'subjects', 'beat', 'why', 'route_notes', 'lines', 'problem', 'speech_mode', 'action', 'gaze', 'camera', 'end_state', 'panels', 'cast_sha256', 'screen', 'outfit', 'setting', 'holding', 'dress_credits', 'board_panels'];
 
     /**
      * The storyboard: one panel per generated shot, drawn from the cast, showing the shot's opening moment (its
@@ -445,7 +445,10 @@ class ShotRoute
                 // What it is decides how it is drawn: a character neutral, a place empty, a product in clear view.
                 'kind' => in_array($s['kind'] ?? null, ['character', 'place', 'product'], true) ? $s['kind'] : 'character',
                 'framing' => in_array($s['framing'] ?? null, ['full', 'portrait'], true) ? $s['framing'] : 'full',
-                'avatar' => (bool) ($s['avatar'] ?? false)])->unique('name')->take(4)->values()->all();
+                'avatar' => (bool) ($s['avatar'] ?? false),
+                // The attached file that shows this subject (the user's product or place photo): drawn from it, so its
+                // shape and colour hold (2026-10-20: the slate-blue Beats came out black from words alone).
+                'photo' => mb_substr(trim((string) ($s['photo'] ?? '')), 0, 160)])->map(fn ($s) => array_filter($s, fn ($v) => $v !== ''))->unique('name')->take(4)->values()->all();
         return ['subjects' => $subjects, 'credits' => count($subjects) * CapabilityCatalogue::CHARACTER_MASTER_CREDITS];
     }
 }

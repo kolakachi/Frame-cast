@@ -73,12 +73,14 @@ class ShotRouteTest extends TestCase
             ['kind' => 'generated_shot', 'description' => 'push through the lit window', 'engine' => 'seedance25', 'refs' => ['sheet'], 'seconds' => 5, 'credits' => 1],
             ['kind' => 'ugc_take', 'description' => 'founder to camera', 'presenter' => 'avatar', 'credits' => 1],
             ['kind' => 'voiceover', 'description' => 'narration', 'credits' => 3],
-        ], 'selections' => ['narration' => ['Every brand starts here.', 'Start with the Test Pass.'], 'choices' => []], 'decisions' => [], 'shot_context' => ['has_avatar' => true, 'aspect_ratio' => '9:16']];
+        ], 'selections' => ['narration' => ['Every brand starts here.', 'Start with the Test Pass.'], 'choices' => []], 'decisions' => [], 'shot_context' => ['has_avatar' => true, 'aspect_ratio' => '9:16'], 'combined_sheet' => true];
         $media = PlanService::selectedMedia($plan);
         $this->assertSame('reference_sheet', $media[0]['kind'], 'the sheet is made before the clips that use it');
         $this->assertNotContains('voiceover', array_column($media, 'kind'), 'the take speaks the script');
         $sheet = collect($media)->firstWhere('kind', 'reference_sheet');
-        $this->assertSame(70, $sheet['credits']);
+        // Fair credits 3: the cast and the shot's panel are one combined sheet; the storyboard reuses its panel.
+        $this->assertSame(\App\Services\Create\CapabilityCatalogue::COMBINED_SHEET_CREDITS, $sheet['credits']);
+        $this->assertSame([0, true], [collect($media)->firstWhere('kind', 'storyboard')['credits'], collect($media)->firstWhere('kind', 'storyboard')['in_sheet']]);
         $this->assertSame(5 * ShotRoute::perSecond('seedance25'), collect($media)->firstWhere('kind', 'generated_shot')['credits']);
         $this->assertTrue(ShotRoute::usesSheet(collect($media)->firstWhere('kind', 'generated_shot')));
         $this->assertFalse(ShotRoute::usesSheet(collect($media)->firstWhere('kind', 'ugc_take')), 'an avatar take needs no sheet');

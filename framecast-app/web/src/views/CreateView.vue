@@ -1289,7 +1289,10 @@ const isRedrawing = (p, name) => !!active.value && redrawing.value?.planId === p
 watch(() => !!active.value, on => { if (!on && redrawing.value) { redrawing.value = null; if (stepDrawer.value?.step === 'character') { const p = stepPlan.value; if (p) looksDraft.value = Object.fromEntries((characterStep(p)?.subjects || []).map(x => [x.name, characterStep(p).looks?.[x.name] ?? x.looks])) } } })
 const stepPlan = computed(() => stepDrawer.value ? plans.value.find(p => p.id === stepDrawer.value.planId) || null : null)
 const characterStep = p => p.character_preview?.kind === 'reference_sheet' ? p.character_preview : null
-const storyboardStep = p => characterStep(p)?.approved ? p.storyboard_preview || null : null
+// Fair credits 3: a combined sheet holds the cast and the storyboard together, approved in one step.
+const combinedSheet = p => !!characterStep(p)?.combined
+const sheetPanels = p => (characterStep(p)?.images || []).filter(i => String(i.label || '').startsWith('Panel '))
+const storyboardStep = p => characterStep(p)?.approved && !p.storyboard_preview?.in_sheet ? p.storyboard_preview || null : null
 const stepEditable = p => isLivePlan(p) && !p.built && canWrite.value && !active.value
 // Each stage's drawer opens by itself when that stage is ready for the user, once per plan and stage in this browser,
 // and never over another open drawer: the storyboard or the character to approve, the new plan after a direction was
@@ -1317,11 +1320,13 @@ function openStep(p, step) {
   stepDrawer.value = { planId: p.id, step }
   if (step === 'character') subjectAt.value = 0
   if (step === 'character') looksDraft.value = Object.fromEntries((characterStep(p)?.subjects || []).map(x => [x.name, characterStep(p).looks?.[x.name] ?? x.looks]))
-  if (step === 'storyboard') { framesDraft.value = { ...(storyboardStep(p)?.panel_notes || {}) }; frameAt.value = 0 }
+  if (step === 'storyboard' || (step === 'character' && combinedSheet(p))) { framesDraft.value = { ...((storyboardStep(p) || p.storyboard_preview)?.panel_notes || {}) }; frameAt.value = 0 }
 }
 function subjectChanged(p, name) { const c = characterStep(p), x = c?.subjects.find(y => y.name === name); return !!x && (looksDraft.value[name] ?? '').trim() !== (c.looks?.[name] ?? x.looks).trim() }
 function looksChanged(p) { return (characterStep(p)?.subjects || []).filter(x => subjectChanged(p, x.name)).length }
-function framesChanged(p) { const saved = storyboardStep(p)?.panel_notes || {}; return Object.keys({ ...saved, ...framesDraft.value }).filter(k => (framesDraft.value[k] || '').trim() !== (saved[k] || '').trim()).length }
+const sheetEdited = p => combinedSheet(p) && (looksChanged(p) > 0 || framesChanged(p) > 0)
+function sheetIssue(p, label) { const c = (characterStep(p)?.panel_checks?.panels || []).find(x => x.panel === label); return c && !c.ok ? c.issue : '' }
+function framesChanged(p) { const saved = (storyboardStep(p) || p.storyboard_preview)?.panel_notes || {}; return Object.keys({ ...saved, ...framesDraft.value }).filter(k => (framesDraft.value[k] || '').trim() !== (saved[k] || '').trim()).length }
 const sheetCredits = p => routedMedia(p).find(x => x.kind === 'reference_sheet')?.credits || 35 * (characterStep(p)?.subjects.length || 1)
 function frameShot(p, k) { const shot = routedMedia(p).filter(x => x.kind === 'generated_shot')[k]; return shot ? shot.description : '' }
 function frameIssue(p, k) { const c = (storyboardStep(p)?.panel_checks?.panels || []).find(x => x.panel === 'Panel ' + (k + 1)); return c && !c.ok ? c.issue : '' }
@@ -1345,7 +1350,7 @@ async function priceStep(p, step) {
 const stepPriceLoading = (p, step) => !!stepPrice.value[stepKey(p, step)]?.loading
 function stepPriceText(p, step) { const q = stepPrice.value[stepKey(p, step)]?.quote; return !q ? '' : q.credits_max ? `Next: ${priceText(q)} · ${ceilingText(q)}` : 'Next step is already paid for' }
 function stepApproveLabel(p, step) {
-  const q = stepPrice.value[stepKey(p, step)]?.quote, verb = step === 'character' ? 'Approve' : 'Approve · make video'
+  const q = stepPrice.value[stepKey(p, step)]?.quote, verb = step === 'character' && !combinedSheet(p) ? 'Approve' : 'Approve · make video'
   if (!paid.value) return verb
   if (q && !q.credits_max) return verb
   return q ? `${verb} · ${priceText(q)}` : stepPrice.value[stepKey(p, step)]?.error ? verb : 'Pricing…'
@@ -1384,6 +1389,19 @@ async function redrawCharacter(p) {
   } finally { stepBusy.value = false }
 }
 const x0 = (c, name) => (c.subjects.find(x => x.name === name)?.looks || '').trim()
+// A combined sheet is one picture: a changed look or frame redraws the whole sheet, started at its price.
+async function redrawSheet(p) {
+  if (stepBusy.value) return
+  stepBusy.value = true
+  try {
+    await guarded(async () => {
+      const c = characterStep(p), looks = Object.fromEntries(c.subjects.map(x => [x.name, (looksDraft.value[x.name] || '').trim()]).filter(([n, v]) => v && v !== x0(c, n)))
+      const notes = Object.fromEntries(Object.entries(framesDraft.value).map(([k, v]) => [k, (v || '').trim()]).filter(([, v]) => v))
+      await api.patch(`${base()}/plans/${p.id}`, { expected_version: conversation.value.version, character_looks: looks, panel_notes: notes })
+      await refresh(); await startQuoted(sheetCredits(p)); redrawing.value = { planId: p.id, names: c.subjects.map(x => x.name) }; await refresh(); await loadHistory()
+    })
+  } finally { stepBusy.value = false }
+}
 async function redrawFrames(p) {
   if (stepBusy.value) return
   stepBusy.value = true
@@ -1665,18 +1683,19 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                     <p v-if="planEditable(planByMessage[m.id]) && planPrice[planByMessage[m.id].id]?.error" class="muted plan-note">Couldn’t price this plan: {{ planPrice[planByMessage[m.id].id].error }}</p>
                     <template v-if="planByMessage[m.id].status === 'proposed' && !planByMessage[m.id].stale">
                       <div v-if="characterStep(planByMessage[m.id])" class="step">
-                        <p class="plan-lead">{{ characterStep(planByMessage[m.id]).approved ? 'The creator is approved. They stay the same in every shot.' : 'Here’s the creator for your video. Check them before the storyboard: they stay the same in every shot.' }}</p>
+                        <p class="plan-lead">{{ combinedSheet(planByMessage[m.id]) ? (characterStep(planByMessage[m.id]).approved ? 'The cast and storyboard are approved. Every shot starts from these pictures.' : 'Here are the cast and the storyboard for your video, drawn together. Check them: approving makes the video from these pictures.') : characterStep(planByMessage[m.id]).approved ? 'The creator is approved. They stay the same in every shot.' : 'Here’s the creator for your video. Check them before the storyboard: they stay the same in every shot.' }}</p>
                         <div class="plan-card">
-                          <div class="step-thumbs"><img v-for="img in characterStep(planByMessage[m.id]).images.slice(0, 4)" :key="img.asset_id" :src="img.preview_url" :alt="img.label || img.name" /></div>
+                          <div class="step-thumbs"><img v-for="img in characterStep(planByMessage[m.id]).images.slice(0, combinedSheet(planByMessage[m.id]) ? 6 : 4)" :key="img.asset_id" :src="img.preview_url" :alt="img.label || img.name" /></div>
                           <div class="plan-pills">
-                            <span class="plan-title">Character</span>
+                            <span class="plan-title">{{ combinedSheet(planByMessage[m.id]) ? 'Cast and storyboard' : 'Character' }}</span>
+                            <span v-if="combinedSheet(planByMessage[m.id])" class="pill">{{ sheetPanels(planByMessage[m.id]).length }} frames</span>
                             <span v-for="n in characterStep(planByMessage[m.id]).subjects.map(x => x.name)" :key="n" class="pill">{{ n }}</span>
                             <span v-if="Object.keys(characterStep(planByMessage[m.id]).looks || {}).length" class="pill is-edited">Edited</span>
                           </div>
                           <div class="plan-actions">
                             <button type="button" class="btn btn--ghost btn--sm" @click="openStep(planByMessage[m.id], 'character')">Preview</button>
                             <button v-if="!characterStep(planByMessage[m.id]).approved && canWrite && !active" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(planByMessage[m.id], 'character')" @click="approveStepNow(planByMessage[m.id], 'character')">{{ stepBusy ? 'Starting…' : stepApproveLabel(planByMessage[m.id], 'character') }}</button>
-                            <span v-if="characterStep(planByMessage[m.id]).approved" class="plan-status">Approved · used in every shot</span>
+                            <span v-if="characterStep(planByMessage[m.id]).approved" class="plan-status">{{ combinedSheet(planByMessage[m.id]) ? 'Approved · making the video' : 'Approved · used in every shot' }}</span>
                           </div>
                         </div>
                       </div>
@@ -2286,7 +2305,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
           </template>
         </template>
       </SideDrawer>
-      <SideDrawer :open="stepDrawer?.step === 'character' && !!stepPlan && !!characterStep(stepPlan)" title="Character" meta="The people and places in your video" @close="stepDrawer = null">
+      <SideDrawer :open="stepDrawer?.step === 'character' && !!stepPlan && !!characterStep(stepPlan)" :title="stepPlan && combinedSheet(stepPlan) ? 'Cast and storyboard' : 'Character'" :meta="stepPlan && combinedSheet(stepPlan) ? 'The people, places and still frames of your video' : 'The people and places in your video'" @close="stepDrawer = null">
         <template v-if="stepPlan && characterStep(stepPlan)">
           <template v-for="(sub, k) in characterStep(stepPlan).subjects" :key="sub.name">
             <div v-if="k === subjectAt" class="sb-frame">
@@ -2297,19 +2316,33 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                 <button v-if="characterStep(stepPlan).subjects.length > 1" type="button" class="sb-nav sb-nav--next" aria-label="Next" :disabled="subjectAt >= characterStep(stepPlan).subjects.length - 1" @click="subjectAt++"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></button>
               </div>
               <div class="cs-head"><b>{{ sub.name }}</b><span class="muted">{{ sub.kind === 'place' ? 'Place' : sub.kind === 'product' ? 'Product' : 'Person' }} · {{ k + 1 }} of {{ characterStep(stepPlan).subjects.length }}</span></div>
+              <p v-if="combinedSheet(stepPlan) && sheetIssue(stepPlan, sub.name)" class="notice">{{ sub.name }} {{ sheetIssue(stepPlan, sub.name) }}</p>
               <label class="cs-look"><span class="pd-q">Look</span><textarea v-model="looksDraft[sub.name]" class="input pd-input" rows="3" maxlength="240" :disabled="!stepEditable(stepPlan) || isRedrawing(stepPlan, sub.name)" :aria-label="`How ${sub.name} looks`" /></label>
             </div>
           </template>
           <div v-if="characterStep(stepPlan).subjects.length > 1" class="sb-thumbs"><button v-for="(sub, k) in characterStep(stepPlan).subjects" :key="sub.name" type="button" :class="{ 'is-on': k === subjectAt, 'has-note': subjectChanged(stepPlan, sub.name) }" :aria-label="sub.name" @click="subjectAt = k"><img v-for="img in characterStep(stepPlan).images.filter(i => i.label === sub.name).slice(0, 1)" :key="img.asset_id" :src="img.preview_url" alt="" /></button></div>
-          <PlanNote label="How changes work" text="Each person and place is drawn on its own, in the video's style. Change one and redraw: only that one is drawn again, and the storyboard frames it appears in are redrawn after you approve it." />
+          <template v-if="combinedSheet(stepPlan)">
+            <span class="pd-q">Frames</span>
+            <div v-for="(img, k) in sheetPanels(stepPlan)" :key="img.asset_id" class="sb-frame">
+              <div class="sb-stage"><img :src="img.preview_url" :alt="img.label" /></div>
+              <span class="pd-q">{{ img.label }}</span>
+              <p class="sb-shot">{{ frameShot(stepPlan, k) }}</p>
+              <p v-if="sheetIssue(stepPlan, img.label)" class="notice">{{ sheetIssue(stepPlan, img.label) }}</p>
+              <label class="cs-look"><span class="pd-q">Change this frame</span><textarea :id="'sheet-frame-' + (k + 1)" v-model="framesDraft[k + 1]" class="input pd-input grow" rows="2" maxlength="240" placeholder="e.g. phone in her left hand" :disabled="!stepEditable(stepPlan)" :aria-label="`Change frame ${k + 1}`" /></label>
+            </div>
+            <p v-if="sheetIssue(stepPlan, 'Sheet')" class="notice">{{ sheetIssue(stepPlan, 'Sheet') }}</p>
+            <PlanNote label="How changes work" :text="`The cast and the frames are one picture. Change a look or a frame and the whole sheet is redrawn (about ${sheetCredits(stepPlan)} credits). Approving makes the video: each shot starts from its frame.`" />
+          </template>
+          <PlanNote v-else label="How changes work" text="Each person and place is drawn on its own, in the video's style. Change one and redraw: only that one is drawn again, and the storyboard frames it appears in are redrawn after you approve it." />
         </template>
         <template #footer>
           <template v-if="stepPlan && characterStep(stepPlan)">
-            <span class="pd-cost">{{ looksChanged(stepPlan) ? `Redraw ${looksChanged(stepPlan)} · about ${looksChanged(stepPlan) * 35} cr` : characterStep(stepPlan).approved ? 'Approved' : stepPriceText(stepPlan, 'character') }}</span>
+            <span class="pd-cost">{{ sheetEdited(stepPlan) ? `Redraw the sheet · about ${sheetCredits(stepPlan)} cr` : looksChanged(stepPlan) ? `Redraw ${looksChanged(stepPlan)} · about ${looksChanged(stepPlan) * 35} cr` : characterStep(stepPlan).approved ? 'Approved' : stepPriceText(stepPlan, 'character') }}</span>
             <span class="spacer" />
-            <button v-if="stepEditable(stepPlan) && looksChanged(stepPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked || stepBusy || !!active" @click="redrawCharacter(stepPlan)">Redraw</button>
+            <button v-if="stepEditable(stepPlan) && sheetEdited(stepPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked || stepBusy || !!active" @click="redrawSheet(stepPlan)">Redraw</button>
+            <button v-else-if="stepEditable(stepPlan) && looksChanged(stepPlan)" type="button" class="btn btn--ghost btn--sm" :disabled="locked || stepBusy || !!active" @click="redrawCharacter(stepPlan)">Redraw</button>
             <button type="button" class="btn btn--ghost btn--sm" @click="stepDrawer = null">Close</button>
-            <button v-if="stepEditable(stepPlan) && !characterStep(stepPlan).approved && !looksChanged(stepPlan)" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(stepPlan, 'character')" @click="approveStepNow(stepPlan, 'character')">{{ stepBusy ? 'Starting…' : stepApproveLabel(stepPlan, 'character') }}</button>
+            <button v-if="stepEditable(stepPlan) && !characterStep(stepPlan).approved && !looksChanged(stepPlan) && !sheetEdited(stepPlan)" type="button" class="btn btn--primary btn--sm" :disabled="locked || stepBusy || stepPriceLoading(stepPlan, 'character')" @click="approveStepNow(stepPlan, 'character')">{{ stepBusy ? 'Starting…' : stepApproveLabel(stepPlan, 'character') }}</button>
           </template>
         </template>
       </SideDrawer>
