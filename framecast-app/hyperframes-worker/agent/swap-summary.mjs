@@ -5,6 +5,8 @@ export function swapSummary(input={},checks=null){
  const note=warn.length?' One thing to check: new words run past the edge of the frame at '+[...new Set(warn.map(e=>Number(e.time).toFixed(1)+' s'))].slice(0,3).join(', ')+'. Ask to shorten them, or to fit them to the frame.':'';
  if(!photos&&!input.part_swap)return 'Updated '+fields+' field(s). Free: no model call, one render.';
  const parts=[fields?fields+(fields===1?' text or colour':' texts and colours'):null,photos?photos+(photos===1?' photo':' photos'):null].filter(Boolean).join(' and ');
+ // A re-render swaps nothing: it makes the same version again, picking up fixes made since (SWAP-SAFE 6).
+ if(!parts)return 'Made this version again, nothing changed, with the latest fixes applied. Free: no rebuild, one render.'+note;
  return 'Swapped in your '+parts+', with the rest of the video kept as it was. Free: no rebuild, one render.'+note;
 }
 

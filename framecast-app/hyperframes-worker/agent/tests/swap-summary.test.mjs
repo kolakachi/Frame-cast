@@ -13,3 +13,7 @@ test('a swap names only the overflow its new words caused',()=>{
  assert.doesNotMatch(swapSummary(input,{edges:[checks.edges[0]]}),/edge of the frame/,'the template\'s own off-frame moves are not news');
  assert.match(swapSummary(input,null),/^Swapped in your 1 text or colour,/);
 });
+
+test('a re-render says it made the same version again, not an empty swap (SWAP-SAFE canary)',()=>{
+ assert.equal(swapSummary({edit_values:{},part_swap:{values:{},pictures:[],voice:false}}),'Made this version again, nothing changed, with the latest fixes applied. Free: no rebuild, one render.');
+});
