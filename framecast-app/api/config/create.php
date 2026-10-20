@@ -53,8 +53,9 @@ return [
     // follow-up that rewrites the brief) on the stronger model; short follow-up edits on planner_model.
     'planner_model_creative' => env('CREATE_PLANNER_MODEL_CREATIVE', 'claude-opus-5-5'),
     // Fair credits 3 (2026-10-20): the cast and the storyboard drawn as one combined sheet, approved together. Decided
-    // per plan when it is made; on for everyone once its paid test passes, until then for the listed workspaces only.
-    'combined_sheet' => (bool) env('CREATE_COMBINED_SHEET', false),
+    // per plan when it is made. On for everyone after its paid test (Layla and the Fieldwell bottle: the bottle's colour
+    // and shape held, her likeness and all three frames passed, cells about 980x1742, 75 credits).
+    'combined_sheet' => (bool) env('CREATE_COMBINED_SHEET', true),
     'combined_sheet_workspaces' => [1],
     // Cheap vision checks (storyboard panels against their direction): a small model, never the creative one.
     'check_model' => env('CREATE_CHECK_MODEL', 'claude-haiku-4-5-20251001'),
