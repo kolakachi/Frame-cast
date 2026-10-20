@@ -88,3 +88,21 @@ Built (2026-10-19):
   or ask to rebuild (priced first)". Sending again stays a swap; only a request to rebuild uses the builder. Simplified
   from the plan: the choice is in the message, not a new button.
 - The daily limit says "You've made 50 videos today. More tomorrow (the count resets at midnight UTC)."
+
+## Canary on prod (2026-10-20)
+
+Beelite's original words on "Three reasons to buy" (the template where they failed on 2026-10-19), in-house:
+`beelitecandles.com` in the button and link fields, "100% pure beeswax" as a reason, the voice saying them.
+
+- Planned as a swap (21 credits planning, at cost), quoted at **3 credits**, made: the long words kept on screen, the
+  voice lines shortened before the voice was bought ("Pure beeswax", "Shop Beelite"); words, required items passed.
+- Found and fixed:
+  1. The web address ran 22 px past each end of the button pill: the text fit measured the card at rest, before
+     `WM.morph` narrowed it into a pill. The morph now marks its narrowest box and the fit uses it (418dd882);
+     re-rendered, the address sits inside the pill.
+  2. "Render this version again" was quoted as a 355-credit build: the plan listed the video's narration and a
+     voice-keeping swap allowed nothing to be listed. It now stays free (759cc94e); re-render quoted and charged 0.
+  3. The free re-render's note read "Swapped in your , …"; it now says it made the same version again (d8f3808f).
+- Still open: the reading check flags "Hand-dipped pairs" on screen 1.1 s against 1.9 s needed; a swap keeps the
+  template's timing, so a longer reason has less time per word. Planning still asks for 60 credits available, an
+  old-rate minimum (at cost it usually costs 18–40).
