@@ -426,6 +426,7 @@ const ENGINE_INFO = {
   omni: ['Omni', 'Your exact presenter, filmed in shots'],
   veo: ['Veo 3.1 Fast', 'Google\'s fast model, for takes without a presenter, in shots'],
   veo_hq: ['Veo 3.1 HQ', 'Premium quality, your exact presenter, in shots'],
+  fabric: ['Talking photo (Fabric)', 'One continuous talking take from your presenter, up to a minute'],
 }
 function engineChoices(m) { return m.payload?.takes?.[0]?.engines ?? [] }
 // Green screen: where the presenter sits over the background. The director reads it from the brief; the user can move it

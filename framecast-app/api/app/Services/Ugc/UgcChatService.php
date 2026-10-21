@@ -23,7 +23,7 @@ use Illuminate\Validation\ValidationException;
 final class UgcChatService
 {
     public const TYPES = ['testimonial', 'problem_solution', 'green_screen', 'before_after', 'unboxing', 'comparison', 'pov_hook',
-        'asmr', 'day_in_life', 'skit', 'listicle', 'founder_story', 'reaction'];
+        'asmr', 'day_in_life', 'skit', 'listicle', 'founder_story', 'reaction', 'storytime'];
     /** Superseded by UgcTypes::unavailable(), per user and opened by UGC_TYPES_LIVE (#8). Kept for older callers. */
     public const SOON = [];
     private const NOT_FOUNDER = 'Make it a testimonial instead';
@@ -333,6 +333,17 @@ final class UgcChatService
             $fits = ! ($key === 'seedance25' && $price['engine'] !== 'seedance25');
             $choices[] = ['key' => $key, 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'available' => $fits,
                 'note' => $fits ? '' : 'Seedance makes one take of up to 30 seconds; this plan is longer.'];
+        }
+        // The talking photo (UgcFabric, owner 2026-10-21): one continuous take from the presenter's look, for the talking types.
+        if (UgcFabric::usable($request->user()) && in_array($type, UgcFabric::TYPES, true)) {
+            try {
+                $price = UgcOneShotPricing::price($request->user(), ['engine' => UgcFabric::ENGINE] + $v, $segments, $this->credits);
+                if ($price['engine'] === UgcFabric::ENGINE) $choices[] = ['key' => UgcFabric::ENGINE, 'engine' => UgcFabric::ENGINE, 'credits' => (int) $price['quote'], 'available' => true,
+                    'label' => 'Talking photo (Fabric)', 'blurb' => 'One continuous talking take from your presenter, up to a minute; the face never changes, no gestures or product in hand'
+                        .((bool) config('services.ugc.fabric_live', false) ? '' : ' · testing, staff only')];
+            } catch (\Throwable) {
+                // Not for this video (no cast presenter): not offered.
+            }
         }
         // More models through OpenRouter (owner, 2026-10-21), each priced for this video: customers see the ones whose
         // test take passed; staff see every one, marked, to run those tests.

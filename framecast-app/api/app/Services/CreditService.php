@@ -180,6 +180,7 @@ class CreditService
     /** A one-take video model's credits a second: ours above, or one of the OpenRouter models (UgcVideoModels). */
     public static function oneshotPerSecond(string $engine): int
     {
+        if ($engine === \App\Services\Ugc\UgcFabric::ENGINE) return \App\Services\Ugc\UgcFabric::perSecond();
         return (int) (self::VIDEO_ONESHOT_PER_SECOND[$engine] ?? \App\Services\Ugc\UgcVideoModels::perSecond($engine));
     }
 

@@ -124,7 +124,7 @@ class UgcChatController extends Controller
     {
         if ($gate = $this->gate($request)) return $gate;
         $v = $request->validate(['message_id' => ['required', 'integer'], 'request_id' => ['required', 'uuid'], 'consent' => ['accepted'],
-            'engine' => ['sometimes', 'nullable', 'string', 'in:auto,omni,seedance25,veo,'.implode(',', array_keys(\App\Services\Ugc\UgcVideoModels::MODELS))],
+            'engine' => ['sometimes', 'nullable', 'string', 'in:auto,omni,seedance25,veo,fabric,'.implode(',', array_keys(\App\Services\Ugc\UgcVideoModels::MODELS))],
             'placement' => ['sometimes', 'string', 'in:'.implode(',', \App\Services\Ugc\UgcComposition::PLACEMENTS)],
             'size' => ['sometimes', 'string', 'in:'.implode(',', \App\Services\Ugc\UgcComposition::SIZES)],
             // A music bed under a POV hook or a reaction (off unless asked, owner 2026-10-15).
@@ -137,7 +137,7 @@ class UgcChatController extends Controller
     public function retry(Request $request, string $id): JsonResponse
     {
         if ($gate = $this->gate($request)) return $gate;
-        $v = $request->validate(['message_id' => ['required', 'integer'], 'run' => ['required', 'integer', 'min:0'], 'engine' => ['sometimes', 'string', 'in:seedance25,omni,veo,veo_hq,'.implode(',', array_keys(\App\Services\Ugc\UgcVideoModels::MODELS))]]);
+        $v = $request->validate(['message_id' => ['required', 'integer'], 'run' => ['required', 'integer', 'min:0'], 'engine' => ['sometimes', 'string', 'in:seedance25,omni,veo,veo_hq,fabric,'.implode(',', array_keys(\App\Services\Ugc\UgcVideoModels::MODELS))]]);
         return response()->json(['data' => ['chat' => $this->chats->retry($request, $id, (int) $v['message_id'], (int) $v['run'], $v['engine'] ?? null)], 'meta' => []]);
     }
 

@@ -539,6 +539,34 @@ class UgcExecutionTest extends TestCase
         $this->assertSame('wan30', \App\Services\Ugc\UgcOneShotPricing::price($staff, ['engine' => 'wan30'], $long, $credits)['engine'], 'staff can run its test');
     }
 
+    public function test_story_time_is_staff_only_until_live_and_its_talking_photo_is_priced_by_the_second(): void
+    {
+        // Owner, 2026-10-21: "build story time on both routes".
+        config(['services.ugc.types_live' => [], 'services.ugc.fabric_live' => false]);
+        // The cast presenter's photo is an image (this file's asset table leaves its type out).
+        Schema::table('assets', fn (Blueprint $t) => $t->text('mime_type')->nullable());
+        DB::table('assets')->where('id', 10)->update(['mime_type' => 'image/png']);
+        $customer = (new User)->forceFill(['id' => 1, 'workspace_id' => 1, 'role' => 'user']);
+        $staff = (new User)->forceFill(['id' => 1, 'workspace_id' => 1, 'role' => 'super_admin']);
+        $this->assertSame([false, true], [collect(\App\Services\Ugc\UgcTypes::menu($customer))->firstWhere('key', 'storytime')['available'],
+            collect(\App\Services\Ugc\UgcTypes::menu($staff))->firstWhere('key', 'storytime')['available']]);
+        $this->assertStringContainsString('turning point', \App\Services\Ugc\UgcTypes::contracts($staff)['storytime'][3]);
+        $this->assertSame(30, CreditService::oneshotPerSecond('fabric'), 'Fabric 720p: $0.15 a second at the spokesperson peg');
+        $credits = app(CreditService::class);
+        $story = UgcPlan::normalise([$this->shot(['seconds' => 45, 'script_text' => str_repeat('Here is how my week went and what changed it. ', 10)])], 'direct_camera');
+        $long = \App\Services\Ugc\UgcOneShotPricing::price($staff, ['engine' => 'fabric', 'ugc_type' => 'storytime', 'character_id' => 1], $story, $credits);
+        $this->assertSame('fabric', $long['engine'], 'one continuous talking take from the cast presenter');
+        $this->assertSame(0, $long['quote'] % 30);
+        $this->assertGreaterThanOrEqual(40 * 30, $long['quote'], 'about 45 s, split into clips of up to 20 s');
+        try {
+            \App\Services\Ugc\UgcOneShotPricing::price($staff, ['engine' => 'fabric', 'ugc_type' => 'storytime'], $story, $credits);
+            $this->fail('the talking photo needs a cast presenter');
+        } catch (ValidationException $e) {
+            $this->assertSame(\App\Services\Ugc\UgcFabric::NEEDS, $e->errors()['engine'][0]);
+        }
+        $this->assertNotSame('fabric', \App\Services\Ugc\UgcOneShotPricing::price($customer, ['engine' => 'fabric', 'ugc_type' => 'storytime', 'character_id' => 1], $story, $credits)['engine'], 'customers once its samples pass');
+    }
+
     public function test_veo_fast_never_makes_a_take_with_a_presenter(): void
     {
         $credits = app(CreditService::class);

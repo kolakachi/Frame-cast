@@ -1166,6 +1166,7 @@ class UgcController extends Controller
         // developer API's quotes; change both, or the API's quote will not match
         // the credits check further down and every create will be refused.
         $engine = in_array($request->input('engine'), ['seedance25', 'veo', 'veo_hq', 'omni'], true) || \App\Services\Ugc\UgcVideoModels::usable((string) $request->input('engine'), $user)
+            || ($request->input('engine') === \App\Services\Ugc\UgcFabric::ENGINE && \App\Services\Ugc\UgcFabric::usable($user))
             ? $request->input('engine') : 'seedance25';
 
         // The $9 Test Pass buys a look at the product, not the whole catalogue:
@@ -1184,8 +1185,12 @@ class UgcController extends Controller
         // default for a cast presenter until Omni has production mileage.
         // Veo 3.1 Fast takes a cast presenter too (owner, 2026-10-12): it starts from the take's dressed look, since it takes no photos.
         // An OpenRouter model (UgcVideoModels) starts from the presenter, as Veo 3.1 Fast does.
-        if ($presenterImageAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq'], true) && ! \App\Services\Ugc\UgcVideoModels::has($engine)) {
+        if ($presenterImageAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq', \App\Services\Ugc\UgcFabric::ENGINE], true) && ! \App\Services\Ugc\UgcVideoModels::has($engine)) {
             $engine = 'veo_hq';
+        }
+        // The long talking route needs a presenter to speak and a talking-to-camera type (UgcFabric).
+        if ($engine === \App\Services\Ugc\UgcFabric::ENGINE && ! \App\Services\Ugc\UgcFabric::fits((string) ($v['ugc_type'] ?? ''), $presenterImageAttached)) {
+            throw ValidationException::withMessages(['engine' => \App\Services\Ugc\UgcFabric::NEEDS]);
         }
 
         // A skit of up to 30 seconds is one Seedance take with both speakers' pencil sheets (owner, 2026-10-18), unless Omni
@@ -1282,7 +1287,7 @@ class UgcController extends Controller
         $chunks = $single !== null
             ? [$single]
             : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style,
-                $engine === 'omni' ? \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : (\App\Services\Ugc\UgcVideoModels::has($engine) ? \App\Services\Ugc\UgcVideoModels::maxClip($engine) : \App\Services\Ugc\UgcOneShotCompiler::MAX_SEGMENT_SECONDS));
+                $engine === 'omni' ? \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : ($engine === \App\Services\Ugc\UgcFabric::ENGINE ? \App\Services\Ugc\UgcFabric::CLIP_SECONDS : (\App\Services\Ugc\UgcVideoModels::has($engine) ? \App\Services\Ugc\UgcVideoModels::maxClip($engine) : \App\Services\Ugc\UgcOneShotCompiler::MAX_SEGMENT_SECONDS)));
         // Quote from the PLAN's seconds, not the snapped chunk sum — chunk
         // snapping (4/6/8 on Veo) can exceed the plan by a few seconds, and
         // that overage is ours to absorb, not the user's to re-approve.
@@ -1471,9 +1476,10 @@ class UgcController extends Controller
             $storyboard,
             // The take's look (UgcLook, owner 2026-10-12; staff until its test takes pass): the cast presenter dressed
             // for this ad in its own version of the place, made once in the job and used in every clip.
-            $presenterImageAttached && $style['wardrobe'] !== '' && (in_array($engine, ['omni', 'veo', 'veo_hq'], true) || \App\Services\Ugc\UgcVideoModels::has($engine))
+            // The talking photo always speaks from the dressed look: the take's shape and room in one picture.
+            $presenterImageAttached && ($style['wardrobe'] !== '' || $engine === \App\Services\Ugc\UgcFabric::ENGINE) && (in_array($engine, ['omni', 'veo', 'veo_hq', \App\Services\Ugc\UgcFabric::ENGINE], true) || \App\Services\Ugc\UgcVideoModels::has($engine))
                 && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
-                ? array_filter(['wardrobe' => $style['wardrobe'], 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
+                ? array_filter(['wardrobe' => $style['wardrobe'] !== '' ? $style['wardrobe'] : \App\Services\Ugc\UgcFabric::WARDROBE, 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
             $aspect,
             $engine === 'seedance25' ? $sketchCharacterIds : [],
         )->afterCommit();

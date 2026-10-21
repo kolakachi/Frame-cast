@@ -323,7 +323,7 @@ class UgcChatTest extends TestCase
         $chat = $this->actingAs($this->user())->postJson('/api/v1/ugc/chats')->json('data.id');
         $this->actingAs($this->user())->postJson("/api/v1/ugc/chats/{$chat}/messages", ['text' => 'An ad', 'type' => 'unknown'])->assertStatus(422);
         $types = $this->actingAs($this->user())->getJson('/api/v1/ugc/settings')->assertOk()->json('data.types');
-        $this->assertCount(14, $types);
+        $this->assertCount(15, $types, 'Story time joined 2026-10-21');
         $this->assertNotContains(false, array_column($types, 'available'));
     }
 

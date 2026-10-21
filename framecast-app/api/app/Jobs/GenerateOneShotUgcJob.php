@@ -214,6 +214,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // a photo that cannot be read stops the take before a clip is bought (it used to fail at that speaker's
             // first clip, after the earlier clips were paid for). Recorded on the take as cast_sheet.
             $castRefs = $this->castSheet($project, $scene);
+            // The talking photo: every clip's read made and its Fabric job started now, all at once (UgcFabric).
+            $fabricReads = $this->engine === \App\Services\Ugc\UgcFabric::ENGINE ? $this->startFabric($project, $scene, $reuse, $temps) : [];
             $carry = null;
             $adapt = null;
             foreach ($this->chunks as $i => $chunk) {
@@ -281,13 +283,13 @@ class GenerateOneShotUgcJob implements ShouldQueue
                     $sourceOnly = ! empty($chunk['source_media']) && trim((string) ($chunk['dialogue'] ?? '')) === '';
                     // An Omni line is read once by its speaker's voice first, and the clip is asked for the read's length, so
                     // the read can be synced onto it after (owner, 2026-10-14: "for omni we can use lip sync").
-                    $read = $sourceOnly ? null : $this->voiceRead($chunk, $i, $project, $temps);
+                    $read = $sourceOnly ? null : ($fabricReads[$i] ?? $this->voiceRead($chunk, $i, $project, $temps));
                     if ($read !== null) $chunk['seconds'] = max(2, (int) ceil($read['seconds'] + 0.4));
                     // Seedance hears the read as its audio reference instead of being lip-synced after.
                     if ($read !== null && $this->engine === 'seedance25') $chunk['audio_ref'] = $read['path'];
                     $path = $sourceOnly
                         ? app(\App\Services\Ugc\UgcComposition::class)->source($chunk['source_media'], $chunk['seconds'], (float) ($chunk['source_offset'] ?? 0), $storage, $temps, ! empty($chunk['requires_audio']))
-                        : $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity);
+                        : ($this->engine === \App\Services\Ugc\UgcFabric::ENGINE ? $this->fabricClip($scene, $i, $temps) : $this->generateSegment($veo, $scene, $i, $chunk, $startFrame, $temps, $continuity));
                     if (! $this->owns($scene->refresh())) return; // superseded while this clip was made
                     // Resemblance (owner, 2026-10-11): each cast clip's face is scored against the presenter's photo. With
                     // remakes on (services.ugc.face_retry), a clip under the pass mark is made again once, at our cost, and
@@ -1014,6 +1016,65 @@ class GenerateOneShotUgcJob implements ShouldQueue
             'image_generation_settings_json' => array_merge($scene->image_generation_settings_json ?? [], ['undelivered_note' => $note, 'undelivered_credits' => $back])])->save());
     }
 
+    /**
+     * The talking photo (UgcFabric, owner 2026-10-21): each clip's line read by its voice and a Fabric job started for it
+     * from the dressed look, every one at once, since Fabric takes minutes a clip. The job ids are kept on the take, so a
+     * retry collects a job already started instead of paying for it again. Returns the reads by clip.
+     *
+     * @return array<int, array{path: string, seconds: float}>
+     */
+    private function startFabric(Project $project, Scene $scene, array $reuse, array &$temps): array
+    {
+        $image = $this->look !== [] && $this->refs !== [] ? $this->refs[0] : ($this->initialStartFrame ?? $this->referenceImages[0] ?? null);
+        if (! is_string($image) || $image === '') throw new \RuntimeException('The talking photo needs the presenter\'s picture, and it could not be made. Nothing was charged; try again.');
+        $imageBytes = preg_match('#^data:([^;]+);base64,(.+)$#s', $image, $m) ? (string) base64_decode($m[2]) : (string) @file_get_contents($image);
+        $mime = $m[1] ?? 'image/jpeg';
+        $imageUrl = null;
+        $jobs = ($scene->refresh()->image_generation_settings_json ?? [])['oneshot_fabric'] ?? [];
+        $reads = [];
+        foreach ($this->chunks as $i => $chunk) {
+            if (isset($reuse[$i]) || trim((string) ($chunk['dialogue'] ?? '')) === '') continue;
+            $read = $this->voiceRead($chunk, $i, $project, $temps);
+            if ($read === null) throw new \RuntimeException('Part '.($i + 1).' of this talking-photo take could not be read aloud, so it was not made. Pick a voice and try again. Nothing was charged.');
+            $reads[$i] = $read;
+            $key = sha1(json_encode([(string) $chunk['dialogue'], $chunk['voice']['id'] ?? null, sha1($imageBytes)]));
+            if (($jobs[$i]['key'] ?? '') === $key) continue; // started by an earlier try: collected, not bought again
+            $imageUrl ??= $this->replicateFile($imageBytes, $mime, 'look.'.(['image/png' => 'png', 'image/webp' => 'webp'][$mime] ?? 'jpg'));
+            $id = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->start($imageUrl, $this->replicateFile((string) file_get_contents($read['path']), 'audio/wav', 'read.wav'), \App\Services\Ugc\UgcFabric::LIPSYNC);
+            $jobs[$i] = ['key' => $key, 'id' => $id];
+            $scene->forceFill(['image_generation_settings_json' => array_merge($scene->refresh()->image_generation_settings_json ?? [], ['oneshot_fabric' => $jobs])])->save();
+        }
+        return $reads;
+    }
+
+    /** One talking-photo clip, collected from the Fabric job started for it. */
+    private function fabricClip(Scene $scene, int $i, array &$temps): string
+    {
+        $job = (($scene->refresh()->image_generation_settings_json ?? [])['oneshot_fabric'] ?? [])[$i] ?? null;
+        if (! is_array($job) || empty($job['id'])) throw new \RuntimeException('Part '.($i + 1).' of the talking-photo take was not started. Retry the take; nothing was charged for it.');
+        $url = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class)->pollUntilDone((string) $job['id'], 1800);
+        if (! is_string($url) || $url === '') throw new \RuntimeException('Part '.($i + 1).' of the talking-photo take is still being made. Retry in a few minutes: it is collected, not made again.');
+        $path = tempnam(sys_get_temp_dir(), 'oneshot-').'.mp4';
+        $temps[] = $path;
+        if (! $this->download($url, $path)) throw new \RuntimeException('Part '.($i + 1).' of the talking-photo take could not be downloaded. Retry the take: it is collected, not made again.');
+        // Collected: a later remake of this part is a new take.
+        $settings = $scene->refresh()->image_generation_settings_json ?? [];
+        unset($settings['oneshot_fabric'][$i]);
+        $scene->forceFill(['image_generation_settings_json' => $settings])->save();
+        return $path;
+    }
+
+    /** A file on Replicate's file store, for a model input that takes a URL. */
+    private function replicateFile(string $bytes, string $mime, string $name): string
+    {
+        if ($bytes === '') throw new \RuntimeException('A file for the talking photo was empty. Nothing was charged; try again.');
+        $r = \Illuminate\Support\Facades\Http::withToken((string) config('services.replicate.api_token'))->timeout(120)
+            ->attach('content', $bytes, $name, ['Content-Type' => $mime])->post('https://api.replicate.com/v1/files');
+        $url = $r->json('urls.get');
+        if (! $r->successful() || ! is_string($url)) throw new \RuntimeException('A file for the talking photo could not be prepared. Nothing was charged; try again.');
+        return $url;
+    }
+
     /** Downloads a made clip, a few tries with a short wait; false when it never arrives whole. */
     private function download(string $url, string $path): bool
     {
@@ -1045,7 +1106,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
     {
         $line = trim((string) ($chunk['dialogue'] ?? ''));
         $voice = $chunk['voice'] ?? null;
-        $voiced = $this->engine === 'omni' ? (bool) config('services.ugc.omni_lipsync') : ($this->engine === 'seedance25' && self::seedanceHearsVoice());
+        $voiced = $this->engine === 'omni' ? (bool) config('services.ugc.omni_lipsync') : (($this->engine === 'seedance25' && self::seedanceHearsVoice()) || $this->engine === \App\Services\Ugc\UgcFabric::ENGINE);
         if (! $voiced || $line === '' || empty($voice['id'])) return null;
         try {
             $tts = app(\App\Services\Generation\TTS\TTSAdapter::class)->synthesize($line, 'en', (string) $voice['id'], (float) ($voice['speed'] ?? 1.0), [

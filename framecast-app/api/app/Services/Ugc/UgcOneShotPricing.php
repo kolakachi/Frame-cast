@@ -73,6 +73,7 @@ class UgcOneShotPricing
         // seedance25, so any caller asking for another engine was quoted at
         // Seedance's rate and then refused by the credits cross-check.
         $engine = in_array($v['engine'] ?? null, ['seedance25', 'veo', 'veo_hq', 'omni'], true) || \App\Services\Ugc\UgcVideoModels::usable((string) ($v['engine'] ?? ''), $user)
+            || (($v['engine'] ?? null) === UgcFabric::ENGINE && UgcFabric::usable($user))
             ? (string) $v['engine']
             : 'seedance25';
         $isTestPass = $credits->planTier($workspaceId) === 'ugc_pass';
@@ -91,8 +92,11 @@ class UgcOneShotPricing
                 $presenterAttached = (bool) ($ref && str_starts_with((string) $ref->mime_type, 'image/') && $ref->storage_url);
             }
         }
-        if ($presenterAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq'], true) && ! \App\Services\Ugc\UgcVideoModels::has($engine)) {
+        if ($presenterAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq', UgcFabric::ENGINE], true) && ! \App\Services\Ugc\UgcVideoModels::has($engine)) {
             $engine = 'veo_hq';
+        }
+        if ($engine === UgcFabric::ENGINE && ! UgcFabric::fits((string) ($v['ugc_type'] ?? ''), $presenterAttached)) {
+            throw ValidationException::withMessages(['engine' => UgcFabric::NEEDS]);
         }
         if ($isTestPass && ! $presenterAttached) {
             $engine = 'seedance25';
@@ -150,7 +154,7 @@ class UgcOneShotPricing
         $perSecond = $draft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::oneshotPerSecond($engine);
 
         $chunks = $single !== null ? [$single] : UgcOneShotCompiler::compile($segments, $style,
-            $engine === 'omni' ? UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : (\App\Services\Ugc\UgcVideoModels::has($engine) ? \App\Services\Ugc\UgcVideoModels::maxClip($engine) : UgcOneShotCompiler::MAX_SEGMENT_SECONDS));
+            $engine === 'omni' ? UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : ($engine === UgcFabric::ENGINE ? UgcFabric::CLIP_SECONDS : (\App\Services\Ugc\UgcVideoModels::has($engine) ? \App\Services\Ugc\UgcVideoModels::maxClip($engine) : UgcOneShotCompiler::MAX_SEGMENT_SECONDS)));
 
         return ['engine' => $engine, 'quote' => (int) (self::quoteSeconds($chunks, $segments, $engine) * $perSecond) + self::lipsyncCredits($engine, $segments, (string) ($v['ugc_type'] ?? '')), 'plan_seconds' => $planSeconds, 'draft' => $draft, 'presenter_attached' => $presenterAttached];
     }

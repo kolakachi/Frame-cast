@@ -18,6 +18,9 @@ final class UgcTypes
         'day_in_life' => ['Day in the life', 'The product inside a daily routine', 'story', 'A coherent routine with the product naturally used across its moments. Preserve silent actions.'],
         'skit' => ['Skit', 'Two cast speakers in one scene, with a twist', 'story', 'Two cast speakers, shot/reverse-shot. Each spoken beat has speaker 1 or 2 matching the selected cast order. One speaker per shot; no overlapping dialogue. Preserve setup, exchange and payoff.'],
         'listicle' => ['Listicle', 'A numbered list of reasons or tips', 'direct_camera', 'Keep the promised number of points and their order. Say scripted numbers; never add unrequested counting.'],
+        // Story time (owner, 2026-10-21): the TikTok "storytime" told to camera; short on Seedance or Omni, up to a minute
+        // as one continuous Fabric take (UgcFabric).
+        'storytime' => ['Story time', 'A presenter tells a short personal story, your product the turning point', 'direct_camera', 'One presenter tells a short personal story straight to camera in a casual everyday spot (in the car, on the sofa, at the kitchen counter), like telling a friend: the first line is the hook that opens the story ("Storytime: the week my skin finally cleared…"), then the setup (what was going wrong or what they were dealing with), the turning point when they found the product, and the payoff with a soft call to action. First person, conversational, one continuous talking take, with natural pauses. Use only supplied experiences, results and claims; never invent them.'],
         'founder_story' => ['Founder story', 'Why it was made, told with your own presenter', 'direct_camera', 'The maker tells the supplied origin story using their own selected presenter. Do not invent biography.'],
         'reaction' => ['Reaction', 'A silent reaction with an on-screen headline', 'reaction', 'One silent 5- or 10-second reaction shot of the presenter, with restrained physical movement and a short headline that sets up what they are reacting to. A headline the user wrote is used word for word. The headline is burned on screen, so the picture has no text.'],
     ];
@@ -32,7 +35,7 @@ final class UgcTypes
     }
 
     /** Types that did not exist for customers before the production routes (skit needs its cast, the other two re-proving). */
-    public const GATED = ['skit', 'pov_hook', 'reaction'];
+    public const GATED = ['skit', 'pov_hook', 'reaction', 'storytime'];
 
     /**
      * Whether a type's new production route is open to this user (#8, 2026-10-12): staff always; customers only for types

@@ -954,4 +954,61 @@ class UgcOneShotResumeTest extends TestCase
         $this->assertSame([106], $this->refunded, 'once');
         $this->assertSame([660, 106], [$this->settings()['oneshot_held'], $this->settings()['fallback_capped']]);
     }
+
+    private function fabricHarness(array &$started, ?\Closure $poll = null): void
+    {
+        $wav = sys_get_temp_dir().'/fabric-read.wav';
+        if (! is_file($wav)) Process::run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=2', '-ar', '48000', '-ac', '1', $wav])->throw();
+        Storage::disk('minio')->put('ugc/read.wav', (string) file_get_contents($wav));
+        $tts = Mockery::mock(\App\Services\Generation\TTS\TTSAdapter::class);
+        $tts->shouldReceive('synthesize')->andReturn(['audio_url' => 'minio://ugc/read.wav']);
+        $this->app->instance(\App\Services\Generation\TTS\TTSAdapter::class, $tts);
+        $fabric = Mockery::mock(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
+        $fabric->shouldReceive('start')->andReturnUsing(function ($image, $audio, $engine) use (&$started) { $started[] = $engine; return 'fab-'.count($started); });
+        $fabric->shouldReceive('pollUntilDone')->andReturnUsing($poll ?? fn () => $this->clip);
+        $this->app->instance(\App\Services\Generation\Video\ReplicateFabricAdapter::class, $fabric);
+        \Illuminate\Support\Facades\Http::fake(['api.replicate.com/v1/files' => \Illuminate\Support\Facades\Http::response(['urls' => ['get' => 'https://api.replicate.com/v1/files/x']])]);
+    }
+
+    private function fabricJob(): GenerateOneShotUgcJob
+    {
+        // What the speech check hears: both lines, as the read said them.
+        $text = 'Storytime: the week my skin finally cleared. Then I found this serum.';
+        $this->clipWords = ['transcript' => $text, 'provider_key' => 'test', 'words' => array_map(fn ($w, $k) => ['word' => $w, 'start' => $k * 0.3, 'end' => $k * 0.3 + 0.25], explode(' ', $text), array_keys(explode(' ', $text)))];
+        // The presenter's look: a 1x1 PNG is enough, the model is mocked.
+        $png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+        return new GenerateOneShotUgcJob(7, 70, [
+            ['prompt' => 'one', 'seconds' => 6, 'dialogue' => 'Storytime: the week my skin finally cleared.', 'voice' => ['id' => 'v1']],
+            ['prompt' => 'two', 'seconds' => 8, 'dialogue' => 'Then I found this serum.', 'voice' => ['id' => 'v1']],
+        ], 600, \App\Services\Ugc\UgcFabric::ENGINE, [$png]);
+    }
+
+    public function test_a_talking_photo_starts_every_clip_at_once_and_delivers(): void
+    {
+        // Story time's long route (owner, 2026-10-21): Fabric is slow, so both clips' jobs start before any is collected.
+        $started = [];
+        $polls = 0;
+        $this->fabricHarness($started, function () use (&$started, &$polls) { $polls++; if ($polls === 1) $this->assertCount(2, $started, 'both started before the first is collected'); return $this->clip; });
+        $this->assertNull($this->run_($this->fabricJob()));
+        $this->assertSame(['fabric_720', 'fabric_720'], $started, '720p, once each');
+        $this->assertSame(0, $this->starts, 'no video model is used');
+        $this->assertNotNull(Scene::query()->find(70)->visual_asset_id);
+        $this->assertSame([], $this->settings()['oneshot_fabric'] ?? [], 'collected jobs are forgotten');
+    }
+
+    public function test_a_talking_photo_retry_collects_jobs_already_started(): void
+    {
+        $started = [];
+        $calls = 0;
+        $this->fabricHarness($started, function ($id) use (&$calls) { $calls++; return $id === 'fab-2' && $calls === 2 ? null : $this->clip; });
+        $this->assertNotNull($e = $this->run_($this->fabricJob()));
+        $this->assertStringContainsString('still being made', $e->getMessage());
+        $this->assertSame('fab-2', $this->settings()['oneshot_fabric'][1]['id'] ?? null, 'the unfinished job is kept');
+        $this->assertSame('resumed', GenerateOneShotUgcJob::resume(Scene::query()->find(70)));
+        $resumed = null;
+        Bus::assertDispatched(GenerateOneShotUgcJob::class, function ($job) use (&$resumed) { $resumed = $job; return true; });
+        $this->assertNull($this->run_($resumed));
+        $this->assertCount(2, $started, 'part 2 was collected, never started again');
+        $this->assertNotNull(Scene::query()->find(70)->visual_asset_id);
+    }
 }

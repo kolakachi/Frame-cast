@@ -115,6 +115,8 @@ return [
         'chat_open_to_all' => (bool) env('UGC_CHAT_OPEN_TO_ALL', false),
         // OpenRouter video models customers may pick for a take (UgcVideoModels keys, comma-separated), each once its test
         // take passed; staff see them all (owner, 2026-10-21).
+        // The long talking route (UgcFabric) for customers, once its sample takes passed; staff always.
+        'fabric_live' => (bool) env('UGC_FABRIC_LIVE', false),
         'openrouter_models' => array_values(array_filter(array_map('trim', explode(',', (string) env('UGC_OPENROUTER_MODELS', ''))))),
         // Named accounts that get the chat while it is staff-only (comma-separated), e.g. the canary account.
         'chat_allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('UGC_CHAT_ALLOWED_EMAILS', ''))))),
@@ -254,6 +256,15 @@ return [
                 // $0.08/s at 480p, $0.15/s at 720p — the configured resolution
                 // decides which applies.
                 'cost_usd_per_second' => env('FABRIC_RESOLUTION', '480p') === '720p' ? 0.15 : 0.08,
+            ],
+            // UGC's long talking route (UgcFabric): always 720p, a customer-facing take.
+            'fabric_720' => [
+                'label'          => 'Fabric 720p',
+                'model'          => env('REPLICATE_FABRIC_MODEL', 'veed/fabric-1.0'),
+                'resolution_key' => 'resolution',
+                'resolution'     => '720p',
+                'output'         => '720x1280',
+                'cost_usd_per_second' => 0.15,
             ],
         ],
     ],
