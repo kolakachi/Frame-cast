@@ -101,7 +101,7 @@ jobs:
               echo '==> Health check (light)...'
               for i in $(seq 1 12); do
                 API=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: app.wyvstudio.com' http://127.0.0.1/api/v1/health || echo 000)
-                WWW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: wyvstudio.com' http://127.0.0.1/ || echo 000)
+                WWW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: wyvstudio.com' http://127.0.0.1/terms || echo 000)
                 DOCS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: docs.wyvstudio.com' http://127.0.0.1/ || echo 000)
                 echo "    attempt $i: api=$API marketing=$WWW docs=$DOCS"
                 if [ "$API" = "200" ] && [ "$WWW" = "200" ] && { [ "$DOCS" = "200" ] || [ "$DOCS" = "301" ]; }; then
@@ -229,7 +229,7 @@ jobs:
             OK=0
             for i in $(seq 1 30); do
               API=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: app.wyvstudio.com' http://127.0.0.1/api/v1/health || echo 000)
-              WWW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: wyvstudio.com' http://127.0.0.1/ || echo 000)
+              WWW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: wyvstudio.com' http://127.0.0.1/terms || echo 000)
               echo "    attempt $i: api=$API marketing=$WWW"
               if [ "$API" = "200" ] && [ "$WWW" = "200" ]; then OK=1; break; fi
               sleep 5
