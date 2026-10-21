@@ -2,6 +2,8 @@
 
 Scope for the owner, 2026-10-21. Nothing here is built until approved.
 
+Mockup and flow: `trend-library-mockup.html` (weekly job, Create plan line, UGC hook chips, God Mode, connector, pilot rating).
+
 ## Why
 
 Ava Studio (launched 2026-10-20) markets "400,000+ TikToks analyzed for what's working": its agent picks breakout
