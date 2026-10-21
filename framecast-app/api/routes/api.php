@@ -154,6 +154,8 @@ Route::prefix('v1')->group(function (): void {
     // controllers. Webhook is HMAC-signed; OAuth callback + activate finish
     // account creation for a purchased license.
     Route::post('/webhooks/appsumo', \App\Http\Controllers\Api\V1\Billing\AppSumoWebhookController::class);
+    // Launchpad launch IPN — unsigned; the secret is the token in the URL, checked in the controller.
+    Route::post('/webhooks/launchpad/{token}', \App\Http\Controllers\Api\V1\Billing\LaunchpadWebhookController::class);
     Route::match(['get', 'post'], '/appsumo/oauth/callback', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'callback']);
     Route::post('/appsumo/activate', [\App\Http\Controllers\Api\V1\Billing\AppSumoOAuthController::class, 'activate']);
 

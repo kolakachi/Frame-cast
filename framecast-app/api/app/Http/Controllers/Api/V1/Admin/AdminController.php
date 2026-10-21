@@ -730,7 +730,7 @@ class AdminController extends Controller
     public function billingWebhooks(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'provider' => ['nullable', Rule::in(['kelviq', 'appsumo'])],
+            'provider' => ['nullable', Rule::in(['kelviq', 'appsumo', 'launchpad'])],
             'outcome'  => ['nullable', Rule::in(['processed', 'duplicate', 'ignored', 'invalid_signature', 'error'])],
             'search'   => ['nullable', 'string', 'max:120'],
         ]);

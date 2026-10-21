@@ -65,6 +65,87 @@ class LaunchpadGatingTest extends TestCase
         // The done-for-you vault is the template library (Templates, 2026-10-16).
         (require database_path('migrations/2026_10_16_120000_create_create_templates_table.php'))->up();
         (require database_path('migrations/2026_10_17_220000_add_free_audit_to_create_templates.php'))->up();
+        (require database_path('migrations/2026_08_28_000001_create_billing_webhook_logs_table.php'))->up();
+        config(['services.launchpad.ipn_token' => 'test-token']);
+    }
+
+    /** @param  array<string, mixed>  $over */
+    private function ipn(array $over = [], string $token = 'test-token'): \Illuminate\Testing\TestResponse
+    {
+        return $this->postJson("/api/v1/webhooks/launchpad/{$token}", array_replace_recursive([
+            'user_id' => 24, 'product_id' => 5945, 'vendor_id' => 2, 'quantity' => 1, 'transaction_id' => 'pi_1',
+            'total_amount' => 7, 'refund_status' => 'approved', 'admin_amount' => 1, 'id' => 205,
+            'product' => ['name' => 'WyvStudio Fe'], 'action' => 'SALE',
+            'user' => ['id' => 24, 'name' => 'Ipn Buyer', 'email' => 'ipn@example.com'],
+        ], $over));
+    }
+
+    private function hook(): \App\Models\BillingWebhookLog
+    {
+        return \App\Models\BillingWebhookLog::query()->latest('id')->firstOrFail();
+    }
+
+    public function test_an_ipn_sale_grants_the_product_and_a_redelivery_grants_nothing_twice(): void
+    {
+        $this->ipn()->assertOk()->assertJson(['success' => true]);
+        $w = User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace;
+        $this->assertSame(['launch_fe', 200], [$w->plan_tier, (int) $w->credits_topup], 'a SALE with refund_status set still grants');
+        $this->assertSame(['launchpad', 'processed', 'pi_1', $w->id], [$this->hook()->provider, $this->hook()->outcome, $this->hook()->event_id, $this->hook()->workspace_id]);
+
+        $this->ipn()->assertOk();
+        $this->assertSame(200, (int) $w->fresh()->credits_topup);
+        $this->assertSame('duplicate', $this->hook()->outcome);
+        $this->assertSame(1, LaunchPurchase::query()->count());
+    }
+
+    public function test_an_ipn_total_that_covers_the_bump_grants_it_too(): void
+    {
+        $this->ipn(['product_id' => 6942, 'total_amount' => 24]);
+        $this->assertEqualsCanonicalizing(['fe', 'fe_credits'], LaunchPurchase::query()->pluck('product')->all());
+        $this->assertSame(800, (int) User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace->credits_topup);
+        $this->assertSame('7.00', (string) LaunchPurchase::query()->where('product', 'fe')->value('amount'));
+
+        $this->ipn(['product_id' => 5946, 'transaction_id' => 'pi_2', 'total_amount' => 247]);
+        $this->assertSame(0, LaunchPurchase::query()->where('product', 'bundle_dfy')->count(), 'no bump without its price');
+        $this->ipn(['product_id' => 9999, 'transaction_id' => 'pi_2', 'total_amount' => 21, 'product' => ['name' => '20 More DFY Templates']]);
+        $this->assertSame(1, LaunchPurchase::query()->where('product', 'bundle_dfy')->count(), 'a bump named as its own product');
+    }
+
+    public function test_an_ipn_refund_revokes_the_receipt(): void
+    {
+        $this->ipn(['product_id' => 5947, 'transaction_id' => 'pi_3', 'total_amount' => 86]);
+        $this->assertSame(2, LaunchPurchase::query()->where('status', 'active')->count());
+        $this->ipn(['product_id' => 5947, 'transaction_id' => 'pi_3', 'action' => 'REFUND'])->assertOk();
+        $this->assertSame(['refunded', 'refunded'], LaunchPurchase::query()->pluck('status')->all());
+        $this->assertSame('free', User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace->plan_tier);
+        $this->ipn(['product_id' => 5947, 'transaction_id' => 'pi_3', 'action' => 'CHARGEBACK'])->assertOk();
+        $this->assertSame('duplicate', $this->hook()->outcome);
+    }
+
+    public function test_an_ipn_with_a_wrong_or_unset_token_is_refused(): void
+    {
+        $this->ipn([], 'nope')->assertNotFound();
+        config(['services.launchpad.ipn_token' => '']);
+        $this->ipn([], '')->assertNotFound();
+        $this->ipn()->assertNotFound();
+        $this->assertSame(0, LaunchPurchase::query()->count());
+        $this->assertSame('invalid_signature', $this->hook()->outcome);
+    }
+
+    public function test_offeriq_and_unknown_ipns_are_acknowledged_and_grant_nothing(): void
+    {
+        $this->ipn(['product_id' => 5948, 'total_amount' => 47])->assertOk();
+        $this->assertSame('ignored', $this->hook()->outcome);
+        $this->ipn(['product_id' => 1234, 'product' => ['name' => 'Something else']])->assertOk();
+        $this->ipn(['action' => 'SUBSCRIPTION_RENEWED'])->assertOk();
+        $this->assertSame(0, LaunchPurchase::query()->count());
+        $this->assertSame(['ignored', 'ignored', 'ignored'], \App\Models\BillingWebhookLog::query()->pluck('outcome')->all());
+    }
+
+    public function test_a_failure_answers_500_so_launchpad_retries(): void
+    {
+        $this->ipn(['user' => ['email' => 'not-an-email']])->assertStatus(500);
+        $this->assertSame('error', $this->hook()->outcome);
     }
 
     private function launch(): LaunchpadService
@@ -125,15 +206,15 @@ class LaunchpadGatingTest extends TestCase
 
     public function test_purchases_stack_and_a_redelivered_sale_grants_nothing_twice(): void
     {
-        foreach ([['fe', 'LP-2'], ['bundle', 'LP-3'], ['bundle_dfy', 'LP-3'], ['bundle_length', 'LP-3'], ['bundle', 'LP-3']] as [$p, $r]) {
+        foreach ([['fe', 'LP-2'], ['bundle', 'LP-3'], ['bundle_dfy', 'LP-3'], ['bundle', 'LP-3']] as [$p, $r]) {
             $this->launch()->grant('stack@example.com', null, $p, $r);
         }
         $w = User::query()->where('email', 'stack@example.com')->firstOrFail()->workspace;
         $this->assertSame('launch_bundle', $w->plan_tier);
         $this->assertSame(8200, (int) $w->credits_topup);
-        $this->assertSame(4, LaunchPurchase::query()->count());
+        $this->assertSame(3, LaunchPurchase::query()->count());
         $caps = CreditService::limitsFor($w);
-        $this->assertSame([30, 180, null, 3, 50, true], [$caps['sample_vault'], $caps['max_duration_seconds'], $caps['max_channels'], $caps['batch_variations'], $caps['max_client_workspaces'], $caps['series']]);
+        $this->assertSame([30, 90, 5, null, 3, 50, true], [$caps['sample_vault'], $caps['max_duration_seconds'], $caps['max_characters'], $caps['max_channels'], $caps['batch_variations'], $caps['max_client_workspaces'], $caps['series']]);
         $this->assertSame(5, WorkspaceUsageService::planFor($w)['voice_cloning_limit']);
     }
 
@@ -142,8 +223,8 @@ class LaunchpadGatingTest extends TestCase
         $this->launch()->grant('pro@example.com', null, 'pro', 'LP-4');
         $this->launch()->grant('pro@example.com', null, 'pro_seats', 'LP-4');
         $w = User::query()->where('email', 'pro@example.com')->firstOrFail()->workspace;
-        $this->assertSame(3, CreditService::limitsFor($w)['max_characters']);
-        $this->assertSame(3, WorkspaceUsageService::planFor($w)['voice_cloning_limit']);
+        $this->assertSame([4, 10], [CreditService::limitsFor($w)['max_characters'], CreditService::limitsFor($w)['sample_vault']]);
+        $this->assertSame(4, WorkspaceUsageService::planFor($w)['voice_cloning_limit']);
         $this->assertSame(1, WorkspaceUsageService::planFor($w)['channel_limit']);
         $this->assertSame(1500, (int) $w->credits_topup);
     }
@@ -161,7 +242,7 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame('appsumo_creator', $w->plan_tier);
         $this->assertSame(9549 + 200 + 8000, (int) $w->credits_topup);
         $caps = CreditService::limitsFor($w);
-        $this->assertSame([10, 5, null, true], [$caps['max_characters'], $caps['max_brand_kits'], $caps['max_channels'], $caps['series']]);
+        $this->assertSame([5, 5, null, true], [$caps['max_characters'], $caps['max_brand_kits'], $caps['max_channels'], $caps['series']]);
 
         $sub = $this->account('sub@example.com', 'lifetime_agency', 'lifetime');
         $this->launch()->grant('sub@example.com', null, 'pro', 'LP-7');
@@ -190,12 +271,13 @@ class LaunchpadGatingTest extends TestCase
     public function test_an_agency_client_has_its_agencys_launch_allowance(): void
     {
         $this->launch()->grant('agency@example.com', null, 'agency', 'LP-10');
-        $this->launch()->grant('agency@example.com', null, 'agency_clients', 'LP-10');
+        $this->launch()->grant('agency@example.com', null, 'agency_credits', 'LP-10');
         $agency = User::query()->where('email', 'agency@example.com')->firstOrFail()->workspace;
         $client = Workspace::query()->create(['name' => 'Client']);
         $client->forceFill(['parent_workspace_id' => $agency->id, 'plan_tier' => 'free'])->save();
         $caps = CreditService::limitsFor($client->fresh());
-        $this->assertSame([40, false, true], [$caps['max_client_workspaces'], $caps['api_access'], $caps['ugc_ads']]);
+        $this->assertSame([30, true, true, true, null], [$caps['max_client_workspaces'], $caps['api_access'], $caps['ugc_ads'], $caps['reference_style'], $caps['sample_vault']]);
+        $this->assertSame(5000, (int) $agency->fresh()->credits_topup);
     }
 
     public function test_the_new_gates_refuse_only_what_a_launch_plan_leaves_out(): void

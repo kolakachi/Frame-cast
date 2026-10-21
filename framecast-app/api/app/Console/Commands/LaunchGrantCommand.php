@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 /** Grant or revoke a Launchpad product by hand: tests, support, and sales that arrive before the IPN is wired. */
 class LaunchGrantCommand extends Command
 {
-    protected $signature = 'launch:grant {email} {product : '.'fe, bundle, pro, agency or a bump key} {--receipt= : The sale id (default admin:<time>)} {--name=} {--revoke : Revoke the receipt (optionally only this product) instead} {--chargeback : With --revoke, record a chargeback}';
+    protected $signature = 'launch:grant {email} {product : '.'fe, bundle, pro, agency or a bump (fe_credits, bundle_dfy, pro_seats, agency_credits)} {--receipt= : The sale id (default admin:<time>)} {--name=} {--revoke : Revoke the receipt (optionally only this product) instead} {--chargeback : With --revoke, record a chargeback}';
 
     protected $description = 'Grant (or revoke) a Launchpad launch product for an email';
 

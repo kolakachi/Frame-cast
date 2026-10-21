@@ -307,4 +307,10 @@ return [
         'url' => env('RENDERER_URL', 'http://renderer:3000'),
     ],
 
+    // Launchpad launch IPN: Launchpad signs nothing, so this token in the webhook URL is the secret. Unset = the
+    // endpoint answers 404 to everything.
+    'launchpad' => [
+        'ipn_token' => env('LAUNCHPAD_IPN_TOKEN', ''),
+    ],
+
 ];

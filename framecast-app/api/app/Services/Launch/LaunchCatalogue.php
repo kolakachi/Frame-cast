@@ -3,31 +3,38 @@
 namespace App\Services\Launch;
 
 /**
- * What each Launchpad product and bump gives (owner-approved offers, 2026-10-12; docs/product/todo.md (LAUNCHPAD; history in docs/product/archive/2026-10-16/launchpad-gating-todo.md)).
+ * What each Launchpad product and bump gives and costs (owner-approved offers, 2026-10-12; revised 2026-10-21;
+ * docs/product/todo.md (LAUNCHPAD; history in docs/product/archive/2026-10-16/launchpad-gating-todo.md)).
  *
  * A main product sets a tier (its limits are that tier's row in CreditService::PLAN_LIMITS) and grants credits once.
- * A bump either grants credits, raises a limit to at least a value ("limits"), or adds to one ("add"). Content-only
- * bumps (100 Hooks & CTAs) are delivered by the marketer and change nothing here.
+ * A bump belongs to one main product ("of") and either grants credits or adds to a limit ("add"). Prices are in USD
+ * and only used to recognise bumps in a Launchpad IPN (LaunchpadIpn::products).
  */
 final class LaunchCatalogue
 {
     public const PRODUCTS = [
-        'fe'             => ['name' => 'WyvStudio',                      'tier' => 'launch_fe',     'credits' => 200],
-        'fe_credits'     => ['name' => 'Credit Booster',                 'credits' => 600],
-        'fe_hooks'       => ['name' => '100 Hooks & CTAs',               'credits' => 0],
-        'bundle'         => ['name' => 'WyvStudio Bundle',               'tier' => 'launch_bundle', 'credits' => 8000],
-        'bundle_dfy'     => ['name' => '+20 DFY templates',              'add' => ['sample_vault' => 20]],
-        'bundle_length'  => ['name' => 'Videos up to 3 minutes',         'limits' => ['max_duration_seconds' => 180]],
-        'pro'            => ['name' => 'WyvStudio Pro',                  'tier' => 'launch_pro',    'credits' => 1500],
-        'pro_credits'    => ['name' => '+1,000 credits',                 'credits' => 1000],
-        'pro_seats'      => ['name' => '+2 characters & +2 cloned voices', 'add' => ['max_characters' => 2, 'voice_cloning_limit' => 2]],
-        'agency'         => ['name' => 'WyvStudio Agency',               'tier' => 'launch_agency', 'credits' => 3000],
-        'agency_clients' => ['name' => '+10 client accounts',            'add' => ['max_client_workspaces' => 10]],
-        'agency_credits' => ['name' => '+2,000 credits',                 'credits' => 2000],
+        'fe'             => ['name' => 'WyvStudio',                         'price' => 7,   'tier' => 'launch_fe',     'credits' => 200],
+        'fe_credits'     => ['name' => '+600 credits',                      'price' => 17,  'of' => 'fe',     'credits' => 600],
+        'bundle'         => ['name' => 'WyvStudio Bundle',                  'price' => 247, 'tier' => 'launch_bundle', 'credits' => 8000],
+        'bundle_dfy'     => ['name' => '+20 DFY templates',                 'price' => 21,  'of' => 'bundle', 'add' => ['sample_vault' => 20]],
+        'pro'            => ['name' => 'WyvStudio Pro',                     'price' => 67,  'tier' => 'launch_pro',    'credits' => 1500],
+        'pro_seats'      => ['name' => '+3 characters & +3 cloned voices',  'price' => 19,  'of' => 'pro',    'add' => ['max_characters' => 3, 'voice_cloning_limit' => 3]],
+        'agency'         => ['name' => 'WyvStudio Agency',                  'price' => 347, 'tier' => 'launch_agency', 'credits' => 3000],
+        'agency_credits' => ['name' => '+2,000 credits',                    'price' => 69,  'of' => 'agency', 'credits' => 2000],
     ];
 
-    /** Which launch tier a workspace sits on when it owns several: the Bundle is the fullest. */
-    public const TIER_RANK = ['launch_fe' => 1, 'launch_pro' => 2, 'launch_agency' => 3, 'launch_bundle' => 4];
+    /** Which launch tier a workspace sits on when it owns several: Agency has everything (2026-10-21). */
+    public const TIER_RANK = ['launch_fe' => 1, 'launch_pro' => 2, 'launch_bundle' => 3, 'launch_agency' => 4];
+
+    /** The bump sold with a main product, if any. */
+    public static function bumpOf(string $main): ?string
+    {
+        foreach (self::PRODUCTS as $key => $p) {
+            if (($p['of'] ?? null) === $main) return $key;
+        }
+
+        return null;
+    }
 
     public static function product(string $key): ?array
     {

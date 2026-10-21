@@ -3183,6 +3183,16 @@ onMounted(() => {
                 >
                   AppSumo
                 </button>
+                <button
+                  :class="[
+                    'btn',
+                    'btn-sm',
+                    hooksProvider === 'launchpad' ? 'btn-primary' : '',
+                  ]"
+                  @click="hooksSwitchProvider('launchpad')"
+                >
+                  Launchpad
+                </button>
                 <select
                   v-model="hooksOutcome"
                   class="pg-per-page"
