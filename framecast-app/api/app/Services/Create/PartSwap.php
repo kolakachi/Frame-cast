@@ -31,6 +31,25 @@ class PartSwap
         return max(4, preg_match('/\s/u', $current) ? (int) ceil($n * 1.5) : 2 * $n);
     }
 
+    /**
+     * The letters a swapped text can show in the time the version gives the text it replaces (owner, 2026-10-21: "the
+     * agent can come out with something creative to fit"). Reading time is letters, not spaces (the reads check: about
+     * 17 a second plus a second to find it), and the version passed that check with its own words, so their letter count
+     * is the budget. A swap keeps the timing: "Hand-dipped pairs" in a reason's slot was on screen 1.1 s of the 1.9 s
+     * it needs. One word (an address, a name) and numbers are left to maxChars.
+     */
+    public static function readChars(string $current): ?int
+    {
+        $current = trim($current);
+        if (! preg_match('/\s/u', $current) || self::isNumber($current)) return null;
+        return max(6, self::letters($current));
+    }
+
+    public static function letters(string $text): int
+    {
+        return mb_strlen((string) preg_replace('/\s+/u', '', trim($text)));
+    }
+
     /** A price, count or percentage ("$45", "3", "20%"), as the template audit reads one. */
     public static function isNumber(string $value): bool
     {

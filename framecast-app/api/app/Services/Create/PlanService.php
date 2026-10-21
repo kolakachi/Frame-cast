@@ -755,7 +755,8 @@ class PlanService
             // Text and colour fields of the current version; a request that only changes these is free.
             'current_variables' => ($head = $c->head_revision_id ? DB::table('composition_revisions')->where('id', $c->head_revision_id)->value('bundle_json') : null)
                 ? array_map(fn ($d) => ['id' => $d['id'], 'type' => $d['type'], 'label' => $d['label'] ?? $d['id'], 'current' => $d['default'] ?? null,
-                    ...($d['type'] === 'string' ? ['max_chars' => PartSwap::maxChars((string) ($d['default'] ?? ''))] : [])],
+                    ...($d['type'] === 'string' ? array_filter(['max_chars' => PartSwap::maxChars((string) ($d['default'] ?? '')),
+                        'read_chars' => PartSwap::readChars((string) ($d['default'] ?? ''))], fn ($x) => $x !== null) : [])],
                     array_values(array_filter(CompositionVariables::declarations((string) (json_decode($head, true)['index.html'] ?? '')), fn ($d) => in_array($d['type'] ?? '', ['string', 'color'], true))))
                 : [],
             // A free account's free first ad (FreeFirst): what it may change, so the plan stays a swap (owner, 2026-10-17).
