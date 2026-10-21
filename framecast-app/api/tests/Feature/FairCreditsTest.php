@@ -25,6 +25,32 @@ class FairCreditsTest extends TestCase
         $this->assertSame($opus, CostEstimate::callCredits($call, 'anthropic:claude-opus-5-5'), 'a model with no rates of its own uses the tariff');
     }
 
+    public function test_planning_asks_for_what_plans_really_cost_not_the_old_sixty(): void
+    {
+        // Fair credits follow-up (2026-10-21): the gate is the top of recent plans' real cost, never above the cap.
+        config(['create.unlimited' => false, 'create.mode' => 'live', 'create.planning_min_credits' => 60]);
+        \Illuminate\Support\Facades\Cache::put('create:planning-range', [18, 39], 600);
+        $balance = 45;
+        $conversations = \Mockery::mock(\App\Services\Create\ConversationService::class);
+        $conversations->shouldReceive('creditAvailability')->andReturnUsing(function () use (&$balance) { return ['available' => $balance]; });
+        $plans = new \App\Services\Create\PlanService($conversations);
+        $user = (new \App\Models\User)->forceFill(['id' => 1, 'workspace_id' => 1, 'role' => 'user']);
+        $plans->assertCanPayPlanning($user);
+        $this->addToAssertionCount(1); // 45 credits plan: refused under the old 60
+        $balance = 30;
+        try {
+            $plans->assertCanPayPlanning($user);
+            $this->fail('30 is under what plans usually cost');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            $this->assertSame(402, $e->getStatusCode());
+            $this->assertStringContainsString('up to 39 credits', $e->getMessage());
+        }
+        \Illuminate\Support\Facades\Cache::put('create:planning-range', [40, 150], 600);
+        $balance = 59;
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $plans->assertCanPayPlanning($user); // never above the configured cap of 60
+    }
+
     public function test_the_cut_out_takes_the_file_its_description_names_even_with_spaces(): void
     {
         $files = [['name' => 'asset-5800-aa.jpg', 'title' => 'kenoye', 'path' => '/x/kenoye.jpg'],

@@ -161,6 +161,18 @@ class PlanMediaService
             $board = [];
             foreach ($made['board'] ?? [] as $x) $board[] = app(RunService::class)->generated($runId, $lease, $x['path'], $x['title'],
                 ['plan_media' => ['plan_id' => $planId, 'index' => $index, 'kind' => 'storyboard', 'pose' => $x['pose'] ?? null], 'provider_id' => $made['provider_id']]);
+            // The combined sheet as it was drawn, before the cut: kept privately for audits, never a source file or a library
+            // asset (fair credits follow-up, 2026-10-21). A copy that cannot be kept never stops the build.
+            $uncut = null;
+            if (! empty($made['uncut']) && is_file((string) $made['uncut'])) {
+                try {
+                    $path = 'create/audit/'.(int) $run->workspace_id.'/'.$planId.'/sheet-'.$index.'-'.hash_file('sha256', (string) $made['uncut']).'.png';
+                    $stream = fopen((string) $made['uncut'], 'rb');
+                    try { if (app(CreateStorage::class)->put($path, $stream, ['visibility' => 'private'])) $uncut = $path; } finally { if (is_resource($stream)) fclose($stream); }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('create: the uncut sheet was not kept', ['plan_id' => $planId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+                }
+            }
             $id = preg_replace('/[^a-zA-Z0-9_-]/', '-', $made['provider_id']);
             $attempts->bindPrediction($runId, $lease, $attempt['id'], substr($id.'-'.substr($attempt['id'], 0, 8), 0, 160));
             // An item that reports what it actually made (a storyboard reusing unchanged panels) is charged for that, never above the quote.
@@ -171,7 +183,7 @@ class PlanMediaService
             $record = ['task_id' => $item['id'] ?? null, 'requirement_ids' => $item['requirement_ids'] ?? [], 'kind' => $item['kind'], 'description' => $item['description'], 'status' => 'succeeded', 'file' => $file, 'brand' => $made['brand'] ?? null, 'cues' => $made['cues'] ?? null,
                 'more_files' => $more ?: null, 'poses' => $made['poses'] ?? null, 'line' => $made['line'] ?? null, 'speech_mode' => $made['speech_mode'] ?? 'audio_driven', 'engine' => $made['engine'] ?? null,
                 'character_contract' => $made['character_contract'] ?? null, 'master_sha256' => $made['master_sha256'] ?? null,
-                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks', 'subject_keys', 'board_hashes', 'board_labels'])), ...($board ? ['board_files' => $board] : [])];
+                ...array_intersect_key($made, array_flip(['panel_hashes', 'panel_checks', 'subject_keys', 'board_hashes', 'board_labels'])), ...($board ? ['board_files' => $board] : []), ...($uncut ? ['sheet_uncut' => $uncut] : [])];
             $this->record($run, $planId, $cacheIndex, $item, $hash, 'succeeded', $record, (int) $settled['charged_credits'], null);
             $recorded = true;
             return [...$record, 'reused' => false, 'charged_credits' => (int) $settled['charged_credits']];

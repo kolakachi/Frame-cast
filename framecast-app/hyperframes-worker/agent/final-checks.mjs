@@ -189,7 +189,8 @@ export function finalVerdict({plan={},look=null,audio=null,moves=[],reading=[],b
    const voice=/\b(voice ?-?over|voice|narrat\w*|spoken|narrator)\b/i.test(item),music=/\b(music|soundtrack|score|jingle)\b/i.test(item);
    // "No voiceover" asks for silence from the voice, not for a voice (the Laban build was blocked, and two repair rounds
    // spent, on "No voiceover; music and effects only", 2026-10-08).
-   const noVoice=/\b(no|without|zero)\s+(voice ?-?over|voice|narrat\w*|narrator|speech|spoken)/i.test(item),noMusic=/\b(no|without)\s+(music|soundtrack|score)/i.test(item);
+   // "No voiceover or music" rules out both, as does "without music and voice".
+   const noVoice=/\b(no|without|zero)\s+(?:[\w-]+\s+(?:or|and|nor)\s+(?:no\s+)?)?(voice ?-?over|voice|narrat\w*|narrator|speech|spoken)/i.test(item),noMusic=/\b(no|without)\s+(?:[\w-]+\s+(?:or|and|nor)\s+(?:no\s+)?)?(music|soundtrack|score)/i.test(item);
    if((voice||music)&&r.status!=='present'&&r.status!=='missing'){
     // A voice is there when much of the script is heard; whether every word is said is the words check's job (CHECK-VOICE:
     // Northside's "voiceover and music throughout" failed as "the voice is missing" over one misheard number, 2026-10-07).
@@ -251,8 +252,25 @@ export function peopleToKeep(plan={},planMedia=[]){
  return planMedia.some(m=>m.kind==='ugc_take'&&m.status==='succeeded')||planMedia.some(m=>m.kind==='reference_sheet')||fromPhoto;
 }
 
+/** Whether the file has an audio stream at all; null when that could not be read. */
+export async function hasAudioTrack(file,ffmpeg='ffmpeg'){
+ try{const {stderr}=await run(ffmpeg,['-hide_banner','-i',file],{timeout:30000}).catch(e=>({stderr:String(e?.stderr??'')}));
+  if(!/Stream #/.test(stderr))return null;
+  return /Stream #[^\n]*Audio:/.test(stderr);}catch{return null;}
+}
+
+/**
+ * What a file with no audio track sounds like: silence, as heard. A silent video's "no voice or music" check could not
+ * run and was sent to a repair round (fair credits L4, 2026-10-20); a video that should speak and has no track fails.
+ */
+export function silentAudio(plan={}){
+ const narration=(plan.narration||[]).filter(t=>String(t).trim());
+ return {script_coverage:narration.length?0:null,missing:narration,music:false,names:[],heard_words:0,heard_text:'',no_track:true};
+}
+
 /** Runs the measurements on the final file and returns the verdict. look(frames) sends frames to the app's vision check. */
 export async function finalChecks({file,duration,plan={},planMedia=[],audioSummary=null,moves=[],reading=[],look,html='',ffmpeg='ffmpeg'}){
+ if(!audioSummary&&await hasAudioTrack(file,ffmpeg)===false)audioSummary=silentAudio(plan);
  let blanks=null;try{blanks=unintendedBlanks(await blankSpans(file,ffmpeg),duration);}catch{/* reported as unverified */}
  let flashes=[];try{flashes=await flashFrames(file,duration,ffmpeg);}catch{/* advisory measurement: a failure adds nothing */}
  // Measured only when a required item is about light/dark switching; a measurement that fails leaves it to the look.

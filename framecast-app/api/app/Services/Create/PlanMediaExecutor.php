@@ -519,7 +519,7 @@ class PlanMediaExecutor
         $first = array_shift($castFiles);
         return ['path' => $first['path'], 'mime' => 'image/png', 'title' => $first['title'], 'provider_id' => 'sheet-'.Str::uuid(), 'extra' => $castFiles,
             'poses' => array_column($subjects, 'name'), 'character_contract' => CharacterApproval::CONTRACT, 'board' => $boardFiles, 'board_hashes' => $hashes,
-            'board_labels' => array_column($panels, 'label'), 'panel_checks' => $checks, 'credits' => CapabilityCatalogue::COMBINED_SHEET_CREDITS];
+            'board_labels' => array_column($panels, 'label'), 'panel_checks' => $checks, 'credits' => CapabilityCatalogue::COMBINED_SHEET_CREDITS, 'uncut' => $sheet];
     }
 
     /**
@@ -708,14 +708,16 @@ class PlanMediaExecutor
 
     /**
      * A cheap vision pass over the panels (A5): does each one match its direction? Only clear contradictions are
-     * reported (a person looking into the camera when told otherwise, a missing or different subject, the wrong
-     * action, lettering). A check that could not run is "unverified", never a pass.
+     * reported (a person looking into the camera when told otherwise, a missing or different subject, lettering). A
+     * panel is one still, so motion is judged by its pose, and what the direction never mentions is not a fault: 5 of
+     * the 17 flags from 7 to 20 Oct asked a still to move or objected to a prop the direction never named. A check that could not run
+     * is "unverified", never a pass.
      */
     public function panelChecks(array $files, array $panels, array $required): array
     {
         $key = (string) config('services.anthropic.key');
         if ($key === '' || ! $files) return ['status' => 'unverified', 'panels' => []];
-        $content = [['type' => 'text', 'text' => 'These are storyboard panels for a video, each the opening moment of one shot. For each panel, compare the picture with its direction and report only clear contradictions: a person looking into the camera when the gaze says otherwise, a missing or wrong subject, the wrong action, visible text or lettering, a different-looking person than in other panels. Reply with JSON only: {"panels": [{"panel": "Panel 1", "ok": true|false, "issue": "under 20 words, empty when ok"}]}.'.($required ? ' The video must also show: '.implode('; ', $required).'.' : '')]];
+        $content = [['type' => 'text', 'text' => 'These are storyboard panels for a video, each the opening moment of one shot. For each panel, compare the picture with its direction and report only clear contradictions: a person looking into the camera when the gaze says otherwise, a missing or wrong subject or product, a different person (gender, age, or a different face than in other panels), the wrong place, an item the direction says is held or used that is not there, fewer or more people than a number the direction names, a panel in a clearly different style from the rest, visible text or lettering. Each panel is one still frame: an action in motion (swinging, skipping, jumping, walking, pouring) needs only its pose or setup, never visible movement, and a gaze is judged by where the eyes point. Never report what the direction does not mention (extra props, background details, the design of a generic item) or a pose that fits the action at another instant. Reply with JSON only: {"panels": [{"panel": "Panel 1", "ok": true|false, "issue": "under 20 words, empty when ok"}]}.'.($required ? ' The video must also show: '.implode('; ', $required).'.' : '')]];
         foreach ($files as $k => $f) {
             $small = $f['path'].'.check.jpg';
             Process::timeout(30)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $f['path'], '-vf', 'scale=640:-2', '-q:v', '5', $small]);

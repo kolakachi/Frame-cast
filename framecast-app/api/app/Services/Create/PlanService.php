@@ -42,7 +42,11 @@ class PlanService
         return count(preg_split('/\s+/u', trim((string) ($last->content ?? '')), -1, PREG_SPLIT_NO_EMPTY)) >= 40 ? 'creative' : 'edit';
     }
 
-    /** Planning is paid (at half its cost): a balance below a typical charge is asked to top up before planning starts. */
+    /**
+     * Planning is paid at cost: a balance below a typical charge is asked to top up before planning starts. Typical is the
+     * top of what recent plans really cost (CostEstimate::planningRange, 18-39 on 2026-10-21), never above the configured
+     * cap; it was a fixed 60 from the peg, which refused balances that could pay for a plan.
+     */
     public function assertCanPayPlanning(User $user, ?string $conversationId = null): void
     {
         // The free first ad's planning is ours to pay (FreeFirst), up to its limit of AI changes, in every mode.
@@ -51,7 +55,7 @@ class PlanService
             return;
         }
         if (PilotPolicy::unlimited() || config('create.mode') === 'fixture') return;
-        $min = (int) config('create.planning_min_credits', 60);
+        $min = min((int) config('create.planning_min_credits', 60), (int) CostEstimate::planningRange()[1]);
         $available = (int) $this->conversations->creditAvailability($user)['available'];
         abort_if($available < $min, 402, sprintf('Top up to plan: planning usually takes up to %s credits and you have %s available.', number_format($min), number_format(max(0, $available))));
     }

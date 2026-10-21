@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {mkdtemp} from 'node:fs/promises';import {tmpdir} from 'node:os';
-import {finalVerdict,unintendedBlanks,blankSpans,flashFrames,repairable,repairBrief} from '../final-checks.mjs';
+import {finalVerdict,unintendedBlanks,blankSpans,flashFrames,repairable,repairBrief,hasAudioTrack,silentAudio} from '../final-checks.mjs';
 const run=promisify(execFile);
 const plan={agreement:{required:['Maya lights the candle','Start with the $9 Test Pass']}};
 const look={status:'checked',has_cast:true,required:[{item:'Maya lights the candle',status:'present',time:3.2},{item:'Start with the $9 Test Pass',status:'unclear',time:null,note:'spoken only'}],
@@ -242,4 +242,22 @@ test('light and dark switches are measured, not judged from single frames (CHECK
  assert.equal(v.status,'passed');
  assert.equal(finalVerdict({plan,look,switches:[]}).checks.find(c=>c.label.startsWith('Must appear: Paper')).status,'fail');
  assert.equal(finalVerdict({plan,look,switches:null}).checks.find(c=>c.label.startsWith('Must appear: Paper')).status,'fail','not measured: the look decides as before');
+});
+
+test('a file with no audio track is heard as silence (L4)', async () => {
+ const dir=await mkdtemp(tmpdir()+'/fc-silent-');
+ const mute=dir+'/mute.mp4',voiced=dir+'/voiced.mp4';
+ await run('ffmpeg',['-loglevel','error','-y','-f','lavfi','-i','color=c=white:s=64x64:d=1','-pix_fmt','yuv420p',mute]);
+ await run('ffmpeg',['-loglevel','error','-y','-f','lavfi','-i','color=c=white:s=64x64:d=1','-f','lavfi','-i','sine=d=1','-shortest','-pix_fmt','yuv420p',voiced]);
+ assert.equal(await hasAudioTrack(mute),false);
+ assert.equal(await hasAudioTrack(voiced),true);
+ assert.equal(await hasAudioTrack(dir+'/missing.mp4'),null,'an unreadable file is not called silent');
+ // "No voiceover or music" on a silent video passes instead of going to a repair round.
+ const quiet={agreement:{required:['No voiceover or music']}};
+ const ok=finalVerdict({plan:quiet,look:{status:'checked',has_cast:false,required:[]},audio:silentAudio(quiet),expectsSpeech:false});
+ assert.equal(ok.checks.find(c=>c.label==='Must appear: No voiceover or music').status,'pass');
+ // A video that should speak and has no track fails, never unverified.
+ const spoken={narration:['Light it at six']};
+ const bad=finalVerdict({plan:spoken,look:null,audio:silentAudio(spoken),expectsSpeech:true});
+ assert.equal(bad.checks.find(c=>c.id==='words').status,'fail');
 });
