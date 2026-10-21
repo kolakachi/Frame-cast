@@ -523,6 +523,22 @@ class UgcExecutionTest extends TestCase
         }
     }
 
+    public function test_an_openrouter_model_is_quoted_at_its_own_price_and_split_to_its_own_clips(): void
+    {
+        // Owner, 2026-10-21: more models in the UGC picker. Customers get only those listed live; staff get all of them.
+        config(['services.ugc.openrouter_models' => ['kling3_pro']]);
+        $credits = app(CreditService::class);
+        $user = (new User)->forceFill(['id' => 1, 'workspace_id' => 1, 'role' => 'user']);
+        $long = UgcPlan::normalise([$this->shot(['seconds' => 20, 'script_text' => str_repeat('Here is one more useful idea for you today. ', 7)])], 'direct_camera');
+        $kling = \App\Services\Ugc\UgcOneShotPricing::price($user, ['engine' => 'kling3_pro', 'character_id' => 1], $long, $credits);
+        $this->assertSame('kling3_pro', $kling['engine'], 'a presenter stays on it: it starts from them, as Veo 3.1 Fast does');
+        $this->assertSame(0, $kling['quote'] % 24, 'priced at 24 credits a second');
+        $this->assertGreaterThanOrEqual(20 * 24, $kling['quote']);
+        $this->assertNotSame('wan30', \App\Services\Ugc\UgcOneShotPricing::price($user, ['engine' => 'wan30'], $long, $credits)['engine'], 'not offered until its test take passes');
+        $staff = (new User)->forceFill(['id' => 1, 'workspace_id' => 1, 'role' => 'super_admin']);
+        $this->assertSame('wan30', \App\Services\Ugc\UgcOneShotPricing::price($staff, ['engine' => 'wan30'], $long, $credits)['engine'], 'staff can run its test');
+    }
+
     public function test_veo_fast_never_makes_a_take_with_a_presenter(): void
     {
         $credits = app(CreditService::class);

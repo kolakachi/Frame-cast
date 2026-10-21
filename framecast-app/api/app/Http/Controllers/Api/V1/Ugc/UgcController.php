@@ -1165,7 +1165,8 @@ class UgcController extends Controller
         // Pricing below is mirrored in App\Services\Ugc\UgcOneShotPricing for the
         // developer API's quotes; change both, or the API's quote will not match
         // the credits check further down and every create will be refused.
-        $engine = in_array($request->input('engine'), ['seedance25', 'veo', 'veo_hq', 'omni'], true) ? $request->input('engine') : 'seedance25';
+        $engine = in_array($request->input('engine'), ['seedance25', 'veo', 'veo_hq', 'omni'], true) || \App\Services\Ugc\UgcVideoModels::usable((string) $request->input('engine'), $user)
+            ? $request->input('engine') : 'seedance25';
 
         // The $9 Test Pass buys a look at the product, not the whole catalogue:
         // Seedance only (Veo HQ costs nearly twice as much per second and would
@@ -1182,7 +1183,8 @@ class UgcController extends Controller
         // veo_hq's 58, so an explicit choice of it stands. veo_hq stays the
         // default for a cast presenter until Omni has production mileage.
         // Veo 3.1 Fast takes a cast presenter too (owner, 2026-10-12): it starts from the take's dressed look, since it takes no photos.
-        if ($presenterImageAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq'], true)) {
+        // An OpenRouter model (UgcVideoModels) starts from the presenter, as Veo 3.1 Fast does.
+        if ($presenterImageAttached && ! in_array($engine, ['omni', 'veo', 'veo_hq'], true) && ! \App\Services\Ugc\UgcVideoModels::has($engine)) {
             $engine = 'veo_hq';
         }
 
@@ -1272,10 +1274,15 @@ class UgcController extends Controller
             if (($v['engine'] ?? null) === 'veo') throw ValidationException::withMessages(['engine' => \App\Services\Ugc\UgcOneShotPricing::VEO_PRESENTER]);
             $engine = 'omni';
         }
+        // An OpenRouter model that takes only a first frame starts from the presenter's photo; with a wardrobe the job
+        // makes the dressed look and starts from that instead (UgcVideoModels).
+        if (\App\Services\Ugc\UgcVideoModels::has($engine) && empty(\App\Services\Ugc\UgcVideoModels::MODELS[$engine]['refs']) && $presenterImageAttached && $referenceImages !== [] && $style['wardrobe'] === '') {
+            $characterFrame = $referenceImages[0];
+        }
         $chunks = $single !== null
             ? [$single]
             : \App\Services\Ugc\UgcOneShotCompiler::compile($segments, $style,
-                $engine === 'omni' ? \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : \App\Services\Ugc\UgcOneShotCompiler::MAX_SEGMENT_SECONDS);
+                $engine === 'omni' ? \App\Services\Ugc\UgcOneShotCompiler::OMNI_SEGMENT_SECONDS : (\App\Services\Ugc\UgcVideoModels::has($engine) ? \App\Services\Ugc\UgcVideoModels::maxClip($engine) : \App\Services\Ugc\UgcOneShotCompiler::MAX_SEGMENT_SECONDS));
         // Quote from the PLAN's seconds, not the snapped chunk sum — chunk
         // snapping (4/6/8 on Veo) can exceed the plan by a few seconds, and
         // that overage is ours to absorb, not the user's to re-approve.
@@ -1286,7 +1293,7 @@ class UgcController extends Controller
         $resolution = $isDraft ? '480p' : '720p';
         // A demo take is a normal 720p Seedance render (the clip is spliced in
         // post, not sent to the model) — no video_in premium; draft is off.
-        $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::VIDEO_ONESHOT_PER_SECOND[$engine];
+        $perSecond = $isDraft ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : CreditService::oneshotPerSecond($engine);
         $quote = (int) (\App\Services\Ugc\UgcOneShotPricing::quoteSeconds($chunks, $segments, $engine) * $perSecond)
             + \App\Services\Ugc\UgcOneShotPricing::lipsyncCredits($engine, $segments, (string) ($v['ugc_type'] ?? ''));
         // 15 seconds a take on the Test Pass — the length the offer promises,
@@ -1302,7 +1309,7 @@ class UgcController extends Controller
         if ($aspect !== '9:16' && ! empty($v['composition'])) {
             throw ValidationException::withMessages(['aspect_ratio' => 'Green screen and split videos are vertical (9:16) for now.']);
         }
-        if ($aspect === '1:1' && $engine !== 'seedance25') {
+        if ($aspect === '1:1' && $engine !== 'seedance25' && ! in_array('1:1', \App\Services\Ugc\UgcVideoModels::MODELS[$engine]['aspects'] ?? [], true)) {
             throw ValidationException::withMessages(['aspect_ratio' => 'Square videos are made on Seedance, which makes one take of up to 30 seconds. Choose vertical or landscape for this one.']);
         }
         if ((int) $v['credits'] !== $quote) {
@@ -1464,7 +1471,7 @@ class UgcController extends Controller
             $storyboard,
             // The take's look (UgcLook, owner 2026-10-12; staff until its test takes pass): the cast presenter dressed
             // for this ad in its own version of the place, made once in the job and used in every clip.
-            $presenterImageAttached && $style['wardrobe'] !== '' && in_array($engine, ['omni', 'veo', 'veo_hq'], true)
+            $presenterImageAttached && $style['wardrobe'] !== '' && (in_array($engine, ['omni', 'veo', 'veo_hq'], true) || \App\Services\Ugc\UgcVideoModels::has($engine))
                 && ! in_array($v['ugc_type'] ?? '', ['green_screen', 'skit'], true)
                 ? array_filter(['wardrobe' => $style['wardrobe'], 'place' => (string) $style['setting'], 'plate_at' => $placePhoto ? $plateAt : null], fn ($x) => $x !== null && $x !== '') : [],
             $aspect,

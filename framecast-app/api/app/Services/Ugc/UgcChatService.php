@@ -334,6 +334,20 @@ final class UgcChatService
             $choices[] = ['key' => $key, 'engine' => $price['engine'], 'credits' => (int) $price['quote'], 'available' => $fits,
                 'note' => $fits ? '' : 'Seedance makes one take of up to 30 seconds; this plan is longer.'];
         }
+        // More models through OpenRouter (owner, 2026-10-21), each priced for this video: customers see the ones whose
+        // test take passed; staff see every one, marked, to run those tests.
+        foreach (UgcVideoModels::MODELS as $key => $m) {
+            if (! UgcVideoModels::usable($key, $request->user())) continue;
+            if (! in_array((string) ($v['aspect_ratio'] ?? '9:16'), $m['aspects'], true)) continue;
+            try {
+                $price = UgcOneShotPricing::price($request->user(), ['engine' => $key] + $v, $segments, $this->credits);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($price['engine'] !== $key) continue;
+            $choices[] = ['key' => $key, 'engine' => $key, 'credits' => (int) $price['quote'], 'available' => true, 'label' => $m['label'],
+                'blurb' => (isset($m['steps']) ? 'Clips of up to '.max($m['steps']).' s' : 'Clips of up to '.UgcVideoModels::maxClip($key).' s').', '.$m['per_second'].' credits a second'.(UgcVideoModels::live($key) ? '' : ' · testing, staff only')];
+        }
 
         return $choices;
     }

@@ -52,6 +52,11 @@ class ReplicateVeoAdapter
      */
     public function start(string $prompt, int $seconds, ?string $imageDataUri = null, string $engine = 'veo', array $referenceImages = [], ?int $seed = null, string $resolution = '720p', array $referenceVideos = [], string $aspectRatio = '9:16', ?string $audioUrl = null): string
     {
+        // The UGC models offered through OpenRouter (UgcVideoModels, 2026-10-21) go there, with their own shapes.
+        if (\App\Services\Ugc\UgcVideoModels::has($engine)) {
+            if (! in_array($aspectRatio, \App\Services\Ugc\UgcVideoModels::MODELS[$engine]['aspects'], true)) throw new \InvalidArgumentException(\App\Services\Ugc\UgcVideoModels::MODELS[$engine]['label'].' does not make '.$aspectRatio.' videos.');
+            return 'or:'.app(OpenRouterVideoAdapter::class)->start($engine, $prompt, $seconds, $imageDataUri, $referenceImages, $seed, $resolution, $aspectRatio, $audioUrl);
+        }
         // Seedance 2.5 also makes square and 4:3 shapes (a split-screen half); the others are portrait or landscape.
         if (! in_array($aspectRatio, $engine === 'seedance25' ? ['9:16', '16:9', '1:1', '4:3', '3:4', '21:9'] : ['9:16', '16:9'], true)) throw new \InvalidArgumentException('This video model supports portrait or landscape.');
         if ($engine === 'seedance25' && self::seedanceViaOpenRouter()) {

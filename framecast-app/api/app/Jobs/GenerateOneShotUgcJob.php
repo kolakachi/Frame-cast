@@ -179,6 +179,8 @@ class GenerateOneShotUgcJob implements ShouldQueue
             // the plain character frame.
             // Veo 3.1 Fast takes no photos: a take with a look starts from the dressed presenter, face, clothes and room in one.
             if ($this->engine === 'veo' && $this->look !== [] && $this->refs !== [] && $startFrame === null) $startFrame = $this->refs[0];
+            // An OpenRouter model that takes only a first frame starts from the dressed look too (UgcVideoModels).
+            if (\App\Services\Ugc\UgcVideoModels::has($this->engine) && empty(\App\Services\Ugc\UgcVideoModels::MODELS[$this->engine]['refs']) && $this->look !== [] && $this->refs !== []) $startFrame = $this->refs[0];
             if (! isset($reuse[0]) && $startFrame !== null && $this->referenceImages !== [] && $this->engine === 'veo' && $this->look === []) {
                 try {
                     $composite = app(\App\Services\Generation\Image\CharacterImageAdapter::class)->generate(

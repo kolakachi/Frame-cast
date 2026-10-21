@@ -113,6 +113,9 @@ return [
         // staff always do. Open one at a time as each passes its reviewed sample sweep (owner, 2026-10-12).
         'types_live' => array_values(array_filter(array_map('trim', explode(',', (string) env('UGC_TYPES_LIVE', ''))))),
         'chat_open_to_all' => (bool) env('UGC_CHAT_OPEN_TO_ALL', false),
+        // OpenRouter video models customers may pick for a take (UgcVideoModels keys, comma-separated), each once its test
+        // take passed; staff see them all (owner, 2026-10-21).
+        'openrouter_models' => array_values(array_filter(array_map('trim', explode(',', (string) env('UGC_OPENROUTER_MODELS', ''))))),
         // Named accounts that get the chat while it is staff-only (comma-separated), e.g. the canary account.
         'chat_allowed_emails' => array_values(array_filter(array_map(fn ($e) => strtolower(trim($e)), explode(',', (string) env('UGC_CHAT_ALLOWED_EMAILS', ''))))),
         // The company workspace that owns the setting photos (ugc:seed-settings); only its tagged images are used.

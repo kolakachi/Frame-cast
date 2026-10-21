@@ -32,15 +32,21 @@ class OpenRouterVideoAdapter
      */
     public function start(string $engine, string $prompt, int $seconds, ?string $startFrame, array $referenceImages, ?int $seed, string $resolution, string $aspectRatio, ?string $audioUrl = null): string
     {
-        $model = self::MODELS[$engine] ?? throw new \InvalidArgumentException('OpenRouter has no '.$engine.' model here.');
+        // Seedance 2.5, or one of the UGC models offered through OpenRouter (UgcVideoModels, 2026-10-21): each with its own
+        // lengths, size and inputs.
+        $more = \App\Services\Ugc\UgcVideoModels::MODELS[$engine] ?? null;
+        $model = self::MODELS[$engine] ?? $more['id'] ?? throw new \InvalidArgumentException('OpenRouter has no '.$engine.' model here.');
         $body = [
             'model' => $model,
             'prompt' => $prompt,
-            'duration' => max(4, min(30, $seconds)),
-            'resolution' => in_array($resolution, ['480p', '720p'], true) ? $resolution : '720p',
+            'duration' => $more ? \App\Services\Ugc\UgcVideoModels::snap($engine, $seconds) : max(4, min(30, $seconds)),
+            'resolution' => $more ? $more['resolution'] : (in_array($resolution, ['480p', '720p'], true) ? $resolution : '720p'),
             'aspect_ratio' => $aspectRatio,
             'generate_audio' => true,
         ];
+        // Reference photos only where the model takes them; the others start from the first frame alone.
+        if ($more && empty($more['refs'])) { $referenceImages = []; $audioUrl = null; }
+        if ($more) $audioUrl = null;
         if ($seed !== null) $body['seed'] = $seed;
         if ($startFrame !== null) {
             $body['frame_images'] = [['type' => 'image_url', 'image_url' => ['url' => $startFrame], 'frame_type' => 'first_frame']];
@@ -61,7 +67,7 @@ class OpenRouterVideoAdapter
                 throw new ProviderFailed('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
             }
             \App\Services\Vendors\VendorAlerts::observe('openrouter', 'OpenRouter video submit failed: '.$why, $response->status(), ['kind' => 'video:'.$engine]);
-            $message = 'Seedance submit failed: '.mb_substr($why, 0, 200);
+            $message = ($more['label'] ?? 'Seedance').' submit failed: '.mb_substr($why, 0, 200);
             throw ProviderFailed::rejectedAtStart($response->status()) ? new ProviderFailed($message) : new \RuntimeException($message);
         }
         \App\Services\Vendors\VendorAlerts::recovered('openrouter');
@@ -93,7 +99,7 @@ class OpenRouterVideoAdapter
                 if (stripos($error, 'sensitive') !== false) {
                     throw new ProviderFailed('The video model declined this segment — its moderation flags some content even in tasteful ads. Nothing was charged; rephrase the framing and retry.');
                 }
-                throw new ProviderFailed('Seedance generation failed: '.mb_substr($error, 0, 300));
+                throw new ProviderFailed('The video model failed: '.mb_substr($error, 0, 300));
             }
             sleep(10);
         }

@@ -763,7 +763,7 @@ onBeforeUnmount(() => {
                   </button>
                   <button v-for="e in engineChoices(m)" :key="e.key" type="button" role="radio" :aria-checked="chosenEngine(m) === e.key" :disabled="!e.available" :title="e.note || ''"
                     :class="['uc-engine', { on: chosenEngine(m) === e.key }]" @click="engineFor[m.id] = e.key">
-                    <b>{{ ENGINE_INFO[e.key]?.[0] ?? e.key }} · {{ e.credits }}</b><span>{{ e.available ? ENGINE_INFO[e.key]?.[1] : e.note }}</span>
+                    <b>{{ e.label ?? ENGINE_INFO[e.key]?.[0] ?? e.key }} · {{ e.credits }}</b><span>{{ e.available ? (e.blurb ?? ENGINE_INFO[e.key]?.[1]) : e.note }}</span>
                   </button>
                 </div>
                 <label v-if="canMake(m) && musicable(m)" class="uc-music"><input v-model="musicFor[m.id]" type="checkbox" /> Add a music bed <span class="uc-muted">+{{ MUSIC_CREDITS }} credits, a short instrumental made for this video</span></label>

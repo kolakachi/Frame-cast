@@ -130,7 +130,7 @@ class UgcSectionController extends Controller
         $covered = [$index];
         for ($j = $index + 1; isset($sections[$j]) && ! empty($sections[$j]['carried']); $j++) $covered[] = $j;
         $engine = (string) ($recipe['engine'] ?? 'seedance25');
-        $rate = $engine === 'seedance25' && ($recipe['resolution'] ?? '720p') === '480p' ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : (CreditService::VIDEO_ONESHOT_PER_SECOND[$engine] ?? CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25']);
+        $rate = $engine === 'seedance25' && ($recipe['resolution'] ?? '720p') === '480p' ? CreditService::VIDEO_ONESHOT_SEEDANCE_DRAFT : (CreditService::oneshotPerSecond($engine) ?: CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25']);
         $seconds = 0; $credits = 0;
         foreach ($covered as $j) {
             $chunk = $recipe['chunks'][$j] ?? [];

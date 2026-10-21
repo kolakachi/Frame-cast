@@ -177,6 +177,12 @@ class CreditService
     // ReplicateVeoAdapter::OMNI_MAX_SECONDS and refunds what is not used.
     public const VIDEO_ONESHOT_PER_SECOND = ['seedance25' => 33, 'veo' => 22, 'veo_hq' => 58, 'omni' => 22];
 
+    /** A one-take video model's credits a second: ours above, or one of the OpenRouter models (UgcVideoModels). */
+    public static function oneshotPerSecond(string $engine): int
+    {
+        return (int) (self::VIDEO_ONESHOT_PER_SECOND[$engine] ?? \App\Services\Ugc\UgcVideoModels::perSecond($engine));
+    }
+
     // Sync Lipsync-2-Pro, on an Omni take's spoken seconds: about $0.0825/s, at the same 50% floor (2 x COGS / $0.014).
     public const VIDEO_LIPSYNC_PER_SECOND = 12;
 
