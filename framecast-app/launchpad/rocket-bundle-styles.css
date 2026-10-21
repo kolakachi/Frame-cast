@@ -1,0 +1,270 @@
+/* Rocket.new Design Tokens & Custom Animation Engine for WyvStudio Launch & Scale Bundle
+   Fully aligned with index.html tokens, Plus Jakarta Sans & Fraunces serif accent */
+
+:root {
+  --background: #fbf8f4;
+  --foreground: #1c1612;
+  --card: #ffffff;
+  --card-foreground: #1c1612;
+  --primary: #ff6b35;
+  --primary-foreground: #1a0b03;
+  --secondary: #f3ece4;
+  --secondary-foreground: #1c1612;
+  --accent: #c2410c;
+  --accent-foreground: #ffffff;
+  --muted: #f0e8df;
+  --muted-foreground: #6b5f55;
+  --border: #e6dccf;
+  --input: #e6dccf;
+  --ring: #ff6b35;
+  --radius: 1rem;
+  --font-dm-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-space-mono: 'Space Mono', monospace;
+  --font-sans: var(--font-dm-sans);
+  --font-serif: var(--font-dm-sans);
+  --font-mono: var(--font-space-mono);
+  --success: #2f8f5b;
+  --success-foreground: #f4fff8;
+  --warning: #d98a1f;
+  --warning-foreground: #1c1203;
+  --destructive: #c8372d;
+  --destructive-foreground: #fff6f5;
+}
+
+.dark,
+[data-theme="dark"] {
+  --background: #0E1013;
+  --foreground: #F2EEE6;
+  --primary: #FF6B35;
+  --primary-foreground: #1A0C05;
+  --secondary: #1A1D22;
+  --secondary-foreground: #F2EEE6;
+  --accent: #D9F24A;
+  --accent-foreground: #11140A;
+  --muted: #16191E;
+  --muted-foreground: #9A978F;
+  --card: #15181D;
+  --card-foreground: #F2EEE6;
+  --border: #2A2E35;
+  --input: #2A2E35;
+  --ring: #FF6B35;
+  --success: #5FD38A;
+  --success-foreground: #06130B;
+  --warning: #F2B84B;
+  --warning-foreground: #1A1204;
+  --destructive: #FF7A63;
+  --destructive-foreground: #1A0702;
+  --ink: #07080A;
+  --ink-foreground: #F2EEE6;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4, h5, h6, p {
+  margin: 0;
+}
+
+/* Fluid clamps & typography */
+.text-hero-xl {
+  font-size: clamp(2.25rem, 5.8vw, 4.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.text-section-xl {
+  font-size: clamp(1.85rem, 4.2vw, 3.25rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.font-serif {
+  font-family: var(--font-dm-sans), sans-serif;
+}
+
+.font-serif-accent {
+  font-family: var(--font-dm-sans), sans-serif;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.font-mono-label {
+  font-family: var(--font-space-mono), monospace;
+}
+
+/* Atmospheric Glows, Blobs, Grid & Textures (exact match with index.html) */
+.blob-primary {
+  background: radial-gradient(circle at 30% 30%, var(--primary), transparent 65%);
+  filter: blur(70px);
+}
+
+.blob-accent {
+  background: radial-gradient(circle at 60% 40%, var(--accent), transparent 65%);
+  filter: blur(80px);
+}
+
+.blob-plum {
+  background: radial-gradient(circle at 50% 50%, #2A1B2D, transparent 70%);
+  filter: blur(60px);
+}
+
+.bg-grid-lines {
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.mask-grid-fade {
+  -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, #000 40%, transparent 100%);
+}
+
+.grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.5'/></svg>");
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.glass {
+  background: color-mix(in srgb, var(--card) 75%, transparent);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+}
+
+/* ========================================================
+   BOLD, UNMISSABLE BRAND-ORANGE CTA PILL (1:1 with index.html)
+   ======================================================== */
+.brand-cta-btn {
+  background: linear-gradient(135deg, #ff8238 0%, #ff6b35 50%, #eb4e1b 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 32px -4px rgba(255, 107, 53, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.35) inset !important;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.brand-cta-btn:hover {
+  transform: translateY(-2px) scale(1.03) !important;
+  box-shadow: 0 16px 42px -4px rgba(255, 107, 53, 0.8), 0 0 28px 4px rgba(255, 107, 53, 0.45) !important;
+}
+
+.brand-cta-btn:active {
+  transform: translateY(0) scale(0.99) !important;
+}
+
+/* Animations & Keyframes */
+.float-slow {
+  animation: floatSlow 8s ease-in-out infinite;
+}
+
+.tile-float-a { animation: floatA 7s ease-in-out infinite; }
+.tile-float-b { animation: floatB 9s ease-in-out infinite; }
+.tile-float-c { animation: floatC 8s ease-in-out infinite; }
+.seal-spin { animation: spinSlow 24s linear infinite; }
+.pulse-ring { animation: pulseRing 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+.ribbon-blink { animation: blinkSoft 1.8s ease-in-out infinite; }
+.wave-bar { animation: waveBar 1.4s ease-in-out infinite; transform-origin: bottom; }
+
+.shine-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.shine-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.45) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.shine-sweep:hover::after {
+  transform: translateX(120%);
+}
+
+.reveal-up {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-up.reveal-pending {
+  opacity: 0;
+  transform: translateY(32px);
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(2%, -3%, 0) scale(1.08); }
+}
+
+@keyframes floatA {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-14px) rotate(-1deg); }
+}
+
+@keyframes floatB {
+  0%, 100% { transform: translateY(0) rotate(4deg); }
+  50% { transform: translateY(-18px) rotate(6deg); }
+}
+
+@keyframes floatC {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-10px) rotate(1deg); }
+}
+
+@keyframes spinSlow {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulseRing {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55); }
+  70% { box-shadow: 0 0 0 20px rgba(255, 107, 53, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0); }
+}
+
+@keyframes blinkSoft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes waveBar {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-slow, .tile-float-a, .tile-float-b, .tile-float-c, .seal-spin, .pulse-ring, .ribbon-blink, .wave-bar {
+    animation: none !important;
+  }
+  .reveal-up.reveal-pending {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .brand-cta-btn {
+    transition: none !important;
+    transform: none !important;
+  }
+}

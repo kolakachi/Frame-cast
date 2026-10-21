@@ -1,100 +1,728 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" class="dark" data-theme="dark">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
-<meta name="color-scheme" content="dark light">
-<script>
-/* The theme before the first paint: the visitor's own choice (the nav toggle), else their device setting. */
-(function () {
-  var saved = null;
-  try { saved = localStorage.getItem('wyv_theme'); } catch (e) {}
-  var system = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', saved === 'light' || saved === 'dark' ? saved : system);
-})();
-</script>
-<title>Thank you: your WyvStudio access</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#ff6b35">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=6">
-<link rel="stylesheet" href="/launch.css?v=4">
-<!-- LAUNCHPAD TRACKING: paste Launchpad's required script or pixel here when the marketer sends it. -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="color-scheme" content="dark light">
+
+  <!-- Immediate Pre-Paint Theme Initialization -->
+  <script>
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem('wyv-theme') || localStorage.getItem('wyv_theme'); } catch (e) { }
+      var system = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var theme = (saved === 'light' || saved === 'dark') ? saved : system;
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+
+  <title>Order Complete — Welcome to WyvStudio</title>
+  <meta name="description"
+    content="Your WyvStudio access is activated. Follow the onboarding guide to log in and create your first viral recreation video in under 60 seconds.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#F07A28">
+
+  <!-- Google Fonts: DM Sans & Space Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Tailwind Play CDN with Design Tokens -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            background: 'var(--background)',
+            foreground: 'var(--foreground)',
+            card: {
+              DEFAULT: 'var(--card)',
+              foreground: 'var(--card-foreground)',
+            },
+            primary: {
+              DEFAULT: 'var(--primary)',
+              foreground: 'var(--primary-foreground)',
+            },
+            secondary: {
+              DEFAULT: 'var(--secondary)',
+              foreground: 'var(--secondary-foreground)',
+            },
+            accent: {
+              DEFAULT: 'var(--accent)',
+              foreground: 'var(--accent-foreground)',
+            },
+            muted: {
+              DEFAULT: 'var(--muted)',
+              foreground: 'var(--muted-foreground)',
+            },
+            border: 'var(--border)',
+            input: 'var(--input)',
+            ring: 'var(--ring)',
+            espresso: {
+              DEFAULT: 'var(--espresso)',
+              foreground: 'var(--espresso-foreground)',
+            },
+            success: {
+              DEFAULT: 'var(--success)',
+              foreground: 'var(--success-foreground)',
+            },
+            destructive: {
+              DEFAULT: 'var(--destructive)',
+              foreground: 'var(--destructive-foreground)',
+            },
+          },
+          borderRadius: {
+            DEFAULT: 'var(--radius)',
+          },
+          fontFamily: {
+            sans: ['var(--font-dm-sans)', 'sans-serif'],
+            mono: ['var(--font-space-mono)', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    :root {
+      --background: #fbf8f4;
+      --foreground: #1c1612;
+      --card: #ffffff;
+      --card-foreground: #1c1612;
+      --primary: #F07A28;
+      --primary-foreground: #ffffff;
+      --secondary: #f3ece4;
+      --secondary-foreground: #1c1612;
+      --accent: #F07A28;
+      --accent-foreground: #ffffff;
+      --muted: #f0e8df;
+      --muted-foreground: #6b5f55;
+      --border: #e6dccf;
+      --input: #e6dccf;
+      --ring: #F07A28;
+      --espresso: #0B0604;
+      --espresso-foreground: #FFF6EC;
+      --success: #22c55e;
+      --success-foreground: #ffffff;
+      --destructive: #ef4444;
+      --destructive-foreground: #ffffff;
+      --radius: 1.25rem;
+      --font-dm-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-space-mono: 'Space Mono', monospace;
+    }
+
+    .dark,
+    [data-theme="dark"] {
+      --background: #0B0604;
+      --foreground: #FFF6EC;
+      --card: #15100D;
+      --card-foreground: #FFF6EC;
+      --primary: #F07A28;
+      --primary-foreground: #ffffff;
+      --secondary: #1F1713;
+      --secondary-foreground: #FFF6EC;
+      --accent: #F07A28;
+      --accent-foreground: #ffffff;
+      --muted: #1A130F;
+      --muted-foreground: #9A8D85;
+      --border: #2E221B;
+      --input: #2E221B;
+      --ring: #F07A28;
+      --espresso: #0B0604;
+      --espresso-foreground: #FFF6EC;
+      --success: #22c55e;
+      --success-foreground: #ffffff;
+      --destructive: #ef4444;
+      --destructive-foreground: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      border-color: var(--border);
+    }
+
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-dm-sans), sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    .font-mono-label {
+      font-family: var(--font-space-mono), monospace;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+
+    .btn-orange {
+      background-color: #F07A28;
+      color: #ffffff;
+      box-shadow: 0 10px 25px -5px rgba(240, 122, 40, 0.4);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-orange:hover {
+      background-color: #e06c1c;
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px -6px rgba(240, 122, 40, 0.55);
+    }
+
+    .bento-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 1.5rem;
+      border: 1px solid var(--border);
+      background-color: var(--card);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    }
+
+    .bento-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.15);
+    }
+
+    .dark .bento-card:hover {
+      box-shadow: 0 20px 40px -10px rgba(240, 122, 40, 0.12);
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.3; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    .pulse-ring {
+      animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 100;
+      transform: translateY(120%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .toast.show {
+      transform: translateY(0);
+    }
+  </style>
 </head>
-<body>
 
-<!-- A closed funnel: nothing on these pages links to wyvstudio.com; only the thank-you page links to the app. -->
-<div class="nav-bar">
-  <div class="wrap lp-nav">
-    <span class="brand"><span class="brand-mark" aria-hidden="true">W</span>WyvStudio</span>
-    <div class="lp-nav-end">
-      <span class="lp-step">Order complete</span>
-      <button type="button" class="theme-toggle" id="theme-toggle" role="switch" aria-checked="false" aria-label="Light mode" title="Switch to light mode">
-        <svg class="tt-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.8v2.4M12 19.8v2.4M4.8 4.8l1.7 1.7M17.5 17.5l1.7 1.7M1.8 12h2.4M19.8 12h2.4M4.8 19.2l1.7-1.7M17.5 6.5l1.7-1.7M8.1 2.6l.6 1.5M15.3 19.9l.6 1.5M2.6 15.9l1.5-.6M19.9 8.7l1.5-.6M2.6 8.1l1.5.6M19.9 15.3l1.5.6M8.1 21.4l.6-1.5M15.3 4.1l.6-1.5"/></svg>
-        <svg class="tt-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.6 3.2a8.6 8.6 0 1 0 7.2 13.2A7.4 7.4 0 0 1 13.6 3.2z"/><path fill="currentColor" d="M18.6 2.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55zM21.4 7.6l.35 1.05 1.05.35-1.05.35-.35 1.05-.35-1.05-1.05-.35 1.05-.35z"/></svg>
-        <span class="tt-knob" aria-hidden="true"></span>
-      </button>
+<body class="selection:bg-primary/20 selection:text-primary">
+
+  <!-- ==================== HEADER NAVBAR ==================== -->
+  <header class="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
+      <!-- Brand Logo -->
+      <a href="/" class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-sm shadow-primary/30">
+          <svg viewBox="0 0 64 64" class="h-6 w-6 text-white" aria-hidden="true">
+            <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="currentColor" stroke-width="6" stroke-linecap="round"
+              stroke-linejoin="round" fill="none" />
+          </svg>
+        </span>
+        <span class="text-xl font-bold tracking-tight text-foreground">WyvStudio</span>
+      </a>
+
+      <!-- Status Indicator & Theme Switcher -->
+      <div class="flex items-center gap-3">
+        <span
+          class="hidden sm:inline-flex items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3.5 py-1 text-xs font-semibold text-success backdrop-blur-sm">
+          <span class="h-2 w-2 rounded-full bg-success animate-pulse"></span>
+          Order Confirmed · Account Active
+        </span>
+
+        <!-- Theme Toggle Button -->
+        <button type="button" id="theme-toggle" aria-label="Switch theme"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+          <svg id="theme-icon-sun" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg id="theme-icon-moon" class="h-4 w-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
+      </div>
     </div>
+  </header>
+
+  <main>
+    <!-- ==================== HERO CONFIRMATION ==================== -->
+    <section class="relative overflow-hidden pt-12 pb-16 md:pt-20 md:pb-24">
+      <!-- Ambient Glow Behind Hero -->
+      <div class="pointer-events-none absolute left-1/2 top-10 -translate-x-1/2 h-[450px] w-[600px] rounded-full bg-primary/10 blur-[130px]" aria-hidden="true"></div>
+
+      <div class="relative mx-auto max-w-5xl px-5 text-center md:px-8">
+        <!-- Success Animated Badge -->
+        <div class="relative mx-auto mb-6 flex h-24 w-24 items-center justify-center">
+          <div class="pulse-ring absolute inset-0 rounded-full bg-success/20"></div>
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-success text-white shadow-xl shadow-success/30">
+            <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Pill Notification -->
+        <div class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 backdrop-blur-md">
+          <span class="h-2 w-2 rounded-full bg-primary"></span>
+          <span class="font-mono-label text-xs uppercase text-primary">Instant Access Activated</span>
+        </div>
+
+        <!-- Main Headline -->
+        <h1 class="mt-6 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl md:text-6xl md:leading-tight">
+          Your WyvStudio Account is Ready.<br>
+          <span class="bg-gradient-to-r from-primary via-orange-400 to-amber-300 bg-clip-text text-transparent">
+            Let's make your first video ad.
+          </span>
+        </h1>
+
+        <!-- Leaded Subhead -->
+        <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+          Your payment was processed successfully. A receipt and direct sign-in link have been sent to your email. You can jump straight into the studio dashboard right now.
+        </p>
+
+        <!-- Primary Call to Actions -->
+        <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <a href="https://app.wyvstudio.com/login" target="_blank" rel="noopener"
+            class="btn-orange inline-flex min-h-[56px] w-full items-center justify-center gap-3 rounded-full px-8 text-base font-bold shadow-xl sm:w-auto">
+            <span>Open WyvStudio Studio</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
+
+          <button type="button" id="copy-login-btn"
+            class="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-full border border-border bg-card px-6 text-base font-semibold text-foreground transition-all hover:bg-secondary sm:w-auto">
+            <svg class="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Copy Login URL</span>
+          </button>
+        </div>
+
+        <p class="mt-4 text-xs sm:text-sm text-muted-foreground">
+          Tip: Keep this guide open in this tab while you explore your new studio dashboard.
+        </p>
+      </div>
+    </section>
+
+    <!-- ==================== ONBOARDING: 3 STEPS ==================== -->
+    <section class="border-t border-border bg-secondary/40 py-16 md:py-24">
+      <div class="mx-auto max-w-7xl px-5 md:px-8">
+        <div class="mb-12 max-w-2xl">
+          <p class="font-mono-label text-primary">Fast-Start Guide</p>
+          <h2 class="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            Get Your First Video in 3 Simple Steps
+          </h2>
+          <p class="mt-3 text-base text-muted-foreground">
+            No steep learning curves or complicated video software. Follow these 3 steps to go from zero to a finished video.
+          </p>
+        </div>
+
+        <!-- 3 Bento Cards -->
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <!-- Step 1 -->
+          <div class="bento-card flex flex-col justify-between p-8">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-5xl font-extrabold tracking-tight text-primary">01</span>
+                <span class="rounded-full bg-primary/10 px-3 py-1 font-mono-label text-xs font-semibold text-primary">Magic Login</span>
+              </div>
+              <h3 class="mt-6 text-xl font-bold tracking-tight text-foreground">Sign In Without Passwords</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+                Visit <strong class="text-foreground">app.wyvstudio.com</strong> and type the email address you purchased with. We'll send an instant magic sign-in link directly to your inbox. One click and you're in—no passwords required.
+              </p>
+            </div>
+            <div class="mt-6 rounded-xl border border-border bg-background p-3 text-xs text-muted-foreground">
+              <span class="font-semibold text-foreground">All features loaded:</span> Your starting credits and any bundle or upgrade licenses are already active on your account.
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="bento-card flex flex-col justify-between p-8">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-5xl font-extrabold tracking-tight text-primary">02</span>
+                <span class="rounded-full bg-primary/10 px-3 py-1 font-mono-label text-xs font-semibold text-primary">Composer</span>
+              </div>
+              <h3 class="mt-6 text-xl font-bold tracking-tight text-foreground">Paste a Link, Script or Idea</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+                Open the composer and paste a product link, your own script or one line about the video you want. WyvStudio writes the script and builds the scenes, voiceover and captions. If you added an upgrade, the Creative Director can also start from a reference video.
+              </p>
+            </div>
+            <div class="mt-6 flex flex-wrap gap-2">
+              <span class="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">Product links</span>
+              <span class="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">Scripts</span>
+              <span class="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">One-line ideas</span>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="bento-card flex flex-col justify-between p-8">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-5xl font-extrabold tracking-tight text-primary">03</span>
+                <span class="rounded-full bg-primary/10 px-3 py-1 font-mono-label text-xs font-semibold text-primary">Export & Post</span>
+              </div>
+              <h3 class="mt-6 text-xl font-bold tracking-tight text-foreground">Preview, Tweak & 1-Click Export</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+                Watch the preview, pick your AI voice, style the animated captions, swap any scene, and export in 9:16, 1:1 or 16:9 with no watermark.
+              </p>
+            </div>
+            <div class="mt-6 rounded-xl border border-border bg-background p-3 text-xs text-muted-foreground">
+              <span class="font-semibold text-foreground">Ready to monetize:</span> You hold 100% commercial distribution rights to post, run as paid ads, or deliver to clients.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== BONUSES DOWNLOAD VAULT ==================== -->
+    <section class="border-t border-border bg-background py-16 md:py-24">
+      <div class="mx-auto max-w-7xl px-5 md:px-8">
+        <div class="mb-12 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+          <div class="max-w-2xl">
+            <p class="font-mono-label text-primary">Included With Your Order</p>
+            <h2 class="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Your Fast-Action Bonus Vault
+            </h2>
+            <p class="mt-3 text-base text-muted-foreground">
+              Download your exclusive bonus frameworks and playbooks below. You can also re-download them anytime from your account dashboard.
+            </p>
+          </div>
+          <span class="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card px-4 py-2 font-mono-label text-xs font-semibold text-muted-foreground">
+            $361 Total Value · Included 100% Free
+          </span>
+        </div>
+
+        <!-- 3 Bonus Cards -->
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <!-- Bonus 1 -->
+          <div class="bento-card flex flex-col justify-between overflow-hidden">
+            <div class="relative aspect-[16/10] overflow-hidden bg-espresso flex items-center justify-center p-6 border-b border-border/50">
+              <div class="text-center space-y-2">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20 text-primary shadow-inner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-7 w-7"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+                </div>
+                <p class="font-mono-label text-xs text-primary uppercase tracking-wider">Hook Vault</p>
+              </div>
+              <span class="absolute bottom-3 left-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-white shadow-md">Bonus #1</span>
+            </div>
+            <div class="p-6">
+              <p class="font-mono-label text-xs text-muted-foreground">$197 Value</p>
+              <h3 class="mt-2 text-lg font-bold text-foreground">The 100 Viral Hook &amp; Script Vault</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Never stare at a blank page. 100 proven scroll-stopping hooks and full video script templates you can plug directly into WyvStudio.
+              </p>
+              <a href="#bonuses" data-bonus="hook" target="_blank" rel="noopener"
+                class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-secondary py-3 text-sm font-semibold text-foreground transition-all hover:border-primary hover:text-primary">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
+                </svg>
+                <span>Access Hook Vault (PDF)</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Bonus 2 -->
+          <div class="bento-card flex flex-col justify-between overflow-hidden">
+            <div class="relative aspect-[16/10] overflow-hidden bg-espresso flex items-center justify-center p-6 border-b border-border/50">
+              <div class="text-center space-y-2">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20 text-primary shadow-inner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-7 w-7">
+                    <path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                  </svg>
+                </div>
+                <p class="font-mono-label text-xs text-primary uppercase tracking-wider">Formula Checklist</p>
+              </div>
+              <span class="absolute bottom-3 left-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-white shadow-md">Bonus #2</span>
+            </div>
+            <div class="p-6">
+              <p class="font-mono-label text-xs text-muted-foreground">$97 Value</p>
+              <h3 class="mt-2 text-lg font-bold text-foreground">The &ldquo;Formula, Not Footage&rdquo; Playbook</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+                How to write to the structures that already work (hook, problem, proof, call to action) while every word, voice and visual stays yours.
+              </p>
+              <a href="#bonuses" data-bonus="formula" target="_blank" rel="noopener"
+                class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-secondary py-3 text-sm font-semibold text-foreground transition-all hover:border-primary hover:text-primary">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
+                </svg>
+                <span>Access Playbook (PDF)</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Bonus 3 -->
+          <div class="bento-card flex flex-col justify-between overflow-hidden">
+            <div class="relative aspect-[16/10] overflow-hidden bg-espresso flex items-center justify-center p-6 border-b border-border/50">
+              <div class="text-center space-y-2">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20 text-primary shadow-inner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-7 w-7"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                </div>
+                <p class="font-mono-label text-xs text-primary uppercase tracking-wider">7-Part Playbook</p>
+              </div>
+              <span class="absolute bottom-3 left-3 rounded-full bg-primary px-3 py-1 text-xs font-bold text-white shadow-md">Bonus #3</span>
+            </div>
+            <div class="p-6">
+              <p class="font-mono-label text-xs text-muted-foreground">$67 Value</p>
+              <h3 class="mt-2 text-lg font-bold text-foreground">The 7-Part Content Run Playbook</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Turn one winning video idea into seven connected posts that build authority and turn profile viewers into buyers.
+              </p>
+              <a href="#bonuses" data-bonus="run" target="_blank" rel="noopener"
+                class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-secondary py-3 text-sm font-semibold text-foreground transition-all hover:border-primary hover:text-primary">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>
+                </svg>
+                <span>Access Playbook (PDF)</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ACCOUNT SUMMARY & SUPPORT ==================== -->
+    <section class="border-t border-border bg-secondary/40 py-16 md:py-24">
+      <div class="mx-auto max-w-7xl px-5 md:px-8">
+        <div class="grid grid-cols-1 gap-8 lg:grid-cols-12">
+          <!-- Left: Account & License Details -->
+          <div class="bento-card p-8 lg:col-span-7">
+            <p class="font-mono-label text-primary">Account Summary</p>
+            <h3 class="mt-3 text-2xl font-bold tracking-tight text-foreground">
+              What Is Active On Your License
+            </h3>
+
+            <ul class="mt-6 space-y-4 divide-y divide-border/60">
+              <li class="flex items-start justify-between gap-4 pt-3">
+                <div class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success/20 text-success text-xs font-bold">✓</span>
+                  <div>
+                    <p class="text-sm font-semibold text-foreground">WyvStudio Launch Pass</p>
+                    <p class="text-xs text-muted-foreground">The composer: link, script or idea to video</p>
+                  </div>
+                </div>
+                <span class="rounded-full bg-success/15 px-3 py-1 font-mono-label text-xs font-semibold text-success">Activated</span>
+              </li>
+
+              <li class="flex items-start justify-between gap-4 pt-4">
+                <div class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success/20 text-success text-xs font-bold">✓</span>
+                  <div>
+                    <p class="text-sm font-semibold text-foreground">Starting Creation Credits</p>
+                    <p class="text-xs text-muted-foreground">200 one-time video credits (plus upgrade credits if bought)</p>
+                  </div>
+                </div>
+                <span class="rounded-full bg-success/15 px-3 py-1 font-mono-label text-xs font-semibold text-success">Loaded</span>
+              </li>
+
+              <li class="flex items-start justify-between gap-4 pt-4">
+                <div class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success/20 text-success text-xs font-bold">✓</span>
+                  <div>
+                    <p class="text-sm font-semibold text-foreground">Commercial Usage Rights</p>
+                    <p class="text-xs text-muted-foreground">Zero watermarks, 100% original script, voice and cuts</p>
+                  </div>
+                </div>
+                <span class="rounded-full bg-success/15 px-3 py-1 font-mono-label text-xs font-semibold text-success">Included</span>
+              </li>
+
+              <li class="flex items-start justify-between gap-4 pt-4">
+                <div class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success/20 text-success text-xs font-bold">✓</span>
+                  <div>
+                    <p class="text-sm font-semibold text-foreground">14-Day Money-Back Guarantee</p>
+                    <p class="text-xs text-muted-foreground">Full refund protection if you change your mind for any reason</p>
+                  </div>
+                </div>
+                <span class="rounded-full bg-success/15 px-3 py-1 font-mono-label text-xs font-semibold text-success">Protected</span>
+              </li>
+            </ul>
+
+            <div class="mt-8 rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs leading-relaxed text-muted-foreground">
+              <strong class="text-foreground">Purchased Upgrades or Bundles?</strong> If you added WyvStudio Pro, OfferIQ, or the Agency Tier during checkout, your credits and features are automatically merged under this same email address.
+            </div>
+          </div>
+
+          <!-- Right: Customer Care & Support -->
+          <div class="bento-card flex flex-col justify-between p-8 lg:col-span-5 bg-card">
+            <div>
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                </svg>
+              </div>
+              <h3 class="mt-4 text-2xl font-bold tracking-tight text-foreground">Need Any Help?</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Our support desk is always here to assist you with onboarding, technical queries, or bonus access.
+              </p>
+
+              <div class="mt-6 rounded-2xl border border-border bg-secondary p-5">
+                <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Official Support Email</p>
+                <div class="mt-2 flex items-center justify-between gap-3">
+                  <span class="font-mono text-base font-bold text-foreground">support@wyvstudio.com</span>
+                  <button type="button" id="copy-email-btn"
+                    class="rounded-lg bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm hover:bg-background border border-border">
+                    Copy
+                  </button>
+                </div>
+                <p class="mt-2 text-xs text-muted-foreground">Average response time: under 24 hours (Mon–Fri)</p>
+              </div>
+            </div>
+
+            <div class="mt-8 border-t border-border pt-6">
+              <a href="mailto:support@wyvstudio.com"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-6 py-3.5 text-sm font-semibold text-background transition-opacity hover:opacity-90">
+                Email Support Team
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="border-t border-border bg-background py-12 text-sm text-muted-foreground">
+    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-5 sm:flex-row md:px-8">
+      <div class="flex items-center gap-3">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm shadow-primary/30">
+          <svg viewBox="0 0 64 64" class="h-5 w-5 text-white" aria-hidden="true">
+            <path d="M14 18 L22 46 L32 28 L42 46 L50 18" stroke="currentColor" stroke-width="6" stroke-linecap="round"
+              stroke-linejoin="round" fill="none" />
+          </svg>
+        </span>
+        <span class="font-medium text-foreground">&copy; 2026 Kollignton Kay Technologies Limited</span>
+      </div>
+
+      <nav aria-label="Footer" class="flex flex-wrap items-center gap-6 text-sm">
+        <a href="/terms" class="hover:text-foreground transition-colors">Terms of Service</a>
+        <a href="/privacy" class="hover:text-foreground transition-colors">Privacy Policy</a>
+        <a href="/refund" class="hover:text-foreground transition-colors">Refund Policy</a>
+        <a href="mailto:support@wyvstudio.com" class="hover:text-foreground transition-colors">Contact</a>
+      </nav>
+    </div>
+  </footer>
+
+  <!-- ==================== TOAST NOTIFICATION ==================== -->
+  <div id="toast" class="toast flex items-center gap-3 rounded-2xl border border-border bg-card px-5 py-3 shadow-2xl">
+    <span class="flex h-6 w-6 items-center justify-center rounded-full bg-success text-white text-xs font-bold">✓</span>
+    <span id="toast-text" class="text-sm font-medium text-foreground">Copied to clipboard!</span>
   </div>
-</div>
 
-<main>
+  <!-- ==================== SCRIPTS ==================== -->
+  <script>
+    (function () {
+      'use strict';
 
-<section class="lp-hero">
-  <div class="wrap">
-    <span class="lp-alert">Order complete</span>
-    <h1>Your WyvStudio account is ready. Let's make your first video ad.</h1>
-    <p class="lede">Your receipt and a welcome email are on their way to the address you bought with.</p>
-    <a class="btn btn-primary btn-lg" href="https://app.wyvstudio.com/login" target="_blank" rel="noopener">Open WyvStudio in a new tab</a>
-    <p class="lp-cta-note">Keep this page open beside it to follow the steps below.</p>
-  </div>
-</section>
-<section class="wrap lp-section ">
-<h2>Sign in</h2>
+      // 1. Theme Switcher Synchronization
+      var themeToggle = document.getElementById('theme-toggle');
+      var sunIcon = document.getElementById('theme-icon-sun');
+      var moonIcon = document.getElementById('theme-icon-moon');
 
-<ol class="lp-steps">
-<li>Go to <a href="https://app.wyvstudio.com/login" target="_blank" rel="noopener">app.wyvstudio.com</a> and enter the email address you bought with.</li>
-<li>We email you a sign-in link. Click it and you're in: no password needed. You can set one later.</li>
-<li>Everything you bought today is already on your account, credits included.</li>
-</ol>
+      function updateThemeIcons(theme) {
+        var isDark = theme === 'dark';
+        if (sunIcon) sunIcon.classList.toggle('hidden', !isDark);
+        if (moonIcon) moonIcon.classList.toggle('hidden', isDark);
+      }
 
-</section>
-<section class="wrap lp-section ">
-<h2>Your first video ad</h2>
+      var currentTheme = document.documentElement.getAttribute('data-theme') ||
+        (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+      updateThemeIcons(currentTheme);
 
-<ol class="lp-steps">
-<li><b>Start a new video</b> and choose how to begin: paste a product link (Shopify, Amazon, an affiliate page), paste a script, or type one line, like <i>"A 20-second fast-paced ad for a sleep mask showing how it blocks morning light, ending with a 20% discount code."</i></li>
-<li><b>Pick the shape:</b> vertical 9:16 for TikTok, Reels and Shorts. Then generate: WyvStudio writes the script, adds the voiceover, matches the visuals and times the captions.</li>
-<li><b>Review and export.</b> Play the preview, change any scene's words or visuals, and export: no watermark, and the video is yours.</li>
-</ol>
+      if (themeToggle) {
+        themeToggle.addEventListener('click', function (e) {
+          e.preventDefault();
+          var isDark = document.documentElement.classList.contains('dark');
+          var nextTheme = isDark ? 'light' : 'dark';
+          document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+          document.documentElement.setAttribute('data-theme', nextTheme);
+          updateThemeIcons(nextTheme);
+          try {
+            localStorage.setItem('wyv-theme', nextTheme);
+            localStorage.setItem('wyv_theme', nextTheme);
+          } catch (e) { }
+        });
+      }
 
-</section>
-<section class="wrap lp-section ">
-<h2>Your bonuses</h2>
-<p class="lp-pending">Bonus downloads (the "CPA Crusher" protocol, the "Series" playbook, and the Hooks & CTAs or agency toolkit if you bought them): links pending from the marketer.</p>
-</section>
-<section class="wrap lp-section ">
-<h2>Need help?</h2>
+      // 2. Toast Notification Helper
+      var toast = document.getElementById('toast');
+      var toastText = document.getElementById('toast-text');
+      var toastTimer = null;
 
-<p>Email <b>support@wyvstudio.com</b>. We reply within 24 hours, Monday to Friday.</p>
+      function showToast(msg) {
+        if (!toast || !toastText) return;
+        toastText.textContent = msg;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          toast.classList.remove('show');
+        }, 3000);
+      }
 
-</section>
-</main>
+      // 3. Copy Login URL Button
+      var copyLoginBtn = document.getElementById('copy-login-btn');
+      if (copyLoginBtn) {
+        copyLoginBtn.addEventListener('click', function () {
+          var url = 'https://app.wyvstudio.com/login';
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function () {
+              showToast('Login URL copied to clipboard!');
+            });
+          } else {
+            showToast('Login URL: ' + url);
+          }
+        });
+      }
 
-<footer class="lp-foot">
-  <div class="wrap">
-    <span>© 2026 Kollignton Kay Technologies Limited. Support: support@wyvstudio.com</span>
-    <nav aria-label="Legal"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/refund">Refunds</a></nav>
-    <!-- LAUNCHPAD DISCLAIMER: Launchpad's retailer wording goes here, as large as body copy (as JVZoo required). -->
-    <p class="lp-disclaimer lp-pending">Launchpad retailer disclaimer: pending from the marketer.</p>
-  </div>
-</footer>
-
-<script src="/launch.js?v=3" defer></script>
-<script src="/posthog-init.js" defer></script>
-<script src="/cookie-notice.js" defer></script>
+      // 4. Copy Email Button
+      var copyEmailBtn = document.getElementById('copy-email-btn');
+      if (copyEmailBtn) {
+        copyEmailBtn.addEventListener('click', function () {
+          var email = 'support@wyvstudio.com';
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(email).then(function () {
+              showToast('Support email copied: ' + email);
+            });
+          } else {
+            showToast('Email: ' + email);
+          }
+        });
+      }
+    })();
+  </script>
+  <script>
+    // Bonus downloads (delivered by the OfferIQ team). Paste each PDF link here; an empty one shows "Arriving by email".
+    (function () {
+      var BONUS = { hook: '', formula: '', run: '' };
+      document.querySelectorAll('[data-bonus]').forEach(function (a) {
+        var url = BONUS[a.getAttribute('data-bonus')];
+        if (url) { a.href = url; return; }
+        a.removeAttribute('href'); a.removeAttribute('target');
+        a.setAttribute('aria-disabled', 'true'); a.style.cursor = 'default';
+        var label = a.querySelector('span'); if (label) label.textContent = 'Arriving by email';
+      });
+    })();
+  </script>
+  <script src="/posthog-init.js" defer></script>
 </body>
+
 </html>

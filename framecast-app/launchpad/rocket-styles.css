@@ -1,0 +1,349 @@
+/* Rocket.new Design Tokens & Custom Animation Engine */
+
+:root {
+  --background: #fbf8f4;
+  --foreground: #1c1612;
+  --card: #ffffff;
+  --card-foreground: #1c1612;
+  --primary: #ff6b35;
+  --primary-foreground: #1a0b03;
+  --secondary: #f3ece4;
+  --secondary-foreground: #1c1612;
+  --accent: #c2410c;
+  --accent-foreground: #fffaf5;
+  --muted: #f0e8df;
+  --muted-foreground: #6b5f55;
+  --border: #e6dccf;
+  --input: #e6dccf;
+  --ring: #ff6b35;
+  --radius: 1rem;
+  --font-dm-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-space-mono: 'Space Mono', monospace;
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-space-mono);
+  --success: #2f8f5b;
+  --success-foreground: #f4fff8;
+  --warning: #d98a1f;
+  --warning-foreground: #1c1203;
+  --destructive: #c8372d;
+  --destructive-foreground: #fff6f5;
+}
+
+.dark,
+[data-theme="dark"] {
+  --background: #0E1013;
+  --foreground: #F2EEE6;
+  --primary: #FF6B35;
+  --primary-foreground: #1A0C05;
+  --secondary: #1A1D22;
+  --secondary-foreground: #F2EEE6;
+  --accent: #D9F24A;
+  --accent-foreground: #11140A;
+  --muted: #16191E;
+  --muted-foreground: #9A978F;
+  --card: #15181D;
+  --card-foreground: #F2EEE6;
+  --border: #2A2E35;
+  --input: #2A2E35;
+  --ring: #FF6B35;
+  --success: #5FD38A;
+  --success-foreground: #06130B;
+  --warning: #F2B84B;
+  --warning-foreground: #1A1204;
+  --destructive: #FF7A63;
+  --destructive-foreground: #1A0702;
+  --ink: #07080A;
+  --ink-foreground: #F2EEE6;
+}
+
+/* Base resets & typography */
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+h1, h2, h3, h4, h5, h6, p {
+  margin: 0;
+}
+
+/* Custom Typography & Serif Accents */
+.text-hero-xl {
+  font-size: clamp(2rem, 5.2vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.text-display {
+  font-size: clamp(1.625rem, 3.4vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.font-serif-accent {
+  font-family: var(--font-fraunces), serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* Atmospheric Gradients & Textures */
+.blob-primary {
+  background: radial-gradient(circle at 30% 30%, var(--primary), transparent 65%);
+  filter: blur(70px);
+}
+
+.blob-accent {
+  background: radial-gradient(circle at 60% 40%, var(--accent), transparent 65%);
+  filter: blur(80px);
+}
+
+.bg-grid-lines {
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.mask-grid-fade {
+  -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, #000 40%, transparent 100%);
+}
+
+.grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.5'/></svg>");
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+}
+
+/* Animations & Transitions */
+.reveal-ready {
+  opacity: 0;
+  transform: translateY(32px);
+  will-change: opacity, transform;
+}
+
+.reveal-in {
+  animation: revealUp 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+.float-slow {
+  animation: floatSlow 9s ease-in-out infinite;
+  will-change: transform;
+}
+
+.cut-char {
+  display: inline-block;
+  transform: translateY(105%);
+  will-change: transform;
+}
+
+.cut-in .cut-char {
+  animation: cutUp 0.8s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.bar-grow {
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+.bar-in .bar-grow {
+  animation: barGrow 1.2s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.faq-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.faq-panel-open {
+  grid-template-rows: 1fr;
+}
+
+.slot-offset-md {
+  transform: translateY(0);
+}
+
+@media (min-width: 768px) {
+  .slot-offset-md {
+    transform: translateY(2.5rem);
+  }
+}
+
+.sheen {
+  background-image: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  transition: background-position 0.8s ease;
+}
+
+.sheen:hover {
+  background-position: -20% 0;
+}
+
+/* Keyframes */
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cutUp {
+  from {
+    transform: translateY(105%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes barGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, -3%, 0) scale(1.08);
+  }
+}
+
+/* ================================================
+   Infinite Video Marquee — Pure CSS Animation
+   ================================================ */
+
+/* Keyframe: slide left by 50% (= width of Set A)
+   so Set B seamlessly lines up and loops forever */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Clip the animation — overflow:hidden is the only rule needed here */
+.video-scroll-container {
+  overflow: hidden;
+  width: 100%;
+}
+
+/* The animated track */
+.infinite-video-track {
+  display: flex;
+  flex-wrap: nowrap;
+  width: max-content;
+  gap: 14px;
+  animation: marquee-scroll 32s linear infinite;
+  will-change: transform;
+}
+
+/* Pause on desktop hover */
+.video-scroll-container:hover .infinite-video-track {
+  animation-play-state: paused;
+}
+
+/* Pause when a video is actively playing */
+.video-scroll-container.marquee-paused .infinite-video-track {
+  animation-play-state: paused;
+}
+
+.video-tile {
+  flex: 0 0 152px;
+  width: 152px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (min-width: 640px) {
+  .video-tile {
+    flex: 0 0 186px;
+    width: 186px;
+  }
+}
+
+.video-tile .vid-box {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0a0a0f;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.video-tile .vid-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.video-tile .play-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: #1a0c05;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform .2s ease, opacity .15s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+}
+
+@media (min-width: 640px) {
+  .video-tile .play-btn {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+.video-tile .vid-box:hover .play-btn {
+  transform: scale(1.08);
+}
+
+/* Play button is GONE when playing — no overlap, no blocking */
+.video-tile.is-playing .play-btn {
+  display: none !important;
+}
+
+/* Reduced Motion: stop the animation, make it static */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal-ready { opacity: 1; transform: none; }
+  .cut-char { transform: none; }
+  .bar-grow { transform: scaleX(1); }
+  .float-slow { animation: none; }
+  .infinite-video-track { animation: none; }
+}
+
