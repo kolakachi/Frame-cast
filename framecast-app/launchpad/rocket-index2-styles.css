@@ -524,8 +524,8 @@ body {
   justify-content: center;
   gap: 16px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 10px 24px;
@@ -534,7 +534,14 @@ body {
   width: max-content;
   max-width: 94%;
   z-index: 20;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .framer-ta3p1x,
+[data-theme="dark"] .framer-ta3p1x {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
 
 .framer-yfnnhb,
@@ -543,11 +550,20 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.9);
+  color: #1a1512;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
+}
+
+.dark .framer-yfnnhb,
+.dark .framer-1qvhsab,
+.dark .framer-46hqn4,
+[data-theme="dark"] .framer-yfnnhb,
+[data-theme="dark"] .framer-1qvhsab,
+[data-theme="dark"] .framer-46hqn4 {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .framer-yfnnhb svg,
@@ -558,6 +574,7 @@ body {
   flex-shrink: 0;
   display: inline-block;
   vertical-align: middle;
+  stroke: currentColor;
 }
 
 .framer-18xjh8x,
