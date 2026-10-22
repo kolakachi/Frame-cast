@@ -9,9 +9,9 @@ namespace App\Services\Launch;
  *    "user":{"name":"…","email":"…"},"id":205,…}
  *
  * The product ids are Launchpad's (owner's list, 2026-10-21); both the product id and the offer-product id from the
- * checkout links are accepted. The observed no-bump payload has bump="false"; honor that before the legacy
- * total-based inference. A purchased bump's payload is still unverified: until one is supplied, positive detection
- * remains a known bump name or a sale whose total covers the main product plus its bump.
+ * checkout links are accepted. Observed payloads use bump="true"/"false" on the main product, even at test prices.
+ * That flag is authoritative. Older payloads without a recognized flag retain total-based inference; separately
+ * named bump products are also supported.
  */
 final class LaunchpadIpn
 {
@@ -93,8 +93,8 @@ final class LaunchpadIpn
     }
 
     /**
-     * Our products this event is about: the main product, plus its inferred bump unless explicitly excluded; or a
-     * bump on its own when Launchpad sends a separately named product. Empty when unrecognised.
+     * Our products this event is about: the main product plus its selected bump, or a separately named bump.
+     * Only legacy payloads without a recognized flag infer selection from price. Empty when unrecognised.
      *
      * @return list<string>
      */
@@ -109,15 +109,16 @@ final class LaunchpadIpn
         $out = [$main];
         $bump = LaunchCatalogue::bumpOf($main);
         $amount = $this->amount();
-        if ($bump && ! $this->explicitlyExcludesBump() && $amount !== null
-            && $amount >= LaunchCatalogue::PRODUCTS[$main]['price'] + LaunchCatalogue::PRODUCTS[$bump]['price'] - 0.01) {
+        $selected = $this->bumpSelected();
+        if ($bump && ($selected === true || ($selected === null && $amount !== null
+            && $amount >= LaunchCatalogue::PRODUCTS[$main]['price'] + LaunchCatalogue::PRODUCTS[$bump]['price'] - 0.01))) {
             $out[] = $bump;
         }
 
         return $out;
     }
 
-    private function explicitlyExcludesBump(): bool
+    private function bumpSelected(): ?bool
     {
         $flag = $this->payload['bump'] ?? null;
         if (is_string($flag)) {
@@ -125,7 +126,11 @@ final class LaunchpadIpn
         }
 
         // PHP treats the nonempty string "false" as true, so do not cast this field to bool.
-        return in_array($flag, [false, 0, 'false', '0'], true);
+        return match ($flag) {
+            true, 1, 'true', '1' => true,
+            false, 0, 'false', '0' => false,
+            default => null,
+        };
     }
 
     /** A bump sold as its own product, recognised by what its name says it gives. */

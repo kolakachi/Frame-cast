@@ -80,7 +80,8 @@ class LaunchpadWebhookController extends Controller
     }
 
     /**
-     * Grant each product on the receipt. The main product records the total less its bump's price.
+     * Grant each product on the receipt. Split catalogue-priced receipts as before. For test/discounted totals,
+     * record the unsplit charge on the main product and leave the bump amount unknown, never negative or invented.
      *
      * @param  list<string>  $products
      * @return array{0: bool, 1: ?int}
@@ -90,9 +91,14 @@ class LaunchpadWebhookController extends Controller
         $created = false;
         $workspaceId = null;
         $amount = $ipn->amount();
+        $catalogueTotal = array_sum(array_map(fn ($product) => (float) LaunchCatalogue::PRODUCTS[$product]['price'], $products));
+        $splitAmount = count($products) > 1 && $amount !== null && $amount >= $catalogueTotal - 0.01;
         foreach ($products as $i => $product) {
-            $price = (float) LaunchCatalogue::PRODUCTS[$product]['price'];
-            $paid = count($products) === 1 ? $amount : ($i === 0 && $amount !== null ? $amount - (float) LaunchCatalogue::PRODUCTS[$products[1]]['price'] : $price);
+            $paid = $i === 0 ? $amount : null;
+            if ($splitAmount) {
+                $bumpPrice = (float) LaunchCatalogue::PRODUCTS[$products[1]]['price'];
+                $paid = $i === 0 ? $amount - $bumpPrice : $bumpPrice;
+            }
             $out = $this->launch->grant($ipn->email(), $ipn->name(), $product, $receipt,
                 ['amount' => $paid, 'currency' => 'USD', 'payload' => $ipn->payload]);
             $created = $created || $out['created'];

@@ -210,6 +210,45 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame(800, (int) User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace->credits_topup);
     }
 
+    public function test_the_observed_test_price_bump_creates_an_account_and_grants_both_products_once(): void
+    {
+        $payload = [
+            'id' => 124670, 'status' => 'success', 'refund_status' => 'no_status',
+            'product_id' => 5945, 'offer_id' => 601, 'quantity' => 1,
+            'transaction_id' => 'pi_test_price_bump', 'total_amount' => '3.33',
+            'bump' => 'true', 'coupon_code' => null, 'sale_page' => 'secondary',
+            'checkout_name' => 'Test Buyer', 'checkout_email' => 'testbuyer@example.com',
+            'action' => 'SALE', 'product' => ['id' => 5945, 'name' => 'WyvStudio Fe'],
+            'user' => ['id' => 28841, 'name' => 'Test Buyer', 'email' => 'testbuyer@example.com'],
+        ];
+        $this->ipn($payload)->assertOk();
+        $this->ipn($payload)->assertOk();
+
+        $user = User::query()->where('email', 'testbuyer@example.com')->firstOrFail();
+        $this->assertSame(1, User::query()->count());
+        $this->assertSame(800, (int) $user->workspace->credits_topup);
+        $this->assertEqualsCanonicalizing(['fe', 'fe_credits'], LaunchPurchase::query()->pluck('product')->all());
+        $this->assertSame('3.33', LaunchPurchase::query()->where('product', 'fe')->value('amount'));
+        $this->assertNull(LaunchPurchase::query()->where('product', 'fe_credits')->value('amount'), 'the webhook does not itemize the test price');
+        Mail::assertQueuedCount(1);
+
+        $this->ipn(array_replace($payload, ['action' => 'REFUND']))->assertOk();
+        $this->assertSame(0, (int) $user->workspace->fresh()->credits_topup);
+        $this->assertSame(2, LaunchPurchase::query()->where('status', 'refunded')->count());
+    }
+
+    public function test_explicit_bump_flags_apply_to_every_main_product_at_test_prices(): void
+    {
+        foreach ([[5945, 'fe', 'fe_credits'], [5946, 'bundle', 'bundle_dfy'], [5947, 'pro', 'pro_seats'], [5949, 'agency', 'agency_credits']] as [$id, $main, $bump]) {
+            foreach (['true', true, '1', 1] as $i => $flag) {
+                $receipt = 'pi_flag_'.$id.'_'.$i;
+                $this->ipn(['product_id' => $id, 'transaction_id' => $receipt, 'bump' => $flag, 'total_amount' => '3.33'])->assertOk();
+                $this->assertEqualsCanonicalizing([$main, $bump], LaunchPurchase::query()->where('receipt', $receipt)->pluck('product')->all());
+                $this->assertSame(3.33, (float) LaunchPurchase::query()->where('receipt', $receipt)->sum('amount'));
+            }
+        }
+    }
+
     public function test_an_ipn_total_that_covers_the_bump_grants_it_too(): void
     {
         $this->ipn(['product_id' => 6942, 'total_amount' => 24]);
