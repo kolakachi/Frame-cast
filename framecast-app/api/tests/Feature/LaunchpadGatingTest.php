@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Mail\Onboarding\OnboardingDay0Welcome;
+use App\Mail\LaunchpadPurchaseMail;
 use App\Models\LaunchPurchase;
 use App\Models\User;
 use App\Models\Workspace;
@@ -63,6 +63,7 @@ class LaunchpadGatingTest extends TestCase
             $t->decimal('amount', 12, 2)->nullable(); $t->string('currency', 3)->nullable(); $t->json('payload')->nullable();
             $t->timestamp('revoked_at')->nullable(); $t->timestamps(); $t->unique(['receipt', 'product']);
         });
+        (require database_path('migrations/2026_10_23_000000_create_launch_access_emails.php'))->up();
         // The done-for-you vault is the template library (Templates, 2026-10-16).
         (require database_path('migrations/2026_10_16_120000_create_create_templates_table.php'))->up();
         (require database_path('migrations/2026_10_17_220000_add_free_audit_to_create_templates.php'))->up();
@@ -97,39 +98,84 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame(200, (int) $w->fresh()->credits_topup);
         $this->assertSame('duplicate', $this->hook()->outcome);
         $this->assertSame(1, LaunchPurchase::query()->count());
-        Mail::assertQueued(OnboardingDay0Welcome::class, fn ($mail) => $mail->hasTo('ipn@example.com'));
-        Mail::assertQueued(OnboardingDay0Welcome::class, 1);
+        Mail::assertQueued(LaunchpadPurchaseMail::class, fn ($mail) => $mail->hasTo('ipn@example.com'));
+        Mail::assertQueued(LaunchpadPurchaseMail::class, 1);
     }
 
-    public function test_an_ipn_redelivery_retries_a_failed_welcome_without_duplicating_credits(): void
+    public function test_an_ipn_redelivery_retries_a_failed_access_email_without_duplicating_credits(): void
     {
         $fake = Mail::getFacadeRoot();
         Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('queue unavailable'));
-        $this->ipn()->assertOk();
+        $this->ipn()->assertStatus(500);
         $w = User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace;
-        $this->assertNull($w->welcome_email_sent_at);
+        $this->assertSame(0, DB::table('launch_access_emails')->count());
         $this->assertSame(200, (int) $w->credits_topup);
 
         Mail::swap($fake);
         $this->ipn()->assertOk();
         $this->ipn()->assertOk();
-        Mail::assertQueued(OnboardingDay0Welcome::class, 1);
-        $this->assertNotNull($w->fresh()->welcome_email_sent_at);
+        Mail::assertQueued(LaunchpadPurchaseMail::class, 1);
+        $this->assertSame(1, DB::table('launch_access_emails')->count());
         $this->assertSame(200, (int) $w->fresh()->credits_topup);
         $this->assertSame(1, LaunchPurchase::query()->count());
     }
 
-    public function test_a_refunded_purchase_does_not_retry_the_welcome_on_sale_redelivery(): void
+    public function test_a_refunded_purchase_does_not_retry_access_email_on_sale_redelivery(): void
     {
         $this->ipn()->assertOk();
         $this->ipn(['action' => 'REFUND'])->assertOk();
-        $w = User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace;
-        $w->forceFill(['welcome_email_sent_at' => null])->save();
+        DB::table('launch_access_emails')->delete();
         Mail::fake();
 
         $this->ipn()->assertOk();
         Mail::assertNothingQueued();
-        $this->assertNull($w->fresh()->welcome_email_sent_at);
+        $this->assertSame(0, DB::table('launch_access_emails')->count());
+    }
+
+    public function test_payment_alone_sends_access_to_an_existing_buyer_even_if_the_workspace_was_welcomed(): void
+    {
+        $w = $this->account('ipn@example.com', 'appsumo_creator', 'appsumo');
+        $owner = User::query()->create(['workspace_id' => $w->id, 'name' => 'Owner', 'email' => 'owner@example.com']);
+        $w->forceFill(['owner_user_id' => $owner->id, 'welcome_email_sent_at' => now()->subMonth()])->save();
+
+        // Only a server-to-server payment notification: no login or thank-you page visit.
+        $this->ipn()->assertOk();
+        Mail::assertQueued(LaunchpadPurchaseMail::class, fn ($mail) =>
+            $mail->hasTo('ipn@example.com') && ! $mail->hasTo('owner@example.com')
+            && $mail->purchaseEmail === 'ipn@example.com' && $mail->receipt === 'pi_1');
+        Mail::assertQueuedCount(1);
+        $this->assertSame('appsumo_creator', $w->fresh()->plan_tier);
+    }
+
+    public function test_a_receipt_with_a_bump_sends_one_access_email_and_an_upgrade_sends_its_own(): void
+    {
+        $this->ipn(['total_amount' => 24])->assertOk();
+        $this->ipn(['total_amount' => 24])->assertOk();
+        Mail::assertQueuedCount(1);
+        $this->assertSame(2, LaunchPurchase::query()->count());
+        $this->assertSame(1, DB::table('launch_access_emails')->count());
+
+        $this->ipn(['product_id' => 5947, 'transaction_id' => 'pi_upgrade', 'total_amount' => 67])->assertOk();
+        Mail::assertQueuedCount(2);
+        Mail::assertQueued(LaunchpadPurchaseMail::class, fn ($mail) =>
+            $mail->receipt === 'pi_upgrade' && $mail->productName === 'WyvStudio Pro');
+    }
+
+    public function test_access_email_contains_a_lasting_sign_in_entry_point_and_purchase_email(): void
+    {
+        config(['app.frontend_url' => 'https://studio.example.test/']);
+        $mail = new LaunchpadPurchaseMail('buyer@example.com', 'WyvStudio Pro', 'LP-123');
+        $body = $mail->render();
+
+        $this->assertStringContainsString('https://studio.example.test/login?source=launchpad', $body);
+        $this->assertStringContainsString('buyer@example.com', $body);
+        $this->assertStringContainsString('Send Magic Link', $body);
+        $this->assertStringContainsString('even if you closed checkout', $body);
+        $this->assertStringContainsString('https://special.wyvstudio.com/thank-you', $body);
+        $this->assertStringContainsString('WyvStudio Pro', $body);
+        $this->assertStringContainsString('LP-123', $body);
+        $this->assertStringNotContainsString('/auth/magic?token=', $body);
+        $this->assertSame(5, $mail->tries);
     }
 
     public function test_an_ipn_total_that_covers_the_bump_grants_it_too(): void
