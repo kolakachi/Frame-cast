@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\Onboarding\OnboardingDay0Welcome;
 use App\Models\LaunchPurchase;
 use App\Models\User;
 use App\Models\Workspace;
@@ -96,6 +97,39 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame(200, (int) $w->fresh()->credits_topup);
         $this->assertSame('duplicate', $this->hook()->outcome);
         $this->assertSame(1, LaunchPurchase::query()->count());
+        Mail::assertQueued(OnboardingDay0Welcome::class, fn ($mail) => $mail->hasTo('ipn@example.com'));
+        Mail::assertQueued(OnboardingDay0Welcome::class, 1);
+    }
+
+    public function test_an_ipn_redelivery_retries_a_failed_welcome_without_duplicating_credits(): void
+    {
+        $fake = Mail::getFacadeRoot();
+        Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('queue unavailable'));
+        $this->ipn()->assertOk();
+        $w = User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace;
+        $this->assertNull($w->welcome_email_sent_at);
+        $this->assertSame(200, (int) $w->credits_topup);
+
+        Mail::swap($fake);
+        $this->ipn()->assertOk();
+        $this->ipn()->assertOk();
+        Mail::assertQueued(OnboardingDay0Welcome::class, 1);
+        $this->assertNotNull($w->fresh()->welcome_email_sent_at);
+        $this->assertSame(200, (int) $w->fresh()->credits_topup);
+        $this->assertSame(1, LaunchPurchase::query()->count());
+    }
+
+    public function test_a_refunded_purchase_does_not_retry_the_welcome_on_sale_redelivery(): void
+    {
+        $this->ipn()->assertOk();
+        $this->ipn(['action' => 'REFUND'])->assertOk();
+        $w = User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace;
+        $w->forceFill(['welcome_email_sent_at' => null])->save();
+        Mail::fake();
+
+        $this->ipn()->assertOk();
+        Mail::assertNothingQueued();
+        $this->assertNull($w->fresh()->welcome_email_sent_at);
     }
 
     public function test_an_ipn_total_that_covers_the_bump_grants_it_too(): void

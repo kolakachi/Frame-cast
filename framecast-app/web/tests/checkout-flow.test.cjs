@@ -175,3 +175,52 @@ test('the checkout gate opens the app when billing cannot be read', async () => 
   const h = harness('composables/resumeCheckout.js', 'checkoutGate', { api: { get: async () => { throw new Error('down') } } })
   assert.equal(await h.api.checkoutGate(), null)
 })
+
+
+test('Launchpad sign-in ignores stale checkout plans and requests access without a purchase', async () => {
+  let requestedPlan
+  const h = harness('views/LoginView.vue', 'submitMagicLink, form, state', {
+    useRoute: () => ({ query: { source: 'launchpad', pass: '1', plan: 'creator' } }),
+    localStorage: { getItem: () => 'ugc_pass', setItem: () => {} },
+    useAuthStore: () => ({ requestMagicLink: async (email, name, company, plan) => {
+      assert.equal(email, 'buyer@example.com'); requestedPlan = plan
+    } }),
+  })
+  h.api.form.email = 'buyer@example.com'
+  await h.api.submitMagicLink()
+  assert.equal(requestedPlan, null)
+  assert.equal(h.api.state.value, 'sent')
+  assert.equal(h.redirects.length, 0)
+})
+
+test('a delayed Launchpad account stays on sign-in and can retry once provisioning finishes', async () => {
+  let ready = false
+  const h = harness('views/LoginView.vue', 'submitMagicLink, form, state, errorMessage', {
+    useRoute: () => ({ query: { source: 'launchpad' } }),
+    useAuthStore: () => ({ requestMagicLink: async () => {
+      if (!ready) throw { response: { data: { error: { code: 'no_account' } } } }
+    } }),
+  })
+  h.api.form.email = 'buyer@example.com'
+  await h.api.submitMagicLink()
+  assert.equal(h.api.state.value, 'error')
+  assert.match(h.api.errorMessage.value, /email on your Launchpad receipt/)
+  assert.match(h.api.errorMessage.value, /do not need to buy again/)
+  assert.equal(h.redirects.length, 0)
+  ready = true
+  await h.api.submitMagicLink()
+  assert.equal(h.api.state.value, 'sent')
+  assert.equal(h.api.errorMessage.value, '')
+})
+
+test('ordinary sign-in still offers registration when the account does not exist', async () => {
+  const h = harness('views/LoginView.vue', 'submitMagicLink, form', {
+    useRoute: () => ({ query: {} }),
+    useAuthStore: () => ({ requestMagicLink: async () => {
+      throw { response: { data: { error: { code: 'no_account' } } } }
+    } }),
+  })
+  h.api.form.email = 'new@example.com'
+  await h.api.submitMagicLink()
+  assert.equal(h.redirects[0].name, 'register')
+})

@@ -8,8 +8,10 @@ import { peekBrief } from "../services/pendingBrief.js";
 
 const router = useRouter();
 const route = useRoute();
-let selectedPlan = route.query.pass ? 'ugc_pass' : String(route.query.plan ?? '');
-if (!selectedPlan) {
+const isLaunchpadBuyer = route.query.source === 'launchpad';
+// A buyer arriving from the access guide is signing in, even if an old checkout hint remains.
+let selectedPlan = isLaunchpadBuyer ? '' : (route.query.pass ? 'ugc_pass' : String(route.query.plan ?? ''));
+if (!isLaunchpadBuyer && !selectedPlan) {
   try { selectedPlan = localStorage.getItem('wyv_pending_plan') || ''; } catch { /* optional cache */ }
 }
 if (selectedPlan) {
@@ -34,6 +36,11 @@ async function submitMagicLink() {
   } catch (err) {
     // No account for this email, and free sign-up is closed: the $9 Test Pass is how a new person starts.
     if (err.response?.data?.error?.code === "no_account") {
+      if (isLaunchpadBuyer) {
+        state.value = "error";
+        errorMessage.value = "We could not find an account for this email yet. Use the email on your Launchpad receipt. If you just paid, wait a few minutes and try again. You do not need to buy again. If this continues, email support@wyvstudio.com with your receipt.";
+        return;
+      }
       await router.replace({ name: "register", query: { pass: "1" } });
       return;
     }
@@ -104,7 +111,8 @@ function resend() {
         </p>
 
         <div class="auth-note centered">
-          The link expires in 15 minutes and can only be used once.<br /><br />
+          The link expires in 15 minutes and can only be used once.<br />
+          Check your spam folder and open the newest sign-in email.<br /><br />
           Didn't get it?
           <button class="auth-link auth-link-button" @click="resend">
             Resend
@@ -120,8 +128,12 @@ function resend() {
 
       <template v-else>
         <div class="auth-logo">W</div>
-        <h1 class="auth-title">Welcome back</h1>
-        <p class="auth-subtitle">
+        <h1 class="auth-title">{{ isLaunchpadBuyer ? "Access your WyvStudio purchase" : "Welcome back" }}</h1>
+        <p v-if="isLaunchpadBuyer" class="auth-subtitle">
+          Enter the same email you used at Launchpad checkout, then choose Send Magic Link.
+          Open the email to sign in. No password is needed.
+        </p>
+        <p v-else class="auth-subtitle">
           Enter your email to receive a magic link, or sign in with your
           password.
         </p>
@@ -227,7 +239,12 @@ function resend() {
              start from a plan. Pointing at /register would show a form that
              immediately bounces the visitor to pricing — send them there
              directly, and say what they'll find. -->
-        <div class="auth-footer">
+        <div v-if="isLaunchpadBuyer" class="auth-footer">
+          Need help accessing your purchase?
+          <a class="auth-link" href="https://special.wyvstudio.com/thank-you">View the sign-in guide</a>
+          or <a class="auth-link" href="mailto:support@wyvstudio.com">contact support</a>.
+        </div>
+        <div v-else class="auth-footer">
           Don't have an account?
           <a class="auth-link" href="https://wyvstudio.com/#pricing">See plans</a>
         </div>

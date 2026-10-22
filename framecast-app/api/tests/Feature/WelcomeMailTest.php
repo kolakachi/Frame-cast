@@ -142,6 +142,22 @@ class WelcomeMailTest extends TestCase
         $this->assertStringNotContainsString('renewed every month', $body);
     }
 
+    public function test_launchpad_welcome_explains_passwordless_access_with_the_purchase_email(): void
+    {
+        config(['app.frontend_url' => 'https://studio.example.test/']);
+        $ws = $this->paidWorkspace(['plan_tier' => 'launch_fe', 'plan_source' => 'launchpad', 'credits_monthly' => 0]);
+        $ws->setAttribute('credits_topup', 200);
+        $body = $this->render($ws);
+
+        $this->assertStringContainsString('https://studio.example.test/login?source=launchpad', $body);
+        $this->assertStringContainsString('ada@acme.test', $body);
+        $this->assertStringContainsString('Send Magic Link', $body);
+        $this->assertStringContainsString('No password or new purchase is needed', $body);
+        $this->assertStringContainsString('https://special.wyvstudio.com/thank-you', $body);
+        $this->assertStringContainsString('200 credits', $body);
+        $this->assertStringNotContainsString('renewed every month', $body);
+    }
+
     public function test_topup_confirmation_contains_the_purchase_snapshot(): void
     {
         $body = (new \App\Mail\TopUpConfirmationMail('Ada', 500, 1200, 'Acme'))->render();

@@ -16,6 +16,18 @@
   @endif
 @endif
 
-<p><a href="{{ $accountUrl }}">Open WyvStudio and get started →</a></p>
+@if($isLaunchpad)
+  <h2>How to sign in</h2>
+  <ol>
+    <li><a href="{{ $loginUrl }}">Open the WyvStudio sign-in page</a>.</li>
+    <li>Enter <strong>{{ $user->email }}</strong>, the email linked to your purchase, and choose <strong>Send Magic Link</strong>.</li>
+    <li>Check your inbox and spam folder, then open the newest WyvStudio sign-in email. The link works once and expires after 15 minutes.</li>
+  </ol>
+  <p>No password or new purchase is needed. If you already use WyvStudio, sign in to the account with this email to access your purchase.</p>
+  <p><a href="{{ $launchGuideUrl }}">Read the thank-you and getting-started guide →</a></p>
+  <p>If you cannot sign in or your purchase is missing, email <a href="mailto:support@wyvstudio.com">support@wyvstudio.com</a> with your checkout email and Launchpad receipt or transaction ID.</p>
+@else
+  <p><a href="{{ $accountUrl }}">Open WyvStudio and get started →</a></p>
+@endif
 <p>Reply to this email if you need help getting started.</p>
 <p>— Amara<br>Co-founder, WyvStudio</p>

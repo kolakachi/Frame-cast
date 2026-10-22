@@ -47,6 +47,10 @@ class LaunchpadService
 
         $existing = LaunchPurchase::query()->where('receipt', $receipt)->where('product', $product)->first();
         if ($existing) {
+            // Retry a failed welcome queue submission without granting the purchase again.
+            if ($existing->status === 'active') {
+                \App\Services\Onboarding\WelcomeMail::sendOnce($existing->workspace);
+            }
             return ['purchase' => $existing, 'created' => false];
         }
 
@@ -77,6 +81,9 @@ class LaunchpadService
             // Two deliveries of one sale raced past the check above; the unique key let only one in.
             $again = LaunchPurchase::query()->where('receipt', $receipt)->where('product', $product)->first();
             if ($again) {
+                if ($again->status === 'active') {
+                    \App\Services\Onboarding\WelcomeMail::sendOnce($again->workspace);
+                }
                 return ['purchase' => $again, 'created' => false];
             }
             throw $e;

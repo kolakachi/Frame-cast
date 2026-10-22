@@ -56,6 +56,9 @@ class OnboardingDay0Welcome extends Mailable implements ShouldQueue
         return new Content(view: 'mail.onboarding.day0-welcome', with: [
             'planName' => $planName ?: null,
             'isTestPass' => $tier === 'ugc_pass',
+            'isLaunchpad' => ($workspace->plan_source ?? '') === 'launchpad' || \App\Services\Launch\LaunchCatalogue::isLaunchTier($tier),
+            'loginUrl' => rtrim((string) config('app.frontend_url'), '/').'/login?source=launchpad',
+            'launchGuideUrl' => 'https://special.wyvstudio.com/thank-you',
             'accountUrl' => rtrim((string) config('app.frontend_url'), '/'),
             'credits' => $credits,
             // A lifetime or AppSumo bucket does not come back every month, and
