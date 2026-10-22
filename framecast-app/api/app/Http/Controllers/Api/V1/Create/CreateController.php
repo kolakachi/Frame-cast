@@ -22,7 +22,7 @@ class CreateController extends Controller
         }
         return response()->json(['data' => ['enabled' => true, 'templates' => \App\Services\Create\TemplateLibrary::pageOpen($r->user()), 'templates_public' => (bool) config('create.templates_public'),
             // A free plan's one free first ad (FreeFirst): null for paid plans; its conversation once started.
-            'free_first' => \App\Services\Create\FreeFirst::freePlan((int) $r->user()->workspace_id) ? ['conversation_id' => \App\Services\Create\FreeFirst::conversationId((int) $r->user()->workspace_id)] : null, 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
+            'free_first' => \App\Services\Create\FreeFirst::freePlan((int) $r->user()->workspace_id) ? ['conversation_id' => \App\Services\Create\FreeFirst::conversationId((int) $r->user()->workspace_id), 'open' => \App\Services\Create\FreeFirst::open()] : null, 'mode' => config('create.mode'), 'paid_generation' => \App\Services\Create\PilotPolicy::enabled(), 'image_generation' => \App\Services\Create\PilotPolicy::enabled(), 'publishing' => true,
             'uploads' => ['max_files'=>20,'max_file_bytes'=>config('create.input_file_bytes'),'max_total_bytes'=>config('create.input_total_bytes'),'mime_types'=>array_keys(AttachmentUploadService::TYPES)]]]);
     }
 

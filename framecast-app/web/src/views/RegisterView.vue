@@ -48,6 +48,9 @@ const checkingPolicy = ref(true);
 const freeStart = !!route.query.free || !!templateFromLink(route.query.template);
 // A post, answer or outreach link can name one template (?free=1&template=<id>): the free ad starts on it (TPL-LINK).
 const freeTemplate = templateFromLink(route.query.template);
+// Free sign-up closed (owner, 2026-10-22): anyone not here for a paid plan goes to the $9 Test Pass, on Kelviq's own
+// checkout when its link is set, else through this form and our checkout.
+const freeOpen = ref(true);
 
 onMounted(async () => {
   const plan = route.query.pass ? "ugc_pass" : String(route.query.plan ?? "");
@@ -62,6 +65,17 @@ onMounted(async () => {
 
   try {
     const { data } = await api.get("/public/signup-policy");
+    if (data?.data?.free_signup === false) {
+      freeOpen.value = false;
+      if (!pendingPlan.value || pendingPlan.value === "ugc_pass") {
+        if (data.data.pass_link) {
+          window.location.replace(data.data.pass_link);
+          return;
+        }
+        pendingPlan.value = "ugc_pass";
+        try { localStorage.setItem("wyv_pending_plan", "ugc_pass"); } catch {}
+      }
+    }
     // No plan chosen and the gate is on: send them to pick one rather than
     // showing a form that would create an account they cannot use.
     if (data?.data?.require_plan && !pendingPlan.value && !freeStart) {
@@ -86,7 +100,7 @@ async function submit() {
       form.name,
       form.password || null,
       pendingPlan.value || null,
-      freeStart && !pendingPlan.value
+      freeStart && freeOpen.value && !pendingPlan.value
     );
     conversion('signup', { value: 1, email: form.email });
     if (pendingPlan.value) {

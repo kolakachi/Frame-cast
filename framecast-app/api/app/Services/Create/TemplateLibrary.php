@@ -168,6 +168,9 @@ class TemplateLibrary
         $conversations->authorize($user, true);
         $t = $this->find($user, $id);
         abort_if(collect($this->visible($user))->firstWhere('id', $t->id)['locked'] ?? false, 403, 'This template is not in your plan.');
+        // A free plan with no free ad started can't start one since free sign-up closed (FreeFirst::open).
+        abort_if(! FreeFirst::open() && FreeFirst::freePlan((int) $user->workspace_id) && ! FreeFirst::conversationId((int) $user->workspace_id)
+            && ! in_array($user->role, ['super_admin', 'platform_admin'], true), 402, FreeFirst::CLOSED);
         $match = in_array($input['match'] ?? null, self::MATCHES, true) ? $input['match'] : 'exact';
         $key = 'create-template-use:'.$user->workspace_id.':'.$input['idempotency_key'];
         if ($done = Cache::get($key)) return $done;

@@ -31,7 +31,7 @@ function logout() { authStore.clearSession(); router.push({ name: 'login' }) }
 
 onMounted(async () => {
   try { me.value = (await api.get('/me')).data?.data?.user ?? null } catch {}
-  try { const ff = (await api.get('/create/capabilities')).data.data.free_first; freeFirstOpen.value = !!ff && !ff.conversation_id; freeFirstUsed.value = !!ff?.conversation_id } catch {}
+  try { const ff = (await api.get('/create/capabilities')).data.data.free_first; freeFirstOpen.value = !!ff && !ff.conversation_id && ff.open !== false; freeFirstUsed.value = !!ff?.conversation_id } catch {}
   try {
     const d = (await api.get('/create/templates')).data.data
     templates.value = d.templates; categories.value = d.categories; isPublic.value = d.public; staff.value = d.staff

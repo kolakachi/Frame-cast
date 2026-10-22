@@ -37,10 +37,18 @@ class FreeFirst
         return is_string($kept['free_first_conversation_id'] ?? null) ? $kept['free_first_conversation_id'] : null;
     }
 
+    /** Whether a free plan can still start its free first ad: not since free sign-up closed (billing.free_signup). */
+    public static function open(): bool
+    {
+        return (bool) config('billing.free_signup');
+    }
+
+    public const CLOSED = 'Free first ads have ended. Make your ad with the $9 Test Pass: your own words and photos, new shots, voices and presenters, and no WyvStudio mark.';
+
     /** A free plan's first template conversation becomes its free first ad, once (a lock settles two at the same moment). */
     public static function claim(int $workspaceId, string $conversationId): void
     {
-        if (! self::freePlan($workspaceId) || ! self::kept()) return;
+        if (! self::open() || ! self::freePlan($workspaceId) || ! self::kept()) return;
         DB::transaction(function () use ($workspaceId, $conversationId) {
             $row = DB::table('workspaces')->where('id', $workspaceId)->lockForUpdate()->first(['onboarding_json']);
             $kept = json_decode((string) ($row->onboarding_json ?? ''), true) ?: [];

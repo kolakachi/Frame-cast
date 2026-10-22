@@ -102,6 +102,11 @@ class AuthController extends Controller
             'plan' => [$register && config('billing.require_plan_on_register') && ! $freeStart ? 'required' : 'nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(config('billing.kelviq.plan_labels', [])))],
         ]);
 
+        // Free sign-up is closed (billing.free_signup): a new person starts with the $9 Test Pass.
+        if ($freeStart && ! config('billing.free_signup')) {
+            return $this->error('free_signup_closed', 'Free sign-up has ended. Start with the $9 Test Pass.', 403);
+        }
+
         $validated['email'] = strtolower($validated['email']);
         $email = $validated['email'];
         $ip    = (string) $request->ip();
@@ -157,6 +162,11 @@ class AuthController extends Controller
 
         if ($register && $existingByEmail) {
             return $this->error('account_exists', 'An account with this email already exists. Sign in to continue to payment.', 409);
+        }
+        // Signing in with an email we don't know made a free account. With free sign-up closed it makes one only for
+        // someone on their way to buy a plan; anyone else is sent to the pass.
+        if (! $register && ! $existingByEmail && ! isset($validated['plan']) && ! config('billing.free_signup')) {
+            return $this->error('no_account', 'There is no WyvStudio account for this email. Start with the $9 Test Pass.', 404);
         }
         $user = $this->findOrCreateUser($validated, $register);
 

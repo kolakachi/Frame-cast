@@ -86,9 +86,26 @@ class RegistrationCheckoutTest extends TestCase
         $post = fn (array $body) => Request::create('/api/v1/auth/register', 'POST', $body);
         try { $controller->register($post(['name' => 'No Plan', 'email' => 'noplan@gmail.com'])); $this->fail('a plan-less sign-up passed'); }
         catch (\Illuminate\Validation\ValidationException $e) { $this->assertArrayHasKey('plan', $e->errors()); }
+        // Free sign-up closed (owner, 2026-10-22): free=1 is refused and makes no account.
+        $closed = $controller->register($post(['name' => 'Free Start', 'email' => 'freestart@gmail.com', 'free' => true]));
+        $this->assertSame([403, 'free_signup_closed'], [$closed->status(), $closed->getData(true)['error']['code']]);
+        $this->assertSame(0, User::count());
+        config(['billing.free_signup' => true]);
         $ok = $controller->register($post(['name' => 'Free Start', 'email' => 'freestart@gmail.com', 'free' => true]));
         $this->assertSame(200, $ok->status());
         $this->assertSame('free', Workspace::query()->latest('id')->first()->plan_tier);
+    }
+
+    public function test_a_sign_in_with_an_unknown_email_makes_no_account_while_free_sign_up_is_closed(): void
+    {
+        $request = \Mockery::mock(Request::class)->makePartial();
+        $request->shouldReceive('validate')->andReturn(['email' => 'stranger@example.com']);
+        $request->shouldReceive('ip')->andReturn('127.0.0.45');
+        $controller = new AuthController($this->createMock(AuthSessionService::class), $this->createMock(JwtService::class));
+        $response = $controller->magicLink($request);
+        $this->assertSame([404, 'no_account'], [$response->status(), $response->getData(true)['error']['code']]);
+        $this->assertSame(0, User::count());
+        Mail::assertNothingSent();
     }
 
     public function test_existing_email_cannot_receive_a_registration_session(): void

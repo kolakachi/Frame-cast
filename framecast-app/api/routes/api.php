@@ -189,6 +189,8 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/public/signup-policy', function () {
         return response()->json(['data' => [
             'require_plan' => (bool) config('billing.require_plan_on_register'),
+            'free_signup' => (bool) config('billing.free_signup'),
+            'pass_link' => (string) config('billing.kelviq.ugc_pass_link') ?: null,
         ], 'meta' => []]);
     });
 

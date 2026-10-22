@@ -32,6 +32,11 @@ async function submitMagicLink() {
     await authStore.requestMagicLink(form.email, null, null, selectedPlan || null);
     state.value = "sent";
   } catch (err) {
+    // No account for this email, and free sign-up is closed: the $9 Test Pass is how a new person starts.
+    if (err.response?.data?.error?.code === "no_account") {
+      await router.replace({ name: "register", query: { pass: "1" } });
+      return;
+    }
     state.value = "error";
     errorMessage.value =
       err.response?.data?.error?.message ??

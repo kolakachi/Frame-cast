@@ -59,7 +59,7 @@
         <svg class="tt-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.6 3.2a8.6 8.6 0 1 0 7.2 13.2A7.4 7.4 0 0 1 13.6 3.2z"/><path fill="currentColor" d="M18.6 2.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55zM21.4 7.6l.35 1.05 1.05.35-1.05.35-.35 1.05-.35-1.05-1.05-.35 1.05-.35z"/></svg>
         <span class="tt-knob" aria-hidden="true"></span>
       </button>
-      <a class="btn btn-primary free-cta nav-free" data-where="nav" href="https://app.wyvstudio.com/register?free=1"><span class="cta-long">Make my first ad free</span><span class="cta-short">First ad free</span></a>
+      <a class="btn btn-primary free-cta nav-free" data-where="nav" href="https://app.wyvstudio.com/register?pass=1"><span class="cta-long">Try it for $9</span><span class="cta-short">Try it, $9</span></a>
       <button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-expanded="false" aria-controls="nav-menu" aria-label="Menu">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path class="nm-a" d="M4 7h16"/><path class="nm-b" d="M4 12h16"/><path class="nm-c" d="M4 17h16"/></svg>
       </button>
@@ -120,7 +120,7 @@
           <p class="hint"><strong>You approve the plan first.</strong> Script, voice, music and look, before the video is made.</p>
           <span class="count" id="brief-count" aria-live="polite">0 / 1,500</span>
           <div class="composer-ctas">
-            <a class="btn btn-primary free-cta" id="free-start" data-where="hero" href="https://app.wyvstudio.com/register?free=1">Make my first ad free</a>
+            <a class="btn btn-primary free-cta" id="free-start" data-where="hero" href="https://app.wyvstudio.com/register?pass=1">Try it for $9</a>
             <button type="submit" class="btn btn-ghost">or see prices</button>
           </div>
         </div>
@@ -169,7 +169,7 @@
 <div class="post-meta"><span class="platform">Reels, 17:30</span><span class="status status-next">Scheduled</span></div></article></div></div>
     <div class="week-foot">
       <p>Every video here was made in WyvStudio from a sentence or a reference. Press play on any of them.</p>
-      <a class="btn btn-primary free-cta" data-where="week" href="https://app.wyvstudio.com/register?free=1">Make my first ad free</a>
+      <a class="btn btn-primary free-cta" data-where="week" href="https://app.wyvstudio.com/register?pass=1">Try it for $9</a>
     </div>
   </div>
 </section>
@@ -262,7 +262,7 @@
     <h2>One price. Yours to keep.</h2>
     <p class="lede">One payment, no subscription. Top up only when you need more.</p>
   </div>
-  <p class="free-line">Not ready to pay? <a class="free-cta" data-where="pricing" href="https://app.wyvstudio.com/register?free=1">Your first ad is free &rarr;</a></p>
+  <p class="free-line">Not ready for the full pack? <a class="free-cta" data-where="pricing" href="https://app.wyvstudio.com/register?pass=1">Try it with the $9 Test Pass &rarr;</a></p>
   <div class="brief-saved" id="brief-saved" role="status" hidden>
     <span class="tick" aria-hidden="true">&#10003;</span>
     <p><strong>Your brief is saved.</strong> Get WyvStudio, and it's waiting for your Creative Director after sign-up.
@@ -303,7 +303,7 @@
   <div class="final">
     <h2>Next week's creative starts here.</h2>
     <p>Type one sentence. See the plan before you build. Post it this week.</p>
-    <a class="btn btn-lg free-cta" data-where="final" href="https://app.wyvstudio.com/register?free=1">Make my first ad free</a>
+    <a class="btn btn-lg free-cta" data-where="final" href="https://app.wyvstudio.com/register?pass=1">Try it for $9</a>
     <a class="final-prices" href="#pricing">or see prices</a>
   </div>
 </section>
@@ -356,9 +356,9 @@
     if (history.replaceState) history.replaceState(null, '', '#pricing');
   });
 
-  // "Make my first ad free" (FREE-FIRST, owner 2026-10-17; HOME-CTA 2026-10-19: every main button on the page): sign up
-  // with no plan and make one free ad from a template; the idea typed here rides along after # and becomes "Your
-  // product" on the template the visitor picks. Each button says where it sits (PostHog free_cta, where=…).
+  // Every main button on the page (HOME-CTA 2026-10-19) was "Make my first ad free"; free sign-up closed on 2026-10-22, so
+  // they now start the $9 Test Pass. The idea typed here rides along after # when our own sign-up form is used. Each
+  // button says where it sits (PostHog free_cta, where=…).
   function freeStart(a) {
     var text = brief(), u = new URL(a.href);
     u.hash = text ? 'brief=' + encodeURIComponent(text) : '';

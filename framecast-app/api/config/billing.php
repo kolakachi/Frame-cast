@@ -17,6 +17,11 @@ return [
      */
     'require_plan_on_register' => (bool) env('REQUIRE_PLAN_ON_REGISTER', true),
 
+    /* Free sign-up and the free first ad (FREE-FIRST, 2026-10-17). Closed by the owner on 2026-10-22: a new person
+     * buys the $9 Test Pass instead. Closed means no "Make my first ad free" sign-up, no account from a sign-in with
+     * an unknown email, and no new free first ad; an account that already started one can finish it. */
+    'free_signup' => (bool) env('FREE_SIGNUP', false),
+
     /* Credits granted to a brand-new workspace. Withheld while the gate above
      * is on: a free bucket is exactly what removes the reason to pay. */
     'registration_credits' => (int) env('REGISTRATION_CREDITS', 200),
@@ -115,6 +120,10 @@ return [
         // only the UGC gate, so nothing else is unlocked by paying.
         'ugc_pass_plan' => env('KELVIQ_PLAN_UGC_PASS', 'wyvstudio-ugc-pass'),
         'ugc_pass_credits' => 600,
+        // Kelviq's own checkout link for the pass (Product catalog → the pass's plan → Get Link). /register sends a
+        // new person here while free sign-up is closed; the webhook builds their account when they pay. Empty: the
+        // pass is bought through our own sign-up then checkout (/register?pass=1).
+        'ugc_pass_link' => env('KELVIQ_UGC_PASS_LINK', ''),
 
         'lifetime_plans' => [
             env('KELVIQ_PLAN_LIFETIME_STARTER', 'wyvstudio-lifetime-starter') => ['tier' => 'lifetime_starter', 'credits' => 2500],

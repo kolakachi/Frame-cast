@@ -137,11 +137,18 @@ class CreateTemplatesTest extends TestCase
         \App\Models\Workspace::whereKey($this->customer->workspace_id)->update(['plan_tier' => 'free']);
         $ws = (int) $this->customer->workspace_id;
         $this->assertNull(\App\Services\Create\FreeFirst::conversationId($ws));
+        // Free first ads closed with free sign-up (owner, 2026-10-22): a free plan with none started gets the pass.
+        try { $this->library->use($this->customer, $t['id'], ['product' => 'Volt Rush', 'match' => 'exact', 'idempotency_key' => 'f0']); $this->fail('a free ad started while closed'); }
+        catch (HttpException $e) { $this->assertSame([402, \App\Services\Create\FreeFirst::CLOSED], [$e->getStatusCode(), $e->getMessage()]); }
+        config(['billing.free_signup' => true]);
         $first = $this->library->use($this->customer, $t['id'], ['product' => 'Volt Rush', 'match' => 'exact', 'idempotency_key' => 'f1']);
         $second = $this->library->use($this->customer, $t['id'], ['product' => 'Volt Rush again', 'match' => 'exact', 'idempotency_key' => 'f2']);
         $this->assertSame($first['id'], \App\Services\Create\FreeFirst::conversationId($ws));
         $this->assertTrue(\App\Services\Create\FreeFirst::applies($ws, $first['id']));
         $this->assertFalse(\App\Services\Create\FreeFirst::applies($ws, $second['id']), 'one free ad: a second template conversation is not free');
+        // Closing free sign-up again leaves a free ad already started working.
+        config(['billing.free_signup' => false]);
+        $this->assertTrue(\App\Services\Create\FreeFirst::applies($ws, $first['id']));
 
         // The free ad keeps the template's shape and length: a brief's "10-second square" is not applied (owner's test,
         // 2026-10-17: a "15-second vertical" brief on a square template failed the render's size check).

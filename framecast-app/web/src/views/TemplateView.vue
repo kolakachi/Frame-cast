@@ -15,7 +15,9 @@ const product = ref(''), photos = ref([]), shape = ref('9:16'), match = ref('exa
 const player = ref(null), playing = ref(false)
 // FREE-FIRST: a free plan's one free ad, from a template with its own code, kept to "Exactly" and its own shape.
 const freeFirst = ref(null)
-const freeMode = computed(() => !!freeFirst.value && !freeFirst.value.conversation_id)
+const freeMode = computed(() => !!freeFirst.value && !freeFirst.value.conversation_id && freeFirst.value.open !== false)
+// Free first ads ended for accounts that hadn't started one (owner, 2026-10-22): a free plan gets the pass instead.
+const freeClosed = computed(() => !!freeFirst.value && !freeFirst.value.conversation_id && freeFirst.value.open === false)
 const freeUsed = computed(() => !!freeFirst.value?.conversation_id)
 // Free only from a template with its own code and no AI-made video in it (owner, 2026-10-17).
 const freeFits = computed(() => t.value?.free_fit === true)
@@ -116,6 +118,11 @@ onMounted(async () => {
               <b>You've made your free first ad.</b>
               <p>Make more with the $9 Test Pass: your own words and photos, new shots, voices and presenters, and no WyvStudio mark.</p>
               <div class="free-actions"><a class="btn-primary" href="/continue?pass=1">Get the Test Pass, $9</a><router-link :to="{ name: 'create', params: { conversationId: freeFirst.conversation_id } }">Open your free ad</router-link></div>
+            </div>
+            <div v-else-if="freeClosed" class="free-note">
+              <b>Make your ad with the $9 Test Pass.</b>
+              <p>Your own words and photos, new shots, voices and presenters, and no WyvStudio mark.</p>
+              <div class="free-actions"><a class="btn-primary" href="/continue?pass=1">Get the Test Pass, $9</a></div>
             </div>
             <div v-else-if="freeMode && !freeFits" class="free-note">
               <b>Your free first ad starts from a template marked "Free first ad".</b>
