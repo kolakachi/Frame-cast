@@ -13,6 +13,8 @@ function harness(file, exposed, overrides = {}) {
     computed: callback => ({ get value() { return callback() } }),
     onMounted: callback => callbacks.push(callback), onUnmounted: () => {},
     setTimeout: () => 1, clearTimeout: () => {},
+    peekBrief: () => null, clearBrief: () => {}, templateFromLink: () => null,
+    conversion: async () => {}, PLAN_VALUE_USD: {}, forgetCheckoutGate: () => {},
     useRoute: () => ({ query: { pass: '1' } }),
     useRouter: () => ({ replace: async value => redirects.push(value) }),
     useAuthStore: () => ({ isAuthenticated: true }),
@@ -163,7 +165,9 @@ test('an unpaid account is sent to checkout from any app page, asking the server
   const h = harness('composables/resumeCheckout.js', 'checkoutGate, forgetCheckoutGate', {
     api: { get: async () => { calls++; return { data: { data: { billing: { checkout_required: true, checkout_plan: 'lifetime_entry' } } } } } },
   })
-  assert.deepEqual({ ...(await h.api.checkoutGate()) }, { required: true, plan: 'lifetime_entry' })
+  const gate = await h.api.checkoutGate()
+  assert.equal(gate.required, true)
+  assert.equal(gate.plan, 'lifetime_entry')
   await h.api.checkoutGate()
   assert.equal(calls, 1)
   h.api.forgetCheckoutGate()
@@ -224,3 +228,40 @@ test('ordinary sign-in still offers registration when the account does not exist
   await h.api.submitMagicLink()
   assert.equal(h.redirects[0].name, 'register')
 })
+
+
+for (const role of ['client', 'client_editor', 'client_admin', 'collaborator']) {
+  test(`${role} signs in without requesting agency billing or resuming stale checkout`, async () => {
+    let billingCalls = 0
+    const h = harness('composables/resumeCheckout.js', 'resumePendingCheckout', {
+      useAuthStore: () => ({ user: { role } }),
+      api: { get: async () => { billingCalls++; throw { response: { status: 403 } } } },
+    })
+    h.store.set('wyv_pending_plan', 'ugc_pass')
+    h.store.set('wyv_pending_confirmation', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
+    assert.equal(await h.api.resumePendingCheckout(), false)
+    assert.equal(billingCalls, 0)
+    assert.equal(h.context.window.location.href, '')
+    assert.equal(h.store.size, 0)
+  })
+
+  for (const query of [{}, { plan: 'ugc_pass' }]) {
+    test(`${role} leaves the checkout continuation page ${query.plan ? 'with a selected plan' : 'without a plan'}`, async () => {
+      let billingCalls = 0
+      const forbidden = async () => { billingCalls++; throw { response: { status: 403 } } }
+      const h = harness('views/ContinueCheckoutView.vue', 'startCheckout, state', {
+        useRoute: () => ({ query }),
+        useAuthStore: () => ({ isAuthenticated: true, user: { role } }),
+        api: { get: forbidden, post: forbidden },
+      })
+      h.store.set('wyv_pending_plan', 'ugc_pass')
+      h.store.set('wyv_pending_confirmation', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
+      await h.api.startCheckout()
+      assert.equal(billingCalls, 0)
+      assert.equal(h.redirects[0].name, 'dashboard')
+      assert.equal(h.store.size, 0)
+      assert.equal(h.context.window.location.href, '')
+      assert.notEqual(h.api.state.value, 'failed')
+    })
+  }
+}

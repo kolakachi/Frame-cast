@@ -4,7 +4,8 @@ import { useAuthStore } from '../stores/auth'
 // Resume required first purchases using the signed-in account's billing state.
 // Browser hints alone must never force an existing customer to buy again.
 export async function resumePendingCheckout() {
-  if (['super_admin', 'platform_admin'].includes(useAuthStore().user?.role)) {
+  // Agency members cannot read billing. Sending that 403 to /continue traps them on a payment error.
+  if (['super_admin', 'platform_admin', 'client', 'client_editor', 'client_admin', 'collaborator'].includes(useAuthStore().user?.role)) {
     try {
       localStorage.removeItem('wyv_pending_plan')
       localStorage.removeItem('wyv_pending_confirmation')

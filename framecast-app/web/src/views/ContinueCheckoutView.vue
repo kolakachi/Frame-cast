@@ -40,6 +40,14 @@ async function startCheckout() {
   if (!authStore.isAuthenticated) {
     return router.replace({ name: 'login', query: known(plan) ? { plan } : {} })
   }
+  // A stale checkout URL must not ask an invited client or collaborator to pay their agency's bill.
+  if (['client', 'client_editor', 'client_admin', 'collaborator'].includes(authStore.user?.role)) {
+    try {
+      localStorage.removeItem('wyv_pending_plan')
+      localStorage.removeItem('wyv_pending_confirmation')
+    } catch { /* optional cache */ }
+    return router.replace({ name: 'dashboard' })
+  }
   try {
     if (!known(plan)) {
       const { data } = await api.get('/billing/status')
