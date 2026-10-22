@@ -9,9 +9,9 @@ namespace App\Services\Launch;
  *    "user":{"name":"…","email":"…"},"id":205,…}
  *
  * The product ids are Launchpad's (owner's list, 2026-10-21); both the product id and the offer-product id from the
- * checkout links are accepted. How a bump arrives is not documented yet, so products() guesses it in one place:
- * a known bump name, or a sale whose total covers the main product plus its bump. Fix it here once a real bump
- * payload has been seen in the admin billing-webhooks view.
+ * checkout links are accepted. The observed no-bump payload has bump="false"; honor that before the legacy
+ * total-based inference. A purchased bump's payload is still unverified: until one is supplied, positive detection
+ * remains a known bump name or a sale whose total covers the main product plus its bump.
  */
 final class LaunchpadIpn
 {
@@ -93,8 +93,8 @@ final class LaunchpadIpn
     }
 
     /**
-     * Our products this event is about: the main product, plus its bump when the total covers both; or a bump on its
-     * own when Launchpad sends it as a product of its own under a name that says which. Empty when unrecognised.
+     * Our products this event is about: the main product, plus its inferred bump unless explicitly excluded; or a
+     * bump on its own when Launchpad sends a separately named product. Empty when unrecognised.
      *
      * @return list<string>
      */
@@ -109,12 +109,23 @@ final class LaunchpadIpn
         $out = [$main];
         $bump = LaunchCatalogue::bumpOf($main);
         $amount = $this->amount();
-        if ($bump && $amount !== null
+        if ($bump && ! $this->explicitlyExcludesBump() && $amount !== null
             && $amount >= LaunchCatalogue::PRODUCTS[$main]['price'] + LaunchCatalogue::PRODUCTS[$bump]['price'] - 0.01) {
             $out[] = $bump;
         }
 
         return $out;
+    }
+
+    private function explicitlyExcludesBump(): bool
+    {
+        $flag = $this->payload['bump'] ?? null;
+        if (is_string($flag)) {
+            $flag = strtolower(trim($flag));
+        }
+
+        // PHP treats the nonempty string "false" as true, so do not cast this field to bool.
+        return in_array($flag, [false, 0, 'false', '0'], true);
     }
 
     /** A bump sold as its own product, recognised by what its name says it gives. */

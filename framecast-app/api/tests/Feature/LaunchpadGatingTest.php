@@ -178,6 +178,38 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame(5, $mail->tries);
     }
 
+    public function test_the_observed_no_bump_payload_grants_only_the_base_product_and_access_email(): void
+    {
+        // Shape from the supplied real SALE; buyer and payment identifiers are anonymized.
+        $payload = [
+            'id' => 124652, 'status' => 'success', 'refund_status' => 'no_status',
+            'product_id' => 5945, 'offer_id' => 601, 'quantity' => 1,
+            'transaction_id' => 'pi_no_bump_sample', 'total_amount' => '2.22',
+            'bump' => 'false', 'coupon_code' => null, 'sale_page' => 'primary',
+            'checkout_name' => 'Sample Buyer', 'checkout_email' => 'sample@example.com',
+            'action' => 'SALE', 'product' => ['id' => 5945, 'name' => 'WyvStudio Fe'],
+            'user' => ['id' => 1706, 'name' => 'Sample Buyer', 'email' => 'sample@example.com'],
+        ];
+        $this->ipn($payload)->assertOk();
+        $this->ipn($payload)->assertOk();
+
+        $w = User::query()->where('email', 'sample@example.com')->firstOrFail()->workspace;
+        $this->assertSame(200, (int) $w->credits_topup);
+        $this->assertSame(['fe'], LaunchPurchase::query()->pluck('product')->all());
+        $this->assertSame('2.22', LaunchPurchase::query()->firstOrFail()->amount);
+        Mail::assertQueuedCount(1);
+        Mail::assertQueued(LaunchpadPurchaseMail::class, fn ($mail) => $mail->hasTo('sample@example.com'));
+    }
+
+    public function test_an_explicit_no_bump_is_not_overridden_by_the_total_charged(): void
+    {
+        foreach (['false', false, '0', 0] as $i => $flag) {
+            $this->ipn(['transaction_id' => 'pi_no_bump_'.$i, 'bump' => $flag, 'total_amount' => '24.00'])->assertOk();
+        }
+        $this->assertSame(0, LaunchPurchase::query()->where('product', 'fe_credits')->count());
+        $this->assertSame(800, (int) User::query()->where('email', 'ipn@example.com')->firstOrFail()->workspace->credits_topup);
+    }
+
     public function test_an_ipn_total_that_covers_the_bump_grants_it_too(): void
     {
         $this->ipn(['product_id' => 6942, 'total_amount' => 24]);
