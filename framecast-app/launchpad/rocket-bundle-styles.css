@@ -109,6 +109,45 @@ h1, h2, h3, h4, h5, h6, p {
   font-family: var(--font-space-mono), monospace;
 }
 
+/* Fit the Launchpad purchase/decline group inside the order card. */
+.bundle-checkout .forgeContainer {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  text-align: center;
+}
+
+.bundle-checkout .forgeContainer:empty { display: none; }
+.bundle-checkout:has(.btn-forge):has(.btn-forge-continue) .bundle-checkout-fallback { display: none; }
+
+.bundle-checkout .forgeContainer .price-wrap {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: var(--foreground) !important;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.bundle-checkout .forgeContainer .btn-forge {
+  width: 100%;
+  min-width: 0;
+  padding: 16px !important;
+  font-size: 16px !important;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.bundle-checkout .forgeContainer .btn-forge-continue {
+  color: var(--foreground);
+  border-color: var(--border);
+  background: var(--secondary);
+}
+
+.bundle-checkout .forgeContainer .tagline { color: var(--muted-foreground); }
+.bundle-checkout .forgeContainer .accepted-cards { flex-wrap: wrap; justify-content: center; }
+.bundle-checkout .forgeContainer .btn-forge:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
 /* Atmospheric Glows, Blobs, Grid & Textures (exact match with index.html) */
 .blob-primary {
   background: radial-gradient(circle at 30% 30%, var(--primary), transparent 65%);

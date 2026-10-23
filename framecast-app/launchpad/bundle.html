@@ -96,7 +96,7 @@
   </script>
 
   <!-- Custom Stylesheet (Rocket.new Animation Engine, Blobs, Mesh & Keyframes) -->
-  <link rel="stylesheet" href="rocket-bundle-styles.css?v=3">
+  <link rel="stylesheet" href="rocket-bundle-styles.css?v=4">
   <link rel="stylesheet" href="countdown.css?v=1">
 </head>
 
@@ -438,11 +438,10 @@
                   40x your starter balance, so you can build, test, and render without watching the meter.
                 </p>
               </div>
-              <div class="relative mt-8 h-56 overflow-hidden rounded-3xl">
-                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1000&q=80"
-                  alt="Analytics dashboard with rising performance charts on a monitor in a dim office" loading="lazy"
-                  class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                <div class="absolute inset-0 bg-gradient-to-t from-foreground/60 to-transparent"></div>
+              <div class="mt-8 overflow-hidden rounded-3xl">
+                <img src="assets/images/wyvstudio-asset-library.png"
+                  alt="WyvStudio asset library with collections, search filters, and reusable audio and image assets"
+                  width="2440" height="1590" loading="lazy" class="block h-auto w-full" />
               </div>
             </article>
           </div>
@@ -1080,20 +1079,21 @@
                     </span>
                   </div>
 
-                  <!-- Checkout Buy CTA Button wired to Launchpad funnel -->
-                  <div class="flex w-full flex-col items-center gap-3">
-                    <a id="bundle-buy-btn" href="https://launchpadjv.com/product/checkout/5946?page=5066&offer=601&offerProduct=6944" data-buy="bundle"
-                      class="lp-buy brand-cta-btn group relative inline-flex min-h-[52px] sm:min-h-[58px] w-full items-center justify-center gap-2 sm:gap-2.5 rounded-full px-4 py-3.5 sm:px-6 sm:py-4 text-center shadow-2xl transition-all duration-300 hover:scale-[1.02]">
-                      <span class="text-sm sm:text-[16px] font-black tracking-tight text-white leading-snug">
-                        Yes — Upgrade My Order to the Bundle for <span id="bundle-btn-price">$247</span>
-                      </span>
-                      <span class="text-base sm:text-xl font-black text-white transition-transform duration-300 group-hover:translate-x-1 shrink-0">→</span>
-                    </a>
-                    <p
-                      class="font-mono-label text-[12px] font-medium uppercase tracking-wider text-muted-foreground md:text-sm">
-                      1-click instant upgrade: click here to upgrade &amp; finish
-                    </p>
+                  <!-- Launchpad's purchase and decline controls stay together inside the order card. -->
+                  <div id="bundle-checkout" class="bundle-checkout">
+                    <div class="forgeContainer" data-offer="601" data-page="5066" data-id="5946"></div>
+                    <div class="bundle-checkout-fallback flex flex-col gap-3 text-center">
+                      <a href="https://launchpadjv.com/product/checkout/5946?page=5066&amp;offer=601&amp;offerProduct=6944" data-buy="bundle"
+                        class="lp-buy brand-cta-btn inline-flex min-h-[52px] items-center justify-center rounded-full px-4 py-3.5 text-sm font-bold text-white">
+                        Get instant access to the Bundle
+                      </a>
+                      <a href="/pro" data-decline="bundle"
+                        class="lp-decline inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-border px-4 py-3 text-sm font-medium text-foreground">
+                        No thank you, continue to the next step
+                      </a>
+                    </div>
                   </div>
+                  <script src="https://launchpadjv.com/js/embed.js"></script>
 
                   <p class="mt-5 text-center text-sm font-medium leading-relaxed text-muted-foreground">
                     Clicking the button above opens an order review showing exactly what you'll pay. Your total so far:
@@ -1142,21 +1142,6 @@
           </div>
         </div>
 
-        <!-- Decline Link -->
-        <div class="reveal-up" style="transition-delay: 100ms;">
-          <div class="mx-auto mt-20 max-w-3xl text-center">
-            <div class="forgeContainer mb-4" data-offer="601" data-page="5066" data-id="5946"></div>
-            <script src="https://launchpadjv.com/js/embed.js"></script>
-            <a href="/pro" data-decline="bundle"
-              class="lp-decline inline-flex min-h-[44px] items-center gap-2 text-sm font-medium leading-relaxed text-muted-foreground underline decoration-border underline-offset-4 transition-colors duration-300 hover:text-foreground hover:decoration-primary">
-              <span>
-                No thanks, I understand this bundle will never be offered again at this price. I prefer to stay on the
-                200-credit Composer-only starter pass, build my videos one by one, and pay full retail price for credits
-                and upgrades when I need them later. Take me to the next step ➔
-              </span>
-            </a>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -1390,8 +1375,6 @@
 
         if (totalDisplay) totalDisplay.textContent = '$' + total;
         if (totalNote) totalNote.textContent = '$' + total;
-        var btnPrice = document.getElementById('bundle-btn-price');
-        if (btnPrice) btnPrice.textContent = '$' + total;
       }
 
       if (addonTemplates) addonTemplates.addEventListener('change', calculateTotal);
