@@ -245,25 +245,23 @@
             </div>
           </div>
 
-          <!-- Right Column: Refit-Style Rounded Showcase Card (symmetric padding matching left) -->
+          <!-- Right Column: Actual WyvStudio workspace -->
           <div class="reveal-up relative lg:col-span-6 w-full" style="transition-delay: 200ms;">
-            <div class="relative w-full h-[480px] sm:h-[540px] lg:h-[580px] xl:h-[620px] overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-2xl transition-all duration-500 hover:shadow-primary/10">
-              <!-- High-Resolution Creative Studio & Video Ad Production Image -->
-              <img src="https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=1400&q=85"
-                alt="Creative video production studio workstation with video editing timeline and multi-screens"
-                loading="eager"
-                class="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
-
-              <!-- Subtle Gradient Vignette Overlay for Depth and Text Contrast -->
-              <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/10 pointer-events-none"></div>
-
-              <!-- Top-Left Floating Status Pill inside Image -->
-              <div class="absolute top-5 left-5 z-10 flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-3.5 py-1.5 text-xs font-semibold text-white/95 backdrop-blur-md shadow-lg">
-                <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>8,000 Credits · Scale Engine Ready</span>
+            <figure class="overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-2xl">
+              <div class="flex items-center gap-2 border-b border-border/70 px-5 py-4 text-xs font-semibold text-foreground sm:px-6">
+                <span class="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true"></span>
+                <span>Inside your WyvStudio workspace</span>
               </div>
-
-            </div>
+              <img src="assets/images/wyvstudio-bundle-dashboard.png"
+                alt="WyvStudio dashboard showing the weekly content calendar and suggested next videos"
+                width="2458" height="1606" loading="eager" fetchpriority="high"
+                class="block h-auto w-full" />
+              <figcaption class="border-t border-border/70 p-5 sm:p-6">
+                <p class="font-mono-label text-[10px] font-bold uppercase tracking-widest text-primary">Your content, in one place</p>
+                <p class="mt-2 text-xl font-bold tracking-tight text-foreground">Plan your week. Find your next video.</p>
+                <p class="mt-2 text-sm leading-relaxed text-muted-foreground">See your content calendar and video ideas based on your brand and the videos you've already made.</p>
+              </figcaption>
+            </figure>
           </div>
 
         </div>
