@@ -482,65 +482,39 @@
           <div class="lg:col-span-5">
             <div class="reveal lg:sticky lg:top-8">
               <div class="mx-auto w-full max-w-[340px]">
-                <!-- Tab Selector -->
+                <!-- Reference and finished video -->
                 <div class="mb-4 flex rounded-full border border-border bg-card p-1" role="tablist"
-                  aria-label="Example videos">
-                  <button type="button" id="tab-phone-original" role="tab" aria-selected="false"
-                    class="min-h-[44px] flex-1 rounded-full px-4 text-[15px] font-semibold text-muted-foreground transition-colors hover:text-foreground">
-                    Example 1
-                  </button>
-                  <button type="button" id="tab-phone-yours" role="tab" aria-selected="true"
+                  aria-label="Reference and finished video">
+                  <button type="button" id="tab-phone-original" role="tab" aria-selected="true"
+                    aria-controls="showcase-panel" tabindex="0"
                     class="min-h-[44px] flex-1 rounded-full bg-primary px-4 text-[15px] font-semibold text-primary-foreground transition-colors">
-                    Example 2
+                    Original
+                  </button>
+                  <button type="button" id="tab-phone-yours" role="tab" aria-selected="false"
+                    aria-controls="showcase-panel" tabindex="-1"
+                    class="min-h-[44px] flex-1 rounded-full px-4 text-[15px] font-semibold text-muted-foreground transition-colors hover:text-foreground">
+                    Your version
                   </button>
                 </div>
 
-                <!-- Phone Frame -->
-                <div
+                <div id="showcase-panel" role="tabpanel" aria-labelledby="tab-phone-original"
                   class="relative aspect-[9/16] overflow-hidden rounded-[2.5rem] border-[6px] border-espresso bg-espresso shadow-2xl">
-                  <img id="showcase-img"
-                    src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.jpg"
-                    alt="Frame from an example video ad made with WyvStudio"
-                    loading="lazy" class="absolute inset-0 h-full w-full object-cover">
-                  <div class="absolute inset-0 bg-espresso/40"></div>
-                  <div class="absolute inset-0 bg-gradient-to-t from-espresso via-espresso/20 to-transparent"></div>
-
-                  <!-- Scan Line Animation -->
-                  <div class="absolute inset-x-0 top-0 h-1/3 overflow-hidden">
-                    <div class="anim-scan h-full w-full bg-gradient-to-b from-transparent via-primary/20 to-transparent">
-                    </div>
-                  </div>
-
-                  <!-- Top Pill -->
+                  <video id="showcase-video" controls playsinline preload="metadata"
+                    src="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-original-ec62edb36b64.mp4"
+                    poster="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-original-203c13896d87.jpg"
+                    aria-label="Original reference video" aria-describedby="showcase-caption"
+                    class="absolute inset-0 h-full w-full object-contain">
+                    <a id="showcase-download" href="https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-original-ec62edb36b64.mp4">Watch the video</a>
+                  </video>
                   <div
-                    class="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-espresso/70 px-3 py-1.5 backdrop-blur-md">
+                    class="pointer-events-none absolute left-4 top-4 flex items-center gap-2 rounded-full bg-espresso/70 px-3 py-1.5 backdrop-blur-md">
                     <span class="h-2 w-2 rounded-full bg-primary"></span>
-                    <span id="showcase-badge" class="font-mono-label text-espresso-foreground">Made with WyvStudio</span>
-                  </div>
-
-                  <!-- Bottom Info -->
-                  <div class="absolute bottom-6 left-4 right-4">
-                    <p id="showcase-headline" class="text-2xl font-semibold leading-tight text-espresso-foreground">
-                      A hook in the first second.
-                    </p>
-                    <div class="mt-4 flex items-center gap-3">
-                      <span
-                        class="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4" aria-hidden="true">
-                          <path fill-rule="evenodd"
-                            d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
-                            clip-rule="evenodd" />
-                        </svg>
-                      </span>
-                      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20">
-                        <div class="h-full w-3/4 rounded-full bg-primary"></div>
-                      </div>
-                      <span class="font-mono-label text-espresso-foreground">0:20</span>
-                    </div>
+                    <span id="showcase-badge" class="font-mono-label text-espresso-foreground">Source</span>
                   </div>
                 </div>
-                <p class="mt-4 text-center text-sm text-muted-foreground">
-                  Example videos made with WyvStudio. On the $7 pass you build yours in the composer.
+                <p id="showcase-caption" class="mt-4 text-center text-sm text-muted-foreground">
+                  The original reference and the finished WyvStudio version, reimagined with Maya for a minimalist space.
+                  <span class="mt-2 block">Reference recreation is available with Creative Director upgrades.</span>
                 </p>
               </div>
             </div>
@@ -2425,50 +2399,66 @@
         }, { passive: true });
       }
 
-      // 4. Interactive Showcase Phone Tabs
+      // 4. Reference / finished video: preserve each clip's full frame and native playback controls.
       var tabOriginal = document.getElementById('tab-phone-original');
       var tabYours = document.getElementById('tab-phone-yours');
-      var phoneImg = document.getElementById('showcase-img');
+      var phoneVideo = document.getElementById('showcase-video');
+      var phonePanel = document.getElementById('showcase-panel');
       var phoneBadge = document.getElementById('showcase-badge');
-      var phoneHeadline = document.getElementById('showcase-headline');
+      var phoneDownload = document.getElementById('showcase-download');
+      var phoneView = 'original';
+      var phoneClips = {
+        original: {
+          src: 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-original-ec62edb36b64.mp4',
+          poster: 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-original-203c13896d87.jpg',
+          label: 'Original reference video',
+          badge: 'Source'
+        },
+        yours: {
+          src: 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-your-version-0f3631a68a5d.mp4',
+          poster: 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/reference-remake/minimalist-space-your-version-89295e52cf99.jpg',
+          label: 'Finished WyvStudio video featuring Maya',
+          badge: 'Made with WyvStudio'
+        }
+      };
 
       function setPhoneView(view) {
-        if (!phoneImg || !phoneBadge || !phoneHeadline) return;
-        if (view === 'original') {
-          phoneImg.src = 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b05.jpg';
-          phoneImg.alt = 'Frame from an example product ad made with WyvStudio';
-          phoneBadge.textContent = 'Made with WyvStudio';
-          phoneHeadline.textContent = 'Problem, then the fix.';
-          if (tabOriginal) {
-            tabOriginal.className = 'min-h-[44px] flex-1 rounded-full bg-primary px-4 text-[15px] font-semibold text-primary-foreground transition-colors';
-            tabOriginal.setAttribute('aria-selected', 'true');
-          }
-          if (tabYours) {
-            tabYours.className = 'min-h-[44px] flex-1 rounded-full px-4 text-[15px] font-semibold text-muted-foreground transition-colors hover:text-foreground';
-            tabYours.setAttribute('aria-selected', 'false');
-          }
-        } else {
-          phoneImg.src = 'https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/samples/weave/b10.jpg';
-          phoneImg.alt = 'Frame from an example video ad made with WyvStudio';
-          phoneBadge.textContent = 'Made with WyvStudio';
-          phoneHeadline.textContent = 'A hook in the first second.';
-          if (tabYours) {
-            tabYours.className = 'min-h-[44px] flex-1 rounded-full bg-primary px-4 text-[15px] font-semibold text-primary-foreground transition-colors';
-            tabYours.setAttribute('aria-selected', 'true');
-          }
-          if (tabOriginal) {
-            tabOriginal.className = 'min-h-[44px] flex-1 rounded-full px-4 text-[15px] font-semibold text-muted-foreground transition-colors hover:text-foreground';
-            tabOriginal.setAttribute('aria-selected', 'false');
-          }
-        }
+        if (!phoneVideo || !phonePanel || !phoneBadge || !tabOriginal || !tabYours || view === phoneView) return;
+        var clip = phoneClips[view];
+        if (!clip) return;
+        phoneVideo.pause();
+        phoneView = view;
+        phoneVideo.poster = clip.poster;
+        phoneVideo.src = clip.src;
+        phoneVideo.setAttribute('aria-label', clip.label);
+        phoneVideo.load();
+        if (phoneDownload) phoneDownload.href = clip.src;
+        phoneBadge.textContent = clip.badge;
+        phonePanel.setAttribute('aria-labelledby', view === 'original' ? tabOriginal.id : tabYours.id);
+        [tabOriginal, tabYours].forEach(function (tab, index) {
+          var selected = (index === 0) === (view === 'original');
+          tab.className = selected
+            ? 'min-h-[44px] flex-1 rounded-full bg-primary px-4 text-[15px] font-semibold text-primary-foreground transition-colors'
+            : 'min-h-[44px] flex-1 rounded-full px-4 text-[15px] font-semibold text-muted-foreground transition-colors hover:text-foreground';
+          tab.setAttribute('aria-selected', String(selected));
+          tab.tabIndex = selected ? 0 : -1;
+        });
       }
 
-      if (tabOriginal) {
-        tabOriginal.addEventListener('click', function () { setPhoneView('original'); });
-      }
-      if (tabYours) {
-        tabYours.addEventListener('click', function () { setPhoneView('yours'); });
-      }
+      [tabOriginal, tabYours].forEach(function (tab, index) {
+        if (!tab) return;
+        tab.addEventListener('click', function () { setPhoneView(index === 0 ? 'original' : 'yours'); });
+        tab.addEventListener('keydown', function (event) {
+          var next;
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = index === 0 ? tabYours : tabOriginal;
+          else if (event.key === 'Home') next = tabOriginal;
+          else if (event.key === 'End') next = tabYours;
+          if (!next) return;
+          event.preventDefault();
+          next.focus();
+          setPhoneView(next === tabOriginal ? 'original' : 'yours');
+        });
+      });
 
       // 5. Scroll Reveal Observer
       function initScrollReveal() {
