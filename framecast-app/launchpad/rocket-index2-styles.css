@@ -104,8 +104,8 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .section-y {
-  padding-top: clamp(5rem, 10vw, 9rem);
-  padding-bottom: clamp(5rem, 10vw, 9rem);
+  padding-top: clamp(3rem, 6vw, 5rem);
+  padding-bottom: clamp(3rem, 6vw, 5rem);
 }
 
 /* Background Gradients & Glow Blobs */
