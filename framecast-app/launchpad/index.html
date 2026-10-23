@@ -100,7 +100,7 @@
 <body class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
 
   <!-- STICKY TOP COUNTDOWN BAR (Appears on scroll down past hero; hidden on hero to let navbar show) -->
-  <aside id="sticky-countdown-bar" data-ends=""
+  <aside id="sticky-countdown-bar"
     class="fixed inset-x-0 top-0 z-[60] -translate-y-full opacity-0 pointer-events-none transition-all duration-300 ease-out shadow-2xl"
     style="background: linear-gradient(90deg, #370343 0%, #680c68 28%, #85137d 60%, #3e0448 100%); border-bottom: 1px solid rgba(255, 255, 255, 0.15);"
     aria-label="Limited time launch offer countdown">
@@ -111,7 +111,7 @@
           aria-hidden="true"></span>
         <p
           class="text-[11px] sm:text-sm md:text-[15px] font-extrabold text-white tracking-tight leading-tight whitespace-nowrap">
-          <span id="top-cd-label">Launch price ends in:</span>
+          <span class="hidden sm:inline">EarlyBirds Discount Ends &amp;<br class="hidden sm:inline" /> </span>Ends in:
         </p>
       </div>
 
@@ -430,12 +430,16 @@
       window.addEventListener('scroll', onScroll, { passive: true });
       onScroll();
 
-      // Countdown to the real end of the launch price (data-ends on the bar, ISO time). Not set or passed: the timer
-      // hides and the bar just says "Launch price". Never a per-visitor timer that restarts.
-      var bar = document.getElementById('sticky-countdown-bar');
-      var endTime = bar && bar.getAttribute('data-ends') ? Date.parse(bar.getAttribute('data-ends')) : NaN;
-      var timerBox = document.getElementById('top-cd-box');
-      var label = document.getElementById('top-cd-label');
+      // Countdown ticker: live 1h 36m 43s timer
+      var storageKey = 'wyv_launch_countdown_v2';
+      var endTime = null;
+      try { endTime = localStorage.getItem(storageKey); } catch (e) { }
+      if (!endTime || isNaN(endTime) || Number(endTime) <= Date.now()) {
+        endTime = Date.now() + (1 * 3600 + 36 * 60 + 43) * 1000;
+        try { localStorage.setItem(storageKey, endTime); } catch (e) { }
+      } else {
+        endTime = Number(endTime);
+      }
 
       var elDays = document.getElementById('top-cd-days');
       var elHours = document.getElementById('top-cd-hours');
@@ -445,12 +449,7 @@
       function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
       function updateCountdown() {
-        var diff = isNaN(endTime) ? 0 : Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-        if (diff <= 0) {
-          if (timerBox) timerBox.style.display = 'none';
-          if (label) label.textContent = 'Launch price';
-          return;
-        }
+        var diff = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
         var days = Math.floor(diff / 86400);
         var hours = Math.floor((diff % 86400) / 3600);
         var mins = Math.floor((diff % 3600) / 60);
@@ -460,6 +459,11 @@
         if (elHours) elHours.textContent = pad(hours);
         if (elMins) elMins.textContent = pad(mins);
         if (elSecs) elSecs.textContent = pad(secs);
+
+        if (diff <= 0) {
+          endTime = Date.now() + 2 * 3600 * 1000;
+          try { localStorage.setItem(storageKey, endTime); } catch (e) { }
+        }
       }
 
       updateCountdown();
@@ -2344,6 +2348,8 @@
   <!-- Funnel Logic & Interactive Animation Engine -->
   <script src="/posthog-init.js" defer></script>
   <script src="launch.js?v=17" defer></script>
+  <script>window.__CRISP_WEBSITE_ID__="5f6d22e6-97de-4660-8a8f-baf6d9b0deea";</script>
+  <script src="/crisp-chat.js" defer></script>
 </body>
 
 </html>
