@@ -95,88 +95,13 @@
   <link rel="stylesheet" href="rocket-styles.css?v=16">
 
   <!-- LAUNCHPAD TRACKING: paste Launchpad's required script or pixel here when the marketer sends it. -->
+  <link rel="stylesheet" href="countdown.css?v=1">
 </head>
 
-<body class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
-
-  <!-- STICKY TOP COUNTDOWN BAR (Appears on scroll down past hero; hidden on hero to let navbar show) -->
-  <aside id="sticky-countdown-bar"
-    class="fixed inset-x-0 top-0 z-[60] -translate-y-full opacity-0 pointer-events-none transition-all duration-300 ease-out shadow-2xl"
-    style="background: linear-gradient(90deg, #370343 0%, #680c68 28%, #85137d 60%, #3e0448 100%); border-bottom: 1px solid rgba(255, 255, 255, 0.15);"
-    aria-label="Limited time launch offer countdown">
-    <div class="mx-auto flex max-w-7xl items-center justify-between px-2.5 py-1.5 sm:px-6 sm:py-2.5 gap-2 sm:gap-4">
-      <!-- Left: Offer Label -->
-      <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        <span class="flex h-2 w-2 sm:h-2.5 sm:w-2.5 shrink-0 rounded-full bg-[#00E676] animate-pulse"
-          aria-hidden="true"></span>
-        <p
-          class="text-[11px] sm:text-sm md:text-[15px] font-extrabold text-white tracking-tight leading-tight whitespace-nowrap">
-          <span class="hidden sm:inline">EarlyBirds Discount Ends &amp;<br class="hidden sm:inline" /> </span>Ends in:
-        </p>
-      </div>
-
-      <!-- Center: Bold Ticking Countdown (Ultra clean & compact on mobile) -->
-      <div id="top-cd-box" class="flex items-center gap-1.5 sm:gap-5 md:gap-7 shrink-0">
-        <!-- Days -->
-        <div class="flex flex-col items-center">
-          <span
-            class="text-[7.5px] sm:text-[10px] font-bold uppercase tracking-widest text-pink-200/90 leading-none mb-0.5">DAYS</span>
-          <span id="top-cd-days"
-            class="text-base sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-none">00</span>
-        </div>
-        <span class="text-xs sm:text-2xl font-bold text-pink-300/60 pb-0.5 sm:pb-1">:</span>
-        <!-- Hours -->
-        <div class="flex flex-col items-center">
-          <span
-            class="text-[7.5px] sm:text-[10px] font-bold uppercase tracking-widest text-pink-200/90 leading-none mb-0.5">HOURS</span>
-          <span id="top-cd-hours"
-            class="text-base sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-none">01</span>
-        </div>
-        <span class="text-xs sm:text-2xl font-bold text-pink-300/60 pb-0.5 sm:pb-1">:</span>
-        <!-- Minutes -->
-        <div class="flex flex-col items-center">
-          <span
-            class="text-[7.5px] sm:text-[10px] font-bold uppercase tracking-widest text-pink-200/90 leading-none mb-0.5">MINS</span>
-          <span id="top-cd-mins"
-            class="text-base sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-none">36</span>
-        </div>
-        <span class="text-xs sm:text-2xl font-bold text-pink-300/60 pb-0.5 sm:pb-1">:</span>
-        <!-- Seconds -->
-        <div class="flex flex-col items-center">
-          <span
-            class="text-[7.5px] sm:text-[10px] font-bold uppercase tracking-widest text-pink-200/90 leading-none mb-0.5">SECS</span>
-          <span id="top-cd-secs"
-            class="text-base sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-none">43</span>
-        </div>
-      </div>
-
-      <!-- Right: Green Buy Now Button + Theme Toggle (Theme toggle hidden on mobile to conserve space) -->
-      <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        <button type="button" aria-label="Switch theme"
-          class="theme-toggle-btn hidden sm:inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20">
-          <!-- Sun icon (shown in dark mode) -->
-          <svg class="theme-icon-sun h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="4" />
-            <path
-              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-          </svg>
-          <!-- Moon icon (shown in light mode) -->
-          <svg class="theme-icon-moon h-4 w-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </svg>
-        </button>
-        <a href="#checkout"
-          class="inline-flex items-center justify-center rounded-full bg-[#00E676] px-3 py-1.5 sm:px-7 sm:py-2.5 text-xs sm:text-sm md:text-base font-black text-[#04200f] shadow-[0_0_24px_rgba(0,230,118,0.7)] transition-all duration-200 hover:scale-105 hover:bg-[#00c853] hover:shadow-[0_0_32px_rgba(0,230,118,0.9)] active:scale-95 whitespace-nowrap">
-          Buy Now!
-        </a>
-      </div>
-    </div>
-  </aside>
+<body data-launch-countdown-target="#checkout" class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
 
   <!-- HEADER -->
-  <header id="site-header" class="fixed inset-x-0 top-0 z-50 transition-all duration-300">
+  <header data-launch-countdown-header id="site-header" class="fixed inset-x-0 top-0 z-50 transition-all duration-300">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
       <a href="#top" class="flex items-center gap-3" aria-label="WyvStudio home">
         <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-sm shadow-primary/30">
@@ -391,85 +316,6 @@
   </style>
 
   <script>
-    /* Sticky header & Sticky Countdown Bar scroll behaviour */
-    (function () {
-      var header = document.getElementById('site-header');
-      var countdownBar = document.getElementById('sticky-countdown-bar');
-      var hero = document.getElementById('top');
-
-      function onScroll() {
-        var scrollY = window.scrollY || window.pageYOffset;
-        // Hero threshold: bottom of hero section
-        var heroThreshold = hero ? (hero.offsetTop + hero.offsetHeight - 120) : 550;
-
-        if (scrollY > heroThreshold) {
-          // Scrolled past hero: show countdown bar, tuck nav away
-          if (countdownBar) {
-            countdownBar.classList.remove('-translate-y-full', 'opacity-0', 'pointer-events-none');
-            countdownBar.classList.add('translate-y-0', 'opacity-100', 'pointer-events-auto');
-          }
-          if (header) {
-            header.classList.add('-translate-y-full', 'opacity-0', 'pointer-events-none');
-          }
-        } else {
-          // On hero: leave our nav to show, hide countdown bar
-          if (countdownBar) {
-            countdownBar.classList.add('-translate-y-full', 'opacity-0', 'pointer-events-none');
-            countdownBar.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto');
-          }
-          if (header) {
-            header.classList.remove('-translate-y-full', 'opacity-0', 'pointer-events-none');
-            if (scrollY > 10) {
-              header.classList.add('header-scrolled');
-            } else {
-              header.classList.remove('header-scrolled');
-            }
-          }
-        }
-      }
-      window.addEventListener('scroll', onScroll, { passive: true });
-      onScroll();
-
-      // Countdown ticker: live 1h 36m 43s timer
-      var storageKey = 'wyv_launch_countdown_v2';
-      var endTime = null;
-      try { endTime = localStorage.getItem(storageKey); } catch (e) { }
-      if (!endTime || isNaN(endTime) || Number(endTime) <= Date.now()) {
-        endTime = Date.now() + (1 * 3600 + 36 * 60 + 43) * 1000;
-        try { localStorage.setItem(storageKey, endTime); } catch (e) { }
-      } else {
-        endTime = Number(endTime);
-      }
-
-      var elDays = document.getElementById('top-cd-days');
-      var elHours = document.getElementById('top-cd-hours');
-      var elMins = document.getElementById('top-cd-mins');
-      var elSecs = document.getElementById('top-cd-secs');
-
-      function pad(n) { return n < 10 ? '0' + n : '' + n; }
-
-      function updateCountdown() {
-        var diff = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
-        var days = Math.floor(diff / 86400);
-        var hours = Math.floor((diff % 86400) / 3600);
-        var mins = Math.floor((diff % 3600) / 60);
-        var secs = diff % 60;
-
-        if (elDays) elDays.textContent = pad(days);
-        if (elHours) elHours.textContent = pad(hours);
-        if (elMins) elMins.textContent = pad(mins);
-        if (elSecs) elSecs.textContent = pad(secs);
-
-        if (diff <= 0) {
-          endTime = Date.now() + 2 * 3600 * 1000;
-          try { localStorage.setItem(storageKey, endTime); } catch (e) { }
-        }
-      }
-
-      updateCountdown();
-      setInterval(updateCountdown, 1000);
-    })();
-
     /* Theme toggle — single authoritative controller */
     (function () {
       function applyTheme(theme) {
@@ -597,7 +443,7 @@
 
   <main>
     <!-- HERO SECTION -->
-    <section id="top" class="relative min-h-screen overflow-hidden bg-background pb-16 pt-28 sm:pt-36">
+    <section data-launch-countdown-hero id="top" class="relative min-h-screen overflow-hidden bg-background pb-16 pt-28 sm:pt-36">
       <!-- Depth layers & Ambient Blobs -->
       <div class="bg-grid-lines mask-grid-fade pointer-events-none absolute inset-0 z-0 opacity-60" aria-hidden="true">
       </div>
@@ -2348,6 +2194,7 @@
   <!-- Funnel Logic & Interactive Animation Engine -->
   <script src="/posthog-init.js" defer></script>
   <script src="launch.js?v=17" defer></script>
+  <script src="countdown.js?v=1" defer></script>
   <script>window.__CRISP_WEBSITE_ID__="5f6d22e6-97de-4660-8a8f-baf6d9b0deea";</script>
   <script src="/crisp-chat.js" defer></script>
 </body>

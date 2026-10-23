@@ -97,9 +97,10 @@
 
   <!-- Custom Stylesheet (Rocket.new Animation Engine, Blobs, Mesh & Keyframes) -->
   <link rel="stylesheet" href="rocket-bundle-styles.css?v=3">
+  <link rel="stylesheet" href="countdown.css?v=1">
 </head>
 
-<body class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
+<body data-launch-countdown-target="#finish" class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
 
   <!-- STATUS RIBBON (Directly at top) -->
   <div
@@ -150,7 +151,7 @@
   <main id="top" class="relative bg-background text-foreground">
 
     <!-- 1. HERO SECTION (Refit-Style 2-Column Layout) -->
-    <section id="top" class="relative overflow-hidden bg-background pb-16 pt-24 sm:pt-28 md:pb-24">
+    <section data-launch-countdown-hero id="top" class="relative overflow-hidden bg-background pb-16 pt-24 sm:pt-28 md:pb-24">
       <!-- Ambient Atmosphere & Depth Layers -->
       <div class="bg-grid-lines mask-grid-fade pointer-events-none absolute inset-0 z-0 opacity-40" aria-hidden="true"></div>
       <div class="blob-primary float-slow pointer-events-none absolute -left-20 top-12 h-[380px] w-[380px] rounded-full opacity-35" aria-hidden="true"></div>
@@ -1223,6 +1224,7 @@
   <!-- Launchpad Engine & Vanilla JS Port -->
   <script src="/posthog-init.js" defer></script>
   <script src="launch.js?v=17" defer></script>
+  <script src="countdown.js?v=1" defer></script>
 
   <!-- Native Interactive Scripts -->
   <script>

@@ -130,9 +130,10 @@
 
   <!-- Dedicated Stylesheet: Design Tokens, Clamps & Animation Keyframes -->
   <link rel="stylesheet" href="rocket-offeriq-styles.css?v=2">
+  <link rel="stylesheet" href="countdown.css?v=1">
 </head>
 
-<body class="bg-background text-foreground selection:bg-primary selection:text-white">
+<body data-launch-countdown-target="#order" class="bg-background text-foreground selection:bg-primary selection:text-white">
 
   <!-- ───── 1. NOTICE BAR ───── -->
   <div class="relative z-50 w-full bg-primary px-4 py-2 text-center text-primary-foreground">
@@ -249,7 +250,7 @@
   <main>
 
     <!-- ───── 3. HERO SECTION ───── -->
-    <section class="relative isolate overflow-hidden bg-background pb-16 pt-12 sm:pt-16 text-foreground">
+    <section data-launch-countdown-hero class="relative isolate overflow-hidden bg-background pb-16 pt-12 sm:pt-16 text-foreground">
       <!-- Fiery glow, dark mode -->
       <div
         class="pointer-events-none absolute -right-40 -top-32 -z-10 h-[620px] w-[620px] rounded-full opacity-0 blur-[90px] dark:opacity-70"
@@ -1535,6 +1536,7 @@
   <!-- Launchpad Funnel & Checkout Link Injector -->
   <script src="/posthog-init.js" defer></script>
   <script src="launch.js?v=17" defer></script>
+  <script src="countdown.js?v=1" defer></script>
   <script>window.__CRISP_WEBSITE_ID__="5f6d22e6-97de-4660-8a8f-baf6d9b0deea";</script>
   <script src="/crisp-chat.js" defer></script>
 </body>

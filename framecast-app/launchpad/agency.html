@@ -50,9 +50,10 @@
     };
   </script>
   <link rel="stylesheet" href="rocket-agency-styles.css?v=6">
+  <link rel="stylesheet" href="countdown.css?v=1">
 </head>
 
-<body class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
+<body data-launch-countdown-target="#order" class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
 
 <!-- STATUS RIBBON -->
 <div class="relative z-50 flex min-h-10 w-full items-center justify-center gap-3 bg-primary px-4 py-2 text-center text-primary-foreground">
@@ -61,7 +62,7 @@
 </div>
 
 <!-- HEADER (Adapts seamlessly to Light and Dark mode) -->
-<header id="site-header" class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+<header data-launch-countdown-header id="site-header" class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
   <div class="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-3.5 sm:px-8">
     <a href="#top" class="flex items-center gap-3" aria-label="WyvStudio home">
       <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-sm shadow-primary/30">
@@ -96,7 +97,7 @@
 <!-- =====================================================================
      1. HERO SECTION (White/Light Background like index.html & bundle.html)
      ===================================================================== -->
-<section class="relative overflow-hidden bg-background text-foreground pb-16 pt-12 sm:pt-16 md:pb-24">
+<section data-launch-countdown-hero class="relative overflow-hidden bg-background text-foreground pb-16 pt-12 sm:pt-16 md:pb-24">
   <!-- Atmosphere & Depth Layers (1:1 with index.html & bundle.html) -->
   <div class="bg-grid-lines mask-grid-fade pointer-events-none absolute inset-0 z-0 opacity-40" aria-hidden="true"></div>
   <div class="blob-primary float-slow pointer-events-none absolute -left-20 top-12 h-[380px] w-[380px] rounded-full opacity-35" aria-hidden="true"></div>
@@ -914,6 +915,7 @@
 <!-- Launchpad Funnel & Integration Engine -->
 <script src="/posthog-init.js" defer></script>
 <script src="launch.js?v=17" defer></script>
+<script src="countdown.js?v=1" defer></script>
 
 <!-- Interactive Behaviors -->
 <script>

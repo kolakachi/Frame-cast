@@ -139,9 +139,10 @@
       .video-marquee { animation: none !important; }
     }
   </style>
+  <link rel="stylesheet" href="countdown.css?v=1">
 </head>
 
-<body class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
+<body data-launch-countdown-target="#order" class="bg-background text-foreground selection:bg-primary/20 selection:text-primary">
 
   <!-- HEADER (At the very top, exactly like the original design) -->
   <header id="site-header" class="relative z-40 border-b border-border/40 bg-background">
@@ -193,7 +194,7 @@
 
   <main>
     <!-- 1. HERO SECTION -->
-    <section id="top" class="relative overflow-hidden bg-background">
+    <section data-launch-countdown-hero id="top" class="relative overflow-hidden bg-background">
       <!-- Depth layers, Grid Lines & Ambient Blobs (Static, high-performance) -->
       <div class="bg-grid-lines mask-grid-fade pointer-events-none absolute inset-0 z-0 opacity-60" aria-hidden="true">
       </div>
@@ -856,6 +857,7 @@
   <!-- Launchpad Engine & Vanilla JS Port -->
   <script src="/posthog-init.js" defer></script>
   <script src="launch.js?v=17" defer></script>
+  <script src="countdown.js?v=1" defer></script>
 
   <script>
     document.addEventListener('DOMContentLoaded', function () {
