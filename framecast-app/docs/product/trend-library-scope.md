@@ -4,6 +4,9 @@ Scope for the owner, 2026-10-21. Nothing here is built until approved.
 
 Mockup and flow: `trend-library-mockup.html` (weekly job, Create plan line, UGC hook chips, God Mode, connector, pilot rating).
 
+**Updated 2026-10-24 (owner: "do so").** Two additions, below in their own sections: **YouTube and visible ideas**
+and **Competitor watch**. Both run in the same weekly job and the same pilot.
+
 ## Why
 
 Ava Studio (launched 2026-10-20) markets "400,000+ TikToks analyzed for what's working": its agent picks breakout
@@ -86,6 +89,44 @@ hooks without knowing which is which. Live: hooks drawn from a pattern against t
 2. The 7 categories and their keywords (a first list from the ICP tracker and the outreach sellers, for your edit).
 3. Apply now for the two official ad sources (TikTok Commercial Content API, Meta Ad Library API): free, EU ads only.
 4. Start after the Friday funnel read (strategy.md puts the funnel first).
+
+## Addition 1: YouTube and visible ideas (2026-10-24)
+
+From a post on an AI skill that finds outlier YouTube videos in a niche and turns them into ideas.
+
+- **YouTube through its official Data API** (free within a daily quota): search by keyword, each video's views and
+  length, the channel's recent videos. A breakout is scored the same way: views over the channel's median. It covers
+  Shorts and longer product videos, and it is cheaper and safer on terms than the TikTok vendors.
+- **Ideas the user sees, not only the planner.** A "What should I make next?" button gives 5 ideas for the seller's
+  category. Each shows the breakout behind it and why it worked; picking one opens a Create plan.
+- **Input is the seller's product category, never their channel.** The post is for YouTube creators, an audience
+  we dropped.
+- **Cost:** about the same; the API is free within its quota.
+
+## Addition 2: Competitor watch (2026-10-24)
+
+From a post on building your own ad spy tool (Foreplay, Atria and Motion charge $50–250 a month for public ads).
+
+- **The seller names 3–5 competitors**, or we suggest them from their product page.
+- **Every running ad** is collected weekly from the Meta Ad Library (the official API returns commercial ads for
+  the EU only; elsewhere a vendor such as ScrapeCreators), the Google Ads Transparency Center and the LinkedIn Ad
+  Library.
+- **Each ad is labelled once** by a small vision model: hook, angle, offer, format, and how long it has run.
+- **Winners:** an ad running 30+ days, weighted up by how many variants the brand made of it (some brands forget to
+  stop ads, so running time alone is not proof).
+- **Monday digest:** "Angles your competitors have run for 30+ days that you haven't", each with
+  **Make an ad on this angle**, which opens a Create plan using the pattern, never their ad.
+- **Our own outreach** uses the same job: small sellers whose newest ad is 3+ weeks old (how batches 1–3 were
+  picked by hand).
+- **Rules:**
+  - a fetched video is labelled, then deleted;
+  - we keep only the link, the labels and the running time;
+  - no other brand's ad is ever shown inside WyvStudio.
+- **Cost:** about 150 ads a week for 5 competitors, well under $2 a week per seller.
+- **Pilot:**
+  - one candle seller from the outreach list and 3 of their competitors, done by hand;
+  - we judge whether the "angles you're missing" list makes better ads than the brief alone;
+  - half a day, a few dollars, run in the same session as the trends pilot.
 
 ## Not in this version
 
