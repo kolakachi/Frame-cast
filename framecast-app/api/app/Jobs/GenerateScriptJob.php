@@ -99,11 +99,14 @@ class GenerateScriptJob implements ShouldQueue
                 'word_target' => \App\Services\ScenePacing::targetWords(
                     (int) ($project->duration_target_seconds ?: 60),
                 ),
+                'word_min' => \App\Services\ScenePacing::wordRange((int) ($project->duration_target_seconds ?: 60))[0],
+                'word_max' => \App\Services\ScenePacing::wordRange((int) ($project->duration_target_seconds ?: 60))[1],
                 'source_content' => $sourceContent,
             ];
             $reviewer = app(\App\Services\Generation\AI\ContentReview::class);
             $issues = [];
             $accepted = false;
+            $doubtful = [];
             $options['deadline'] = microtime(true) + 300;
             for ($attempt = 1; $attempt <= 3; $attempt++) {
                 if (microtime(true) >= $options['deadline']) {
@@ -141,7 +144,17 @@ class GenerateScriptJob implements ShouldQueue
                     'tone' => $variables['tone'], 'language' => $variables['language'],
                     'duration_seconds' => $variables['duration'], 'additional_context' => $seriesContext,
                 ], $options);
-                if ($review['decision'] === 'pass') { $accepted = true; break; }
+                if ($review['decision'] === 'pass') {
+                    // Fact guard (2026-10-28): in facts, history and science videos, claims that may be wrong go back
+                    // through the repair loop to be removed or hedged, before any images or voice are made.
+                    $doubtful = $this->doubtfulClaims($aiGeneration, $niche?->slug, $script, $options);
+                    if ($doubtful !== [] && $attempt < 3) {
+                        $issues = ['These claims may not be accurate. Remove each one, or say plainly that it is disputed or a legend: '.implode('; ', $doubtful)];
+                        continue;
+                    }
+                    $accepted = true;
+                    break;
+                }
                 if ($review['decision'] !== 'repair') {
                     $this->pauseForReview($project, $review['decision'], $attempt);
                     return;
@@ -155,6 +168,8 @@ class GenerateScriptJob implements ShouldQueue
 
             $project->forceFill([
                 'script_text' => $script,
+                // Claims still in doubt after the last repair are kept on the project, not hidden.
+                ...($doubtful !== [] ? ['visual_brief' => array_merge((array) ($project->visual_brief ?? []), ['doubtful_claims' => $doubtful])] : []),
             ])->save();
         }
 
@@ -302,6 +317,22 @@ class GenerateScriptJob implements ShouldQueue
             'user_id' => $project->created_by_user_id,
             ...$extra,
         ];
+    }
+
+    /** Claims that may be wrong in a fact-based script (facts, history, science); none for other niches or on any error. */
+    private function doubtfulClaims(AIGenerationAdapter $ai, ?string $nicheSlug, string $script, array $options): array
+    {
+        if (! in_array($nicheSlug, ['facts', 'history', 'science'], true) || trim($script) === '') return [];
+        try {
+            $r = $ai->generate('claim_check', ['script' => $script], 400, 0.0, array_merge($options, ['draft_attempt' => null]));
+            $text = (string) ($r['content'] ?? '');
+            $a = strpos($text, '{'); $b = strrpos($text, '}');
+            $json = $a !== false && $b !== false ? json_decode(substr($text, $a, $b - $a + 1), true) : null;
+
+            return array_values(array_slice(array_filter(array_map(fn ($c) => mb_substr(trim((string) $c), 0, 240), (array) ($json['doubtful'] ?? [])), fn ($c) => $c !== ''), 0, 6));
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     public function failed(\Throwable $exception): void

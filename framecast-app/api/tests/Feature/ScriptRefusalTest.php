@@ -215,4 +215,46 @@ class ScriptRefusalTest extends TestCase
         $this->assertStringContainsString('This reads like a finished script', $stage['message']);
         $this->assertStringContainsString('Make it from your words as written', $stage['message']);
     }
+
+    private function factsProject(string $slug): Project
+    {
+        Schema::create('niches', function (Blueprint $t) { $t->id(); foreach (['name', 'slug', 'generation_guidance', 'default_voice_tone', 'default_visual_style'] as $c) $t->text($c)->nullable(); $t->timestamps(); });
+        Schema::table('projects', fn (Blueprint $t) => $t->text('visual_brief')->nullable());
+        DB::table('niches')->insert(['id' => 7, 'name' => 'Niche', 'slug' => $slug]);
+        $project = $this->project();
+        $project->update(['source_content_raw' => 'Five facts about octopuses.', 'niche_id' => 7]);
+        return $project;
+    }
+
+    public function test_doubtful_claims_in_a_facts_video_are_repaired_before_anything_is_made(): void
+    {
+        // Fact guard (2026-10-28): a claim the checker doubts goes back for repair; the clean draft is kept.
+        $project = $this->factsProject('facts');
+        $drafts = 0; $checks = 0;
+        $ai = $this->createMock(AIGenerationAdapter::class);
+        $ai->method('generate')->willReturnCallback(function ($template, $vars, $max = 0, $temp = 0, $opts = []) use (&$drafts, &$checks) {
+            if ($template === 'content_fidelity_review') return ['content' => json_encode(['decision' => 'pass', 'issues' => []])];
+            if ($template === 'claim_check') { $checks++; return ['content' => json_encode(['doubtful' => $checks === 1 ? ['Octopuses have 9 hearts (they have 3)'] : []])]; }
+            $drafts++;
+            return ['content' => $drafts === 1 ? 'Octopuses have nine hearts.' : 'Octopuses have three hearts.'];
+        });
+        (new GenerateScriptJob($project->id))->handle($ai, $this->createMock(MediaTranscriptionService::class));
+        $this->assertSame([2, 2], [$drafts, $checks]);
+        $this->assertSame('Octopuses have three hearts.', $project->fresh()->script_text);
+        Bus::assertDispatched(BreakdownScenesJob::class);
+    }
+
+    public function test_a_story_video_is_not_fact_checked(): void
+    {
+        $project = $this->factsProject('story');
+        $checked = false;
+        $ai = $this->createMock(AIGenerationAdapter::class);
+        $ai->method('generate')->willReturnCallback(function ($template) use (&$checked) {
+            if ($template === 'claim_check') $checked = true;
+            return ['content' => $template === 'content_fidelity_review' ? json_encode(['decision' => 'pass', 'issues' => []]) : 'Once, a lighthouse keeper heard a knock.'];
+        });
+        (new GenerateScriptJob($project->id))->handle($ai, $this->createMock(MediaTranscriptionService::class));
+        $this->assertFalse($checked);
+        $this->assertSame('Once, a lighthouse keeper heard a knock.', $project->fresh()->script_text);
+    }
 }

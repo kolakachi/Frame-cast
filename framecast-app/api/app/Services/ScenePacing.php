@@ -110,6 +110,20 @@ class ScenePacing
      * render as a one-minute video however the scenes were cut — no breakdown
      * change could fix it, because there was not enough script to cut up.
      */
+    /**
+     * The word range a script may land in (owner, 2026-10-28: "we do not need to be precise but we can fall within a
+     * timeframe to avoid cutting off what is not meant to be cut off"): a fifth under to a quarter over the target, so
+     * a list or a story is finished rather than trimmed or padded to an exact length.
+     *
+     * @return array{0:int,1:int}
+     */
+    public static function wordRange(int $durationSeconds): array
+    {
+        $target = self::targetWords($durationSeconds);
+
+        return [(int) floor($target * 0.8), (int) ceil($target * 1.25)];
+    }
+
     public static function targetWords(int $durationSeconds): int
     {
         return (int) round(max(1, $durationSeconds) * self::WORDS_PER_SECOND);

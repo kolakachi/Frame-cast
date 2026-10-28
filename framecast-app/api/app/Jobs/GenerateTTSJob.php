@@ -127,7 +127,10 @@ class GenerateTTSJob implements ShouldQueue, \App\Services\Developer\RepeatableA
             }
 
             try {
-                $audio = $tts->synthesize($sceneText, $language, $voiceId, $speed, [
+                // Names said as saved (2026-10-28): the workspace's pronunciation list and any "say X as Y" in the
+                // brief respell the spoken text only; the script and its captions keep the real spelling.
+                $pronunciations ??= $this->pronunciations($project);
+                $audio = $tts->synthesize($pronunciations ? \App\Services\Ugc\PronunciationMap::apply($sceneText, $pronunciations) : $sceneText, $language, $voiceId, $speed, [
                     // Engine routing + voice direction. The router falls back to
                     // inferring the engine from the voice id when provider is absent;
                     // voice_prompt is the Gemini delivery direction; clone_audio_url
@@ -274,10 +277,14 @@ class GenerateTTSJob implements ShouldQueue, \App\Services\Developer\RepeatableA
             $project->forceFill(['status' => 'ready_for_review'])->save();
         });
 
+        // The narration's real length against the target window (2026-10-28). Nothing is trimmed to fit: a video that
+        // runs long keeps all of its narration and says so, so the user can shorten it on purpose if they need to.
+        try { $length = $this->lengthCheck($project); } catch (\Throwable) { $length = []; } // a note, never a reason to fail
+
         $notifications->create(
             (int) $project->workspace_id,
             'Generation complete',
-            'Project #'.$project->getKey().' is ready for review.',
+            'Project #'.$project->getKey().' is ready for review.'.($length['note'] ?? ''),
             'success',
             $project->created_by_user_id ? (int) $project->created_by_user_id : null,
             [
@@ -285,6 +292,46 @@ class GenerateTTSJob implements ShouldQueue, \App\Services\Developer\RepeatableA
                 'status' => 'ready_for_review',
             ],
         );
+    }
+
+    /** written => spoken: the workspace's saved pronunciations, then any stated in the brief's own words. */
+    private function pronunciations(Project $project): array
+    {
+        try {
+            $saved = DB::table('create_pronunciations')->where('workspace_id', $project->workspace_id)->pluck('spoken', 'written')->all();
+        } catch (\Throwable) {
+            $saved = [];
+        }
+        $brief = \App\Services\Ugc\PronunciationMap::fromBrief((string) ($project->source_content_raw ?? ''));
+
+        return array_filter(array_merge($saved, $brief), fn ($v, $k) => trim((string) $k) !== '' && trim((string) $v) !== '', ARRAY_FILTER_USE_BOTH);
+    }
+
+    /**
+     * Total narration seconds against the target's window (a fifth under to a quarter over, ScenePacing::wordRange),
+     * recorded on the project as length_check. Returns it, with a note for the user when it falls outside.
+     *
+     * @return array{target:int,seconds:float,within:bool,note?:string}|array{}
+     */
+    private function lengthCheck(Project $project): array
+    {
+        $target = (int) ($project->duration_target_seconds ?: 0);
+        if ($target <= 0) return [];
+        $ids = Scene::query()->where('project_id', $project->getKey())->get()
+            ->map(fn (Scene $s) => (int) data_get($s->voice_settings_json, 'audio_asset_id'))->filter()->values()->all();
+        if ($ids === []) return [];
+        $seconds = round((float) Asset::query()->whereIn('id', $ids)->sum('duration_seconds'), 1);
+        if ($seconds <= 0) return [];
+        $within = $seconds >= $target * 0.8 && $seconds <= $target * 1.25;
+        $check = ['target' => $target, 'seconds' => $seconds, 'within' => $within];
+        if (! $within) {
+            $check['note'] = $seconds > $target
+                ? sprintf(' It runs about %d s, longer than the %d s asked for, because nothing was cut: shorten a scene in the editor if you need it tighter.', (int) round($seconds), $target)
+                : sprintf(' It runs about %d s, shorter than the %d s asked for: add a scene in the editor if you want it longer.', (int) round($seconds), $target);
+        }
+        $project->forceFill(['visual_brief' => array_merge((array) ($project->refresh()->visual_brief ?? []), ['length_check' => array_diff_key($check, ['note' => 1])])])->save();
+
+        return $check;
     }
 
     private function attachCaptionTiming(Asset $asset, MediaTranscriptionService $transcription, string $scriptText = ''): void

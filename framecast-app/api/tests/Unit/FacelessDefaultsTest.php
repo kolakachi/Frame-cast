@@ -51,4 +51,11 @@ class FacelessDefaultsTest extends TestCase
         $this->assertSame('An octopus has three hearts, and that is not the weirdest part. They have three hearts and blue blood.',
             ScoreHooksJob::replaceOpening($script, 'Octopuses are interesting animals.', 'An octopus has three hearts, and that is not the weirdest part.'));
     }
+
+    public function test_the_script_lands_in_a_window_not_on_an_exact_length(): void
+    {
+        // Owner, 2026-10-28: a window, so nothing that should stay is cut to hit a number.
+        $this->assertSame([120, 188], ScenePacing::wordRange(60));
+        $this->assertSame(150, ScenePacing::targetWords(60));
+    }
 }
