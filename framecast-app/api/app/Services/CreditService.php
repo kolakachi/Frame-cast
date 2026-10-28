@@ -112,6 +112,16 @@ class CreditService
         return [self::TTS, 'tts', self::cogsUsd('tts')];
     }
 
+    /**
+     * What one line in this voice costs, the way GenerateTTSJob bills it: by the engine the voice routes to (Gemini 3,
+     * a clone its rate, OpenAI 1). The assistant quoted a flat 1 credit for every re-record (fix A2, 2026-10-28).
+     */
+    public static function ttsCostForVoice(?string $voiceId, array $options = []): int
+    {
+        return self::ttsCostForEngine(\App\Services\Generation\TTS\RoutingTTSAdapter::engineFor(
+            (string) ($voiceId ?: \App\Services\Generation\TTS\GeminiVoices::DEFAULT_VOICE), $options));
+    }
+
     public static function ttsCostForEngine(string $engine): int
     {
         return match ($engine) {
@@ -1190,6 +1200,12 @@ class CreditService
         ?string $voiceId = null,
         bool $usesCharacter = false,
     ): array {
+        // A blank project makes nothing when it is created: its scenes are built by hand in the editor, each priced
+        // as it is made. Quoting it as a generated video asked an empty project for hundreds of credits.
+        if ($sourceType === 'blank') {
+            return ['animation_clip_seconds' => null, 'scenes_min' => 0, 'scenes_max' => 0, 'credits_min' => 0, 'credits_max' => 0, 'credits_mid' => 0,
+                'breakdown' => ['script_and_breakdown' => 0, 'visual_per_scene' => 0, 'character_reference' => false, 'voice_per_scene' => 0, 'export' => 0]];
+        }
         [$scenesMin, $scenesMax] = $this->estimateSceneCount($sourceType, $sourceContent);
 
         // Narration is priced on the engine the voice routes to, the same
@@ -1201,10 +1217,14 @@ class CreditService
             \App\Services\Generation\TTS\RoutingTTSAdapter::engineFor((string) $voiceId, []),
         );
 
-        // Use the same animated pacing as generation so shorter shots are
-        // reflected in the estimate shown before the user creates the project.
-        if ($visualMode === 'ai_video') {
-            $target    = \App\Services\ScenePacing::targetScenes($durationSeconds ?: 60, $visualMode, true, AnimatedShotPlan::clipSeconds($animateTier, $animationPacing));
+        // Count scenes the way the breakdown does (ScenePacing::guidance: the target for this length and visual mode,
+        // give or take a fifth), not from the brief's word count: a 60 s video is cut into about 12 scenes however
+        // short its prompt, and the word count quoted 6-8 (fix A1, 2026-10-28: a 60 s AI-image video was shown
+        // 144-212 credits and charged about 552). Animated shots follow their clip length, as generation does.
+        if ($visualMode === 'ai_video' || $durationSeconds) {
+            $animated  = $visualMode === 'ai_video';
+            $target    = \App\Services\ScenePacing::targetScenes($durationSeconds ?: 60, $visualMode, $animated,
+                $animated ? AnimatedShotPlan::clipSeconds($animateTier, $animationPacing) : null);
             $scenesMin = max(\App\Services\ScenePacing::MIN_SCENES, (int) round($target * 0.8));
             $scenesMax = min(\App\Services\ScenePacing::MAX_SCENES, (int) round($target * 1.2));
         }

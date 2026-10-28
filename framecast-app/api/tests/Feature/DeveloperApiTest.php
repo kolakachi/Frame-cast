@@ -851,17 +851,19 @@ class DeveloperApiTest extends TestCase
 
         $this->withToken($key)->getJson('/api/developer/v1/assistant/tools')->assertOk()->assertJsonPath('data.tools.0.name', fn ($n) => is_string($n));
 
-        // Cruise resolves the request into one concrete, priced action.
+        // Cruise resolves the request into one concrete, priced action, at the price its tool really charges (the voice's
+        // engine, fix A2): a stale quote is refused at apply.
+        $price = app(\App\Services\CruiseControl\Tools\UpdateSceneScriptTool::class)->estimateCost(Scene::query()->findOrFail($s1)->project, ['scene_id' => $s1]);
         $cruise = $this->createMock(\App\Services\CruiseControl\CruiseControlService::class);
         $cruise->method('resolve')->willReturn([
             'reply_to_user' => 'I can make the hook punchier.', 'action' => null,
             'actions' => [['tool' => 'update_scene_script', 'params' => ['scene_id' => $s1, 'new_text' => 'Still sitting all day? Here is why a standing desk pays for itself.'],
-                'diff_lines' => ['Scene 1 script → "Still sitting all day?…"'], 'estimated_cost' => \App\Services\CreditService::TTS, 'confirmation_class' => 'always_prompt', 'affected_section' => 'scene']],
+                'diff_lines' => ['Scene 1 script → "Still sitting all day?…"'], 'estimated_cost' => $price, 'confirmation_class' => 'always_prompt', 'affected_section' => 'scene']],
         ]);
         $this->instance(\App\Services\CruiseControl\CruiseControlService::class, $cruise);
 
         $plan = $this->withToken($key)->postJson("/api/developer/v1/videos/{$id}/assistant/plans", ['request' => 'Make the hook punchier'])->assertStatus(201)
-            ->assertJsonPath('data.credits.max', \App\Services\CreditService::TTS)->assertJsonPath('data.actions.0.tool', 'update_scene_script')->assertJsonPath('data.reply', 'I can make the hook punchier.');
+            ->assertJsonPath('data.credits.max', $price)->assertJsonPath('data.actions.0.tool', 'update_scene_script')->assertJsonPath('data.reply', 'I can make the hook punchier.');
         $this->assertSame('Hook line.', Scene::query()->findOrFail($s1)->script_text, 'planning changes nothing');
         $pid = $plan->json('data.plan_id');
 

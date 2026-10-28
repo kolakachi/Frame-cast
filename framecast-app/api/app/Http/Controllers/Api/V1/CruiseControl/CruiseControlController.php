@@ -198,7 +198,9 @@ class CruiseControlController extends Controller
         // have dropped between resolve and apply.
         $estimate = $tool->estimateCost($project, $validated['params']);
         if (isset($validated['expected_credits']) && (int) $validated['expected_credits'] !== $estimate) {
-            return $this->error('estimate_changed', 'The revision estimate changed. Request an updated proposal before applying it.', 409);
+            // The new price rides along, so the card can show it and the user applies again knowingly (fix A2).
+            return response()->json(['error' => ['code' => 'estimate_changed', 'estimated_credits' => $estimate,
+                'message' => "The price changed to {$estimate} credits since this was proposed. Apply again to confirm."]], 409);
         }
         $balance = $this->credits->balance((int) $workspace->getKey());
         if ($balance < $estimate) {

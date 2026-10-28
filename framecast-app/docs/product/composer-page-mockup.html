@@ -1,0 +1,241 @@
+<title>Composer Page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: the app shell (sidebar + main); the Composer page is one centred column: the three ways to start, recently updated videos, the series offer. */
+:root{
+  --bg:#0c0d0f; --panel:#141619; --panel2:#1b1e22; --line:#2a2e33; --muted:#a0a7af; --text:#f2f1ed;
+  --orange:#ff7946; --orange-soft:#3a2016; --green:#b8dcc7; --green-soft:#17281f;
+  --font:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#f4f3f0; --panel:#ffffff; --panel2:#f0efeb; --line:#dddbd5; --muted:#5f646b; --text:#17181a;
+  --orange:#d9531f; --orange-soft:#fbe6dc; --green:#1f6b45; --green-soft:#e2f1e8; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#f4f3f0; --panel:#ffffff; --panel2:#f0efeb; --line:#dddbd5; --muted:#5f646b; --text:#17181a;
+  --orange:#d9531f; --orange-soft:#fbe6dc; --green:#1f6b45; --green-soft:#e2f1e8; color-scheme:light}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:14px/1.55 var(--font);margin:0}
+button,input,textarea,select{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,summary:focus-visible,textarea:focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+.notice{padding:8px 16px;font-size:12.5px;color:var(--muted);border-bottom:1px dashed var(--line);text-align:center}
+.notice b{color:var(--text)}
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+aside{border-right:1px solid var(--line);padding:16px 10px;display:flex;flex-direction:column;gap:2px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;padding:4px 10px 14px}
+.mark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--orange);color:var(--bg);font-size:12px;font-weight:700}
+.sec{font:600 10.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:14px 10px 6px}
+.nav{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13.5px}
+.nav.active{background:var(--panel2);color:var(--text)}
+.nav.active .dot{background:var(--orange)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.new{font:600 10px/1 var(--mono);color:var(--orange);background:var(--orange-soft);border-radius:99px;padding:3px 6px;margin-left:auto}
+main{padding:28px 16px 64px}
+.col{max-width:860px;margin:0 auto;display:grid;gap:22px}
+h1{font:700 26px/1.2 var(--font);margin:0;text-wrap:balance}
+h2{font:700 16px/1.3 var(--font);margin:0}
+.sub{color:var(--muted);margin:4px 0 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px}
+.ask{border-color:color-mix(in srgb,var(--orange) 40%,var(--line))}
+.topic{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:16px;resize:vertical;min-height:58px}
+.lbl{font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--panel2);border-radius:99px;padding:8px 13px;cursor:pointer;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--orange);border-color:var(--orange);color:var(--bg)}
+.defaults{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13.5px;color:var(--muted)}
+.defaults b{color:var(--text);font-weight:600}
+.change{background:none;border:0;color:var(--orange);cursor:pointer;font-weight:600;padding:0}
+.price{margin-left:auto;font:600 13px/1 var(--mono);color:var(--text)}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px}
+.settings label{display:grid;gap:6px;font-size:12.5px;color:var(--muted)}
+.settings select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px}
+.go{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{border-radius:10px;padding:12px 18px;font-weight:600;border:1px solid var(--line);background:var(--panel2);cursor:pointer}
+.btn.primary{background:var(--orange);border-color:var(--orange);color:var(--bg)}
+.hint{font-size:12.5px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.ex{background:var(--panel2);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:grid;cursor:pointer;text-align:left;padding:0}
+.ex .thumb{aspect-ratio:9/12;max-width:100%;display:grid;place-items:end start;padding:10px;font:700 15px/1.15 var(--font);color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.ex .meta{padding:9px 10px;display:grid;gap:2px}
+.ex .meta span{font-size:12px;color:var(--muted)}
+.row{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.mini{width:56px;aspect-ratio:9/12;border-radius:6px;max-width:100%}
+.row .t{font-weight:600}
+.row .s{font-size:12.5px;color:var(--muted)}
+.series{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
+.series p{margin:4px 0 0;color:var(--muted);max-width:60ch}
+.series .cad{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.series .chip{padding:6px 11px;font-size:12.5px}
+details.more{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px}
+details.more summary{cursor:pointer;font-weight:600;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"▸ ";color:var(--muted)}
+details.more[open] summary::before{content:"▾ "}
+.ways{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px}
+.way{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:12px;text-align:left;cursor:pointer;display:grid;gap:2px}
+.way span{font-size:12.5px;color:var(--muted)}
+@media (max-width:760px){.shell{grid-template-columns:minmax(0,1fr)}aside{display:none}.series{grid-template-columns:minmax(0,1fr)}.price{margin-left:0}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.visually{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.starts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.path{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:left;cursor:pointer;display:grid;gap:6px;align-content:start}
+.path b{font-size:16px}
+.path span{color:var(--muted);font-size:13.5px}
+.path .lbl{font-size:10.5px}
+.path.rec{border-color:color-mix(in srgb,var(--orange) 55%,var(--line))}
+.path.rec .lbl{color:var(--orange)}
+.path:hover{border-color:var(--orange)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.tags i{font-style:normal;font:600 11px/1 var(--mono);color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:5px 8px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;padding:16px}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(520px,100%);display:grid;gap:14px}
+.m-head{display:flex;justify-content:space-between;align-items:center;font-size:17px}
+.x{background:none;border:0;font-size:22px;cursor:pointer;color:var(--muted)}
+.m-steps{margin:0;padding-left:20px;display:grid;gap:6px}
+.m-steps li::marker{color:var(--orange);font-weight:700}
+.ru-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.all{color:var(--orange);font-weight:600;font-size:13px;text-decoration:none}
+.st{justify-self:start;font:600 10.5px/1 var(--mono);border-radius:99px;padding:4px 7px;margin-top:4px}
+.st.draft{color:var(--muted);background:var(--panel)}
+.st.render{color:var(--orange);background:var(--orange-soft)}
+.st.ready{color:var(--green);background:var(--green-soft)}
+.viewas{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;margin-left:8px}
+.va{border:1px solid var(--line);background:var(--panel2);border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer}
+.va[aria-pressed="true"]{border-color:var(--orange);color:var(--orange)}
+.empty{display:grid;gap:4px;justify-items:start;padding:18px;border:1px dashed var(--line);border-radius:12px;background:var(--panel2)}
+.empty span{color:var(--muted)}
+.link{background:none;border:0;padding:0;color:var(--orange);font-weight:600;cursor:pointer}
+</style>
+
+<div class="notice"><b>Design mockup.</b> Not the live app: video titles, statuses and times are placeholders.
+  <span class="viewas" role="group" aria-label="View the page as">View as:
+    <button type="button" class="va" aria-pressed="true" data-va="returning">a returning creator</button>
+    <button type="button" class="va" aria-pressed="false" data-va="new">someone with no composer videos yet</button></span></div>
+<div class="shell">
+<aside aria-label="App navigation">
+  <div class="logo"><span class="mark">w</span>WyvStudio</div>
+  <div class="sec">Workspace</div>
+  <div class="nav"><span class="dot"></span>Dashboard</div>
+  <div class="nav"><span class="dot"></span>Create</div>
+  <div class="nav"><span class="dot"></span>Templates</div>
+  <div class="nav"><span class="dot"></span>All Videos</div>
+  <div class="sec">Composer</div>
+  <div class="nav active"><span class="dot"></span>Composer</div>
+  <div class="nav"><span class="dot"></span>Series<span class="new">daily</span></div>
+  <div class="sec">Classic</div>
+  <div class="nav"><span class="dot"></span>UGC Ads</div>
+  <div class="sec">Library</div>
+  <div class="nav"><span class="dot"></span>Characters</div>
+  <div class="nav"><span class="dot"></span>Voices</div>
+  <div class="nav"><span class="dot"></span>Assets</div>
+</aside>
+
+<main>
+<div class="col">
+  <div>
+    <h1>Make a faceless video</h1>
+    <p class="sub">Start a new one, or pick up where you left off.</p>
+  </div>
+
+  <section aria-labelledby="start-h" class="starts">
+    <h2 id="start-h" class="visually">How do you want to start?</h2>
+    <button class="path" type="button" data-modal="scratch">
+      <span class="lbl">Full control</span>
+      <b>Start from Scratch</b>
+      <span>Build every scene yourself. Pick a title and format, then drop straight into the editor.</span>
+      <span class="tags"><i>Manual scenes</i></span>
+    </button>
+    <button class="path rec" type="button" data-modal="brief">
+      <span class="lbl">Most faceless videos start here</span>
+      <b>Generate from a brief</b>
+      <span>Tell us your topic and we'll write the script, break it into scenes and pre-fill visuals.</span>
+      <span class="tags"><i>Script + scenes</i><i>Niche presets</i><i>~90 s setup</i></span>
+    </button>
+    <button class="path" type="button" data-modal="oneshot">
+      <span class="lbl">Instant demo</span>
+      <b>One-shot from a prompt</b>
+      <span>Type one line and get back a single scene with AI image, animation, voice and music. About 90 seconds.</span>
+      <span class="tags"><i>One scene</i><i>Full pipeline</i></span>
+    </button>
+  </section>
+
+  <section class="card" aria-labelledby="ru-h">
+    <div class="ru-head"><h2 id="ru-h">Recently updated</h2><a class="all" href="#all" id="ru-all">All composer videos</a></div>
+    <div class="empty" id="ru-intro" hidden><b>No composer videos yet</b><span>Your composer videos will show here as you make them. Most faceless videos start with <button class="link" type="button" data-modal="brief">Generate from a brief</button>.</span></div>
+    <div class="grid" id="recent"></div>
+    <p class="hint" id="ru-other" hidden>Videos you made in Create or UGC Ads are in <a class="all" href="#videos">All Videos</a>.</p>
+  </section>
+
+  <section class="card series" aria-labelledby="se-h">
+    <div>
+      <h2 id="se-h">Post every day without starting from zero</h2>
+      <p>Turn this into a series: one channel idea, a new episode on your schedule, each one remembering the last. You approve or edit before anything posts.</p>
+      <div class="cad" role="group" aria-label="How often">
+        <button class="chip" type="button" aria-pressed="true">Daily</button>
+        <button class="chip" type="button" aria-pressed="false">3 a week</button>
+        <button class="chip" type="button" aria-pressed="false">Weekly</button>
+      </div>
+    </div>
+    <button class="btn" type="button">Set up a series</button>
+  </section>
+
+
+</div>
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+    <div class="m-head"><b id="m-title"></b><button class="x" type="button" id="m-close" aria-label="Close">×</button></div>
+    <ol class="m-steps" id="m-steps"></ol>
+    <p class="hint" id="m-note"></p>
+    <div class="go"><button class="btn" type="button" id="m-cancel">Cancel</button><button class="btn primary" type="button" id="m-go"></button></div>
+  </div>
+</div>
+</main>
+</div>
+
+<script>
+// The three ways in, each opening its own pop-up (the existing wizard steps, unchanged).
+const MODALS = {
+  scratch: {title:'Set up your project', go:'Open the editor', note:'The existing blank-project form; the editor opens with an empty first scene.',
+    steps:['Title','Shape: vertical, square or wide','Channel (optional)']},
+  brief: {title:'Generate from a brief', go:'Write my script', note:'The existing brief flow; picking an example on the page opens it with the niche and topic filled in.',
+    steps:['Niche: Facts, History, Science, Story, Motivation, AI tips, Scary or your own','Source: a prompt, script, article link, images, product, audio, video, PDF or a CSV batch','Your topic, length and language, then the script and scenes are written']},
+  oneshot: {title:'One-shot from a prompt', go:'Make the scene', note:'The existing one-shot form: one line in, one finished scene out.',
+    steps:['One line describing the scene','Visuals, animation and references (optional)','Music and captions on by default']}
+};
+const RECENT = [
+  ['Why octopuses have three hearts','Facts · 60 s','Edited 2 h ago','ready','Ready to export','#2b1d10','#c26a1a'],
+  ['The lost city under the Nile','History · 90 s','Edited yesterday','render','Rendering 62%','#1c1712','#7a5a32'],
+  ['The house that kept calling back','Scary · 60 s','Edited 3 days ago','draft','Draft · 4 of 7 scenes','#0b0b10','#3a2240'],
+  ['3 AI tools that save me 10 hours','AI tips · 45 s','Edited last week','ready','Exported','#0e1f1a','#1f9a7a']
+];
+const $ = id => document.getElementById(id);
+let last = null;
+function openModal(key, prefill) {
+  const m = MODALS[key];
+  $('m-title').textContent = m.title; $('m-go').textContent = m.go;
+  $('m-steps').innerHTML = m.steps.map(t => `<li>${t}</li>`).join('');
+  $('m-note').textContent = prefill ? `Opened from the example \u201c${prefill[1]}\u201d: niche ${prefill[0]}, topic filled in.` : m.note;
+  last = document.activeElement; $('overlay').hidden = false; $('m-close').focus();
+}
+function closeModal() { $('overlay').hidden = true; last && last.focus(); }
+document.querySelectorAll('[data-modal]').forEach(b => b.onclick = () => openModal(b.dataset.modal));
+['m-close','m-cancel','m-go'].forEach(id => $(id).onclick = closeModal);
+$('overlay').onclick = e => { if (e.target.id === 'overlay') closeModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('overlay').hidden) closeModal(); });
+// Only composer videos (scene-editor projects that are not UGC takes or footage restyles), newest edit first.
+function showRecent(view) {
+  const fresh = view === 'new';
+  $('ru-h').textContent = 'Recently updated';
+  $('ru-intro').hidden = !fresh; $('ru-other').hidden = !fresh; $('ru-all').hidden = fresh;
+  $('recent').hidden = fresh;
+  $('recent').innerHTML = fresh ? '' : RECENT.map(([t, f, when, cls, status, a, b]) => `<button class="ex" type="button"><div class="thumb" style="background:linear-gradient(160deg,${a},${b})">${t}</div>
+       <div class="meta"><b>${f}</b><span>${when}</span><span class="st ${cls}">${status}</span></div></button>`).join('');
+}
+document.querySelectorAll('[data-va]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-va]').forEach(x => x.setAttribute('aria-pressed', x === b)); showRecent(b.dataset.va);
+});
+showRecent('returning');
+document.querySelectorAll('.series .chip').forEach(b => b.onclick = () => document.querySelectorAll('.series .chip').forEach(x => x.setAttribute('aria-pressed', x === b)));
+</script>

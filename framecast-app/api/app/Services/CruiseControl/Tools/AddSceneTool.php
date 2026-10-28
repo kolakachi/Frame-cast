@@ -102,16 +102,18 @@ class AddSceneTool implements CruiseTool
         // Image (priced from ImageAdapterFactory::DEFAULT_MODEL, so the quote
         // tracks the default model instead of a stale AI_MEDIUM) + TTS +
         // optional animate.
-        $cost = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null)
-            + CreditService::TTS;
+        // Priced as the jobs charge (fix A2): a scene with a character is a reference generation, the voice bills by
+        // its engine (Gemini 3, not a flat 1), and an animation by AnimateSceneJob's own rate for its length.
+        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $withCharacter = ! empty($params['character_names']) || ($project->default_character_id
+            && \App\Models\Character::query()->whereKey($project->default_character_id)->whereNotNull('reference_asset_id')->exists());
+        $voice = ! empty($params['voice_id']) ? VoiceCatalog::resolve((int) $project->workspace_id, (string) $params['voice_id']) : null;
+        $cost = ($withCharacter ? $images->referenceGenerationCost(null) : $images->costFor(null))
+            + ($voice ? CreditService::ttsCostForVoice((string) $voice['voice_id'], ['provider' => $voice['provider'] ?? ''])
+                : CreditService::ttsCostForVoice((string) data_get($project->default_voice_settings_json, 'voice_id', ''), (array) ($project->default_voice_settings_json ?? [])));
         if (! empty($params['animate_tier'])) {
-            $cost += match ($params['animate_tier']) {
-                'premium'       => CreditService::VIDEO_PREMIUM,
-                'balanced'      => CreditService::VIDEO_BALANCED,
-                'seedance_pro'  => CreditService::VIDEO_SEEDANCE_PRO,
-                'seedance_lite' => CreditService::VIDEO_SEEDANCE_LITE,
-                default         => CreditService::VIDEO_QUICK,
-            };
+            $tier = (string) $params['animate_tier'];
+            $cost += CreditService::animationCost($tier, CreditService::videoQuality($tier, null), $tier === 'balanced' ? 6 : 5);
         }
         return $cost;
     }

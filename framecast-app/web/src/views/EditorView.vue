@@ -274,6 +274,8 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
       params: card.params,
       message_id: msg.id,
       action_index: actionIndex,
+      // The price the card showed: the server refuses if the real price differs, so nothing is charged unseen.
+      expected_credits: Number(card.estimated_cost ?? 0),
     })
     const out = res?.data?.data
     card.credits = out?.credits_spent ?? 0
@@ -327,8 +329,16 @@ async function cruiseApplyAction(msg, actionIndex = 0) {
       cruiseStartPollingFallback(card)
     }
   } catch (e) {
-    card.status = 'failed'
-    card.error = e?.response?.data?.error?.message ?? 'Apply failed.'
+    const err = e?.response?.data?.error
+    if (err?.code === 'estimate_changed' && Number.isFinite(Number(err.estimated_credits))) {
+      // Show the real price on the card and leave it ready to apply again.
+      card.estimated_cost = Number(err.estimated_credits)
+      card.notice = err.message
+      card.status = 'proposed'
+    } else {
+      card.status = 'failed'
+      card.error = err?.message ?? 'Apply failed.'
+    }
     cruiseRecomputeMessageStatus(msg)
   } finally {
     cruiseApplying.value = null
@@ -346,7 +356,8 @@ async function cruiseApplyAll(msg) {
     // Running actions complete async via Reverb / polling — we don't
     // block the queue waiting for the generation to finish, but we DO
     // wait for the apply call itself before firing the next one.
-    if (cards[i].status === 'failed') break
+    // A card still proposed after applying had its price change: stop so the user sees the new price first.
+    if (cards[i].status === 'failed' || cards[i].status === 'proposed') break
   }
 }
 
@@ -10100,6 +10111,7 @@ onBeforeUnmount(() => {
                         <div class="cruise-action-body">
                           <div v-for="(line, i) in card.diff_lines" :key="i">{{ line }}</div>
                         </div>
+                        <div v-if="card.notice && card.status === 'proposed'" class="cruise-action-body cruise-action-shortfall">{{ card.notice }}</div>
                         <div v-if="card.status === 'running'" class="cruise-action-status running">
                           <ul v-if="(card.expected_stages || []).length > 1" class="cruise-action-checklist">
                             <li v-for="stage in card.expected_stages" :key="stage"

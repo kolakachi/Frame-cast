@@ -69,6 +69,18 @@ class ProjectCreationService
             $validated['visual_generation_mode'] = $this->visualGenerationModeFromVisualType($validated['visual_type']);
         }
 
+        // The visual mode is settled here, before the price check, so the quote and the build agree (fix A3,
+        // 2026-10-28): a series episode or an API call with no mode was quoted as stock, then ScoreHooksJob switched
+        // it to AI images (43 credits a scene) when the balance covered an old 16-credit price.
+        if (! empty($validated['series_id']) && empty($validated['duration_target_seconds'])) {
+            // The series' length too, so the price check prices the episode as long as it will be.
+            $seriesSeconds = Series::query()->whereKey($validated['series_id'])->where('workspace_id', $user->workspace_id)->value('duration_target_seconds');
+            if ($seriesSeconds) $validated['duration_target_seconds'] = (int) $seriesSeconds;
+        }
+        if (empty($validated['visual_generation_mode']) && $validated['source_type'] !== 'blank') {
+            $validated['visual_generation_mode'] = $this->settleVisualMode($user, $validated);
+        }
+
         $sourceError = $this->validateSourceContent($validated['source_type'], $validated['source_content_raw'] ?? null);
 
         if ($sourceError) {
@@ -384,6 +396,26 @@ class ProjectCreationService
             'brand_kit_id' => $brandKitId,
             'template' => $template,
         ];
+    }
+
+    /**
+     * The visual mode for a project created without one: its series' mode when it has one, else AI images when the
+     * balance covers them at today's price, else stock (the rule ScoreHooksJob applied after creation, unquoted).
+     */
+    public function settleVisualMode(User $user, array $validated): string
+    {
+        if (! empty($validated['series_id'])) {
+            $mode = Series::query()->whereKey($validated['series_id'])->where('workspace_id', $user->workspace_id)->value('visual_mode');
+            if ($mode === 'ai') return 'ai_images';
+            if ($mode === 'stock') return 'stock';
+        }
+        if (($validated['source_type'] ?? '') === 'images') return 'ai_images';
+        $series = ! empty($validated['series_id']) ? Series::query()->whereKey($validated['series_id'])->where('workspace_id', $user->workspace_id)->first() : null;
+        $ai = $this->credits->estimateProject((string) $validated['source_type'], $validated['source_content_raw'] ?? null, 'ai_images', 'medium',
+            (int) ($validated['duration_target_seconds'] ?? $series?->duration_target_seconds ?? 60),
+            voiceId: $validated['voice_settings_json']['voice_id'] ?? $validated['voice_settings']['voice_id'] ?? null, usesCharacter: ! empty($validated['character_id']));
+
+        return $this->credits->balance((int) $user->workspace_id) >= $ai['credits_min'] ? 'ai_images' : 'stock';
     }
 
     public function validateSourceContent(string $sourceType, ?string $source): ?string

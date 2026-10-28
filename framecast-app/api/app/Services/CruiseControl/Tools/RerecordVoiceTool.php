@@ -56,7 +56,8 @@ class RerecordVoiceTool implements CruiseTool
         ];
     }
 
-    public function confirmationClass(): string { return 'auto'; }
+    // Paid, so it waits for Apply: with auto-apply on (the default) it charged without a click (fix A2).
+    public function confirmationClass(): string { return 'prompt'; }
     public function affectedSection(): string { return 'voice'; }
 
     public function diffLines(Project $project, array $params): array
@@ -84,7 +85,17 @@ class RerecordVoiceTool implements CruiseTool
 
     public function estimateCost(Project $project, array $params): int
     {
-        return CreditService::TTS;
+        return self::voiceCost($project, $params);
+    }
+
+    /** The new voice when one is named, else the scene's own, priced by the engine it routes to. */
+    public static function voiceCost(Project $project, array $params): int
+    {
+        $scene = Scene::query()->where('project_id', $project->getKey())->whereKey($params['scene_id'] ?? null)->first();
+        $named = ! empty($params['voice_id']) ? VoiceCatalog::resolve((int) $project->workspace_id, (string) $params['voice_id']) : null;
+        if ($named) return CreditService::ttsCostForVoice((string) $named['voice_id'], ['provider' => $named['provider'] ?? '']);
+        $settings = (array) ($scene?->voice_settings_json ?? []);
+        return CreditService::ttsCostForVoice((string) ($settings['voice_id'] ?? data_get($project->default_voice_settings_json, 'voice_id', '')), $settings);
     }
 
     public function execute(Workspace $workspace, Project $project, array $params): array
@@ -142,7 +153,7 @@ class RerecordVoiceTool implements CruiseTool
 
         return [
             'summary'         => "Re-recording Scene {$scene->scene_order}{$detail}",
-            'credits_spent'   => CreditService::TTS,
+            'credits_spent'   => self::voiceCost($project, $params),
             'affected_scene_id' => (int) $scene->getKey(),
         ];
     }

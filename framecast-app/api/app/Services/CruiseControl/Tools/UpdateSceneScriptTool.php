@@ -67,7 +67,7 @@ class UpdateSceneScriptTool implements CruiseTool
         return $lines;
     }
 
-    public function estimateCost(Project $project, array $params): int { return CreditService::TTS; }
+    public function estimateCost(Project $project, array $params): int { return RerecordVoiceTool::voiceCost($project, ['scene_id' => $params['scene_id'] ?? null]); }
 
     public function execute(Workspace $workspace, Project $project, array $params): array
     {
@@ -108,7 +108,7 @@ class UpdateSceneScriptTool implements CruiseTool
 
         return [
             'summary'       => "Updated Scene {$scene->scene_order} script + re-recording voice",
-            'credits_spent' => CreditService::TTS,
+            'credits_spent' => RerecordVoiceTool::voiceCost($project, ['scene_id' => $params['scene_id'] ?? null]),
             'affected_scene_id' => (int) $scene->getKey(),
         ];
     }

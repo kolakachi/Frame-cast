@@ -142,8 +142,8 @@ class ScoreHooksJob implements ShouldQueue
                 return false;
             }
 
-            $perScene = app(\App\Services\Generation\Image\ImageAdapterFactory::class)
-                ->generationCost('gpt-image-1', false);
+            // Today's price for the default model, as GenerateProjectAIImagesJob charges (was gpt-image-1's 16, fix A3).
+            $perScene = app(\App\Services\Generation\Image\ImageAdapterFactory::class)->costFor(null);
 
             return app(CreditService::class)
                 ->canAfford((int) $project->workspace_id, $scenes * $perScene);

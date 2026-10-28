@@ -37,7 +37,9 @@ const wizardCreateError = ref('')
 const languageSelections = ref(['en'])
 // The one-shot path never carried a language: a prompt always produced an
 // English script and an English voiceover whatever was picked elsewhere.
-const oneShotLanguage = ref('en')
+// null = detect it from the prompt (fix A4, 2026-10-28): a default of 'en' was always sent, so the server's detection
+// never ran and a Spanish prompt made an English video.
+const oneShotLanguage = ref(null)
 const oneShotLangOpen = ref(false)
 const platformTarget = ref('tiktok')
 const aspectRatio = ref('9:16')
@@ -164,6 +166,7 @@ async function refreshAiVideoEstimate() {
     visual_generation_mode: 'ai_video',
     duration_target_seconds: Number(durationTargetSeconds.value || 60),
     animate_tier: animateTier.value,
+    ...estimateExtras(),
   }
   try {
     const choices = await Promise.all(['short', 'long'].map(async pacing => {
@@ -184,6 +187,42 @@ watch([globalVisualMode, animateTier, durationTargetSeconds], () => {
   aiVideoEstimateLoading.value = globalVisualMode.value === 'ai_video'
   if (globalVisualMode.value === 'ai_video') aiVideoEstimateTimer = setTimeout(refreshAiVideoEstimate, 250)
 }, { flush: 'sync' })
+// Every other visual mode is priced by the server too (fix A1, 2026-10-28): the browser's own sum used 15 credits an
+// image and counted scenes from the prompt's words, so a 60 s AI-image video showed 144-212 credits and cost about 552.
+const serverEstimate = ref(null)
+let serverEstimateTimer = null
+let serverEstimateRequest = 0
+function estimateExtras() {
+  return {
+    ...(selectedWizardVoiceKey.value ? { voice_id: selectedWizardVoiceKey.value } : {}),
+    ...(selectedCharacterId.value ? { character_id: Number(selectedCharacterId.value) } : {}),
+  }
+}
+async function refreshServerEstimate() {
+  const mode = globalVisualMode.value
+  if (mode === 'ai_video' || wizardSourceType.value === 'blank') { serverEstimate.value = null; return }
+  const requestId = ++serverEstimateRequest
+  const content = wizardSourceType.value === 'prompt' ? promptText.value
+    : wizardSourceType.value === 'script' ? scriptText.value
+    : wizardSourceType.value === 'product_description' ? productDescription.value
+    : wizardSourceType.value === 'csv_topic' ? [csvBatch.value.header, csvBatch.value.rows[0] || ''].filter(Boolean).join('\n') : ''
+  try {
+    const res = await api.post('/projects/estimate-credits', {
+      source_type: wizardSourceType.value || 'prompt',
+      source_content_raw: (content || '').slice(0, 10000) || null,
+      visual_generation_mode: mode,
+      duration_target_seconds: Number(durationTargetSeconds.value || 60),
+      ...estimateExtras(),
+    })
+    if (requestId === serverEstimateRequest) serverEstimate.value = res?.data?.data ?? null
+  } catch {
+    if (requestId === serverEstimateRequest) serverEstimate.value = null
+  }
+}
+function scheduleServerEstimate() {
+  clearTimeout(serverEstimateTimer)
+  serverEstimateTimer = setTimeout(refreshServerEstimate, 300)
+}
 const brandKits = ref([])
 // Voice picker — selected at wizard time, applied to every generated scene
 // as default_voice_settings_json.voice_id. Loaded from /voice-profiles on
@@ -219,6 +258,10 @@ const selectedWizardVoice = computed(
 const characters = ref([])
 const selectedCharacterId = ref('')
 const selectedCharacter = computed(() => characters.value.find((c) => String(c.id) === String(selectedCharacterId.value)) ?? null)
+// The price follows everything it depends on: mode, length, source, its text (debounced), voice engine and character.
+watch([globalVisualMode, durationTargetSeconds, wizardSourceType, promptText, scriptText, productDescription, csvText, selectedWizardVoiceKey, selectedCharacterId],
+  scheduleServerEstimate, { immediate: true })
+watch([selectedWizardVoiceKey, selectedCharacterId], () => { if (globalVisualMode.value === 'ai_video') refreshAiVideoEstimate() })
 
 const selectedNiche = computed(() => niches.value.find((n) => n.id === selectedNicheId.value) ?? null)
 const openNicheDropdown = ref('') // which custom-niche multi-select dropdown is open: '' | visual | voice | music
@@ -404,6 +447,20 @@ function customNichePromptBlock() {
     customNicheVoiceTone.value.trim() ? `Preferred voice tone: ${customNicheVoiceTone.value.trim()}` : '',
     customNicheMusicMood.value.trim() ? `Preferred music mood: ${customNicheMusicMood.value.trim()}` : '',
   ].filter(Boolean).join('\n')
+}
+
+// CSV batch (fix A5, 2026-10-28): "Multiple topics at once" made one video from the first row. Each data row is now
+// its own video with the same settings; a header row (one that names "topic") is kept on every row for context.
+const CSV_BATCH_MAX = 10
+const csvBatch = computed(() => {
+  const lines = csvText.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  if (!lines.length) return { header: '', rows: [] }
+  const header = /\btopic\b/i.test(lines[0]) ? lines[0] : ''
+  return { header, rows: (header ? lines.slice(1) : lines).slice(0, CSV_BATCH_MAX), dropped: Math.max(0, (header ? lines.length - 1 : lines.length) - CSV_BATCH_MAX) }
+})
+function csvRowTitle(row) {
+  const first = (row.match(/^\s*"([^"]*)"|^([^,]*)/) || [])
+  return (first[1] ?? first[2] ?? '').trim().slice(0, 120)
 }
 
 function withCustomNicheContext(source) {
@@ -669,7 +726,6 @@ onMounted(async () => {
 })
 
 const creditEstimate = computed(() => {
-  const SCRIPT = 2, BREAKDOWN = 1, TTS = 2, EXPORT = 5, STOCK = 1, AI_MED = 15
   const mode = globalVisualMode.value
   // ai_video is priced by the server (see aiVideoEstimate) — image+animation
   // per scene and animated pacing both live in the backend.
@@ -677,30 +733,12 @@ const creditEstimate = computed(() => {
     const e = aiVideoEstimate.value
     return e ? { min: e.credits_min, max: e.credits_max, visualPerScene: e.breakdown?.visual_per_scene ?? 0 } : null
   }
-  const visualPerScene = ['ai_images','ai_broll'].includes(mode) ? AI_MED : STOCK
-  const fixed = SCRIPT + BREAKDOWN + EXPORT
-
-  // Scene estimate based on source type and content length
-  const rawContent = wizardSourceType.value === 'prompt' ? promptText.value
-    : wizardSourceType.value === 'script' ? scriptText.value
-    : wizardSourceType.value === 'product_description' ? productDescription.value
-    : ''
-  const words = rawContent.trim().split(/\s+/).filter(Boolean).length
-  const sourceType = wizardSourceType.value
-  let scenesMin, scenesMax
-  if (sourceType === 'script') {
-    scenesMin = Math.max(8, Math.round(words / 14))
-    scenesMax = Math.max(10, Math.round(words / 10))
-  } else if (sourceType === 'blank') {
-    return null
-  } else {
-    scenesMin = words > 10 ? Math.max(6, Math.round(words / 15)) : 8
-    scenesMax = words > 10 ? Math.max(8, Math.round(words / 11)) : 12
-  }
-
-  const min = fixed + scenesMin * (visualPerScene + TTS)
-  const max = fixed + scenesMax * (visualPerScene + TTS)
-  return { min, max, visualPerScene }
+  if (wizardSourceType.value === 'blank') return null
+  const e = serverEstimate.value
+  if (!e) return null
+  // A CSV batch makes one video per row, so its price is that many videos.
+  const videos = wizardSourceType.value === 'csv_topic' ? Math.max(1, csvBatch.value.rows.length) : 1
+  return { min: e.credits_min * videos, max: e.credits_max * videos, visualPerScene: e.breakdown?.visual_per_scene ?? 0, videos }
 })
 
 const canAffordEstimate = computed(() => {
@@ -1000,7 +1038,7 @@ async function requestOneShotPlan() {
       ...(oneShotAnimateTouched.value ? { animate: oneShotIsAiVisuals.value && oneShotAnimate.value } : {}),
       animation_tier: oneShotAnimateTier.value,
       scenes_count: oneShotScenesCount.value,
-      language: oneShotLanguage.value,
+      ...(oneShotLanguage.value ? { language: oneShotLanguage.value } : {}),
       ...(oneShotIsAiVisuals.value && sourceAssetIds.length ? { source_image_asset_ids: sourceAssetIds } : {}),
       ...(oneShotIsAiVisuals.value && characterIds.length   ? { character_ids: characterIds }            : {}),
     })
@@ -1062,7 +1100,7 @@ async function submitOneShot() {
       animation_tier: oneShotAnimateTier.value,
       ...(oneShotAnimateTier.value === 'spokesperson' ? { consent: oneShotSpokespersonConsent.value } : {}),
       scenes_count: oneShotScenesCount.value,
-      language: oneShotLanguage.value,
+      ...(oneShotLanguage.value ? { language: oneShotLanguage.value } : {}),
       include_music: oneShotIncludeMusic.value,
       include_captions: oneShotIncludeCaptions.value,
       channel_id: channelId.value ? Number(channelId.value) : undefined,
@@ -1135,9 +1173,9 @@ async function submitWizardProject() {
   try {
     if (pdfCheckPending.value || pdfDoomed.value) { wizardCreateState.value = 'idle'; return }
     const resolvedSource = await resolveSourceContentRaw(sourceType)
-    const res = await api.post('/projects', {
+    const payloadFor = (src, rowTitle = null) => ({
       source_type: sourceType,
-      source_content_raw: resolvedSource,
+      source_content_raw: src,
       // The user's answer to "read the scanned pages?" from the dry run.
       // Only meaningful for pdf_upload; harmless elsewhere.
       pdf_read_scanned: wizardSourceType.value === 'pdf_upload' ? pdfReadScanned.value : false,
@@ -1152,7 +1190,7 @@ async function submitWizardProject() {
       ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
       ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
       ...(customNicheVoiceTone.value ? { tone: customNicheVoiceTone.value } : {}),
-      ...(title.value ? { title: title.value } : {}),
+      ...((rowTitle || title.value) ? { title: rowTitle || title.value } : {}),
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
       ...(aiBrollStyle.value === 'custom' && customVisualStyle.value.trim()
         ? { custom_visual_style: customVisualStyle.value.trim() }
@@ -1192,6 +1230,29 @@ async function submitWizardProject() {
         : {}),
     })
 
+    // CSV batch: one video per row, made one after another; a refusal (credits run out) stops the rest and says so.
+    if (sourceType === 'csv_topic' && csvBatch.value.rows.length > 1) {
+      const made = []
+      for (const row of csvBatch.value.rows) {
+        try {
+          const r = await api.post('/projects', payloadFor(withCustomNicheContext([csvBatch.value.header, row].filter(Boolean).join('\n')), csvRowTitle(row) || null))
+          if (r.data?.data?.project?.id) made.push(r.data.data.project.id)
+        } catch (err) {
+          if (!made.length) throw err
+          wizardCreateState.value = 'error'
+          wizardCreateError.value = `Made ${made.length} of ${csvBatch.value.rows.length} videos; the rest stopped: ${apiErrorMessage(err, 'creation failed')}`
+          emit('created', { projectId: made[0], sourceType })
+          return
+        }
+      }
+      show.value = false
+      wizardCreateState.value = 'success'
+      emit('created', { projectId: made[0], sourceType })
+      router.push({ name: 'videos' })
+      return
+    }
+
+    const res = await api.post('/projects', payloadFor(resolvedSource))
     const projectId = res.data?.data?.project?.id
     show.value = false
     wizardCreateState.value = 'success'
@@ -1397,9 +1458,12 @@ defineExpose({ open })
               <!-- Language -->
               <div class="composer-pill-wrap">
                 <button type="button" class="composer-pill" @click="oneShotLangOpen = !oneShotLangOpen">
-                  <span>🌐 {{ languageLabel(oneShotLanguage) }}</span><span class="composer-pill-caret">▾</span>
+                  <span>🌐 {{ oneShotLanguage ? languageLabel(oneShotLanguage) : 'Language: from prompt' }}</span><span class="composer-pill-caret">▾</span>
                 </button>
                 <div v-if="oneShotLangOpen" class="composer-pill-menu">
+                  <button type="button" :class="['composer-pill-option', !oneShotLanguage ? 'selected' : '']" @click="oneShotLanguage = null; oneShotLangOpen = false">
+                    <span>From the prompt</span>
+                  </button>
                   <button v-for="l in LANGUAGES" :key="l.value" type="button" :class="['composer-pill-option', oneShotLanguage === l.value ? 'selected' : '']" @click="oneShotLanguage = l.value; oneShotLangOpen = false">
                     <span>{{ l.label }}</span>
                   </button>
@@ -1897,6 +1961,10 @@ defineExpose({ open })
         <div v-else-if="wizardSourceType === 'csv_topic'" class="input-group">
           <label class="input-label">CSV Topics</label>
           <textarea v-model="csvText" class="field-input textarea" rows="5" placeholder="topic,angle,hook"></textarea>
+          <p v-if="csvBatch.rows.length" class="input-hint">
+            {{ csvBatch.rows.length === 1 ? 'One video, from this row.' : `${csvBatch.rows.length} videos, one per row, with the same settings.` }}
+            <template v-if="csvBatch.dropped"> Up to {{ CSV_BATCH_MAX }} at a time: the last {{ csvBatch.dropped }} rows are left out.</template>
+          </p>
         </div>
         <div v-else-if="wizardSourceType === 'product_description'" class="input-group">
           <div class="form-grid">
@@ -2200,7 +2268,7 @@ defineExpose({ open })
         <!-- Credit estimate -->
         <div v-if="creditEstimate" :class="['credit-estimate', !canAffordEstimate ? 'credit-estimate-warn' : '']">
           <span class="credit-est-label">Estimated cost</span>
-          <span class="credit-est-range">{{ creditEstimate.min }}–{{ creditEstimate.max }} credits</span>
+          <span class="credit-est-range">{{ creditEstimate.min }}–{{ creditEstimate.max }} credits<template v-if="(creditEstimate.videos || 1) > 1"> for {{ creditEstimate.videos }} videos</template></span>
           <span v-if="creditBalance !== null" class="credit-est-balance">
             · Balance: <strong>{{ creditBalance.toLocaleString() }}</strong>
             <span v-if="!canAffordEstimate" style="color:#f87171"> — not enough</span>

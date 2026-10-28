@@ -102,6 +102,38 @@ function statusClass(status) {
   return 'status-default'
 }
 
+// The episode's price before it is made (fix A3, 2026-10-28): episodes were created with no visual mode and no quote,
+// then switched to AI images after the fact. The series' own mode is used; a series without one gets AI images when
+// the balance covers them, else stock footage, and the form says which.
+const episodeQuote = ref(null)
+const episodeQuoteNote = ref('')
+const episodeMode = ref('ai_images')
+async function quoteEpisode() {
+  episodeQuote.value = null
+  episodeQuoteNote.value = ''
+  const fixed = series.value?.visual_mode === 'stock' ? 'stock' : series.value?.visual_mode === 'ai' ? 'ai_images' : null
+  const ask = async (mode) => (await api.post('/projects/estimate-credits', {
+    source_type: 'prompt',
+    source_content_raw: episodeForm.value.prompt.trim() || null,
+    visual_generation_mode: mode,
+    duration_target_seconds: Number(series.value?.duration_target_seconds || 60),
+  }))?.data?.data
+  try {
+    let mode = fixed ?? 'ai_images'
+    let quote = await ask(mode)
+    if (!fixed && quote && !quote.can_afford) {
+      const stock = await ask('stock')
+      episodeQuoteNote.value = `AI images would cost ${quote.credits_min}–${quote.credits_max} credits; your balance covers stock footage instead.`
+      mode = 'stock'
+      quote = stock
+    }
+    episodeMode.value = mode
+    episodeQuote.value = quote
+  } catch {
+    episodeQuote.value = null
+  }
+}
+
 async function createEpisode() {
   if (!episodeForm.value.prompt.trim()) return
   creatingEpisode.value = true
@@ -112,6 +144,7 @@ async function createEpisode() {
       source_type: 'prompt',
       source_content_raw: episodeForm.value.prompt.trim(),
       series_id: seriesId,
+      visual_generation_mode: episodeMode.value,
     })
     const projectId = res.data.data.project.id
     router.push({ name: 'generation-progress', params: { projectId } })
@@ -123,6 +156,7 @@ async function createEpisode() {
 
 function openNewEpisode() {
   episodeForm.value = { title: '', prompt: '' }
+  quoteEpisode()
   episodeError.value = ''
   showNewEpisode.value = true
 }
@@ -402,6 +436,12 @@ onMounted(load)
             <div v-if="episodeError" class="episode-error">{{ episodeError }}</div>
             <div class="episode-meta-note">
               Tone, format, visual style, and episode number are inherited from the series automatically.
+            </div>
+            <div v-if="episodeQuote" class="episode-meta-note">
+              <strong>About {{ episodeQuote.credits_min }}–{{ episodeQuote.credits_max }} credits</strong>
+              ({{ episodeMode === 'stock' ? 'stock footage' : 'AI images' }}, ~{{ episodeQuote.scenes_min }}–{{ episodeQuote.scenes_max }} scenes)
+              <span v-if="!episodeQuote.can_afford" class="episode-error"> · you're {{ episodeQuote.shortage }} credits short</span>
+              <div v-if="episodeQuoteNote">{{ episodeQuoteNote }}</div>
             </div>
           </div>
           <div class="modal-footer">

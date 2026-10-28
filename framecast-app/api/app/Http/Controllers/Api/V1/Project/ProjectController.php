@@ -607,7 +607,9 @@ class ProjectController extends Controller
         }
 
         $parsed = app(\App\Services\Generation\OneShotPromptParser::class)
-            ->parseMultiScene($promptText, $sceneCount, $refUrls, (string) ($validated['language'] ?? 'en'));
+            ->parseMultiScene($promptText, $sceneCount, $refUrls,
+                // Chosen language, else the prompt's own (fix A4), else English.
+                (string) ($validated['language'] ?? \App\Support\TextLanguage::detect($promptText) ?? 'en'));
         $hints = $parsed['hints'] ?? ['visual_source' => null, 'animate' => null];
 
         // Prompt-led inference with explicit overrides: a pill the user
