@@ -234,6 +234,8 @@ const selectedWizardVoiceKey = ref('alloy')
 // A niche or channel picks the narrator and the style until the user chooses their own (2026-10-28): the voice was the
 // first in an alphabetical list and the style always photorealistic, whatever the niche.
 const voiceTouched = ref(false)
+// Stop after the script to read and approve it before pictures and voice are paid for (2026-10-28).
+const reviewScript = ref(false)
 const styleTouched = ref(false)
 const wizardVoicePrompt = ref('')
 const voicePickerOpen = ref(false)
@@ -687,6 +689,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   aiBrollStyle.value = 'photorealistic'
   styleTouched.value = false
   voiceTouched.value = false
+  reviewScript.value = false
   wizardVoicePrompt.value = ''
   customVisualStyle.value = ''
   globalVisualMode.value = 'ai_images'
@@ -1214,6 +1217,7 @@ async function submitWizardProject() {
       ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
       ...(customNicheVoiceTone.value ? { tone: customNicheVoiceTone.value } : {}),
       ...(customNicheSelected.value && customNicheMusicMood.value.trim() ? { music_mood: customNicheMusicMood.value.trim() } : {}),
+      ...(reviewScript.value && sourceType !== 'blank' ? { review_script: true } : {}),
       ...((rowTitle || title.value) ? { title: rowTitle || title.value } : {}),
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
       ...(aiBrollStyle.value === 'custom' && customVisualStyle.value.trim()
@@ -2299,6 +2303,10 @@ defineExpose({ open, openPath })
         </label>
 
         <!-- Credit estimate -->
+        <label v-if="wizardSourceType !== 'blank'" class="review-script-toggle" for="wiz-review-script">
+          <input id="wiz-review-script" v-model="reviewScript" type="checkbox" />
+          <span>Let me review the script before pictures and voice are made</span>
+        </label>
         <div v-if="creditEstimate" :class="['credit-estimate', !canAffordEstimate ? 'credit-estimate-warn' : '']">
           <span class="credit-est-label">Estimated cost</span>
           <span class="credit-est-range">{{ creditEstimate.min }}–{{ creditEstimate.max }} credits<template v-if="(creditEstimate.videos || 1) > 1"> for {{ creditEstimate.videos }} videos</template></span>
@@ -2855,4 +2863,6 @@ defineExpose({ open, openPath })
   .wizard-step span { font-size: 11px; }
   .wizard-connector { width: 16px; margin: 0 2px; }
 }
+.review-script-toggle { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--color-text-secondary); margin: 6px 0 10px; cursor: pointer; }
+.review-script-toggle input { accent-color: var(--color-accent); }
 </style>

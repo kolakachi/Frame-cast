@@ -89,6 +89,10 @@ class ConcatenateExportJob implements ShouldQueue
                 }
             }
 
+            // Checks on the finished file (sound, blank frames, every word spoken, length): notes for the user, never
+            // a reason to fail the export (2026-10-28).
+            $finalChecks = rescue(fn () => \App\Services\Export\ComposerFinalChecks::run($outputFile, $project, collect($scenes)), [], false);
+
             // Deterministic path so retries overwrite rather than leak a second file.
             $storagePath = 'exports/export-'.$exportJob->getKey().'.mp4';
             $stream = fopen($outputFile, 'rb');
@@ -138,7 +142,7 @@ class ConcatenateExportJob implements ShouldQueue
 
             $assetCreated = false;
 
-            DB::transaction(function () use ($exportJob, $exportStorageUrl, $fileSize, $totalDurationSeconds, $dimensions, $thumbnailUrl, &$assetCreated): void {
+            DB::transaction(function () use ($exportJob, $exportStorageUrl, $fileSize, $totalDurationSeconds, $dimensions, $thumbnailUrl, $finalChecks, &$assetCreated): void {
                 $fresh = ExportJob::query()->lockForUpdate()->find($exportJob->getKey());
 
                 // Another attempt already completed — skip.
@@ -162,6 +166,7 @@ class ConcatenateExportJob implements ShouldQueue
                     'usage_count'     => 1,
                     'status'          => 'active',
                     'created_by_user_id' => null,
+                    'metadata_json'   => $finalChecks !== [] ? ['checks' => $finalChecks] : null,
                 ]);
 
                 $exportJob->forceFill([

@@ -2707,6 +2707,10 @@ function trackVideoDownloaded(via) {
     export_job_id: activeExportJob.value?.id ?? null,
   })
 }
+// Checks on the finished file (sound, blank frames, every word spoken, length), 2026-10-28: notes, never a block.
+const exportChecks = computed(() => Array.isArray(activeExportJob.value?.checks) ? activeExportJob.value.checks : [])
+const exportCheckNotes = computed(() => exportChecks.value.filter((c) => c.status === 'note'))
+
 const latestExportDownloadUrl = computed(
   () => activeExportJob.value?.output_asset?.storage_url ?? null
 );
@@ -7585,8 +7589,15 @@ onBeforeUnmount(() => {
               <button :class="['btn btn-ghost share-btn', shareMenuOpen ? 'active' : '']" type="button" aria-haspopup="menu" :aria-expanded="shareMenuOpen" @click="shareMenuOpen = !shareMenuOpen">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
                 Share <span class="share-caret">▾</span>
+                <span v-if="exportCheckNotes.length" class="export-check-dot" :title="`${exportCheckNotes.length} thing${exportCheckNotes.length === 1 ? '' : 's'} to check`"></span>
               </button>
               <div v-if="shareMenuOpen" class="share-menu" role="menu">
+                <template v-if="exportChecks.length">
+                  <div class="share-menu-label">Checks</div>
+                  <div v-if="!exportCheckNotes.length" class="export-check ok">✓ Sound, pictures, narration and length all checked</div>
+                  <div v-for="c in exportCheckNotes" :key="c.id" class="export-check note"><b>{{ c.label }}:</b> {{ c.detail }}</div>
+                  <div class="share-menu-sep"></div>
+                </template>
                 <div class="share-menu-label">Aspect ratio</div>
                 <div class="share-ratios">
                   <button
@@ -8396,6 +8407,9 @@ onBeforeUnmount(() => {
               <button type="button" @click="mobileSheet = null">Done</button>
             </div>
             <div class="ed-projsheet-body">
+              <template v-if="latestExportDownloadUrl && exportCheckNotes.length">
+                <div v-for="c in exportCheckNotes" :key="'chk-' + c.id" class="export-check note"><b>{{ c.label }}:</b> {{ c.detail }}</div>
+              </template>
               <template v-if="latestExportDownloadUrl">
                 <div v-if="exportsByRatio.length > 1" class="export-ratio-chips export-ratio-chips-sheet" role="group" aria-label="Which export">
                   <button
@@ -15852,4 +15866,8 @@ select.preset-select {
 
 .anim-slow{margin:6px 0 0;font-size:12px;color:var(--color-warning, #b45309)}
 .anim-slow-tag{color:var(--color-warning, #b45309)}
+.export-check { font-size: 12px; line-height: 1.45; padding: 6px 12px; color: var(--color-text-secondary); max-width: 320px; }
+.export-check.ok { color: var(--color-success, #4ade80); }
+.export-check.note b { color: var(--color-warning, #fbbf24); }
+.export-check-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning, #fbbf24); margin-left: 6px; vertical-align: middle; }
 </style>

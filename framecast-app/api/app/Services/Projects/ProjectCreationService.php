@@ -388,6 +388,8 @@ class ProjectCreationService
             'animate_quality' => $validated['animate_quality'] ?? null,
         ] : [];
         if ($captionDefaults) $visualBrief['caption_defaults'] = $captionDefaults;
+        // "Let me review the script first": the build stops before pictures and voice (ScoreHooksJob) until approved.
+        if (! empty($validated['review_script']) && $validated['source_type'] !== 'blank') $visualBrief['script_review'] = 'requested';
 
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,

@@ -317,6 +317,8 @@ class ProjectController extends Controller
             'voice_settings_json.voice_prompt' => ['sometimes', 'nullable', 'string', 'max:500'],
             // A custom niche's music mood chips (the first picks the track).
             'music_mood' => ['nullable', 'string', 'max:200'],
+            // Stop after the script for the user to read, edit and approve before pictures and voice are made.
+            'review_script' => ['nullable', 'boolean'],
             'voice_settings_json.provider' => ['sometimes', 'nullable', 'string', 'max:32'],
             'voice_settings.voice_id' => ['sometimes', 'nullable', 'string', 'max:255'],
             'voice_settings.speed' => ['sometimes', 'numeric', 'min:0.25', 'max:4'],
@@ -1676,6 +1678,63 @@ class ProjectController extends Controller
         ]);
     }
 
+    /**
+     * The script waiting for review (2026-10-28): each scene's narration, and what the rest of the build costs (a
+     * picture and a voice line per scene, priced as the jobs charge) against the balance.
+     */
+    public function scriptReview(Request $request, int $projectId): JsonResponse
+    {
+        $project = Project::query()->whereKey($projectId)->where('workspace_id', $request->user()->workspace_id)->first();
+        if (! $project) return $this->error('not_found', 'Project not found.', 404);
+        $scenes = Scene::query()->where('project_id', $project->getKey())->orderBy('scene_order')->get(['id', 'scene_order', 'script_text']);
+
+        return response()->json(['data' => [
+            'status' => data_get($project->visual_brief, 'script_review'),
+            'scenes' => $scenes->map(fn (Scene $s) => ['id' => $s->getKey(), 'scene_order' => (int) $s->scene_order, 'script_text' => (string) $s->script_text])->all(),
+            'credits' => $this->remainingBuildCredits($project, $scenes->count()),
+            'balance' => $this->credits->balance((int) $project->workspace_id),
+        ], 'meta' => []]);
+    }
+
+    /** Approve the reviewed script, with any scene edits, and go on to pictures and voice. */
+    public function approveScriptReview(Request $request, int $projectId): JsonResponse
+    {
+        $validated = $request->validate([
+            'scenes' => ['sometimes', 'array', 'max:60'],
+            'scenes.*.id' => ['required', 'integer'],
+            'scenes.*.script_text' => ['required', 'string', 'max:2000'],
+        ]);
+        $project = Project::query()->whereKey($projectId)->where('workspace_id', $request->user()->workspace_id)->first();
+        if (! $project) return $this->error('not_found', 'Project not found.', 404);
+        if (data_get($project->visual_brief, 'script_review') !== 'waiting') {
+            return $this->error('not_waiting', 'This script is not waiting for review.', 409);
+        }
+        foreach ($validated['scenes'] ?? [] as $edit) {
+            $text = trim((string) $edit['script_text']);
+            if ($text === '') continue;
+            Scene::query()->where('project_id', $project->getKey())->whereKey((int) $edit['id'])->update(['script_text' => $text]);
+        }
+        $count = Scene::query()->where('project_id', $project->getKey())->count();
+        $credits = $this->remainingBuildCredits($project, $count);
+        $balance = $this->credits->balance((int) $project->workspace_id);
+        if ($balance < $credits) {
+            return $this->error('insufficient_credits', "Making the pictures and voice needs about {$credits} credits; you have {$balance}. Top up, or shorten the script.", 402);
+        }
+        $project->forceFill(['visual_brief' => array_merge((array) ($project->visual_brief ?? []), ['script_review' => 'approved'])])->save();
+        \App\Jobs\ScoreHooksJob::resumeAfterReview($project->refresh());
+
+        return response()->json(['data' => ['status' => 'approved', 'credits' => $credits], 'meta' => []]);
+    }
+
+    private function remainingBuildCredits(Project $project, int $scenes): int
+    {
+        $per = $this->credits->perSceneCost((string) ($project->visual_generation_mode ?: 'stock'),
+            (string) data_get($project->default_voice_settings_json, 'voice_id', ''), (bool) $project->default_character_id,
+            data_get($project->visual_brief, 'animate_tier'), data_get($project->visual_brief, 'animate_quality'), data_get($project->visual_brief, 'animation_pacing'));
+
+        return $scenes * ($per['visual'] + $per['voice']);
+    }
+
     public function exports(Request $request, int $projectId): JsonResponse
     {
         /** @var User $user */
@@ -1952,6 +2011,8 @@ class ProjectController extends Controller
             'status' => $status,
             'progress_percent' => (int) $exportJob->progress_percent,
             'failure_reason' => $failureReason,
+            // Checks on the finished file (ComposerFinalChecks): pass, note or skipped, each with a plain detail.
+            'checks' => $outputAsset ? (data_get($outputAsset->metadata_json, 'checks') ?: null) : null,
             'priority' => (int) $exportJob->priority,
             'queued_at' => $exportJob->queued_at?->toIso8601String(),
             'started_at' => $exportJob->started_at?->toIso8601String(),

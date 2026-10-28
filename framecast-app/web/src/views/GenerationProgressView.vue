@@ -333,12 +333,46 @@ function updateStageFromEvent(payload) {
   if (['completed', 'failed'].includes(payload.status)) loadProjectStatus()
 }
 
+// Script review (2026-10-28): a project that asked to see its script first waits here, before pictures and voice.
+const review = ref(null)          // { scenes, credits, balance } while waiting
+const reviewDrafts = ref({})      // scene id → edited text
+const reviewSending = ref(false)
+const reviewError = ref('')
+async function loadScriptReview() {
+  try {
+    const res = await api.get(`/projects/${projectId.value}/script-review`)
+    const data = res.data?.data
+    if (data?.status !== 'waiting') { review.value = null; return }
+    if (!review.value) reviewDrafts.value = Object.fromEntries((data.scenes || []).map((s) => [s.id, s.script_text]))
+    review.value = data
+  } catch { /* the next poll tries again */ }
+}
+async function approveScript() {
+  if (!review.value || reviewSending.value) return
+  reviewSending.value = true
+  reviewError.value = ''
+  try {
+    const edits = (review.value.scenes || [])
+      .filter((s) => (reviewDrafts.value[s.id] ?? '').trim() && reviewDrafts.value[s.id].trim() !== s.script_text)
+      .map((s) => ({ id: s.id, script_text: reviewDrafts.value[s.id].trim() }))
+    await api.post(`/projects/${projectId.value}/script-review`, { scenes: edits })
+    review.value = null
+    loadProjectStatus()
+  } catch (e) {
+    reviewError.value = e?.response?.data?.error?.message || 'Could not continue. Try again.'
+  } finally {
+    reviewSending.value = false
+  }
+}
+
 async function loadProjectStatus() {
   if (downloadUrl.value) return
   try {
     const response = await api.get(`/projects/${projectId.value}`)
     const project  = response.data?.data?.project
     if (!project) return
+    if (project.visual_brief?.script_review === 'waiting') loadScriptReview()
+    else review.value = null
     // A UGC take has its own progress surface — per-scene rows and retries
     // on /ugc-ads/run — and lands here only through generic entry points
     // (dashboard, jobs, videos). Redirect once, at the single door every
@@ -568,6 +602,19 @@ onBeforeUnmount(() => { unsubscribe(); stopPolling() })
           <span v-else>Thanks. That goes straight to the founders.</span>
         </div>
       </section>
+      <section v-if="review && !downloadUrl" class="gen-review" aria-labelledby="gen-review-h">
+        <h2 id="gen-review-h">Your script is ready</h2>
+        <p class="gen-way-note">Read it and change any line before the pictures and voice are made. Nothing else is charged until you continue.</p>
+        <div v-for="s in review.scenes" :key="s.id" class="gen-review-scene">
+          <label :for="'rv-' + s.id">Scene {{ s.scene_order }}</label>
+          <textarea :id="'rv-' + s.id" v-model="reviewDrafts[s.id]" class="gen-way-text" rows="2" maxlength="2000"></textarea>
+        </div>
+        <p class="gen-way-note">The pictures and voice cost about <strong>{{ review.credits }} credits</strong> ({{ review.scenes.length }} scenes). You have {{ review.balance }}.</p>
+        <p v-if="reviewError" class="gen-review-error" role="alert">{{ reviewError }}</p>
+        <div class="gen-way-actions">
+          <button class="gen-download" type="button" :disabled="reviewSending" @click="approveScript">{{ reviewSending ? 'Starting…' : 'Make the video' }}</button>
+        </div>
+      </section>
       <div v-if="pipelineFailure && !downloadUrl" class="gen-finish-error" role="alert">
         <p>{{ pipelineFailure }}</p>
         <template v-if="failedBrief && !scenes.length">
@@ -752,4 +799,9 @@ button.gen-download:disabled { opacity: .6; cursor: default; }
 .gen-fit-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .gen-fit-chip { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-border-active); background: transparent; color: var(--color-text-primary); cursor: pointer; }
 .gen-fit-chip.on { border-color: var(--color-accent); color: var(--color-accent); }
+.gen-review { display: grid; gap: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--color-border-active); border-radius: 12px; text-align: left; }
+.gen-review h2 { margin: 0; font-size: 16px; }
+.gen-review-scene { display: grid; gap: 4px; }
+.gen-review-scene label { font-size: 12px; color: var(--color-text-muted); }
+.gen-review-error { color: #f87171; margin: 0; font-size: 13px; }
 </style>

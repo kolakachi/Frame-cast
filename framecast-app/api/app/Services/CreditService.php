@@ -1214,9 +1214,7 @@ class CreditService
         // flat self::TTS (1cr) under-quoted every narrated video by two
         // credits a scene — and the API's quote-bound create authorizes
         // the quoted maximum, so the quote must not sit below the charge.
-        $ttsPerScene = self::ttsCostForEngine(
-            \App\Services\Generation\TTS\RoutingTTSAdapter::engineFor((string) $voiceId, []),
-        );
+        $ttsPerScene = $this->perSceneCost($visualMode, $voiceId, $usesCharacter, $animateTier, $animateQuality, $animationPacing)['voice'];
 
         // Count scenes the way the breakdown does (ScenePacing::guidance: the target for this length and visual mode,
         // give or take a fifth), not from the brief's word count: a 60 s video is cut into about 12 scenes however
@@ -1238,19 +1236,7 @@ class CreditService
         // which GenerateAIImageJob charges at the reference rate. Quote it the
         // same way, or a character video is under-quoted by the difference on
         // every scene — and an accounted operation would refuse the charge.
-        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
-        $aiPerScene = $usesCharacter ? $images->referenceGenerationCost(null) : $images->costFor(null);
-
-        $visualPerScene = match ($visualMode) {
-            'ai_images', 'ai_broll' => $aiPerScene,
-            // Still first, then an i2v render on top of it — both are charged.
-            'ai_video' => $aiPerScene + self::animationCost(
-                $animateTier ?: 'quick',
-                self::videoQuality($animateTier ?: 'quick', $animateQuality),
-                AnimatedShotPlan::requestSeconds($animationPacing),
-            ),
-            default => self::STOCK, // stock_video, stock_images, waveform, etc.
-        };
+        $visualPerScene = $this->perSceneCost($visualMode, $voiceId, $usesCharacter, $animateTier, $animateQuality, $animationPacing)['visual'];
 
         $fixed = self::SCRIPT + self::BREAKDOWN + self::EXPORT;
 
@@ -1272,6 +1258,29 @@ class CreditService
                 'voice_per_scene'      => $ttsPerScene,
                 'export'               => self::EXPORT,
             ],
+        ];
+    }
+
+    /**
+     * What one scene costs to make, picture and voice, as the jobs charge: the default image model (a reference
+     * generation with a character), an animation on top for AI video, stock otherwise; the voice by its engine. Shared
+     * by the estimate and the script review's price (2026-10-28).
+     *
+     * @return array{visual:int, voice:int}
+     */
+    public function perSceneCost(string $visualMode, ?string $voiceId = null, bool $usesCharacter = false, ?string $animateTier = null, ?string $animateQuality = null, ?string $animationPacing = null): array
+    {
+        $images = app(\App\Services\Generation\Image\ImageAdapterFactory::class);
+        $aiPerScene = $usesCharacter ? $images->referenceGenerationCost(null) : $images->costFor(null);
+
+        return [
+            'visual' => match ($visualMode) {
+                'ai_images', 'ai_broll' => $aiPerScene,
+                // Still first, then an i2v render on top of it — both are charged.
+                'ai_video' => $aiPerScene + self::animationCost($animateTier ?: 'quick', self::videoQuality($animateTier ?: 'quick', $animateQuality), AnimatedShotPlan::requestSeconds($animationPacing)),
+                default => self::STOCK, // stock_video, stock_images, waveform, etc.
+            },
+            'voice' => self::ttsCostForEngine(\App\Services\Generation\TTS\RoutingTTSAdapter::engineFor((string) $voiceId, [])),
         ];
     }
 

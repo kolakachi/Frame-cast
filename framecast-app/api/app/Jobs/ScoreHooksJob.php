@@ -127,8 +127,23 @@ class ScoreHooksJob implements ShouldQueue
         $this->dispatchVisualStep($project);
     }
 
+    /** After the user approved the script (script review), the build goes on from where it stopped. */
+    public static function resumeAfterReview(Project $project): void
+    {
+        (new self((int) $project->getKey()))->dispatchVisualStep($project);
+    }
+
     private function dispatchVisualStep(?Project $project): void
     {
+        // Script review (2026-10-28): a project that asked to see its script first stops here, before any picture or
+        // voice is paid for, until the user approves it.
+        if ($project && in_array(data_get($project->refresh()->visual_brief, 'script_review'), ['requested', 'waiting'], true)) {
+            $project->forceFill(['visual_brief' => array_merge((array) ($project->visual_brief ?? []), ['script_review' => 'waiting'])])->save();
+            GenerationProgressed::dispatch((int) $project->getKey(), 'script_review', 'processing', 'Your script is ready to review');
+
+            return;
+        }
+
         $mode = $project?->visual_generation_mode;
 
         // 'images' source type means the creator uploaded reference images for style anchoring —
