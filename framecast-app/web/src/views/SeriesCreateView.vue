@@ -1,12 +1,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
 import NotifBell from '../components/NotifBell.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const currentStep = ref(1)
@@ -25,7 +26,8 @@ const form = ref({
   platform_targets: [],
   aspect_ratio: '9:16',
   duration_target_seconds: 60,
-  posting_cadence: null,
+  // The Composer page's "How often" choice carries over (?cadence=Daily).
+  posting_cadence: ['Daily', '3× per week', 'Weekly', 'Custom'].includes(String(route.query.cadence || '')) ? String(route.query.cadence) : null,
   // Step 2 — Series Bible
   concept_text: '',
   audience_text: '',

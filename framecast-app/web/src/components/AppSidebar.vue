@@ -545,14 +545,14 @@ onBeforeUnmount(() => {
         Agency
         <span v-if="(workspaceStore.clients ?? []).length" class="nav-count">{{ (workspaceStore.clients ?? []).length }}</span>
       </button>
-      <!-- Classic (2026-10-08): the earlier ways to make a video, kept for anyone who prefers them. Composer opens
-           the New Video wizard (from scratch, from a brief, one-shot); UGC Ads is the $9 Test Pass's way in. -->
-      <div class="nav-section-label">Classic</div>
+      <!-- Composer (2026-10-28): its own section for faceless creators, the composer's page and Series (daily episodes).
+           Classic keeps UGC Ads, the $9 Test Pass's way in. -->
+      <div class="nav-section-label">Composer</div>
       <button
-        class="nav-item"
+        :class="['nav-item', activePage === 'composer' ? 'active' : '']"
         data-tooltip="Composer"
         type="button"
-        @click="router.push({ name: 'dashboard', query: { new_video: '1' } })"
+        @click="nav('composer')"
       >
         <svg
           class="nav-icon"
@@ -568,6 +568,19 @@ onBeforeUnmount(() => {
         </svg>
         Composer
       </button>
+      <button
+        :class="['nav-item', ['series', 'series-create', 'series-detail'].includes(activePage) ? 'active' : '']"
+        data-tooltip="Series"
+        type="button"
+        @click="nav('series')"
+      >
+        <svg class="nav-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+          <path d="M3 9h18M8 4v5M16 4v5"></path>
+        </svg>
+        Series
+      </button>
+      <div class="nav-section-label">Classic</div>
       <button
         :class="['nav-item', activePage === 'ugc-ads' ? 'active' : '']"
         data-tooltip="UGC Ads"

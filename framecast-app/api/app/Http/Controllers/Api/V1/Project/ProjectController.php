@@ -51,6 +51,9 @@ class ProjectController extends Controller
             'per_page' => ['nullable', 'integer', Rule::in([4, 8, 12, 16, 24])],
             'channel_id' => ['nullable', 'integer'],
             'status' => ['nullable', 'string', Rule::in(['draft', 'generating', 'ready', 'published', 'failed'])],
+            // The Composer page (2026-10-28): only composer videos (no Create videos; UGC is always left out), newest edit first.
+            'kind' => ['nullable', 'string', Rule::in(['composer'])],
+            'sort' => ['nullable', 'string', Rule::in(['updated'])],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 8);
@@ -84,6 +87,8 @@ class ProjectController extends Controller
                     ->where('export_jobs.status', 'completed')
                     ->selectRaw('max(completed_at)'),
             ])
+            ->when(($validated['kind'] ?? null) === 'composer', fn ($q) => $q->where(fn ($k) => $k->whereNull('editor_kind')->orWhere('editor_kind', '!=', 'composition')))
+            ->when(($validated['sort'] ?? null) === 'updated', fn ($q) => $q->orderByDesc('updated_at'))
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
 

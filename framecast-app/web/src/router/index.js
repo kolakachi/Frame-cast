@@ -19,6 +19,7 @@ import AdminView from '../views/AdminView.vue'
 import WorkspaceView from '../views/WorkspaceView.vue'
 import ChannelDetailView from '../views/ChannelDetailView.vue'
 import SeriesView from '../views/SeriesView.vue'
+import ComposerView from '../views/ComposerView.vue'
 import UgcAdsView from '../views/UgcAdsView.vue'
 import SeriesDetailView from '../views/SeriesDetailView.vue'
 import SeriesCreateView from '../views/SeriesCreateView.vue'
@@ -77,6 +78,7 @@ const routes = [
   { path: '/continue', name: 'continue-checkout', component: () => import('../views/ContinueCheckoutView.vue'), meta: { public: true } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { requiresAuth: true, adminOnly: true } },
   { path: '/series', name: 'series', component: SeriesView, meta: { requiresAuth: true } },
+  { path: '/composer', name: 'composer', component: ComposerView, meta: { requiresAuth: true } },
   // UGC Ads lands on the takes listing — management first; creation is a
   // deliberate step behind "+ New take".
   { path: '/ugc-ads', name: 'ugc-ads', component: () => import('../views/UgcTakesView.vue'), meta: { requiresAuth: true } },

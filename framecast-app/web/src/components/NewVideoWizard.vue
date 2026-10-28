@@ -1271,7 +1271,16 @@ async function submitWizardProject() {
   }
 }
 
-defineExpose({ open })
+// The Composer page opens one way in directly: 'scratch' (project setup), 'brief' (niche → source → content) or
+// 'oneshot' (the one-scene form), skipping the path picker.
+function openPath(path, presetChannelId = null) {
+  open('prompt', presetChannelId)
+  if (path === 'scratch') pickStartFromScratch()
+  else if (path === 'brief') pickGenerateFromBrief()
+  else if (path === 'oneshot') pickOneShotPrompt()
+}
+
+defineExpose({ open, openPath })
 </script>
 
 <template>
