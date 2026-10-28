@@ -82,6 +82,9 @@ const cruiseResetConfirmOpen = ref(false)
 const cruiseResetting = ref(false)
 // Frequently-used prompts shown above the input.
 const CRUISE_QUICK_PROMPTS = [
+  // The assistant now sees each scene's pace, length and problems (2026-10-28), so a review is concrete.
+  'review my video and fix what is weak',
+  'make the hook stronger',
   'change voice on this scene',
   'use upbeat music',
   'swap visual to stock',
@@ -136,6 +139,8 @@ function cruiseActionIcon(section) {
 function cruiseActionTitle(tool) {
   return {
     rerecord_voice: 'Re-record voice',
+    change_voice_everywhere: 'Change narrator (whole video)',
+    duplicate_scene: 'Duplicate scene',
     swap_visual_from_library: 'Swap visual',
     change_music: 'Regenerate music',
     regenerate_image: 'Regenerate image',
@@ -584,7 +589,7 @@ function cruiseInitActionState(raw, status = 'proposed') {
 // and we wait for the Reverb 'completed' event before stamping ✓.
 function cruiseToolHasAsyncWork(tool) {
   return [
-    'regenerate_image', 'animate_scene', 'rerecord_voice',
+    'regenerate_image', 'animate_scene', 'rerecord_voice', 'change_voice_everywhere',
     'update_scene_script', 'change_music', 'add_scene',
   ].includes(tool)
 }
@@ -619,6 +624,7 @@ function cruiseExpectedStages(tool, params) {
     case 'regenerate_image': return isChained ? ['ai_image', 'animation'] : ['ai_image']
     case 'animate_scene':    return ['animation']
     case 'rerecord_voice':   return ['tts']
+    case 'change_voice_everywhere': return ['tts']
     case 'update_scene_script': return ['tts']
     case 'change_music':     return ['ai_music']
     case 'add_scene': {
@@ -657,6 +663,8 @@ function cruiseInitialProgressText(tool) {
     case 'regenerate_image':  return 'Generating image…'
     case 'animate_scene':     return 'Animating scene…'
     case 'rerecord_voice':    return 'Generating voice…'
+    case 'change_voice_everywhere': return 'Re-recording every scene…'
+    case 'duplicate_scene':   return 'Duplicating scene…'
     case 'update_scene_script': return 'Generating voice…'
     case 'change_music':      return 'Composing music…'
     case 'add_scene':         return 'Adding scene…'

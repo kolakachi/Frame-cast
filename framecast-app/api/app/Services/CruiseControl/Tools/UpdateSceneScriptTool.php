@@ -59,12 +59,43 @@ class UpdateSceneScriptTool implements CruiseTool
         $previous = mb_substr((string) $scene?->script_text, 0, 70);
         $lines = ["Scene: {$scene?->scene_order}", "Was: \"{$previous}\""];
         if (! empty($params['new_text'])) {
-            $lines[] = 'New: "' . mb_substr((string) $params['new_text'], 0, 70) . '"';
+            $lines[] = 'New: "' . mb_substr((string) $params['new_text'], 0, 240) . '"';
         } elseif (! empty($params['rewrite_tone'])) {
             $lines[] = 'Rewrite tone: ' . $params['rewrite_tone'];
         }
         $lines[] = 'Voice will be re-recorded';
         return $lines;
+    }
+
+    /**
+     * A tone rewrite is written when it is proposed (2026-10-28), so the card shows the actual new line before the
+     * voice is re-recorded and charged, and the rewrite sees the brief and the scenes around it (it was a bare call
+     * after Apply, with no language or context). Applying then uses that exact text.
+     */
+    public function preview(Project $project, array $params): array
+    {
+        if (! empty($params['new_text']) || empty($params['rewrite_tone'])) return $params;
+        $scenes = Scene::query()->where('project_id', $project->getKey())->orderBy('scene_order')->get(['id', 'scene_order', 'label', 'scene_type', 'script_text'])->values();
+        $i = $scenes->search(fn ($s) => (int) $s->id === (int) ($params['scene_id'] ?? 0));
+        if ($i === false) return $params;
+        $scene = $scenes[$i];
+        $brief = is_array($project->assistant_brief_json) ? $project->assistant_brief_json : [];
+        $r = app(\App\Services\Generation\AI\AIGenerationAdapter::class)->generate('scene_rewrite', [
+            'mode' => trim((string) $params['rewrite_tone']).'. Keep every fact, name and number and the meaning; no longer than now unless asked.',
+            'project_title' => (string) ($project->title ?: 'Untitled project'),
+            'language' => (string) ($project->primary_language ?: 'en'),
+            'scene_type' => (string) ($scene->scene_type ?: 'narration'),
+            'scene_label' => (string) ($scene->label ?: ''),
+            'script_text' => (string) $scene->script_text,
+            'project_brief' => implode(' · ', array_filter([trim((string) ($brief['theme'] ?? '')), trim((string) ($brief['topic'] ?? '')), trim((string) ($brief['tone'] ?? ''))])) ?: 'n/a',
+            'previous_scene' => (string) ($scenes[$i - 1]->script_text ?? ''),
+            'next_scene' => (string) ($scenes[$i + 1]->script_text ?? ''),
+            'scene_outline' => $scenes->map(fn ($s) => 'Scene '.$s->scene_order.': '.mb_substr((string) $s->script_text, 0, 90))->implode("\n"),
+        ], 450, 0.55, ['usage_context' => ['workspace_id' => $project->workspace_id, 'project_id' => $project->getKey(), 'template' => 'scene_rewrite']]);
+        $text = trim(trim((string) ($r['content'] ?? '')), "\"' ");
+        if ($text !== '') $params['new_text'] = $text;
+
+        return $params;
     }
 
     public function estimateCost(Project $project, array $params): int { return RerecordVoiceTool::voiceCost($project, ['scene_id' => $params['scene_id'] ?? null]); }

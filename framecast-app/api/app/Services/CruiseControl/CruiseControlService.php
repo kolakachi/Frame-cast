@@ -70,7 +70,7 @@ class CruiseControlService
     {
         $project->assertSceneEditor();
         $apiKey = config('services.openai.api_key');
-        if (! $apiKey) {
+        if (! $apiKey && (string) config('services.anthropic.key') === '') {
             return [
                 'reply_to_user' => 'Assistant is not configured. Please ask Kolawole to set OPENAI_API_KEY.',
                 'action' => null,
@@ -95,42 +95,51 @@ class CruiseControlService
         $messages[] = ['role' => 'user', 'content' => $intent];
 
         try {
-            $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini');
-            $payload = [
-                'model'           => $model,
-                'response_format' => ['type' => 'json_object'],
-                'messages'        => $messages,
-            ];
-            // GPT-5-family models reject custom temperature outright (only the
-            // default is allowed) — probed empirically before the migration.
-            if (! str_starts_with($model, 'gpt-5')) {
-                $payload['temperature'] = (float) config('services.openai.cruise_temperature', 0.6);
+            // Claude by default (2026-10-28: the project standard is Anthropic direct; the assistant was a single
+            // gpt-4o-mini JSON call). OpenAI stays as the fallback when no Anthropic key is set or CRUISE_PROVIDER says so.
+            if ((string) config('services.anthropic.key') !== '' && config('services.cruise.provider', 'anthropic') === 'anthropic') {
+                $content = $this->askClaude($systemPrompt, array_slice($messages, 1));
+                if ($content === null) {
+                    return ['reply_to_user' => "I couldn't understand that — try rephrasing.", 'action' => null, 'actions' => []];
+                }
             } else {
-                // Reasoning models think before answering, and on a project
-                // with several scenes plus the tool catalogue that pushed past
-                // the old 25s ceiling — the user waited, then got "something
-                // went wrong". Cruise is interactive and its job is routing to
-                // a tool, not deep reasoning, so keep the effort low.
-                $payload['reasoning_effort'] = (string) config('services.openai.cruise_reasoning_effort', 'low');
+                $model = (string) config('services.openai.cheap_model', 'gpt-4o-mini');
+                $payload = [
+                    'model'           => $model,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages'        => $messages,
+                ];
+                // GPT-5-family models reject custom temperature outright (only the
+                // default is allowed) — probed empirically before the migration.
+                if (! str_starts_with($model, 'gpt-5')) {
+                    $payload['temperature'] = (float) config('services.openai.cruise_temperature', 0.6);
+                } else {
+                    // Reasoning models think before answering, and on a project
+                    // with several scenes plus the tool catalogue that pushed past
+                    // the old 25s ceiling — the user waited, then got "something
+                    // went wrong". Cruise is interactive and its job is routing to
+                    // a tool, not deep reasoning, so keep the effort low.
+                    $payload['reasoning_effort'] = (string) config('services.openai.cruise_reasoning_effort', 'low');
+                }
+                $started = microtime(true);
+                $response = Http::withToken($apiKey)
+                    ->timeout((int) config('services.openai.cruise_timeout', 60))
+                    ->post('https://api.openai.com/v1/chat/completions', $payload);
+
+                if (! $response->successful()) {
+                    $this->recordOpenAiUsage('cruise_turn', $model, 'failed', [], $started, 'http_'.$response->status());
+                    Log::warning('CruiseControl LLM call failed', [
+                        'status' => $response->status(),
+                        'body'   => mb_substr((string) $response->body(), 0, 500),
+                    ]);
+                    return ['reply_to_user' => "I couldn't understand that — try rephrasing.", 'action' => null, 'actions' => []];
+                }
+
+                $json = $response->json();
+                $this->recordOpenAiUsage('cruise_turn', $model, 'succeeded', (array) ($json['usage'] ?? []), $started);
+
+                $content = (string) data_get($json, 'choices.0.message.content', '');
             }
-            $started = microtime(true);
-            $response = Http::withToken($apiKey)
-                ->timeout((int) config('services.openai.cruise_timeout', 60))
-                ->post('https://api.openai.com/v1/chat/completions', $payload);
-
-            if (! $response->successful()) {
-                $this->recordOpenAiUsage('cruise_turn', $model, 'failed', [], $started, 'http_'.$response->status());
-                Log::warning('CruiseControl LLM call failed', [
-                    'status' => $response->status(),
-                    'body'   => mb_substr((string) $response->body(), 0, 500),
-                ]);
-                return ['reply_to_user' => "I couldn't understand that — try rephrasing.", 'action' => null, 'actions' => []];
-            }
-
-            $json = $response->json();
-            $this->recordOpenAiUsage('cruise_turn', $model, 'succeeded', (array) ($json['usage'] ?? []), $started);
-
-            $content = (string) data_get($json, 'choices.0.message.content', '');
             $parsed  = json_decode($content, true);
 
             if (! is_array($parsed)) {
@@ -162,6 +171,10 @@ class CruiseControlService
                     continue;
                 }
                 $params = is_array($raw['params'] ?? null) ? $raw['params'] : [];
+                // A tool can fill in what the user should see before applying (a rewrite's actual new line).
+                if (method_exists($tool, 'preview')) {
+                    try { $params = $tool->preview($project, $params); } catch (\Throwable) { /* the card shows the request instead */ }
+                }
                 $actions[] = [
                     'tool'               => $toolName,
                     'params'             => $params,
@@ -195,6 +208,48 @@ class CruiseControlService
     }
 
     /**
+     * One Claude turn: the same system prompt and history, the reply as the JSON object the prompt asks for. The
+     * system prompt is cached, so the follow-up turns of a session cost a fraction. Null when the call fails.
+     */
+    private function askClaude(string $system, array $messages): ?string
+    {
+        $model = (string) config('services.cruise.model', 'claude-sonnet-5-5');
+        $turns = [];
+        foreach ($messages as $m) {
+            $role = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            if ($turns !== [] && end($turns)['role'] === $role) { $turns[count($turns) - 1]['content'] .= "\n\n".$m['content']; continue; }
+            $turns[] = ['role' => $role, 'content' => (string) $m['content']];
+        }
+        if ($turns === [] || $turns[0]['role'] !== 'user') array_unshift($turns, ['role' => 'user', 'content' => '(start)']);
+        $started = microtime(true);
+        $r = Http::withHeaders(['x-api-key' => (string) config('services.anthropic.key'), 'anthropic-version' => '2023-06-01'])
+            ->timeout((int) config('services.cruise.timeout', 60))
+            ->post('https://api.anthropic.com/v1/messages', [
+                'model' => $model,
+                'max_tokens' => 2500,
+                'system' => [['type' => 'text', 'text' => $system."\n\nReturn ONLY the JSON object described above, nothing before or after it.", 'cache_control' => ['type' => 'ephemeral']]],
+                'messages' => $turns,
+            ]);
+        $usage = (array) ($r->json('usage') ?? []);
+        $rates = (array) (config('create.model_rates')[$model] ?? []);
+        $cost = (($usage['input_tokens'] ?? 0) * ($rates['input'] ?? 0) + ($usage['output_tokens'] ?? 0) * ($rates['output'] ?? 0)
+            + ($usage['cache_creation_input_tokens'] ?? 0) * ($rates['cache_write'] ?? 0) + ($usage['cache_read_input_tokens'] ?? 0) * ($rates['cache_read'] ?? 0)) / 1_000_000;
+        $this->recordOpenAiUsage('cruise_turn', $model, $r->successful() ? 'succeeded' : 'failed', [
+            'prompt_tokens' => (int) ($usage['input_tokens'] ?? 0), 'completion_tokens' => (int) ($usage['output_tokens'] ?? 0),
+            'total_tokens' => (int) (($usage['input_tokens'] ?? 0) + ($usage['output_tokens'] ?? 0)),
+        ], $started, $r->successful() ? null : 'http_'.$r->status(), ['provider' => 'anthropic', 'estimated_cost_usd' => round($cost, 6)]);
+        if (! $r->successful()) {
+            Log::warning('CruiseControl Claude call failed', ['status' => $r->status(), 'body' => mb_substr((string) $r->body(), 0, 500)]);
+            return null;
+        }
+        $text = collect($r->json('content', []))->where('type', 'text')->pluck('text')->implode('');
+        $a = strpos($text, '{');
+        $b = strrpos($text, '}');
+
+        return $a !== false && $b !== false ? substr($text, $a, $b - $a + 1) : null;
+    }
+
+    /**
      * Pack the system prompt with current state. Kept terse — long prompts
      * cost more AND degrade quality on gpt-4o-mini.
      */
@@ -217,7 +272,10 @@ class CruiseControlService
             ->orderBy('scene_order')
             ->get(['id', 'scene_order', 'label', 'script_text', 'visual_prompt',
                    'voice_settings_json', 'visual_style', 'character_id',
-                   'visual_type']);
+                   'visual_type', 'duration_seconds', 'visual_asset_id', 'image_generation_settings_json', 'motion_settings_json']);
+        // What the video is and how it stands (2026-10-28): it saw only scene text cut at 200 characters, so it could
+        // not shorten to a length, see a failed scene, or know it was a facts video.
+        $state = app(CruiseVideoState::class)->for($project, $scenes);
 
         // Per-scene voice + style + character + the ACTUAL script and visual
         // prompt, so the LLM can (a) keep new scenes consistent, (b) resolve
@@ -236,7 +294,8 @@ class CruiseControlService
             if ($s->character_id)  $bits[] = "character_id={$s->character_id}";
             if ($s->visual_type)   $bits[] = "visual={$s->visual_type}";
             $bits[] = 'label="' . mb_substr((string) $s->label, 0, 30) . '"';
-            $bits[] = 'script="' . mb_substr((string) $s->script_text, 0, 200) . '"';
+            if ($timing = $state['scene_timing'][$s->id] ?? null) $bits[] = $timing;
+            $bits[] = 'script="' . mb_substr((string) $s->script_text, 0, 700) . '"';
             if ($s->visual_prompt) {
                 $bits[] = 'visual_prompt="' . mb_substr((string) $s->visual_prompt, 0, 160) . '"';
             }
@@ -345,6 +404,14 @@ PROJECT
   tone: {$project->tone}
   default_voice: {$this->projectDefaultVoice($project)}
   default_visual_style: {$project->ai_broll_style}
+{$state['project_lines']}
+
+VIDEO STATE (what has failed, is still running, or is missing; the user's balance)
+{$state['state_lines']}
+
+THINGS TO FIX (found automatically; free to read; propose fixes for these when the user asks for a review or how to
+improve the video, and mention the worst one if the user seems unsure what to do next)
+{$state['issues_lines']}
 
 SCENES (voice, style, character per scene — keep new actions consistent)
 {$sceneList}
@@ -362,6 +429,21 @@ AVAILABLE TOOLS
 {$tools}
 
 RULES
+- RETENTION (short-form): the hook is the first line and lands in under 2 seconds; one idea per scene; keep the pace
+  around 2.3-2.8 spoken words a second; end on a loop or follow line for faceless niches, never on a hard sell unless
+  the niche is an ad. Follow the NICHE PLAYBOOK above when there is one.
+- LENGTH: "shorten to N seconds", "make it faster", "tighten it" -> propose update_scene_script actions with new_text
+  that keep every point and the ending, cutting filler words (use the seconds per scene above; 2.5 words is about a
+  second). Never delete a scene's point to hit a number; landing within about 20% of the target is fine.
+- HOOK: "make the hook stronger / better opening / grab attention" -> update_scene_script on the FIRST scene with
+  rewrite_tone describing the hook you want (a scroll-stopping first line under 12 words, a surprising claim, a
+  question or a bold statement for this niche); only the opening line changes, the rest of the scene stays. A scored
+  hook option above that beats the current opening can be used as new_text.
+- POSTING COPY: "write a title / caption / description / hashtags for TikTok, Reels, Shorts..." -> no action. Write
+  them in reply_to_user in the project's language: a title under 70 characters, a caption of 1-2 lines with a
+  question or hook, and 4-6 relevant hashtags, each on its own line, per platform asked for.
+- FACTS: never add a number, date, name, record or quote the user or the existing script did not give you. When
+  rewriting a fact-based line, keep its facts exactly; if asked for "more facts", say which you are unsure of.
 - LANGUAGE: any spoken text you write — scene scripts above all, plus
   captions and titles — must be in the project's language ({$projectLanguage}),
   regardless of the language the user is chatting to you in. Someone may

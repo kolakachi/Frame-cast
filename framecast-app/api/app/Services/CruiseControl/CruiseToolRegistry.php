@@ -50,7 +50,9 @@ class CruiseToolRegistry
         // Property mutation
         UpdateSceneScriptTool::class,
         ReorderSceneTool::class,
+        \App\Services\CruiseControl\Tools\DuplicateSceneTool::class,
         RerecordVoiceTool::class,
+        \App\Services\CruiseControl\Tools\ChangeVoiceEverywhereTool::class,
         SetAudiogramVisualTool::class,
         UpdateCaptionsTool::class,
         ApplyBrandKitTool::class,

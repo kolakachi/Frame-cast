@@ -172,6 +172,13 @@ return [
         'key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // The editor assistant (Cruise): Claude by default, OpenAI as the fallback (2026-10-28).
+    'cruise' => [
+        'provider' => env('CRUISE_PROVIDER', 'anthropic'),
+        'model' => env('CRUISE_MODEL', 'claude-sonnet-5-5'),
+        'timeout' => (int) env('CRUISE_TIMEOUT', 60),
+    ],
+
     // OpenRouter's video API (owner, 2026-10-18): Seedance 2.5 for UGC this week, in place of Replicate's.
     'openrouter' => [
         'api_key' => env('OPENROUTER_API_KEY', ''),

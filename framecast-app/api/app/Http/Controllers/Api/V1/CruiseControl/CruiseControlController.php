@@ -251,7 +251,7 @@ class CruiseControlController extends Controller
         // the whole message — sibling actions stay in 'proposed'.
         // Finalise add_scene's revert now that we know the created scene id:
         // undo = delete that scene and restore the pre-insert orders/labels.
-        if ($validated['tool'] === 'add_scene' && ! empty($result['affected_scene_id'])) {
+        if (in_array($validated['tool'], ['add_scene', 'duplicate_scene'], true) && ! empty($result['affected_scene_id'])) {
             $revert = [
                 'kind'         => 'delete_scene',
                 'scene_id'     => (int) $result['affected_scene_id'],
@@ -644,6 +644,7 @@ class CruiseControlController extends Controller
             'animate_scene',
             'make_spokesperson',
             'rerecord_voice',
+            'change_voice_everywhere',
             'update_scene_script',
             'change_music',
             'add_scene',
@@ -803,7 +804,14 @@ class CruiseControlController extends Controller
         }
 
         // Order-shuffling tools: snapshot every scene's order + label.
-        if (in_array($tool, ['reorder_scene', 'add_scene'], true)) {
+        // Every scene's voice, for a whole-video voice change.
+        if ($tool === 'change_voice_everywhere') {
+            return ['kind' => 'scenes_voice', 'project_voice' => $project->default_voice_settings_json,
+                'scenes' => Scene::query()->where('project_id', $project->getKey())->get(['id', 'voice_settings_json'])
+                    ->map(fn ($s) => ['id' => (int) $s->id, 'voice_settings_json' => $s->voice_settings_json])->all()];
+        }
+
+        if (in_array($tool, ['reorder_scene', 'add_scene', 'duplicate_scene'], true)) {
             $states = Scene::query()
                 ->where('project_id', $project->getKey())
                 ->get(['id', 'scene_order', 'label'])
@@ -857,6 +865,15 @@ class CruiseControlController extends Controller
                     ->update(['scene_order' => $st['scene_order'] ?? 1, 'label' => $st['label'] ?? null]);
             }
             return $kind === 'delete_scene' ? (int) ($revert['scene_id'] ?? 0) : null;
+        }
+
+        if ($kind === 'scenes_voice') {
+            foreach ($revert['scenes'] ?? [] as $st) {
+                Scene::query()->where('project_id', $project->getKey())->whereKey($st['id'] ?? 0)->get()
+                    ->each(fn (Scene $s) => $s->forceFill(['voice_settings_json' => $st['voice_settings_json']])->save());
+            }
+            $project->forceFill(['default_voice_settings_json' => $revert['project_voice'] ?? null])->save();
+            return null;
         }
 
         if ($kind === 'scene_fields') {
