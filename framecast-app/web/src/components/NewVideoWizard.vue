@@ -196,6 +196,8 @@ function estimateExtras() {
   return {
     ...(selectedWizardVoiceKey.value ? { voice_id: selectedWizardVoiceKey.value } : {}),
     ...(selectedCharacterId.value ? { character_id: Number(selectedCharacterId.value) } : {}),
+    // The niche's pace changes how many scenes are made, so the price follows it.
+    ...(selectedNicheId.value ? { niche_id: Number(selectedNicheId.value) } : {}),
   }
 }
 async function refreshServerEstimate() {
@@ -229,6 +231,11 @@ const brandKits = ref([])
 // mount; falls back to a hardcoded shortlist if the call fails.
 const wizardVoices = ref([])
 const selectedWizardVoiceKey = ref('alloy')
+// A niche or channel picks the narrator and the style until the user chooses their own (2026-10-28): the voice was the
+// first in an alphabetical list and the style always photorealistic, whatever the niche.
+const voiceTouched = ref(false)
+const styleTouched = ref(false)
+const wizardVoicePrompt = ref('')
 const voicePickerOpen = ref(false)
 const characterPickerOpen = ref(false)
 async function loadWizardVoices() {
@@ -259,7 +266,7 @@ const characters = ref([])
 const selectedCharacterId = ref('')
 const selectedCharacter = computed(() => characters.value.find((c) => String(c.id) === String(selectedCharacterId.value)) ?? null)
 // The price follows everything it depends on: mode, length, source, its text (debounced), voice engine and character.
-watch([globalVisualMode, durationTargetSeconds, wizardSourceType, promptText, scriptText, productDescription, csvText, selectedWizardVoiceKey, selectedCharacterId],
+watch([globalVisualMode, durationTargetSeconds, wizardSourceType, promptText, scriptText, productDescription, csvText, selectedWizardVoiceKey, selectedCharacterId, selectedNicheId],
   scheduleServerEstimate, { immediate: true })
 watch([selectedWizardVoiceKey, selectedCharacterId], () => { if (globalVisualMode.value === 'ai_video') refreshAiVideoEstimate() })
 
@@ -389,6 +396,11 @@ watch(channelId, (next, prev) => {
   if (Array.isArray(channel.platform_targets) && channel.platform_targets[0]) {
     platformTarget.value = channel.platform_targets[0]
   }
+  // The channel's own narrator, unless the user picked one (it was returned and never used).
+  if (channel.default_voice_profile_id && !voiceTouched.value) {
+    const v = wizardVoices.value.find((x) => String(x.id) === String(channel.default_voice_profile_id))
+    if (v) { selectedWizardVoiceKey.value = v.provider_voice_key; wizardVoicePrompt.value = '' }
+  }
 })
 
 function nicheTagsFor(niche) {
@@ -402,6 +414,14 @@ function nicheTagsFor(niche) {
 function selectSeededNiche(nicheId) {
   selectedNicheId.value = nicheId
   customNicheSelected.value = false
+  const niche = niches.value.find((n) => String(n.id) === String(nicheId))
+  if (niche && !styleTouched.value && aiBrollStyleOptions.some((o) => o.key === niche.default_visual_style)) {
+    aiBrollStyle.value = niche.default_visual_style
+  }
+  if (niche && !voiceTouched.value && niche.default_voice && wizardVoices.value.some((v) => v.provider_voice_key === niche.default_voice)) {
+    selectedWizardVoiceKey.value = niche.default_voice
+    wizardVoicePrompt.value = niche.default_voice_prompt || ''
+  }
   scrollToActions()
 }
 
@@ -665,6 +685,9 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   sourceImageAssetIds.value = []
   imageVisualMode.value = 'upload'
   aiBrollStyle.value = 'photorealistic'
+  styleTouched.value = false
+  voiceTouched.value = false
+  wizardVoicePrompt.value = ''
   customVisualStyle.value = ''
   globalVisualMode.value = 'ai_images'
   channelId.value = presetChannelId ? String(presetChannelId) : ''
@@ -1185,11 +1208,12 @@ async function submitWizardProject() {
       aspect_ratio: aspectRatio.value,
       ...(selectedNicheId.value ? { niche_id: selectedNicheId.value } : {}),
       ...(selectedCharacterId.value ? { character_id: Number(selectedCharacterId.value) } : {}),
-      ...(selectedWizardVoiceKey.value ? { voice_settings_json: { voice_id: selectedWizardVoiceKey.value } } : {}),
+      ...(selectedWizardVoiceKey.value ? { voice_settings_json: { voice_id: selectedWizardVoiceKey.value, ...(wizardVoicePrompt.value ? { voice_prompt: wizardVoicePrompt.value } : {}) } } : {}),
       ...(channelId.value ? { channel_id: Number(channelId.value) } : {}),
       ...(brandKitId.value ? { brand_kit_id: Number(brandKitId.value) } : {}),
       ...(contentGoal.value ? { content_goal: contentGoal.value } : {}),
       ...(customNicheVoiceTone.value ? { tone: customNicheVoiceTone.value } : {}),
+      ...(customNicheSelected.value && customNicheMusicMood.value.trim() ? { music_mood: customNicheMusicMood.value.trim() } : {}),
       ...((rowTitle || title.value) ? { title: rowTitle || title.value } : {}),
       ...(durationTargetSeconds.value ? { duration_target_seconds: Number(durationTargetSeconds.value) } : {}),
       ...(aiBrollStyle.value === 'custom' && customVisualStyle.value.trim()
@@ -1857,7 +1881,7 @@ defineExpose({ open, openPath })
             <div v-if="voicePickerOpen" class="picker-panel">
               <div v-for="v in wizardVoices" :key="v.provider_voice_key"
                 :class="['picker-row', selectedWizardVoiceKey === v.provider_voice_key ? 'selected' : '']"
-                @click="selectedWizardVoiceKey = v.provider_voice_key; voicePickerOpen = false">
+                @click="selectedWizardVoiceKey = v.provider_voice_key; voiceTouched = true; wizardVoicePrompt = ''; voicePickerOpen = false">
                 <span class="picker-row-glyph">🎙</span>
                 <div class="picker-row-text">
                   <div class="picker-row-name">{{ v.name }}</div>
@@ -1940,7 +1964,7 @@ defineExpose({ open, openPath })
                 :class="['ai-broll-card', aiBrollStyle === style.key ? 'selected' : '']"
                 :style="{ '--style-tone': style.tone }"
                 type="button"
-                @click="aiBrollStyle = style.key"
+                @click="aiBrollStyle = style.key; styleTouched = true"
               >
                 <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center 25%' } : {}"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>
@@ -2092,7 +2116,7 @@ defineExpose({ open, openPath })
                 :class="['ai-broll-card', aiBrollStyle === style.key ? 'selected' : '']"
                 :style="{ '--style-tone': style.tone }"
                 type="button"
-                @click="aiBrollStyle = style.key"
+                @click="aiBrollStyle = style.key; styleTouched = true"
               >
                 <span class="ai-broll-art" :style="styleSampleByKey[style.key] ? { backgroundImage: `url(${styleSampleByKey[style.key]})`, backgroundSize: 'cover', backgroundPosition: 'center 25%' } : {}"></span>
                 <span class="ai-broll-label">{{ style.label }}</span>

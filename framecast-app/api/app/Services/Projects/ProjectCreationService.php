@@ -111,6 +111,7 @@ class ProjectCreationService
             animationPacing: $validated['animation_pacing'] ?? null,
             voiceId: $validated['voice_settings_json']['voice_id'] ?? $validated['voice_settings']['voice_id'] ?? null,
             usesCharacter: ! empty($validated['character_id']),
+            nicheSlug: ! empty($validated['niche_id']) ? Niche::query()->whereKey($validated['niche_id'])->value('slug') : null,
         );
         $balance = $this->credits->balance((int) $user->workspace_id);
         if ($balance < $estimate['credits_min']) {
@@ -236,6 +237,8 @@ class ProjectCreationService
                         ->where('workspace_id', $user->workspace_id)
                         ->where('asset_type', 'music')
                         ->whereJsonContains('tags', $niche->default_music_mood)
+                        // A different matching track each time, not always the first (2026-10-28).
+                        ->inRandomOrder()
                         ->value('id');
                 }
 
@@ -250,6 +253,13 @@ class ProjectCreationService
                         ->first();
                 }
             }
+        }
+
+        // Music for a video with no niche (2026-10-28): a custom niche's chosen mood, else calm, ducked under the voice.
+        // It only reached the script as text before, so these videos had no music at all.
+        if (! $nicheMusicAssetId && empty($niche) && $validated['source_type'] !== 'blank') {
+            $nicheMusicAssetId = Asset::query()->where('workspace_id', $user->workspace_id)->where('asset_type', 'music')
+                ->whereJsonContains('tags', self::libraryMood((string) ($validated['music_mood'] ?? '')))->inRandomOrder()->value('id');
         }
 
         // Resolve series and apply its defaults.
@@ -281,6 +291,22 @@ class ProjectCreationService
                 }
                 if (empty($validated['languages']) && $series->default_language) {
                     $validated['languages'] = [$series->default_language];
+                }
+                // The series' look (2026-10-28): its style, and its written description and palette as the custom
+                // style every image prompt carries (they only reached the script and stock search before).
+                if (empty($validated['visual_style']) && empty($validated['ai_broll_style']) && $series->visual_style) {
+                    $validated['visual_style'] = $series->visual_style;
+                }
+                if (empty($validated['custom_visual_style'])) {
+                    $look = trim(implode('. ', array_filter([trim((string) $series->visual_description), $series->visual_palette ? 'Palette: '.$series->visual_palette : ''])));
+                    if ($look !== '') $validated['custom_visual_style'] = mb_substr($look, 0, 500);
+                }
+                // The series' music choice: none means none; otherwise a track in the niche's mood (or calm).
+                if ($series->default_music_setting === 'none') {
+                    $nicheMusicAssetId = null;
+                } elseif (! $nicheMusicAssetId && in_array($series->default_music_setting, ['auto', 'library', 'instrumental'], true)) {
+                    $nicheMusicAssetId = Asset::query()->where('workspace_id', $user->workspace_id)->where('asset_type', 'music')
+                        ->whereJsonContains('tags', $niche?->default_music_mood ?: 'calm')->inRandomOrder()->value('id');
                 }
             }
         }
@@ -339,6 +365,30 @@ class ProjectCreationService
             )
             : null;
 
+        // Defaults the user did not choose (2026-10-28), the series' first, then the channel's, then the niche's: the
+        // narrator (it was the first voice in an alphabetical list) and the caption look (every video got the renderer
+        // default; channel and series caption presets were stored and never used).
+        $nicheDefaults = Niche::defaultsFor($niche?->slug);
+        if ($validated['source_type'] !== 'blank' && empty($defaultVoiceSettings['voice_id'])) {
+            $profileId = $series?->default_voice_profile_id ?: $channel?->default_voice_profile_id;
+            $profile = $profileId ? \App\Models\VoiceProfile::query()->whereKey($profileId)
+                ->where(fn ($q) => $q->whereNull('workspace_id')->orWhere('workspace_id', $user->workspace_id))->first() : null;
+            if ($profile) {
+                $defaultVoiceSettings = array_merge((array) $defaultVoiceSettings, ['voice_id' => $profile->provider_voice_key, 'provider' => $profile->provider]);
+            } elseif (! empty($nicheDefaults['voice'])) {
+                $defaultVoiceSettings = array_merge((array) $defaultVoiceSettings, array_filter(['voice_id' => $nicheDefaults['voice'], 'provider' => 'google', 'voice_prompt' => $nicheDefaults['voice_prompt'] ?? null]));
+            }
+        }
+        $captionPresetId = $series?->default_caption_preset_id ?: $channel?->default_caption_preset_id;
+        $captionDefaults = $captionPresetId ? self::captionsFromPreset((int) $captionPresetId, (int) $user->workspace_id) : null;
+        $captionDefaults ??= $nicheDefaults['captions'] ?? null;
+        $visualBrief = ($validated['visual_generation_mode'] ?? null) === 'ai_video' ? [
+            'animate_tier'    => $validated['animate_tier'] ?? 'quick',
+            'animation_pacing' => $validated['animation_pacing'] ?? 'short',
+            'animate_quality' => $validated['animate_quality'] ?? null,
+        ] : [];
+        if ($captionDefaults) $visualBrief['caption_defaults'] = $captionDefaults;
+
         $project = Project::query()->create([
             'workspace_id' => $user->workspace_id,
             'channel_id' => $channel?->getKey() ?? $series?->channel_id,
@@ -361,11 +411,7 @@ class ProjectCreationService
             // The animation choice lives in visual_brief so the whole pipeline
             // (pacing, image job, estimator) reads one place. The brief job
             // MERGES into this column, so the seed survives enrichment.
-            'visual_brief' => ($validated['visual_generation_mode'] ?? null) === 'ai_video' ? [
-                'animate_tier'    => $validated['animate_tier'] ?? 'quick',
-                'animation_pacing' => $validated['animation_pacing'] ?? 'short',
-                'animate_quality' => $validated['animate_quality'] ?? null,
-            ] : null,
+            'visual_brief' => $visualBrief !== [] ? $visualBrief : null,
             'ai_broll_style' => $validated['ai_broll_style'] ?? null,
             'waveform_settings_json' => $waveformSettings,
             'default_visual_style' => $defaultVisualStyle,
@@ -413,9 +459,39 @@ class ProjectCreationService
         $series = ! empty($validated['series_id']) ? Series::query()->whereKey($validated['series_id'])->where('workspace_id', $user->workspace_id)->first() : null;
         $ai = $this->credits->estimateProject((string) $validated['source_type'], $validated['source_content_raw'] ?? null, 'ai_images', 'medium',
             (int) ($validated['duration_target_seconds'] ?? $series?->duration_target_seconds ?? 60),
-            voiceId: $validated['voice_settings_json']['voice_id'] ?? $validated['voice_settings']['voice_id'] ?? null, usesCharacter: ! empty($validated['character_id']));
+            voiceId: $validated['voice_settings_json']['voice_id'] ?? $validated['voice_settings']['voice_id'] ?? null, usesCharacter: ! empty($validated['character_id']),
+            nicheSlug: ! empty($validated['niche_id']) ? Niche::query()->whereKey($validated['niche_id'])->value('slug') : null);
 
         return $this->credits->balance((int) $user->workspace_id) >= $ai['credits_min'] ? 'ai_images' : 'stock';
+    }
+
+    /** The library mood (calm, upbeat, dark, epic, corporate) for a chosen mood chip, calm when none. */
+    public static function libraryMood(string $chips): string
+    {
+        $first = mb_strtolower(trim(explode(',', $chips)[0] ?? ''));
+
+        return match (true) {
+            in_array($first, ['upbeat', 'energetic', 'uplifting'], true) => 'upbeat',
+            $first === 'dark' => 'dark',
+            in_array($first, ['inspiring', 'dramatic', 'cinematic'], true) => 'epic',
+            $first === 'corporate' => 'corporate',
+            default => 'calm',
+        };
+    }
+
+    /** A saved caption preset as scene caption settings (caption_settings_json keys the renderer reads). */
+    public static function captionsFromPreset(int $presetId, int $workspaceId): ?array
+    {
+        $p = \App\Models\CaptionPreset::query()->whereKey($presetId)
+            ->where(fn ($q) => $q->whereNull('workspace_id')->orWhere('workspace_id', $workspaceId))->first();
+        if (! $p) return null;
+        $animations = ['plain', 'beast', 'comic', 'sticker', 'karaoke', 'box', 'stream', 'blur', 'glitch', 'slide', 'wave', 'punch', 'tracking', 'neon', 'news', 'marker'];
+
+        return array_filter([
+            'font' => $p->font, 'highlight_mode' => $p->highlight_mode, 'highlight_color' => $p->highlight_color,
+            'color' => $p->caption_color, 'position' => $p->caption_position,
+            'animation' => in_array($p->animation_type, $animations, true) ? $p->animation_type : null,
+        ], fn ($v) => $v !== null && $v !== '');
     }
 
     public function validateSourceContent(string $sourceType, ?string $source): ?string

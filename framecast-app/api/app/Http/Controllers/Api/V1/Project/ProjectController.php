@@ -313,6 +313,11 @@ class ProjectController extends Controller
             'voice_settings_json.voice_id' => ['sometimes', 'nullable', 'string', 'max:255'],
             'voice_settings_json.speed' => ['sometimes', 'numeric', 'min:0.25', 'max:4'],
             'voice_settings_json.stability' => ['sometimes', 'nullable', 'string', 'max:32'],
+            // A Gemini voice's delivery direction (a niche's narrator comes with one, 2026-10-28).
+            'voice_settings_json.voice_prompt' => ['sometimes', 'nullable', 'string', 'max:500'],
+            // A custom niche's music mood chips (the first picks the track).
+            'music_mood' => ['nullable', 'string', 'max:200'],
+            'voice_settings_json.provider' => ['sometimes', 'nullable', 'string', 'max:32'],
             'voice_settings.voice_id' => ['sometimes', 'nullable', 'string', 'max:255'],
             'voice_settings.speed' => ['sometimes', 'numeric', 'min:0.25', 'max:4'],
             'voice_settings.stability' => ['sometimes', 'nullable', 'string', 'max:32'],
@@ -1013,6 +1018,10 @@ class ProjectController extends Controller
         // don't burst N parallel image-gen requests at OpenAI / Replicate.
         // Keeps multi-scene under OpenAI gpt-image-1 Tier-1 (~5 RPM) safely
         // at N≤8 and avoids Replicate prediction queueing under load.
+        // One narrator for the whole video (2026-10-28): each scene used to take a voice by its on-screen person's
+        // gender, so a faceless video switched male, female, male. Only a lip-synced (spokesperson) take matches the
+        // voice to the face per scene; otherwise the first stated gender, or the default, narrates throughout.
+        $narratorGender = collect($parsed['scenes'])->pluck('voice_gender')->first(fn ($g) => in_array(mb_strtolower((string) $g), ['male', 'female'], true));
         foreach ($parsed['scenes'] as $idx => $sceneDef) {
             $sceneOrder = $idx + 1;
             $imageToken = (string) \Illuminate\Support\Str::uuid();
@@ -1038,7 +1047,7 @@ class ProjectController extends Controller
                 // inferred, so a male character doesn't get a female voice
                 // (which makes lip-sync look wrong).
                 'voice_settings_json' => [
-                    'voice_id'  => \App\Services\Generation\TTS\GeminiVoices::defaultForGender($sceneDef['voice_gender'] ?? null),
+                    'voice_id'  => \App\Services\Generation\TTS\GeminiVoices::defaultForGender($isSpokesperson ? ($sceneDef['voice_gender'] ?? null) : $narratorGender),
                     'provider'  => 'google',
                     'speed'     => 1.0,
                     'stability' => 'medium',

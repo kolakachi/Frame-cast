@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
 
 class BreakdownScenesJob implements ShouldQueue
 {
+    /** Camera moves for stills, in the order scenes take them. */
+    private const MOTIONS = ['zoom_in', 'pan_right', 'zoom_out', 'pan_left', 'pan_zoom', 'pan_up'];
+
     use Queueable;
     use TracksJobFailure;
 
@@ -57,6 +60,7 @@ class BreakdownScenesJob implements ShouldQueue
                 $project->visual_generation_mode,
                 $animated,
                 $shotSeconds,
+                \App\Models\Niche::secondsFor($niche?->slug),
             ),
             'structure_guidance' => \App\Services\ScenePacing::structureGuidance($duration),
             'language' => $project->primary_language ?: 'en',
@@ -74,7 +78,7 @@ class BreakdownScenesJob implements ShouldQueue
             GenerationProgressed::dispatch($this->projectId, 'scene_breakdown', 'processing', 'Planning your scenes');
             try {
                 $result = $aiGeneration->generate('scene_breakdown', $variables,
-                    $this->breakdownTokenBudget($duration, $project->visual_generation_mode, $animated), 0.2, $options);
+                    $this->breakdownTokenBudget($duration, $project->visual_generation_mode, $animated, \App\Models\Niche::secondsFor($niche?->slug)), 0.2, $options);
             } catch (\Throwable $e) {
                 $result = ['content' => '', 'provider_key' => 'local_fallback'];
             }
@@ -128,7 +132,13 @@ class BreakdownScenesJob implements ShouldQueue
                     'script_text' => $scene['script_text'],
                     'duration_seconds' => $scene['duration_seconds'],
                     'voice_settings_json' => $sceneVoiceSettings !== [] ? $sceneVoiceSettings : null,
+                    // The project's caption look (its niche's, channel's or series' default, 2026-10-28); none keeps
+                    // the renderer default.
+                    'caption_settings_json' => is_array(data_get($project->visual_brief, 'caption_defaults')) ? data_get($project->visual_brief, 'caption_defaults') : null,
                     'visual_style' => $defaultVisualStyle,
+                    // A different camera move per still, in a fixed order (2026-10-28): every image used to get the
+                    // same slow zoom-in, which reads as a slideshow. Clips ignore it; the editor shows and changes it.
+                    'motion_settings_json' => ['effect' => self::MOTIONS[$index % count(self::MOTIONS)], 'intensity' => 'moderate'],
                     'image_generation_settings_json' => $project->visual_generation_mode === 'waveform' && $waveformSettings !== []
                         ? $waveformSettings
                         : null,
@@ -177,9 +187,9 @@ class BreakdownScenesJob implements ShouldQueue
      * dropping the whole AI breakdown in favour of naive chunking. Budget
      * scales with the scenes we actually asked for.
      */
-    private function breakdownTokenBudget(int $duration, ?string $visualMode, bool $animated): int
+    private function breakdownTokenBudget(int $duration, ?string $visualMode, bool $animated, ?float $nicheSeconds = null): int
     {
-        $scenes = \App\Services\ScenePacing::targetScenes($duration, $visualMode, $animated);
+        $scenes = \App\Services\ScenePacing::targetScenes($duration, $visualMode, $animated, null, $nicheSeconds);
 
         // ~110 tokens per scene of JSON (narration dominates), plus headroom.
         return (int) min(8000, max(1100, 400 + $scenes * 110 * 1.3));

@@ -19,7 +19,7 @@ class ScenePlanReviewTest extends TestCase
         Redis::shouldReceive('get')->andReturn(null);
         foreach ([
             'projects' => ['workspace_id', 'status', 'script_text', 'generation_status_json', 'duration_target_seconds', 'visual_generation_mode'],
-            'scenes' => ['project_id', 'scene_order', 'scene_type', 'label', 'script_text', 'duration_seconds', 'voice_settings_json', 'visual_style', 'image_generation_settings_json', 'character_id', 'status'],
+            'scenes' => ['project_id', 'scene_order', 'scene_type', 'label', 'script_text', 'duration_seconds', 'voice_settings_json', 'caption_settings_json', 'motion_settings_json', 'visual_style', 'image_generation_settings_json', 'character_id', 'status'],
         ] as $table => $columns) Schema::create($table, function (Blueprint $t) use ($columns) {
             $t->id(); foreach ($columns as $column) $t->text($column)->nullable(); $t->timestamps();
         });

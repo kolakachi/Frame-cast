@@ -117,13 +117,9 @@ class GenerateHooksJob implements ShouldQueue
             return $this->normalizeCount($lineHooks);
         }
 
-        return $this->normalizeCount([
-            'Stop scrolling: this changes everything.',
-            'You are doing this the hard way.',
-            'This simple shift boosts results fast.',
-            'Most people miss this key step.',
-            'Try this framework in your next video.',
-        ]);
+        // No canned hooks (2026-10-28): "Stop scrolling: this changes everything." fitted no video. With nothing usable
+        // the video keeps its own opening line.
+        return [];
     }
 
     /**

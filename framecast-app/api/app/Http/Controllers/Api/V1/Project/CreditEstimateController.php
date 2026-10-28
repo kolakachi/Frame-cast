@@ -25,6 +25,7 @@ class CreditEstimateController extends Controller
             'animation_pacing' => 'nullable|string|in:short,long',
             'voice_id'             => 'nullable|string|max:255',
             'character_id'         => 'nullable|integer',
+            'niche_id'             => 'nullable|integer',
         ]);
 
         /** @var User $user */
@@ -41,6 +42,8 @@ class CreditEstimateController extends Controller
             animationPacing: $request->input('animation_pacing'),
             voiceId:       $request->input('voice_id'),
             usesCharacter: $request->filled('character_id'),
+            // A niche sets its own pace (facts cut every 3 s), which changes how many scenes are made.
+            nicheSlug: $request->filled('niche_id') ? \App\Models\Niche::query()->whereKey((int) $request->input('niche_id'))->value('slug') : null,
         );
 
         $balance    = $this->credits->balance((int) $user->workspace_id);

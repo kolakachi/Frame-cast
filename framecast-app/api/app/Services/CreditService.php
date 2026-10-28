@@ -1199,6 +1199,7 @@ class CreditService
         ?string $animationPacing = null,
         ?string $voiceId = null,
         bool $usesCharacter = false,
+        ?string $nicheSlug = null,
     ): array {
         // A blank project makes nothing when it is created: its scenes are built by hand in the editor, each priced
         // as it is made. Quoting it as a generated video asked an empty project for hundreds of credits.
@@ -1224,7 +1225,7 @@ class CreditService
         if ($visualMode === 'ai_video' || $durationSeconds) {
             $animated  = $visualMode === 'ai_video';
             $target    = \App\Services\ScenePacing::targetScenes($durationSeconds ?: 60, $visualMode, $animated,
-                $animated ? AnimatedShotPlan::clipSeconds($animateTier, $animationPacing) : null);
+                $animated ? AnimatedShotPlan::clipSeconds($animateTier, $animationPacing) : null, \App\Models\Niche::secondsFor($nicheSlug));
             $scenesMin = max(\App\Services\ScenePacing::MIN_SCENES, (int) round($target * 0.8));
             $scenesMax = min(\App\Services\ScenePacing::MAX_SCENES, (int) round($target * 1.2));
         }

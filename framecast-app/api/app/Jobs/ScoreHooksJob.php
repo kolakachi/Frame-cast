@@ -38,6 +38,16 @@ class ScoreHooksJob implements ShouldQueue
             return;
         }
 
+        // The script's own opening line is scored with the options (2026-10-28): the options used to be scored and then
+        // left in a list, while the line the video actually opens with was never judged. It joins the list as option 0,
+        // so the user can put it back with "Use Hook" if it is swapped out below.
+        $hookScene = Scene::query()->where('project_id', $this->projectId)->orderByRaw("case when scene_type = 'hook' then 0 else 1 end")->orderBy('scene_order')->first();
+        $opening = self::openingLine((string) ($hookScene?->script_text ?? ''));
+        $current = null;
+        if ($opening !== '' && ProjectHookOption::query()->where('project_id', $this->projectId)->exists()) {
+            $current = ProjectHookOption::query()->firstOrCreate(['project_id' => $this->projectId, 'hook_text' => $opening], ['sort_order' => 0]);
+        }
+
         $hooks = ProjectHookOption::query()
             ->where('project_id', $this->projectId)
             ->orderBy('sort_order')
@@ -77,6 +87,23 @@ class ScoreHooksJob implements ShouldQueue
                         'hook_score' => $data['score'],
                         'hook_score_reason' => $data['reason'],
                     ]);
+            }
+
+            // A clearly stronger hook (10+ points on 0-100) replaces the opening line, the rest of the scene unchanged.
+            // Voice and images come after this step, so the swap costs nothing.
+            if ($current && $hookScene && isset($scores[$current->getKey()])) {
+                $others = array_diff_key($scores, [$current->getKey() => true]);
+                uasort($others, fn ($a, $b) => $b['score'] <=> $a['score']);
+                $bestId = array_key_first($others);
+                if ($bestId !== null && $others[$bestId]['score'] >= $scores[$current->getKey()]['score'] + 10) {
+                    $best = (string) $hooks->firstWhere('id', $bestId)?->hook_text;
+                    if ($best !== '') {
+                        $hookScene->forceFill(['script_text' => self::replaceOpening((string) $hookScene->script_text, $opening, $best)])->save();
+                        $project->forceFill(['visual_brief' => array_merge((array) ($project->refresh()->visual_brief ?? []), ['hook_swap' => [
+                            'from' => $opening, 'to' => $best, 'from_score' => $scores[$current->getKey()]['score'], 'to_score' => $others[$bestId]['score'],
+                        ]])])->save();
+                    }
+                }
             }
 
             GenerationProgressed::dispatch($this->projectId, 'hooks_scoring', 'completed');
@@ -163,6 +190,25 @@ class ScoreHooksJob implements ShouldQueue
      * @param  list<int>  $validIds
      * @return array<int, array{score:int,reason:string}>
      */
+    /** The first sentence of a script, the line the video opens with. */
+    public static function openingLine(string $script): string
+    {
+        $script = trim($script);
+        if ($script === '') return '';
+        $parts = preg_split('/(?<=[.!?…])\s+/u', $script, 2);
+
+        return trim((string) ($parts[0] ?? ''));
+    }
+
+    /** The script with its opening line replaced, the rest kept as written. */
+    public static function replaceOpening(string $script, string $opening, string $hook): string
+    {
+        $script = trim($script);
+        $rest = trim(mb_substr($script, mb_strlen($opening)));
+
+        return trim($hook.($rest !== '' ? ' '.$rest : ''));
+    }
+
     private function extractScores(string $content, array $validIds): array
     {
         // Strip markdown fences if present

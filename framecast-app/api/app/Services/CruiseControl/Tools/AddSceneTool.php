@@ -221,7 +221,8 @@ class AddSceneTool implements CruiseTool
                     'is_outdated' => false,   // newly created — not outdated
                     'last_error' => null,
                 ],
-                'caption_settings_json' => $project->default_caption_settings_json ?? null,
+                // The project's caption look, so an added scene matches the rest (it read a column that does not exist).
+                'caption_settings_json' => is_array(data_get($project->visual_brief, 'caption_defaults')) ? data_get($project->visual_brief, 'caption_defaults') : null,
                 'visual_type'   => 'ai_image',
                 'visual_prompt' => $visualPrompt,
                 'visual_style'  => $style,

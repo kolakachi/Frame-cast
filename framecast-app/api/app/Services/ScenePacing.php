@@ -116,18 +116,25 @@ class ScenePacing
     }
 
     /** Scenes to aim for at this length and visual mode. */
-    public static function targetScenes(int $durationSeconds, ?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null): int
+    public static function targetScenes(int $durationSeconds, ?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null, ?float $nicheSeconds = null): int
     {
-        $perScene = self::secondsPerScene($visualMode, $animated, $animatedShotSeconds);
+        $perScene = self::secondsPerScene($visualMode, $animated, $animatedShotSeconds, $nicheSeconds);
         $target   = (int) round(max(1, $durationSeconds) / $perScene);
 
         return max(self::MIN_SCENES, min(self::MAX_SCENES, $target));
     }
 
-    public static function secondsPerScene(?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null): float
+    /**
+     * A niche can set its own pace for still scenes (Niche::DEFAULTS seconds: facts cut every 3 s, stories every 5),
+     * 2026-10-28. Animated shots follow their clip, and an audiogram keeps its one long waveform.
+     */
+    public static function secondsPerScene(?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null, ?float $nicheSeconds = null): float
     {
         if ($animated) {
             return $animatedShotSeconds ?? self::SECONDS_PER_SCENE['animated'];
+        }
+        if ($nicheSeconds && $visualMode !== 'waveform') {
+            return $nicheSeconds;
         }
 
         return self::SECONDS_PER_SCENE[$visualMode ?? ''] ?? self::DEFAULT_SECONDS_PER_SCENE;
@@ -141,10 +148,10 @@ class ScenePacing
      * doubling the runtime added only 2.5 scenes and silently stretched each
      * one instead. A stated target with a tolerance removes the guess.
      */
-    public static function guidance(int $durationSeconds, ?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null): string
+    public static function guidance(int $durationSeconds, ?string $visualMode, bool $animated = false, ?float $animatedShotSeconds = null, ?float $nicheSeconds = null): string
     {
-        $target   = self::targetScenes($durationSeconds, $visualMode, $animated, $animatedShotSeconds);
-        $perScene = self::secondsPerScene($visualMode, $animated, $animatedShotSeconds);
+        $target   = self::targetScenes($durationSeconds, $visualMode, $animated, $animatedShotSeconds, $nicheSeconds);
+        $perScene = self::secondsPerScene($visualMode, $animated, $animatedShotSeconds, $nicheSeconds);
         $low      = max(self::MIN_SCENES, (int) round($target * 0.8));
         $high     = min(self::MAX_SCENES, (int) round($target * 1.2));
 
