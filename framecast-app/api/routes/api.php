@@ -404,6 +404,8 @@ Route::prefix('v1')->group(function (): void {
                 $quality = \App\Services\CreditService::videoQuality($tier, null);
                 $videoTiers[$tier] = [
                     'quality' => $quality,
+                    // Every quality the tier offers, priced for a short clip (a long one is 2×).
+                    'qualities' => array_map(fn ($opt) => (int) $opt['cr'], $cfg['options'] ?? []),
                     'credits' => \App\Services\CreditService::animationCost($tier, $quality, 5),
                     'credits_10s_plus' => \App\Services\CreditService::animationCost($tier, $quality, 10),
                     'recent_minutes' => $speed[$tier]['median_minutes'] ?? null,
@@ -417,6 +419,11 @@ Route::prefix('v1')->group(function (): void {
                 'video_oneshot_per_second' => \App\Services\CreditService::VIDEO_ONESHOT_PER_SECOND,
                 'tts'      => \App\Services\CreditService::TTS_GEMINI,
                 'tts_clone' => \App\Services\CreditService::TTS_CLONE,
+                'tts_standard' => \App\Services\CreditService::TTS,
+                // A scene bound to a character with a reference photo is priced at this, whatever the model.
+                'ai_character' => \App\Services\CreditService::AI_CHARACTER,
+                // "Change something, keep the shot" runs the edit model against the scene's own picture.
+                'image_edit' => $images->referenceGenerationCost(\App\Jobs\EditSceneImageJob::EDIT_MODEL),
                 'pdf_vision_page' => \App\Services\CreditService::PDF_VISION_PAGE,
                 'image_models' => $imageModels,
                 'video_tiers'  => $videoTiers,

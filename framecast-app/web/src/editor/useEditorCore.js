@@ -1481,7 +1481,11 @@ export function useEditorCore() {
   const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
   const animateShortDuration = computed(() => animateDurations.value[0]);
   // Quality options for the current tier (empty for spokesperson, which has no picker).
-  const animateQualityOptions = computed(() => ANIMATE_QUALITY_OPTIONS[animateTier.value] || []);
+  // The server's price for each quality wins over the copy above once /credit-costs has answered.
+  const animateQualityOptions = computed(() => {
+    const served = creditCosts.value?.video_tiers?.[animateTier.value]?.qualities;
+    return (ANIMATE_QUALITY_OPTIONS[animateTier.value] || []).map((o) => (served?.[o.value] != null ? { ...o, cr: served[o.value] } : o));
+  });
   // Reset quality to the tier's default whenever the model/tier changes.
   watch(animateTier, (tier) => {
     if (ANIMATE_QUALITY_DEFAULT[tier]) animateQuality.value = ANIMATE_QUALITY_DEFAULT[tier];
@@ -1496,7 +1500,8 @@ export function useEditorCore() {
     const opt = animateQualityOptions.value.find((o) => o.value === animateQuality.value)
       || animateQualityOptions.value[0];
     const base = opt ? opt.cr : ANIMATE_TIER_COSTS_5S[animateTier.value];
-    return base * (animateDuration.value === animateDurations.value[1] ? 2 : 1);
+    // Doubles from ten seconds, as CreditService::animationCost does (Veo's 8 s clip is not doubled).
+    return base * (Number(animateDuration.value) >= 10 ? 2 : 1);
   });
   // Animation models. We expose actual model names (Wan/Hailuo/Kling/Seedance)
   // instead of generic tier labels so power users know what they're picking.

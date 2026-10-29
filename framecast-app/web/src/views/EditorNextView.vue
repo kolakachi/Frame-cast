@@ -10,12 +10,41 @@ import CaptionPreview from "../components/CaptionPreview.vue";
 import UgcHeadline from "../components/UgcHeadline.vue";
 import FinishedVideoPlayer from "../components/FinishedVideoPlayer.vue";
 import EditorSkeleton from "../components/skeletons/EditorSkeleton.vue";
+import MediaPickerModal from "../components/MediaPickerModal.vue";
+import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 import { useEditorCore } from "../editor/useEditorCore";
 import { chooseEditor } from "../editor/editorChoice";
+import { cr, provideEditorCore, usePrices } from "../editor/next/core";
+import MediaPanel from "../editor/next/MediaPanel.vue";
+import VoicePanel from "../editor/next/VoicePanel.vue";
+import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
+import AnimateDialog from "../editor/next/AnimateDialog.vue";
+import VoicePickerDialog from "../editor/next/VoicePickerDialog.vue";
+import CharacterDialog from "../editor/next/CharacterDialog.vue";
+import CaptionStylesDialog from "../editor/next/CaptionStylesDialog.vue";
+
+// One editor brain for the view and every panel (the panels inject it).
+const core = useEditorCore();
+provideEditorCore(core);
+const { imageCost, voiceCost } = usePrices(core);
 
 const {
   router, projectId, loading, error, project, scenes, projectTitle,
-  generationFailed, generationFailureMessage, wholeVideoTake,
+  generationFailed, generationFailureMessage, wholeVideoTake, leaveSaveDialog, chooseLeave,
+  retrySourceEditable, retrySourceDraft, retryError, retryPending, retryGeneration, creditCosts,
+  // toolbars
+  imageStylesByKey, visualStyleDraft, canAnimateActiveScene, activeSceneAlreadyAnimated, openAnimateModal, generateAIImage,
+  aiImagePending, openMediaPicker, openVoiceModal, voiceSpeedDraft, VOICE_SPEED_OPTIONS, voiceStabilityDraft, VOICE_STABILITY_OPTIONS,
+  regenerateVoice, captionEffectModalOpen, captionSizeDraft, captionBasePx, captionPositionDraft, CAPTION_POSITION_OPTIONS,
+  CAPTION_ANIMATIONS,
+  // audiogram preview
+  audiogramStyle, audiogramColor, audiogramBgStyle, waveformLive,
+  // script: rewrite and a silent scene's length
+  rewriteToolsVisible, toggleRewriteTools, REWRITE_EDIT_OPTIONS, REWRITE_TONE_OPTIONS, submitRewrite, rewriteCustomInstruction,
+  submitRewriteCustom, rewritePending, rewriteError, rewritePreviewVisible, rewritePreviewCopy, hideRewritePreview, acceptRewrite,
+  rewriteApplyPending, sceneDurationDraft, saveSceneDuration, sceneDurationSaving, sceneDurationError,
+  // dialogs
+  mediaPickerMode, mediaPickerVisible, musicTracks, selectedMusicTrackId, handleMediaPickerSelect, showCloneModal, onVoiceCloned,
   activeScene, activeSceneId, activeSceneIndex, selectScene, sceneTypeLabel, sceneDuration, totalVideoDuration,
   // frame
   previewContainerStyle, currentVisualUrl, activeSceneVisualIsVideo, previewVideoRef, previewVideoBackgroundRef,
@@ -47,7 +76,7 @@ const {
   scheduleModalOpen, deliveryExport, onPostScheduled, approvalModalOpen, closeApprovalModal, approvalCreated,
   approvalForm, approvalError, approvalSubmitting, submitApproval, copyApprovalUrl, APPROVAL_EXPIRES_OPTIONS,
   exportWarning, cancelExportAction, continueExportAction, updateExportAction,
-} = useEditorCore();
+} = core;
 
 // ── What is selected and which tool is open ─────────────────────────────────
 // Clicking a thing selects it and opens its tool: the caption opens Captions, the picture opens Media. The rail
@@ -90,7 +119,7 @@ const exportStatus = computed(() => {
   const job = latestExportJob.value;
   if (!job) return null;
   if (job.status === "completed") return { tone: exportToolbar.value.stale ? "warn" : "ok", text: exportToolbar.value.stale ? "Export out of date" : "Last export ready" };
-  if (job.status === "failed") return { tone: "bad", text: "Export failed" };
+  if (job.status === "failed") return { tone: "bad", text: "Export failed", detail: job.failure_reason || "" };
   return { tone: "busy", text: exportToolbar.value.status };
 });
 const shareOpen = ref(false);
@@ -194,19 +223,74 @@ const WAVE = (() => {
 })();
 
 const toolbarLabel = computed(() => ({ caption: "Caption tools", image: "Picture tools", voice: "Voice tools" })[selection.value] || "Scene tools");
-const comingSoon = computed(() => !["script"].includes(panel.value));
-const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", audio: "Audio", brand: "Brand kit", assistant: "Assistant", project: "Project" };
+const PANEL_TITLES = { audio: "Audio", brand: "Brand kit", assistant: "Assistant", project: "Project" };
+
+// ── Toolbars: shortcuts to the panel's own controls (same state, so both always agree) ──
+const isAiScene = computed(() => activeScene.value?.visual_type === "ai_image");
+const lookName = computed(() => {
+  const key = visualStyleDraft.value ?? activeScene.value?.visual_style ?? activeScene.value?.image_generation_settings?.style ?? project.value?.ai_broll_style;
+  return imageStylesByKey.value.get(key)?.label ?? key ?? "";
+});
+// "Edit image" opens Media with the edit box in view.
+function focusImageEdit() {
+  openPanel("media");
+  nextTick(() => document.getElementById("nx-edit")?.focus());
+}
+const captionStyleName = computed(() => CAPTION_ANIMATIONS.find((a) => a.key === captionAnimationDraft.value)?.name || "Style");
+const captionPx = computed(() => captionBasePx(captionSizeDraft.value));
+function nudgeCaptionSize(step) {
+  captionSizeDraft.value = String(Math.max(8, Math.min(48, Math.round(captionPx.value) + step)));
+}
+const POSITION_SHORT = { top_third: "Top", center: "Middle", bottom_third: "Bottom" };
+function cyclePosition() {
+  const order = ["bottom_third", "center", "top_third"].filter((v) => CAPTION_POSITION_OPTIONS.some((o) => o.value === v));
+  captionPositionDraft.value = order[(order.indexOf(captionPositionDraft.value) + 1) % order.length];
+}
+// Refs are unwrapped in the template, so the cycling happens here.
+// A saved speed reads "1" where the option is "1.0", so values compare as numbers when they are numbers.
+function cycleOption(model, options) {
+  const same = (a, b) => a === b || (a !== "" && b !== "" && !isNaN(a) && !isNaN(b) && Number(a) === Number(b));
+  const i = options.findIndex((o) => same(o.value, model.value));
+  model.value = options[(i + 1) % options.length].value;
+}
+const cycleSpeed = () => cycleOption(voiceSpeedDraft, VOICE_SPEED_OPTIONS);
+const cycleDelivery = () => cycleOption(voiceStabilityDraft, VOICE_STABILITY_OPTIONS);
+const DELIVERY = { low: "Expressive", medium: "Balanced", high: "Steady" };
+
+// The generation-failed screen: fix the source, then try again (a scanned PDF can be read with AI, priced per section).
+const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
 </script>
 
 <template>
   <main class="nx">
     <EditorSkeleton v-if="loading" />
     <section v-else-if="error" class="nx-state">{{ error }}</section>
-    <section v-else-if="generationFailed || wholeVideoTake" class="nx-state">
-      <h2>{{ generationFailed ? "This video couldn't be generated" : projectTitle }}</h2>
-      <p>{{ generationFailed ? generationFailureMessage : "This take has the picture and dialogue baked in, so it is reviewed in the creation flow." }}</p>
-      <FinishedVideoPlayer v-if="wholeVideoTake && currentVisualUrl" :src="currentVisualUrl" />
-      <button class="nx-btn" type="button" @click="backToClassic">Open in the classic editor</button>
+    <section v-else-if="generationFailed" class="nx-state">
+      <h2>This video couldn't be made</h2>
+      <p>{{ generationFailureMessage }}</p>
+      <p class="nx-hint">Nothing was charged for the failed attempt.</p>
+      <p v-if="pdfSource" class="nx-hint">Scanned or image-only PDFs can be read with AI: {{ creditCosts.pdf_vision_page ?? 1 }} credit per page-sized section, shown in your balance before anything runs.</p>
+      <template v-if="retrySourceEditable">
+        <label class="nx-label" for="nx-retry-source">{{ project?.source_type === "url" ? "The link: fix it or paste another" : "Your source: edit it before trying again" }}</label>
+        <textarea id="nx-retry-source" v-model="retrySourceDraft" class="nx-input" :rows="project?.source_type === 'url' ? 2 : 5"
+          :placeholder="project?.source_type === 'url' ? 'https://…' : 'What the video should be about'"></textarea>
+        <p v-if="project?.source_type === 'url'" class="nx-hint">Instagram, TikTok and other login-only pages can't be read. Paste the text or an open article link instead.</p>
+      </template>
+      <p v-if="retryError" class="nx-err">{{ retryError }}</p>
+      <div class="nx-actions">
+        <button v-if="pdfSource" class="nx-btn nx-primary" type="button" :disabled="retryPending" @click="retryGeneration({ readScanned: true })">{{ retryPending ? "Trying again…" : "Read it with AI and try again" }}</button>
+        <button v-else class="nx-btn nx-primary" type="button" :disabled="retryPending" @click="retryGeneration">{{ retryPending ? "Trying again…" : "Try again" }}</button>
+        <button class="nx-btn" type="button" @click="router.push({ name: 'dashboard' })">Start a different video</button>
+      </div>
+    </section>
+    <section v-else-if="wholeVideoTake" class="nx-state">
+      <h2>{{ projectTitle }}</h2>
+      <p>This take has the picture and dialogue baked in, so scenes, captions and other shapes can't be edited here. Change it in its take review.</p>
+      <FinishedVideoPlayer v-if="currentVisualUrl" :src="currentVisualUrl" />
+      <div class="nx-actions">
+        <button class="nx-btn nx-primary" type="button" @click="router.push(`/ugc-ads/review/${project.id}`)">Open take review</button>
+        <button class="nx-btn" type="button" @click="router.push({ name: 'dashboard' })">Back to dashboard</button>
+      </div>
     </section>
 
     <div v-else class="nx-app">
@@ -230,7 +314,10 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
           </button>
         </div>
         <div class="nx-top-r">
-          <span v-if="exportStatus" :class="['nx-export-status', `is-${exportStatus.tone}`]"><i></i>{{ exportStatus.text }}</span>
+          <span v-if="exportStatus" :class="['nx-export-status', `is-${exportStatus.tone}`]" :tabindex="exportStatus.detail ? 0 : undefined">
+            <i></i>{{ exportStatus.text }}
+            <span v-if="exportStatus.detail" class="nx-tip" role="tooltip">{{ exportStatus.detail }}</span>
+          </span>
           <button class="nx-btn" type="button" @click="router.push({ name: 'project-variants', params: { projectId } })">Variants</button>
           <div v-if="activeExportJob?.status === 'completed' && latestExportDownloadUrl" class="nx-menu-wrap">
             <button class="nx-btn" type="button" aria-haspopup="menu" :aria-expanded="shareOpen" @click="shareOpen = !shareOpen; exportOpen = false">
@@ -329,6 +416,38 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
                   {{ voiceRegeneratePending && scene.id === activeSceneId ? "Recording…" : "Re-record" }}
                 </button>
               </div>
+
+              <!-- The selected scene's tools: rewrite it with AI (free), and the length of a scene with no voice. -->
+              <template v-if="scene.id === activeSceneId">
+                <div class="nx-row">
+                  <button class="nx-mini" type="button" :aria-expanded="rewriteToolsVisible" @click="toggleRewriteTools">Rewrite</button>
+                  <label v-if="!scene.voice_settings?.audio_asset_id" class="nx-len">
+                    <span>Length</span>
+                    <input v-model="sceneDurationDraft" type="number" min="1" max="600" step="0.5" :disabled="sceneDurationSaving"
+                      :placeholder="String(scene.duration_seconds ?? 12)" aria-label="Scene length in seconds" @change="saveSceneDuration" />s
+                  </label>
+                </div>
+                <p v-if="sceneDurationError" class="nx-err">{{ sceneDurationError }}</p>
+                <div v-if="rewriteToolsVisible" class="nx-rewrite">
+                  <div class="nx-chips">
+                    <button v-for="o in [...REWRITE_EDIT_OPTIONS, ...REWRITE_TONE_OPTIONS]" :key="o.mode" type="button" class="nx-chip" :disabled="rewritePending" @click="submitRewrite(o.mode)">{{ o.label }}</button>
+                  </div>
+                  <div class="nx-row">
+                    <input v-model="rewriteCustomInstruction" class="nx-input nx-input-sm" placeholder="Or say how: make it about price" aria-label="How to rewrite this scene" @keyup.enter="submitRewriteCustom" />
+                    <button class="nx-mini" type="button" :disabled="rewritePending || !rewriteCustomInstruction.trim()" @click="submitRewriteCustom">{{ rewritePending ? "Writing…" : "Go" }}</button>
+                  </div>
+                  <p class="nx-hint">This scene only. Locked facts stay as they are. No credits.</p>
+                  <p v-if="rewriteError" class="nx-err">{{ rewriteError }}</p>
+                </div>
+                <div v-if="rewritePreviewVisible" class="nx-quote">
+                  <span class="nx-label">Rewritten</span>
+                  <p class="nx-rewrite-copy">{{ rewritePreviewCopy }}</p>
+                  <div class="nx-row nx-end">
+                    <button class="nx-link" type="button" @click="hideRewritePreview">Keep mine</button>
+                    <button class="nx-btn nx-primary" type="button" :disabled="rewriteApplyPending" @click="acceptRewrite">{{ rewriteApplyPending ? "Using…" : "Use this" }}</button>
+                  </div>
+                </div>
+              </template>
             </div>
 
             <div v-if="adding" class="nx-add">
@@ -347,6 +466,10 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
             <button v-else class="nx-btn nx-outline nx-full" type="button" @click="startAdd">+ Add scene</button>
           </template>
 
+          <MediaPanel v-else-if="panel === 'media'" />
+          <VoicePanel v-else-if="panel === 'voice'" />
+          <CaptionsPanel v-else-if="panel === 'captions'" />
+
           <template v-else>
             <div class="nx-ph">
               <h2>{{ PANEL_TITLES[panel] }}</h2>
@@ -362,15 +485,38 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
           <div class="nx-stage">
             <div class="nx-toolbar" role="toolbar" :aria-label="toolbarLabel">
               <template v-if="selection === 'caption'">
-                <button class="nx-tb" type="button" @click="openPanel('captions')"><b class="nx-aa">Aa</b>Caption style</button>
-                <span class="nx-tag">All scenes</span>
+                <button class="nx-tb" type="button" @click="captionEffectModalOpen = true"><b class="nx-aa">Aa</b>{{ captionStyleName }}</button>
+                <span class="nx-sep"></span>
+                <button class="nx-tb nx-tb-icon" type="button" aria-label="Smaller captions" @click="nudgeCaptionSize(-2)">−</button>
+                <span class="nx-num nx-tb-num" aria-live="polite">{{ Math.round(captionPx) }}</span>
+                <button class="nx-tb nx-tb-icon" type="button" aria-label="Bigger captions" @click="nudgeCaptionSize(2)">+</button>
+                <span class="nx-sep"></span>
+                <label class="nx-tb" title="Highlight color">
+                  <span class="nx-tb-swatch" :style="{ background: captionHighlightColorDraft }"></span>Highlight
+                  <input v-model="captionHighlightColorDraft" type="color" class="nx-hidden-input" aria-label="Highlight color" />
+                </label>
+                <button class="nx-tb" type="button" aria-label="Caption position, click to change" @click="cyclePosition">{{ POSITION_SHORT[captionPositionDraft] || "Position" }}</button>
+                <span class="nx-tag">This scene</span>
               </template>
               <template v-else-if="selection === 'image'">
-                <button class="nx-tb" type="button" @click="openPanel('media')">Change picture</button>
+                <template v-if="isAiScene">
+                  <button class="nx-tb" type="button" :disabled="aiImagePending || activeSceneAIImagePending || activeSceneAnimationPending" @click="generateAIImage">
+                    {{ aiImagePending || activeSceneAIImagePending ? "Drawing…" : "Regenerate" }}<span class="nx-dim">{{ cr(imageCost) }}</span>
+                  </button>
+                  <button class="nx-tb" type="button" @click="focusImageEdit">Edit image</button>
+                  <button v-if="lookName" class="nx-tb" type="button" @click="openPanel('media')">Look: {{ lookName }}</button>
+                </template>
+                <button class="nx-tb" type="button" @click="openMediaPicker('visual')">Replace</button>
+                <button v-if="canAnimateActiveScene && !activeSceneAnimationPending && (isAiScene || !activeSceneVisualIsVideo)" class="nx-tb" type="button" @click="openAnimateModal">{{ activeSceneAlreadyAnimated ? "Animate again" : "Animate" }}</button>
                 <span class="nx-tag">This scene</span>
               </template>
               <template v-else-if="selection === 'voice'">
-                <button class="nx-tb" type="button" @click="openPanel('voice')">{{ activeVoiceName || "Voice" }}</button>
+                <button class="nx-tb" type="button" @click="openVoiceModal">{{ activeVoiceName || "Voice" }}</button>
+                <button class="nx-tb" type="button" aria-label="Voice speed, click to change" @click="cycleSpeed">Speed {{ voiceSpeedDraft }}×</button>
+                <button class="nx-tb" type="button" aria-label="Delivery, click to change" @click="cycleDelivery">{{ DELIVERY[voiceStabilityDraft] || "Delivery" }}</button>
+                <button class="nx-tb" type="button" :disabled="voiceRegeneratePending" @click="regenerateVoice">
+                  {{ voiceRegeneratePending ? "Recording…" : "Re-record" }}<span class="nx-dim">{{ cr(voiceCost) }}</span>
+                </button>
                 <span class="nx-tag">This scene</span>
               </template>
               <template v-else>
@@ -398,7 +544,19 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
                   </template>
                   <img v-else-if="currentVisualUrl" :src="currentVisualUrl" :class="['nx-media', activeMotionClass]" alt="" />
                   <div v-else-if="showTextCardPreview" class="nx-textcard">{{ sceneScriptDraft || activeScene?.script_text }}</div>
-                  <div v-else-if="showWaveformPreview" class="nx-textcard">Audiogram</div>
+                  <div v-else-if="showWaveformPreview" class="nx-wave" :style="audiogramBgStyle">
+                    <svg v-if="audiogramStyle === 'circle'" viewBox="0 0 200 200" class="nx-wave-circle" aria-hidden="true">
+                      <g transform="translate(100,100)">
+                        <line v-for="(bar, i) in waveformLive" :key="i" :transform="`rotate(${i * (360 / waveformLive.length)})`" x1="0" y1="38" x2="0" :y2="38 + bar * 52"
+                          :stroke="audiogramColor" stroke-width="6" stroke-linecap="round" :opacity="0.6 + bar * 0.4" />
+                      </g>
+                      <circle cx="100" cy="100" r="30" :fill="audiogramColor" opacity="0.15" />
+                    </svg>
+                    <div v-else :class="['nx-wave-bars', `is-${audiogramStyle}`]">
+                      <i v-for="(bar, i) in (audiogramStyle === 'minimal' ? [...waveformLive, ...waveformLive.slice().reverse()] : waveformLive)" :key="i"
+                        :style="{ height: `${Math.round(bar * (audiogramStyle === 'minimal' ? 80 : 100)) + (audiogramStyle === 'minimal' ? 8 : 0)}%`, background: audiogramColor }"></i>
+                    </div>
+                  </div>
                 </button>
                 <div v-if="activeSceneAIImagePending" class="nx-loading">Generating the picture…</div>
                 <div v-else-if="activeSceneAnimationPending" class="nx-loading">{{ activeSceneStillRendering ? "The video model is busy, so this clip is taking longer. You can leave this page." : "Animating this scene…" }}</div>
@@ -537,6 +695,27 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
       </div>
     </div>
 
+    <!-- Leaving while a change could not be saved: the route waits for this answer. -->
+    <div v-if="leaveSaveDialog" class="nx-modal-bg" @keydown.esc="chooseLeave(false)">
+      <div class="nx-modal" role="dialog" aria-modal="true" aria-labelledby="nx-leave-title">
+        <h2 id="nx-leave-title">Some changes could not be saved</h2>
+        <p>Stay to try saving again, or leave and lose the unsaved changes.</p>
+        <div class="nx-row nx-end">
+          <button class="nx-link" type="button" @click="chooseLeave(true)">Leave without saving</button>
+          <button class="nx-btn nx-primary" type="button" autofocus @click="chooseLeave(false)">Stay</button>
+        </div>
+      </div>
+    </div>
+
+    <AnimateDialog />
+    <VoicePickerDialog />
+    <CharacterDialog />
+    <CaptionStylesDialog />
+    <VoiceCloneModal v-if="showCloneModal" @close="showCloneModal = false" @created="onVoiceCloned" />
+    <MediaPickerModal :mode="mediaPickerMode" :visible="mediaPickerVisible" :music-tracks="musicTracks" :selected-music-track-id="selectedMusicTrackId"
+      :current-asset-id="mediaPickerMode === 'visual' ? (activeScene?.visual_asset_id ?? null) : null"
+      @close="mediaPickerVisible = false" @select="handleMediaPickerSelect" />
+
     <SchedulePostModal v-if="scheduleModalOpen" :export-job-id="deliveryExport?.id ?? activeExportJob?.id ?? null" @close="scheduleModalOpen = false" @scheduled="onPostScheduled" />
 
     <div class="nx-toasts">
@@ -556,238 +735,4 @@ const PANEL_TITLES = { media: "Media", captions: "Captions", voice: "Voice", aud
   <ExportUpdateModal :warning="exportWarning" @cancel="cancelExportAction" @continue="continueExportAction" @update="updateExportAction" />
 </template>
 
-<style scoped>
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
-/* Caption fonts, as in the classic editor: the animated presets need the heavy cuts. */
-@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:ital,wght@0,400;0,700;0,800;0,900;1,800;1,900&family=Raleway&family=Nunito:wght@400;800&family=Lato&family=Roboto+Mono:wght@400;500&family=Roboto+Slab&family=Libre+Baskerville&family=Playfair+Display&family=Dancing+Script&family=Fredoka+One&family=Sacramento&family=Luckiest+Guy&family=Orbitron:wght@400;700&family=Satisfy&family=Permanent+Marker&family=Noto+Sans&family=Amatic+SC&family=Days+One&family=Rock+Salt&family=New+Rocker&family=Passion+One:wght@400;700&family=Indie+Flower&family=Quicksand&family=Shadows+Into+Light&family=Source+Code+Pro&family=Aladin&family=Calligraffitti&display=swap");
-
-.nx {
-  --bg: #141417;
-  --panel: #17171b;
-  --stage: #0d0d10;
-  --field: #1e1e23;
-  --raised: #25252b;
-  --hover: #24242a;
-  --on: #32323a;
-  --line: rgba(255, 255, 255, 0.06);
-  --text: #ededef;
-  --text-2: #c4c4cc;
-  --muted: #a1a1aa;
-  --faint: #8b8b94;
-  --accent: #f07a45;
-  --accent-ink: #1a0d06;
-  --good: #4ade80;
-  --fair: #facc15;
-  --bad: #f87171;
-  --yellow: #ffe14d;
-  color-scheme: dark;
-  height: 100vh;
-  height: 100dvh;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, system-ui, -apple-system, sans-serif;
-  font-size: 14px;
-  overflow: hidden;
-}
-/* Resets at zero specificity, so component rules (a primary button's dark text) win. */
-:where(.nx) :where(button, textarea, input) { font: inherit; color: inherit; }
-.nx button { cursor: pointer; }
-.nx button:disabled { cursor: default; opacity: 0.45; }
-.nx :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-:where(.nx) svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-
-.nx-state { max-width: 640px; margin: 80px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
-.nx-app { height: 100%; display: flex; flex-direction: column; }
-
-/* Top bar */
-.nx-top { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); }
-.nx-top-l, .nx-top-r { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.nx-top-r { justify-content: flex-end; }
-.nx-top-c { display: flex; gap: 4px; }
-.nx-title { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
-.nx-saved { font-size: 12px; color: var(--faint); white-space: nowrap; }
-.nx-saved.is-busy { color: var(--muted); }
-.nx-ib { width: 36px; height: 36px; border: 0; border-radius: 9px; background: transparent; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--text-2); }
-.nx-ib:not(:disabled):hover { background: var(--hover); }
-.nx-btn { height: 36px; border: 0; border-radius: 9px; background: var(--field); padding: 0 14px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; position: relative; }
-.nx-btn:not(:disabled):hover { background: var(--hover); }
-.nx-btn svg { width: 16px; height: 16px; }
-.nx-primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.nx-primary:not(:disabled):hover { background: #f38c5e; }
-.nx-outline { background: transparent; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.nx-danger { background: #b4232c; color: #fff; }
-.nx-full { width: 100%; }
-.nx-link { height: 32px; border: 0; background: transparent; color: var(--muted); font-size: 13px; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
-.nx-link:hover { color: var(--text); }
-.nx-export-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; margin-right: 4px; }
-.nx-export-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.nx-export-status.is-ok i { background: var(--good); }
-.nx-export-status.is-warn i { background: var(--fair); }
-.nx-export-status.is-bad i { background: var(--bad); }
-.nx-export-status.is-busy i { background: var(--accent); }
-.nx-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--fair); }
-.nx-menu-wrap { position: relative; }
-.nx-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 280px; background: #1c1c21; border-radius: 12px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-.nx-menu-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); padding: 6px 6px 2px; }
-.nx-menu-item { height: 36px; border: 0; border-radius: 8px; background: transparent; text-align: left; padding: 0 10px; }
-.nx-menu-item:not(:disabled):hover { background: var(--hover); }
-.nx-menu-url, .nx-menu-note { font-size: 12px; color: var(--muted); padding: 4px 6px; line-height: 1.45; margin: 0; word-break: break-all; }
-.nx-check { font-size: 12px; color: var(--text-2); padding: 4px 6px; line-height: 1.45; }
-.nx-check.ok { color: var(--good); }
-.nx-ratios { display: flex; gap: 6px; padding: 2px 6px 8px; flex-wrap: wrap; }
-.nx-ratio { height: 30px; border: 0; border-radius: 8px; background: var(--field); padding: 0 10px; font-size: 13px; }
-.nx-ratio.on { background: var(--on); box-shadow: 0 0 0 1.5px var(--accent); }
-.nx-format { display: flex; align-items: center; gap: 10px; padding: 7px 6px; cursor: pointer; }
-.nx-format input { accent-color: var(--accent); width: 15px; height: 15px; }
-.nx-format b { min-width: 38px; font-weight: 600; }
-.nx-format span { color: var(--muted); font-size: 12px; }
-.nx-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: rgba(248, 113, 113, 0.08); color: var(--text-2); font-size: 13px; }
-
-/* Body */
-.nx-body { flex: 1 1 0; min-height: 0; display: flex; }
-.nx-rail { width: 76px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0; overflow-y: auto; }
-.nx-rail-btn { width: 64px; height: 58px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 0; flex-shrink: 0; }
-.nx-rail-btn svg { width: 20px; height: 20px; stroke-width: 1.8; }
-.nx-rail-btn span { font-size: 11px; font-weight: 500; }
-.nx-rail-btn:hover { background: var(--hover); }
-.nx-rail-btn.on { background: var(--hover); color: #fff; }
-
-.nx-panel { width: 320px; flex-shrink: 0; background: var(--panel); border-radius: 16px 0 0 0; overflow-y: auto; padding: 22px 20px 28px; display: flex; flex-direction: column; gap: 14px; }
-.nx-ph h2 { margin: 0; font-size: 17px; font-weight: 600; }
-.nx-ph p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
-.nx-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.nx-end { justify-content: flex-end; }
-.nx-label { font-size: 12px; font-weight: 500; color: var(--muted); }
-.nx-hint { font-size: 12px; color: var(--faint); line-height: 1.5; margin: 0; }
-.nx-err { font-size: 12px; color: var(--bad); margin: 0; }
-.nx-num { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nx-dim { color: var(--faint); }
-.nx-mini { height: 28px; border: 0; border-radius: 8px; background: var(--raised); padding: 0 10px; font-size: 12px; font-weight: 500; white-space: nowrap; }
-.nx-mini:not(:disabled):hover { background: var(--on); }
-
-.nx-hooks { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.nx-hook { display: flex; align-items: flex-start; gap: 10px; border: 0; border-radius: 10px; background: transparent; text-align: left; padding: 8px; line-height: 1.45; }
-.nx-hook:hover { background: var(--field); }
-.nx-hook.on { background: var(--field); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.nx-hook-text { font-size: 13px; color: var(--text-2); }
-.nx-score { min-width: 30px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--raised); color: var(--muted); flex-shrink: 0; }
-.nx-score.is-good { background: rgba(74, 222, 128, 0.14); color: var(--good); }
-.nx-score.is-fair { background: rgba(250, 204, 21, 0.14); color: var(--fair); }
-.nx-score.is-weak { background: rgba(248, 113, 113, 0.14); color: var(--bad); }
-
-.nx-scene { display: flex; flex-direction: column; gap: 8px; border-radius: 12px; padding: 12px; }
-.nx-scene.on { background: var(--field); }
-.nx-scene-name { font-size: 12px; font-weight: 600; color: var(--text-2); }
-.nx-script { width: 100%; box-sizing: border-box; border: 0; border-radius: 8px; background: transparent; padding: 0; font-size: 14px; line-height: 1.55; resize: none; color: var(--text); }
-.nx-script:focus { outline: none; }
-.nx-warn { font-size: 12px; color: var(--fair); }
-.nx-add { display: flex; flex-direction: column; gap: 10px; background: var(--field); border-radius: 12px; padding: 12px; }
-.nx-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.nx-chip { height: 30px; border: 0; border-radius: 15px; background: var(--raised); color: var(--text-2); padding: 0 12px; font-size: 12px; font-weight: 500; }
-.nx-chip.on { background: var(--text); color: var(--bg); }
-.nx-input { width: 100%; box-sizing: border-box; border: 0; border-radius: 10px; background: var(--raised); padding: 10px 12px; font-size: 14px; line-height: 1.45; resize: vertical; }
-
-/* Frame */
-.nx-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
-.nx-stage { flex: 1 1 0; min-height: 0; background: var(--stage); display: flex; flex-direction: column; align-items: center; padding-bottom: 12px; }
-.nx-toolbar { margin: 12px 16px; min-height: 46px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; background: #1c1c21; border-radius: 12px; padding: 5px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
-.nx-tb { height: 36px; border: 0; border-radius: 8px; background: transparent; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
-.nx-tb:not(:disabled):hover { background: var(--hover); }
-.nx-tb svg { width: 16px; height: 16px; stroke-width: 1.8; }
-.nx-tb-label { padding: 0 12px; font-size: 13px; font-weight: 600; }
-.nx-aa { font-family: "Bebas Neue", sans-serif; font-size: 17px; color: var(--accent); font-weight: 400; }
-.nx-sep { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.08); margin: 0 4px; }
-.nx-tag { height: 28px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 14px; background: #2a2a31; font-size: 12px; color: var(--text-2); margin: 0 4px; }
-.nx-note { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
-.nx-frame-wrap { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; width: 100%; }
-.nx-frame { position: relative; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55); max-height: 100%; }
-.nx-frame.is-selected { box-shadow: 0 0 0 2px var(--accent), 0 24px 70px rgba(0, 0, 0, 0.55); }
-.nx-frame-hit { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: #000; display: block; overflow: hidden; cursor: pointer; }
-.nx-media { width: 100%; height: 100%; object-fit: cover; transform-origin: center center; display: block; }
-.nx-contain { object-fit: contain; position: relative; z-index: 1; }
-.nx-fit-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(18px) saturate(1.05); transform: scale(1.1); }
-.nx-textcard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-size: 18px; font-weight: 600; background: #111; color: #fff; }
-.nx-loading { position: absolute; inset: auto 12px 12px; z-index: 4; font-size: 12px; background: rgba(0, 0, 0, 0.7); color: #fff; padding: 8px 10px; border-radius: 8px; pointer-events: none; }
-.nx-loading.is-bad { color: #fecaca; }
-.nx-watermark { position: absolute; top: 14px; left: 14px; z-index: 2; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: rgba(255, 255, 255, 0.4); pointer-events: none; }
-.nx-frame-label { font-size: 12px; color: var(--faint); margin-top: 10px; }
-.nx-caption { border: 0; background: transparent; padding: 0; cursor: pointer; border-radius: 8px; outline: 2px solid transparent; outline-offset: 6px; }
-.nx-caption.is-selected { outline-color: var(--accent); }
-
-/* Captions on the frame (same rules as the classic preview, so both show the same thing). */
-.preview-caption { position: absolute; bottom: 20%; left: 16px; right: 16px; text-align: center; z-index: 3; }
-.preview-caption-animated { display: flex; justify-content: center; text-align: center; }
-.caption-word { font-size: inherit; font-weight: 700; display: inline; line-height: 1.4; }
-.caption-word.highlight { color: var(--accent); }
-.caption-word.normal { color: #fff; }
-.caption-hidden { display: none !important; }
-.caption-style-editorial .caption-word { font-style: italic; font-weight: 400; }
-.caption-style-editorial .caption-word.highlight { color: #fff; font-style: italic; text-decoration: underline; text-underline-offset: 3px; }
-.caption-style-editorial .caption-word.normal { color: rgba(255, 255, 255, 0.75); }
-.caption-style-hacker .caption-word { font-size: inherit; font-weight: 400; }
-.caption-style-hacker .caption-word.highlight { color: var(--yellow); }
-.caption-style-hacker .caption-word.normal { color: rgba(255, 255, 255, 0.9); }
-
-/* Ken Burns preview, as in the classic editor (the real motion is rendered on export). */
-@keyframes kb-zoom-in { from { transform: scale(1); } to { transform: scale(1.25); } }
-@keyframes kb-zoom-out { from { transform: scale(1.25); } to { transform: scale(1); } }
-@keyframes kb-pan-left { from { transform: scale(1.15) translateX(8%); } to { transform: scale(1.15) translateX(-8%); } }
-@keyframes kb-pan-right { from { transform: scale(1.15) translateX(-8%); } to { transform: scale(1.15) translateX(8%); } }
-@keyframes kb-pan-up { from { transform: scale(1.15) translateY(8%); } to { transform: scale(1.15) translateY(-8%); } }
-@keyframes kb-pan-down { from { transform: scale(1.15) translateY(-8%); } to { transform: scale(1.15) translateY(8%); } }
-@keyframes kb-pan-zoom { from { transform: scale(1) translateX(-5%); } to { transform: scale(1.25) translateX(5%); } }
-.kb-zoom-in { animation: kb-zoom-in 6s ease-in-out infinite alternate; }
-.kb-zoom-out { animation: kb-zoom-out 6s ease-in-out infinite alternate; }
-.kb-pan-left { animation: kb-pan-left 6s ease-in-out infinite alternate; }
-.kb-pan-right { animation: kb-pan-right 6s ease-in-out infinite alternate; }
-.kb-pan-up { animation: kb-pan-up 6s ease-in-out infinite alternate; }
-.kb-pan-down { animation: kb-pan-down 6s ease-in-out infinite alternate; }
-.kb-pan-zoom { animation: kb-pan-zoom 6s ease-in-out infinite alternate; }
-
-/* Timeline */
-.nx-timeline { height: 212px; flex-shrink: 0; background: var(--bg); border-top: 1px solid var(--line); display: flex; flex-direction: column; padding: 0 16px 14px; box-sizing: border-box; }
-.nx-tl-head { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.nx-play { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--text); color: var(--bg); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-.nx-play svg { width: 14px; height: 14px; fill: currentColor; stroke: none; }
-.nx-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.25); border-top-color: var(--bg); animation: nx-spin 0.8s linear infinite; }
-@keyframes nx-spin { to { transform: rotate(360deg); } }
-.nx-grow { flex: 1 1 0; }
-.nx-seg { display: flex; gap: 2px; background: var(--field); border-radius: 9px; padding: 3px; }
-.nx-seg button { height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; padding: 0 12px; }
-.nx-seg button.on { background: var(--on); color: #fff; }
-.nx-lanes { flex: 1 1 0; display: flex; gap: 8px; min-height: 0; }
-.nx-lane-names { width: 64px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); font-weight: 500; }
-.nx-lane-names span { height: 26px; display: flex; align-items: center; }
-.nx-lane-names .is-tall { height: 62px; }
-.nx-tracks { flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; gap: 6px; cursor: text; }
-.nx-lane { height: 26px; display: flex; gap: 4px; }
-.nx-lane.is-tall { height: 62px; }
-.nx-clip { min-width: 0; height: 62px; border: 0; border-radius: 10px; padding: 0; position: relative; overflow: hidden; background: #000; }
-.nx-clip img, .nx-clip video { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.8; pointer-events: none; }
-.nx-clip.is-current { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55); }
-.nx-clip.is-selected { box-shadow: 0 0 0 2px var(--accent); }
-.nx-clip-name, .nx-clip-dur { position: absolute; font-size: 11px; font-weight: 600; color: #fff; background: rgba(0, 0, 0, 0.55); border-radius: 5px; padding: 2px 6px; white-space: nowrap; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; }
-.nx-clip-name { left: 8px; top: 7px; }
-.nx-clip-dur { right: 8px; bottom: 7px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.nx-bar { min-width: 0; height: 26px; border: 0; border-radius: 7px; padding: 0 6px; background: var(--field); display: flex; align-items: center; }
-.nx-bar svg { width: 100%; height: 16px; stroke: #7a7a85; stroke-width: 1.2; }
-.nx-bar svg path { vector-effect: non-scaling-stroke; }
-.nx-bar.is-warn svg { stroke: var(--fair); }
-.nx-bar.is-selected { box-shadow: 0 0 0 1.5px var(--accent); }
-.nx-bar-text { padding: 0 8px; font-size: 11px; color: var(--text-2); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 26px; }
-.nx-music { flex: 1 1 0; display: flex; gap: 8px; }
-.nx-music svg { width: 12px; height: 12px; stroke: var(--muted); }
-.nx-playhead { position: absolute; top: -6px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); border-radius: 1px; pointer-events: none; transition: left 0.08s linear; }
-.nx-playhead::before { content: ""; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; border-radius: 3px; background: var(--text); }
-.nx-add-clip { width: 44px; height: 62px; flex-shrink: 0; border: 0; border-radius: 10px; background: var(--field); font-size: 20px; color: var(--text-2); padding: 0; }
-.nx-add-clip:hover { background: var(--hover); }
-
-/* Dialogs and toasts */
-.nx-modal-bg { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.nx-modal { width: 100%; max-width: 440px; background: #1c1c21; border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }
-.nx-modal h2 { margin: 0; font-size: 17px; }
-.nx-modal p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.nx-toasts { position: fixed; right: 16px; bottom: 16px; z-index: 90; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
-.nx-toast { background: #1c1c21; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--text-2); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); line-height: 1.45; }
-.nx-toast b { color: var(--text); }
-</style>
+<style src="../editor/next.css"></style>

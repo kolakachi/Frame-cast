@@ -47,7 +47,6 @@ The visibility rows follow `strategy.md` (the loop in §3, the presenter in §4,
 
 | ID | Item | Next |
 |---|---|---|
-| EDITOR-3 | First the leave-page "could not be saved" dialog (missing in the new editor: leaving after a failed save hangs), the generation-failed and UGC-take states, the export failure reason. Then the Media panel (stock, AI image, edit, animate, versions, restyle all, library, audiogram, motion), Voice panel (picker, clone, direction, apply/re-record all, custom audio) and Captions panel (presets, effects, styles, font, colours, size, apply all) with their toolbars; real server prices | build |
 | EDITOR-4 | Audio (music + scene sounds), Brand, Assistant (chat, action cards, brief, defaults) + "Ask the assistant" bar, Project; insert popover with picture source; drag reorder and collapsible timeline; notifications bell, credits, post-export feedback | build |
 | EDITOR-5 | Phone layout (bottom tools and sheets); phones stay on classic until then | build |
 | EDITOR-6 | Walk the parity list on prod, 3-task test with 3 people, then open to new users (`EDITOR_NEW_OPEN`, `EDITOR_NEW_USERS_FROM`); track acceptance from `preferences_json.editor` | build, then owner opens |

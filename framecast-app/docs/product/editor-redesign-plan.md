@@ -13,7 +13,7 @@ retires once the old users fully accept the new one.
 |---|---|---|
 | 1 | The switch: per-person choice, staff only, "Try the new editor" / "Classic editor" | live (dd8e324c) |
 | 2 | The shared core; new layout with Script panel, frame, toolbar, timeline, top bar | live (dd8e324c) |
-| 3 | Media, Voice, Captions panels and their toolbars, plus the missing page states | next |
+| 3 | Media, Voice, Captions panels and their toolbars, plus the missing page states, rewrite and a silent scene's length | live (staff) |
 | 4 | Audio, Brand, Assistant, Project panels; the insert popover between scenes; the "Ask the assistant" bar | |
 | 5 | Phone layout (bottom tools and sheets); until then phones open classic | |
 | 6 | Parity check against the list below, then open to new users (`EDITOR_NEW_OPEN=true`, `EDITOR_NEW_USERS_FROM`=deploy time) | |
@@ -32,10 +32,10 @@ The step column says when it lands.
 | Classic | New editor | Step | |
 |---|---|---|---|
 | Loading skeleton, load error | same | 2 | ✓ |
-| "Some changes could not be saved" dialog when leaving | **missing: leaving after a failed save hangs** | 3 (first) | |
-| Generation failed: reason, edit the source, Try again, "Read it with AI" for scanned PDFs, Start a different video | shows the reason only, sends to classic | 3 | ◐ |
-| Whole-video UGC take: player + Open take review | player, sends to classic | 3 | ◐ |
-| Failed-scenes banner + Resume failed | same; the "~75 credits" in classic is a guess, show the real price or none | 3 | ◐ |
+| "Some changes could not be saved" dialog when leaving | same | 3 | ✓ |
+| Generation failed: reason, edit the source, Try again, "Read it with AI" for scanned PDFs, Start a different video | same | 3 | ✓ |
+| Whole-video UGC take: player + Open take review | same | 3 | ✓ |
+| Failed-scenes banner + Resume failed | same, without classic's guessed "~75 credits" | 3 | ✓ |
 | Clip shorter than narration note | same | 2 | ✓ |
 | Post-export feedback card (once per user) | | 4 | |
 | Toasts | same | 2 | ✓ |
@@ -45,7 +45,7 @@ The step column says when it lands.
 | Classic | New editor | Step | |
 |---|---|---|---|
 | Back, project name | same | 2 | ✓ |
-| Export status pill + failure reason | status dot; add the failure reason | 3 | ◐ |
+| Export status pill + failure reason | status dot, reason on hover | 3 | ✓ |
 | Undo / redo with labels | same | 2 | ✓ |
 | Share menu: checks, ratio, open, download, schedule, approval, copy link | same | 2 | ✓ |
 | Export formats menu | same | 2 | ✓ |
@@ -61,8 +61,8 @@ The step column says when it lands.
 | Select, reorder up/down, duplicate, delete with confirm | toolbar + timeline | 2 | ✓ |
 | Voice outdated + Regenerate voice per scene | re-record row | 2 | ✓ |
 | Script text, autosaved | same | 2 | ✓ |
-| Duration of a silent scene | | 3 | |
-| Rewrite with AI: edit chips, tone chips, custom instruction, preview, accept/reject | | 3 | |
+| Duration of a silent scene | on the selected scene's card | 3 | ✓ |
+| Rewrite with AI: edit chips, tone chips, custom instruction, preview, accept/reject | on the selected scene's card | 3 | ✓ |
 | Hook options: generate, scores, use | in Script | 2 | ✓ |
 | Add scene: type, script, Draft with AI | inline form | 2 | ✓ |
 | Add scene picture source: stock video (type, query), stock image, AI (character, style, custom style, prompt), library | | 4 (insert popover) | |
@@ -72,51 +72,51 @@ The step column says when it lands.
 
 | Classic | Step | |
 |---|---|---|
-| Stock video: type, search, Swap | 3 | |
-| Stock image: search, Swap, Animate | 3 | |
-| AI image: character chip (bind, remove, + New character modal), current result, style picker with samples, custom style (autosaved), model picker with price, prompt override, Generate / Regenerate | 3 | |
-| Edit this image: instruction, suggestion chips, Apply edit | 3 | |
-| Animate modal: model (price, slow-now warning), lip-sync engine, quality, duration, motion prompt chips, apply to many scenes with server price per scene, consent for talking people | 3 | |
-| Cancel animation, back to the still, versions strip | 3 | |
-| Lip-sync out of date: Regenerate lip-sync | 3 | |
-| Apply this style to all scenes (server price, balance, skips) | 3 | |
-| Library: current asset, Change, Open library (media picker), Animate | 3 | |
-| Audiogram: design, colour + custom, background, Apply; live preview in the frame | 3 (the frame shows a placeholder today) | |
-| Motion for stills: effect, intensity | 3 | |
-| Toolbar on picture select: Swap, Regenerate (price), Animate (price), Edit, Motion | 3 | |
+| Stock video: type, search, Swap | 3 | ✓ |
+| Stock image: search, Swap, Animate | 3 | ✓ |
+| AI image: character chip (bind, remove, + New character modal), current result, style picker with samples, custom style (autosaved), model picker with price, prompt override, Generate / Regenerate | 3 | ✓ |
+| Edit this image: instruction, suggestion chips, Apply edit | 3 | ✓ |
+| Animate modal: model (price, slow-now warning), lip-sync engine, quality, duration, motion prompt chips, apply to many scenes with server price per scene, consent for talking people | 3 | ✓ |
+| Cancel animation, back to the still, versions strip | 3 | ✓ |
+| Lip-sync out of date: Regenerate lip-sync | 3 | ✓ |
+| Apply this style to all scenes (server price, balance, skips) | 3 | ✓ |
+| Library: current asset, Change, Open library (media picker), Animate | 3 | ✓ |
+| Audiogram: design, colour + custom, background, Apply; live preview in the frame | 3 | ✓ |
+| Motion for stills: effect, intensity | 3 | ✓ |
+| Toolbar on picture select: Swap, Regenerate (price), Animate (price), Edit, Motion | 3 | ✓ |
 
 ### Voice panel
 
 | Classic | Step | |
 |---|---|---|
-| Current voice, play, language, speed label | 3 | |
-| Volume, speed, stability | 3 | |
-| Voice picker: personalities, your cloned voices, expressive, standard, preview each | 3 | |
-| Clone a voice (modal) | 3 | |
-| Voice direction (Gemini) with cue hints | 3 | |
-| Apply this voice to all scenes | 3 | |
-| Re-record all scenes (server price, balance, skips) | 3 | |
-| Script changed: Regenerate | 3 | |
-| Save voice as profile | 3 | |
-| Custom audio: upload, record with timer, preview player, transcribe, use with or without the transcript, discard; previously uploaded list with search | 3 | |
-| Toolbar on voice select: voice name, speed, Re-record (price) | 3 | |
+| Current voice, play, language, speed label | 3 | ✓ |
+| Volume, speed, stability | 3 | ✓ |
+| Voice picker: personalities, your cloned voices, expressive, standard, preview each | 3 | ✓ |
+| Clone a voice (modal) | 3 | ✓ |
+| Voice direction (Gemini) with cue hints | 3 | ✓ |
+| Apply this voice to all scenes | 3 | ✓ |
+| Re-record all scenes (server price, balance, skips) | 3 | ✓ |
+| Script changed: Regenerate | 3 | ✓ |
+| Save voice as profile | 3 | ✓ |
+| Custom audio: upload, record with timer, preview player, transcribe, use with or without the transcript, discard; previously uploaded list with search | 3 | ✓ |
+| Toolbar on voice select: voice name, speed, Re-record (price) | 3 | ✓ |
 
 ### Captions panel
 
 | Classic | Step | |
 |---|---|---|
-| UGC headline text (this scene) | 3 | |
-| Presets: apply, save, delete | 3 | |
-| On / off | 3 | |
-| Effect row + "View all" gallery | 3 | |
-| Highlight style, highlight mode, backdrop panel + colour | 3 | |
-| Base style (Impact, Editorial, Hacker) | 3 | |
-| Position, font picker | 3 | |
-| Text colour, highlight colour (+ custom) | 3 | |
-| Size S/M/L/XL + custom slider | 3 | |
-| Apply to all scenes | 3 | |
-| Typing in the caption edits the script (already) | 2 ✓ | |
-| Toolbar on caption select: effect, size, highlight colour, position, sharing state with the panel | 3 | |
+| UGC headline text (this scene) | 3 | ✓ |
+| Presets: apply, save, delete | 3 | ✓ |
+| On / off | 3 | ✓ |
+| Effect row + "View all" gallery | 3 | ✓ |
+| Highlight style, highlight mode, backdrop panel + colour | 3 | ✓ |
+| Base style (Impact, Editorial, Hacker) | 3 | ✓ |
+| Position, font picker | 3 | ✓ |
+| Text colour, highlight colour (+ custom) | 3 | ✓ |
+| Size S/M/L/XL + custom slider | 3 | ✓ |
+| Apply to all scenes | 3 | ✓ |
+| Typing in the caption edits the script (already) | 2 | ✓ |
+| Toolbar on caption select: effect, size, highlight colour, position, sharing state with the panel | 3 | ✓ |
 
 ### Audio panel (classic: Music + Sounds)
 
@@ -168,6 +168,12 @@ The step column says when it lands.
 | Classic | Step | |
 |---|---|---|
 | Phone bar, dock (Scenes, Config, Assistant, Finish), sheets, project sheet | 5 | |
+
+Step 3 notes (2026-10-29):
+- Captions are saved per scene in the code (classic labels them "All scenes"); the new editor says "This scene" and has
+  "Use on all scenes". Open: should captions be one setting for the whole video (owner)?
+- Prices on buttons come from /credit-costs, which now also sends image_edit, ai_character, tts_standard and every
+  animation quality. Fixed on the way, in both editors: a Veo 8 s clip showed double (the server doubles from 10 s).
 
 ## Step 6: the parity check and opening
 
