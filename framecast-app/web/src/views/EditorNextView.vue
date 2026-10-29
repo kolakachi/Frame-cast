@@ -99,9 +99,19 @@ function openPanel(id) {
   panel.value = id;
   if (SELECTION_FOR_PANEL[id]) selection.value = SELECTION_FOR_PANEL[id];
 }
+// The caption on the frame is outlined only on hover and for a moment after it is clicked, so it doesn't sit boxed
+// the whole time Captions is open.
+const captionFlash = ref(false);
+let captionFlashTimer = null;
+function flashCaption() {
+  captionFlash.value = true;
+  clearTimeout(captionFlashTimer);
+  captionFlashTimer = setTimeout(() => { captionFlash.value = false; }, 1200);
+}
 function select(kind, sceneId = null) {
   if (sceneId != null) selectScene(sceneId);
   selection.value = kind;
+  if (kind === "caption") flashCaption();
   if (kind === "caption") panel.value = "captions";
   else if (kind === "image") panel.value = "media";
   else if (kind === "voice") panel.value = "voice";
@@ -569,7 +579,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <UgcHeadline :layout="activeScene?.caption_settings_json?.ugc_headline || {}" :aspect-ratio="project?.aspect_ratio || '9:16'" />
                 <button
                   v-if="captionEnabledDraft && captionHighlightDraft !== 'none' && captionAnimationDraft === 'plain'"
-                  type="button" :class="['preview-caption', 'nx-caption', captionPreviewClass, selection === 'caption' ? 'is-selected' : '']"
+                  type="button" :class="['preview-caption', 'nx-caption', captionPreviewClass, captionFlash ? 'is-flash' : '']"
                   :style="[captionPositionStyle, captionFontStyle]" aria-label="Select captions" @click="select('caption')">
                   <span v-for="(word, index) in previewWords(sceneScriptDraft || activeScene?.script_text)" :key="index"
                     :class="`caption-word ${word.highlighted ? 'highlight' : 'normal'}`"
@@ -577,7 +587,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 </button>
                 <button
                   v-else-if="captionEnabledDraft && captionHighlightDraft !== 'none' && captionsCanRender"
-                  type="button" :class="['preview-caption', 'preview-caption-animated', 'nx-caption', selection === 'caption' ? 'is-selected' : '']"
+                  type="button" :class="['preview-caption', 'preview-caption-animated', 'nx-caption', captionFlash ? 'is-flash' : '']"
                   :style="[captionPositionStyle, captionFontStyle]" aria-label="Select captions" @click="select('caption')">
                   <CaptionPreview :words="captionPreviewTimedWords" :seconds="captionClock" :settings="captionPreviewSettings" />
                 </button>
