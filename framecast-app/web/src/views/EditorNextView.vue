@@ -633,7 +633,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 </div>
                 <div class="nx-lane">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
-                    :class="['nx-bar', 'nx-bar-text', selection === 'caption' ? 'is-selected' : '']"
+                    :class="['nx-bar', 'nx-bar-text', selection === 'caption' && scene.id === activeSceneId ? 'is-selected' : '']"
                     :style="{ flex: `${sceneDuration(scene)} 1 0` }" :aria-label="`Scene ${i + 1} caption`" @click="select('caption', scene.id)">{{ scene.script_text }}</button>
                 </div>
                 <div class="nx-lane">
