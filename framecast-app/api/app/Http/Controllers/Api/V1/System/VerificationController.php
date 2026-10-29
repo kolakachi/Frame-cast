@@ -242,15 +242,25 @@ class VerificationController extends Controller
             'preferences.auto_music' => ['sometimes', 'boolean'],
             'preferences.watermark_enabled' => ['sometimes', 'boolean'],
             'preferences.onboarded' => ['sometimes', 'boolean'],
+            'preferences.editor' => ['sometimes', 'string', 'in:classic,new'],
         ]);
 
         $user->fill(collect($validated)->except('preferences')->all());
 
         if (array_key_exists('preferences', $validated)) {
+            $prefs = $validated['preferences'];
+            // The new editor is staff only until it opens; nobody else can pick it.
+            if (isset($prefs['editor']) && ! \App\Support\EditorChoice::available($user)) {
+                unset($prefs['editor']);
+            }
+            // When each choice was made: "accepted by all old users" is read from these.
+            if (isset($prefs['editor']) && $prefs['editor'] !== ($user->preferences_json['editor'] ?? null)) {
+                $prefs['editor_chosen_at'] = now()->toIso8601String();
+            }
             $user->preferences_json = array_merge(
                 $this->defaultPreferences(),
                 $user->preferences_json ?? [],
-                $validated['preferences'],
+                $prefs,
             );
         }
 
@@ -486,6 +496,9 @@ class VerificationController extends Controller
             // so it can hide the nav entry rather than offer a link that
             // leads nowhere.
             'is_internal' => \App\Support\InternalAccess::allows($user),
+            // Which editor opens, and whether the person may switch (staff only until it opens to all).
+            'editor' => \App\Support\EditorChoice::for($user),
+            'editor_new_available' => \App\Support\EditorChoice::available($user),
             'preferences' => array_merge($this->defaultPreferences(), $user->preferences_json ?? []),
         ];
     }

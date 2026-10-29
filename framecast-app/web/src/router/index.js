@@ -4,7 +4,8 @@ import { checkoutGate, freeAllows, forgetCheckoutGate, templateFromLink } from '
 // The Weave onboarding (2026-10-09) replaced the Classic first-video wizard (OnboardingView.vue, kept unrouted).
 import WelcomeView from '../views/WelcomeView.vue'
 import DashboardView from '../views/DashboardView.vue'
-import EditorView from '../views/EditorView.vue'
+// The editor route opens the classic or the new editor (EditorEntry decides, 2026-10-29).
+import EditorEntry from '../views/EditorEntry.vue'
 import GenerationProgressView from '../views/GenerationProgressView.vue'
 import AssetLibraryView from '../views/AssetLibraryView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -113,7 +114,7 @@ const routes = [
   { path: '/voices', name: 'voices', component: VoicesView, meta: { requiresAuth: true } },
   { path: '/jobs', name: 'jobs', component: JobsView, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/generation', name: 'generation-progress', component: GenerationProgressView, meta: { requiresAuth: true } },
-  { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorView, meta: { requiresAuth: true } },
+  { path: '/projects/:projectId/editor', name: 'project-editor', component: EditorEntry, meta: { requiresAuth: true } },
   { path: '/projects/:projectId/variants', name: 'project-variants', component: VariantsView, meta: { requiresAuth: true } },
   // Catch-all 404. public:true so a mistyped URL shows the 404 instead of
   // bouncing through the auth / onboarding guards.

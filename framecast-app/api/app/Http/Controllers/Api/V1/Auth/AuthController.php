@@ -648,6 +648,9 @@ class AuthController extends Controller
                         ['auto_generate_captions' => true, 'preview_before_render' => true, 'auto_music' => true, 'watermark_enabled' => false, 'onboarded' => false],
                         $user->preferences_json ?? [],
                     ),
+                    // Same as /me: a token refresh replaces the stored user, so it must carry the editor choice too.
+                    'editor' => \App\Support\EditorChoice::for($user),
+                    'editor_new_available' => \App\Support\EditorChoice::available($user),
                 ],
             ],
             'meta' => [],
