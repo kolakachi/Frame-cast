@@ -111,7 +111,7 @@ const sendLabel = computed(() => {
 const needsCustomLook = computed(() => !editing.value && lookKey.value === "custom");
 const canSend = computed(() => (editing.value
   ? !editPending.value && !generating.value && editInstruction.value.trim().length >= 3
-  : !generating.value && !activeSceneAnimationPending.value && !(needsCustomLook.value && !customVisualStyleDraft.value.trim())));
+  : !generating.value && !activeSceneAnimationPending.value));
 function send() {
   menu.value = null;
   if (editing.value) editSceneImage();
@@ -241,7 +241,7 @@ function send() {
       <!-- Style: a preview and the name of each look. -->
       <div v-if="menu === 'style'" class="nx-pop">
         <div class="nx-looks">
-          <button v-for="st in stylePickerRows" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || ''" @click="visualStyleDraft = st.key">
+          <button v-for="st in stylePickerRows" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || ''" @click="visualStyleDraft = st.key; menu = null">
             <img v-if="st.sample_url" :src="st.sample_url" alt="" loading="lazy" />
             <span v-else class="nx-look-glyph">{{ st.icon ?? "✦" }}</span>
             <span class="nx-look-name">{{ st.label }}</span>
@@ -284,11 +284,10 @@ function send() {
       </div>
     </div>
 
-    <!-- Custom look: required, between the box and the button (an empty one draws with no look at all). -->
+    <!-- Custom look, between the box and the button. Optional: the prompt can carry the look too (owner, 2026-10-30). -->
     <template v-if="needsCustomLook">
-      <label class="nx-label" for="nx-custom-look">Describe the look <span class="nx-dim">{{ customVisualStyleSaveState === 'pending' ? 'saving…' : customVisualStyleSaveState === 'saved' ? 'saved' : '' }}</span></label>
-      <textarea id="nx-custom-look" v-model="customVisualStyleDraft" class="nx-input" rows="2" maxlength="500" placeholder="moody film stills, neon alleys, 35mm grain"></textarea>
-      <p v-if="!customVisualStyleDraft.trim()" class="nx-hint">Needed for a custom style, or pick another style.</p>
+      <label class="nx-label" for="nx-custom-look">Describe the look <span class="nx-dim">optional{{ customVisualStyleSaveState === 'pending' ? ' · saving…' : customVisualStyleSaveState === 'saved' ? ' · saved' : '' }}</span></label>
+      <textarea id="nx-custom-look" v-model="customVisualStyleDraft" class="nx-input" rows="2" maxlength="500" placeholder="moody film stills, neon alleys, 35mm grain. Or put it in the prompt above."></textarea>
     </template>
     <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canSend" @click="send">{{ sendLabel }}</button>
     <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
