@@ -1314,7 +1314,7 @@ defineExpose({ open, openPath })
 
 <template>
   <div v-if="show" class="modal-overlay" @click.self="backdropClick">
-    <div :class="['modal', 'wizard-modal', wizardStep === 0 ? 'wizard-modal--wide' : '']">
+    <div :class="['modal', 'wizard-modal', wizardStep === 0 ? 'wizard-modal--wide' : wizardStep >= 4 ? 'wizard-modal--mid' : '']">
       <!-- Pinned to the top while the step scrolls, as Back / Next are pinned to the bottom. -->
       <div class="wizard-head">
       <button
@@ -2060,43 +2060,39 @@ defineExpose({ open, openPath })
 
             <!-- AI Video: model + honest, server-priced cost. -->
             <template v-if="globalVisualMode === 'ai_video'">
-              <div class="input-label" style="margin:14px 0 8px;">Video model</div>
-              <div class="anim-tier-row">
+              <div class="input-label" style="margin:16px 0 8px;">Video model</div>
+              <div class="anim-tier-row" role="group" aria-label="Video model">
                 <button
                   v-for="t in ANIMATE_TIER_OPTIONS"
                   :key="t.key"
                   type="button"
                   :class="['anim-tier-card', animateTier === t.key ? 'selected' : '']"
+                  :aria-pressed="animateTier === t.key"
                   @click="animateTier = t.key"
                 >
                   <span class="anim-tier-name">{{ t.label }}</span>
                   <span class="anim-tier-sub">{{ t.sub }}</span>
-
                 </button>
               </div>
 
-              <p class="muted">Choose the pace of your animated shots. Both options keep the same target video length.</p>
-              <div class="anim-tier-grid" role="group" aria-label="Animation pacing">
+              <!-- Pace: both keep the target length; the price of each is the server's estimate. -->
+              <div class="input-label" style="margin:16px 0 8px;">Shots</div>
+              <div class="anim-pace-row" role="group" aria-label="Animation pacing">
                 <button v-for="pace in ['short', 'long']" :key="pace" type="button"
                   :class="['anim-tier-card', animationPacing === pace ? 'selected' : '']"
                   :aria-pressed="animationPacing === pace" @click="animationPacing = pace">
                   <span class="anim-tier-name">{{ pace === 'short' ? 'More short shots' : 'Fewer long shots' }}</span>
                   <template v-if="aiVideoEstimates[pace]">
                     <span class="anim-tier-sub">{{ aiVideoEstimates[pace].animation_clip_seconds }}s clips · about {{ aiVideoEstimates[pace].scenes_min }}–{{ aiVideoEstimates[pace].scenes_max }} scenes</span>
-                    <span class="anim-tier-cost">{{ aiVideoEstimates[pace].credits_min }}–{{ aiVideoEstimates[pace].credits_max }} credits estimated</span>
+                    <span class="anim-tier-cost">{{ aiVideoEstimates[pace].credits_min }}–{{ aiVideoEstimates[pace].credits_max }} credits</span>
                   </template>
-                  <span v-else class="anim-tier-sub">{{ aiVideoEstimateLoading ? 'Calculating…' : 'Estimate unavailable' }}</span>
+                  <span v-else class="anim-tier-sub">{{ aiVideoEstimateLoading ? 'Working out the cost…' : 'Estimate unavailable' }}</span>
                 </button>
               </div>
-              <p class="muted">Short shots change visuals more often. Long shots keep each action on screen longer. Narration that outlasts a clip holds its last frame instead of repeating.</p>
+              <p class="wiz-note">Both keep the same video length. Narration that outlasts a clip holds its last frame.</p>
               <button v-if="!aiVideoEstimateLoading && !aiVideoEstimate" type="button" class="btn btn-ghost" @click="refreshAiVideoEstimate">Retry estimate</button>
-              <div class="anim-cost-line" v-if="aiVideoEstimateLoading">Working out the cost…</div>
-              <div class="anim-cost-line" v-else-if="aiVideoEstimate">
-                ~{{ aiVideoEstimate.scenes_min }}–{{ aiVideoEstimate.scenes_max }} animated scenes ·
-                <strong>{{ aiVideoEstimate.credits_min }}–{{ aiVideoEstimate.credits_max }} credits</strong>
-                <template v-if="!aiVideoEstimate.can_afford">
-                  <span class="anim-cost-short"> — you're {{ aiVideoEstimate.shortage }} credits short</span>
-                </template>
+              <div v-if="aiVideoEstimate && !aiVideoEstimate.can_afford" class="anim-cost-line anim-cost-short">
+                You're {{ aiVideoEstimate.shortage }} credits short for this.
               </div>
               <div v-if="Number(durationTargetSeconds) >= 120" class="anim-cost-warn">
                 Longer videos need more footage. Review the estimate for your selected model and pacing before generating.
@@ -2362,6 +2358,8 @@ defineExpose({ open, openPath })
    way on is always in view however long the step. Only the path picker keeps the wide card. */
 .wizard-modal { width: min(620px,calc(100vw - 32px)); max-height: min(780px, 90vh); padding: 0 24px; }
 .wizard-modal--wide { width: min(860px,calc(100vw - 32px)); }
+/* One-shot: the prompt box carries a row of setting pills, so it gets more room. */
+.wizard-modal--mid { width: min(760px,calc(100vw - 32px)); }
 .wizard-head { position: sticky; top: 0; z-index: 6; margin: 0 -24px 6px; padding: 14px 60px 0 24px; min-height: 52px; background: var(--color-bg-panel); }
 .wizard-head:has(.wizard-steps) { padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--color-border); }
 .modal-title { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
@@ -2596,7 +2594,7 @@ defineExpose({ open, openPath })
 .composer-add-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-primary); font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
 .composer-add-btn:hover:not(:disabled) { border-color: rgba(255,107,53,0.4); }
 .composer-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.composer-add-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 180px; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10; }
+.composer-add-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 180px; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10;  max-height: min(220px, 40vh); overflow-y: auto; }
 .composer-add-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: none; background: transparent; color: var(--color-text-primary); font-size: 12.5px; cursor: pointer; border-radius: 6px; width: 100%; text-align: left; font-family: inherit; }
 .composer-add-item:hover { background: var(--color-bg-elevated); }
 .composer-add-item--empty { color: var(--color-text-muted); cursor: default; }
@@ -2606,7 +2604,7 @@ defineExpose({ open, openPath })
 .composer-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-card); color: var(--color-text-secondary); font-size: 11.5px; cursor: pointer; transition: 0.15s; font-family: inherit; }
 .composer-pill:hover { border-color: rgba(255,107,53,0.4); color: var(--color-text-primary); }
 .composer-pill-caret { font-size: 9px; opacity: 0.6; }
-.composer-pill-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 140px; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10; }
+.composer-pill-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 140px; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10;  max-height: min(220px, 40vh); overflow-y: auto; }
 .composer-pill-menu--wide { min-width: 220px; }
 .composer-pill-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: none; background: transparent; color: var(--color-text-primary); font-size: 12.5px; cursor: pointer; border-radius: 6px; width: 100%; text-align: left; font-family: inherit; }
 .composer-pill-option:hover { background: var(--color-bg-elevated); }
@@ -2693,11 +2691,13 @@ defineExpose({ open, openPath })
 .ag-bg-opt { height: 32px; border-radius: 6px; border: 1.5px solid transparent; cursor: pointer; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.7); letter-spacing: .04em; transition: border-color 0.12s; }
 .ag-bg-opt:hover { border-color: var(--color-border-active); }
 .ag-bg-opt.selected { border-color: #fff; }
-.anim-tier-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.anim-tier-card { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s; }
+.anim-tier-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.anim-pace-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.wiz-note { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--color-text-muted); }
+.anim-tier-card { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 10px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color .15s, background .15s; min-width: 0; }
 .anim-tier-card:hover { border-color: var(--color-text-muted); }
-.anim-tier-card.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
-.anim-tier-name { font-size: 12.5px; font-weight: 700; color: var(--color-text-primary); }
+.anim-tier-card.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
+.anim-tier-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .anim-tier-sub { font-size: 10.5px; color: var(--color-text-muted); }
 .anim-tier-cost { font-size: 11px; color: var(--color-accent); font-weight: 600; margin-top: 3px; }
 .anim-cost-line { margin-top: 10px; font-size: 12px; color: var(--color-text-muted); }
@@ -2707,7 +2707,7 @@ defineExpose({ open, openPath })
 .script-detect-btn { padding: 6px 12px; border-radius: 7px; border: 0; background: var(--color-accent, #ff6b35); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .anim-cost-warn { margin-top: 8px; padding: 8px 10px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25); border-radius: 7px; font-size: 11.5px; color: #fbbf24; line-height: 1.45; }
 /* Visual styles: a sideways rail, one card tall, rather than rows of 200px cards. */
-.ai-broll-grid { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -24px 14px; padding: 0 24px 6px; }
+.ai-broll-grid { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 24px; margin: 0 -24px 14px; padding: 0 24px 6px; }
 .custom-style-panel { padding: 12px; border-radius: 8px; background: rgba(255,107,53,0.04); border: 1px solid rgba(255,107,53,0.2); margin: -6px 0 14px; }
 .ai-broll-card { flex: 0 0 132px; scroll-snap-align: start; min-height: 0; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; display: flex; flex-direction: column; }
 .ai-broll-card:hover { border-color: rgba(255,107,53,0.35); transform: translateY(-1px); }
@@ -2824,6 +2824,7 @@ defineExpose({ open, openPath })
   .wizard-head { margin: 0 -16px 6px; padding: calc(12px + env(safe-area-inset-top)) 60px 0 16px; }
   .wizard-head:has(.wizard-steps) { padding-bottom: 12px; margin-bottom: 14px; }
   .wiz-pair { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .anim-tier-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   /* A 44px target, clear of the notch. */
   .wizard-close {
@@ -2874,6 +2875,7 @@ defineExpose({ open, openPath })
     -webkit-overflow-scrolling: touch;
     margin: 0 -16px 14px;
     padding: 0 16px 4px;
+    scroll-padding-inline: 16px;
   }
   .ai-broll-grid::-webkit-scrollbar { display: none; }
   .ai-broll-card {
