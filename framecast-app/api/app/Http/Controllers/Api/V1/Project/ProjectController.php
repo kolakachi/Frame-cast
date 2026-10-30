@@ -54,7 +54,13 @@ class ProjectController extends Controller
             // The Composer page (2026-10-28): only composer videos (no Create videos; UGC is always left out), newest edit first.
             'kind' => ['nullable', 'string', Rule::in(['composer'])],
             'sort' => ['nullable', 'string', Rule::in(['updated'])],
+            // The Composer page's search box and its All / Exported / Drafts filter (2026-10-30).
+            'q' => ['nullable', 'string', 'max:100'],
+            'exported' => ['nullable', 'string', Rule::in(['yes', 'no'])],
         ]);
+        $exportedJob = fn ($query) => $query->selectRaw('1')->from('export_jobs')
+            ->whereColumn('export_jobs.project_id', 'projects.id')
+            ->where('export_jobs.status', 'completed');
 
         $perPage = (int) ($validated['per_page'] ?? 8);
         $page = (int) ($validated['page'] ?? 1);
@@ -88,6 +94,9 @@ class ProjectController extends Controller
                     ->selectRaw('max(completed_at)'),
             ])
             ->when(($validated['kind'] ?? null) === 'composer', fn ($q) => $q->where(fn ($k) => $k->whereNull('editor_kind')->orWhere('editor_kind', '!=', 'composition')))
+            ->when(trim((string) ($validated['q'] ?? '')) !== '', fn ($q) => $q->where('title', 'ilike', '%'.addcslashes(trim($validated['q']), '%_\\').'%'))
+            ->when(($validated['exported'] ?? null) === 'yes', fn ($q) => $q->whereExists($exportedJob))
+            ->when(($validated['exported'] ?? null) === 'no', fn ($q) => $q->whereNotExists($exportedJob))
             ->when(($validated['sort'] ?? null) === 'updated', fn ($q) => $q->orderByDesc('updated_at'))
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);

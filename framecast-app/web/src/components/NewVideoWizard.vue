@@ -322,6 +322,16 @@ const durationOptions = [
   { label: '3 min', value: '180' },
 ]
 
+// The content step keeps the main choices in view and folds the rest (niche defaults, character, voice, channel,
+// language, title) under "More options", summed up in one line so nothing set there is hidden.
+const moreOptionsOpen = ref(false)
+const moreOptionsSummary = computed(() => [
+  `Voice ${selectedWizardVoice.value?.name ?? 'default'}`,
+  selectedCharacter.value ? selectedCharacter.value.name : 'No character',
+  languageLabel(languageSelections.value[0]) || 'English',
+  props.channels.find((ch) => String(ch.id) === String(channelId.value))?.name ?? 'No channel',
+].join(' · '))
+
 // AI first — it's the default and the differentiated output. Stock sat at the
 // top and was preselected, which is what most projects silently shipped with.
 const visualTypeOptions = [
@@ -673,6 +683,7 @@ function open(initialSourceType = 'prompt', presetChannelId = null) {
   // dashboard's empty-state button), jump straight to the blank-project
   // mini-form. Otherwise default to the new step-0 path picker.
   wizardStep.value = initialSourceType === 'blank' ? 3 : 0
+  moreOptionsOpen.value = false
   selectedNicheId.value = null
   customNicheSelected.value = false
   customNicheName.value = ''
@@ -1313,7 +1324,9 @@ defineExpose({ open, openPath })
 
 <template>
   <div v-if="show" class="modal-overlay" @click.self="backdropClick">
-    <div class="modal wizard-modal">
+    <div :class="['modal', 'wizard-modal', wizardStep === 0 ? 'wizard-modal--wide' : '']">
+      <!-- Pinned to the top while the step scrolls, as Back / Next are pinned to the bottom. -->
+      <div class="wizard-head">
       <button
         class="wizard-close"
         type="button"
@@ -1324,7 +1337,7 @@ defineExpose({ open, openPath })
 
       <!-- Step indicator — hidden on the path picker (step 0) and on the
            blank single-step form (since they're one-screen flows). -->
-      <div v-if="wizardStep >= 1 && wizardSourceType !== 'blank'" class="wizard-steps">
+      <div v-if="wizardStep >= 1 && wizardStep <= 3 && wizardSourceType !== 'blank'" class="wizard-steps">
         <div :class="['wizard-step', wizardStep === 1 ? 'active' : wizardStep > 1 ? 'done' : '']">
           <div class="wizard-step-num">{{ wizardStep > 1 ? '✓' : '1' }}</div>
           <span>Pick Niche</span>
@@ -1339,6 +1352,7 @@ defineExpose({ open, openPath })
           <div class="wizard-step-num">3</div>
           <span>Content</span>
         </div>
+      </div>
       </div>
 
       <!-- Step 0: Path Picker -->
@@ -1639,8 +1653,8 @@ defineExpose({ open, openPath })
 
       <!-- Step 1: Pick Niche -->
       <div v-else-if="wizardStep === 1">
-        <div class="modal-title">Quick Start</div>
-        <div class="modal-subtitle">Pick your content niche. WyvStudio pre-configures visuals, voice, captions, and music.</div>
+        <div class="modal-title">Pick your niche</div>
+        <div class="modal-subtitle">We set visuals, voice, captions and music to suit it. You can change any of them later.</div>
         <div class="niche-grid">
           <div
             v-for="niche in niches"
@@ -1684,8 +1698,8 @@ defineExpose({ open, openPath })
 
       <!-- Step 2: Source Type -->
       <div v-if="wizardStep === 2">
-        <div class="section-title">Choose your source</div>
-        <div class="section-subtitle">How do you want to start this video?</div>
+        <div class="section-title">What are you starting from?</div>
+        <div class="section-subtitle">We turn it into a script and scenes.</div>
         <div v-if="selectedNiche" class="niche-preset-banner">
           <span>{{ selectedNiche.icon_emoji }}</span>
           <span>Loaded <strong>{{ selectedNiche.name }}</strong>
@@ -1727,26 +1741,7 @@ defineExpose({ open, openPath })
         <div class="section-title">{{ wizardSourceType === 'blank' ? 'Set up your project' : 'Enter your content' }}</div>
         <div class="section-subtitle">{{ wizardSourceType === 'blank' ? "Pick your format and channel — you'll build scenes in the editor." : 'Almost done — fill in your content and confirm settings.' }}</div>
 
-        <!-- Niche preset summary -->
-        <div v-if="selectedNiche" class="niche-preset-summary">
-          <div v-if="selectedNiche.default_visual_style" class="preset-pill">
-            <div class="preset-pill-label">Visual</div>
-            <div class="preset-pill-val">{{ selectedNiche.default_visual_style }}</div>
-          </div>
-          <div v-if="selectedNiche.default_voice_tone" class="preset-pill">
-            <div class="preset-pill-label">Voice</div>
-            <div class="preset-pill-val">{{ selectedNiche.default_voice_tone }}</div>
-          </div>
-          <div v-if="selectedNiche.default_caption_preset_name" class="preset-pill">
-            <div class="preset-pill-label">Captions</div>
-            <div class="preset-pill-val">{{ selectedNiche.default_caption_preset_name }}</div>
-          </div>
-          <div v-if="selectedNiche.default_music_mood" class="preset-pill">
-            <div class="preset-pill-label">Music</div>
-            <div class="preset-pill-val">{{ selectedNiche.default_music_mood }}</div>
-          </div>
-        </div>
-        <div v-else-if="customNicheSelected" class="custom-niche-panel">
+        <div v-if="customNicheSelected" class="custom-niche-panel">
           <div class="custom-niche-header">
             <span>✨</span>
             <div>
@@ -1828,83 +1823,11 @@ defineExpose({ open, openPath })
           </label>
         </div>
 
-        <!-- Character (optional) — applies to every scene generated by this project. -->
-        <div class="wiz-picker-block">
-          <div class="wiz-picker-header">
-            <span class="wiz-picker-label">Character <span class="wiz-picker-hint">optional</span></span>
-            <a href="/characters" target="_blank" rel="noopener" class="wiz-picker-manage">Manage →</a>
-          </div>
-          <div v-if="characters.length === 0" class="character-picker-empty">
-            <span>No characters yet.</span>
-            <a href="/characters" target="_blank" rel="noopener">Create one</a>
-            <span>to have an on-screen spokesperson, narrator, or host across every video you generate.</span>
-          </div>
-          <div v-else class="picker-wrap">
-            <button type="button" class="picker-trigger" @click="characterPickerOpen = !characterPickerOpen">
-              <img v-if="selectedCharacter?.reference_asset?.thumbnail_url" :src="selectedCharacter.reference_asset.thumbnail_url" class="picker-trigger-thumb" alt="" />
-              <span v-else class="picker-trigger-glyph">{{ selectedCharacter ? '👤' : '∅' }}</span>
-              <span class="picker-trigger-label">{{ selectedCharacter?.name ?? 'No character' }}</span>
-              <span class="picker-trigger-caret">▾</span>
-            </button>
-            <div v-if="characterPickerOpen" class="picker-panel">
-              <div :class="['picker-row', selectedCharacterId === '' ? 'selected' : '']" @click="selectedCharacterId = ''; characterPickerOpen = false">
-                <span class="picker-row-glyph">∅</span>
-                <div class="picker-row-text">
-                  <div class="picker-row-name">No character</div>
-                  <div class="picker-row-desc">Scenes won't include a recurring on-screen subject.</div>
-                </div>
-                <span v-if="selectedCharacterId === ''" class="picker-row-check">✓</span>
-              </div>
-              <div v-for="c in characters" :key="c.id"
-                :class="['picker-row', String(selectedCharacterId) === String(c.id) ? 'selected' : '']"
-                @click="selectedCharacterId = c.id; characterPickerOpen = false">
-                <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" class="picker-row-thumb" />
-                <span v-else class="picker-row-glyph">👤</span>
-                <div class="picker-row-text">
-                  <div class="picker-row-name">{{ c.name }}</div>
-                  <div v-if="c.description" class="picker-row-desc">{{ c.description }}</div>
-                </div>
-                <span v-if="String(selectedCharacterId) === String(c.id)" class="picker-row-check">✓</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Voice (optional) — stamped onto every scene's voice_settings. -->
-        <div class="wiz-picker-block">
-          <div class="wiz-picker-header">
-            <span class="wiz-picker-label">Voice <span class="wiz-picker-hint">optional</span></span>
-          </div>
-          <div class="picker-wrap">
-            <button type="button" class="picker-trigger" @click="voicePickerOpen = !voicePickerOpen">
-              <span class="picker-trigger-glyph">🎙</span>
-              <span class="picker-trigger-label">{{ selectedWizardVoice?.name ?? 'Default' }}</span>
-              <span class="picker-trigger-sub">{{ selectedWizardVoice?.gender_label ?? 'neutral' }}</span>
-              <span class="picker-trigger-caret">▾</span>
-            </button>
-            <div v-if="voicePickerOpen" class="picker-panel">
-              <div v-for="v in wizardVoices" :key="v.provider_voice_key"
-                :class="['picker-row', selectedWizardVoiceKey === v.provider_voice_key ? 'selected' : '']"
-                @click="selectedWizardVoiceKey = v.provider_voice_key; voiceTouched = true; wizardVoicePrompt = ''; voicePickerOpen = false">
-                <span class="picker-row-glyph">🎙</span>
-                <div class="picker-row-text">
-                  <div class="picker-row-name">{{ v.name }}</div>
-                  <div class="picker-row-desc">{{ v.gender_label || 'neutral' }}{{ v.description ? ' · ' + v.description : '' }}</div>
-                </div>
-                <span v-if="selectedWizardVoiceKey === v.provider_voice_key" class="picker-row-check">✓</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Content input by source type -->
-        <div v-if="wizardSourceType === 'blank'" class="blank-canvas-notice">
-          <div class="blank-canvas-icon">✏️</div>
-          <div class="blank-canvas-body">
-            <div class="blank-canvas-title">Blank canvas</div>
-            <div class="blank-canvas-text">Add scenes in the editor, write your script, pick visuals from your library or generate with AI, and record voice per scene.</div>
-          </div>
-        </div>
+        <label v-if="wizardSourceType === 'blank'" class="input-label-wrap">
+          <span class="input-label">Title <span class="input-optional">· optional</span></span>
+          <input v-model="title" class="field-input" type="text" placeholder="Untitled video" />
+        </label>
         <div v-else-if="wizardSourceType === 'prompt'" class="input-group">
           <label class="input-label">What's your video about?</label>
           <textarea v-model="promptText" class="field-input textarea" rows="5" placeholder="e.g. The mysterious disappearance of the Beaumont family in 1966…"></textarea>
@@ -2258,67 +2181,159 @@ defineExpose({ open, openPath })
           </div>
         </div>
 
-        <!-- Settings -->
-        <div class="settings-2col mt">
-          <label class="input-label-wrap">
-            <span class="input-label">Channel</span>
-            <select v-model="channelId" class="field-input">
-              <option value="">No channel</option>
-              <option v-for="ch in channels" :key="ch.id" :value="String(ch.id)">{{ ch.name }}</option>
-            </select>
-          </label>
-          <label class="input-label-wrap">
-            <span class="input-label">Language</span>
-            <select v-model="languageSelections[0]" class="field-input">
-              <option v-for="lang in LANGUAGES" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="mt">
-          <div class="input-label" style="margin-bottom:8px;">Format</div>
-          <div class="format-chips">
-            <div v-for="r in ['9:16','1:1','16:9']" :key="r" :class="['format-chip', aspectRatio === r ? 'active' : '']" @click="aspectRatio = r"><svg width="13" height="13" viewBox="0 0 18 18" class="aspect-ico" aria-hidden="true"><rect :x="aspectIcon(r).x" :y="aspectIcon(r).y" :width="aspectIcon(r).w" :height="aspectIcon(r).h" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ r }}</div>
-          </div>
-        </div>
-
-        <div class="mt">
-          <div class="input-label" style="margin-bottom:8px;">Target length</div>
-          <div class="format-chips">
-            <div
-              v-for="option in durationOptions"
-              :key="option.value"
-              :class="['format-chip', durationTargetSeconds === option.value ? 'active' : '']"
-              @click="durationTargetSeconds = option.value"
-            >
-              {{ option.label }}
+        <div class="wiz-pair mt">
+          <div>
+            <div class="input-label" style="margin-bottom:8px;">Format</div>
+            <div class="format-chips">
+              <div v-for="r in ['9:16','1:1','16:9']" :key="r" :class="['format-chip', aspectRatio === r ? 'active' : '']" @click="aspectRatio = r"><svg width="13" height="13" viewBox="0 0 18 18" class="aspect-ico" aria-hidden="true"><rect :x="aspectIcon(r).x" :y="aspectIcon(r).y" :width="aspectIcon(r).w" :height="aspectIcon(r).h" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>{{ r }}</div>
             </div>
           </div>
-          <div v-if="lengthNote" class="anim-cost-warn">{{ lengthNote }}</div>
+          <div>
+            <div class="input-label" style="margin-bottom:8px;">Target length</div>
+            <div class="format-chips">
+              <div
+                v-for="option in durationOptions"
+                :key="option.value"
+                :class="['format-chip', durationTargetSeconds === option.value ? 'active' : '']"
+                @click="durationTargetSeconds = option.value"
+              >
+                {{ option.label }}
+              </div>
+            </div>
+          </div>
         </div>
+        <div v-if="lengthNote" class="anim-cost-warn">{{ lengthNote }}</div>
 
-        <label class="input-label-wrap mt">
-          <span class="input-label">Title <span style="opacity:.5;font-weight:400;">(optional)</span></span>
-          <input v-model="title" class="field-input" type="text" />
-        </label>
-
-        <!-- Credit estimate -->
-        <label v-if="wizardSourceType !== 'blank'" class="review-script-toggle" for="wiz-review-script">
+        <label v-if="wizardSourceType !== 'blank'" class="review-script-toggle mt" for="wiz-review-script">
           <input id="wiz-review-script" v-model="reviewScript" type="checkbox" />
           <span>Let me review the script before pictures and voice are made</span>
         </label>
-        <div v-if="creditEstimate" :class="['credit-estimate', !canAffordEstimate ? 'credit-estimate-warn' : '']">
-          <span class="credit-est-label">Estimated cost</span>
-          <span class="credit-est-range">{{ creditEstimate.min }}–{{ creditEstimate.max }} credits<template v-if="(creditEstimate.videos || 1) > 1"> for {{ creditEstimate.videos }} videos</template></span>
-          <span v-if="creditBalance !== null" class="credit-est-balance">
-            · Balance: <strong>{{ creditBalance.toLocaleString() }}</strong>
-            <span v-if="!canAffordEstimate" style="color:#f87171"> — not enough</span>
-          </span>
+
+        <!-- Everything else, folded and summed up in one line. -->
+        <div :class="['wiz-more', moreOptionsOpen ? 'open' : '']">
+          <button type="button" class="wiz-more-head" :aria-expanded="moreOptionsOpen" @click="moreOptionsOpen = !moreOptionsOpen">
+            <b>More options</b>
+            <span class="wiz-more-sum">{{ moreOptionsSummary }}</span>
+            <span class="wiz-more-caret" aria-hidden="true">▾</span>
+          </button>
+          <div v-if="moreOptionsOpen" class="wiz-more-body">
+          <div v-if="selectedNiche" class="niche-preset-summary">
+            <div v-if="selectedNiche.default_visual_style" class="preset-pill">
+              <div class="preset-pill-label">Visual</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_visual_style }}</div>
+            </div>
+            <div v-if="selectedNiche.default_voice_tone" class="preset-pill">
+              <div class="preset-pill-label">Voice</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_voice_tone }}</div>
+            </div>
+            <div v-if="selectedNiche.default_caption_preset_name" class="preset-pill">
+              <div class="preset-pill-label">Captions</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_caption_preset_name }}</div>
+            </div>
+            <div v-if="selectedNiche.default_music_mood" class="preset-pill">
+              <div class="preset-pill-label">Music</div>
+              <div class="preset-pill-val">{{ selectedNiche.default_music_mood }}</div>
+            </div>
+          </div>
+          <!-- Character (optional) — applies to every scene generated by this project. -->
+          <div class="wiz-picker-block">
+            <div class="wiz-picker-header">
+              <span class="wiz-picker-label">Character <span class="wiz-picker-hint">optional</span></span>
+              <a href="/characters" target="_blank" rel="noopener" class="wiz-picker-manage">Manage →</a>
+            </div>
+            <div v-if="characters.length === 0" class="character-picker-empty">
+              <span>No characters yet.</span>
+              <a href="/characters" target="_blank" rel="noopener">Create one</a>
+              <span>to have an on-screen spokesperson, narrator, or host across every video you generate.</span>
+            </div>
+            <div v-else class="picker-wrap">
+              <button type="button" class="picker-trigger" @click="characterPickerOpen = !characterPickerOpen">
+                <img v-if="selectedCharacter?.reference_asset?.thumbnail_url" :src="selectedCharacter.reference_asset.thumbnail_url" class="picker-trigger-thumb" alt="" />
+                <span v-else class="picker-trigger-glyph">{{ selectedCharacter ? '👤' : '∅' }}</span>
+                <span class="picker-trigger-label">{{ selectedCharacter?.name ?? 'No character' }}</span>
+                <span class="picker-trigger-caret">▾</span>
+              </button>
+              <div v-if="characterPickerOpen" class="picker-panel">
+                <div :class="['picker-row', selectedCharacterId === '' ? 'selected' : '']" @click="selectedCharacterId = ''; characterPickerOpen = false">
+                  <span class="picker-row-glyph">∅</span>
+                  <div class="picker-row-text">
+                    <div class="picker-row-name">No character</div>
+                    <div class="picker-row-desc">Scenes won't include a recurring on-screen subject.</div>
+                  </div>
+                  <span v-if="selectedCharacterId === ''" class="picker-row-check">✓</span>
+                </div>
+                <div v-for="c in characters" :key="c.id"
+                  :class="['picker-row', String(selectedCharacterId) === String(c.id) ? 'selected' : '']"
+                  @click="selectedCharacterId = c.id; characterPickerOpen = false">
+                  <img v-if="c.reference_asset?.thumbnail_url" :src="c.reference_asset.thumbnail_url" :alt="c.name" class="picker-row-thumb" />
+                  <span v-else class="picker-row-glyph">👤</span>
+                  <div class="picker-row-text">
+                    <div class="picker-row-name">{{ c.name }}</div>
+                    <div v-if="c.description" class="picker-row-desc">{{ c.description }}</div>
+                  </div>
+                  <span v-if="String(selectedCharacterId) === String(c.id)" class="picker-row-check">✓</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Voice (optional) — stamped onto every scene's voice_settings. -->
+          <div class="wiz-picker-block">
+            <div class="wiz-picker-header">
+              <span class="wiz-picker-label">Voice <span class="wiz-picker-hint">optional</span></span>
+            </div>
+            <div class="picker-wrap">
+              <button type="button" class="picker-trigger" @click="voicePickerOpen = !voicePickerOpen">
+                <span class="picker-trigger-glyph">🎙</span>
+                <span class="picker-trigger-label">{{ selectedWizardVoice?.name ?? 'Default' }}</span>
+                <span class="picker-trigger-sub">{{ selectedWizardVoice?.gender_label ?? 'neutral' }}</span>
+                <span class="picker-trigger-caret">▾</span>
+              </button>
+              <div v-if="voicePickerOpen" class="picker-panel">
+                <div v-for="v in wizardVoices" :key="v.provider_voice_key"
+                  :class="['picker-row', selectedWizardVoiceKey === v.provider_voice_key ? 'selected' : '']"
+                  @click="selectedWizardVoiceKey = v.provider_voice_key; voiceTouched = true; wizardVoicePrompt = ''; voicePickerOpen = false">
+                  <span class="picker-row-glyph">🎙</span>
+                  <div class="picker-row-text">
+                    <div class="picker-row-name">{{ v.name }}</div>
+                    <div class="picker-row-desc">{{ v.gender_label || 'neutral' }}{{ v.description ? ' · ' + v.description : '' }}</div>
+                  </div>
+                  <span v-if="selectedWizardVoiceKey === v.provider_voice_key" class="picker-row-check">✓</span>
+                </div>
+              </div>
+            </div>
+          </div>
+            <div class="settings-2col mt">
+              <label class="input-label-wrap">
+                <span class="input-label">Channel</span>
+                <select v-model="channelId" class="field-input">
+                  <option value="">No channel</option>
+                  <option v-for="ch in channels" :key="ch.id" :value="String(ch.id)">{{ ch.name }}</option>
+                </select>
+              </label>
+              <label class="input-label-wrap">
+                <span class="input-label">Language</span>
+                <select v-model="languageSelections[0]" class="field-input">
+                  <option v-for="lang in LANGUAGES" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
+                </select>
+              </label>
+            </div>
+            <label v-if="wizardSourceType !== 'blank'" class="input-label-wrap mt">
+              <span class="input-label">Title <span class="input-optional">· optional</span></span>
+              <input v-model="title" class="field-input" type="text" placeholder="We'll name it from the topic" />
+            </label>
+          </div>
         </div>
 
         <div v-if="wizardCreateError" class="modal-error mt">{{ wizardCreateError }}</div>
 
         <div class="modal-actions">
+          <div v-if="creditEstimate" :class="['credit-estimate', !canAffordEstimate ? 'credit-estimate-warn' : '']">
+            <span class="credit-est-range">{{ creditEstimate.min }}–{{ creditEstimate.max }} credits<template v-if="(creditEstimate.videos || 1) > 1"> for {{ creditEstimate.videos }} videos</template></span>
+            <span v-if="creditBalance !== null" class="credit-est-balance">
+              Balance {{ creditBalance.toLocaleString() }}<span v-if="!canAffordEstimate" style="color:#f87171"> · not enough</span>
+            </span>
+          </div>
           <button class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
           <button
             v-if="!canAffordEstimate && wizardSourceType !== 'blank'"
@@ -2349,7 +2364,12 @@ defineExpose({ open, openPath })
 <style scoped>
 .modal-overlay { position: fixed; inset: 0; z-index: 180; background: rgba(0,0,0,0.68); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal { width: min(680px,calc(100vw - 32px)); max-height: 86vh; overflow-y: auto; background: var(--color-bg-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 28px; box-shadow: 0 30px 80px rgba(0,0,0,0.5); }
-.wizard-modal { width: min(860px,calc(100vw - 32px)); }
+/* Compact: one column wide, the head (close + steps) pinned at the top and Back / Next pinned at the bottom, so the
+   way on is always in view however long the step. Only the path picker keeps the wide card. */
+.wizard-modal { width: min(620px,calc(100vw - 32px)); max-height: min(780px, 90vh); padding: 0 24px; }
+.wizard-modal--wide { width: min(860px,calc(100vw - 32px)); }
+.wizard-head { position: sticky; top: 0; z-index: 6; margin: 0 -24px 6px; padding: 14px 60px 0 24px; min-height: 52px; background: var(--color-bg-panel); }
+.wizard-head:has(.wizard-steps) { padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--color-border); }
 .modal-title { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
 .wizard-modal { position: relative; }
 .wizard-close {
@@ -2360,8 +2380,18 @@ defineExpose({ open, openPath })
   color: var(--text-secondary); cursor: pointer; transition: 0.15s;
 }
 .wizard-close:hover { background: var(--color-surface-2, rgba(255,255,255,0.06)); color: var(--color-text-primary); }
-.modal-subtitle { margin-top: 4px; margin-bottom: 22px; font-size: 13px; color: var(--color-text-muted); }
-.modal-actions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 10px; }
+.modal-subtitle { margin-top: 4px; margin-bottom: 16px; font-size: 13px; color: var(--color-text-muted); }
+.modal-actions { position: sticky; bottom: 0; z-index: 6; margin: 20px -24px 0; padding: 12px 24px; background: var(--color-bg-panel); border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.modal-actions .credit-estimate { margin: 0 auto 0 0; padding: 0; border: 0; background: none; display: grid; gap: 1px; }
+.modal-actions .credit-estimate-warn .credit-est-range { color: #f87171; }
+.wiz-pair { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; }
+.wiz-pair .format-chips { flex-wrap: wrap; }
+.wiz-more { margin-top: 14px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-elevated); }
+.wiz-more-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: none; border: 0; color: var(--color-text-primary); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.wiz-more-sum { flex: 1; min-width: 0; color: var(--color-text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiz-more-caret { color: var(--color-text-muted); transition: transform .15s; }
+.wiz-more.open .wiz-more-caret { transform: rotate(180deg); }
+.wiz-more-body { padding: 12px 14px 14px; border-top: 1px solid var(--color-border); }
 .modal-actions .discard-warn { margin-right: auto; align-self: center; font-size: 13px; color: var(--text-secondary); }
 .modal-actions .danger-btn { color: #ff6b6b; }
 .modal-error { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(248,113,113,0.25); color: #f87171; font-size: 12px; background: rgba(248,113,113,0.1); }
@@ -2377,7 +2407,7 @@ defineExpose({ open, openPath })
 .btn-ghost { color: var(--color-text-secondary); background: transparent; border-color: var(--color-border); }
 .btn-ghost:hover { border-color: var(--color-border-active); color: var(--color-text-primary); }
 
-.wizard-steps { display: flex; align-items: center; gap: 0; margin-bottom: 28px; }
+.wizard-steps { display: flex; align-items: center; gap: 0; }
 .wizard-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-muted); }
 .wizard-step-num { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--color-border); background: var(--color-bg-elevated); color: var(--color-text-muted); font-size: 11px; font-weight: 700; font-family: "Space Mono", monospace; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
 .wizard-step.active .wizard-step-num { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
@@ -2406,8 +2436,8 @@ defineExpose({ open, openPath })
 .path-card-tag { font-size: 10.5px; color: var(--color-text-muted); background: rgba(255,255,255,0.04); border: 1px solid var(--color-border); padding: 3px 9px; border-radius: 999px; font-family: "Space Mono", monospace; letter-spacing: 0.3px; }
 @media(max-width: 640px) { .path-picker-grid { grid-template-columns: 1fr; } .path-card { min-height: auto; } }
 
-.niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
-.niche-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; padding: 16px 14px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; transition: border-color 0.2s, background 0.2s, transform 0.2s; overflow: hidden; }
+.niche-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 4px; }
+.niche-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; transition: border-color 0.2s, background 0.2s, transform 0.2s; overflow: hidden; }
 .niche-card::before { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,107,53,0.08), transparent 70%); opacity: 0; transition: opacity 0.2s; }
 .niche-card:hover { border-color: rgba(255,107,53,0.4); transform: translateY(-1px); }
 .niche-card:hover::before { opacity: 1; }
@@ -2415,10 +2445,10 @@ defineExpose({ open, openPath })
 .custom-niche-card { border-style: dashed; }
 .niche-selected-check { display: none; position: absolute; top: 10px; right: 10px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-accent); color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; z-index: 1; }
 .niche-card.selected .niche-selected-check { display: flex; }
-.niche-emoji { position: relative; z-index: 1; font-size: 26px; line-height: 1; margin-bottom: 10px; }
+.niche-emoji { position: relative; z-index: 1; font-size: 18px; line-height: 1; margin-bottom: 6px; }
 .niche-name { position: relative; z-index: 1; font-size: 13px; font-weight: 600; color: var(--color-text-primary); line-height: 1.2; margin-bottom: 3px; }
-.niche-desc { position: relative; z-index: 1; font-size: 11px; color: var(--color-text-muted); line-height: 1.45; }
-.niche-tags { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.niche-desc { position: relative; z-index: 1; font-size: 11px; color: var(--color-text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.niche-tags { display: none; }
 .niche-tag { padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; background: var(--color-bg-card); border: 1px solid var(--color-border); color: var(--color-text-muted); }
 
 .niche-preset-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.2); margin-bottom: 18px; font-size: 12px; color: var(--color-text-secondary); }
@@ -2444,11 +2474,11 @@ defineExpose({ open, openPath })
 .character-picker-active { margin-top: 10px; padding: 8px 12px; border-radius: 6px; background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.2); font-size: 11px; color: var(--color-text-secondary); line-height: 1.55; }
 .character-picker-active strong { color: var(--color-accent); }
 
-.source-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 4px; }
-.source-type-opt { padding: 14px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: center; transition: 0.15s ease; }
+.source-type-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 4px; }
+.source-type-opt { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 8px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; transition: 0.15s ease; }
 .source-type-opt:hover { border-color: rgba(255,107,53,0.35); }
 .source-type-opt.selected { border-color: var(--color-accent); background: rgba(255,107,53,0.08); }
-.source-type-ico { font-size: 22px; margin-bottom: 6px; display: block; }
+.source-type-ico { grid-row: 1 / 3; font-size: 18px; display: block; text-align: center; }
 .source-type-name { font-size: 12px; font-weight: 600; color: var(--color-text-primary); }
 .source-type-hint { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
 
@@ -2679,16 +2709,17 @@ defineExpose({ open, openPath })
 .script-detect { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border-active, rgba(255,107,53,.4)); border-radius: 8px; font-size: 12.5px; line-height: 1.45; }
 .script-detect-btn { padding: 6px 12px; border-radius: 7px; border: 0; background: var(--color-accent, #ff6b35); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .anim-cost-warn { margin-top: 8px; padding: 8px 10px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25); border-radius: 7px; font-size: 11.5px; color: #fbbf24; line-height: 1.45; }
-.ai-broll-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+/* Visual styles: a sideways rail, one card tall, rather than rows of 200px cards. */
+.ai-broll-grid { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -24px 14px; padding: 0 24px 6px; }
 .custom-style-panel { padding: 12px; border-radius: 8px; background: rgba(255,107,53,0.04); border: 1px solid rgba(255,107,53,0.2); margin: -6px 0 14px; }
-.ai-broll-card { min-height: 200px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; display: flex; flex-direction: column; }
+.ai-broll-card { flex: 0 0 132px; scroll-snap-align: start; min-height: 0; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg-elevated); cursor: pointer; text-align: left; padding: 0; overflow: hidden; transition: 0.15s; display: flex; flex-direction: column; }
 .ai-broll-card:hover { border-color: rgba(255,107,53,0.35); transform: translateY(-1px); }
 .ai-broll-card.selected { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px rgba(255,107,53,0.2); }
 /* Taller art block — face stays in frame because the inline style sets
    background-position to 'center 25%' which anchors the upper third of
    the sample. Falls back to the --style-tone radial when no sample
    image URL is bound. */
-.ai-broll-art { display: block; height: 130px; background-repeat: no-repeat; background-color: var(--color-bg-card); border-bottom: 1px solid var(--color-border); }
+.ai-broll-art { display: block; height: 92px; background-repeat: no-repeat; background-color: var(--color-bg-card); border-bottom: 1px solid var(--color-border); }
 .ai-broll-art:not([style*="background-image"]) { background: radial-gradient(circle at 30% 20%, var(--style-tone), transparent 34%), linear-gradient(135deg, var(--style-tone), rgba(255,255,255,0.05)); }
 .ai-broll-label { display: block; padding: 12px 14px 4px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .ai-broll-hint { display: block; padding: 0 14px 12px; font-size: 11px; color: var(--color-text-muted); line-height: 1.4; }
@@ -2791,8 +2822,11 @@ defineExpose({ open, openPath })
     border: none;
     border-radius: 0;
     box-shadow: none;
-    padding: calc(16px + env(safe-area-inset-top)) 16px 0;
+    padding: 0 16px;
   }
+  .wizard-head { margin: 0 -16px 6px; padding: calc(12px + env(safe-area-inset-top)) 60px 0 16px; }
+  .wizard-head:has(.wizard-steps) { padding-bottom: 12px; margin-bottom: 14px; }
+  .wiz-pair { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 
   /* A 44px target, clear of the notch. */
   .wizard-close {
@@ -2859,7 +2893,7 @@ defineExpose({ open, openPath })
     -webkit-box-orient: vertical; overflow: hidden;
   }
 
-  .wizard-steps { margin-bottom: 18px; }
+  .wizard-steps { margin-bottom: 0; }
   .wizard-step span { font-size: 11px; }
   .wizard-connector { width: 16px; margin: 0 2px; }
 }
