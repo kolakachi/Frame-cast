@@ -263,6 +263,9 @@
 .nx-pdrop-k { color: var(--muted); font-weight: 400; }
 .nx-pdrop-k::after { content: ":"; }
 .nx-pbox .nx-pop { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+.nx-ref-thumb { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--raised); }
+.nx-ref-icon { display: inline-flex; align-items: center; justify-content: center; }
+.nx-ref-icon svg { width: 17px; height: 17px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Stock / AI under Image and Video: underlined, a level below the segment above. */
 .nx-subtabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); }

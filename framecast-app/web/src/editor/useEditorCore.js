@@ -6720,13 +6720,15 @@ export function useEditorCore() {
     }
   }
 
-  async function submitAnimate() {
+  // `sourceAssetId`: start from another image in the workspace (the new editor's AI video tab) instead of the scene's still.
+  async function submitAnimate({ sourceAssetId = null } = {}) {
     const scene = activeScene.value;
     if (!scene) return;
     animateSubmitting.value = true;
     animateError.value = "";
     try {
       const response = await api.post(`/scenes/${scene.id}/animate`, {
+        ...(sourceAssetId ? { source_asset_id: sourceAssetId } : {}),
         tier: animateTier.value,
         duration_seconds: animateDuration.value,
         motion_prompt: animateMotionPrompt.value.trim() || null,

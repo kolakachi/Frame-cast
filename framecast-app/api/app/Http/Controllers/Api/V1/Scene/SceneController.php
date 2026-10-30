@@ -1156,6 +1156,9 @@ class SceneController extends Controller
             // Likeness consent — required the first time a still is made to
             // speak on this scene. See the spokesperson gate below.
             'consent'          => ['sometimes', 'boolean'],
+            // The new editor's AI video tab (2026-10-30): start from any image in the
+            // workspace (an upload, a library picture) instead of the scene's own still.
+            'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
         ]);
         // Talking spokesperson (Fabric lip-sync) is a separate path: image +
         // the scene's voiceover -> lip-synced clip. Cost is LENGTH-BASED on the
@@ -1174,6 +1177,15 @@ class SceneController extends Controller
         if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
             // Current visual is a video (re-animate) — use the original still.
             $sourceAsset = $origStillId ? \App\Models\Asset::query()->find($origStillId) : null;
+        }
+        if (! empty($validated['source_asset_id'])) {
+            $sourceAsset = \App\Models\Asset::query()
+                ->whereKey((int) $validated['source_asset_id'])
+                ->where('workspace_id', $user->workspace_id)
+                ->first();
+            if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
+                return $this->error('bad_reference', 'Pick an image from your workspace to start the video from.', 422);
+            }
         }
         if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
             return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);

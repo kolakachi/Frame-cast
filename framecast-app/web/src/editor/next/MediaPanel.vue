@@ -24,6 +24,9 @@ const {
   selectAudiogramStyle, selectAudiogramColor, selectAudiogramBg, queueAudiogramColorSave, saveAudiogramSettings, audiogramSaveState,
   activeSceneIsStillImage, MOTION_EFFECT_OPTIONS, MOTION_INTENSITY_OPTIONS, motionEffectDraft, motionIntensityDraft,
   motionSaveState, motionSaveError,
+  ANIMATE_TIER_META, ANIMATE_TIER_ORDER, ANIMATE_TIER_COSTS_5S, animateTier, animateDuration, animateDurations, animateQuality,
+  animateQualityOptions, animateCost, animateMotionPrompt, animateSubmitting, animateError, submitAnimate, creditCosts, tierSlow,
+  videoReference, videoReferencePicking,
 } = core;
 const { imageModelCost, imageCost, imageEditCost, characterPriced } = usePrices(core);
 
@@ -59,11 +62,36 @@ function pickGroup(g) {
   pick(g, group.value === "image" || group.value === "video" ? sub.value : isAi.value ? "ai" : "stock");
 }
 const videoAi = computed(() => group.value === "video" && sub.value === "ai");
-// A video that came from animating a still (the core calls any video "animated", stock clips too).
-const animatedFromStill = computed(() => activeSceneAlreadyAnimated.value
-  && (isAi.value || canRevertAnimation.value || activeSceneAnimationHistory.value.length > 0));
-// Something to animate: a still picture now, or an earlier animation to run again.
-const canAnimateHere = computed(() => canAnimateActiveScene.value && (activeSceneIsStillImage.value || animatedFromStill.value));
+// ── AI video ────────────────────────────────────────────────────────────────
+// Every video model but the talking one (that lip-syncs the scene's voice and stays in the Animate dialog).
+const videoTiers = ANIMATE_TIER_ORDER.filter((k) => k !== "spokesperson");
+watch(videoAi, (on) => { if (on && animateTier.value === "spokesperson") animateTier.value = "veo_fast"; }, { immediate: true });
+// A model's cheapest short clip, as the server prices it.
+function tierPrice(key) {
+  const served = Object.values(creditCosts.value?.video_tiers?.[key]?.qualities || {});
+  return served.length ? Math.min(...served) : ANIMATE_TIER_COSTS_5S[key];
+}
+const runningTier = computed(() => activeScene.value?.image_generation_settings?.animation_tier ?? null);
+const qualityLabel = computed(() => animateQualityOptions.value.find((q) => q.value === animateQuality.value)?.label ?? animateQuality.value);
+// The scene's own still: its picture now, or the still an earlier animation started from.
+const sceneStillThumb = computed(() => {
+  if (activeSceneIsStillImage.value) return currentVisualUrl.value || null;
+  const o = activeSceneAnimationOriginal.value;
+  return o ? o.thumbnail_url || o.image_url || null : null;
+});
+const referenceThumb = computed(() => videoReference.value?.thumb ?? sceneStillThumb.value);
+const referenceLabel = computed(() => (videoReference.value ? videoReference.value.title : sceneStillThumb.value ? "This scene" : "None"));
+const hasReference = computed(() => !!videoReference.value || !!sceneStillThumb.value);
+const canMakeVideo = computed(() => hasReference.value && !animateSubmitting.value && !activeSceneAnimationPending.value && !generating.value);
+function pickReference() {
+  menu.value = null;
+  videoReferencePicking.value = true;
+  openMediaPicker("visual");
+}
+function makeVideo() {
+  menu.value = null;
+  submitAnimate({ sourceAssetId: videoReference.value?.id ?? null });
+}
 const generating = computed(() => aiImagePending.value || activeSceneAIImagePending.value);
 // The look the next picture is drawn in: the one picked here, else the one it was last drawn in.
 const lookKey = computed(() => visualStyleDraft.value ?? activeScene.value?.visual_style ?? activeScene.value?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null);
@@ -98,14 +126,14 @@ const lookRow = computed(() => stylePickerRows.value.find((r) => r.key === lookK
 const modelRow = computed(() => availableImageModelsEditor.value.find((m) => m.key === aiImageModelKey.value) ?? null);
 // A scene with an AI picture can also be edited in place (the shot kept, one thing changed).
 const aiMode = ref("new");
-watch(() => activeScene.value?.id, () => { aiMode.value = "new"; menu.value = null; });
+watch(() => activeScene.value?.id, () => { aiMode.value = "new"; menu.value = null; videoReference.value = null; });
 const canEdit = computed(() => isAi.value && !!activeScene.value?.visual_asset_id);
-const editing = computed(() => !videoAi.value && canEdit.value && aiMode.value === "edit");
+const editing = computed(() => canEdit.value && aiMode.value === "edit");
 const sending = computed(() => (editing.value ? editPending.value : generating.value));
 const sendPrice = computed(() => (editing.value ? imageEditCost.value : imageCost.value));
 const sendLabel = computed(() => {
   if (sending.value) return editing.value ? "Applying…" : "Drawing…";
-  const verb = editing.value ? "Apply edit" : videoAi.value ? (isAi.value ? "Draw a new picture" : "Draw the picture") : isAi.value ? "Regenerate" : "Generate";
+  const verb = editing.value ? "Apply edit" : isAi.value ? "Regenerate" : "Generate";
   return `${verb}${cr(sendPrice.value)}`;
 });
 const needsCustomLook = computed(() => !editing.value && lookKey.value === "custom");
@@ -165,41 +193,118 @@ function send() {
     <p v-if="visualSwapError" class="nx-err">{{ visualSwapError }}</p>
   </template>
 
-  <!-- AI image / AI video. One prompt box draws the picture: style, character and model are pills under it
-       (owner, 2026-10-30). AI video adds animating that picture above the box. -->
-  <template v-else-if="selectedSwapVisualSource === 'AI Image'">
-    <template v-if="videoAi">
-      <div v-if="canAnimateHere || activeSceneAnimationPending || canRevertAnimation" class="nx-actions">
-        <button v-if="activeSceneAnimationPending" class="nx-btn" type="button" @click="cancelAnimation">Cancel animation</button>
-        <button v-else-if="canAnimateHere" class="nx-btn nx-primary" type="button" :disabled="generating" @click="openAnimateModal">
-          {{ animatedFromStill ? "Animate again" : "Animate this picture" }}
+  <!-- AI video (owner, 2026-10-30): describe the shot, start from a reference image, any video model, a length.
+       This push is "straight to video"; storyboard-first and no-reference come next. -->
+  <template v-else-if="selectedSwapVisualSource === 'AI Image' && videoAi">
+    <div v-if="activeSceneAnimationPending" class="nx-quote">
+      <div class="nx-row"><b>Animating with {{ ANIMATE_TIER_META[runningTier]?.name || "your model" }}</b><button class="nx-link" type="button" @click="cancelAnimation">Cancel</button></div>
+      <p class="nx-hint">You can keep editing other scenes. The clip takes this scene's place when it's done.</p>
+    </div>
+
+    <span class="nx-label">Describe the shot</span>
+    <div class="nx-pbox" @click.stop>
+      <textarea v-model="animateMotionPrompt" class="nx-pbox-input" rows="3" maxlength="1000"
+        aria-label="Describe the shot" placeholder="How it moves: slow push-in, steam rising, she looks up and smiles"></textarea>
+      <div class="nx-pbox-bar">
+        <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vref'" @click="toggleMenu('vref')">
+          <span class="nx-pdrop-k">Reference</span>
+          <img v-if="referenceThumb" :src="referenceThumb" alt="" />
+          <span>{{ referenceLabel }}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
-        <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="nx-btn" type="button" :disabled="generating" title="Back to the still picture" @click="revertAnimation">Use the still</button>
+        <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vmodel'" @click="toggleMenu('vmodel')">
+          <span class="nx-pdrop-k">Model</span>
+          <span>{{ ANIMATE_TIER_META[animateTier]?.name || "Model" }}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vlen'" @click="toggleMenu('vlen')">
+          <span class="nx-pdrop-k">Length</span>
+          <span>{{ animateDuration }} s · {{ qualityLabel }}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
       </div>
-      <p v-else class="nx-hint">An AI video starts from a picture: draw one below, then animate it. You'll see the price of the motion before it starts.</p>
-      <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
-      <div v-if="spokespersonOutdated && !activeSceneAnimationPending" class="nx-callout">
-        <span>The voice changed, so the lips no longer match.</span>
-        <button class="nx-mini" type="button" :disabled="lipSyncRegenerating || aiImagePending" @click="regenerateLipSync">{{ lipSyncRegenerating ? "Syncing…" : "Sync the lips again" }}</button>
-      </div>
-      <section v-if="activeSceneAnimationHistory.length" class="nx-sec">
-        <span class="nx-label">Versions</span>
-        <div class="nx-versions">
-          <button v-if="activeSceneAnimationOriginal" type="button" :class="['nx-version', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'on' : '']"
-            aria-label="The still picture" @click="useOriginalStill">
-            <img v-if="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" :src="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" alt="" />
-            <span>Still</span>
+
+      <!-- Reference: the scene's own picture, or any image from the workspace (the picker also uploads). -->
+      <div v-if="menu === 'vref'" class="nx-pop">
+        <div class="nx-list">
+          <button v-if="sceneStillThumb" type="button" :class="['nx-list-row', !videoReference ? 'on' : '']" @click="videoReference = null; menu = null">
+            <img class="nx-ref-thumb" :src="sceneStillThumb" alt="" />
+            <span class="nx-list-main"><b>This scene's picture</b><span>The video starts from it</span></span>
           </button>
-          <button v-for="h in activeSceneAnimationHistory" :key="h.asset_id" type="button" :class="['nx-version', activeScene?.visual_asset_id === h.asset_id ? 'on' : '']"
-            :aria-label="`Clip, ${h.tier}, ${h.duration} seconds`" :title="h.motion_prompt || ''" @click="useHistoryAnimation(h.asset_id)">
-            <video v-if="h.video_url" :src="h.video_url" muted playsinline preload="metadata"></video>
-            <span>{{ h.duration }}s</span>
+          <button v-if="videoReference" type="button" class="nx-list-row on" @click="menu = null">
+            <img class="nx-ref-thumb" :src="videoReference.thumb" alt="" />
+            <span class="nx-list-main"><b>{{ videoReference.title }}</b><span>From your uploads</span></span>
+          </button>
+          <button type="button" class="nx-list-row" @click="pickReference">
+            <span class="nx-ref-thumb nx-ref-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v4h16v-4" /></svg></span>
+            <span class="nx-list-main"><b>{{ videoReference ? "Choose another image" : "Upload or choose an image" }}</b><span>From your uploads or your computer</span></span>
           </button>
         </div>
-      </section>
-      <span class="nx-label">{{ canAnimateHere ? "Or draw a new picture" : "Draw the picture" }}</span>
-    </template>
-    <div v-else-if="canEdit" class="nx-seg nx-seg-full" role="group" aria-label="New picture or edit this one">
+      </div>
+
+      <!-- Model: every video model, with the server's price for its cheapest short clip. -->
+      <div v-else-if="menu === 'vmodel'" class="nx-pop">
+        <div class="nx-list">
+          <button v-for="key in videoTiers" :key="key" type="button" :class="['nx-list-row', animateTier === key ? 'on' : '']" @click="animateTier = key; menu = null">
+            <span class="nx-list-main">
+              <b>{{ ANIMATE_TIER_META[key].name }}</b>
+              <span>{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].render }}<template v-if="tierSlow(key)"> · <span class="nx-warn-text">slow now</span></template></span>
+            </span>
+            <span class="nx-num">from {{ tierPrice(key) }} cr</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Length and quality for the chosen model; each quality shows its price. -->
+      <div v-else-if="menu === 'vlen'" class="nx-pop">
+        <span class="nx-label">Length</span>
+        <div class="nx-seg nx-seg-full" role="group" aria-label="Length">
+          <button v-for="d in animateDurations" :key="d" type="button" :class="animateDuration === d ? 'on' : ''" @click="animateDuration = d">{{ d }} s</button>
+        </div>
+        <span class="nx-label">Quality</span>
+        <div class="nx-seg nx-seg-full" role="group" aria-label="Quality">
+          <button v-for="q in animateQualityOptions" :key="q.value" type="button" :class="animateQuality === q.value ? 'on' : ''" @click="animateQuality = q.value; menu = null">{{ q.label }}</button>
+        </div>
+        <p v-if="animateDurations.some((d) => d >= 10)" class="nx-hint">A 10 second clip costs twice as much.</p>
+      </div>
+    </div>
+
+    <p v-if="!hasReference" class="nx-hint">This scene has no picture to start from. Choose an image above, or draw one in Image › AI image.</p>
+    <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo" @click="makeVideo">
+      {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
+    </button>
+    <p v-if="hasReference && !activeSceneAnimationPending" class="nx-hint">About {{ (ANIMATE_TIER_META[animateTier]?.render || "").replace("~", "") }}. The clip replaces this scene's picture; the picture stays in Versions.</p>
+    <p v-if="animateError" class="nx-err">{{ animateError }}</p>
+    <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
+
+    <div v-if="spokespersonOutdated && !activeSceneAnimationPending" class="nx-callout">
+      <span>The voice changed, so the lips no longer match.</span>
+      <button class="nx-mini" type="button" :disabled="lipSyncRegenerating || aiImagePending" @click="regenerateLipSync">{{ lipSyncRegenerating ? "Syncing…" : "Sync the lips again" }}</button>
+    </div>
+    <section v-if="activeSceneAnimationHistory.length" class="nx-sec">
+      <div class="nx-row">
+        <span class="nx-label">Versions</span>
+        <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="nx-link" type="button" title="Back to the still picture" @click="revertAnimation">Use the still</button>
+      </div>
+      <div class="nx-versions">
+        <button v-if="activeSceneAnimationOriginal" type="button" :class="['nx-version', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'on' : '']"
+          aria-label="The still picture" @click="useOriginalStill">
+          <img v-if="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" :src="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" alt="" />
+          <span>Still</span>
+        </button>
+        <button v-for="h in activeSceneAnimationHistory" :key="h.asset_id" type="button" :class="['nx-version', activeScene?.visual_asset_id === h.asset_id ? 'on' : '']"
+          :aria-label="`Clip, ${h.tier}, ${h.duration} seconds`" :title="h.motion_prompt || ''" @click="useHistoryAnimation(h.asset_id)">
+          <video v-if="h.video_url" :src="h.video_url" muted playsinline preload="metadata"></video>
+          <span>{{ h.duration }}s</span>
+        </button>
+      </div>
+    </section>
+  </template>
+
+  <!-- AI image: one prompt box draws the picture; style, character and model are dropdowns under it (owner,
+       2026-10-30). A scene with an AI picture can switch the box to editing it. -->
+  <template v-else-if="selectedSwapVisualSource === 'AI Image'">
+    <div v-if="canEdit" class="nx-seg nx-seg-full" role="group" aria-label="New picture or edit this one">
       <button type="button" :class="!editing ? 'on' : ''" :aria-pressed="!editing" @click="aiMode = 'new'">New picture</button>
       <button type="button" :class="editing ? 'on' : ''" :aria-pressed="editing" @click="aiMode = 'edit'">Edit this one</button>
     </div>

@@ -25,6 +25,9 @@ import CaptionStylesDialog from "../editor/next/CaptionStylesDialog.vue";
 
 // One editor brain for the view and every panel (the panels inject it).
 const core = useEditorCore();
+// The AI video tab's reference image: picked through the media picker without replacing the scene's picture.
+core.videoReference = ref(null);
+core.videoReferencePicking = ref(false);
 provideEditorCore(core);
 const { imageCost, voiceCost } = usePrices(core);
 
@@ -107,6 +110,18 @@ function flashCaption() {
   captionFlash.value = true;
   clearTimeout(captionFlashTimer);
   captionFlashTimer = setTimeout(() => { captionFlash.value = false; }, 1200);
+}
+// A pick for the AI video tab's reference only sets the reference; any other pick is the classic one.
+function onMediaPicked(e) {
+  if (!core.videoReferencePicking.value) return handleMediaPickerSelect(e);
+  core.videoReferencePicking.value = false;
+  const item = e?.item;
+  const isImage = item && item.asset_type !== "video" && !String(item.mime_type ?? "").startsWith("video/");
+  if (item?.id && isImage) {
+    core.videoReference.value = { id: item.id, title: item.title || "Your image", thumb: item.thumbnail_url || item.storage_url };
+  } else {
+    core.pushToast({ id: `video-ref-${Date.now()}`, title: "That's a video.", message: "Pick an image to start the video from." });
+  }
 }
 function select(kind, sceneId = null) {
   if (sceneId != null) selectScene(sceneId);
@@ -724,7 +739,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
     <VoiceCloneModal v-if="showCloneModal" @close="showCloneModal = false" @created="onVoiceCloned" />
     <MediaPickerModal :mode="mediaPickerMode" :visible="mediaPickerVisible" :music-tracks="musicTracks" :selected-music-track-id="selectedMusicTrackId"
       :current-asset-id="mediaPickerMode === 'visual' ? (activeScene?.visual_asset_id ?? null) : null"
-      @close="mediaPickerVisible = false" @select="handleMediaPickerSelect" />
+      @close="mediaPickerVisible = false; core.videoReferencePicking.value = false" @select="onMediaPicked" />
 
     <SchedulePostModal v-if="scheduleModalOpen" :export-job-id="deliveryExport?.id ?? activeExportJob?.id ?? null" @close="scheduleModalOpen = false" @scheduled="onPostScheduled" />
 
