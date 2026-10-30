@@ -30,6 +30,7 @@ const SOURCES = [
   { key: "Stock Image", label: "Image" },
   { key: "AI Image", label: "AI" },
   { key: "My Assets", label: "Uploads" },
+  { key: "Audiogram", label: "Audiogram" },
 ];
 const isAi = computed(() => activeScene.value?.visual_type === "ai_image");
 const generating = computed(() => aiImagePending.value || activeSceneAIImagePending.value);
@@ -74,12 +75,10 @@ const advanced = ref(false);
     <span v-else-if="activeSceneAnimationPending" class="nx-current-note">Animating…</span>
   </div>
 
-  <div class="nx-seg nx-seg-full" role="tablist" aria-label="Where the picture comes from">
+  <div class="nx-seg nx-seg-full nx-seg-fit" role="tablist" aria-label="Where the picture comes from">
     <button v-for="s in SOURCES" :key="s.key" type="button" role="tab" :aria-selected="selectedSwapVisualSource === s.key"
       :class="selectedSwapVisualSource === s.key ? 'on' : ''" @click="selectedSwapVisualSource = s.key">{{ s.label }}</button>
   </div>
-  <button v-if="selectedSwapVisualSource !== 'Audiogram'" class="nx-link nx-link-left" type="button" @click="selectedSwapVisualSource = 'Audiogram'">Or show a sound wave (audiogram)</button>
-  <button v-else class="nx-link nx-link-left" type="button" @click="selectedSwapVisualSource = 'Stock Video'">Back to pictures</button>
 
   <!-- Stock video -->
   <template v-if="selectedSwapVisualSource === 'Stock Video'">
