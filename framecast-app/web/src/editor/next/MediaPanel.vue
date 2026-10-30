@@ -103,6 +103,11 @@ const canEdit = computed(() => isAi.value && !!activeScene.value?.visual_asset_i
 const editing = computed(() => !videoAi.value && canEdit.value && aiMode.value === "edit");
 const sending = computed(() => (editing.value ? editPending.value : generating.value));
 const sendPrice = computed(() => (editing.value ? imageEditCost.value : imageCost.value));
+const sendLabel = computed(() => {
+  if (sending.value) return editing.value ? "Applying…" : "Drawing…";
+  const verb = editing.value ? "Apply edit" : videoAi.value ? (isAi.value ? "Draw a new picture" : "Draw the picture") : isAi.value ? "Regenerate" : "Generate";
+  return `${verb}${cr(sendPrice.value)}`;
+});
 const canSend = computed(() => (editing.value
   ? !editPending.value && !generating.value && editInstruction.value.trim().length >= 3
   : !generating.value && !activeSceneAnimationPending.value));
@@ -210,27 +215,26 @@ function send() {
       <div class="nx-pbox-bar">
         <template v-if="!editing">
           <button type="button" class="nx-pdrop" :aria-expanded="menu === 'style'" @click="toggleMenu('style')">
+            <span class="nx-pdrop-k">Style</span>
             <img v-if="lookRow?.sample_url" :src="lookRow.sample_url" alt="" />
             <span>{{ lookLabel(lookKey) }}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <button type="button" class="nx-pdrop" :aria-expanded="menu === 'character'" @click="toggleMenu('character')">
+            <span class="nx-pdrop-k">Character</span>
             <span v-if="activeCharacter" class="nx-pdrop-face">
               <img v-if="activeCharacter.reference_asset?.thumbnail_url || activeCharacter.reference_asset?.storage_url" :src="activeCharacter.reference_asset.thumbnail_url || activeCharacter.reference_asset.storage_url" alt="" />
               <template v-else>{{ activeCharacter.name.charAt(0).toUpperCase() }}</template>
             </span>
-            <span>{{ activeCharacter?.name || "Character" }}</span>
+            <span>{{ activeCharacter?.name || "None" }}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <button type="button" class="nx-pdrop" :aria-expanded="menu === 'model'" @click="toggleMenu('model')">
-            <span>{{ modelRow?.label || "Model" }}</span>
+            <span class="nx-pdrop-k">Model</span>
+            <span>{{ modelRow?.label || "Default" }}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
         </template>
-        <span class="nx-pbox-price">{{ sending ? (editing ? "Applying…" : "Drawing…") : sendPrice != null ? `${sendPrice} cr` : "" }}</span>
-        <button type="button" class="nx-pbox-send" :disabled="!canSend" :aria-label="editing ? 'Apply the edit' : isAi ? 'Draw a new picture' : 'Draw the picture'" @click="send">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-        </button>
       </div>
 
       <!-- Style: a preview and the name of each look. -->
@@ -283,6 +287,7 @@ function send() {
       </div>
     </div>
 
+    <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canSend" @click="send">{{ sendLabel }}</button>
     <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
     <p v-if="lookChanged && !editing" class="nx-hint nx-hint-warn">Look changed. Draw again to use it.</p>
     <p v-if="aiImageError || activeSceneVisualGenerationError" class="nx-err">{{ aiImageError || activeSceneVisualGenerationError }}</p>

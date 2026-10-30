@@ -255,16 +255,13 @@
 .nx-pbox-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nx-pdrop { height: 28px; max-width: 100%; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; background: var(--raised); padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 .nx-pdrop:hover, .nx-pdrop[aria-expanded="true"] { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16); }
-.nx-pdrop > span:not(.nx-pdrop-face) { max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-pdrop > span:not(.nx-pdrop-face):not(.nx-pdrop-k) { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-pdrop > img, .nx-pdrop-face { width: 18px; height: 18px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
 .nx-pdrop-face { border-radius: 50%; overflow: hidden; background: var(--field); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
 .nx-pdrop-face img { width: 100%; height: 100%; object-fit: cover; }
 .nx-pdrop svg { width: 12px; height: 12px; fill: none; stroke: var(--muted); stroke-width: 2; }
-.nx-pbox-price { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nx-pbox-send { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.nx-pbox-send svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.nx-pbox-send:disabled { background: var(--raised); }
-.nx-pbox-send:disabled svg { stroke: var(--muted); }
+.nx-pdrop-k { color: var(--muted); font-weight: 400; }
+.nx-pdrop-k::after { content: ":"; }
 .nx-pbox .nx-pop { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
 
 /* Stock / AI under Image and Video: underlined, a level below the segment above. */
