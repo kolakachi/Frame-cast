@@ -2,7 +2,7 @@
 // Media: the scene's picture (classic "Visual Source" + "Motion"). This scene only.
 // Tabs (owner, 2026-10-30): Image · Video · Audiogram · Uploads; Image and Video each split into Stock and AI.
 // AI video is the AI picture plus animating it, so that is where Animate lives.
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { cr, useCore, usePrices } from "./core";
 
 const core = useCore();
@@ -87,7 +87,30 @@ const motionOptions = computed(() => [
   ...MOTION_EFFECT_OPTIONS.filter((o) => o.value === "static"),
   ...MOTION_EFFECT_OPTIONS.filter((o) => o.value !== "static"),
 ]);
-const advanced = ref(false);
+
+// The prompt box: one dropdown open at a time, closed by a click anywhere else.
+const menu = ref(null);
+const toggleMenu = (name) => { menu.value = menu.value === name ? null : name; };
+const closeMenu = () => { menu.value = null; };
+onMounted(() => document.addEventListener("click", closeMenu));
+onBeforeUnmount(() => document.removeEventListener("click", closeMenu));
+const lookRow = computed(() => stylePickerRows.value.find((r) => r.key === lookKey.value) ?? null);
+const modelRow = computed(() => availableImageModelsEditor.value.find((m) => m.key === aiImageModelKey.value) ?? null);
+// A scene with an AI picture can also be edited in place (the shot kept, one thing changed).
+const aiMode = ref("new");
+watch(() => activeScene.value?.id, () => { aiMode.value = "new"; menu.value = null; });
+const canEdit = computed(() => isAi.value && !!activeScene.value?.visual_asset_id);
+const editing = computed(() => !videoAi.value && canEdit.value && aiMode.value === "edit");
+const sending = computed(() => (editing.value ? editPending.value : generating.value));
+const sendPrice = computed(() => (editing.value ? imageEditCost.value : imageCost.value));
+const canSend = computed(() => (editing.value
+  ? !editPending.value && !generating.value && editInstruction.value.trim().length >= 3
+  : !generating.value && !activeSceneAnimationPending.value));
+function send() {
+  menu.value = null;
+  if (editing.value) editSceneImage();
+  else generateAIImage();
+}
 </script>
 
 <template>
@@ -136,24 +159,101 @@ const advanced = ref(false);
     <p v-if="visualSwapError" class="nx-err">{{ visualSwapError }}</p>
   </template>
 
-  <!-- AI image -->
+  <!-- AI image / AI video. One prompt box draws the picture: style, character and model are pills under it
+       (owner, 2026-10-30). AI video adds animating that picture above the box. -->
   <template v-else-if="selectedSwapVisualSource === 'AI Image'">
-    <div class="nx-pop-wrap" @click.stop>
-      <button type="button" class="nx-char" :aria-expanded="characterPopoverOpen" @click="characterPopoverOpen = !characterPopoverOpen">
-        <span class="nx-char-face">
-          <img v-if="activeCharacter?.reference_asset?.thumbnail_url || activeCharacter?.reference_asset?.storage_url" :src="activeCharacter.reference_asset.thumbnail_url || activeCharacter.reference_asset.storage_url" alt="" />
-          <template v-else>{{ activeCharacter ? activeCharacter.name.charAt(0).toUpperCase() : "+" }}</template>
-        </span>
-        <span class="nx-char-text">
-          <b>{{ activeCharacter?.name || "No character" }}</b>
-          <span>{{ activeCharacter ? "Same person in every picture of this scene" : "Keep the same person across scenes" }}</span>
-        </span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-      </button>
-      <div v-if="characterPopoverOpen" class="nx-pop">
+    <template v-if="videoAi">
+      <div v-if="canAnimateHere || activeSceneAnimationPending || canRevertAnimation" class="nx-actions">
+        <button v-if="activeSceneAnimationPending" class="nx-btn" type="button" @click="cancelAnimation">Cancel animation</button>
+        <button v-else-if="canAnimateHere" class="nx-btn nx-primary" type="button" :disabled="generating" @click="openAnimateModal">
+          {{ animatedFromStill ? "Animate again" : "Animate this picture" }}
+        </button>
+        <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="nx-btn" type="button" :disabled="generating" title="Back to the still picture" @click="revertAnimation">Use the still</button>
+      </div>
+      <p v-else class="nx-hint">An AI video starts from a picture: draw one below, then animate it. You'll see the price of the motion before it starts.</p>
+      <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
+      <div v-if="spokespersonOutdated && !activeSceneAnimationPending" class="nx-callout">
+        <span>The voice changed, so the lips no longer match.</span>
+        <button class="nx-mini" type="button" :disabled="lipSyncRegenerating || aiImagePending" @click="regenerateLipSync">{{ lipSyncRegenerating ? "Syncing…" : "Sync the lips again" }}</button>
+      </div>
+      <section v-if="activeSceneAnimationHistory.length" class="nx-sec">
+        <span class="nx-label">Versions</span>
+        <div class="nx-versions">
+          <button v-if="activeSceneAnimationOriginal" type="button" :class="['nx-version', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'on' : '']"
+            aria-label="The still picture" @click="useOriginalStill">
+            <img v-if="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" :src="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" alt="" />
+            <span>Still</span>
+          </button>
+          <button v-for="h in activeSceneAnimationHistory" :key="h.asset_id" type="button" :class="['nx-version', activeScene?.visual_asset_id === h.asset_id ? 'on' : '']"
+            :aria-label="`Clip, ${h.tier}, ${h.duration} seconds`" :title="h.motion_prompt || ''" @click="useHistoryAnimation(h.asset_id)">
+            <video v-if="h.video_url" :src="h.video_url" muted playsinline preload="metadata"></video>
+            <span>{{ h.duration }}s</span>
+          </button>
+        </div>
+      </section>
+      <span class="nx-label">{{ canAnimateHere ? "Or draw a new picture" : "Draw the picture" }}</span>
+    </template>
+    <div v-else-if="canEdit" class="nx-seg nx-seg-full" role="group" aria-label="New picture or edit this one">
+      <button type="button" :class="!editing ? 'on' : ''" :aria-pressed="!editing" @click="aiMode = 'new'">New picture</button>
+      <button type="button" :class="editing ? 'on' : ''" :aria-pressed="editing" @click="aiMode = 'edit'">Edit this one</button>
+    </div>
+
+    <div v-if="editing" class="nx-chips">
+      <button v-for="sg in EDIT_SUGGESTIONS" :key="sg" type="button" :class="['nx-chip', editInstruction === sg ? 'on' : '']" @click="editInstruction = sg">{{ sg }}</button>
+    </div>
+
+    <div class="nx-pbox" @click.stop>
+      <textarea v-if="editing" v-model="editInstruction" class="nx-pbox-input" rows="3" maxlength="500"
+        aria-label="What to change" placeholder="What to change: remove the text on the wall behind her"></textarea>
+      <textarea v-else v-model="aiImagePromptOverride" class="nx-pbox-input" rows="3" maxlength="1000"
+        aria-label="Describe the picture" placeholder="Describe the picture, or leave it empty to draw from the scene's script"></textarea>
+      <div class="nx-pbox-bar">
+        <template v-if="!editing">
+          <button type="button" class="nx-pdrop" :aria-expanded="menu === 'style'" @click="toggleMenu('style')">
+            <img v-if="lookRow?.sample_url" :src="lookRow.sample_url" alt="" />
+            <span>{{ lookLabel(lookKey) }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <button type="button" class="nx-pdrop" :aria-expanded="menu === 'character'" @click="toggleMenu('character')">
+            <span v-if="activeCharacter" class="nx-pdrop-face">
+              <img v-if="activeCharacter.reference_asset?.thumbnail_url || activeCharacter.reference_asset?.storage_url" :src="activeCharacter.reference_asset.thumbnail_url || activeCharacter.reference_asset.storage_url" alt="" />
+              <template v-else>{{ activeCharacter.name.charAt(0).toUpperCase() }}</template>
+            </span>
+            <span>{{ activeCharacter?.name || "Character" }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <button type="button" class="nx-pdrop" :aria-expanded="menu === 'model'" @click="toggleMenu('model')">
+            <span>{{ modelRow?.label || "Model" }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        </template>
+        <span class="nx-pbox-price">{{ sending ? (editing ? "Applying…" : "Drawing…") : sendPrice != null ? `${sendPrice} cr` : "" }}</span>
+        <button type="button" class="nx-pbox-send" :disabled="!canSend" :aria-label="editing ? 'Apply the edit' : isAi ? 'Draw a new picture' : 'Draw the picture'" @click="send">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+        </button>
+      </div>
+
+      <!-- Style: a preview and the name of each look. -->
+      <div v-if="menu === 'style'" class="nx-pop">
+        <div class="nx-looks">
+          <button v-for="st in stylePickerRows" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || ''" @click="visualStyleDraft = st.key">
+            <img v-if="st.sample_url" :src="st.sample_url" alt="" loading="lazy" />
+            <span v-else class="nx-look-glyph">{{ st.icon ?? "✦" }}</span>
+            <span class="nx-look-name">{{ st.label }}</span>
+          </button>
+        </div>
+        <template v-if="visualStyleDraft === 'custom'">
+          <label class="nx-label" for="nx-custom-look">Describe the look <span class="nx-dim">{{ customVisualStyleSaveState === 'pending' ? 'saving…' : customVisualStyleSaveState === 'saved' ? 'saved' : '' }}</span></label>
+          <textarea id="nx-custom-look" v-model="customVisualStyleDraft" class="nx-input" rows="2" maxlength="500" placeholder="moody film stills, neon alleys, 35mm grain"></textarea>
+        </template>
+        <button v-if="isAi" class="nx-btn nx-outline nx-full" type="button" @click="menu = null; openBulkStyle()">Use this look on all scenes</button>
+      </div>
+
+      <!-- Character: the same person in every picture of this scene. -->
+      <div v-else-if="menu === 'character'" class="nx-pop">
         <p v-if="!characters.length" class="nx-hint">No characters yet.</p>
         <div v-else class="nx-char-grid">
-          <button v-for="c in characters" :key="c.id" type="button" :class="['nx-char-pick', activeScene?.character_id === c.id ? 'on' : '']" @click="selectCharacter(c.id)">
+          <button v-for="c in characters" :key="c.id" type="button" :class="['nx-char-pick', activeScene?.character_id === c.id ? 'on' : '']" @click="selectCharacter(c.id); menu = null">
             <span class="nx-char-face">
               <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url" :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
               <template v-else>{{ c.name.charAt(0).toUpperCase() }}</template>
@@ -162,131 +262,52 @@ const advanced = ref(false);
           </button>
         </div>
         <div class="nx-row">
-          <button v-if="activeScene?.character_id" class="nx-link" type="button" @click="selectCharacter(null)">Remove</button>
+          <button v-if="activeScene?.character_id" class="nx-link" type="button" @click="selectCharacter(null); menu = null">No character</button>
           <span v-else></span>
-          <button class="nx-mini" type="button" @click="characterPopoverOpen = false; createCharacterOpen = true">+ New character</button>
+          <button class="nx-mini" type="button" @click="menu = null; createCharacterOpen = true">+ New character</button>
         </div>
       </div>
-    </div>
 
-    <!-- AI video: animate the scene's picture, or draw one first. AI image: draw and redraw stills. -->
-    <div class="nx-actions">
-      <template v-if="videoAi">
-        <button v-if="activeSceneAnimationPending" class="nx-btn" type="button" @click="cancelAnimation">Cancel animation</button>
-        <button v-else-if="canAnimateHere" class="nx-btn nx-primary" type="button" :disabled="generating" @click="openAnimateModal">
-          {{ animatedFromStill ? "Animate again" : "Animate this picture" }}
-        </button>
-        <button :class="['nx-btn', !canAnimateHere && !activeSceneAnimationPending ? 'nx-primary' : '']" type="button" :disabled="generating || activeSceneAnimationPending" @click="generateAIImage">
-          {{ generating ? "Drawing…" : `${isAi ? "Draw a new picture" : "Draw a picture"}${cr(imageCost)}` }}
-        </button>
-      </template>
-      <button v-else class="nx-btn nx-primary" type="button" :disabled="generating || activeSceneAnimationPending" @click="generateAIImage">
-        {{ generating ? "Drawing…" : `${isAi ? "Regenerate" : "Generate"}${cr(imageCost)}` }}
-      </button>
-      <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="nx-btn" type="button" :disabled="generating" title="Back to the still picture" @click="revertAnimation">Use the still</button>
-    </div>
-    <p v-if="videoAi && !canAnimateHere && !activeSceneAnimationPending && !generating" class="nx-hint">An AI video starts from a picture: draw one, then animate it. You'll see the price of the motion before it starts.</p>
-    <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
-    <p v-if="aiImageError || activeSceneVisualGenerationError" class="nx-err">{{ aiImageError || activeSceneVisualGenerationError }}</p>
-    <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
-
-    <div v-if="spokespersonOutdated && !activeSceneAnimationPending" class="nx-callout">
-      <span>The voice changed, so the lips no longer match.</span>
-      <button class="nx-mini" type="button" :disabled="lipSyncRegenerating || aiImagePending" @click="regenerateLipSync">{{ lipSyncRegenerating ? "Syncing…" : "Sync the lips again" }}</button>
-    </div>
-
-    <section v-if="videoAi && activeSceneAnimationHistory.length" class="nx-sec">
-      <span class="nx-label">Versions</span>
-      <div class="nx-versions">
-        <button v-if="activeSceneAnimationOriginal" type="button" :class="['nx-version', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'on' : '']"
-          aria-label="The still picture" @click="useOriginalStill">
-          <img v-if="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" :src="activeSceneAnimationOriginal.thumbnail_url || activeSceneAnimationOriginal.image_url" alt="" />
-          <span>Still</span>
-        </button>
-        <button v-for="h in activeSceneAnimationHistory" :key="h.asset_id" type="button" :class="['nx-version', activeScene?.visual_asset_id === h.asset_id ? 'on' : '']"
-          :aria-label="`Clip, ${h.tier}, ${h.duration} seconds`" :title="h.motion_prompt || ''" @click="useHistoryAnimation(h.asset_id)">
-          <video v-if="h.video_url" :src="h.video_url" muted playsinline preload="metadata"></video>
-          <span>{{ h.duration }}s</span>
-        </button>
-      </div>
-    </section>
-
-    <section v-if="!videoAi && isAi && activeScene?.visual_asset_id" class="nx-sec">
-      <label class="nx-label" for="nx-edit">Change something, keep the shot</label>
-      <div class="nx-chips">
-        <button v-for="s in EDIT_SUGGESTIONS" :key="s" type="button" :class="['nx-chip', editInstruction === s ? 'on' : '']" @click="editInstruction = s">{{ s }}</button>
-      </div>
-      <textarea id="nx-edit" v-model="editInstruction" class="nx-input" rows="2" maxlength="500" placeholder="Remove the text on the wall behind her"></textarea>
-      <button class="nx-btn nx-full" type="button" :disabled="editPending || generating || editInstruction.trim().length < 3" @click="editSceneImage">
-        {{ editPending ? "Applying…" : `Apply edit${cr(imageEditCost)}` }}
-      </button>
-      <p v-if="editError" class="nx-err">{{ editError }}</p>
-    </section>
-
-    <section class="nx-sec">
-      <div class="nx-row">
-        <span class="nx-label">Look</span>
-        <span v-if="visualStyleSaveState === 'saved'" class="nx-num">Saved</span>
-      </div>
-      <div class="nx-looks">
-        <button v-for="s in stylePickerRows" :key="s.key" type="button" :class="['nx-look', lookKey === s.key ? 'on' : '']" :title="s.description || ''" @click="visualStyleDraft = s.key">
-          <img v-if="s.sample_url" :src="s.sample_url" alt="" loading="lazy" />
-          <span v-else class="nx-look-glyph">{{ s.icon ?? "✦" }}</span>
-          <span class="nx-look-name">{{ s.label }}</span>
-        </button>
-      </div>
-      <template v-if="visualStyleDraft === 'custom'">
-        <label class="nx-label" for="nx-custom-look">Describe the look <span class="nx-dim">{{ customVisualStyleSaveState === 'pending' ? 'saving…' : customVisualStyleSaveState === 'saved' ? 'saved' : '' }}</span></label>
-        <textarea id="nx-custom-look" v-model="customVisualStyleDraft" class="nx-input" rows="2" maxlength="500" placeholder="moody film stills, neon alleys, 35mm grain"></textarea>
-      </template>
-      <p v-if="lookChanged" class="nx-hint nx-hint-warn">Look changed. Regenerate to draw it.</p>
-      <template v-if="isAi">
-        <button class="nx-btn nx-outline nx-full" type="button" @click="bulkStyleOpen ? (bulkStyleOpen = false) : openBulkStyle()">
-          {{ bulkStyleOpen ? "Hide" : "Use this look on all scenes" }}
-        </button>
-        <div v-if="bulkStyleOpen" class="nx-quote">
-          <p v-if="bulkStyleLoading" class="nx-hint">Working out the price…</p>
-          <p v-else-if="bulkStyleError" class="nx-err">{{ bulkStyleError }}</p>
-          <template v-else-if="bulkStylePreview">
-            <p v-if="!bulkStylePreview.eligible_count" class="nx-hint">Every scene is already being drawn.</p>
-            <template v-else>
-              <div class="nx-row"><span>{{ bulkStylePreview.eligible_count }} scene{{ bulkStylePreview.eligible_count === 1 ? "" : "s" }}</span><b :class="{ 'nx-short': !bulkStylePreview.affordable }">{{ bulkStylePreview.total_cost }} credits</b></div>
-              <div class="nx-row nx-dim"><span>Your balance</span><span>{{ bulkStylePreview.balance }} credits</span></div>
-              <p class="nx-hint">Each scene is redrawn from its own description; only the look changes.<template v-if="bulkStylePreview.character_count"> Scenes with a character cost more.</template></p>
-              <p v-if="!bulkStylePreview.affordable" class="nx-err">You're {{ bulkStylePreview.shortage }} credits short.</p>
-              <ul v-if="bulkStylePreview.skipped.length" class="nx-skips">
-                <li v-for="s in bulkStylePreview.skipped" :key="s.scene_id">Scene {{ s.order }} skipped: {{ s.reason }}</li>
-              </ul>
-              <button class="nx-btn nx-primary nx-full" type="button" :disabled="bulkStyleSubmitting || !bulkStylePreview.affordable" @click="submitBulkStyle">
-                {{ bulkStyleSubmitting ? "Starting…" : `Redraw ${bulkStylePreview.eligible_count} scenes · ${bulkStylePreview.total_cost} cr` }}
-              </button>
-            </template>
-          </template>
-        </div>
-      </template>
-    </section>
-
-    <section class="nx-sec">
-      <button class="nx-disclosure" type="button" :aria-expanded="advanced" @click="advanced = !advanced">
-        <span>Advanced</span><span class="nx-dim">model, prompt</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true" :class="advanced ? 'is-open' : ''"><path d="M6 9l6 6 6-6" /></svg>
-      </button>
-      <template v-if="advanced">
-        <span class="nx-label">Model</span>
+      <!-- Model, with the server's price for each. -->
+      <div v-else-if="menu === 'model'" class="nx-pop">
         <div class="nx-list">
           <button v-for="m in availableImageModelsEditor" :key="m.key" type="button"
             :class="['nx-list-row', aiImageModelKey === m.key ? 'on' : '']"
             :disabled="m.requires_reference && !activeSceneHasCharacter"
-            @click="aiImageModelKey = m.key">
+            @click="aiImageModelKey = m.key; menu = null">
             <span class="nx-list-main"><b>{{ m.label }}</b><span>{{ m.sub }}{{ m.requires_reference && !activeSceneHasCharacter ? " · needs a character" : "" }}</span></span>
-            <span class="nx-num">{{ imageModelCost(m.key) ?? "–" }} cr · {{ m.render }}</span>
+            <span class="nx-num">{{ imageModelCost(m.key) ?? "–" }} cr</span>
           </button>
         </div>
         <p v-if="characterPriced" class="nx-hint">With a character photo every model costs the same.</p>
-        <label class="nx-label" for="nx-prompt">Prompt (optional)</label>
-        <textarea id="nx-prompt" v-model="aiImagePromptOverride" class="nx-input" rows="2" maxlength="1000" placeholder="Leave empty to draw from the scene's script"></textarea>
+      </div>
+    </div>
+
+    <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
+    <p v-if="lookChanged && !editing" class="nx-hint nx-hint-warn">Look changed. Draw again to use it.</p>
+    <p v-if="aiImageError || activeSceneVisualGenerationError" class="nx-err">{{ aiImageError || activeSceneVisualGenerationError }}</p>
+    <p v-if="editing && editError" class="nx-err">{{ editError }}</p>
+
+    <div v-if="bulkStyleOpen" class="nx-quote">
+      <div class="nx-row"><b>{{ lookLabel(lookKey) }} on all scenes</b><button class="nx-link" type="button" @click="bulkStyleOpen = false">Close</button></div>
+      <p v-if="bulkStyleLoading" class="nx-hint">Working out the price…</p>
+      <p v-else-if="bulkStyleError" class="nx-err">{{ bulkStyleError }}</p>
+      <template v-else-if="bulkStylePreview">
+        <p v-if="!bulkStylePreview.eligible_count" class="nx-hint">Every scene is already being drawn.</p>
+        <template v-else>
+          <div class="nx-row"><span>{{ bulkStylePreview.eligible_count }} scene{{ bulkStylePreview.eligible_count === 1 ? "" : "s" }}</span><b :class="{ 'nx-short': !bulkStylePreview.affordable }">{{ bulkStylePreview.total_cost }} credits</b></div>
+          <div class="nx-row nx-dim"><span>Your balance</span><span>{{ bulkStylePreview.balance }} credits</span></div>
+          <p class="nx-hint">Each scene is redrawn from its own description; only the look changes.<template v-if="bulkStylePreview.character_count"> Scenes with a character cost more.</template></p>
+          <p v-if="!bulkStylePreview.affordable" class="nx-err">You're {{ bulkStylePreview.shortage }} credits short.</p>
+          <ul v-if="bulkStylePreview.skipped.length" class="nx-skips">
+            <li v-for="sk in bulkStylePreview.skipped" :key="sk.scene_id">Scene {{ sk.order }} skipped: {{ sk.reason }}</li>
+          </ul>
+          <button class="nx-btn nx-primary nx-full" type="button" :disabled="bulkStyleSubmitting || !bulkStylePreview.affordable" @click="submitBulkStyle">
+            {{ bulkStyleSubmitting ? "Starting…" : `Redraw ${bulkStylePreview.eligible_count} scenes · ${bulkStylePreview.total_cost} cr` }}
+          </button>
+        </template>
       </template>
-    </section>
+    </div>
   </template>
 
   <!-- Uploads -->
