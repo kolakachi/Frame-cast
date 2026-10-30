@@ -424,6 +424,11 @@ Route::prefix('v1')->group(function (): void {
                 'ai_character' => \App\Services\CreditService::AI_CHARACTER,
                 // "Change something, keep the shot" runs the edit model against the scene's own picture.
                 'image_edit' => $images->referenceGenerationCost(\App\Jobs\EditSceneImageJob::EDIT_MODEL),
+                // The AI video tab's storyboard: three frames, priced per model, with and without a reference image.
+                'storyboard' => collect(\App\Jobs\DrawStoryboardJob::MODELS)->mapWithKeys(fn (string $m) => [$m => [
+                    'reference' => \App\Jobs\DrawStoryboardJob::cost($m, true),
+                    'no_reference' => \App\Jobs\DrawStoryboardJob::cost($m, false),
+                ]])->all(),
                 'pdf_vision_page' => \App\Services\CreditService::PDF_VISION_PAGE,
                 'image_models' => $imageModels,
                 'video_tiers'  => $videoTiers,
@@ -771,6 +776,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{sceneId}/animate/revert', [SceneController::class, 'revertAnimation'])->whereNumber('sceneId');
             Route::post('/{sceneId}/animate/cancel', [SceneController::class, 'cancelAnimation'])->whereNumber('sceneId');
             Route::post('/{sceneId}/animate/use-history', [SceneController::class, 'useAnimationFromHistory'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/storyboard', [SceneController::class, 'storyboard'])->whereNumber('sceneId');
             Route::post('/{sceneId}/regenerate-music', [SceneController::class, 'regenerateMusic'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');

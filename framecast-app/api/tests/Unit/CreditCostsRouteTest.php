@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Jobs\DrawStoryboardJob;
 use App\Jobs\EditSceneImageJob;
 use App\Services\CreditService;
 use App\Services\Generation\Image\ImageAdapterFactory;
@@ -40,5 +41,18 @@ class CreditCostsRouteTest extends TestCase
         }
         // Doubling starts at ten seconds: Veo's 8 second clip is the short price.
         $this->assertSame(CreditService::animationCost('veo_fast', '720p', 5), CreditService::animationCost('veo_fast', '720p', 8));
+    }
+
+    public function test_storyboard_is_priced_as_the_job_charges(): void
+    {
+        $storyboard = $this->costs()['storyboard'];
+
+        foreach (DrawStoryboardJob::MODELS as $model) {
+            $this->assertSame(DrawStoryboardJob::cost($model, true), $storyboard[$model]['reference'], "{$model} with a reference");
+            $this->assertSame(DrawStoryboardJob::cost($model, false), $storyboard[$model]['no_reference'], "{$model} from words");
+        }
+        // Nano Banana, the default: three frames at its picture price.
+        $nano = app(ImageAdapterFactory::class)->referenceGenerationCost('nano-banana');
+        $this->assertSame(3 * $nano, $storyboard['nano-banana']['reference']);
     }
 }

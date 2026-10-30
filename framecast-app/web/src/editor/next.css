@@ -245,6 +245,22 @@
 .nx-warn-text { color: var(--fair); }
 .nx-seg-full { width: 100%; box-sizing: border-box; }
 .nx-seg-full button { flex: 1 1 0; min-width: 0; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* AI video: how to make it, and the storyboard to pick a start frame from. */
+.nx-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.nx-opt { border: 0; border-radius: 12px; background: var(--field); padding: 10px 12px; text-align: left; display: flex; flex-direction: column; gap: 4px; box-shadow: inset 0 0 0 1px var(--line); color: var(--text); }
+.nx-opt b { font-size: 13px; font-weight: 600; }
+.nx-opt span { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.nx-opt.on { box-shadow: inset 0 0 0 1.5px var(--accent); background: rgba(240, 122, 69, 0.07); }
+.nx-sb { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.nx-sb-frame { border: 0; padding: 0; background: transparent; display: flex; flex-direction: column; gap: 5px; text-align: left; min-width: 0; color: var(--text); }
+.nx-sb-frame img, .nx-sb-wait { width: 100%; aspect-ratio: 9 / 16; border-radius: 8px; object-fit: cover; background: var(--field); display: block; }
+.nx-sb-wait { animation: nx-sb-pulse 1.4s ease-in-out infinite; }
+.nx-sb-frame.on img { box-shadow: 0 0 0 2px var(--accent); }
+.nx-sb-label { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-sb-frame.on .nx-sb-label { color: var(--accent); }
+@keyframes nx-sb-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .nx-sb-wait { animation: none; } }
+
 /* Tab labels of different lengths: each takes its label's width, so "Audiogram" isn't cut. */
 .nx-seg-fit button { flex: 1 1 auto; padding: 0 6px; }
 /* The AI prompt box: a text area with its settings as pills along the bottom and the send arrow on the right. */

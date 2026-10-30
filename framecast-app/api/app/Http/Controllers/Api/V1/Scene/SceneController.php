@@ -1325,6 +1325,83 @@ class SceneController extends Controller
     }
 
     /**
+     * The AI video tab's storyboard (2026-10-30): three stills of the shot, drawn from a reference (a picked image, else
+     * the scene's own still, else the description alone), to approve before paying for motion. Charged and drawn by
+     * DrawStoryboardJob; the price here is the one the job charges.
+     */
+    public function storyboard(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'prompt'          => ['required', 'string', 'min:3', 'max:1000'],
+            'model'           => ['sometimes', 'nullable', 'string', \Illuminate\Validation\Rule::in(\App\Jobs\DrawStoryboardJob::MODELS)],
+            'source_asset_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+        $model = $validated['model'] ?? \App\Jobs\DrawStoryboardJob::DEFAULT_MODEL;
+
+        $isImage = fn (?\App\Models\Asset $a): bool => $a !== null && $a->asset_type !== 'video' && ! str_starts_with((string) $a->mime_type, 'video/');
+        if (! empty($validated['source_asset_id'])) {
+            $reference = \App\Models\Asset::query()->whereKey((int) $validated['source_asset_id'])->where('workspace_id', $user->workspace_id)->first();
+            if (! $isImage($reference)) {
+                return $this->error('bad_reference', 'Pick an image from your workspace to draw the storyboard from.', 422);
+            }
+        } else {
+            // The scene's own still: its picture now, or the still an earlier animation started from.
+            $visual = $scene->visual_asset_id ? \App\Models\Asset::query()->find((int) $scene->visual_asset_id) : null;
+            $originalId = (int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0);
+            $original = $originalId ? \App\Models\Asset::query()->find($originalId) : null;
+            $reference = $isImage($visual) ? $visual : ($isImage($original) ? $original : null);
+        }
+
+        $cost = \App\Jobs\DrawStoryboardJob::cost($model, $reference !== null);
+        $balance = $this->credits->balance((int) $user->workspace_id);
+        if ($balance < $cost) {
+            return response()->json([
+                'error' => [
+                    'code'    => 'insufficient_credits',
+                    'message' => "You need {$cost} credits to draw the storyboard. Your balance is {$balance}.",
+                    'context' => ['balance' => $balance, 'required' => $cost, 'shortage' => $cost - $balance],
+                ],
+            ], 402);
+        }
+
+        $settings = $scene->image_generation_settings_json ?? [];
+        $current = (array) ($settings['storyboard'] ?? []);
+        if (($current['status'] ?? null) === 'drawing' && ! empty($current['started_at'])
+            && \Carbon\Carbon::parse($current['started_at'])->diffInMinutes(now()) < 10) {
+            return $this->error('storyboard_in_progress', 'A storyboard is already being drawn for this scene.', 409);
+        }
+
+        $token = (string) \Illuminate\Support\Str::uuid();
+        $settings['storyboard'] = [
+            'status'             => 'drawing',
+            'token'              => $token,
+            'prompt'             => $validated['prompt'],
+            'model'              => $model,
+            'reference_asset_id' => $reference?->getKey(),
+            'frames'             => [],
+            'error'              => null,
+            'cost'               => $cost,
+            'started_at'         => now()->toIso8601String(),
+        ];
+        $scene->forceFill(['image_generation_settings_json' => $settings])->save();
+
+        \App\Jobs\DrawStoryboardJob::dispatch($scene->getKey(), $scene->project_id, $validated['prompt'], $model, $reference?->getKey(), $token);
+
+        return response()->json([
+            'data' => ['scene' => $this->serializeScene($scene->fresh()), 'cost' => $cost],
+            'meta' => [],
+        ]);
+    }
+
+    /**
      * Re-generate background music for this scene via MusicGen.
      *
      * Same job the one-shot pipeline uses; the user can call this from
@@ -1689,6 +1766,16 @@ class SceneController extends Controller
                 return $h;
             }, $settings['animation_history']);
         }
+
+        // Storyboard frames with viewable URLs (the AI video tab shows them to approve).
+        if (! empty($settings['storyboard']['frames']) && is_array($settings['storyboard']['frames'])) {
+            $frameAssets = Asset::query()->whereIn('id', collect($settings['storyboard']['frames'])->pluck('asset_id')->filter()->all())->get()->keyBy('id');
+            $settings['storyboard']['frames'] = array_values(array_map(function ($f) use ($frameAssets) {
+                $asset = $frameAssets->get((int) ($f['asset_id'] ?? 0));
+                return $asset ? $f + ['image_url' => $this->assetUrl($asset)] : $f;
+            }, $settings['storyboard']['frames']));
+        }
+        unset($settings['storyboard']['token']);
 
         // The preserved original still, enriched, so the editor renders it as
         // the first switchable card alongside the animation clips.

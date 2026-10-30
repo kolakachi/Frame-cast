@@ -3,6 +3,7 @@
 // Tabs (owner, 2026-10-30): Image · Video · Audiogram · Uploads; Image and Video each split into Stock and AI.
 // AI video is the AI picture plus animating it, so that is where Animate lives.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import api from "../../services/api";
 import { cr, useCore, usePrices } from "./core";
 
 const core = useCore();
@@ -26,7 +27,7 @@ const {
   motionSaveState, motionSaveError,
   ANIMATE_TIER_META, ANIMATE_TIER_ORDER, ANIMATE_TIER_COSTS_5S, animateTier, animateDuration, animateDurations, animateQuality,
   animateQualityOptions, animateCost, animateMotionPrompt, animateSubmitting, animateError, submitAnimate, creditCosts, tierSlow,
-  videoReference, videoReferencePicking,
+  videoReference, videoReferencePicking, normalizeScenePayload, replaceSceneInCollection,
 } = core;
 const { imageModelCost, imageCost, imageEditCost, characterPriced } = usePrices(core);
 
@@ -92,6 +93,71 @@ function makeVideo() {
   menu.value = null;
   submitAnimate({ sourceAssetId: videoReference.value?.id ?? null });
 }
+
+// ── Storyboard first: three frames from the reference (DrawStoryboardJob), then video from the picked one ──
+const makeMode = ref("storyboard");
+const FRAME_MODELS = ["nano-banana", "nano-banana-pro", "gpt-image-2"];
+const FRAME_LABELS = ["Start", "Middle", "End"];
+const frameModel = ref("nano-banana");
+const frameModelLabel = (key) => availableImageModelsEditor.value.find((m) => m.key === key)?.label
+  ?? { "nano-banana": "Nano Banana", "nano-banana-pro": "Nano Banana Pro", "gpt-image-2": "GPT Image 2" }[key] ?? key;
+const storyboardPrice = (key) => creditCosts.value?.storyboard?.[key]?.[hasReference.value ? "reference" : "no_reference"] ?? null;
+const storyboard = computed(() => activeScene.value?.image_generation_settings?.storyboard ?? null);
+const storyboardFrames = computed(() => storyboard.value?.frames ?? []);
+const storyboardReady = computed(() => storyboard.value?.status === "ready" && storyboardFrames.value.length > 0);
+const startFrame = ref(0);
+const storyboardSubmitting = ref(false);
+const storyboardError = ref("");
+const canDrawStoryboard = computed(() => animateMotionPrompt.value.trim().length >= 3 && !storyboardSubmitting.value
+  && storyboard.value?.status !== "drawing" && !activeSceneAnimationPending.value);
+const canMakeFromFrame = computed(() => storyboardReady.value && !!storyboardFrames.value[startFrame.value]?.asset_id
+  && !animateSubmitting.value && !activeSceneAnimationPending.value);
+
+async function refreshScene(sceneId) {
+  const { data } = await api.get(`/scenes/${sceneId}/preview`);
+  const scene = normalizeScenePayload(data?.data?.scene ?? null);
+  if (scene) replaceSceneInCollection(scene);
+}
+async function drawStoryboard() {
+  const scene = activeScene.value;
+  if (!scene) return;
+  menu.value = null;
+  storyboardSubmitting.value = true;
+  storyboardError.value = "";
+  try {
+    const { data } = await api.post(`/scenes/${scene.id}/storyboard`, {
+      prompt: animateMotionPrompt.value.trim(),
+      model: frameModel.value,
+      ...(videoReference.value?.id ? { source_asset_id: videoReference.value.id } : {}),
+    });
+    const updated = normalizeScenePayload(data?.data?.scene ?? null);
+    if (updated) replaceSceneInCollection(updated);
+    startFrame.value = 0;
+  } catch (err) {
+    storyboardError.value = err.response?.data?.error?.message ?? "The storyboard could not start.";
+  } finally {
+    storyboardSubmitting.value = false;
+  }
+}
+function makeVideoFromFrame() {
+  menu.value = null;
+  submitAnimate({ sourceAssetId: storyboardFrames.value[startFrame.value]?.asset_id ?? null });
+}
+// While frames are being drawn, ask for the scene every few seconds; frames loaded without pictures (a project load
+// carries ids only) are fetched once.
+let storyboardTimer = null;
+function pollStoryboard(sceneId, attempt = 0) {
+  clearTimeout(storyboardTimer);
+  const drawing = storyboard.value?.status === "drawing";
+  const missing = storyboardFrames.value.some((f) => f.asset_id && !f.image_url);
+  if (!sceneId || !videoAi.value || activeScene.value?.id !== sceneId || attempt > 90 || (!drawing && !missing) || (!drawing && attempt > 2)) return;
+  storyboardTimer = setTimeout(async () => {
+    await refreshScene(sceneId).catch(() => {});
+    pollStoryboard(sceneId, attempt + 1);
+  }, drawing ? 4000 : 1500);
+}
+watch(() => [activeScene.value?.id, storyboard.value?.status, videoAi.value], ([sceneId]) => pollStoryboard(sceneId), { immediate: true });
+onBeforeUnmount(() => clearTimeout(storyboardTimer));
 const generating = computed(() => aiImagePending.value || activeSceneAIImagePending.value);
 // The look the next picture is drawn in: the one picked here, else the one it was last drawn in.
 const lookKey = computed(() => visualStyleDraft.value ?? activeScene.value?.visual_style ?? activeScene.value?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null);
@@ -126,7 +192,7 @@ const lookRow = computed(() => stylePickerRows.value.find((r) => r.key === lookK
 const modelRow = computed(() => availableImageModelsEditor.value.find((m) => m.key === aiImageModelKey.value) ?? null);
 // A scene with an AI picture can also be edited in place (the shot kept, one thing changed).
 const aiMode = ref("new");
-watch(() => activeScene.value?.id, () => { aiMode.value = "new"; menu.value = null; videoReference.value = null; });
+watch(() => activeScene.value?.id, () => { aiMode.value = "new"; menu.value = null; videoReference.value = null; startFrame.value = 0; storyboardError.value = ""; });
 const canEdit = computed(() => isAi.value && !!activeScene.value?.visual_asset_id);
 const editing = computed(() => canEdit.value && aiMode.value === "edit");
 const sending = computed(() => (editing.value ? editPending.value : generating.value));
@@ -193,8 +259,8 @@ function send() {
     <p v-if="visualSwapError" class="nx-err">{{ visualSwapError }}</p>
   </template>
 
-  <!-- AI video (owner, 2026-10-30): describe the shot, start from a reference image, any video model, a length.
-       This push is "straight to video"; storyboard-first and no-reference come next. -->
+  <!-- AI video (owner, 2026-10-30): describe the shot, a reference image, any video model, a length; then either a
+       3-frame storyboard to pick from first, or straight to video. -->
   <template v-else-if="selectedSwapVisualSource === 'AI Image' && videoAi">
     <div v-if="activeSceneAnimationPending" class="nx-quote">
       <div class="nx-row"><b>Animating with {{ ANIMATE_TIER_META[runningTier]?.name || "your model" }}</b><button class="nx-link" type="button" @click="cancelAnimation">Cancel</button></div>
@@ -220,6 +286,11 @@ function send() {
         <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vlen'" @click="toggleMenu('vlen')">
           <span class="nx-pdrop-k">Length</span>
           <span>{{ animateDuration }} s · {{ qualityLabel }}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <button v-if="makeMode === 'storyboard'" type="button" class="nx-pdrop" :aria-expanded="menu === 'vframes'" @click="toggleMenu('vframes')">
+          <span class="nx-pdrop-k">Frames</span>
+          <span>{{ frameModelLabel(frameModel) }}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
       </div>
@@ -267,13 +338,66 @@ function send() {
         </div>
         <p v-if="animateDurations.some((d) => d >= 10)" class="nx-hint">A 10 second clip costs twice as much.</p>
       </div>
+
+      <!-- Frames: the image model that draws the storyboard, priced for all three frames. -->
+      <div v-else-if="menu === 'vframes'" class="nx-pop">
+        <div class="nx-list">
+          <button v-for="m in FRAME_MODELS" :key="m" type="button" :class="['nx-list-row', frameModel === m ? 'on' : '']" @click="frameModel = m; menu = null">
+            <span class="nx-list-main"><b>{{ frameModelLabel(m) }}</b><span>3 frames</span></span>
+            <span class="nx-num">{{ storyboardPrice(m) ?? "–" }} cr</span>
+          </button>
+        </div>
+      </div>
     </div>
 
-    <p v-if="!hasReference" class="nx-hint">This scene has no picture to start from. Choose an image above, or draw one in Image › AI image.</p>
-    <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo" @click="makeVideo">
-      {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
-    </button>
-    <p v-if="hasReference && !activeSceneAnimationPending" class="nx-hint">About {{ (ANIMATE_TIER_META[animateTier]?.render || "").replace("~", "") }}. The clip replaces this scene's picture; the picture stays in Versions.</p>
+    <span class="nx-label">How to make it</span>
+    <div class="nx-choice" role="radiogroup" aria-label="How to make it">
+      <button type="button" role="radio" :aria-checked="makeMode === 'storyboard'" :class="['nx-opt', makeMode === 'storyboard' ? 'on' : '']" @click="makeMode = 'storyboard'">
+        <b>Storyboard first</b><span>See 3 frames and pick one before paying for motion.</span>
+      </button>
+      <button type="button" role="radio" :aria-checked="makeMode === 'direct'" :class="['nx-opt', makeMode === 'direct' ? 'on' : '']" @click="makeMode = 'direct'">
+        <b>Straight to video</b><span>One step, from the reference.</span>
+      </button>
+    </div>
+
+    <!-- Storyboard first: draw, then pick the frame the video starts from. -->
+    <template v-if="makeMode === 'storyboard'">
+      <template v-if="storyboard && storyboard.status !== 'failed'">
+        <div class="nx-row"><span class="nx-label">Storyboard · {{ frameModelLabel(storyboard.model) }}</span><span v-if="storyboard.status === 'drawing'" class="nx-num">Drawing {{ Math.min(storyboardFrames.length + 1, 3) }} of 3…</span></div>
+        <div class="nx-sb" role="radiogroup" aria-label="The frame the video starts from">
+          <button v-for="(label, i) in FRAME_LABELS" :key="label" type="button" role="radio" :aria-checked="startFrame === i"
+            :class="['nx-sb-frame', startFrame === i && storyboardFrames[i] ? 'on' : '']" :disabled="!storyboardFrames[i]?.image_url" @click="startFrame = i">
+            <img v-if="storyboardFrames[i]?.image_url" :src="storyboardFrames[i].image_url" :alt="`${label} frame`" />
+            <span v-else class="nx-sb-wait"></span>
+            <span class="nx-sb-label">{{ startFrame === i && storyboardFrames[i] ? "Starts here" : label }}</span>
+          </button>
+        </div>
+      </template>
+      <p v-if="storyboard?.status === 'failed'" class="nx-err">{{ storyboard.error || "The storyboard could not be drawn. Your credits have not been charged." }}</p>
+      <template v-if="storyboardReady">
+        <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeFromFrame" @click="makeVideoFromFrame">
+          {{ animateSubmitting ? "Starting…" : `Make the video from this${cr(animateCost)}` }}
+        </button>
+        <button class="nx-btn nx-full" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">{{ `Redraw the storyboard${cr(storyboardPrice(frameModel))}` }}</button>
+        <p class="nx-hint">Pick the frame the video starts from. Changed the description? Redraw first.</p>
+      </template>
+      <template v-else>
+        <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">
+          {{ storyboardSubmitting || storyboard?.status === "drawing" ? "Drawing…" : `Draw the storyboard${cr(storyboardPrice(frameModel))}` }}
+        </button>
+        <p class="nx-hint">{{ animateMotionPrompt.trim().length < 3 ? "Describe the shot first." : hasReference ? "About a minute. Drawn from the reference; nothing moves until you pick a frame." : "About a minute. No reference, so it's drawn from the description." }}</p>
+      </template>
+      <p v-if="storyboardError" class="nx-err">{{ storyboardError }}</p>
+    </template>
+
+    <!-- Straight to video. -->
+    <template v-else>
+      <p v-if="!hasReference" class="nx-hint">This scene has no picture to start from. Choose an image above, draw one in Image › AI image, or use Storyboard first.</p>
+      <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo" @click="makeVideo">
+        {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
+      </button>
+      <p v-if="hasReference && !activeSceneAnimationPending" class="nx-hint">About {{ (ANIMATE_TIER_META[animateTier]?.render || "").replace("~", "") }}. The clip replaces this scene's picture; the picture stays in Versions.</p>
+    </template>
     <p v-if="animateError" class="nx-err">{{ animateError }}</p>
     <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
 
