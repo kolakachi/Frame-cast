@@ -837,21 +837,11 @@ function wizardNext() {
   wizardStep.value = Math.min(3, wizardStep.value + 1)
 }
 
+// Back moves within a path only (Source → Niche, Content → Source). The first screen of each path (Scratch's
+// setup, the brief's niche, the one-shot prompt) has no Back: once a way in is picked, the three cards are behind
+// you (owner, 2026-10-30). Close with the X instead.
 function wizardBack() {
-  // Blank-path users (step 3 with sourceType='blank') go back to the path
-  // picker, not the niche / source-type steps they never saw.
-  if (wizardStep.value === 3 && wizardSourceType.value === 'blank') {
-    wizardSourceType.value = 'prompt'
-    wizardStep.value = 0
-    return
-  }
-  // One-shot users (step 4) go back to the path picker too.
-  if (wizardStep.value === 4) {
-    wizardSourceType.value = 'prompt'
-    wizardStep.value = 0
-    return
-  }
-  wizardStep.value = Math.max(0, wizardStep.value - 1)
+  wizardStep.value = Math.max(1, wizardStep.value - 1)
 }
 
 // Step-0 handlers — picking a path.
@@ -1335,6 +1325,12 @@ defineExpose({ open, openPath })
         @click="requestClose"
       >&#10005;</button>
 
+      <div v-if="confirmDiscard && wizardStep !== 0" class="wiz-discard" role="alert">
+        <span>Discard what you've entered?</span>
+        <button class="btn btn-ghost" type="button" @click="confirmDiscard = false">Keep editing</button>
+        <button class="btn btn-ghost danger-btn" type="button" @click="close">Discard</button>
+      </div>
+
       <!-- Step indicator — hidden on the path picker (step 0) and on the
            blank single-step form (since they're one-screen flows). -->
       <div v-if="wizardStep >= 1 && wizardStep <= 3 && wizardSourceType !== 'blank'" class="wizard-steps">
@@ -1576,7 +1572,6 @@ defineExpose({ open, openPath })
         <div v-if="wizardCreateError" class="modal-error" style="margin-top:14px;">{{ wizardCreateError }}</div>
 
         <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
           <button class="btn btn-primary" type="button" :disabled="!canSubmitOneShot || oneShotPlanLoading" @click="requestOneShotPlan">
             {{ oneShotPlanLoading ? 'Drafting plan…' : 'Review plan →' }}
           </button>
@@ -1691,7 +1686,6 @@ defineExpose({ open, openPath })
           </div>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" type="button" @click="wizardStep = 0">← Back</button>
           <button class="btn btn-primary" type="button" :disabled="!selectedNicheId && !customNicheSelected" @click="wizardNext">Continue →</button>
         </div>
       </div>
@@ -2334,7 +2328,7 @@ defineExpose({ open, openPath })
               Balance {{ creditBalance.toLocaleString() }}<span v-if="!canAffordEstimate" style="color:#f87171"> · not enough</span>
             </span>
           </div>
-          <button class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
+          <button v-if="wizardSourceType !== 'blank'" class="btn btn-ghost" type="button" @click="wizardBack">← Back</button>
           <button
             v-if="!canAffordEstimate && wizardSourceType !== 'blank'"
             class="btn btn-primary"
@@ -2382,6 +2376,9 @@ defineExpose({ open, openPath })
 .wizard-close:hover { background: var(--color-surface-2, rgba(255,255,255,0.06)); color: var(--color-text-primary); }
 .modal-subtitle { margin-top: 4px; margin-bottom: 16px; font-size: 13px; color: var(--color-text-muted); }
 .modal-actions { position: sticky; bottom: 0; z-index: 6; margin: 20px -24px 0; padding: 12px 24px; background: var(--color-bg-panel); border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.wiz-discard { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(248,113,113,.3); background: rgba(248,113,113,.08); font-size: 13px; color: var(--color-text-primary); }
+.wiz-discard span { margin-right: auto; }
+.wiz-discard .danger-btn { color: #ff6b6b; }
 .modal-actions .credit-estimate { margin: 0 auto 0 0; padding: 0; border: 0; background: none; display: grid; gap: 1px; }
 .modal-actions .credit-estimate-warn .credit-est-range { color: #f87171; }
 .wiz-pair { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; }
