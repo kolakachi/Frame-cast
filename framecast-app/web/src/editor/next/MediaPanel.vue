@@ -1,6 +1,8 @@
 <script setup>
 // Media: the scene's picture (classic "Visual Source" + "Motion"). This scene only.
-import { computed, ref } from "vue";
+// Tabs (owner, 2026-10-30): Image · Video · Audiogram · Uploads; Image and Video each split into Stock and AI.
+// AI video is the AI picture plus animating it, so that is where Animate lives.
+import { computed, ref, watch } from "vue";
 import { cr, useCore, usePrices } from "./core";
 
 const core = useCore();
@@ -25,14 +27,43 @@ const {
 } = core;
 const { imageModelCost, imageCost, imageEditCost, characterPriced } = usePrices(core);
 
-const SOURCES = [
-  { key: "Stock Video", label: "Video" },
-  { key: "Stock Image", label: "Image" },
-  { key: "AI Image", label: "AI" },
-  { key: "My Assets", label: "Uploads" },
-  { key: "Audiogram", label: "Audiogram" },
+const GROUPS = [
+  { key: "image", label: "Image" },
+  { key: "video", label: "Video" },
+  { key: "audiogram", label: "Audiogram" },
+  { key: "uploads", label: "Uploads" },
 ];
 const isAi = computed(() => activeScene.value?.visual_type === "ai_image");
+// The core keeps one source key; "AI Image" serves both AI image and AI video, told apart here.
+const aiAsVideo = ref(false);
+watch(() => activeScene.value?.id, () => { aiAsVideo.value = isAi.value && activeSceneVisualIsVideo.value; }, { immediate: true });
+const group = computed(() => {
+  const src = selectedSwapVisualSource.value;
+  if (src === "Stock Video") return "video";
+  if (src === "Stock Image") return "image";
+  if (src === "AI Image") return aiAsVideo.value ? "video" : "image";
+  if (src === "Audiogram") return "audiogram";
+  return "uploads";
+});
+const sub = computed(() => (selectedSwapVisualSource.value === "AI Image" ? "ai" : "stock"));
+function pick(g, s) {
+  if (g === "audiogram") selectedSwapVisualSource.value = "Audiogram";
+  else if (g === "uploads") selectedSwapVisualSource.value = "My Assets";
+  else {
+    aiAsVideo.value = g === "video";
+    selectedSwapVisualSource.value = s === "ai" ? "AI Image" : g === "video" ? "Stock Video" : "Stock Image";
+  }
+}
+// Switching between Image and Video keeps Stock or AI; coming from Audiogram or Uploads, AI scenes land on AI.
+function pickGroup(g) {
+  pick(g, group.value === "image" || group.value === "video" ? sub.value : isAi.value ? "ai" : "stock");
+}
+const videoAi = computed(() => group.value === "video" && sub.value === "ai");
+// A video that came from animating a still (the core calls any video "animated", stock clips too).
+const animatedFromStill = computed(() => activeSceneAlreadyAnimated.value
+  && (isAi.value || canRevertAnimation.value || activeSceneAnimationHistory.value.length > 0));
+// Something to animate: a still picture now, or an earlier animation to run again.
+const canAnimateHere = computed(() => canAnimateActiveScene.value && (activeSceneIsStillImage.value || animatedFromStill.value));
 const generating = computed(() => aiImagePending.value || activeSceneAIImagePending.value);
 // The look the next picture is drawn in: the one picked here, else the one it was last drawn in.
 const lookKey = computed(() => visualStyleDraft.value ?? activeScene.value?.visual_style ?? activeScene.value?.image_generation_settings?.style ?? project.value?.ai_broll_style ?? null);
@@ -75,9 +106,13 @@ const advanced = ref(false);
     <span v-else-if="activeSceneAnimationPending" class="nx-current-note">Animating…</span>
   </div>
 
-  <div class="nx-seg nx-seg-full nx-seg-fit" role="tablist" aria-label="Where the picture comes from">
-    <button v-for="s in SOURCES" :key="s.key" type="button" role="tab" :aria-selected="selectedSwapVisualSource === s.key"
-      :class="selectedSwapVisualSource === s.key ? 'on' : ''" @click="selectedSwapVisualSource = s.key">{{ s.label }}</button>
+  <div class="nx-seg nx-seg-full nx-seg-fit" role="tablist" aria-label="What the scene shows">
+    <button v-for="g in GROUPS" :key="g.key" type="button" role="tab" :aria-selected="group === g.key"
+      :class="group === g.key ? 'on' : ''" @click="pickGroup(g.key)">{{ g.label }}</button>
+  </div>
+  <div v-if="group === 'image' || group === 'video'" class="nx-subtabs" role="tablist" :aria-label="group === 'video' ? 'Kind of video' : 'Kind of image'">
+    <button type="button" role="tab" :aria-selected="sub === 'stock'" :class="sub === 'stock' ? 'on' : ''" @click="pick(group, 'stock')">{{ group === "video" ? "Stock videos" : "Stock images" }}</button>
+    <button type="button" role="tab" :aria-selected="sub === 'ai'" :class="sub === 'ai' ? 'on' : ''" @click="pick(group, 'ai')">{{ group === "video" ? "AI video" : "AI image" }}</button>
   </div>
 
   <!-- Stock video -->
@@ -97,10 +132,7 @@ const advanced = ref(false);
     <label class="nx-label" for="nx-q-image">Search for</label>
     <textarea id="nx-q-image" v-model="visualQueryDraft" class="nx-input" rows="2" placeholder="dark forest with fog. Leave empty to search from the script."></textarea>
     <button class="nx-btn nx-full" type="button" :disabled="visualSwapPending" @click="swapVisual">{{ visualSwapPending ? "Finding…" : "Find a new image" }}</button>
-    <p class="nx-hint">Stock photos are free.</p>
-    <button v-if="canAnimateActiveScene && !activeSceneAnimationPending && !activeSceneVisualIsVideo" class="nx-btn nx-outline nx-full" type="button" @click="openAnimateModal">
-      {{ activeSceneAlreadyAnimated ? "Animate again" : "Animate this image" }}
-    </button>
+    <p class="nx-hint">Stock photos are free. To bring one to life, use Video › AI video.</p>
     <p v-if="visualSwapError" class="nx-err">{{ visualSwapError }}</p>
   </template>
 
@@ -137,16 +169,23 @@ const advanced = ref(false);
       </div>
     </div>
 
+    <!-- AI video: animate the scene's picture, or draw one first. AI image: draw and redraw stills. -->
     <div class="nx-actions">
-      <button class="nx-btn nx-primary" type="button" :disabled="generating || activeSceneAnimationPending" @click="generateAIImage">
+      <template v-if="videoAi">
+        <button v-if="activeSceneAnimationPending" class="nx-btn" type="button" @click="cancelAnimation">Cancel animation</button>
+        <button v-else-if="canAnimateHere" class="nx-btn nx-primary" type="button" :disabled="generating" @click="openAnimateModal">
+          {{ animatedFromStill ? "Animate again" : "Animate this picture" }}
+        </button>
+        <button :class="['nx-btn', !canAnimateHere && !activeSceneAnimationPending ? 'nx-primary' : '']" type="button" :disabled="generating || activeSceneAnimationPending" @click="generateAIImage">
+          {{ generating ? "Drawing…" : `${isAi ? "Draw a new picture" : "Draw a picture"}${cr(imageCost)}` }}
+        </button>
+      </template>
+      <button v-else class="nx-btn nx-primary" type="button" :disabled="generating || activeSceneAnimationPending" @click="generateAIImage">
         {{ generating ? "Drawing…" : `${isAi ? "Regenerate" : "Generate"}${cr(imageCost)}` }}
       </button>
-      <button v-if="isAi && canAnimateActiveScene && !activeSceneAnimationPending" class="nx-btn" type="button" :disabled="generating" @click="openAnimateModal">
-        {{ activeSceneAlreadyAnimated ? "Animate again" : "Animate" }}
-      </button>
-      <button v-else-if="activeSceneAnimationPending" class="nx-btn" type="button" @click="cancelAnimation">Cancel animation</button>
       <button v-if="canRevertAnimation && !activeSceneAnimationPending" class="nx-btn" type="button" :disabled="generating" title="Back to the still picture" @click="revertAnimation">Use the still</button>
     </div>
+    <p v-if="videoAi && !canAnimateHere && !activeSceneAnimationPending && !generating" class="nx-hint">An AI video starts from a picture: draw one, then animate it. You'll see the price of the motion before it starts.</p>
     <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
     <p v-if="aiImageError || activeSceneVisualGenerationError" class="nx-err">{{ aiImageError || activeSceneVisualGenerationError }}</p>
     <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
@@ -156,7 +195,7 @@ const advanced = ref(false);
       <button class="nx-mini" type="button" :disabled="lipSyncRegenerating || aiImagePending" @click="regenerateLipSync">{{ lipSyncRegenerating ? "Syncing…" : "Sync the lips again" }}</button>
     </div>
 
-    <section v-if="activeSceneAnimationHistory.length" class="nx-sec">
+    <section v-if="videoAi && activeSceneAnimationHistory.length" class="nx-sec">
       <span class="nx-label">Versions</span>
       <div class="nx-versions">
         <button v-if="activeSceneAnimationOriginal" type="button" :class="['nx-version', activeScene?.visual_asset_id === activeSceneAnimationOriginal.asset_id ? 'on' : '']"
@@ -172,7 +211,7 @@ const advanced = ref(false);
       </div>
     </section>
 
-    <section v-if="isAi && activeScene?.visual_asset_id" class="nx-sec">
+    <section v-if="!videoAi && isAi && activeScene?.visual_asset_id" class="nx-sec">
       <label class="nx-label" for="nx-edit">Change something, keep the shot</label>
       <div class="nx-chips">
         <button v-for="s in EDIT_SUGGESTIONS" :key="s" type="button" :class="['nx-chip', editInstruction === s ? 'on' : '']" @click="editInstruction = s">{{ s }}</button>
