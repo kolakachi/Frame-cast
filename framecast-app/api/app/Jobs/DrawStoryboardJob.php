@@ -21,7 +21,8 @@ use RuntimeException;
  * The AI video tab's storyboard (owner, 2026-10-30): three stills of the shot (start, middle, end) to approve before
  * paying for motion. The description is first read as three moments (StoryboardBeats). Frame 1 is drawn from the
  * reference image (or the description alone when there is none); frames 2 and 3 are each drawn from the frame before,
- * so people, place and light carry through. The user picks the frame the video starts from.
+ * so people, place and light carry through. The storyboard is the shot split in parts (owner, 2026-10-31): the video
+ * is one clip from the first frame to the last, on a model that takes a last frame.
  *
  * Billing follows EditSceneImageJob: one deduction for all three frames up front, the whole amount back if any frame
  * fails, so a storyboard is either delivered or free. State lives on the scene under image_generation_settings_json
@@ -102,7 +103,7 @@ class DrawStoryboardJob implements ShouldQueue
         $previous = $reference;
 
         // The shot as three moments (what each frame shows, what stays the same); kept on the storyboard so the video
-        // is asked for the motion from the picked frame. Without it the frames are drawn from the description alone.
+        // is told what happens between the frames. Without it the frames are drawn from the description alone.
         $beats = app(StoryboardBeats::class)->plan($this->prompt, $reference, $workspaceId);
         if ($beats !== null) {
             $scene->refresh();

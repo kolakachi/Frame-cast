@@ -6721,8 +6721,9 @@ export function useEditorCore() {
   }
 
   // `sourceAssetId`: start from another image in the workspace (the new editor's AI video tab) instead of the scene's still.
-  // `motionPrompt`: what moves, when it differs from the description typed (a storyboard frame's motion to the end).
-  async function submitAnimate({ sourceAssetId = null, motionPrompt = null } = {}) {
+  // `endAssetId`: the still the clip ends on (a storyboard's last frame). `motionPrompt`: what moves, when it differs
+  // from the description typed (the storyboard's planned motion).
+  async function submitAnimate({ sourceAssetId = null, endAssetId = null, motionPrompt = null } = {}) {
     const scene = activeScene.value;
     if (!scene) return;
     animateSubmitting.value = true;
@@ -6730,6 +6731,7 @@ export function useEditorCore() {
     try {
       const response = await api.post(`/scenes/${scene.id}/animate`, {
         ...(sourceAssetId ? { source_asset_id: sourceAssetId } : {}),
+        ...(endAssetId ? { end_asset_id: endAssetId } : {}),
         tier: animateTier.value,
         duration_seconds: animateDuration.value,
         motion_prompt: motionPrompt || animateMotionPrompt.value.trim() || null,

@@ -4,7 +4,8 @@ namespace Tests\Unit;
 
 use App\Jobs\DrawStoryboardJob;
 use App\Services\Generation\StoryboardBeats;
-use PHPUnit\Framework\TestCase;
+use App\Services\Generation\Video\ReplicateI2VAdapter;
+use Tests\TestCase;
 
 /** The storyboard is drawn from three planned moments, not the description three times (owner, 2026-10-31). */
 class StoryboardBeatsTest extends TestCase
@@ -33,5 +34,19 @@ class StoryboardBeatsTest extends TestCase
 
         $this->assertStringContainsString('the previous frame of the same shot', DrawStoryboardJob::beatPrompt($beats, 2, true, true));
         $this->assertStringNotContainsString('reference', DrawStoryboardJob::beatPrompt($beats, 0, false, false), 'no picture, no talk of one');
+    }
+
+    public function test_the_video_ends_on_the_last_frame_where_the_model_can(): void
+    {
+        $adapter = new ReplicateI2VAdapter;
+        $end = ['end_image_url' => 'https://x.test/end.png'];
+        $this->assertSame('https://x.test/end.png', $adapter->buildRequestForTier('veo_fast', 'https://x.test/a.png', 'go', 5, $end)[2]['last_frame']);
+        $this->assertSame('https://x.test/end.png', $adapter->buildRequestForTier('seedance_lite', 'https://x.test/a.png', 'go', 5, $end)[2]['last_frame_image']);
+        $kling = $adapter->buildRequestForTier('premium', 'https://x.test/a.png', 'go', 5, $end + ['kling_mode' => 'standard'])[2];
+        $this->assertSame(['https://x.test/end.png', 'pro'], [$kling['end_image'], $kling['mode']], 'Kling ends on a frame in pro mode only');
+        $wan = $adapter->buildRequestForTier('quick', 'https://x.test/a.png', 'go', 5, $end)[2];
+        $this->assertSame(['image', 'prompt', 'duration', 'resolution'], array_keys($wan), 'Wan takes no end frame');
+        $this->assertFalse(ReplicateI2VAdapter::takesEndFrame('balanced'));
+        $this->assertArrayNotHasKey('last_frame', $adapter->buildRequestForTier('veo_fast', 'https://x.test/a.png', 'go', 5, [])[2]);
     }
 }

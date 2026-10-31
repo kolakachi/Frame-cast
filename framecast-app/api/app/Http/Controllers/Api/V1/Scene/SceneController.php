@@ -1159,7 +1159,19 @@ class SceneController extends Controller
             // The new editor's AI video tab (2026-10-30): start from any image in the
             // workspace (an upload, a library picture) instead of the scene's own still.
             'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
+            // The still the clip ends on: a storyboard's end frame (2026-10-31). Only models that take a last frame.
+            'end_asset_id'     => ['sometimes', 'nullable', 'integer'],
         ]);
+        $endAsset = null;
+        if (! empty($validated['end_asset_id'])) {
+            if (! \App\Services\Generation\Video\ReplicateI2VAdapter::takesEndFrame($validated['tier'])) {
+                return $this->error('no_end_frame', 'This model can\'t end on a chosen frame. Pick Kling, Veo or Seedance to make the video from a storyboard.', 422);
+            }
+            $endAsset = \App\Models\Asset::query()->whereKey((int) $validated['end_asset_id'])->where('workspace_id', $user->workspace_id)->first();
+            if (! $endAsset || str_starts_with((string) $endAsset->mime_type, 'video/') || $endAsset->asset_type === 'video') {
+                return $this->error('bad_reference', 'The end frame must be an image from your workspace.', 422);
+            }
+        }
         // Talking spokesperson (Fabric lip-sync) is a separate path: image +
         // the scene's voiceover -> lip-synced clip. Cost is LENGTH-BASED on the
         // voiceover (Fabric bills per second), not a 5/10s i2v bucket.
@@ -1232,7 +1244,8 @@ class SceneController extends Controller
             $cost = CreditService::spokespersonCost($voiceoverSeconds, $validated['lipsync_engine'] ?? data_get($scene->image_generation_settings_json, 'lipsync_engine'));
         } else {
             // Tier × chosen quality (resolution/mode) × duration (10s = 2×).
-            $quality = CreditService::videoQuality($validated['tier'], $validated['quality'] ?? null);
+            // Kling takes an end frame in pro mode only, so that is what is charged.
+            $quality = CreditService::videoQuality($validated['tier'], $endAsset && $validated['tier'] === 'premium' ? 'pro' : ($validated['quality'] ?? null));
             $cost = CreditService::animationCost($validated['tier'], $quality, $durationSeconds);
         }
 
@@ -1311,6 +1324,7 @@ class SceneController extends Controller
                 // last run's video — so this guard passed while the job then
                 // handed a video to an image-to-video model.
                 sourceAssetId: $sourceAsset->getKey(),
+                endAssetId: $endAsset?->getKey(),
             );
         }
 

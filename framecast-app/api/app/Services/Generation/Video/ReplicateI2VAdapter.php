@@ -16,6 +16,18 @@ use RuntimeException;
 class ReplicateI2VAdapter implements I2VAdapter
 {
     private const POLL_INTERVAL_SECONDS = 3;
+    /**
+     * The input that sets the clip's last frame, per tier (Replicate schemas, read 2026-10-31). Wan 2.5 and Hailuo 2.3
+     * take a first frame only.
+     */
+    public const END_FRAME_FIELDS = [
+        'premium'       => 'end_image',
+        'veo_fast'      => 'last_frame',
+        'seedance_25'   => 'last_frame_image',
+        'seedance_lite' => 'last_frame_image',
+        'seedance_pro'  => 'last_frame_image',
+    ];
+
     private const POLL_TIMEOUT_SECONDS  = 360; // i2v can take 3–6 min on premium models
 
     public function providerKey(): string
@@ -274,7 +286,7 @@ class ReplicateI2VAdapter implements I2VAdapter
         };
         $duration = $durationSeconds <= 7 ? $validDurations[0] : $validDurations[1];
 
-        return match ($tier) {
+        $request = match ($tier) {
             // Resolution/mode are PINNED per tier so COGS is predictable and
             // matches CREDIT_CALIBRATION.md §12 — without an explicit value the
             // model picks its own default (Wan 720p, Seedance Pro 1080p, …),
@@ -369,5 +381,20 @@ class ReplicateI2VAdapter implements I2VAdapter
                 ],
             ],
         };
+
+        // A storyboard's end frame (the editor's AI video tab): the clip runs from the start still to this one.
+        $endUrl = (string) ($options['end_image_url'] ?? '');
+        if ($endUrl !== '' && ($field = self::END_FRAME_FIELDS[$tier] ?? null) !== null) {
+            $request[2][$field] = $endUrl;
+            if ($tier === 'premium') $request[2]['mode'] = 'pro'; // Kling takes an end image in pro mode only
+        }
+
+        return $request;
+    }
+
+    /** Whether a tier's model can end on a given frame. */
+    public static function takesEndFrame(string $tier): bool
+    {
+        return isset(self::END_FRAME_FIELDS[$tier]);
     }
 }

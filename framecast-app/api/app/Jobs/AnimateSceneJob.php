@@ -71,6 +71,8 @@ class AnimateSceneJob implements ShouldQueue
          * visual_asset_id and would hand a VIDEO to an image-to-video model.
          */
         public readonly ?int $sourceAssetId = null,
+        // The still the clip ends on (a storyboard's end frame); only for tiers whose model takes one.
+        public readonly ?int $endAssetId = null,
     ) {
         $this->onQueue('visual');
     }
@@ -184,6 +186,8 @@ class AnimateSceneJob implements ShouldQueue
                 ];
             } else {
                 $imageUrl = $this->publicUrlFor($sourceAsset);
+                $endAsset = $this->endAssetId && \App\Services\Generation\Video\ReplicateI2VAdapter::takesEndFrame($this->tier)
+                    ? Asset::query()->find($this->endAssetId) : null;
 
                 // Send the chosen quality under the model's input name
                 // ('resolution' for i2v, 'kling_mode' for premium/Kling).
@@ -204,12 +208,14 @@ class AnimateSceneJob implements ShouldQueue
                     },
                 ];
                 try {
-                    $result = $adapter->animate($imageUrl, (string) $this->motionPrompt, $this->tier, $this->durationSeconds, $options);
+                    $result = $adapter->animate($imageUrl, (string) $this->motionPrompt, $this->tier, $this->durationSeconds,
+                        $options + ($endAsset ? ['end_image_url' => $this->publicUrlFor($endAsset)] : []));
                 } catch (RuntimeException $e) {
                     // The provider could not fetch our image from storage (seen in production: a connection error to
                     // B2). Nothing was made or billed: hand it the image through its own file store and start once more.
                     if (! self::inputFetchFailed($e->getMessage())) throw $e;
-                    $result = $adapter->animate($this->providerCopy($sourceAsset), (string) $this->motionPrompt, $this->tier, $this->durationSeconds, $options);
+                    $result = $adapter->animate($this->providerCopy($sourceAsset), (string) $this->motionPrompt, $this->tier, $this->durationSeconds,
+                        $options + ($endAsset ? ['end_image_url' => $this->providerCopy($endAsset)] : []));
                 }
             }
 

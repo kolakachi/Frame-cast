@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
  * whole description three times with only "opening / middle / final moment" added, so "she's tired of sitting and
  * raises the desk" came back as three copies of the reference: standing at a raised desk. A cheap model reads the
  * description (and the reference, when there is one) and says what each frame shows and what stays the same; the
- * video is then asked for the motion from the picked frame onwards.
+ * video, made from the first frame to the last, is told what happens on the way.
  */
 class StoryboardBeats
 {
@@ -21,7 +21,7 @@ class StoryboardBeats
         .'(for example: a desk at sitting height, the desk half way up, the desk at standing height), and the camera framing. Make the frames visibly different whenever the action changes something; '
         .'when the shot has little action, let the camera or the subject move a little between frames. Follow the description over the picture: when the reference shows a later or different moment than the start, the start frame still shows the start. '
         .'"keep" says concretely who and what stays the same in every frame (people\'s look and clothes, product, place, light, style){REF}. '
-        .'"motion" says, for a video model, what happens from each frame to the end of the shot, in one or two plain sentences each (start to end; middle to end; end: how the shot settles). '
+        .'"motion" says, for a video model, what happens from each frame to the end of the shot, in one or two plain sentences each (start to end, through the middle frame; middle to end; end: how the shot settles). '
         .'Answer JSON only: {"frames": ["start", "middle", "end"], "keep": "...", "motion": ["from start", "from middle", "from end"]}. Shot: ';
 
     /**
