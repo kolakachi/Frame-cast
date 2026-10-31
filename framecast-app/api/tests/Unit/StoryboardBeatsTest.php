@@ -32,7 +32,9 @@ class StoryboardBeatsTest extends TestCase
         $this->assertStringContainsString('even where the reference shows a different moment', $first, 'the scene image showed her already standing');
         $this->assertStringContainsString('In every frame: a woman in a navy blouse', $first);
 
-        $this->assertStringContainsString('the previous frame of the same shot', DrawStoryboardJob::beatPrompt($beats, 2, true, true));
+        $this->assertStringContainsString('the exact same camera position, angle, lens and framing', DrawStoryboardJob::beatPrompt($beats, 2, true, true), 'a new angle per frame read as cuts (scene 463)');
+        $this->assertStringContainsString('Camera, the same in every frame of this one continuous shot: behind them, waist up',
+            DrawStoryboardJob::beatPrompt(['camera' => 'behind them, waist up'] + $beats, 1, true, true));
         $this->assertStringNotContainsString('reference', DrawStoryboardJob::beatPrompt($beats, 0, false, false), 'no picture, no talk of one');
     }
 

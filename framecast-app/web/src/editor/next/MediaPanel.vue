@@ -141,6 +141,7 @@ async function drawStoryboard() {
     const { data } = await api.post(`/scenes/${scene.id}/storyboard`, {
       prompt: animateMotionPrompt.value.trim(),
       model: frameModel.value,
+      seconds: clipSeconds.value,
       ...(videoReference.value?.id ? { source_asset_id: videoReference.value.id } : {}),
     });
     const updated = normalizeScenePayload(data?.data?.scene ?? null);
@@ -151,6 +152,8 @@ async function drawStoryboard() {
     storyboardSubmitting.value = false;
   }
 }
+// The picked length (each model's own, e.g. Veo 4 or 8 s), so the storyboard plans that much action.
+const clipSeconds = computed(() => Number(animateDuration.value) || 5);
 // One clip from the first frame to the last. While the description is still the one the storyboard was drawn from,
 // the video is also told what happens on the way (StoryboardBeats); otherwise it gets the description as typed.
 function makeVideoFromStoryboard() {
@@ -160,7 +163,7 @@ function makeVideoFromStoryboard() {
   submitAnimate({
     sourceAssetId: storyboardFrames.value[0].asset_id,
     endAssetId: storyboardFrames.value[2].asset_id,
-    motionPrompt: motion ? `${typed.slice(0, 940 - motion.length)}\n\nFrom the first frame to the last: ${motion}` : null, // the API takes 1000
+    motionPrompt: motion ? `${typed.slice(0, 880 - motion.length)}\n\nOne continuous shot, no cuts, the camera as in the first frame. From the first frame to the last: ${motion}` : null, // the API takes 1000
   });
 }
 // A frame picture that fails to load (a signed link gone stale, the API restarting) shows as loading, and the scene is

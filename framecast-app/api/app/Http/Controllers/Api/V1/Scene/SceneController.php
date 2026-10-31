@@ -1357,6 +1357,8 @@ class SceneController extends Controller
             'prompt'          => ['required', 'string', 'min:3', 'max:1000'],
             'model'           => ['sometimes', 'nullable', 'string', \Illuminate\Validation\Rule::in(\App\Jobs\DrawStoryboardJob::MODELS)],
             'source_asset_id' => ['sometimes', 'nullable', 'integer'],
+            // How long the clip made from it will run, so the planned action fits.
+            'seconds'         => ['sometimes', 'nullable', 'integer', 'min:3', 'max:10'],
         ]);
         $model = $validated['model'] ?? \App\Jobs\DrawStoryboardJob::DEFAULT_MODEL;
 
@@ -1407,7 +1409,7 @@ class SceneController extends Controller
         ];
         $scene->forceFill(['image_generation_settings_json' => $settings])->save();
 
-        \App\Jobs\DrawStoryboardJob::dispatch($scene->getKey(), $scene->project_id, $validated['prompt'], $model, $reference?->getKey(), $token);
+        \App\Jobs\DrawStoryboardJob::dispatch($scene->getKey(), $scene->project_id, $validated['prompt'], $model, $reference?->getKey(), $token, (int) ($validated['seconds'] ?? 5));
 
         return response()->json([
             'data' => ['scene' => $this->serializeScene($scene->fresh()), 'cost' => $cost],

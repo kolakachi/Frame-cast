@@ -57,6 +57,8 @@ class DrawStoryboardJob implements ShouldQueue
         public readonly string $modelKey,
         public readonly ?int $referenceAssetId,
         public readonly string $token,
+        // The clip's length, so the planner sizes the action to it.
+        public readonly int $seconds = 5,
     ) {
         $this->onQueue('generation');
     }
@@ -106,7 +108,7 @@ class DrawStoryboardJob implements ShouldQueue
         // is told what happens between the frames. Without it the frames are drawn from the description alone. It runs
         // after the charge, so nothing it throws may skip the refund below.
         try {
-            $beats = app(StoryboardBeats::class)->plan($this->prompt, $reference, $workspaceId);
+            $beats = app(StoryboardBeats::class)->plan($this->prompt, $reference, $workspaceId, $this->seconds);
         } catch (\Throwable $e) {
             report($e);
             $beats = null;
@@ -187,14 +189,18 @@ class DrawStoryboardJob implements ShouldQueue
     public static function beatPrompt(array $beats, int $index, bool $fromPicture, bool $hadReference): string
     {
         $keep = trim((string) ($beats['keep'] ?? ''));
+        $camera = trim((string) ($beats['camera'] ?? ''));
         $parts = [sprintf('Storyboard frame %d of %d, %s: %s', $index + 1, self::FRAMES, ['the start of the shot', 'the middle of the shot', 'the end of the shot'][$index] ?? 'the shot', $beats['frames'][$index])];
         if ($keep !== '') {
             $parts[] = 'In every frame: '.$keep;
         }
+        if ($camera !== '') {
+            $parts[] = 'Camera, the same in every frame of this one continuous shot: '.$camera;
+        }
         if ($fromPicture) {
             $parts[] = $index === 0 && $hadReference
                 ? 'Use the reference image for the people, their clothes, the product, the place, the light and the look. Change the pose, the positions and the state of objects to match this frame exactly, even where the reference shows a different moment.'
-                : 'The reference image is the previous frame of the same shot: keep the same people, clothes, product, place, light and camera style, and change only what this frame describes.';
+                : 'The reference image is the previous frame of the same continuous shot, a second or two earlier: keep the same people, clothes, product, place and light, and the exact same camera position, angle, lens and framing. Change only what this frame describes, by as much as could happen in that time.';
         }
         $parts[] = 'One photographic still, no text, no captions, no borders, no panels.';
 

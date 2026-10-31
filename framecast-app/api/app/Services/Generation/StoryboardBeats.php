@@ -16,21 +16,25 @@ use Illuminate\Support\Facades\Log;
  */
 class StoryboardBeats
 {
-    private const PROMPT = 'You plan a 3-frame storyboard for one short video shot (about 5 to 10 seconds). The frames are drawn by an image model, one at a time, and the user then picks the frame the video starts from. '
-        .'Split the shot described below into its start, middle and end. Each frame is a single still, in two or three sentences: say where the people are and how they are posed, the state of every object that changes '
-        .'(for example: a desk at sitting height, the desk half way up, the desk at standing height), and the camera framing. Make the frames visibly different whenever the action changes something; '
-        .'when the shot has little action, let the camera or the subject move a little between frames. Follow the description over the picture: when the reference shows a later or different moment than the start, the start frame still shows the start. '
+    private const PROMPT = 'You plan a 3-frame storyboard for ONE continuous video shot of about {SECONDS} seconds, filmed by one camera with no cuts. '
+        .'The frames are drawn by an image model, one at a time; the video then runs from the first frame to the last, so the three frames must read as moments of the same take. '
+        .'Split the shot described below into its start, middle and end. Each frame is a single still, in two or three sentences: where the people are and how they are posed, '
+        .'and the state of every object that changes (for example: a desk at sitting height, the desk half way up, the desk at standing height). '
+        .'The camera is LOCKED: decide its position, angle and framing once and write it in "camera" (for example: "eye level, from behind them, both figures waist up, cathedral centred"). '
+        .'All three frames are seen from exactly that camera. The frame descriptions describe only the people and objects and never mention the camera, a closer or wider view, a new angle or a rotation. '
+        .'Size the action to the length: about one simple action per 4 to 5 seconds, the middle frame half way through it. People move only as far as they could in that time; nobody changes place or pose all at once. '
+        .'When the shot has little action, the frames differ only a little (a glance, a breath, a small gesture). Follow the description over the picture: when the reference shows a later or different moment than the start, the start frame still shows the start. '
         .'"keep" says concretely who and what stays the same in every frame (people\'s look and clothes, product, place, light, style){REF}. '
         .'"motion" says, for a video model, what happens from each frame to the end of the shot, in one or two plain sentences each (start to end, through the middle frame; middle to end; end: how the shot settles). '
-        .'Answer JSON only: {"frames": ["start", "middle", "end"], "keep": "...", "motion": ["from start", "from middle", "from end"]}. Shot: ';
+        .'Answer JSON only, every key required, "camera" first: {"camera": "...", "frames": ["start", "middle", "end"], "keep": "...", "motion": ["from start", "from middle", "from end"]}. Shot: ';
 
     /**
      * Three frame descriptions, what stays the same, and the motion from each frame; null when the model could not be
      * asked or answered badly (the storyboard is then drawn from the description alone, as before).
      *
-     * @return array{frames: list<string>, keep: string, motion: list<string>}|null
+     * @return array{frames: list<string>, keep: string, camera: string, motion: list<string>}|null
      */
-    public function plan(string $prompt, ?Asset $reference, int $workspaceId): ?array
+    public function plan(string $prompt, ?Asset $reference, int $workspaceId, int $seconds = 5): ?array
     {
         $key = (string) config('services.anthropic.key');
         if ($key === '') return null;
@@ -42,7 +46,7 @@ class StoryboardBeats
         $ref = $jpeg !== null
             ? ', taken from the reference image above, which every frame is drawn to match'
             : '; there is no reference image, so invent one specific look and say it fully, since each frame is drawn from it';
-        $content[] = ['type' => 'text', 'text' => str_replace('{REF}', $ref, self::PROMPT).mb_substr(trim($prompt), 0, 1000)];
+        $content[] = ['type' => 'text', 'text' => str_replace(['{REF}', '{SECONDS}'], [$ref, (string) max(3, min(10, $seconds))], self::PROMPT).mb_substr(trim($prompt), 0, 1000)];
 
         try {
             $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(45)
@@ -73,6 +77,8 @@ class StoryboardBeats
         if (count($frames) !== 3) return null;
         $motion = array_slice($lines($json['motion'] ?? null, 400), 0, 3);
 
-        return ['frames' => $frames, 'keep' => mb_substr(trim(is_string($json['keep'] ?? null) ? $json['keep'] : ''), 0, 500), 'motion' => count($motion) === 3 ? $motion : []];
+        $text = fn (string $k, int $max) => mb_substr(trim(is_string($json[$k] ?? null) ? $json[$k] : ''), 0, $max);
+
+        return ['frames' => $frames, 'keep' => $text('keep', 500), 'camera' => $text('camera', 300), 'motion' => count($motion) === 3 ? $motion : []];
     }
 }
