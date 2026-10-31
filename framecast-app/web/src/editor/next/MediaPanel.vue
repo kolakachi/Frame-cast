@@ -150,6 +150,20 @@ function makeVideoFromFrame() {
     motionPrompt: motion ? `${typed.slice(0, 960 - motion.length)}\n\nFrom this frame: ${motion}` : null, // the API takes 1000
   });
 }
+// A frame picture that fails to load (a signed link gone stale, the API restarting) shows as loading, and the scene is
+// asked for again a few seconds later for fresh links; up to four tries a frame.
+const frameRetry = ref({});
+const frameTries = {};
+function frameFailed(assetId) {
+  const sceneId = activeScene.value?.id;
+  if (!assetId || !sceneId || frameRetry.value[assetId] || (frameTries[assetId] = (frameTries[assetId] ?? 0) + 1) > 4) return;
+  frameRetry.value = { ...frameRetry.value, [assetId]: true };
+  setTimeout(async () => {
+    await refreshScene(sceneId).catch(() => {});
+    const { [assetId]: _, ...rest } = frameRetry.value;
+    frameRetry.value = rest;
+  }, 3000 * frameTries[assetId]);
+}
 // While frames are being drawn, ask for the scene every few seconds; frames loaded without pictures (a project load
 // carries ids only) are fetched once.
 let storyboardTimer = null;
@@ -370,11 +384,11 @@ function send() {
     <!-- Storyboard first: draw, then pick the frame the video starts from. -->
     <template v-if="makeMode === 'storyboard'">
       <template v-if="storyboard && storyboard.status !== 'failed'">
-        <div class="nx-row"><span class="nx-label">Storyboard · {{ frameModelLabel(storyboard.model) }}</span><span v-if="storyboard.status === 'drawing'" class="nx-num">Drawing {{ Math.min(storyboardFrames.length + 1, 3) }} of 3…</span></div>
+        <div class="nx-row"><span class="nx-label">Storyboard · {{ frameModelLabel(storyboard.model) }}</span><span v-if="storyboard.status === 'drawing'" class="nx-num" role="status">{{ !storyboardFrames.length && !storyboard.beats ? "Planning the shot…" : `Drawing ${Math.min(storyboardFrames.length + 1, 3)} of 3…` }}</span></div>
         <div class="nx-sb" role="radiogroup" aria-label="The frame the video starts from">
           <button v-for="(label, i) in FRAME_LABELS" :key="label" type="button" role="radio" :aria-checked="startFrame === i"
             :class="['nx-sb-frame', startFrame === i && storyboardFrames[i] ? 'on' : '']" :disabled="!storyboardFrames[i]?.image_url" @click="startFrame = i">
-            <img v-if="storyboardFrames[i]?.image_url" :src="storyboardFrames[i].image_url" :alt="`${label} frame`" />
+            <img v-if="storyboardFrames[i]?.image_url && !frameRetry[storyboardFrames[i].asset_id]" :src="storyboardFrames[i].image_url" :alt="`${label} frame`" @error="frameFailed(storyboardFrames[i].asset_id)" />
             <span v-else class="nx-sb-wait"></span>
             <span class="nx-sb-label">{{ startFrame === i && storyboardFrames[i] ? "Starts here" : label }}</span>
           </button>
@@ -382,7 +396,12 @@ function send() {
       </template>
       <p v-if="storyboard?.status === 'failed'" class="nx-err">{{ storyboard.error || "The storyboard could not be drawn. Your credits have not been charged." }}</p>
       <template v-if="storyboardReady">
-        <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeFromFrame" @click="makeVideoFromFrame">
+        <!-- While the clip is made, say so here, where the button was pressed (the notice at the top may be out of view). -->
+        <div v-if="activeSceneAnimationPending" class="nx-quote" role="status">
+          <div class="nx-row nx-row-start"><span class="nx-spin nx-spin-soft"></span><b>Making the video with {{ ANIMATE_TIER_META[runningTier]?.name || "your model" }}…</b></div>
+          <p class="nx-hint">About {{ (ANIMATE_TIER_META[runningTier]?.render || "a few minutes").replace("~", "") }}. The clip takes this scene's place when it's done.</p>
+        </div>
+        <button v-else class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeFromFrame" @click="makeVideoFromFrame">
           {{ animateSubmitting ? "Starting…" : `Make the video from this${cr(animateCost)}` }}
         </button>
         <button class="nx-btn nx-full" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">{{ `Redraw the storyboard${cr(storyboardPrice(frameModel))}` }}</button>
