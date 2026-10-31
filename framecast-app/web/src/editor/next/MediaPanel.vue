@@ -630,8 +630,9 @@ function send() {
     <p v-else class="nx-hint">This scene shows an audiogram.</p>
   </template>
 
-  <!-- Motion, for still pictures: the Ken Burns move rendered on export. -->
-  <section v-if="activeSceneIsStillImage" class="nx-sec nx-sec-top">
+  <!-- Motion, for still pictures: the Ken Burns move rendered on export. Shown with the picture tabs only, not the
+       video or audiogram tabs (owner, 2026-10-31). -->
+  <section v-if="activeSceneIsStillImage && group !== 'video' && group !== 'audiogram'" class="nx-sec nx-sec-top">
     <span class="nx-label">Motion</span>
     <div class="nx-chips">
       <button v-for="o in motionOptions" :key="o.value" type="button" :class="['nx-chip', motionEffectDraft === o.value ? 'on' : '']" @click="motionEffectDraft = o.value">{{ MOTION_SHORT[o.value] || o.label }}</button>
