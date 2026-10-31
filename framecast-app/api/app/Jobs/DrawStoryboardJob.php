@@ -229,7 +229,21 @@ class DrawStoryboardJob implements ShouldQueue
             return (string) $asset->storage_url; // already an external URL
         }
 
-        return URL::temporarySignedRoute('media.assets.content', now()->addMinutes(30), ['assetId' => $asset->getKey()]);
+        $url = URL::temporarySignedRoute('media.assets.content', now()->addMinutes(30), ['assetId' => $asset->getKey()]);
+
+        // On a local machine the link points at localhost, which the image model's servers cannot reach: the Nano
+        // Bananas get a copy in Replicate's own file store, GPT Image the picture itself as a data URI.
+        if (in_array(parse_url($url, PHP_URL_HOST), ['localhost', '127.0.0.1', 'host.docker.internal', 'api'], true)) {
+            if ($this->modelKey !== 'gpt-image-2') {
+                return \App\Services\Generation\ReplicateFiles::copy($asset, 'reference image');
+            }
+            $bytes = app(StorageService::class)->get((string) $asset->storage_url);
+            if (is_string($bytes) && $bytes !== '') {
+                return 'data:'.($asset->mime_type ?: 'image/png').';base64,'.base64_encode($bytes);
+            }
+        }
+
+        return $url;
     }
 
     private function store(?string $url, int $workspaceId, ?string $b64): string
