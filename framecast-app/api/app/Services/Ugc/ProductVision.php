@@ -126,7 +126,7 @@ class ProductVision
     }
 
     /** The photo at most 768 px wide as a JPEG (vision pricing grows with pixels); null when it cannot be read. */
-    private function small(Asset $asset): ?string
+    public static function small(Asset $asset): ?string
     {
         $bytes = $asset->storage_url ? app(StorageService::class)->get((string) $asset->storage_url) : null;
         if (! is_string($bytes) || $bytes === '') return null;

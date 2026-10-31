@@ -139,9 +139,16 @@ async function drawStoryboard() {
     storyboardSubmitting.value = false;
   }
 }
+// The video is asked for the motion from the picked frame to the end of the shot (StoryboardBeats), while the
+// description is still the one the storyboard was drawn from; otherwise for the description as typed.
 function makeVideoFromFrame() {
   menu.value = null;
-  submitAnimate({ sourceAssetId: storyboardFrames.value[startFrame.value]?.asset_id ?? null });
+  const typed = animateMotionPrompt.value.trim();
+  const motion = typed === (storyboard.value?.prompt ?? "").trim() ? storyboard.value?.beats?.motion?.[startFrame.value] : null;
+  submitAnimate({
+    sourceAssetId: storyboardFrames.value[startFrame.value]?.asset_id ?? null,
+    motionPrompt: motion ? `${typed.slice(0, 960 - motion.length)}\n\nFrom this frame: ${motion}` : null, // the API takes 1000
+  });
 }
 // While frames are being drawn, ask for the scene every few seconds; frames loaded without pictures (a project load
 // carries ids only) are fetched once.

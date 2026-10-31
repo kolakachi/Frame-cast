@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\Scene;
 use App\Services\CreditService;
 use App\Services\Generation\Image\ImageAdapterFactory;
+use App\Services\Generation\StoryboardBeats;
 use App\Services\Media\StorageService;
 use App\Traits\TracksJobFailure;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -18,9 +19,9 @@ use RuntimeException;
 
 /**
  * The AI video tab's storyboard (owner, 2026-10-30): three stills of the shot (start, middle, end) to approve before
- * paying for motion. Frame 1 is drawn from the reference image (or the description alone when there is none); frames 2
- * and 3 are each drawn from the frame before, so people, place and light carry through. The user picks the frame the
- * video starts from.
+ * paying for motion. The description is first read as three moments (StoryboardBeats). Frame 1 is drawn from the
+ * reference image (or the description alone when there is none); frames 2 and 3 are each drawn from the frame before,
+ * so people, place and light carry through. The user picks the frame the video starts from.
  *
  * Billing follows EditSceneImageJob: one deduction for all three frames up front, the whole amount back if any frame
  * fails, so a storyboard is either delivered or free. State lives on the scene under image_generation_settings_json
@@ -100,9 +101,24 @@ class DrawStoryboardJob implements ShouldQueue
         $frames = [];
         $previous = $reference;
 
+        // The shot as three moments (what each frame shows, what stays the same); kept on the storyboard so the video
+        // is asked for the motion from the picked frame. Without it the frames are drawn from the description alone.
+        $beats = app(StoryboardBeats::class)->plan($this->prompt, $reference, $workspaceId);
+        if ($beats !== null) {
+            $scene->refresh();
+            if (! $this->current($scene)) {
+                $credits->refund($workspaceId, $cost, 'ai_image:storyboard'); // nothing drawn yet
+
+                return;
+            }
+            $this->patch($scene, ['beats' => $beats]);
+        }
+
         try {
             foreach (self::MOMENTS as $i => $moment) {
-                $prompt = $this->framePrompt($i, $moment, $previous !== null);
+                $prompt = $beats !== null
+                    ? self::beatPrompt($beats, $i, $previous !== null, $reference !== null)
+                    : $this->framePrompt($i, $moment, $previous !== null);
                 $result = $previous !== null
                     ? $factory->referenceAdapter($this->modelKey)->generate($prompt, $style, $aspect, ['reference_image_urls' => [$this->signedUrl($previous)]])
                     : $factory->resolve($this->modelKey)->generate($prompt, $style, $aspect);
@@ -155,6 +171,27 @@ class DrawStoryboardJob implements ShouldQueue
             : ' Same people, clothes, product, place, light and camera style as the reference image; only the action and the camera move on.';
 
         return trim($this->prompt)."\n\n".$frame.$keep.' One photographic still, no text, no captions, no borders, no panels.';
+    }
+
+    /**
+     * One frame from the planned moments. The picture it is drawn from is for who and where only: the pose and the
+     * state of things follow this frame's description, even when the picture shows another moment.
+     */
+    public static function beatPrompt(array $beats, int $index, bool $fromPicture, bool $hadReference): string
+    {
+        $keep = trim((string) ($beats['keep'] ?? ''));
+        $parts = [sprintf('Storyboard frame %d of %d, %s: %s', $index + 1, self::FRAMES, ['the start of the shot', 'the middle of the shot', 'the end of the shot'][$index] ?? 'the shot', $beats['frames'][$index])];
+        if ($keep !== '') {
+            $parts[] = 'In every frame: '.$keep;
+        }
+        if ($fromPicture) {
+            $parts[] = $index === 0 && $hadReference
+                ? 'Use the reference image for the people, their clothes, the product, the place, the light and the look. Change the pose, the positions and the state of objects to match this frame exactly, even where the reference shows a different moment.'
+                : 'The reference image is the previous frame of the same shot: keep the same people, clothes, product, place, light and camera style, and change only what this frame describes.';
+        }
+        $parts[] = 'One photographic still, no text, no captions, no borders, no panels.';
+
+        return implode("\n\n", $parts);
     }
 
     private function current(Scene $scene): bool

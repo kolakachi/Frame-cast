@@ -6721,7 +6721,8 @@ export function useEditorCore() {
   }
 
   // `sourceAssetId`: start from another image in the workspace (the new editor's AI video tab) instead of the scene's still.
-  async function submitAnimate({ sourceAssetId = null } = {}) {
+  // `motionPrompt`: what moves, when it differs from the description typed (a storyboard frame's motion to the end).
+  async function submitAnimate({ sourceAssetId = null, motionPrompt = null } = {}) {
     const scene = activeScene.value;
     if (!scene) return;
     animateSubmitting.value = true;
@@ -6731,7 +6732,7 @@ export function useEditorCore() {
         ...(sourceAssetId ? { source_asset_id: sourceAssetId } : {}),
         tier: animateTier.value,
         duration_seconds: animateDuration.value,
-        motion_prompt: animateMotionPrompt.value.trim() || null,
+        motion_prompt: motionPrompt || animateMotionPrompt.value.trim() || null,
         quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
         // Only the spokesperson tier has an engine choice; the i2v tiers are a
         // different pipeline entirely.
