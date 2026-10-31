@@ -103,8 +103,14 @@ class DrawStoryboardJob implements ShouldQueue
         $previous = $reference;
 
         // The shot as three moments (what each frame shows, what stays the same); kept on the storyboard so the video
-        // is told what happens between the frames. Without it the frames are drawn from the description alone.
-        $beats = app(StoryboardBeats::class)->plan($this->prompt, $reference, $workspaceId);
+        // is told what happens between the frames. Without it the frames are drawn from the description alone. It runs
+        // after the charge, so nothing it throws may skip the refund below.
+        try {
+            $beats = app(StoryboardBeats::class)->plan($this->prompt, $reference, $workspaceId);
+        } catch (\Throwable $e) {
+            report($e);
+            $beats = null;
+        }
         if ($beats !== null) {
             $scene->refresh();
             if (! $this->current($scene)) {
