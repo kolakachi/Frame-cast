@@ -27,6 +27,11 @@ class AttemptService
             abort_unless(is_array($policy), 422, 'This operation was not quoted.');
             $credits = $policy['credits']; $cost = $policy['cost_limit_microusd'];
             abort_unless(is_int($credits) && $credits >= 0 && is_int($cost) && $cost >= 0, 422);
+            // A plan item is held at its own quoted price, which is the most it can be charged (PlanMediaService caps the
+            // charge there), not at the dearest item in the catalogue: three Omni shots held at 330 each outgrew a 925
+            // allowance and every retry stopped before collecting the clips (2026-11-01, ws 79).
+            if ($kind === 'plan_media' && preg_match('/^plan-media-(\d+)$/D', $key, $m)
+                && ($own = (int) ($input['plan_media'][(int) $m[1]]['credits'] ?? 0)) > 0) $credits = min($credits, $own);
             abort_unless(($input['mode'] === 'fixture' && $credits === 0 && $cost === 0 && $policy['provider'] === 'offline')
                 || ($input['mode'] === 'agent' && PilotPolicy::enabled()), 503, 'Paid execution remains disabled.');
             abort_if(DB::table('composition_attempts')->where('run_id', $runId)->where('kind', $kind)->count() >= $policy['max_calls'], 409, 'Quoted attempt limit reached.');

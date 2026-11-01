@@ -649,6 +649,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(['ai_image', 'stock_image', 'voiceover'], $calls, 'the image was not made twice and uncertain voice was not retried');
         // Reconciled as never made (the operator's evidence), the item is no longer "unknown": a new run may buy it.
         $attempt = DB::table('composition_attempts')->where('run_id', $run2->id)->where('attempt_key', 'plan-media-2')->value('id');
+        $this->assertSame(3, (int) DB::table('composition_attempts')->where('id', $attempt)->value('credit_limit'), 'a plan item is held at its own price, not the dearest in the catalogue (ws 79, 2026-11-01)');
         app(\App\Services\Create\ReconciliationService::class)->reconcile(new \App\Services\Create\VerifiedAttemptReceipt($attempt, 'failed', 'not-sent-voice', 0, 'No provider request was made.'), true);
         $this->assertSame('failed', DB::table('create_plan_media')->where('plan_id', $plan['id'])->where('kind', 'voiceover')->value('status'));
         $this->assertSame('cold brew pour ice', \App\Services\Create\PlanMediaExecutor::searchTerms('Vertical slow-motion cold brew pour over ice, dark background'));
