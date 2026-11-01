@@ -11,6 +11,16 @@ class WorkerController extends Controller
 {
     public function __construct(private RunService $runs) {}
 
+    /**
+     * Whether a delivered video's length is the approved one: within 0.3 s, or longer by up to 30% when the speech needs
+     * it, as the worker renders it (LENGTH-TARGET, render-length.mjs). Only the worker had been relaxed: a 16.3 s cut of
+     * a 15 s video rendered, then was refused here on every retry (ws 79, 2026-11-01). Never shorter.
+     */
+    public static function lengthFits(float $seconds, float $approved): bool
+    {
+        return abs($seconds - $approved) <= .3 || ($seconds > $approved && $seconds <= $approved * 1.3 + .35);
+    }
+
     private function authorizeWorker(Request $r): void
     {
         abort_unless(config('create.enabled'), 404);
@@ -207,7 +217,7 @@ class WorkerController extends Controller
                 $probe=new \Symfony\Component\Process\Process(['ffprobe','-v','error','-show_streams','-show_format','-of','json',$r->file('artifact')->getRealPath()]);$probe->setTimeout(20);$probe->mustRun();$info=json_decode($probe->getOutput(),true);
                 $video=collect($info['streams']??[])->firstWhere('codec_type','video');$duration=(float)($info['format']['duration']??0);
                 $fixture=json_decode($run->input_json,true)['mode']==='fixture';
-                abort_unless($video && $video['width']<=4096 && $video['height']<=4096 && abs($duration-($fixture?15:$settings['duration_seconds']))<=.3,422,'Encoded video does not match the approved duration.');
+                abort_unless($video && $video['width']<=4096 && $video['height']<=4096 && self::lengthFits($duration,$fixture?15:(float)$settings['duration_seconds']),422,'Encoded video does not match the approved duration.');
                 if(($settings['video_mode']??'composition')==='animate_image') abort_if(collect($info['streams'])->contains('codec_type','audio'),422,'Animation must be delivered without generated audio.');
                 $result['media']=['kind'=>'video','mime_type'=>$mime,'width'=>$video['width'],'height'=>$video['height'],'duration_seconds'=>$duration];
             }
