@@ -18,6 +18,8 @@ class LaunchpadPurchaseMail extends Mailable implements ShouldQueue
         public readonly string $purchaseEmail,
         public readonly string $productName,
         public readonly string $receipt,
+        // Bought through OfferIQ's funnel: WyvStudio comes with it, so the email says why it is arriving.
+        public readonly bool $offerIq = false,
     ) {
         $this->afterCommit();
     }
@@ -29,7 +31,7 @@ class LaunchpadPurchaseMail extends Mailable implements ShouldQueue
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Your WyvStudio purchase — how to sign in');
+        return new Envelope(subject: $this->offerIq ? 'Your WyvStudio access with OfferIQ — how to sign in' : 'Your WyvStudio purchase — how to sign in');
     }
 
     public function content(): Content

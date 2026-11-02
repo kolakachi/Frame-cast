@@ -1,6 +1,9 @@
 <p>Thank you for your purchase!</p>
 
 <p>Your payment for <strong>{{ $productName }}</strong> is confirmed. Your WyvStudio access is linked to <strong>{{ $purchaseEmail }}</strong>.</p>
+@if ($offerIq ?? false)
+<p>Your OfferIQ purchase includes WyvStudio, the video studio that makes the traffic videos for your offers. This email is how you sign in to WyvStudio; OfferIQ itself has its own sign-in.</p>
+@endif
 
 <h2>Sign in to WyvStudio</h2>
 <ol>
@@ -11,7 +14,9 @@
 
 <p>No password or new purchase is needed. You can use the sign-in page above whenever you are ready, even if you closed checkout before reaching the thank-you page.</p>
 <p>If you already have a WyvStudio account with this email, your purchase has been added to it. Check your plan and credit balance after signing in.</p>
+@unless ($offerIq ?? false)
 <p><a href="{{ $guideUrl }}">Open your thank-you and getting-started guide →</a></p>
+@endunless
 
 <p>Launchpad transaction: <strong>{{ $receipt }}</strong></p>
 <p>Need help accessing your purchase? Email <a href="mailto:support@wyvstudio.com">support@wyvstudio.com</a> with your checkout email and this transaction ID.</p>

@@ -273,6 +273,46 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame('duplicate', $this->hook()->outcome);
     }
 
+    public function test_offeriq_sales_grant_the_wyvstudio_side_that_comes_with_them(): void
+    {
+        // OfferIQ's front (offer 622, "NEW CREDITS" 2026-11-02): product id and offer-product id both count.
+        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 900], [6218, 7187, 'oiq_bundle', 'launch_agency', 14700], [6219, 7186, 'oiq_scale', 'launch_bundle', 8000],
+            [6220, 7188, 'oiq_pro', 'launch_pro', 3500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000]] as [$id, $offerProduct, $product, $tier, $credits]) {
+            foreach ([$id, $offerProduct] as $pid) {
+                $email = "oiq{$pid}@example.com";
+                $this->ipn(['product_id' => $pid, 'transaction_id' => "pi_oiq_{$pid}", 'bump' => 'false', 'user' => ['email' => $email]])->assertOk();
+                $w = User::query()->where('email', $email)->firstOrFail()->workspace;
+                $this->assertSame([$tier, $credits], [$w->plan_tier, (int) $w->credits_topup], $product);
+                $this->assertSame([$product], LaunchPurchase::query()->where('workspace_id', $w->id)->pluck('product')->all());
+            }
+        }
+        Mail::assertQueued(LaunchpadPurchaseMail::class, fn ($mail) => $mail->offerIq && $mail->productName === 'OfferIQ Starter'
+            && str_contains($mail->render(), 'Your OfferIQ purchase includes WyvStudio') && ! str_contains($mail->render(), 'special.wyvstudio.com/thank-you'));
+
+        // The DFY kit adds to the buyer's plan: credits and templates, no tier of its own.
+        $this->ipn(['product_id' => 6221, 'transaction_id' => 'pi_oiq_dfy', 'bump' => 'false', 'user' => ['email' => 'oiq6217@example.com']])->assertOk();
+        $w = User::query()->where('email', 'oiq6217@example.com')->firstOrFail()->workspace;
+        $this->assertSame(['launch_fe', 2900, 10], [$w->plan_tier, (int) $w->credits_topup, CreditService::limitsFor($w)['sample_vault']]);
+    }
+
+    public function test_offeriq_bumps_add_their_wyvstudio_side_and_its_fe_bump_is_offeriq_only(): void
+    {
+        $this->ipn(['product_id' => 6219, 'transaction_id' => 'pi_b1', 'bump' => 'true', 'user' => ['email' => 'scale@example.com']])->assertOk();
+        $this->ipn(['product_id' => 6220, 'transaction_id' => 'pi_b2', 'bump' => 'true', 'user' => ['email' => 'pro2@example.com']])->assertOk();
+        $this->ipn(['product_id' => 6222, 'transaction_id' => 'pi_b3', 'bump' => 'true', 'user' => ['email' => 'agency2@example.com']])->assertOk();
+        $this->ipn(['product_id' => 6217, 'transaction_id' => 'pi_b4', 'bump' => 'true', 'user' => ['email' => 'fe2@example.com']])->assertOk();
+        $caps = fn (string $email) => CreditService::limitsFor(User::query()->where('email', $email)->firstOrFail()->workspace);
+        $this->assertSame(180, $caps('scale@example.com')['max_duration_seconds'], 'videos up to 3 minutes');
+        $this->assertSame(3, $caps('pro2@example.com')['max_characters']);
+        $this->assertSame(3, WorkspaceUsageService::planFor(User::query()->where('email', 'pro2@example.com')->firstOrFail()->workspace)['voice_cloning_limit']);
+        $this->assertSame(50, $caps('agency2@example.com')['max_client_workspaces']);
+        $this->assertSame(['oiq_fe'], LaunchPurchase::query()->where('receipt', 'pi_b4')->pluck('product')->all(), '+3 offers is OfferIQ\'s alone');
+
+        // A refund of the main product takes back the receipt, bump included.
+        $this->ipn(['product_id' => 6219, 'transaction_id' => 'pi_b1', 'action' => 'REFUND'])->assertOk();
+        $this->assertSame(['refunded', 'refunded'], LaunchPurchase::query()->where('receipt', 'pi_b1')->pluck('status')->all());
+    }
+
     public function test_an_ipn_with_a_wrong_or_unset_token_is_refused(): void
     {
         $this->ipn([], 'nope')->assertNotFound();

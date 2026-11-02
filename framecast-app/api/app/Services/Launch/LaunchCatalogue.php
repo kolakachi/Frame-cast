@@ -21,7 +21,26 @@ final class LaunchCatalogue
         'pro_seats'      => ['name' => '+3 characters & +3 cloned voices',  'price' => 19,  'of' => 'pro',    'add' => ['max_characters' => 3, 'voice_cloning_limit' => 3]],
         'agency'         => ['name' => 'WyvStudio Agency',                  'price' => 347, 'tier' => 'launch_agency', 'credits' => 3000],
         'agency_credits' => ['name' => '+2,000 credits',                    'price' => 69,  'of' => 'agency', 'credits' => 2000],
+
+        // OfferIQ's front (owner, 2026-11-02, "NEW CREDITS"): the same launch tiers, OfferIQ's credit amounts. Its FE
+        // bump (+3 offers) is OfferIQ-only; the Agency bump's client licences count on both sides.
+        'oiq_fe'              => ['name' => 'OfferIQ Starter',                   'price' => 17,  'tier' => 'launch_fe',     'credits' => 900],
+        'oiq_bundle'          => ['name' => 'OfferIQ Ultimate Bundle',           'price' => 397, 'tier' => 'launch_agency', 'credits' => 14700],
+        'oiq_scale'           => ['name' => 'OfferIQ Launch & Scale',            'price' => 247, 'tier' => 'launch_bundle', 'credits' => 8000],
+        'oiq_scale_length'    => ['name' => 'Videos up to 3 minutes',            'price' => 12,  'of' => 'oiq_scale',  'limits' => ['max_duration_seconds' => 180]],
+        'oiq_pro'             => ['name' => 'OfferIQ Pro',                       'price' => 67,  'tier' => 'launch_pro',    'credits' => 3500],
+        'oiq_pro_seats'       => ['name' => '+2 characters & +2 cloned voices',  'price' => 27,  'of' => 'oiq_pro',    'add' => ['max_characters' => 2, 'voice_cloning_limit' => 2]],
+        'oiq_dfy'             => ['name' => 'OfferIQ DFY Launch Kit',            'price' => 67,  'credits' => 2000, 'add' => ['sample_vault' => 10]],
+        'oiq_dfy_templates'   => ['name' => '+20 templates',                     'price' => 17,  'of' => 'oiq_dfy',    'add' => ['sample_vault' => 20]],
+        'oiq_agency'          => ['name' => 'OfferIQ Agency',                    'price' => 97,  'tier' => 'launch_agency', 'credits' => 5000],
+        'oiq_agency_licenses' => ['name' => '+20 client licenses',               'price' => 67,  'of' => 'oiq_agency', 'add' => ['max_client_workspaces' => 20]],
     ];
+
+    /** Whether a product was sold through OfferIQ's funnel (WyvStudio comes with it). */
+    public static function isOfferIq(string $key): bool
+    {
+        return str_starts_with($key, 'oiq_');
+    }
 
     /** Which launch tier a workspace sits on when it owns several: Agency has everything (2026-10-21). */
     public const TIER_RANK = ['launch_fe' => 1, 'launch_pro' => 2, 'launch_bundle' => 3, 'launch_agency' => 4];

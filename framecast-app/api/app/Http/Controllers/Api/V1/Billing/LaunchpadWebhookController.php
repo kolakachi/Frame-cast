@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Log;
  * Launchpad signs nothing, so the secret is the token in the URL (LAUNCHPAD_IPN_TOKEN); a wrong or unset token is a
  * 404. A sale grants its products, a refund or chargeback revokes the receipt; grants are idempotent per receipt and
  * product, so a redelivery changes nothing. A processing error answers 500 so Launchpad retries; anything we choose
- * not to act on (OfferIQ, unknown products or actions) is acknowledged and kept in the billing-webhooks log.
+ * not to act on (the OfferIQ upsell in WyvStudio's funnel, unknown products or actions) is acknowledged and kept in the
+ * billing-webhooks log. Sales from OfferIQ's own funnel (2026-11-02) grant the WyvStudio side that comes with them.
  */
 class LaunchpadWebhookController extends Controller
 {
@@ -43,7 +44,7 @@ class LaunchpadWebhookController extends Controller
         $products = $ipn->products();
 
         if ($ipn->isIgnoredProduct()) {
-            $this->log('ignored', $payload, $event, $receipt, true, 200, 'Not a WyvStudio product (OfferIQ or the thank-you page).', null, $request->ip());
+            $this->log('ignored', $payload, $event, $receipt, true, 200, 'Not a WyvStudio product (the OfferIQ upsell in WyvStudio\'s funnel, or the thank-you page).', null, $request->ip());
 
             return response()->json(['success' => true]);
         }

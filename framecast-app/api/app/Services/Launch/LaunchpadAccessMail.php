@@ -31,6 +31,7 @@ class LaunchpadAccessMail
                 purchaseEmail: $purchase->email,
                 productName: LaunchCatalogue::product($purchase->product)['name'] ?? 'WyvStudio',
                 receipt: $purchase->receipt,
+                offerIq: LaunchCatalogue::isOfferIq((string) $purchase->product),
             ));
         } catch (\Throwable $error) {
             DB::table('launch_access_emails')->where('receipt', $purchase->receipt)->delete();

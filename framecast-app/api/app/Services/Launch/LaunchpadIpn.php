@@ -21,9 +21,16 @@ final class LaunchpadIpn
         5946 => 'bundle', 6944 => 'bundle',
         5947 => 'pro',    6945 => 'pro',
         5949 => 'agency', 6947 => 'agency',
+        // OfferIQ's front (offer 622, 2026-11-02): WyvStudio comes with each.
+        6217 => 'oiq_fe',     7185 => 'oiq_fe',
+        6218 => 'oiq_bundle', 7187 => 'oiq_bundle',
+        6219 => 'oiq_scale',  7186 => 'oiq_scale',
+        6220 => 'oiq_pro',    7188 => 'oiq_pro',
+        6221 => 'oiq_dfy',    7189 => 'oiq_dfy',
+        6222 => 'oiq_agency', 7190 => 'oiq_agency',
     ];
 
-    /** Sold in the same funnel but nothing to grant here: OfferIQ is the marketer's product; 5980 is the thank-you page. */
+    /** Sold in WyvStudio's funnel but nothing to grant here: the OfferIQ upsell there is OfferIQ's alone; 5980 is the thank-you page. */
     public const IGNORED_IDS = [5948, 6946, 5980];
 
     private const GRANT_ACTIONS = ['SALE', 'PURCHASE', 'COMPLETED'];
