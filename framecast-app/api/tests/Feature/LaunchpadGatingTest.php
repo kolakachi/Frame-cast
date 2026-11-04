@@ -276,7 +276,7 @@ class LaunchpadGatingTest extends TestCase
     public function test_offeriq_sales_grant_the_wyvstudio_side_that_comes_with_them(): void
     {
         // OfferIQ's front (offer 622, "NEW CREDITS" 2026-11-02): product id and offer-product id both count.
-        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 900], [6218, 7187, 'oiq_bundle', 'launch_agency', 14700], [6219, 7186, 'oiq_scale', 'launch_bundle', 8000],
+        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 900], [6218, 7187, 'oiq_bundle', 'launch_agency', 14700], [6219, 7186, 'oiq_scale', 'launch_bundle', 10000],
             [6220, 7188, 'oiq_pro', 'launch_pro', 3500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000]] as [$id, $offerProduct, $product, $tier, $credits]) {
             foreach ([$id, $offerProduct] as $pid) {
                 $email = "oiq{$pid}@example.com";
