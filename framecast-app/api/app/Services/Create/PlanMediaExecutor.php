@@ -754,12 +754,18 @@ class PlanMediaExecutor
      */
     private function shotReferences(array $shot, array $ctx): array
     {
+        return $this->uploadImages($this->shotReferenceImages($shot, $ctx));
+    }
+
+    /** The reference images themselves (bytes, type, the name the prompt calls each by), before they are uploaded. */
+    private function shotReferenceImages(array $shot, array $ctx): array
+    {
         $out = [];
         foreach ((array) ($shot['refs'] ?? []) as $ref) {
             if ($ref === 'avatar') {
                 $photos = array_slice($ctx['source_images'] ?? [], 0, 2);
                 if (! $photos) throw new RuntimeException('This shot uses your photo, but none is attached.');
-                foreach ($photos as $photo) $out[] = ['url' => $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo)), 'name' => 'the user (keep this exact person)'];
+                foreach ($photos as $photo) $out[] = ['bytes' => (string) file_get_contents($photo), 'mime' => (string) (new \finfo(FILEINFO_MIME_TYPE))->file($photo), 'name' => 'the user (keep this exact person)'];
                 continue;
             }
             // "sheet" is the whole cast, never the storyboard panels approved beside it.
@@ -767,10 +773,16 @@ class PlanMediaExecutor
             if (! $files) throw new RuntimeException('This shot uses the approved sheet, but no sheet is approved.');
             foreach ($files as $f) {
                 app(InputSnapshotService::class)->verify([$f]);
-                $out[] = ['url' => $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']), 'name' => $f['label'] ?? 'the cast'];
+                $out[] = ['bytes' => (string) app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), 'mime' => (string) $f['mime_type'], 'name' => $f['label'] ?? 'the cast'];
             }
         }
         return $out;
+    }
+
+    /** @param list<array{bytes: string, mime: string, name: string}> $images @return list<array{url: string, name: string}> */
+    private function uploadImages(array $images): array
+    {
+        return array_map(fn ($i) => ['url' => $this->replicateUpload($i['bytes'], $i['mime']), 'name' => $i['name']], $images);
     }
 
     /** The approved sheet image of one subject, by its exact name; never another subject in its place. */
@@ -796,14 +808,33 @@ class PlanMediaExecutor
 
     private function firstFrame(array $shot, array $ctx): string
     {
+        [$bytes, $mime] = $this->firstFrameImage($shot, $ctx);
+        return $this->replicateUpload($bytes, $mime);
+    }
+
+    /** @return array{0: string, 1: string} the start still's bytes and type */
+    private function firstFrameImage(array $shot, array $ctx): array
+    {
         if (($shot['first_frame'] ?? '') === 'avatar') {
             $photo = collect($ctx['source_images'] ?? [])->first();
             if (! $photo) throw new RuntimeException('This shot starts from your photo, but none is attached.');
-            return $this->replicateUpload((string) file_get_contents($photo), (new \finfo(FILEINFO_MIME_TYPE))->file($photo));
+            return [(string) file_get_contents($photo), (string) (new \finfo(FILEINFO_MIME_TYPE))->file($photo)];
         }
         $f = $this->sheetFile((string) ($shot['first_frame'] ?? ''), $ctx);
         app(InputSnapshotService::class)->verify([$f]);
-        return $this->replicateUpload(app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), $f['mime_type']);
+        return [(string) app(\App\Services\Create\CreateStorage::class)->get($f['storage_path']), (string) $f['mime_type']];
+    }
+
+    /**
+     * The look before a clip is bought (ClipPrecheck): the prompt to buy with, rewritten when it asked for something
+     * the video model garbles. Frame problems are noted, never a stop: the plan and its pictures were approved.
+     */
+    private function precheck(string $prompt, array $images, array $shot, array $ctx, int $k): string
+    {
+        return app(\App\Services\Generation\ClipPrecheck::class)->check($prompt, $images, 'create', [
+            'workspace_id' => (int) ($ctx['workspace_id'] ?? 0) ?: null, 'seconds' => (int) ($shot['seconds'] ?? 5),
+            'ref' => trim(($ctx['plan_id'] ?? '').':'.($shot['beat'] ?? '').':'.$k, ':'),
+        ])['prompt'];
     }
 
     private function shotPrompt(string $description, array $shot, array $refs): string
@@ -869,11 +900,12 @@ class PlanMediaExecutor
         }
         if ($kind === 'ugc_take') {
             $seg = ($shot['segments'] ?? [])[$k] ?? throw new RuntimeException('The take has no part '.($k + 1).'.');
-            $refs = match ($shot['presenter'] ?? 'none') {
-                'avatar' => $this->shotReferences(['refs' => ['avatar']], $ctx),
-                'sheet' => $this->shotReferences(['refs' => ['sheet']], $ctx),
+            $refImages = match ($shot['presenter'] ?? 'none') {
+                'avatar' => $this->shotReferenceImages(['refs' => ['avatar']], $ctx),
+                'sheet' => $this->shotReferenceImages(['refs' => ['sheet']], $ctx),
                 default => [],
             };
+            $refs = $this->uploadImages($refImages);
             $words = self::pronounce(implode(' ', $seg['lines']), (int) $ctx['workspace_id']);
             // The presenter's clothes, place and prop as this video asks; the image decides only who they are.
             $dress = implode(' ', array_filter([($shot['outfit'] ?? '') !== '' ? 'They wear '.rtrim($shot['outfit'], '.').'.' : null,
@@ -882,11 +914,14 @@ class PlanMediaExecutor
                 .' Handheld selfie-style UGC to camera, one continuous performance, natural gestures and expressions. The presenter says exactly, in '.($ctx['language'] ?? 'en').': '
                 .json_encode($words, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).' Complete every word, nothing else is spoken. No music, no subtitles, no on-screen text or logos.'
                 .($k > 0 ? ' Same person, outfit and setting as before, continuing the same take.' : '');
+            $prompt = $this->precheck($prompt, array_map(fn ($i) => $i + ['role' => 'reference'], $refImages), ['seconds' => $seg['seconds']] + $shot, $ctx, $k);
             return $veo->start($prompt, (int) $seg['seconds'], null, $engine ?: 'omni', array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
         }
         if (isset(ShotRoute::FIRST_FRAME[$engine])) {
             $tier = ShotRoute::FIRST_FRAME[$engine]['tier'];
-            [$model, $version, $input] = app(\App\Services\Generation\Video\ReplicateI2VAdapter::class)->buildRequestForTier($tier, $this->firstFrame($shot, $ctx), $this->shotPrompt($description, $shot, []), (int) $shot['seconds'],
+            [$startBytes, $startMime] = $this->firstFrameImage($shot, $ctx);
+            $prompt = $this->precheck($this->shotPrompt($description, $shot, []), [['bytes' => $startBytes, 'mime' => $startMime, 'role' => 'start']], $shot, $ctx, $k);
+            [$model, $version, $input] = app(\App\Services\Generation\Video\ReplicateI2VAdapter::class)->buildRequestForTier($tier, $this->replicateUpload($startBytes, $startMime), $prompt, (int) $shot['seconds'],
                 ['aspect_ratio' => $shot['aspect'] ?? ($ctx['aspect_ratio'] ?? '9:16'), \App\Services\CreditService::videoQualityParam($tier) => \App\Services\CreditService::videoQuality($tier, null)]);
             $http = Http::withToken((string) config('services.replicate.api_token'))->acceptJson()->timeout(60);
             $res = $version ? $http->post('https://api.replicate.com/v1/predictions', ['version' => $version, 'input' => $input])
@@ -897,9 +932,12 @@ class PlanMediaExecutor
         }
         if (! isset(ShotRoute::REF[$engine])) throw new RuntimeException('This shot has no video model. Plan again.');
         // Omni and Veo take a start frame and references together; Seedance one or the other (ShotRoute::INPUTS).
-        $refs = $this->shotReferences($shot, $ctx);
-        $start = ! empty($shot['first_frame']) ? $this->firstFrame($shot, $ctx) : null;
-        return $veo->start($this->shotPrompt($description, $shot, $refs), (int) $shot['seconds'], $start, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
+        $refImages = $this->shotReferenceImages($shot, $ctx);
+        $startImage = ! empty($shot['first_frame']) ? $this->firstFrameImage($shot, $ctx) : null;
+        $refs = $this->uploadImages($refImages);
+        $start = $startImage ? $this->replicateUpload($startImage[0], $startImage[1]) : null;
+        $checked = array_merge($startImage ? [['bytes' => $startImage[0], 'mime' => $startImage[1], 'role' => 'start']] : [], array_map(fn ($i) => $i + ['role' => 'reference'], $refImages));
+        return $veo->start($this->precheck($this->shotPrompt($description, $shot, $refs), $checked, $shot, $ctx, $k), (int) $shot['seconds'], $start, $engine, array_column($refs, 'url'), null, '720p', [], (string) ($shot['aspect'] ?? '9:16'));
     }
 
     /** One provider job's state: running, succeeded with its clip, or failed (declined says whether moderation refused it). */

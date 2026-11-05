@@ -73,6 +73,8 @@ class AnimateSceneJob implements ShouldQueue
         public readonly ?int $sourceAssetId = null,
         // The still the clip ends on (a storyboard's end frame); only for tiers whose model takes one.
         public readonly ?int $endAssetId = null,
+        // The editor ran ClipPrecheck before charging; anything else (the classic editor, Cruise, the API) is checked here.
+        public readonly bool $prechecked = false,
     ) {
         $this->onQueue('visual');
     }
@@ -207,14 +209,15 @@ class AnimateSceneJob implements ShouldQueue
                         ]);
                     },
                 ];
+                $motion = $this->checkedPrompt($scene, $sourceAsset, $endAsset);
                 try {
-                    $result = $adapter->animate($imageUrl, (string) $this->motionPrompt, $this->tier, $this->durationSeconds,
+                    $result = $adapter->animate($imageUrl, $motion, $this->tier, $this->durationSeconds,
                         $options + ($endAsset ? ['end_image_url' => $this->publicUrlFor($endAsset)] : []));
                 } catch (RuntimeException $e) {
                     // The provider could not fetch our image from storage (seen in production: a connection error to
                     // B2). Nothing was made or billed: hand it the image through its own file store and start once more.
                     if (! self::inputFetchFailed($e->getMessage())) throw $e;
-                    $result = $adapter->animate($this->providerCopy($sourceAsset), (string) $this->motionPrompt, $this->tier, $this->durationSeconds,
+                    $result = $adapter->animate($this->providerCopy($sourceAsset), $motion, $this->tier, $this->durationSeconds,
                         $options + ($endAsset ? ['end_image_url' => $this->providerCopy($endAsset)] : []));
                 }
             }
@@ -457,6 +460,25 @@ class AnimateSceneJob implements ShouldQueue
      * the signed Laravel route when the asset is stored somewhere we can't
      * expose publicly.
      */
+    /**
+     * The motion prompt to buy with: as given when the editor already checked it, else after ClipPrecheck has looked at
+     * it with the start (and end) frame. Frame problems are noted only; the user chose these pictures.
+     */
+    private function checkedPrompt(Scene $scene, Asset $start, ?Asset $end): string
+    {
+        $prompt = (string) $this->motionPrompt;
+        if ($this->prechecked || trim($prompt) === '') return $prompt;
+        $images = [];
+        foreach ([[$start, 'start'], [$end, 'end']] as [$asset, $role]) {
+            $bytes = $asset?->storage_url ? rescue(fn () => app(StorageService::class)->get((string) $asset->storage_url), null, false) : null;
+            if (is_string($bytes) && $bytes !== '') $images[] = ['bytes' => $bytes, 'role' => $role];
+        }
+
+        return app(\App\Services\Generation\ClipPrecheck::class)->check($prompt, $images, 'editor', [
+            'workspace_id' => (int) ($scene->project?->workspace_id ?? 0) ?: null, 'seconds' => $this->durationSeconds, 'ref' => 'scene:'.$scene->getKey(),
+        ])['prompt'];
+    }
+
     private function publicUrlFor(Asset $asset): string
     {
         $storage = app(StorageService::class);

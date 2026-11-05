@@ -777,6 +777,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{sceneId}/animate/cancel', [SceneController::class, 'cancelAnimation'])->whereNumber('sceneId');
             Route::post('/{sceneId}/animate/use-history', [SceneController::class, 'useAnimationFromHistory'])->whereNumber('sceneId');
             Route::post('/{sceneId}/storyboard', [SceneController::class, 'storyboard'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/clip-check', [SceneController::class, 'clipCheck'])->whereNumber('sceneId')->middleware('throttle:30,1');
             Route::post('/{sceneId}/regenerate-music', [SceneController::class, 'regenerateMusic'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');

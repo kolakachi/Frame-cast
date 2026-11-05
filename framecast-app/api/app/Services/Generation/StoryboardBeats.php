@@ -25,6 +25,7 @@ class StoryboardBeats
         .'Size the action to the length: about one simple action per 4 to 5 seconds, the middle frame half way through it. People move only as far as they could in that time; nobody changes place or pose all at once. '
         .'The action moves forward: the end frame shows where it has got to, clearly different from the start, and never returns to the start pose (the video is made from the first and last frames only, so a shot that ends where it began does not move). '
         .'When the shot has little action, the change is small but still forward (he turns to look at her, his hand now in his pocket). Follow the description over the picture: when the reference shows a later or different moment than the start, the start frame still shows the start. '
+        .'{CRAFT} '
         .'"keep" says concretely who and what stays the same in every frame (people\'s look and clothes, product, place, light, style){REF}. '
         .'"motion" says, for a video model, what happens from each frame to the end of the shot, in one or two plain sentences each (start to end, through the middle frame; middle to end; end: how the shot settles). '
         .'Answer JSON only, every key required, "camera" first: {"camera": "...", "frames": ["start", "middle", "end"], "keep": "...", "motion": ["from start", "from middle", "from end"]}. Shot: ';
@@ -47,7 +48,7 @@ class StoryboardBeats
         $ref = $jpeg !== null
             ? ', taken from the reference image above, which every frame is drawn to match'
             : '; there is no reference image, so invent one specific look and say it fully, since each frame is drawn from it';
-        $content[] = ['type' => 'text', 'text' => str_replace(['{REF}', '{SECONDS}'], [$ref, (string) max(3, min(10, $seconds))], self::PROMPT).mb_substr(trim($prompt), 0, 1000)];
+        $content[] = ['type' => 'text', 'text' => str_replace(['{REF}', '{SECONDS}', '{CRAFT}'], [$ref, (string) max(3, min(10, $seconds)), VideoCraft::rules('storyboard')], self::PROMPT).mb_substr(trim($prompt), 0, 1000)];
 
         try {
             $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->acceptJson()->timeout(45)

@@ -1408,6 +1408,9 @@ export function useEditorCore() {
   const animateDuration = ref(5);            // value depends on tier — see ANIMATE_TIER_DURATIONS
   const animateMotionPrompt = ref("");
   const animateSubmitting = ref(false);
+  // ClipPrecheck before a paid clip (2026-11-05): frame problems wait here for "redraw or make anyway"; a fixed prompt
+  // is shown as a note.
+  const clipCheck = ref(null);
   const animateError = ref("");
   // Credits per short clip; long clip doubles. Mirror the backend cost calc exactly.
   const ANIMATE_TIER_COSTS_5S = { quick: 50, balanced: 35, premium: 100, seedance_lite: 30, seedance_pro: 125, veo_fast: 80, seedance_25: 105, spokesperson: 0 };
@@ -6723,11 +6726,45 @@ export function useEditorCore() {
   // `sourceAssetId`: start from another image in the workspace (the new editor's AI video tab) instead of the scene's still.
   // `endAssetId`: the still the clip ends on (a storyboard's last frame). `motionPrompt`: what moves, when it differs
   // from the description typed (the storyboard's planned motion).
-  async function submitAnimate({ sourceAssetId = null, endAssetId = null, motionPrompt = null } = {}) {
+  // The clip as planned, after the check found frame problems and the user chose to go ahead.
+  function makeClipAnyway() {
+    const args = clipCheck.value?.args;
+    if (args) submitAnimate({ ...args, prechecked: true });
+  }
+
+  async function submitAnimate({ sourceAssetId = null, endAssetId = null, motionPrompt = null, check = false, prechecked = false } = {}) {
     const scene = activeScene.value;
     if (!scene) return;
     animateSubmitting.value = true;
     animateError.value = "";
+    clipCheck.value = null;
+    // The new editor looks at the prompt and frames first, for free. Any failure goes straight on (the job checks then).
+    if (check && !prechecked && animateTier.value !== "spokesperson") {
+      const prompt = motionPrompt || animateMotionPrompt.value.trim();
+      if (prompt) {
+        try {
+          const r = (await api.post(`/scenes/${scene.id}/clip-check`, {
+            motion_prompt: prompt,
+            duration_seconds: animateDuration.value,
+            ...(sourceAssetId ? { source_asset_id: sourceAssetId } : {}),
+            ...(endAssetId ? { end_asset_id: endAssetId } : {}),
+          })).data?.data;
+          if (r) {
+            const args = { sourceAssetId, endAssetId, motionPrompt: r.prompt || prompt };
+            if (r.frame_issues?.length) {
+              clipCheck.value = { ...r, args };
+              animateSubmitting.value = false;
+              return;
+            }
+            if (r.rewritten) clipCheck.value = { ...r, args, note: true };
+            motionPrompt = args.motionPrompt;
+            prechecked = true;
+          }
+        } catch {
+          // Checked in the job instead.
+        }
+      }
+    }
     try {
       const response = await api.post(`/scenes/${scene.id}/animate`, {
         ...(sourceAssetId ? { source_asset_id: sourceAssetId } : {}),
@@ -6735,6 +6772,7 @@ export function useEditorCore() {
         tier: animateTier.value,
         duration_seconds: animateDuration.value,
         motion_prompt: motionPrompt || animateMotionPrompt.value.trim() || null,
+        ...(prechecked ? { prechecked: true } : {}),
         quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
         // Only the spokesperson tier has an engine choice; the i2v tiers are a
         // different pipeline entirely.
@@ -8213,6 +8251,8 @@ export function useEditorCore() {
     toggleBulkAnimate,
     submitBulkAnimate,
     submitAnimate,
+    clipCheck,
+    makeClipAnyway,
     lipSyncRegenerating,
     regenerateLipSync,
     POLL_MAX_ATTEMPTS,

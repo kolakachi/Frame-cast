@@ -900,6 +900,7 @@ class GenerateOneShotUgcJob implements ShouldQueue
         $url = null;
         $lastTransient = null;
         $softened = null;
+        $checked = null;
         for ($attempt = 0; $attempt < 2; $attempt++) {
             // veo_hq keeps the character face as a reference on
             // EVERY chunk so identity holds across the chain (the
@@ -921,6 +922,9 @@ class GenerateOneShotUgcJob implements ShouldQueue
             }
             $prompt = $softened ?? (string) $chunk['prompt'];
             if (in_array($this->faceRef, $chunkRefs, true)) $prompt .= "\n\nOne reference image is a close-up of the presenter's face: in every frame their face matches it exactly, the same person.";
+            // The look before the clip is bought (ClipPrecheck), once per segment: a prompt asking for what the model
+            // garbles is rewritten; frame problems are noted, not a stop (the pitch and its pictures were approved).
+            if ($softened === null) $prompt = $checked ??= $this->precheck($scene, $i, $chunk, $prompt, $startFrame, $chunkRefs);
             $audio = ! empty($chunk['audio_ref']) ? $this->publicAudio((string) $chunk['audio_ref']) : null;
             try {
                 $predictionId = $veo->start($prompt, (int) $chunk['seconds'], $startFrame, $this->engine, $chunkRefs, $this->seed, $this->resolution, [], $this->aspect, $audio['url'] ?? null);
@@ -1088,6 +1092,20 @@ class GenerateOneShotUgcJob implements ShouldQueue
             if (! app()->runningUnitTests()) sleep(3 * ($try + 1));
         }
         return false;
+    }
+
+    /** The prompt to buy a segment with, after ClipPrecheck has looked at it with its start frame and references. */
+    private function precheck(Scene $scene, int $i, array $chunk, string $prompt, ?string $startFrame, array $refs): string
+    {
+        $images = [];
+        foreach (array_merge([['ref' => $startFrame, 'role' => 'start']], array_map(fn ($r) => ['ref' => is_string($r) ? $r : null, 'role' => 'reference'], array_slice($refs, 0, 3))) as $img) {
+            if (($bytes = \App\Services\Generation\ClipPrecheck::bytesOf($img['ref'])) !== null) $images[] = ['bytes' => $bytes, 'role' => $img['role']];
+        }
+
+        return app(\App\Services\Generation\ClipPrecheck::class)->check($prompt, $images, 'ugc', [
+            'workspace_id' => (int) ($scene->project?->workspace_id ?? 0) ?: null, 'seconds' => (int) ($chunk['seconds'] ?? 5),
+            'ref' => $this->projectId.':'.($i + 1),
+        ])['prompt'];
     }
 
     private function forgetOutput(Scene $scene): void

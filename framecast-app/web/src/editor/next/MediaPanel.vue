@@ -26,7 +26,7 @@ const {
   activeSceneIsStillImage, MOTION_EFFECT_OPTIONS, MOTION_INTENSITY_OPTIONS, motionEffectDraft, motionIntensityDraft,
   motionSaveState, motionSaveError,
   ANIMATE_TIER_META, ANIMATE_TIER_ORDER, ANIMATE_TIER_COSTS_5S, animateTier, animateDuration, animateDurations, animateQuality,
-  animateQualityOptions, animateCost, animateMotionPrompt, animateSubmitting, animateError, submitAnimate, creditCosts, tierSlow,
+  animateQualityOptions, animateCost, animateMotionPrompt, animateSubmitting, animateError, submitAnimate, clipCheck, makeClipAnyway, creditCosts, tierSlow,
   videoReference, videoReferencePicking, normalizeScenePayload, replaceSceneInCollection,
 } = core;
 const { imageModelCost, imageCost, imageEditCost, characterPriced } = usePrices(core);
@@ -91,7 +91,7 @@ function pickReference() {
 }
 function makeVideo() {
   menu.value = null;
-  submitAnimate({ sourceAssetId: videoReference.value?.id ?? null });
+  submitAnimate({ sourceAssetId: videoReference.value?.id ?? null, check: true });
 }
 
 // ── Storyboard first: the shot drawn as three frames (DrawStoryboardJob), then one clip from the first to the last ──
@@ -164,6 +164,7 @@ function makeVideoFromStoryboard() {
     sourceAssetId: storyboardFrames.value[0].asset_id,
     endAssetId: storyboardFrames.value[2].asset_id,
     motionPrompt: motion ? `${typed.slice(0, 880 - motion.length)}\n\nOne continuous shot, no cuts, the camera as in the first frame. From the first frame to the last: ${motion}` : null, // the API takes 1000
+    check: true,
   });
 }
 // A frame picture that fails to load (a signed link gone stale, the API restarting) shows as loading, and the scene is
@@ -440,6 +441,17 @@ function send() {
       </button>
       <p v-if="hasReference && !activeSceneAnimationPending" class="nx-hint">About {{ (ANIMATE_TIER_META[animateTier]?.render || "").replace("~", "") }}. The clip replaces this scene's picture; the picture stays in Versions.</p>
     </template>
+    <!-- The look before a paid clip (ClipPrecheck): frame problems are shown before anything is charged. -->
+    <div v-if="clipCheck && !clipCheck.note" class="nx-quote nx-quote-warn" role="alert">
+      <b>Before you spend credits, this may not come out right:</b>
+      <ul class="nx-issues"><li v-for="(issue, i) in clipCheck.frame_issues" :key="i">{{ issue }}</li></ul>
+      <div class="nx-row nx-row-start">
+        <button v-if="makeMode === 'storyboard'" class="nx-btn" type="button" :disabled="!canDrawStoryboard" @click="clipCheck = null; drawStoryboard()">Redraw the storyboard</button>
+        <button v-else class="nx-btn" type="button" @click="clipCheck = null; pickReference()">Choose another picture</button>
+        <button class="nx-btn nx-primary" type="button" :disabled="animateSubmitting" @click="makeClipAnyway">{{ `Make it anyway${cr(animateCost)}` }}</button>
+      </div>
+    </div>
+    <p v-else-if="clipCheck?.note" class="nx-hint">We adjusted the description so the video model handles it better: {{ clipCheck.prompt_issues.join(" ") }}</p>
     <p v-if="animateError" class="nx-err">{{ animateError }}</p>
     <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
 

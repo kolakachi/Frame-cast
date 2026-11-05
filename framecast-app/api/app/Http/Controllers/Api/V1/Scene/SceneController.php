@@ -1161,6 +1161,8 @@ class SceneController extends Controller
             'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
             // The still the clip ends on: a storyboard's end frame (2026-10-31). Only models that take a last frame.
             'end_asset_id'     => ['sometimes', 'nullable', 'integer'],
+            // The editor already ran ClipPrecheck on this prompt and frames (clip-check below), so the job need not.
+            'prechecked'       => ['sometimes', 'boolean'],
         ]);
         $endAsset = null;
         if (! empty($validated['end_asset_id'])) {
@@ -1325,6 +1327,7 @@ class SceneController extends Controller
                 // handed a video to an image-to-video model.
                 sourceAssetId: $sourceAsset->getKey(),
                 endAssetId: $endAsset?->getKey(),
+                prechecked: (bool) ($validated['prechecked'] ?? false),
             );
         }
 
@@ -1343,6 +1346,45 @@ class SceneController extends Controller
      * the scene's own still, else the description alone), to approve before paying for motion. Charged and drawn by
      * DrawStoryboardJob; the price here is the one the job charges.
      */
+    /**
+     * The look before a clip is bought (ClipPrecheck, 2026-11-05), free: the prompt with its start frame (and end
+     * frame, for a storyboard). Prompt problems come back fixed in "prompt"; frame problems are listed so the editor
+     * can offer to redraw before anything is charged.
+     */
+    public function clipCheck(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+        $validated = $request->validate([
+            'motion_prompt'    => ['required', 'string', 'max:1000'],
+            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
+            'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
+            'end_asset_id'     => ['sometimes', 'nullable', 'integer'],
+        ]);
+        $mine = fn (?int $id) => $id ? \App\Models\Asset::query()->whereKey($id)->where('workspace_id', $user->workspace_id)->first() : null;
+        $still = fn ($a) => $a && ! str_starts_with((string) $a->mime_type, 'video/') && $a->asset_type !== 'video' ? $a : null;
+        $start = $still($mine($validated['source_asset_id'] ?? null))
+            ?? $still(\App\Models\Asset::query()->find((int) ($scene->visual_asset_id ?? 0)))
+            ?? $still(\App\Models\Asset::query()->find((int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0)));
+        $images = [];
+        foreach ([[$start, 'start'], [$still($mine($validated['end_asset_id'] ?? null)), 'end']] as [$asset, $role]) {
+            $bytes = $asset?->storage_url ? rescue(fn () => app(\App\Services\Media\StorageService::class)->get((string) $asset->storage_url), null, false) : null;
+            if (is_string($bytes) && $bytes !== '') $images[] = ['bytes' => $bytes, 'role' => $role];
+        }
+        $r = app(\App\Services\Generation\ClipPrecheck::class)->check($validated['motion_prompt'], $images, 'editor', [
+            'workspace_id' => (int) $user->workspace_id, 'seconds' => (int) ($validated['duration_seconds'] ?? 5), 'ref' => 'scene:'.$scene->getKey(),
+        ]);
+
+        return response()->json(['data' => [
+            'prompt' => $r['prompt'], 'rewritten' => $r['rewritten'],
+            'prompt_issues' => $r['prompt_issues'], 'frame_issues' => $r['frame_issues'],
+        ]]);
+    }
+
     public function storyboard(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */

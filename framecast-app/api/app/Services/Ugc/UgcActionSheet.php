@@ -63,6 +63,7 @@ Rules:
 - check: per block, one yes/no question a single frame from that moment can answer about the hands and the product (e.g. "Is the cap off the bottle?").
 - Show pace through what is seen (the cap comes off in one turn, the wrist flicks), never with the words fast, quick, quickly, rapid or slowly on their own.
 - State everything positively, as what is seen and heard. Plain words; one steady camera; no style labels.
+- {{craft}}
 
 Cameras:
 {{cameras}}
@@ -86,7 +87,7 @@ TXT;
             $clips[] = 'Clip '.($i + 1).' ('.(int) ($c['seconds'] ?? 0).' seconds'.(trim((string) ($c['dialogue'] ?? '')) !== '' ? ', its line: "'.trim((string) $c['dialogue']).'"' : ', silent').'). As planned: '
                 .mb_substr(trim((string) preg_replace('/\s*(The presenter says[^"]*"[^"]*"\.?|They say exactly these words.*$|No speech, narration.*$)/su', '', $scene)), 0, 1200);
         }
-        $content = str_replace('{{cameras}}', implode("\n", array_map(fn ($k, $c) => $k.': '.$c['use'], array_keys(self::CAMERAS), self::CAMERAS)), self::PROMPT)."\n\nProduct: ".($product !== '' ? $product : 'the product')
+        $content = str_replace(['{{cameras}}', '{{craft}}'], [implode("\n", array_map(fn ($k, $c) => $k.': '.$c['use'], array_keys(self::CAMERAS), self::CAMERAS)), \App\Services\Generation\VideoCraft::rules('ugc')], self::PROMPT)."\n\nProduct: ".($product !== '' ? $product : 'the product')
             .($wardrobe !== '' ? "\nThe presenter wears: ".$wardrobe : '').($place !== '' ? "\nThe place: ".$place : '')."\n\n".implode("\n\n", $clips);
         $sheets = $this->ask($content, count($chunks));
         // One more try, told exactly what was wrong (2026-10-12: a run split a clip's line with altered words).
