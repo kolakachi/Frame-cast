@@ -445,8 +445,25 @@ const askedStyles = computed(() => {
   return allStyles.value ? [...picked, ...withSamples.filter(k => !picked.includes(k))] : picked
 })
 function openStyle(k) { styleView.value = k; styleSample.value = 0 }
-async function useStyle(k) { styleView.value = null; allStyles.value = false; await answerWith(`Use the ${k.name} style`) }
+async function useStyle(k) { if (picker.value) return pickStyle('pack:' + k.slug); styleView.value = null; allStyles.value = false; await answerWith(`Use the ${k.name} style`) }
 async function useSavedStyle(st) { await chooseStyle(st.id); await answerWith(`Use my saved style "${st.name}"`) }
+// The style picker (2026-11-05): a modal of every style with its sample video beside the name, opened from the
+// composer's style button or the plan drawer's. `picker` says which one is choosing.
+const picker = ref(null)
+const composerStyleLabel = computed(() => {
+  const v = currentStyleId.value
+  if (!v) return 'WyvStudio chooses'
+  if (v.startsWith('pack:')) return packs.value.find(k => k.slug === v.slice(5))?.name || 'WyvStudio style'
+  return styles.value.find(st => st.id === v)?.name || 'Your style'
+})
+function openPicker(kind, plan = null) { picker.value = { kind, plan, current: kind === 'plan' ? (planDrafts.value[plan.id]?.style ?? styleKey(plan.plan.selections.style)) : currentStyleId.value } }
+const pickerExtras = computed(() => picker.value?.kind === 'plan' ? styleOptions(picker.value.plan).filter(o => !o.key.startsWith('pack:') && o.key !== 'free:') : [])
+async function pickStyle(value) {
+  const pk = picker.value; picker.value = null; styleView.value = null
+  if (!pk) return
+  if (pk.kind === 'plan') { if (planDrafts.value[pk.plan.id]) planDrafts.value[pk.plan.id].style = value; return }
+  await chooseStyle(value)
+}
 function hoverPlay(e, on) { const v = e.currentTarget.querySelector('video'); if (!v) return; if (on) v.play().catch(() => {}); else v.pause() }
 async function answerWith(word) { prompt.value = word; await send() }
 // A question asked before planning waits for its answer in the composer; it can be skipped.
@@ -1904,19 +1921,6 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                   <template v-if="styles.length"><span class="muted">Your styles:</span><button v-for="st in styles" :key="st.id" type="button" class="quiet quiet--sm" :disabled="locked" @click="useSavedStyle(st)">{{ st.name }}</button></template>
                 </div>
               </div>
-              <div v-if="styleView" class="style-view" role="dialog" aria-modal="true" :aria-label="styleView.name + ' style'" @click.self="styleView = null" @keydown.esc="styleView = null">
-                <div class="style-view__card">
-                  <button type="button" class="style-view__x" aria-label="Close" @click="styleView = null">×</button>
-                  <video :key="styleView.slug + styleSample" class="style-view__video" :src="styleView.samples[styleSample].video_url" :poster="styleView.samples[styleSample].poster_url || undefined" controls autoplay muted loop playsinline></video>
-                  <div class="style-view__body">
-                    <h3>{{ styleView.name }}</h3>
-                    <p>{{ styleView.when }}</p>
-                    <p class="muted"><b>Look:</b> {{ styleView.look }}<br><b>Pace:</b> {{ styleView.pace }}</p>
-                    <p v-if="styleView.samples.length > 1" class="style-view__samples"><button v-for="(smp, i) in styleView.samples" :key="smp.id" type="button" :class="['quiet', 'quiet--sm', i === styleSample ? 'is-on' : '']" @click="styleSample = i">Sample {{ i + 1 }}</button></p>
-                    <button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="useStyle(styleView)">Use this style</button>
-                  </div>
-                </div>
-              </div>
               <div v-if="pendingQuestion && !error && pendingQuestion.options?.length" class="answer-cards" role="group" aria-label="Suggested answers">
                 <button v-for="o in pendingQuestion.options" :key="o" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o)"><span class="pd-card-label">{{ o }}</span></button>
               </div>
@@ -1946,7 +1950,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                 <button type="button" class="quiet" :disabled="locked" title="PNG, JPEG, WebP, MP4, MP3 or WAV, up to 20 files, 100 MB each and 200 MB total. PDF, Word or PowerPoint up to 20 MB (the first 50 pages are read)." @click="fileInput.click()">+ Attach</button>
                 <button type="button" class="quiet" :disabled="locked" @click="showLibrary">From library</button>
                 <button type="button" class="quiet" :disabled="locked" title="A public post from X, YouTube or TikTok, used as a style reference" @click="openLink">From a link</button>
-                <label v-if="styles.length || packs.length" class="style-pick"><span class="sr-only">Style</span><select :value="currentStyleId" :disabled="locked" aria-label="Style" @change="chooseStyle($event.target.value)"><option value="">Style: WyvStudio chooses</option><optgroup v-if="packs.length" label="WyvStudio styles"><option v-for="k in packs" :key="k.slug" :value="'pack:' + k.slug">Style: {{ k.name }}</option></optgroup><optgroup v-if="styles.length" label="Your styles"><option v-for="s in styles" :key="s.id" :value="s.id">Style: {{ s.name }}</option></optgroup></select></label>
+                <button v-if="styles.length || packs.length" type="button" class="style-pick style-pick--btn" :disabled="locked" aria-haspopup="dialog" @click="openPicker('composer')">Style: {{ composerStyleLabel }} <span aria-hidden="true">▾</span></button>
                 <button v-if="styles.length" type="button" class="quiet" @click="stylesOpen = true">Manage styles</button>
                 <UiSelect v-if="outputKind === 'video' || conversation" :model-value="currentEffort" label="Effort: how much care, and cost, goes into the video" align="left" drop="up" :disabled="locked" :options="EFFORTS.map(e => ({ value: e.id, label: 'Effort · ' + e.label }))" @update:model-value="setEffort" />
                 <span v-if="!conversation" class="seg" role="group" aria-label="What to make"><button type="button" :aria-pressed="outputKind === 'video'" @click="outputKind = 'video'">Video</button><button type="button" :aria-pressed="outputKind === 'image'" @click="outputKind = 'image'">Image</button></span>
@@ -2283,7 +2287,7 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
           <PlanGroup v-if="drawerPlan.plan.style || drawerPlan.plan.colour_treatment || drawerPlan.plan.mascot3d" title="Look" :summary="lookSummary(drawerPlan)">
             <template #aside><span v-if="drawerPlan.plan.colour_treatment" class="pd-dots" aria-hidden="true"><i v-for="(c, role) in drawerPlan.plan.colour_treatment.roles" :key="role" :style="{ background: planDrafts[drawerPlan.id]?.colours?.[role] || c.hex }" /></span></template>
             <div v-if="drawerPlan.plan.style" class="pd-field"><span>Style</span>
-              <UiSelect :model-value="planDrafts[drawerPlan.id]?.style ?? styleKey(drawerPlan.plan.selections.style)" label="Style this video starts from" :disabled="!planEditable(drawerPlan) || !planDrafts[drawerPlan.id]" align="left" :options="styleOptions(drawerPlan).map(o => ({ value: o.key, label: o.label }))" @update:model-value="v => { planDrafts[drawerPlan.id].style = v }" />
+              <div class="style-field"><span class="style-field__label">Style this video starts from</span><button type="button" class="style-pick style-pick--btn" :disabled="!planEditable(drawerPlan) || !planDrafts[drawerPlan.id]" aria-haspopup="dialog" @click="openPicker('plan', drawerPlan)">{{ lookSummary(drawerPlan) || 'WyvStudio chooses' }} <span aria-hidden="true">▾</span></button></div>
             </div>
             <PlanNote v-if="drawerPlan.plan.style?.why || (styleNotes[planStyleKey(drawerPlan)] || []).length" label="Why this style" :text="[drawerPlan.plan.style?.why, ...(styleNotes[planStyleKey(drawerPlan)] || [])].filter(Boolean).join(' ')" />
             <div v-if="drawerPlan.plan.colour_treatment" class="pd-colours" role="group" aria-label="Colours">
@@ -2519,7 +2523,51 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
       <CreateDialog :open="compareOpen" title="Compare versions" @close="compareOpen = false"><div class="comparison"><section><h3>Version {{ currentRevision?.number }} · Earlier</h3><StoryboardCarousel v-if="media && outputMeta.look" :src="media" />
                   <img v-else-if="media && imageOutput" :src="media" class="created-image" alt="Earlier image" /><FinishedVideoPlayer v-else-if="media" :src="media" /></section><section><h3>Version {{ currentNumber }} · Current</h3><img v-if="compareMedia && imageOutput" :src="compareMedia" class="created-image" alt="Current image" /><FinishedVideoPlayer v-else-if="compareMedia" :src="compareMedia" /><p v-else>Loading current version…</p></section></div><p class="muted">Inspect each version to compare. This does not change the current version.</p></CreateDialog>
     </main>
-  </div>
+    <!-- Style picker and sample viewer: page level, so the composer and the plan drawer can both open them. -->
+              <div v-if="picker" class="style-view" role="dialog" aria-modal="true" aria-label="Choose a style" @click.self="picker = null" @keydown.esc="picker = null">
+                <div class="style-picker">
+                  <button type="button" class="style-view__x" aria-label="Close" @click="picker = null">×</button>
+                  <h3>Choose a style</h3>
+                  <p class="muted">Each style is shown with a video made in it. Hover to play, or open one to watch it larger.</p>
+                  <div class="style-cards">
+                    <button type="button" :class="['style-card', 'style-card--choose', (picker.current || '') === (picker.kind === 'plan' ? 'free:' : '') ? 'is-on' : '']" @click="pickStyle(picker.kind === 'plan' ? 'free:' : '')">
+                      <span class="style-card__media style-card__media--choose" aria-hidden="true">✦</span>
+                      <span class="style-card__name">{{ picker.kind === 'plan' ? 'Free design' : 'WyvStudio chooses' }}</span>
+                      <span class="style-card__for">The style that fits your brief</span>
+                    </button>
+                    <button v-for="o in pickerExtras" :key="o.key" type="button" :class="['style-card', 'style-card--choose', picker.current === o.key ? 'is-on' : '']" @click="pickStyle(o.key)">
+                      <span class="style-card__media style-card__media--choose" aria-hidden="true">◎</span>
+                      <span class="style-card__name">{{ o.label }}</span>
+                      <span class="style-card__for">What this plan was made with</span>
+                    </button>
+                    <div v-for="k in packs" :key="k.slug" :class="['style-card', 'style-card--pick', picker.current === 'pack:' + k.slug ? 'is-on' : '']" @mouseenter="hoverPlay($event, true)" @mouseleave="hoverPlay($event, false)">
+                      <button type="button" class="style-card__hit" :aria-label="'Use the ' + k.name + ' style'" @click="pickStyle('pack:' + k.slug)"></button>
+                      <span class="style-card__media"><video v-if="k.samples?.length" :src="k.samples[0].preview_url || k.samples[0].video_url" :poster="k.samples[0].poster_url || undefined" muted loop playsinline preload="none"></video><span v-else class="style-card__soon">Sample coming soon</span></span>
+                      <span class="style-card__name">{{ k.name }}</span>
+                      <span class="style-card__for">Best for {{ (k.video_types || []).slice(0, 2).join(', ') }}</span>
+                      <button v-if="k.samples?.length" type="button" class="quiet quiet--sm style-card__watch" @click.stop="openStyle(k)">▶ Watch</button>
+                    </div>
+                  </div>
+                  <template v-if="picker.kind === 'composer' && styles.length">
+                    <h4 class="style-picker__sub">Your styles</h4>
+                    <div class="style-picker__saved"><button v-for="st in styles" :key="st.id" type="button" :class="['quiet', 'quiet--sm', picker.current === st.id ? 'is-on' : '']" @click="pickStyle(st.id)">{{ st.name }}</button></div>
+                  </template>
+                </div>
+              </div>
+              <div v-if="styleView" class="style-view" role="dialog" aria-modal="true" :aria-label="styleView.name + ' style'" @click.self="styleView = null" @keydown.esc="styleView = null">
+                <div class="style-view__card">
+                  <button type="button" class="style-view__x" aria-label="Close" @click="styleView = null">×</button>
+                  <video :key="styleView.slug + styleSample" class="style-view__video" :src="styleView.samples[styleSample].video_url" :poster="styleView.samples[styleSample].poster_url || undefined" controls autoplay muted loop playsinline></video>
+                  <div class="style-view__body">
+                    <h3>{{ styleView.name }}</h3>
+                    <p>{{ styleView.when }}</p>
+                    <p class="muted"><b>Look:</b> {{ styleView.look }}<br><b>Pace:</b> {{ styleView.pace }}</p>
+                    <p v-if="styleView.samples.length > 1" class="style-view__samples"><button v-for="(smp, i) in styleView.samples" :key="smp.id" type="button" :class="['quiet', 'quiet--sm', i === styleSample ? 'is-on' : '']" @click="styleSample = i">Sample {{ i + 1 }}</button></p>
+                    <button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="useStyle(styleView)">Use this style</button>
+                  </div>
+                </div>
+              </div>
+</div>
 </template>
 
 <style scoped>
@@ -2999,7 +3047,19 @@ label.tray-note{white-space:normal}
 .style-card__name{font-weight:600;font-size:13.5px;padding:0 4px}
 .style-card__for{font-size:12px;color:var(--text-3);padding:0 4px;line-height:1.35}
 .style-ask__more{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px;font-size:12.5px}
+.style-picker{position:relative;max-width:920px;width:100%;max-height:88vh;overflow:auto;background:var(--bg-2,#15161c);border:1px solid var(--line-3);border-radius:16px;padding:18px 18px 20px}
+.style-picker h3{margin:0 0 4px}.style-picker > p{margin:0 0 14px;font-size:13px}
+.style-picker__sub{margin:16px 0 8px;font-size:13px}.style-picker__saved{display:flex;flex-wrap:wrap;gap:6px 12px}
+.style-card--pick{position:relative}.style-card__hit{position:absolute;inset:0;background:none;border:0;cursor:pointer;border-radius:12px}
+.style-card__watch{position:relative;align-self:flex-start;margin:2px 0 0 2px}
+.style-card.is-on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.style-card__soon{display:grid;place-items:center;height:100%;font-size:12px;color:var(--text-3)}
+.style-pick--btn{font:inherit;font-size:12px;color:var(--text-2);background:transparent;border:1px solid var(--line-2);border-radius:8px;padding:4px 8px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.style-pick--btn:hover:not(:disabled){border-color:var(--accent);color:var(--text-1)}
+.style-field .style-pick--btn{font-size:13.5px;padding:7px 12px;max-width:none;background:var(--bg-3)}
+.style-field{display:flex;flex-direction:column;gap:6px}.style-field__label{font-size:12.5px;color:var(--text-2)}.style-field .style-pick--btn{align-self:flex-start}
 .style-view{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px}
+.style-view + .style-view{z-index:81}
 .style-view__card{position:relative;display:grid;grid-template-columns:minmax(0,300px) minmax(0,320px);gap:18px;max-width:680px;width:100%;background:var(--bg-2,#15161c);border:1px solid var(--line-3);border-radius:16px;padding:16px}
 .style-view__video{width:100%;max-height:70vh;border-radius:10px;background:#000;object-fit:contain}
 .style-view__body h3{margin:4px 0 8px}.style-view__body p{font-size:13.5px;line-height:1.5;margin:0 0 10px}
