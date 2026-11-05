@@ -9,5 +9,8 @@
   "service explainer"
  ],
  "look": "A small isometric world in soft pastel colours, objects drawn as clean 30-degree blocks, a glowing item travelling between stops with labels",
- "pace": "Steady: the camera glides from stop to stop, about 2.5-3 s a step, each label popping as the item arrives"
+ "pace": "Steady: the camera glides from stop to stop, about 2.5-3 s a step, each label popping as the item arrives",
+ "samples": [
+  "tx6w9hlt8t"
+ ]
 }

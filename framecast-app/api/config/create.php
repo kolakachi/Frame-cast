@@ -59,6 +59,8 @@ return [
     'combined_sheet_workspaces' => [1],
     // Cheap vision checks (storyboard panels against their direction): a small model, never the creative one.
     'check_model' => env('CREATE_CHECK_MODEL', 'claude-haiku-4-5-20251001'),
+    // "What style should this video be?" with sample videos, asked once before a new video is planned (2026-11-05).
+    'style_question' => (bool) env('CREATE_STYLE_QUESTION', true),
     // The final look before delivery (FinalLook): Sonnet, not the cheap check model. Haiku called a required item missing
     // for the wrong part (workspace 82, 2026-10-15), which sends the repair round after the wrong thing. A few cents a build.
     'final_look_model' => env('CREATE_FINAL_LOOK_MODEL', 'claude-sonnet-5-5'),

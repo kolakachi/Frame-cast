@@ -28,7 +28,9 @@ class StylePacks
             if (! is_array($m) || ! preg_match('/^[a-z0-9-]{2,40}$/', (string) ($m['slug'] ?? '')) || basename(dirname($file)) !== $m['slug']) continue;
             $out[] = ['slug' => $m['slug'], 'name' => (string) ($m['name'] ?? $m['slug']), 'when' => (string) ($m['when'] ?? ''),
                 'video_types' => array_values((array) ($m['video_types'] ?? [])), 'look' => (string) ($m['look'] ?? ''), 'pace' => (string) ($m['pace'] ?? ''),
-                'has_example' => is_file(dirname($file).'/example/index.html')];
+                'has_example' => is_file(dirname($file).'/example/index.html'),
+                // Finished videos made in this style (template ids), shown when the user is asked to pick one.
+                'samples' => array_values(array_filter((array) ($m['samples'] ?? []), 'is_string'))];
         }
         usort($out, fn ($a, $b) => strcmp($a['name'], $b['name']));
         return $out;

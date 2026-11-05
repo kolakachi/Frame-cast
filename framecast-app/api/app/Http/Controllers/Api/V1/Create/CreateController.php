@@ -95,7 +95,9 @@ class CreateController extends Controller
             // A question asked before planning is marked, so the conversation can offer to skip it.
             'messages' => DB::table('create_messages')->where('conversation_id', $id)->orderBy('sequence')->get(['id', 'role', 'content', 'created_at', 'idempotency_key'])
                 ->map(fn ($m) => ['id' => $m->id, 'role' => $m->role, 'content' => $m->content, 'created_at' => $m->created_at,
-                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|clarify-change|reference-match|role|study|materials|file):/', (string) $m->idempotency_key) ? 'question' : null,
+                    'kind' => $m->role === 'assistant' && preg_match('/^(clarify|clarify-change|reference-match|role|study|materials|file|style):/', (string) $m->idempotency_key) ? 'question' : null,
+                    // The style question carries the styles it recommends for this brief.
+                    ...(str_starts_with((string) $m->idempotency_key, 'style:') ? ['styles' => \App\Services\Create\StyleQuestion::slugsFrom((string) $m->idempotency_key)] : []),
                     // A question about one of the user's files offers the answers its reading suggested.
                     ...(preg_match('/^file:(\d+):/', (string) $m->idempotency_key, $f) ? ['options' => (array) (data_get(json_decode((string) DB::table('create_attachments')->where('conversation_id', $id)->where('asset_id', (int) $f[1])->value('notes_json'), true), 'options') ?? [])] : [])]),
             'attachments' => DB::table('create_attachments')->where('conversation_id',$id)->get()->map(function($attachment) use($r) {
@@ -197,7 +199,11 @@ class CreateController extends Controller
 
     public function styles(Request $r)
     {
-        return response()->json(['data' => app(\App\Services\Create\StyleService::class)->list($r->user()), 'packs' => \App\Services\Create\StylePacks::catalogue(),
+        // Each style's samples as cards (poster, preview and video, public or signed like the templates').
+        $templates = DB::table('create_templates')->whereNull('archived_at')->get()->keyBy('id');
+        $packs = array_map(fn ($p) => [...$p, 'samples' => array_values(array_filter(array_map(fn ($tid) => isset($templates[$tid]) ? \App\Services\Create\TemplateLibrary::card($templates[$tid]) : null, $p['samples'])))],
+            \App\Services\Create\StylePacks::catalogue());
+        return response()->json(['data' => app(\App\Services\Create\StyleService::class)->list($r->user()), 'packs' => $packs,
             'notes' => app(\App\Services\Create\StyleNotes::class)->all((int) $r->user()->workspace_id)]);
     }
 

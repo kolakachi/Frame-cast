@@ -435,6 +435,19 @@ const MATCH_ANSWERS = [
   { word: 'Inspired', label: 'Inspired', detail: 'Take just the idea and make something of your own.' },
 ]
 const isMatchQuestion = m => /^How closely should I follow the reference video\?/.test(m.content || '')
+// "What style should this video be?" (2026-11-05): the styles that fit the brief as sample videos, "See all" for the
+// rest, "Let WyvStudio choose". A card opens its sample; "Use this style" answers in words like a tapped answer.
+const isStyleQuestion = m => Array.isArray(m?.styles)
+const allStyles = ref(false), styleView = ref(null), styleSample = ref(0)
+const askedStyles = computed(() => {
+  const withSamples = packs.value.filter(k => k.samples?.length)
+  const picked = (pendingQuestion.value?.styles || []).map(slug => withSamples.find(k => k.slug === slug)).filter(Boolean)
+  return allStyles.value ? [...picked, ...withSamples.filter(k => !picked.includes(k))] : picked
+})
+function openStyle(k) { styleView.value = k; styleSample.value = 0 }
+async function useStyle(k) { styleView.value = null; allStyles.value = false; await answerWith(`Use the ${k.name} style`) }
+async function useSavedStyle(st) { await chooseStyle(st.id); await answerWith(`Use my saved style "${st.name}"`) }
+function hoverPlay(e, on) { const v = e.currentTarget.querySelector('video'); if (!v) return; if (on) v.play().catch(() => {}); else v.pause() }
 async function answerWith(word) { prompt.value = word; await send() }
 // A question asked before planning waits for its answer in the composer; it can be skipped.
 const pendingQuestion = computed(() => { const list = data.value?.messages || []; const last = list[list.length - 1]; return last?.role === 'assistant' && last.kind === 'question' ? last : null })
@@ -1873,13 +1886,44 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
               <div v-if="pendingQuestion && !error && isMaterialsQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="Your own material">
                 <button type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith('Go without')"><span class="pd-card-label">Go without</span><span class="pd-card-detail">Plan now with illustrative versions; you can add yours later.</span></button>
               </div>
+              <div v-if="pendingQuestion && !error && isStyleQuestion(pendingQuestion)" class="style-ask">
+                <div class="style-cards" role="group" aria-label="Video styles">
+                  <button v-for="(k, i) in askedStyles" :key="k.slug" type="button" class="style-card" :disabled="locked" @click="openStyle(k)" @mouseenter="hoverPlay($event, true)" @mouseleave="hoverPlay($event, false)">
+                    <span class="style-card__media"><video :src="k.samples[0].preview_url || k.samples[0].video_url" :poster="k.samples[0].poster_url || undefined" muted loop playsinline :autoplay="i < (pendingQuestion.styles || []).length" :preload="i < (pendingQuestion.styles || []).length ? 'auto' : 'none'"></video></span>
+                    <span class="style-card__name">{{ k.name }}</span>
+                    <span class="style-card__for">Best for {{ (k.video_types || []).slice(0, 2).join(', ') }}</span>
+                  </button>
+                  <button type="button" class="style-card style-card--choose" :disabled="locked" @click="answerWith('Let WyvStudio choose')">
+                    <span class="style-card__media style-card__media--choose" aria-hidden="true">✦</span>
+                    <span class="style-card__name">Let WyvStudio choose</span>
+                    <span class="style-card__for">I'll pick the style that fits your brief</span>
+                  </button>
+                </div>
+                <div class="style-ask__more">
+                  <button v-if="!allStyles && askedStyles.length < packs.filter(k => k.samples?.length).length" type="button" class="quiet quiet--sm" :disabled="locked" @click="allStyles = true">See all styles</button>
+                  <template v-if="styles.length"><span class="muted">Your styles:</span><button v-for="st in styles" :key="st.id" type="button" class="quiet quiet--sm" :disabled="locked" @click="useSavedStyle(st)">{{ st.name }}</button></template>
+                </div>
+              </div>
+              <div v-if="styleView" class="style-view" role="dialog" aria-modal="true" :aria-label="styleView.name + ' style'" @click.self="styleView = null" @keydown.esc="styleView = null">
+                <div class="style-view__card">
+                  <button type="button" class="style-view__x" aria-label="Close" @click="styleView = null">×</button>
+                  <video :key="styleView.slug + styleSample" class="style-view__video" :src="styleView.samples[styleSample].video_url" :poster="styleView.samples[styleSample].poster_url || undefined" controls autoplay muted loop playsinline></video>
+                  <div class="style-view__body">
+                    <h3>{{ styleView.name }}</h3>
+                    <p>{{ styleView.when }}</p>
+                    <p class="muted"><b>Look:</b> {{ styleView.look }}<br><b>Pace:</b> {{ styleView.pace }}</p>
+                    <p v-if="styleView.samples.length > 1" class="style-view__samples"><button v-for="(smp, i) in styleView.samples" :key="smp.id" type="button" :class="['quiet', 'quiet--sm', i === styleSample ? 'is-on' : '']" @click="styleSample = i">Sample {{ i + 1 }}</button></p>
+                    <button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="useStyle(styleView)">Use this style</button>
+                  </div>
+                </div>
+              </div>
               <div v-if="pendingQuestion && !error && pendingQuestion.options?.length" class="answer-cards" role="group" aria-label="Suggested answers">
                 <button v-for="o in pendingQuestion.options" :key="o" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o)"><span class="pd-card-label">{{ o }}</span></button>
               </div>
               <div v-if="pendingQuestion && !error && isMatchQuestion(pendingQuestion)" class="answer-cards" role="group" aria-label="How closely to follow the reference">
                 <button v-for="o in MATCH_ANSWERS" :key="o.word" type="button" class="pd-card answer-card" :disabled="locked" @click="answerWith(o.word)"><span class="pd-card-label">{{ o.label }}</span><span class="pd-card-detail">{{ o.detail }}</span></button>
               </div>
-              <p v-if="pendingQuestion && !error" class="question-hint">{{ isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) || isStudyQuestion(pendingQuestion) || pendingQuestion.options?.length ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
+              <p v-if="pendingQuestion && !error" class="question-hint">{{ isStyleQuestion(pendingQuestion) || isMatchQuestion(pendingQuestion) || isRoleQuestion(pendingQuestion) || isStudyQuestion(pendingQuestion) || pendingQuestion.options?.length ? 'Or answer in your own words below, or' : 'Answer below, or' }} <button type="button" class="quiet quiet--sm" :disabled="locked" @click="makePlan(true)">skip and plan with your best guess</button></p>
               <template v-else-if="!stalePlan"><p v-if="error" class="muted">Planning didn't finish. Your brief is saved; try planning again.</p><button type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="makePlan()">{{ error ? 'Plan again' : 'Plan it' }}</button></template>
             </div>
             <div ref="end" />
@@ -2945,6 +2989,23 @@ label.tray-note{white-space:normal}
 .history-body .drawer-top{display:block}.history-body .drawer-top .input{width:100%}
 .history-sentinel{height:1px}
 .question-hint{margin:0;font-size:12px;color:var(--text-3)}
+.style-ask{margin-bottom:10px}
+.style-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.style-card{display:flex;flex-direction:column;gap:3px;padding:6px 6px 10px;border:1px solid var(--line-3);border-radius:12px;background:var(--bg-3);color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .12s,transform .12s}
+.style-card:hover:not(:disabled),.style-card:focus-visible{border-color:var(--accent);transform:translateY(-1px)}
+.style-card__media{display:block;aspect-ratio:4/5;border-radius:8px;overflow:hidden;background:var(--bg-1,#0b0b10);margin-bottom:4px}
+.style-card__media video{width:100%;height:100%;object-fit:cover;display:block}
+.style-card__media--choose{display:grid;place-items:center;font-size:34px;color:var(--accent)}
+.style-card__name{font-weight:600;font-size:13.5px;padding:0 4px}
+.style-card__for{font-size:12px;color:var(--text-3);padding:0 4px;line-height:1.35}
+.style-ask__more{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px;font-size:12.5px}
+.style-view{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px}
+.style-view__card{position:relative;display:grid;grid-template-columns:minmax(0,300px) minmax(0,320px);gap:18px;max-width:680px;width:100%;background:var(--bg-2,#15161c);border:1px solid var(--line-3);border-radius:16px;padding:16px}
+.style-view__video{width:100%;max-height:70vh;border-radius:10px;background:#000;object-fit:contain}
+.style-view__body h3{margin:4px 0 8px}.style-view__body p{font-size:13.5px;line-height:1.5;margin:0 0 10px}
+.style-view__samples{display:flex;gap:6px}.style-view__samples .is-on{color:var(--accent)}
+.style-view__x{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--text-2);font-size:22px;cursor:pointer}
+@media (max-width:640px){.style-view__card{grid-template-columns:1fr}.style-view__video{max-height:50vh}}
 .answer-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:8px}
 .answer-card{text-align:left;font:inherit;color:inherit}
 .pd-actions{display:flex;gap:8px;flex-wrap:wrap}

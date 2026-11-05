@@ -22,7 +22,7 @@ class CreateIntegrationTest extends TestCase
         parent::setUp();
         config(['database.default' => 'create_test', 'database.connections.create_test' => [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => false,
-        ], 'cache.default' => 'array', 'services.posthog.key' => '', 'create.enabled' => true, 'create.runtime_controls_enabled' => false, 'create.worker_ownership_required' => false, 'create.mode' => 'fixture', 'developer.operation_accounting' => true]);
+        ], 'cache.default' => 'array', 'services.posthog.key' => '', 'create.enabled' => true, 'create.runtime_controls_enabled' => false, 'create.worker_ownership_required' => false, 'create.mode' => 'fixture', 'developer.operation_accounting' => true, 'create.style_question' => false]);
         DB::purge('create_test');
         Bus::fake(); Http::preventStrayRequests(); Redis::shouldReceive('get')->andReturn(null);
         $this->buildDeveloperSchema();
@@ -292,6 +292,63 @@ class CreateIntegrationTest extends TestCase
         $this->conversations->message($this->owner, $c->id, ['content' => 'exactly', 'expected_version' => $v + 1, 'idempotency_key' => 'b2']);
         $this->assertSame('exact', json_decode($this->conversations->conversation($this->owner, $c->id)->settings_json, true)['reference_match']);
         $this->assertStringContainsString('matched exactly', DB::table('create_messages')->where('conversation_id', $c->id)->orderByDesc('sequence')->value('content'));
+    }
+
+    public function test_a_new_video_is_asked_its_style_once_with_samples_and_the_answer_sets_it(): void
+    {
+        config(['create.style_question' => true, 'create.planner' => 'offline']);
+        $plans = app(\App\Services\Create\PlanService::class);
+        $version = fn ($c) => (int) $this->conversations->conversation($this->owner, $c->id)->version;
+        $c = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'aspect_ratio' => '9:16']);
+        $this->conversations->message($this->owner, $c->id, ['content' => 'A launch announcement for our new app, bold and punchy.', 'expected_version' => 0, 'idempotency_key' => 's1']);
+        $asked = $plans->propose($this->owner, $c->id, $version($c), 'p1');
+        $this->assertSame(['style', \App\Services\Create\StyleQuestion::QUESTION], [$asked['needs_answer'], $asked['question']]);
+        $this->assertSame(0, DB::table('create_plans')->where('conversation_id', $c->id)->count(), 'nothing is planned until the style is answered');
+        // The conversation shows it as a question with 3 or 4 styles that fit the brief, each with samples.
+        $req = \Illuminate\Http\Request::create('/'); $req->setUserResolver(fn () => $this->owner);
+        $ctrl = app(\App\Http\Controllers\Api\V1\Create\CreateController::class);
+        $msg = collect($ctrl->show($req, $c->id)->getData(true)['data']['messages'])->last();
+        $packs = collect($ctrl->styles($req)->getData(true)['packs'])->keyBy('slug');
+        $this->assertArrayHasKey('samples', $packs['kinetic-type']);
+        $this->assertSame('question', $msg['kind']);
+        $this->assertGreaterThanOrEqual(3, count($msg['styles']));
+        $this->assertContains('launch-reel', array_column(\App\Services\Create\StylePacks::catalogue(), 'slug'));
+        $this->assertNotContains('launch-reel', \App\Services\Create\StyleQuestion::slugsFrom('style:k:launch-reel,kinetic-type'), 'a style with no sample is never offered');
+        // A tapped card answers in words; the style is set and planning goes on in it.
+        $this->conversations->message($this->owner, $c->id, ['content' => 'Use the Kinetic type style', 'expected_version' => $version($c), 'idempotency_key' => 's2']);
+        $plan = $plans->propose($this->owner, $c->id, $version($c), 'p2');
+        $this->assertArrayNotHasKey('needs_answer', $plan);
+        $this->assertSame('kinetic-type', json_decode($this->conversations->conversation($this->owner, $c->id)->settings_json, true)['style_pack']);
+        $this->assertSame(1, DB::table('create_messages')->where('conversation_id', $c->id)->where('idempotency_key', 'like', 'style:%')->count(), 'asked once');
+
+        // Not asked: a chosen style, a reference to follow, a video asked for through the API.
+        $chosen = $this->conversations->create($this->owner, ['duration_seconds' => 15, 'style_pack' => 'whiteboard']);
+        $this->assertFalse(\App\Services\Create\StyleQuestion::due($this->conversations->conversation($this->owner, $chosen->id)));
+        $api = $this->conversations->create($this->owner, ['duration_seconds' => 15]);
+        $this->conversations->message($this->owner, $api->id, ['content' => 'A promo.', 'expected_version' => 0, 'idempotency_key' => 'weave:abc']);
+        $this->assertFalse(\App\Services\Create\StyleQuestion::due($this->conversations->conversation($this->owner, $api->id)));
+        config(['create.style_question' => false]);
+        $this->assertFalse(\App\Services\Create\StyleQuestion::due($this->conversations->conversation($this->owner, $c->id)));
+    }
+
+    public function test_a_style_answer_in_the_users_words_is_read_and_skipping_lets_wyvstudio_choose(): void
+    {
+        $q = new \App\Services\Create\StyleQuestion;
+        $this->assertSame(\App\Services\Create\StyleQuestion::FREE, $q->answer('Let WyvStudio choose'));
+        $this->assertSame(\App\Services\Create\StyleQuestion::FREE, $q->answer('you choose'));
+        $this->assertSame('whiteboard', $q->answer('Use the Whiteboard explainer style'));
+        $this->assertSame('neo-brutalism', $q->answer('neo-brutalism please'));
+        $this->assertNull($q->answer('make it about our summer sale'), 'not about the style, and no model in tests');
+        $packs = \App\Services\Create\StyleQuestion::offerable();
+        $this->assertSame('whiteboard', \App\Services\Create\StyleQuestion::byWords('A tutorial lesson on how it works', $packs)[0]);
+        $this->assertCount(4, \App\Services\Create\StyleQuestion::byWords('anything', $packs));
+
+        // Skipping the question plans straight away, with the style left to the planner.
+        config(['create.style_question' => true, 'create.planner' => 'offline']);
+        $c = $this->brief();
+        $plan = app(\App\Services\Create\PlanService::class)->propose($this->owner, $c->id, (int) $c->version, 'p1', true);
+        $this->assertArrayNotHasKey('needs_answer', $plan);
+        $this->assertArrayNotHasKey('style_pack', json_decode($this->conversations->conversation($this->owner, $c->id)->settings_json, true));
     }
 
     public function test_offline_plan_is_a_free_assistant_turn_with_editable_selections(): void

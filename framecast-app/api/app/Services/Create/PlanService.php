@@ -181,9 +181,23 @@ class PlanService
             }
             $thinNote = 'Planned from a quick look at "'.$thin[0]['title'].'": its full study did not finish ('.mb_strtolower(rtrim(self::studyWhy($thin[0]['why']), '.')).').';
         }
+        // The answer to "what style should this video be?" sets the style; nothing else is asked after it.
+        $recent2 = DB::table('create_messages')->where('conversation_id', $id)->orderByDesc('sequence')->limit(2)->get(['role', 'content', 'idempotency_key']);
+        $styleAnswered = ($recent2[0]->role ?? null) === 'user' && str_starts_with((string) ($recent2[1]->idempotency_key ?? ''), 'style:');
+        if ($styleAnswered) {
+            $pick = app(StyleQuestion::class)->answer((string) $recent2[0]->content) ?? StyleQuestion::FREE;
+            $activity->step('Read your answer');
+            if ($pick !== StyleQuestion::FREE) {
+                DB::table('create_conversations')->where('id', $id)->update(['settings_json' => json_encode(OutputSettings::normalize([...(json_decode((string) $c->settings_json, true) ?: []), 'style_pack' => $pick, 'style_id' => null]))]);
+                $c = $this->conversations->conversation($user, $id);
+                $activity->item('Style: '.collect(StylePacks::catalogue())->firstWhere('slug', $pick)['name'].'. You can change it on the plan.');
+            } else {
+                $activity->item('Style: I\'ll choose one that fits your brief.');
+            }
+        }
         // Questions come before the plan, one at a time, for a new creation only (a change to a plan is planned
         // straight away). Each answer is a message; the next call asks the next question or plans.
-        if (! $skipQuestions && self::plannerTask($c) === 'creative') {
+        if (! $skipQuestions && ! $styleAnswered && self::plannerTask($c) === 'creative') {
             $since = DB::table('create_plans')->where('conversation_id', $id)->max('created_at');
             $asked = DB::table('create_messages')->where('conversation_id', $id)->where('idempotency_key', 'like', 'clarify:%')->when($since, fn ($q) => $q->where('created_at', '>', $since))->count();
             $activity->step('Checking what I need to know');
@@ -206,6 +220,16 @@ class PlanService
                 DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
                 $activity->abandon();
                 return ['needs_answer' => 'clarify', 'question' => $question];
+            }
+            // Last before the plan: the style, shown as samples of the styles that fit the brief (asked once).
+            if (StyleQuestion::due($c)) {
+                $slugs = app(StyleQuestion::class)->recommend($briefs->pluck('content')->implode("\n"));
+                $next = (int) $c->version + 1;
+                DB::table('create_messages')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $id, 'role' => 'assistant', 'content' => StyleQuestion::QUESTION,
+                    'idempotency_key' => StyleQuestion::key($key, $slugs), 'request_hash' => hash('sha256', StyleQuestion::QUESTION), 'sequence' => $next, 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('create_conversations')->where('id', $id)->update(['version' => $next, 'updated_at' => now()]);
+                $activity->abandon();
+                return ['needs_answer' => 'style', 'question' => StyleQuestion::QUESTION];
             }
         }
         // A change to a plan or a video that is too vague to act on ("make it better", "fix it") gets one question
