@@ -28,6 +28,12 @@ final class LaunchpadIpn
         6220 => 'oiq_pro',    7188 => 'oiq_pro',
         6221 => 'oiq_dfy',    7189 => 'oiq_dfy',
         6222 => 'oiq_agency', 7190 => 'oiq_agency',
+        // The same products at a discount, sold from each page's exit popup (2026-11-07): granted exactly the same.
+        6425 => 'oiq_bundle', 7409 => 'oiq_bundle',
+        6426 => 'oiq_scale',  7410 => 'oiq_scale',
+        6427 => 'oiq_pro',    7411 => 'oiq_pro',
+        6428 => 'oiq_dfy',    7412 => 'oiq_dfy',
+        6429 => 'oiq_agency', 7414 => 'oiq_agency',
     ];
 
     /** Sold in WyvStudio's funnel but nothing to grant here: the OfferIQ upsell there is OfferIQ's alone; 5980 is the thank-you page. */

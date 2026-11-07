@@ -277,7 +277,10 @@ class LaunchpadGatingTest extends TestCase
     {
         // OfferIQ's front (offer 622, "NEW CREDITS" 2026-11-02): product id and offer-product id both count.
         foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 900], [6218, 7187, 'oiq_bundle', 'launch_agency', 14700], [6219, 7186, 'oiq_scale', 'launch_bundle', 10000],
-            [6220, 7188, 'oiq_pro', 'launch_pro', 3500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000]] as [$id, $offerProduct, $product, $tier, $credits]) {
+            [6220, 7188, 'oiq_pro', 'launch_pro', 3500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000],
+            // The exit popups' discounted copies grant the same.
+            [6425, 7409, 'oiq_bundle', 'launch_agency', 14700], [6426, 7410, 'oiq_scale', 'launch_bundle', 10000], [6427, 7411, 'oiq_pro', 'launch_pro', 3500],
+            [6429, 7414, 'oiq_agency', 'launch_agency', 5000]] as [$id, $offerProduct, $product, $tier, $credits]) {
             foreach ([$id, $offerProduct] as $pid) {
                 $email = "oiq{$pid}@example.com";
                 $this->ipn(['product_id' => $pid, 'transaction_id' => "pi_oiq_{$pid}", 'bump' => 'false', 'user' => ['email' => $email]])->assertOk();
@@ -293,6 +296,10 @@ class LaunchpadGatingTest extends TestCase
         $this->ipn(['product_id' => 6221, 'transaction_id' => 'pi_oiq_dfy', 'bump' => 'false', 'user' => ['email' => 'oiq6217@example.com']])->assertOk();
         $w = User::query()->where('email', 'oiq6217@example.com')->firstOrFail()->workspace;
         $this->assertSame(['launch_fe', 2900, 10], [$w->plan_tier, (int) $w->credits_topup, CreditService::limitsFor($w)['sample_vault']]);
+        // The popup's discounted DFY (6428) adds the same kit (to a Bundle buyer, whose template vault is already unlimited).
+        $this->ipn(['product_id' => 6428, 'transaction_id' => 'pi_oiq_dfy_popup', 'bump' => 'false', 'user' => ['email' => 'oiq7409@example.com']])->assertOk();
+        $w = User::query()->where('email', 'oiq7409@example.com')->firstOrFail()->workspace;
+        $this->assertSame(14700 + 2000, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
     }
 
     public function test_offeriq_bumps_add_their_wyvstudio_side_and_its_fe_bump_is_offeriq_only(): void
