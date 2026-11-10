@@ -61,8 +61,10 @@ class PilotPolicy
             $budget=CostEstimate::agentCeiling($level,(int)($settings['duration_seconds']??15));
             // Each call holds its ceiling ($1.20) in at-cost credits: 105 (fair credits, 2026-10-20; was 300 at the peg).
             return ['agent'=>['provider'=>'anthropic','model'=>(string)config('create.agent_model'),'credits'=>(int)ceil(1200000/CostEstimate::MICRO_PER_CREDIT),'effort'=>$effort,
-                // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room.
-                'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'micro_per_credit'=>CostEstimate::MICRO_PER_CREDIT,'level'=>$level,'max_output_tokens'=>32000,'context_bytes'=>600000,
+                // Opus 5.5 thinks adaptively and thinking counts as output; a full composition needs the room. Thorough (effort high)
+                // gets 64,000: at 32,000 one call spent 30,931 tokens thinking and stopped before writing anything (ws 93, 2026-11-10).
+                // At the slowest speed seen (83 tokens/s) that is about 13 min, inside the gateway's 15.
+                'cost_limit_microusd'=>1200000,'max_calls'=>$calls,'total_credits'=>$budget,'micro_per_credit'=>CostEstimate::MICRO_PER_CREDIT,'level'=>$level,'max_output_tokens'=>$level==='thorough'?64000:32000,'context_bytes'=>600000,
                 // Tool mode: native tool calls, several per model call, through the same gateway and accounting.
                 'tool_mode'=>(bool) config('create.tool_mode', false)],
                 // The critic: a separate reviewer of short low-effort calls with the frames and the strip, on Thorough builds only
