@@ -664,13 +664,13 @@ export async function runAgent({stateFile,context,baseSources=null,workspace,pro
     // Out of time (not cancelled by the user) with no paid call in doubt: deliver the last checked draft.
     // Running out of something (time, calls, context, output, repairs, the model itself), with no paid
     // call in doubt and not the user's own cancel, delivers the last checked draft. Rule breaks still fail.
-    const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(No progress|Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
+    const exhausted=timeout.aborted||e.code==='NOT_SENT'||/^(No progress|Context limit reached|Model call limit reached|Output token allowance exhausted|Model budget exhausted|Out of credits|Composition repair limit reached|Action repair limit reached|Visual repair limit reached)$/.test(e.message);
     // Any other unexpected error after a checked draft also delivers that draft (a stopped build should not throw
     // away a storyboard that passed a minute earlier); integrity stops still fail: changed protected files, a path
     // reaching outside the workspace, a locked source broken, or the build breaking its own workflow rules.
     const integrity=/Protected asset|escaped workspace|Symlinks are not allowed|^Source path is not allowed$|[Ll]ocked/.test(String(e.message))||MISUSE.test(String(e.message));
     if(!sandboxStopUnconfirmed(e)&&(exhausted||!integrity)&&!signal?.aborted&&state.lastGood&&state.pending?.kind!=='provider'){
-      const why=e.code==='NOT_SENT'?'The model was unavailable':e.message==='No progress'?'The build stopped making progress':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
+      const why=e.code==='NOT_SENT'?'The model was unavailable':e.message==='Out of credits'?'The credit balance ran out':e.message==='No progress'?'The build stopped making progress':timeout.aborted?'The time limit was reached':'The build stopped ('+String(e.message).slice(0,80)+')';
       state.pending=null;try{await deliverGood(why+' during a later repair, so that repair is not included. Give it a look before posting.');observeStop(state,why);await save();return state;}catch{/* fall through to the failure below */}
     }
     Object.assign(state,savedFailure(e));

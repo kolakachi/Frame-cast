@@ -11,3 +11,10 @@ test('a call the app reports as never sent is not settled as unknown',async()=>{
 test('confirmed local render failure settles zero cost without reconciliation',async()=>{const h=harness();h.args.kind='render';h.args.execute=async()=>{throw Object.assign(Error('check failed'),{code:'LOCAL_RENDER_FAILED'});};await assert.rejects(accountedCall(h.args),e=>e.code==='LOCAL_RENDER_FAILED');assert.deepEqual(h.events.at(-1)[2],{status:'failed',cost_microusd:0});});
 test('lost local failure settlement still requires reconciliation',async()=>{const h=harness();h.args.kind='render';h.args.execute=async()=>{throw Object.assign(Error('check failed'),{code:'LOCAL_RENDER_FAILED'});};h.args.settle=async()=>{throw Error('lost acknowledgement');};await assert.rejects(accountedCall(h.args),e=>e.code==='ATTEMPT_NEEDS_ATTENTION');});
 test('provider failure cannot use the zero cost render shortcut',async()=>{const h=harness();h.args.execute=async()=>{throw Object.assign(Error('provider error'),{code:'LOCAL_RENDER_FAILED'});};await assert.rejects(accountedCall(h.args),e=>e.code==='ATTEMPT_NEEDS_ATTENTION');assert.equal(h.events.at(-1)[2].status,'unknown');});
+
+test('a call the balance cannot pay for (402 at begin) is not started and stops as out of credits',async()=>{
+ let ran=false;
+ await assert.rejects(accountedCall({key:'k',kind:'agent',input:{},begin:async()=>{throw Error('Coordinator returned HTTP 402: Not enough credits left to continue.');},
+  settle:async()=>{throw Error('nothing to settle');},execute:async()=>{ran=true;}}),e=>e.code==='NOT_STARTED'&&e.message==='Out of credits');
+ assert.equal(ran,false);
+});

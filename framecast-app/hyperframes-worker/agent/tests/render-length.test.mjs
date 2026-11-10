@@ -8,10 +8,10 @@ test('the root composition says how long the page is', () => {
 test('a page a little longer than approved (a presenter take) renders at its own length; nothing else changes', () => {
  assert.equal(renderLength(page(16.3), 15), 16.3, "Brett's explainer: 16.3 s for an approved 15 s");
  assert.equal(renderLength(page(15), 15), 15);
- assert.equal(renderLength(page(15.1), 15), 15, 'within the check\'s own slack');
+ assert.equal(renderLength(page(15.1), 15), 15.1, 'the page\'s own length');
  assert.equal(renderLength(page(19.5), 15), 19.5, 'a lip-synced take 30% long');
- assert.equal(renderLength(page(20), 15), 15, 'more than 30% over: still the approved length, and the check refuses it');
- assert.equal(renderLength(page(12), 15), 15, 'never shorter');
+ assert.equal(renderLength(page(20), 15), 20, 'any length the page declares (owner, 2026-11-10: delivered at its real length)');
+ assert.equal(renderLength(page(12), 15), 12, 'shorter too');
  assert.equal(renderLength('', 15), 15);
 });
 

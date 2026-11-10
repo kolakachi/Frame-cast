@@ -14,7 +14,8 @@ class CreateLengthFitsTest extends TestCase
         $this->assertTrue(WorkerController::lengthFits(15.2, 15));
         $this->assertTrue(WorkerController::lengthFits(14.8, 15));
         $this->assertTrue(WorkerController::lengthFits(19.8, 15), '30% longer, with the encoder\'s rounding');
-        $this->assertFalse(WorkerController::lengthFits(20.5, 15), 'more than 30% longer is not the approved video');
-        $this->assertFalse(WorkerController::lengthFits(14.5, 15), 'never shorter');
+        $this->assertTrue(WorkerController::lengthFits(20.5, 15), 'longer still: delivered at its real length (owner, 2026-11-10)');
+        $this->assertTrue(WorkerController::lengthFits(12, 15), 'shorter: delivered at its real length too');
+        $this->assertFalse(WorkerController::lengthFits(0, 15), 'no video at all');
     }
 }

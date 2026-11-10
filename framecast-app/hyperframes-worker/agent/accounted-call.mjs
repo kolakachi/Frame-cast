@@ -3,7 +3,11 @@ import {digest} from './workspace.mjs';
 // Neither a retry wrapper nor a provider-cost estimator. A lost receipt pauses
 // the caller; reconciliation, not a fresh prediction, is the next action.
 export async function accountedCall({key,kind,input,begin,settle,execute,receipt}) {
- const attempt=await begin({attempt_key:key,kind,request_hash:digest(JSON.stringify(input))});
+ // The app refuses to start a call only when the balance cannot pay for it (402): nothing was sent, and the build stops
+ // there with its last checked draft (owner, 2026-11-10: a build runs while the balance lasts).
+ let attempt;
+ try{attempt=await begin({attempt_key:key,kind,request_hash:digest(JSON.stringify(input))});}
+ catch(e){if(/HTTP 402\b/.test(String(e.message))){const out=Error('Out of credits');out.code='NOT_STARTED';throw out;}throw e;}
  if(!attempt.may_execute)throw Error('Attempt already recorded; reconcile instead of executing again');
  let output;
  try{output=await execute(attempt.id);}

@@ -16,9 +16,10 @@ class WorkerController extends Controller
      * it, as the worker renders it (LENGTH-TARGET, render-length.mjs). Only the worker had been relaxed: a 16.3 s cut of
      * a 15 s video rendered, then was refused here on every retry (ws 79, 2026-11-01). Never shorter.
      */
+    /** Any real length: the chosen length is a target, and a video is delivered at the length it came out (owner, 2026-11-10). */
     public static function lengthFits(float $seconds, float $approved): bool
     {
-        return abs($seconds - $approved) <= .3 || ($seconds > $approved && $seconds <= $approved * 1.3 + .35);
+        return $seconds > 0;
     }
 
     private function authorizeWorker(Request $r): void

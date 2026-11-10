@@ -38,12 +38,12 @@ test('Stop during a busy-model wait ends the wait with the not-sent error, so th
  assert.ok(Date.now()-t<3000);
 });
 
-test('a call is priced up to its model\'s most: the build at $1.20 and its reviewer at $0.30 are accepted, more is not',async()=>{
+test('a call from a known model is held at any price (no per-call ceiling); an unknown model is refused',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'price-'));
  try{
   const b=new PilotBudget(path.join(dir,'ledger.json'),10);
   for(const usd of [1.2,.6,.3,.1])assert.ok(await b.reserve('claude-opus-5-5',usd));
-  await assert.rejects(b.reserve('claude-opus-5-5',1.21),/Unpriced pilot call/);
+  assert.ok(await b.reserve('claude-opus-5-5',1.2075),'no per-call ceiling: the 105-credit hold of a credit-limited build (ws 93)');
   await assert.rejects(b.reserve('some-other-model',.1),/Unpriced pilot call/);
   for(const model of ['claude-haiku-5-5','claude-sonnet-5-5'])assert.ok(await b.reserve(model,1.2),model+': a builder model a super admin may test');
   assert.ok(await b.reserve('claude-opus-5-5',2,{unlimited:true}),'unlimited testing allows up to $5');

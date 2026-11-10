@@ -26,11 +26,11 @@ export class PilotBudget {
  // unlimited: the run's approved policy lifted its limits (CREATE_UNLIMITED, local only); any ceiling up to $5 is accepted
  // for a known model, and the app gateway still meters and charges every call at its real cost.
  async reserve(model,usd,{unlimited=false}={}){
-  // The most one call of each model may be approved for (the app's policy sets each call's ceiling: the build at
-  // $1.20, its reviewer at $0.30, since 2026-10-06); anything above, or an unknown model, is refused.
+  // Only known models; no price ceiling per call (owner, 2026-11-10: a call is charged at what it really cost, and a
+  // $1.20 ceiling refused every credit-limited build whose hold came to $1.2075). The amount is the hold, not a limit.
   // Haiku 5.5 and Sonnet 5.5 are the builder models a super admin may test on one conversation (settings.model_test).
-  const most={'anthropic/claude-4.5-sonnet':.3,'claude-opus-5-5':1.2,'claude-haiku-5-5':1.2,'claude-sonnet-5-5':1.2,'google/nano-banana':.1,'wan-video/wan-2.5-i2v':.6}[model];
-  if(!most||!Number.isFinite(usd)||usd<=0||usd>(unlimited?5:most)+1e-9)throw Error('Unpriced pilot call');
+  const known=['anthropic/claude-4.5-sonnet','claude-opus-5-5','claude-haiku-5-5','claude-sonnet-5-5','google/nano-banana','wan-video/wan-2.5-i2v'].includes(model);
+  if(!known||!Number.isFinite(usd)||usd<=0)throw Error('Unpriced pilot call');
   return this.ledger.update(ledger=>{
    const sum=ledger.calls.reduce((total,c)=>total+c.reservedUsd,0);
    if(this.cap!==null&&sum+usd>this.cap+1e-9)throw Object.assign(Error('Additional $'+this.cap+' pilot allowance exhausted'),{code:'BUDGET_EXHAUSTED'});

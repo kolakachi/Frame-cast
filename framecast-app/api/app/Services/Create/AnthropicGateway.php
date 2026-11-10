@@ -154,10 +154,7 @@ class AnthropicGateway
         if (isset($r['long_above']) && $in + $write + $read > (int) $r['long_above']) $r = $r['long'];
         $cost = (int) ceil($in * $r['input'] + $out * $r['output'] + $write * $r['cache_write'] + $read * $r['cache_read']);
         if ($attempt->status === 'started') $attempts->bindPrediction($runId, $lease, $attemptId, $id);
-        if ($cost > (int) $attempt->cost_limit_microusd) {
-            $attempts->settle($runId, $lease, $attemptId, ['status' => 'unknown']);
-            abort(409, 'The call cost more than its approved ceiling; held for review.');
-        }
+        // A call dearer than its hold is charged at its real cost, never refused after the fact (owner, 2026-11-10).
         $receipt = new VerifiedAttemptReceipt($attemptId, 'succeeded', $id, $cost,
             'pilot-tariff:2026-09-30; anthropic usage returned to WyvStudio: in '.$in.', out '.$out.', cache write '.$write.', cache read '.$read);
         $settled = $attempts->settle($runId, $lease, $attemptId, $receipt->result(), $receipt);

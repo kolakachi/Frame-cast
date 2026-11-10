@@ -3756,7 +3756,7 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(0, DB::table('credit_ledger')->count());
     }
 
-    public function test_synthetic_paid_policy_charges_shared_ledger_exactly_once_and_respects_allowance(): void
+    public function test_synthetic_paid_policy_charges_shared_ledger_exactly_once_and_runs_while_the_balance_lasts(): void
     {
         [, , $run] = $this->admitted(); $claim = $this->runs->claim(); $service = app(\App\Services\Create\AttemptService::class);
         // Synthetic approval only: no public quote path permits this yet, and no provider is contacted.
@@ -3767,9 +3767,13 @@ class CreateIntegrationTest extends TestCase
         $this->rejected(503, fn () => $service->begin($run->id, $claim['lease_token'], 'call-1', 'agent', str_repeat('a', 64)));
         config(['create.paid_execution_enabled' => true,'create.pilot_budget_id'=>'test-pilot','create.pilot_budget_microusd'=>5000000]);
         $attempt = $service->begin($run->id, $claim['lease_token'], 'call-1', 'agent', str_repeat('a', 64));
-        $this->rejected(409, fn () => $service->begin($run->id, $claim['lease_token'], 'call-2', 'agent', str_repeat('b', 64)));
+        // Past the quote (owner, 2026-11-10): the allowance grows while the balance can hold the call.
+        $second = $service->begin($run->id, $claim['lease_token'], 'call-2', 'agent', str_repeat('b', 64));
+        $this->assertTrue($second['may_execute']);
+        $this->assertSame(14, (int) DB::table('api_operations')->value('authorized_credits'));
         $receipt = ['status' => 'succeeded', 'prediction_id' => 'synthetic-id', 'cost_microusd' => 12000];
-        $this->rejected(422, fn () => $service->settle($run->id, $claim['lease_token'], $attempt['id'], array_merge($receipt, ['cost_microusd' => 50001])));
+        // Usage above the hold is no longer refused as such; it still needs verified evidence.
+        $this->rejected(409, fn () => $service->settle($run->id, $claim['lease_token'], $attempt['id'], array_merge($receipt, ['cost_microusd' => 50001])));
         $verified = new \App\Services\Create\VerifiedAttemptReceipt($attempt['id'],'succeeded','synthetic-id',12000,'Synthetic verifier test');
         $service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt, $verified);
         $this->assertTrue($service->settle($run->id, $claim['lease_token'], $attempt['id'], $receipt)['replayed']);
@@ -3778,7 +3782,21 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame($run->operation_id, DB::table('credit_ledger')->value('api_operation_id'));
         $this->assertSame($attempt['id'], json_decode(DB::table('credit_ledger')->value('metadata'), true)['composition_attempt_id']);
         $this->assertSame(7, (int) DB::table('api_operations')->value('spent_credits'));
-        $this->assertSame(3, (int) DB::table('api_operations')->value('reserved_credits'));
+        $this->assertSame(7, (int) DB::table('api_operations')->value('reserved_credits'));
+        // A builder call that cost more than its 7-credit hold is charged its real cost: 212,000 µ$ so far is 19 credits, 12 now.
+        $dear = new \App\Services\Create\VerifiedAttemptReceipt($second['id'],'succeeded','synthetic-2',200000,'pilot-tariff:test');
+        $this->assertSame(12, $service->settle($run->id, $claim['lease_token'], $second['id'], $dear->result(), $dear)['charged_credits']);
+        $this->assertSame(81, (int) $this->workspace->fresh()->credits_monthly);
+        $this->assertSame(19, (int) DB::table('api_operations')->value('spent_credits'));
+        // When the balance cannot hold the next call, it is not started: the build stops there (402).
+        $this->workspace->update(['credits_monthly' => 3]);
+        $this->rejected(402, fn () => $service->begin($run->id, $claim['lease_token'], 'call-3', 'agent', str_repeat('c', 64)));
+        // A call dearer than what is left takes the balance to zero, never below: WyvStudio covers the rest.
+        $this->workspace->update(['credits_monthly' => 10]);
+        $third = $service->begin($run->id, $claim['lease_token'], 'call-3', 'agent', str_repeat('c', 64));
+        $huge = new \App\Services\Create\VerifiedAttemptReceipt($third['id'],'succeeded','synthetic-3',500000,'pilot-tariff:test');
+        $this->assertSame(10, $service->settle($run->id, $claim['lease_token'], $third['id'], $huge->result(), $huge)['charged_credits']);
+        $this->assertSame(0, (int) $this->workspace->fresh()->credits_monthly);
     }
 
     public function test_a_call_under_way_when_stop_is_pressed_keeps_its_receipt(): void

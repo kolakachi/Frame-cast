@@ -12,8 +12,8 @@ export function declaredLength(html){
  return Number.isFinite(d)&&d>0?d:null;
 }
 
-/** The length to render and check against: the page's own when it is longer than approved by at most 30%. */
+/** The length to render and check against: the page's own whenever it declares one (owner, 2026-11-10: the chosen
+ * length is a target; a video is delivered at its real length, never refused for it), else the approved one. */
 export function renderLength(html,approved){
- const d=declaredLength(html);
- return d&&d>approved+0.15&&d<=approved*1.3+0.05?d:approved;
+ return declaredLength(html)??approved;
 }

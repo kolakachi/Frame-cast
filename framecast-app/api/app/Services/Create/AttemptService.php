@@ -35,10 +35,13 @@ class AttemptService
             abort_unless(($input['mode'] === 'fixture' && $credits === 0 && $cost === 0 && $policy['provider'] === 'offline')
                 || ($input['mode'] === 'agent' && PilotPolicy::enabled()), 503, 'Paid execution remains disabled.');
             abort_if(DB::table('composition_attempts')->where('run_id', $runId)->where('kind', $kind)->count() >= $policy['max_calls'], 409, 'Quoted attempt limit reached.');
-            $pending = DB::table('composition_attempts')->where('operation_id', $run->operation_id)->whereIn('status', ['started', 'unknown'])->sum('credit_limit');
+            $pending = (int) DB::table('composition_attempts')->where('operation_id', $run->operation_id)->whereIn('status', ['started', 'unknown'])->sum('credit_limit');
             $op = DB::table('api_operations')->where('id', $run->operation_id)->lockForUpdate()->firstOrFail();
-            abort_unless($op->status === 'running' && $op->workspace_id == $run->workspace_id
-                && $op->spent_credits + $pending + $credits <= $op->authorized_credits, 409, 'Operation allowance exhausted.');
+            abort_unless($op->status === 'running' && $op->workspace_id == $run->workspace_id, 409, 'Operation is not running.');
+            // A build runs past its quote while the balance lasts (owner, 2026-11-10): the allowance grows to what this
+            // call needs when the balance can hold it; when it cannot, the build stops with its last checked draft (402).
+            if ($op->spent_credits + $pending + $credits > $op->authorized_credits)
+                abort_unless(self::widen($op, $op->spent_credits + $pending + $credits), 402, 'Not enough credits left to continue.');
             $id = (string) Str::uuid();
             DB::table('composition_attempts')->insert(['id' => $id, 'run_id' => $runId, 'operation_id' => $run->operation_id,
                 'attempt_key' => $key, 'request_hash' => $requestHash, 'kind' => $kind, 'provider' => $policy['provider'], 'model' => $policy['model'],
@@ -79,7 +82,8 @@ class AttemptService
             $status = $result['status'];
             $cost = $result['cost_microusd'] ?? null;
             abort_unless(in_array($status, ['succeeded', 'failed', 'unknown'], true), 422);
-            abort_unless($status === 'unknown' || (is_int($cost) && $cost >= 0 && $cost <= $attempt->cost_limit_microusd), 422, 'Known usage must fit the approved ceiling; otherwise report unknown.');
+            // Known usage of any size: the hold is a placeholder, not a ceiling (owner, 2026-11-10).
+            abort_unless($status === 'unknown' || (is_int($cost) && $cost >= 0), 422, 'Known usage must be a whole number of microdollars; otherwise report unknown.');
             $prediction = $result['prediction_id'] ?? $attempt->prediction_id;
             abort_if($attempt->prediction_id && $prediction !== $attempt->prediction_id,409,'Receipt prediction does not match the bound attempt.');
             if ($attempt->provider !== 'offline' && $status !== 'unknown') {
@@ -97,6 +101,9 @@ class AttemptService
             // reconciliation records the provider's cost as ours and charges nothing.
             if (\App\Services\Developer\CreditHolds::marksExpiry()
                 && DB::table('api_operations')->where('id', $run->operation_id)->whereNotNull('hold_expired_at')->exists()) $credits = 0;
+            // Charged at real cost, which may be above the call's hold: the allowance grows to cover it, and a charge the
+            // balance cannot pay is cut to what is left (WyvStudio covers the rest; the balance never goes below zero).
+            if ($credits > 0) $credits = self::cover($run->operation_id, $credits);
             $previous = Context::getHidden(OperationAccounting::CONTEXT);
             try {
                 Context::addHidden(OperationAccounting::CONTEXT, $run->operation_id);
@@ -117,6 +124,33 @@ class AttemptService
             }
             return ['status' => $status, 'charged_credits' => $credits, 'cost_microusd'=>$status==='unknown'?null:$cost, 'prediction_id'=>$prediction, 'replayed' => false];
         });
+    }
+
+    /** What the pool can still hold for this operation: its balance less what its other operations hold. */
+    private static function free(object $op): int
+    {
+        return Workspace::findOrFail($op->pool_workspace_id)->creditsBalance() - OperationAccounting::reserved((int) $op->pool_workspace_id, $op->id);
+    }
+
+    /** Grow a locked operation's allowance to $total when the balance can hold the unspent part. */
+    private static function widen(object $op, int $total): bool
+    {
+        $need = $total - (int) $op->spent_credits;
+        if ($need > self::free($op)) return false;
+        DB::table('api_operations')->where('id', $op->id)->update(['authorized_credits' => $total,
+            'reserved_credits' => max((int) $op->reserved_credits, $need), 'updated_at' => now()]);
+        return true;
+    }
+
+    /** The part of a charge the balance can pay, with the operation's allowance grown to take it. Inside settle's locks. */
+    private static function cover(string $operationId, int $credits): int
+    {
+        $op = DB::table('api_operations')->where('id', $operationId)->lockForUpdate()->firstOrFail();
+        $credits = min($credits, max(0, self::free($op)));
+        if ($op->spent_credits + $credits > $op->authorized_credits)
+            DB::table('api_operations')->where('id', $op->id)->update(['authorized_credits' => $op->spent_credits + $credits,
+                'reserved_credits' => max((int) $op->reserved_credits, $credits), 'updated_at' => now()]);
+        return $credits;
     }
 
     private function leased(string $id, string $token, bool $settling, bool $stopping = false): object

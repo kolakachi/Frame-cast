@@ -135,7 +135,8 @@ class CostEstimate
             ->whereNotNull('result_hash')->where(fn ($q) => $q->whereNull('attempt_key')->orWhere('attempt_key', 'not like', 'repair%'))
             ->selectRaw('coalesce(sum(cost_microusd), 0) as cost, coalesce(sum(charged_credits), 0) as charged')->first();
         $due = (int) ceil(((int) $earlier->cost + max(0, $cost)) / self::MICRO_PER_CREDIT) - (int) $earlier->charged;
-        return max(0, min($limit, $due));
+        // What the build has really cost so far, whatever the call's hold was (owner, 2026-11-10: no per-call ceiling).
+        return max(0, $due);
     }
 
     /**
