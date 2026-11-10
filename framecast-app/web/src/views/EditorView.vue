@@ -228,6 +228,20 @@ const {
   toggleExportRatio,
   shareTogglePending,
   shareMenuOpen,
+  // Template refs (2026-11-10): each ref="…" in the template binds only to a name in this scope, so every element the
+  // core reads must be destructured here. They were dropped in the core split (2026-10-29): the Share menu closed on
+  // every press (Schedule, Download, Send for approval and Copy link never fired) and the preview and audio
+  // players were unreachable from the core.
+  shareWrap,
+  audioRef,
+  cruiseChatScrollRef,
+  musicAudioRef,
+  musicAuditionRef,
+  previewVideoBackgroundRef,
+  previewVideoRef,
+  soundAudioRef,
+  stayInEditorButton,
+  voicePreviewRef,
   shareAction,
   shareCopiedToast,
   timelineOpen,
