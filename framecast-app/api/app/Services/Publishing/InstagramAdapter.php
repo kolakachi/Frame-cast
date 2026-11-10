@@ -6,6 +6,7 @@ use App\Models\Asset;
 use App\Models\ScheduledPost;
 use App\Models\SocialAccount;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -68,6 +69,15 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
                 metaUserId: $userInfo['id'] ?? null,
                 pages:      $igPages,
             );
+        }
+
+        if ($igPages === []) {
+            // What Facebook actually returned, so a failed connect can be told apart: no Pages shared, Pages
+            // without a linked Instagram account, or a permission declined on the consent screen. No tokens.
+            Log::warning('Instagram connect: no Instagram account on the shared Pages', [
+                'pages'       => array_map(static fn (array $p) => ['id' => $p['id'] ?? null, 'name' => $p['name'] ?? null, 'has_token' => ! empty($p['access_token'])], $pages),
+                'permissions' => MetaGraphHelper::grantedPermissions($userToken),
+            ]);
         }
 
         $resolved = MetaGraphHelper::firstInstagramAccountOrFail($pages);

@@ -193,6 +193,28 @@ class MetaGraphHelper
     }
 
     /**
+     * The permissions the person granted and declined, e.g. ['granted' => [...], 'declined' => [...]].
+     * For diagnostics only: never throws.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function grantedPermissions(string $userToken): array
+    {
+        try {
+            $rows = Http::withToken($userToken)->get(self::graphUrl('me/permissions'))->json('data') ?? [];
+        } catch (\Throwable $e) {
+            return ['error' => [$e->getMessage()]];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[$row['status'] ?? 'unknown'][] = $row['permission'] ?? '?';
+        }
+
+        return $out;
+    }
+
+    /**
      * Pages that have a linked Instagram Business/Creator account.
      *
      * @param  array<int, array<string, mixed>>  $pages
@@ -274,6 +296,15 @@ class MetaGraphHelper
             if ($igId) {
                 return ['page' => $page, 'ig_user_id' => (string) $igId];
             }
+        }
+
+        // Facebook shared no Pages at all (2026-11-10, new Meta app): a different cause from "a Page without
+        // Instagram", so it gets its own message instead of sending the user to their Instagram settings.
+        if (empty($pages)) {
+            throw new RuntimeException(
+                'Facebook did not share any of your Pages with WyvStudio. Reconnect and, when Facebook asks which '
+                .'Pages and Instagram accounts to share, choose the Page your Instagram account is linked to and that Instagram account.',
+            );
         }
 
         throw new RuntimeException(
