@@ -17,11 +17,13 @@ use RuntimeException;
  */
 class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, ProvidesPostUrl
 {
-    // Minimum set for Reels-to-Page: list the user's Pages, read Page fields
-    // (which is what yields the Page access token), and publish. Deliberately
-    // NOT business_management — nothing here reaches Business Manager assets,
-    // we only call /me/accounts, and asking for it both alarms the user on the
-    // consent screen and invites heavier App Review scrutiny.
+    // Reels-to-Page: list the user's Pages, read Page fields (which is what
+    // yields the Page access token), and publish. business_management is
+    // included since 2026-11-10 (owner): a Page held in a business portfolio,
+    // managed through the portfolio rather than a direct Page role, is left
+    // out of /me/accounts without it — the new Meta app's connect returned
+    // zero Pages with every other permission granted. The Login for Business
+    // configuration (META_*_LOGIN_CONFIG_ID) carries the same list.
     // pages_read_engagement is NOT about reading engagement metrics here — it
     // gates the per-Page access_token that /me/accounts returns, which is the
     // token we publish with. Dropping it was tested against a clean grant on
@@ -32,6 +34,7 @@ class FacebookAdapter implements PlatformAdapter, SupportsPageSelection, Provide
         'pages_show_list',
         'pages_read_engagement',
         'pages_manage_posts',
+        'business_management',
     ];
 
     private const CAPTION_LIMIT = 5000;

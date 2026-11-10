@@ -20,8 +20,8 @@ use RuntimeException;
 class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, ProvidesPostUrl
 {
     // Minimum set for Reels-to-IG: read the IG Business account, publish to
-    // it, and reach it via the linked Page (/me/accounts). Deliberately NOT
-    // business_management — see FacebookAdapter.
+    // it, and reach it via the linked Page (/me/accounts). business_management
+    // since 2026-11-10: Pages in a business portfolio need it — see FacebookAdapter.
     // pages_read_engagement gates the Page access_token from /me/accounts,
     // which is how we reach the linked IG account and publish. Verified needed
     // on 2026-08-27 — see FacebookAdapter for the detail.
@@ -31,6 +31,7 @@ class InstagramAdapter implements PlatformAdapter, SupportsPageSelection, Provid
         'instagram_content_publish',
         'pages_show_list',
         'pages_read_engagement',
+        'business_management',
     ];
 
     private const CAPTION_LIMIT = 2200;
