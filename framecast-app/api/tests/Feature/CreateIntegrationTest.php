@@ -2924,6 +2924,22 @@ class CreateIntegrationTest extends TestCase
         $this->assertSame(277, $e::agent('standard', 30, ['type' => 'motion_graphics']), 'no runs of a similar length: the curve');
     }
 
+    public function test_a_credit_limited_build_with_room_for_a_full_call_keeps_the_worker_call_ceiling(): void
+    {
+        // ws 93, 2026-11-10: just short of the quote's ceiling, the call kept its 105 credits and was priced at
+        // 105 x 11,500 = $1.2075, which the worker refuses (Opus calls up to $1.20): every such build failed at once.
+        $this->pilot();
+        config(['create.agent_provider' => 'anthropic', 'services.anthropic.key' => 'k']);
+        $c = $this->brief();
+        $q = $this->conversations->quote($this->owner, $c->id, 1);
+        $this->workspace->update(['credits_monthly' => (int) $q->credits_max - 1]);
+        $run = $this->conversations->approve($this->owner, $c->id, $q->id, 'limited-full-call', true);
+        $input = json_decode($run->input_json, true);
+        $this->assertTrue($input['credit_limited']);
+        $this->assertSame(105, $input['execution_policy']['agent']['credits']);
+        $this->assertSame(1200000, $input['execution_policy']['agent']['cost_limit_microusd']);
+    }
+
     public function test_a_step_starts_on_what_is_available_when_it_covers_the_likely_cost_and_pauses_at_it(): void
     {
         $this->pilot();
@@ -2951,7 +2967,8 @@ class CreateIntegrationTest extends TestCase
         $agent = $input['execution_policy']['agent'];
         $this->assertGreaterThanOrEqual($min, $agent['credits']);
         $this->assertLessThanOrEqual(105, $agent['credits'], 'a $1.20 call is 105 credits at cost');
-        $this->assertSame($agent['credits'] * 11500, $agent['cost_limit_microusd'], 'the per-call ceiling at the build\'s own rate');
+        $this->assertSame(min(1200000, $agent['credits'] * 11500), $agent['cost_limit_microusd'], 'the per-call ceiling at the build\'s own rate, never above $1.20');
+        $this->assertLessThanOrEqual(1200000, $agent['cost_limit_microusd'], 'the worker refuses an Opus call over $1.20');
         $this->assertGreaterThanOrEqual((int) $q->payload_json['estimate'] - (int) ($q->payload_json['media_estimate'] ?? 0), $agent['total_credits'] - $agent['credits'], 'the likely cost fits under room less one ceiling');
         // Reaching it pauses the step: the run says so, and Retry continues it.
         $claim = $this->runs->claim();

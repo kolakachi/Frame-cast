@@ -585,7 +585,9 @@ class ConversationService
                     $p['execution_policy']['agent']['total_credits'] = $room;
                     $call = max($callFloor, min((int) $p['execution_policy']['agent']['credits'], $room - $agentNeed));
                     $p['execution_policy']['agent']['credits'] = $call;
-                    $p['execution_policy']['agent']['cost_limit_microusd'] = $call * $mpc;
+                    // Never above the approved call ceiling: 105 credits at 11,500 µ$ is $1.2075, over the worker's $1.20
+                    // limit for a call, which refused every credit-limited build before its first call (ws 93, 2026-11-10).
+                    $p['execution_policy']['agent']['cost_limit_microusd'] = min((int) $p['execution_policy']['agent']['cost_limit_microusd'], $call * $mpc);
                     $p['credit_limited'] = true;
                     $quote->update(['payload_json' => $p, 'credits_max' => $fixed + $criticHold + $room]);
                 }
