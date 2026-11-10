@@ -24,7 +24,7 @@ class RecoverCreateProviderReceipt extends Command
         abort_unless(is_array($r) && count(array_intersect(['input', 'output', 'cache_write', 'cache_read'], array_keys($r))) === 4, 409, 'Original metering rates are missing.');
         $cost = (int) ceil($u['input_tokens'] * $r['input'] + $u['output_tokens'] * $r['output']
             + ($u['cache_creation_input_tokens'] ?? 0) * $r['cache_write'] + ($u['cache_read_input_tokens'] ?? 0) * $r['cache_read']);
-        abort_unless($cost <= $a->cost_limit_microusd, 409, 'Receipt exceeds the approved ceiling; manual review required.');
+        // Charged at real cost; no per-call ceiling (owner, 2026-11-10).
         $result = app(ReconciliationService::class)->reconcile(new VerifiedAttemptReceipt($a->id, 'succeeded', $body['id'], $cost,
             'pilot-tariff:2026-09-30; app-saved Anthropic response '.hash('sha256', $a->provider_response_json)), true);
         $this->info('Receipt recovered. Charged credits: '.$result['charged_credits'].'. No generation repeated.');

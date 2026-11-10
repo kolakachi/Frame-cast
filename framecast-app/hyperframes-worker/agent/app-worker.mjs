@@ -67,8 +67,23 @@ function cutNote(edits){
  const q=w=>'\u201c'+w.slice(0,12).join(' ')+'\u201d'+(w.length>12?' and more':'');
  return '\n\nRemoved from your footage: '+q(removed)+'.'+(content.length?' This includes words that were not filler or repeats: '+q(content)+'.':'');
 }
+// Node's fetch gives up on any response that takes over 5 minutes to start (its 300 s headers timeout), whatever the
+// abort signal says: a Thorough builder call that thought for 5 min was dropped and the build stranded (ws 93,
+// 2026-11-10). Long JSON calls go through node:http, which waits for our own timeout.
+async function longRequest(url,headers,payload,timeoutMs){
+ const {request:send}=await import(url.protocol==='https:'?'node:https':'node:http');
+ return new Promise((resolve,reject)=>{
+  const req=send(url,{method:'POST',headers:{...headers,'Content-Length':Buffer.byteLength(payload)},timeout:timeoutMs},res=>{
+   const chunks=[];res.on('data',c=>chunks.push(c));res.on('error',reject);
+   res.on('end',()=>{const text=Buffer.concat(chunks).toString('utf8');resolve({ok:res.statusCode>=200&&res.statusCode<300,status:res.statusCode,json:async()=>JSON.parse(text)});});
+  });
+  req.on('timeout',()=>req.destroy(Object.assign(Error('The operation was aborted due to timeout'),{name:'TimeoutError'})));
+  req.on('error',reject);req.end(payload);
+ });
+}
 async function request(endpoint,body,form=false,timeoutMs=15000){
- const response=await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
+ const url=new URL('/api/internal/create/'+endpoint,base);
+ const response=!form&&timeoutMs>240000?await longRequest(url,{Authorization:'Bearer '+token,Accept:'application/json','Content-Type':'application/json'},JSON.stringify(body),timeoutMs):await fetch(new URL('/api/internal/create/'+endpoint,base),{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/json',...(!form?{'Content-Type':'application/json'}:{})},body:form?body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
  if(!response.ok){const body=await response.json().catch(()=>({}));throw Error('Coordinator returned HTTP '+response.status+(body?.error?.message||body?.message?': '+String(body.error?.message||body.message).slice(0,200):''));}return (await response.json()).data;
 }
 async function finish(run,result,artifact,type='video/mp4'){

@@ -29,7 +29,8 @@ class ProviderReceiptVerifier
             $cost=$canonical['duration']*50000;
         } else abort(409,'Unverified tariff. Hold retained.');
         $hash=hash('sha256',json_encode($canonical,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_LINE_TERMINATORS|JSON_THROW_ON_ERROR));
-        abort_unless(hash_equals($attempt->request_hash,$hash) && $cost<=$attempt->cost_limit_microusd,409,'Provider input or metered ceiling mismatch. Hold retained.');
+        // Real cost of any size (owner, 2026-11-10: no per-call ceiling); the input must still match what was recorded.
+        abort_unless(hash_equals($attempt->request_hash,$hash) && $cost>=0,409,'Provider input mismatch. Hold retained.');
         return new VerifiedAttemptReceipt($attempt->id,'succeeded',$attempt->prediction_id,$cost,'pilot-tariff:2026-09-29; provider-verified usage; estimate, not invoice');
     }
 
@@ -55,9 +56,9 @@ class ProviderReceiptVerifier
         }
         abort_unless($attempt->provider === 'replicate', 422, 'No verified receipt adapter for this provider.');
         abort_unless(preg_match('/^[a-zA-Z0-9_-]{1,160}$/D',$attempt->prediction_id ?? ''), 409, 'The prediction ID was not recorded. Locate it before reconciliation.');
-        abort_unless($cost !== null && $cost >= 0 && $cost <= $attempt->cost_limit_microusd
+        abort_unless($cost !== null && $cost >= 0
             && is_string($billingReference) && strlen(trim($billingReference)) >= 8 && strlen($billingReference) <= 500,
-            422, 'An actual billing cost within the approved ceiling and its evidence reference are required.');
+            422, 'An actual billing cost and its evidence reference are required.');
         $token = config('services.replicate.api_token') ?: config('services.replicate.api_key');
         abort_unless($token, 503, 'Provider verification credential is unavailable.');
         $response = Http::withToken($token)->acceptJson()->timeout(20)->withOptions(['allow_redirects'=>false])
