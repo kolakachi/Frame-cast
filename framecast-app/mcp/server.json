@@ -3,8 +3,24 @@
   "name": "com.wyvstudio/wyvstudio",
   "title": "WyvStudio",
   "description": "Make short branded ad and social videos from a product link, script or idea, in your chat.",
-  "version": "1.10.0",
+  "version": "1.13.1",
   "websiteUrl": "https://wyvstudio.com",
+  "icons": [
+    {
+      "src": "https://s3.us-east-005.backblazeb2.com/frame-cast/marketing/brand/wyvstudio-icon-512.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    },
+    {
+      "src": "https://wyvstudio.com/favicon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
