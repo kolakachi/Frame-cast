@@ -1799,8 +1799,19 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
                   <p v-if="shareNote" class="result-hint result-share" role="status">{{ shareNote }}</p>
                   <p v-if="isTemplateCopy && !isOldRevision" class="result-hint result-template">This is the template as it is. Tell us about your product below, or use Change…, and we'll make it yours.</p>
                   <div v-if="outputMeta.watermarked" class="free-ready" role="status">
-                    <b>Your free first ad is ready.</b> It carries a small WyvStudio mark, and you can download it now.
-                    Your next ad can use your own presenter, voice or footage, with no mark: <a href="/continue?pass=1">get the Test Pass, $9</a>.
+                    <p class="free-ready__lead"><b>Your free first ad is ready.</b> Download it now: it carries a small WyvStudio mark.</p>
+                    <div class="free-ready__offer">
+                      <div>
+                        <p class="free-ready__title">Make it yours with the Test Pass</p>
+                        <ul class="free-ready__list">
+                          <li>No WyvStudio mark</li>
+                          <li>Your own script, voice and AI presenters</li>
+                          <li>New shots made for your product</li>
+                          <li>600 credits, paid once, no subscription</li>
+                        </ul>
+                      </div>
+                      <a class="btn btn--primary free-ready__cta" href="/continue?pass=1">Get the Test Pass, $9</a>
+                    </div>
                   </div>
                   <p v-if="!outputMeta.look && !isOldRevision && canWrite && !isTemplateCopy" class="result-hint">Want something different? Use Change…, pause on a moment, or describe it below, like “slower cuts” or “bigger captions”.</p>
                 </div>
@@ -3114,6 +3125,10 @@ label.tray-note{white-space:normal}
 .thumb--doc{display:grid;place-items:center;font:700 9px ui-monospace,Menlo,monospace;color:#fff;background:#8a3b3b}
 .free-ready{margin-top:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--color-border-active);font-size:14px;line-height:1.45;color:var(--color-text-secondary)}
 .free-ready b{color:var(--color-text-primary)}
-.free-ready a{color:var(--color-accent);font-weight:600}
+.free-ready__lead{margin:0 0 10px}
+.free-ready__offer{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;background:var(--color-surface-2, rgba(255,122,26,.06));border:1px solid var(--color-border-active)}
+.free-ready__title{margin:0 0 6px;font-weight:700;color:var(--color-text-primary)}
+.free-ready__list{margin:0;padding-left:18px;display:grid;gap:2px}
+.free-ready__cta{white-space:nowrap}
 .result-template{color:var(--color-text-primary)}
 </style>
