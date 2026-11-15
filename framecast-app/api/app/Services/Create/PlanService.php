@@ -829,7 +829,11 @@ class PlanService
                     // The talking takes the user has: a change to what one says re-makes all of it (its speech is baked in).
                     'takes' => self::deliveredMedia($c, 'ugc_take') ?? [],
                     // The directions the user was shown, so "plan 3" or "2, with the look of 5" can be read.
-                    'concept' => json_decode($prev->plan_json, true)['concept'] ?? null] : null,
+                    'concept' => json_decode($prev->plan_json, true)['concept'] ?? null,
+                    // Whether that plan was ever made. One never approved is not in the video: its changes carry into the next
+                    // plan instead (Sam, ws 104, 2026-11-13: a re-voice was planned, not approved, and the next plans called it
+                    // "approved" and dropped it, so his free ad kept the template's voice).
+                    ...self::unbuilt($c->id, $prev)] : null,
         ];
     }
 
@@ -867,6 +871,25 @@ class PlanService
     }
 
     /** The cast sheet of the plan behind the version the user has (its head revision), when there is one. */
+    /**
+     * Whether the last plan was made, and when it was not, the changes it would have made: the parts it touched, and the
+     * new words its voice would have said. A plan is made when a run carries it (the run's plan names its plan_id).
+     *
+     * @return array{built: bool, unbuilt_changes?: array}
+     */
+    public static function unbuilt(string $conversationId, object $prev): array
+    {
+        $built = DB::table('composition_runs')->where('conversation_id', $conversationId)->where('input_json->plan->plan_id', $prev->id)->exists();
+        if ($built) return ['built' => true];
+        $plan = json_decode((string) $prev->plan_json, true) ?: [];
+        $touches = array_values(array_filter((array) ($plan['change_touches'] ?? []), 'is_string'));
+        $voice = in_array('voice', $touches, true) || ! empty($plan['swap']['voice']);
+        return ['built' => false, 'unbuilt_changes' => array_filter([
+            'change_touches' => $touches,
+            'narration' => $voice ? array_values(array_filter((array) ($plan['narration'] ?? []), 'is_string')) : null,
+        ])];
+    }
+
     private static function deliveredCast(object $c): ?array
     {
         // The version's own plan may be a change that left the (already made) sheet out: then the sheet last made in

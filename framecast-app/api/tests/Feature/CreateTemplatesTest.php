@@ -203,6 +203,26 @@ class CreateTemplatesTest extends TestCase
         $this->assertFalse(\App\Services\Create\FreeFirst::freePlan($ws));
     }
 
+    public function test_a_plan_never_approved_reaches_the_next_plan_as_not_built_with_its_voice(): void
+    {
+        // Sam, ws 104, 2026-11-13: a free ad's re-voice was planned but never approved; the next plans called it "approved",
+        // dropped it, and the ad kept the template's voice. The planner is now told which plan was made.
+        [$conversation] = $this->version();
+        $plan = fn (string $id, array $json) => DB::table('create_plans')->insert(['id' => $id, 'conversation_id' => $conversation, 'message_id' => (string) Str::uuid(),
+            'brief_sequence' => 1, 'idempotency_key' => $id, 'request_hash' => 'h', 'provider' => 'test', 'plan_json' => json_encode($json), 'status' => 'superseded', 'created_at' => now(), 'updated_at' => now()]);
+        $voiced = (string) Str::uuid(); $words = (string) Str::uuid();
+        $plan($voiced, ['change_touches' => ['on_screen_words', 'pictures', 'voice'], 'swap' => ['voice' => true], 'narration' => ['Meet Rose Oud.', 'Order at oudperfumes.ie.']]);
+        $plan($words, ['change_touches' => ['on_screen_words'], 'narration' => ['New drop.', 'Shop the drop.']]);
+        DB::table('composition_runs')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $conversation, 'workspace_id' => $this->staff->workspace_id, 'quote_id' => 'q_'.Str::random(8),
+            'idempotency_key' => 'k'.Str::random(6), 'request_hash' => 'h', 'input_json' => json_encode(['plan' => ['plan_id' => $words]]), 'status' => 'preview_ready', 'stage' => 'Done', 'created_at' => now(), 'updated_at' => now()]);
+
+        $prev = fn ($id) => DB::table('create_plans')->where('id', $id)->first();
+        $this->assertSame(['built' => false, 'unbuilt_changes' => ['change_touches' => ['on_screen_words', 'pictures', 'voice'], 'narration' => ['Meet Rose Oud.', 'Order at oudperfumes.ie.']]],
+            \App\Services\Create\PlanService::unbuilt($conversation, $prev($voiced)));
+        $this->assertSame(['built' => true], \App\Services\Create\PlanService::unbuilt($conversation, $prev($words)));
+        $this->assertStringContainsString('previous_plan.built false means the user never approved that plan', \App\Services\Create\Planning\PlanPrompt::system());
+    }
+
     public function test_footage_of_the_templates_own_product_is_listed_and_the_brief_says_to_replace_it(): void
     {
         // Owner's test, 2026-10-17: an app demo's screen recording was not listed, so a free change kept the old product.

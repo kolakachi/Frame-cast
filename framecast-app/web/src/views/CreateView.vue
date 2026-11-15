@@ -1852,40 +1852,43 @@ onBeforeUnmount(() => {document.removeEventListener('visibilitychange', onVisibi
               <span class="speaker">WyvStudio</span>
               <div class="icard icard--warn">
                 <div class="icard__body">
-                  <p class="icard__summary">{{ quote.paid ? 'Here is what this will cost.' : 'This renders the fixed local sample.' }} {{ quote.description }}</p>
+                  <p v-if="quote.free_voice" class="icard__summary">Your free ad gets a new voiceover for your product, read in the template's voice. It's included: nothing is charged.</p>
+                  <p v-else class="icard__summary">{{ quote.paid ? 'Here is what this will cost.' : 'This renders the fixed local sample.' }} {{ quote.description }}</p>
                   <p v-if="quote.build_stage === 'storyboard'" class="notice">Storyboard only: silent still frames. Audio and animation are deferred to the full video build.</p>
                   <p v-else-if="quote.build_stage === 'full_video'" class="notice">Full video: build the motion and approved audio.</p>
                   <p v-if="quote.settings?.video_mode === 'animate_image'" class="muted">{{ quote.settings.duration_seconds }} seconds · 480p image animation · silent. Generated motion may change details; check before use.</p>
                   <p v-if="quote.variants > 1" class="muted">{{ quote.variants }} variations, each with its own result. A finished variation is kept if another one fails.</p>
-                  <label v-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to our AI providers (Anthropic, Replicate). I have permission to use any people, products and claims in it.</label>
-                  <p v-if="quote.paid" class="muted">After this approval, jobs under 15 credits in this conversation run without asking and show their cost.</p>
+                  <label v-if="quote.paid && quote.free_voice" class="consent"><input v-model="providerApproved" type="checkbox" /> Send the new voiceover's words to our voice provider to record it. I have permission to use the products and claims in it.</label>
+                  <label v-else-if="quote.paid" class="consent"><input v-model="providerApproved" type="checkbox" /> Send this brief and its approved media to our AI providers (Anthropic, Replicate). I have permission to use any people, products and claims in it.</label>
+                  <p v-if="quote.paid && !quote.free_voice" class="muted">After this approval, jobs under 15 credits in this conversation run without asking and show their cost.</p>
                   <small class="muted">{{ expiredQuote ? 'This approval expired. Review a fresh plan to continue.' : `Approval open until ${new Date(quote.expires_at).toLocaleTimeString()}` }}</small>
                 </div>
                 <div class="icard__foot">
                   <div v-if="quote.plan_media?.length" class="quote__items" aria-label="Bought for this plan">
-                    <div v-for="(md, i) in quote.plan_media" :key="i" class="quote__line"><span>{{ md.description }}</span><b>{{ md.credits ? md.credits + ' cr' : 'included' }}</b></div>
-                    <small class="muted">Each item is charged only if it is made. A retry of this plan reuses what was already made.</small>
+                    <div v-for="(md, i) in quote.plan_media" :key="i" class="quote__line"><span>{{ md.description }}</span><b>{{ md.credits && !quote.free_voice ? md.credits + ' cr' : 'included' }}</b></div>
+                    <small v-if="!quote.free_voice" class="muted">Each item is charged only if it is made. A retry of this plan reuses what was already made.</small>
                   </div>
-                  <div v-if="quote.paid && quote.media_ceiling" class="ceiling-line">
+                  <div v-if="quote.paid && quote.media_ceiling && !quote.free_voice" class="ceiling-line">
                     <span class="muted">Media: estimated {{ quote.media_estimate }} credits · spend up to</span>
                     <input v-model.number="ceilingDraft" type="number" min="0" max="20000" step="10" class="input input--sm" aria-label="Media spending ceiling in credits" />
                     <span class="muted">credits</span>
                     <button v-if="ceilingDraft !== quote.media_ceiling" type="button" class="quiet quiet--sm" :disabled="busy" @click="setCeiling">Set</button>
                     <small class="muted">The agent may buy more media under this ceiling; anything over it waits for your approval.</small>
                   </div>
-                  <div v-if="quote.paid && quote.build_ceiling" class="ceiling-line">
+                  <div v-if="quote.paid && quote.build_ceiling && !quote.free_voice" class="ceiling-line">
                     <span class="muted">Build: estimated {{ quote.build_estimate }} credits · spend up to</span>
                     <input id="build-ceiling" v-model.number="buildCeilingDraft" type="number" min="0" max="20000" step="10" class="input input--sm" aria-label="Build spending limit in credits" />
                     <span class="muted">credits</span>
                     <button v-if="buildCeilingDraft !== quote.build_ceiling" type="button" class="quiet quiet--sm" :disabled="busy" @click="setBuildCeiling">Set</button>
                     <small class="muted">The builder is charged what its AI calls cost us, never more than this. A build that reaches it pauses, keeps its work, and Retry continues it.</small>
                   </div>
-                  <div class="cost-line"><b>{{ quote.paid ? `Up to ${ceilingOf(quote)} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
-                  <p v-if="quoteCreditAvailability" class="muted">Balance {{ quoteCreditAvailability.total.toLocaleString() }}<template v-if="quoteCreditAvailability.reserved"> · {{ quoteCreditAvailability.reserved.toLocaleString() }} held for unfinished work · {{ quoteCreditAvailability.available.toLocaleString() }} free for this approval</template>. Checked again when you approve.</p>
+                  <div v-if="quote.free_voice" class="cost-line"><b>Included in your free ad</b><span>· nothing is charged</span></div>
+                  <div v-else class="cost-line"><b>{{ quote.paid ? `Up to ${ceilingOf(quote)} credits` : 'No credits' }}</b><span>{{ quote.paid ? '· reserved when you approve, unused part returned' : '· no paid calls' }}</span></div>
+                  <p v-if="quoteCreditAvailability && !quote.free_voice" class="muted">Balance {{ quoteCreditAvailability.total.toLocaleString() }}<template v-if="quoteCreditAvailability.reserved"> · {{ quoteCreditAvailability.reserved.toLocaleString() }} held for unfinished work · {{ quoteCreditAvailability.available.toLocaleString() }} free for this approval</template>. Checked again when you approve.</p>
                   <span class="spacer" />
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="locked" @click="quote = null">Not now</button>
                   <button v-if="expiredQuote" type="button" class="btn btn--primary btn--sm" :disabled="locked" @click="plan">Refresh plan</button>
-                  <button v-else type="button" class="btn btn--primary btn--sm" :disabled="locked || quote.paid && !providerApproved" @click="approve">{{ quote.paid ? 'Approve' : 'Approve sample render' }}</button>
+                  <button v-else type="button" class="btn btn--primary btn--sm" :disabled="locked || quote.paid && !providerApproved" @click="approve">{{ quote.free_voice ? 'Make my ad' : quote.paid ? 'Approve' : 'Approve sample render' }}</button>
                 </div>
               </div>
             </div>

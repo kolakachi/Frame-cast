@@ -436,6 +436,10 @@ class CreateController extends Controller
             // "Never more than": the real hold; while testing without limits, what a real hold would be.
             'ceiling' => \App\Services\Create\PilotPolicy::unlimited() && isset($q->payload_json['shown_ceiling']) ? min((int) $q->credits_max, max((int) $q->payload_json['shown_ceiling'], (int) ($q->payload_json['estimate'] ?? 0))) : $q->credits_max, 'effort' => $q->payload_json['effort'] ?? null, 'expires_at' => $q->expires_at,
             'credit_availability' => $this->service->creditAvailability($r->user()),
+            // The free ad's new voiceover: its few credits are granted at approval (ConversationService::approve), so the
+            // card says it is included instead of showing a price against a zero balance (Sam, ws 104, 2026-11-13: the
+            // card read as a paywall, he never approved, and his ad kept the template's voice).
+            'free_voice' => ! empty($q->payload_json['free_first']) && ! empty($q->payload_json['voice_swap']),
             'build_stage'=>$q->payload_json['build_stage']??null,'variants'=>count($q->payload_json['variant_quotes']??[1]),'plan_media'=>array_map(fn($m)=>['kind'=>$m['kind'],'description'=>$m['description'],'credits'=>$m['credits']],$q->payload_json['plan_media']??[]),'media_estimate'=>$q->payload_json['media_estimate']??0,'media_ceiling'=>$q->payload_json['media_ceiling']??0,'auto_run'=>$this->service->autoRunEligible($r->user(),$this->service->conversation($r->user(),$id),$q),'paid'=>$q->payload_json['mode']==='agent','settings'=>$q->payload_json['settings'],
             'description' => $q->payload_json['mode']==='agent' ? 'Create from your brief with our AI providers. Your brief and approved media may be sent to them. Only used calls are charged; unused reserved credits are released. The displayed amount is a maximum, not a flat charge.' : 'Local integration test: render the fixed 15-second sample. This does not generate from your prompt or use your attachments. No paid model calls.']]);
     }
