@@ -51,7 +51,7 @@ class PlanService
     {
         // The free first ad's planning is ours to pay (FreeFirst), up to its limit of AI changes, in every mode.
         if ($conversationId && FreeFirst::applies((int) $user->workspace_id, $conversationId)) {
-            abort_if(FreeFirst::plansUsed($conversationId) >= FreeFirst::PLAN_LIMIT, 402, FreeFirst::PLAN_LIMIT_MESSAGE);
+            abort_if(FreeFirst::plansUsed($conversationId) >= FreeFirst::planLimit((int) $user->workspace_id), 402, FreeFirst::planLimitMessage((int) $user->workspace_id));
             return;
         }
         if (PilotPolicy::unlimited() || config('create.mode') === 'fixture') return;

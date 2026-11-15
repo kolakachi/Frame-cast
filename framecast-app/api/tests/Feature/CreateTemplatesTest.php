@@ -181,6 +181,13 @@ class CreateTemplatesTest extends TestCase
             'brief_sequence' => $n, 'idempotency_key' => 'p'.$n, 'request_hash' => 'h'.$n, 'provider' => 'test', 'plan_json' => '{}', 'status' => 'superseded', 'created_at' => now(), 'updated_at' => now()]);
         try { $planning->assertCanPayPlanning($this->customer, $first['id']); $this->fail('a sixth AI change was free'); }
         catch (HttpException $e) { $this->assertSame([402, \App\Services\Create\FreeFirst::PLAN_LIMIT_MESSAGE], [$e->getStatusCode(), $e->getMessage()]); }
+        // Staff can give changes back (Sam, ws 104, 2026-11-15: two lost to the free-voice card): 2 more make 7.
+        \App\Models\Workspace::whereKey($ws)->update(['onboarding_json' => json_encode([...(json_decode((string) \App\Models\Workspace::whereKey($ws)->value('onboarding_json'), true) ?: []), 'free_first_extra_changes' => 2])]);
+        $planning->assertCanPayPlanning($this->customer, $first['id']);
+        foreach ([6, 7] as $n) DB::table('create_plans')->insert(['id' => (string) Str::uuid(), 'conversation_id' => $first['id'], 'message_id' => (string) Str::uuid(),
+            'brief_sequence' => $n, 'idempotency_key' => 'p'.$n, 'request_hash' => 'h'.$n, 'provider' => 'test', 'plan_json' => '{}', 'status' => 'superseded', 'created_at' => now(), 'updated_at' => now()]);
+        try { $planning->assertCanPayPlanning($this->customer, $first['id']); $this->fail('an eighth AI change was free'); }
+        catch (HttpException $e) { $this->assertSame(402, $e->getStatusCode()); $this->assertStringContainsString('used its 7 AI changes', $e->getMessage()); }
 
         // Free only from a template with its own code and no AI-made video (owner, 2026-10-17).
         $fits = fn (array $t) => \App\Services\Create\FreeFirst::templateFits((object) [...$t, 'free_audit_json' => json_encode(['passed' => true])]);

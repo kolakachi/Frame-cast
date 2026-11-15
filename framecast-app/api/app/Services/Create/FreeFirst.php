@@ -101,6 +101,23 @@ class FreeFirst
         return DB::table('create_plans')->where('conversation_id', $conversationId)->count();
     }
 
+    /**
+     * How many AI-planned changes this workspace's free ad allows: PLAN_LIMIT, plus any given back by staff
+     * (onboarding_json.free_first_extra_changes; Sam, ws 104, 2026-11-15: two were lost to the free-voice card bug).
+     */
+    public static function planLimit(int $workspaceId): int
+    {
+        $kept = json_decode((string) DB::table('workspaces')->where('id', $workspaceId)->value('onboarding_json'), true) ?: [];
+        return self::PLAN_LIMIT + max(0, (int) ($kept['free_first_extra_changes'] ?? 0));
+    }
+
+    /** The limit's message, with this workspace's number of changes. */
+    public static function planLimitMessage(int $workspaceId): string
+    {
+        $limit = self::planLimit($workspaceId);
+        return $limit === self::PLAN_LIMIT ? self::PLAN_LIMIT_MESSAGE : str_replace(self::PLAN_LIMIT.' AI changes', $limit.' AI changes', self::PLAN_LIMIT_MESSAGE);
+    }
+
     /** Clips a model made: a template built on them is not free (owner, 2026-10-17: they involve generating AI video). */
     public const AI_VIDEO = ['ugc_take', 'generated_shot', 'animate_image', 'cutout_video', 'talking_photo', 'lip_sync', 'restyle'];
 
