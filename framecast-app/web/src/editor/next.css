@@ -675,3 +675,18 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 /* Timeline: Add scene in the header row beside Scene / Full video; the lanes take the full width. */
 .nx-tl-add { height: 34px; padding: 0 12px; gap: 6px; margin-right: 6px; font-size: 13px; }
 .nx-tl-add svg { width: 14px; height: 14px; }
+
+/* AI image: visual pickers (owner, 2026-11-16) */
+.nx-looks-grid { max-height: none; overflow: visible; flex-shrink: 0; }
+.nx-looks-grid .nx-look { overflow: visible; }
+.nx-looks-grid .nx-look img, .nx-looks-grid .nx-look-glyph { border-radius: 10px 10px 0 0; aspect-ratio: 4 / 3; }
+.nx-more { align-self: flex-start; padding: 0; height: 24px; }
+.nx-faces { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 4px; flex-shrink: 0; scrollbar-width: thin; }
+.nx-face { flex-shrink: 0; width: 60px; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); padding: 2px 0; }
+.nx-face > span:last-child { max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-face-img { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: var(--raised); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; color: var(--muted); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.nx-face-img img { width: 100%; height: 100%; object-fit: cover; }
+.nx-face.on .nx-face-img { box-shadow: 0 0 0 2px var(--accent); }
+.nx-face.on { color: var(--text); }
+.nx-model-pick { gap: 10px; }
+.nx-model-pick .nx-num { color: var(--text-2); }

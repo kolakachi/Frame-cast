@@ -39,6 +39,9 @@ const GROUPS = [
   { key: "uploads", label: "Uploads" },
 ];
 const isAi = computed(() => activeScene.value?.visual_type === "ai_image");
+// AI image › Style: the first LOOKS_SHOWN looks and the one picked; "Show all" opens the rest.
+const LOOKS_SHOWN = 6;
+const allLooks = ref(false);
 // The core keeps one source key; "AI Image" serves both AI image and AI video, told apart here.
 const aiAsVideo = ref(false);
 watch(() => activeScene.value?.id, () => { aiAsVideo.value = isAi.value && activeSceneVisualIsVideo.value; }, { immediate: true });
@@ -237,6 +240,12 @@ const closeMenu = () => { menu.value = null; };
 onMounted(() => document.addEventListener("click", closeMenu));
 onBeforeUnmount(() => document.removeEventListener("click", closeMenu));
 const lookRow = computed(() => stylePickerRows.value.find((r) => r.key === lookKey.value) ?? null);
+const shownLooks = computed(() => {
+  const rows = stylePickerRows.value;
+  if (allLooks.value) return rows;
+  const first = rows.slice(0, LOOKS_SHOWN);
+  return lookRow.value && !first.includes(lookRow.value) ? [...first.slice(0, LOOKS_SHOWN - 1), lookRow.value] : first;
+});
 const modelRow = computed(() => availableImageModelsEditor.value.find((m) => m.key === aiImageModelKey.value) ?? null);
 // A scene with an AI picture can also be edited in place (the shot kept, one thing changed).
 const aiMode = ref("new");
@@ -521,81 +530,64 @@ function send() {
       <button v-for="sg in EDIT_SUGGESTIONS" :key="sg" type="button" :class="['nx-chip', editInstruction === sg ? 'on' : '']" @click="editInstruction = sg">{{ sg }}</button>
     </div>
 
-    <div class="nx-pbox" @click.stop>
+    <!-- The prompt on its own; the picture's settings below it as visual pickers (owner, 2026-11-16). -->
+    <div class="nx-pbox">
       <textarea v-if="editing" v-model="editInstruction" class="nx-pbox-input" rows="3" maxlength="500"
         aria-label="What to change" placeholder="What to change: remove the text on the wall behind her"></textarea>
       <textarea v-else v-model="aiImagePromptOverride" class="nx-pbox-input" rows="3" maxlength="1000"
         aria-label="Describe the picture" placeholder="Describe the picture, or leave it empty to draw from the scene's script"></textarea>
-      <div class="nx-pbox-bar">
-        <template v-if="!editing">
-          <button type="button" class="nx-pdrop" :aria-expanded="menu === 'style'" @click="toggleMenu('style')">
-            <span class="nx-pdrop-k">Style</span>
-            <img v-if="lookRow?.sample_url" :src="lookRow.sample_url" alt="" />
-            <span>{{ lookLabel(lookKey) }}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-          </button>
-          <button type="button" class="nx-pdrop" :aria-expanded="menu === 'character'" @click="toggleMenu('character')">
-            <span class="nx-pdrop-k">Character</span>
-            <span v-if="activeCharacter" class="nx-pdrop-face">
-              <img v-if="activeCharacter.reference_asset?.thumbnail_url || activeCharacter.reference_asset?.storage_url" :src="activeCharacter.reference_asset.thumbnail_url || activeCharacter.reference_asset.storage_url" alt="" />
-              <template v-else>{{ activeCharacter.name.charAt(0).toUpperCase() }}</template>
-            </span>
-            <span>{{ activeCharacter?.name || "None" }}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-          </button>
-          <button type="button" class="nx-pdrop" :aria-expanded="menu === 'model'" @click="toggleMenu('model')">
-            <span class="nx-pdrop-k">Model</span>
-            <span>{{ modelRow?.label || "Default" }}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-          </button>
-        </template>
-      </div>
+    </div>
 
-      <!-- Style: a preview and the name of each look. -->
-      <div v-if="menu === 'style'" class="nx-pop">
-        <div class="nx-looks">
-          <button v-for="st in stylePickerRows" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || ''" @click="visualStyleDraft = st.key; menu = null">
-            <img v-if="st.sample_url" :src="st.sample_url" alt="" loading="lazy" />
-            <span v-else class="nx-look-glyph">{{ st.icon ?? "✦" }}</span>
-            <span class="nx-look-name">{{ st.label }}</span>
-          </button>
-        </div>
-        <button v-if="isAi" class="nx-btn nx-outline nx-full" type="button" @click="menu = null; openBulkStyle()">Use this look on all scenes</button>
+    <template v-if="!editing">
+      <!-- Style: sample pictures; the first six, and the one picked, with the rest a click away. -->
+      <div class="nx-row"><span class="nx-label">Style</span><button v-if="isAi" class="nx-link" type="button" @click="openBulkStyle()">Use on all scenes</button></div>
+      <div class="nx-looks nx-looks-grid">
+        <button v-for="st in shownLooks" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || st.label" :aria-pressed="lookKey === st.key" @click="visualStyleDraft = st.key">
+          <img v-if="st.sample_url" :src="st.sample_url" alt="" loading="lazy" />
+          <span v-else class="nx-look-glyph">{{ st.icon ?? "✦" }}</span>
+          <span class="nx-look-name">{{ st.label }}</span>
+        </button>
       </div>
+      <button v-if="stylePickerRows.length > LOOKS_SHOWN" class="nx-link nx-more" type="button" @click="allLooks = !allLooks">{{ allLooks ? "Show fewer styles" : `Show all ${stylePickerRows.length} styles` }}</button>
 
       <!-- Character: the same person in every picture of this scene. -->
-      <div v-else-if="menu === 'character'" class="nx-pop">
-        <p v-if="!characters.length" class="nx-hint">No characters yet.</p>
-        <div v-else class="nx-char-grid">
-          <button v-for="c in characters" :key="c.id" type="button" :class="['nx-char-pick', activeScene?.character_id === c.id ? 'on' : '']" @click="selectCharacter(c.id); menu = null">
-            <span class="nx-char-face">
-              <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url" :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
-              <template v-else>{{ c.name.charAt(0).toUpperCase() }}</template>
-            </span>
-            <span>{{ c.name }}</span>
-          </button>
-        </div>
-        <div class="nx-row">
-          <button v-if="activeScene?.character_id" class="nx-link" type="button" @click="selectCharacter(null); menu = null">No character</button>
-          <span v-else></span>
-          <button class="nx-mini" type="button" @click="menu = null; createCharacterOpen = true">+ New character</button>
-        </div>
+      <span class="nx-label">Character</span>
+      <div class="nx-faces">
+        <button type="button" :class="['nx-face', !activeScene?.character_id ? 'on' : '']" :aria-pressed="!activeScene?.character_id" @click="selectCharacter(null)">
+          <span class="nx-face-img">–</span><span>None</span>
+        </button>
+        <button v-for="c in characters" :key="c.id" type="button" :class="['nx-face', activeScene?.character_id === c.id ? 'on' : '']" :aria-pressed="activeScene?.character_id === c.id" @click="selectCharacter(c.id)">
+          <span class="nx-face-img">
+            <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url" :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
+            <template v-else>{{ c.name.charAt(0).toUpperCase() }}</template>
+          </span>
+          <span>{{ c.name }}</span>
+        </button>
+        <button type="button" class="nx-face" @click="createCharacterOpen = true"><span class="nx-face-img">+</span><span>New</span></button>
       </div>
 
       <!-- Model, with the server's price for each. -->
-      <div v-else-if="menu === 'model'" class="nx-pop">
-        <div class="nx-list">
-          <button v-for="m in availableImageModelsEditor" :key="m.key" type="button"
-            :class="['nx-list-row', aiImageModelKey === m.key ? 'on' : '']"
-            :disabled="m.requires_reference && !activeSceneHasCharacter"
-            @click="aiImageModelKey = m.key; menu = null">
-            <span class="nx-list-main"><b>{{ m.label }}</b><span>{{ m.sub }}{{ m.requires_reference && !activeSceneHasCharacter ? " · needs a character" : "" }}</span></span>
-            <span class="nx-num">{{ imageModelCost(m.key) ?? "–" }} cr</span>
-          </button>
+      <span class="nx-label">Model</span>
+      <div class="nx-pop-wrap" @click.stop>
+        <button type="button" class="nx-list-row nx-pick nx-model-pick" :aria-expanded="menu === 'model'" @click="toggleMenu('model')">
+          <span class="nx-list-main"><b>{{ modelRow?.label || "Default" }}</b><span v-if="modelRow?.sub">{{ modelRow.sub }}</span></span>
+          <span class="nx-num">{{ imageModelCost(aiImageModelKey) ?? "–" }} cr</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <div v-if="menu === 'model'" class="nx-pop">
+          <div class="nx-list">
+            <button v-for="m in availableImageModelsEditor" :key="m.key" type="button"
+              :class="['nx-list-row', aiImageModelKey === m.key ? 'on' : '']"
+              :disabled="m.requires_reference && !activeSceneHasCharacter"
+              @click="aiImageModelKey = m.key; menu = null">
+              <span class="nx-list-main"><b>{{ m.label }}</b><span>{{ m.sub }}{{ m.requires_reference && !activeSceneHasCharacter ? " · needs a character" : "" }}</span></span>
+              <span class="nx-num">{{ imageModelCost(m.key) ?? "–" }} cr</span>
+            </button>
+          </div>
+          <p v-if="characterPriced" class="nx-hint">With a character photo every model costs the same.</p>
         </div>
-        <p v-if="characterPriced" class="nx-hint">With a character photo every model costs the same.</p>
       </div>
-    </div>
+    </template>
 
     <!-- Custom look, between the box and the button. Optional: the prompt can carry the look too (owner, 2026-10-30). -->
     <template v-if="needsCustomLook">
