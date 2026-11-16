@@ -120,10 +120,14 @@ else if(operation==='render'){
  // presenter clip over turning pages rendered at about 0.75 s a frame (2026-10-09) and ran out of the old 0.6 s.
  // A page a little longer than approved because the presenter's speech needs it renders at its own length (render-length.mjs).
  const {renderLength}=await import('./render-length.mjs');
- const length=renderLength(await readFile(root+'/index.html','utf8').catch(()=>''),settings.duration_seconds);
+ const pageHtml=await readFile(root+'/index.html','utf8').catch(()=>'');
+ const length=renderLength(pageHtml,settings.duration_seconds);
+ // The page's own size too: a video is delivered in the shape it was built, never refused for it.
+ const size=(await import('./render-length.mjs')).renderSize(pageHtml,dims);
  const fps=[24,30,60].includes(settings.frame_rate)?settings.frame_rate:24,frames=fps*(settings.motion_blur===true?(fps>=60?2:4):1)*length;
- result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,fps,timeoutMs:Math.max(300000,Math.min(1500000,frames*1500)),expected:{width:dims[0],height:dims[1],duration:length}});
+ result=await renderRun({project:root,outputRoot:out,motionBlur:settings.motion_blur===true,fps,timeoutMs:Math.max(300000,Math.min(1500000,frames*1500)),expected:{width:size[0],height:size[1],duration:length}});
  result={...result,rendered_seconds:length};
+ if(size[0]!==dims[0]||size[1]!==dims[1])result={...result,size_note:`The video is ${size[0]}x${size[1]}, not the ${settings.aspect_ratio} chosen: it was built that shape.`};
  if(length!==settings.duration_seconds)result={...result,length_note:`The video is ${length} s, not ${settings.duration_seconds} s: the presenter's lines need the extra time.`};
 }
 else {

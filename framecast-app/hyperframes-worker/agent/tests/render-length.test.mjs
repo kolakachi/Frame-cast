@@ -28,3 +28,11 @@ test('LENGTH-TARGET: a take that speaks past the chosen length sets the video le
  const long = voiceTiming({scenes, lines: ['x'], words: [{text: 'x', start: 0, end: 25}], clipStart: 0, videoSeconds: 15});
  assert.equal(long.video_seconds, 19.5, 'never more than 30% over');
 });
+
+import { declaredSize, renderSize } from '../render-length.mjs';
+{
+ const page=(w,h)=>`<main id="main" data-composition-id="main" data-width="${w}" data-height="${h}" data-duration="5"></main>`;
+ assert.deepEqual(renderSize(page(1920,1080),[1080,1920]),[1920,1080],'the page\'s own shape (Brett, 2026-11-16: planned 16:9, settings 9:16)');
+ assert.deepEqual(renderSize('<div>no root</div>',[1080,1920]),[1080,1920],'no declared size: the approved shape');
+ assert.equal(declaredSize(page(9000,1080)),null,'an impossible size is ignored');
+}

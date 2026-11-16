@@ -469,8 +469,14 @@ async function execute(run){
   if(e.code==='VOICE_SWAP_UNFIT'&&result.status==='failed')result.summary=String(e.message).slice(0,400);
   // A render the wrong length is refused the same way on every retry (2026-10-19: a customer retried three times, charged
   // each time): say what was measured and that retrying will not change it.
-  {const m=String(e.message).match(/does not match the approved dimensions, duration or audio requirement \(([^)]*?)([\d.]+) s against [^,]+, ([\d.]+) s\)/);
-   if(m&&result.status==='failed')result.summary=`This video came out ${m[2]} s long against the ${m[3]} s you approved, so it was not delivered. Retrying will make the same video: change the length to fit, or shorten the script. You were charged only for the work done, and earlier versions are safe.`;}
+  // It names what differed: the size (Brett, 2026-11-16: a 1920x1080 render against 1080x1920 was reported as "5.0 s
+  // against 5 s"), else the length.
+  {const m=String(e.message).match(/does not match the approved dimensions, duration or audio requirement \((?:(\d+)x(\d+), )?([\d.]+) s against (\d+)x(\d+), ([\d.]+) s\)/);
+   if(m&&result.status==='failed')result.summary=m[1]&&(m[1]!==m[4]||m[2]!==m[5])
+    ?`This video came out ${m[1]}x${m[2]} against the ${m[4]}x${m[5]} you approved, so it was not delivered. You were charged only for the work done, and earlier versions are safe.`
+    :Math.abs(Number(m[3])-Number(m[6]))>0.15
+     ?`This video came out ${m[3]} s long against the ${m[6]} s you approved, so it was not delivered. Retrying will make the same video: change the length to fit, or shorten the script. You were charged only for the work done, and earlier versions are safe.`
+     :'This video did not pass its final check (its frame rate or sound), so it was not delivered. You were charged only for the work done, and earlier versions are safe.';}
   if(e.code==='CREATE_DISK_CAPACITY'&&result.status==='failed')result.summary='This build stopped because the worker ran short of disk space. Existing assets and drafts are retained. Please try again after capacity is restored.';
   // CHECK-GUARD: the findings that kept repeating before a failure, so a check we later mark wrong refunds the run.
   try{const st=JSON.parse(await readFile(dir+'/agent-state.json','utf8'));const rep=repeatingFindings(st);if(rep.length)result.check_repeats=rep;}catch{/* no agent state: nothing repeated */}

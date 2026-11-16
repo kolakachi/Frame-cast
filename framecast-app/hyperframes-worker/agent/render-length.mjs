@@ -17,3 +17,17 @@ export function declaredLength(html){
 export function renderLength(html,approved){
  return declaredLength(html)??approved;
 }
+
+/** The size the page declares on its root composition (data-width, data-height), as [width, height], or null. */
+export function declaredSize(html){
+ const tag=String(html||'').match(/<[a-z][^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i)?.[0];
+ const w=Number(tag?.match(/\bdata-width=["'](\d+)["']/i)?.[1]),h=Number(tag?.match(/\bdata-height=["'](\d+)["']/i)?.[1]);
+ return Number.isInteger(w)&&Number.isInteger(h)&&w>=16&&h>=16&&w<=4096&&h<=4096?[w,h]:null;
+}
+
+/** The size to render and check against: the page's own whenever it declares one, else the approved shape's. Like the
+ * length, the chosen shape is a target (owner, 2026-11-16, "we were meant to remove all caps"): Brett's 5 s YouTube intro
+ * was planned 16:9 while the settings still said 9:16, rendered 1920x1080, and the check refused it twice. */
+export function renderSize(html,approved){
+ return declaredSize(html)??approved;
+}
