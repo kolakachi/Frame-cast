@@ -97,31 +97,74 @@ const sceneStillThumb = computed(() => {
 const referenceThumb = computed(() => videoReference.value?.thumb ?? sceneStillThumb.value);
 const referenceLabel = computed(() => (videoReference.value ? videoReference.value.title : sceneStillThumb.value ? "This scene" : "None"));
 const hasReference = computed(() => !!videoReference.value || !!sceneStillThumb.value);
-const canMakeVideo = computed(() => hasReference.value && !animateSubmitting.value && !activeSceneAnimationPending.value && !generating.value);
-function pickReference() {
+
+// ── Images (owner, 2026-11-16): none (from words alone), a start frame, a start and an end frame, or reference images
+// it follows (a person or look, not a frame). Each mode lists only the models that can do it (ReplicateI2VAdapter).
+const IMAGE_MODES = [
+  { key: "none", label: "None", hint: "Made from your words alone." },
+  { key: "start", label: "Start", hint: "The video begins on this picture." },
+  { key: "start_end", label: "Start + end", hint: "The video moves from the first picture to the second." },
+  { key: "reference", label: "Reference", hint: "Up to 4 pictures of a person, product or look to keep. Not used as frames." },
+];
+const MODE_TIERS = {
+  none: ["veo_fast", "seedance_25", "seedance_lite", "seedance_pro"],
+  start_end: ["premium", "veo_fast", "seedance_25", "seedance_lite", "seedance_pro"],
+  reference: ["seedance_25", "seedance_lite"],
+};
+const imageMode = ref("start");
+watch(() => activeScene.value?.id, () => { imageMode.value = sceneStillThumb.value || videoReference.value ? "start" : "none"; }, { immediate: true });
+const videoEnd = core.videoEndRef;
+const videoRefs = core.videoRefs;
+const modeHint = computed(() => IMAGE_MODES.find((m) => m.key === imageMode.value)?.hint ?? "");
+const canMakeVideo = computed(() => {
+  if (animateSubmitting.value || activeSceneAnimationPending.value || generating.value) return false;
+  if (imageMode.value === "none") return animateMotionPrompt.value.trim().length >= 3;
+  if (imageMode.value === "start") return hasReference.value;
+  if (imageMode.value === "start_end") return hasReference.value && !!videoEnd.value;
+  return videoRefs.value.length > 0;
+});
+const makeBlocker = computed(() => {
+  if (imageMode.value === "none" && animateMotionPrompt.value.trim().length < 3) return "Describe the shot first.";
+  if ((imageMode.value === "start" || imageMode.value === "start_end") && !hasReference.value) return "Choose a start picture.";
+  if (imageMode.value === "start_end" && !videoEnd.value) return "Choose an end picture.";
+  if (imageMode.value === "reference" && !videoRefs.value.length) return "Add at least one picture to follow.";
+  return "";
+});
+// One picker for every slot: the view routes the picked image to the slot asked for (onMediaPicked).
+function pickImage(target) {
   menu.value = null;
+  core.videoPickTarget.value = target;
   videoReferencePicking.value = true;
   openMediaPicker("visual");
 }
+const pickReference = () => pickImage("start");
 function makeVideo() {
   menu.value = null;
-  submitAnimate({ sourceAssetId: videoReference.value?.id ?? null, check: true });
+  const mode = imageMode.value;
+  submitAnimate({
+    sourceAssetId: mode === "start" || mode === "start_end" ? videoReference.value?.id ?? null : null,
+    endAssetId: mode === "start_end" ? videoEnd.value?.id ?? null : null,
+    imageMode: mode,
+    referenceAssetIds: mode === "reference" ? videoRefs.value.map((r) => r.id) : [],
+    check: true,
+  });
 }
 
 // ── Storyboard first: the shot drawn as three frames (DrawStoryboardJob), then one clip from the first to the last ──
 // (owner, 2026-10-31: the storyboard is the scene split in parts, not frames to pick from). Only models that take a
 // last frame can make it; Wan 2.5 and Hailuo 2.3 stay with Straight to video.
-const makeMode = ref("storyboard");
-const END_FRAME_TIERS = ["premium", "veo_fast", "seedance_25", "seedance_lite", "seedance_pro"];
-const menuTiers = computed(() => (makeMode.value === "storyboard" ? videoTiers.filter((k) => END_FRAME_TIERS.includes(k)) : videoTiers));
-watch([makeMode, videoAi], ([mode, on]) => {
-  if (on && mode === "storyboard" && !END_FRAME_TIERS.includes(animateTier.value)) animateTier.value = "veo_fast";
+// The storyboard step left the AI video tab (owner, 2026-11-16: no "How to make it"); its code stays for the classic editor.
+const makeMode = ref("direct");
+const END_FRAME_TIERS = MODE_TIERS.start_end;
+const menuTiers = computed(() => (MODE_TIERS[imageMode.value] ? videoTiers.filter((k) => MODE_TIERS[imageMode.value].includes(k)) : videoTiers));
+watch([menuTiers, videoAi], ([tiers, on]) => {
+  if (on && tiers.length && !tiers.includes(animateTier.value)) animateTier.value = tiers.includes("veo_fast") ? "veo_fast" : tiers[0];
 }, { immediate: true });
 // Kling ends on a frame in pro mode only (the server charges pro too).
-const qualityChoices = computed(() => (makeMode.value === "storyboard" && animateTier.value === "premium"
+const qualityChoices = computed(() => (imageMode.value === "start_end" && animateTier.value === "premium"
   ? animateQualityOptions.value.filter((q) => q.value === "pro") : animateQualityOptions.value));
-watch([makeMode, animateTier], () => {
-  if (makeMode.value === "storyboard" && animateTier.value === "premium" && animateQuality.value !== "pro") animateQuality.value = "pro";
+watch([imageMode, animateTier], () => {
+  if (imageMode.value === "start_end" && animateTier.value === "premium" && animateQuality.value !== "pro") animateQuality.value = "pro";
 });
 const FRAME_MODELS = ["nano-banana", "nano-banana-pro", "gpt-image-2"];
 const FRAME_LABELS = ["Start", "Middle", "End"];
@@ -341,53 +384,59 @@ function send() {
     </div>
 
     <span class="nx-label">Describe the shot</span>
-    <div class="nx-pbox" @click.stop>
+    <div class="nx-pbox">
       <textarea v-model="animateMotionPrompt" class="nx-pbox-input" rows="3" maxlength="1000"
         aria-label="Describe the shot" placeholder="How it moves: slow push-in, steam rising, she looks up and smiles"></textarea>
-      <div class="nx-pbox-bar">
-        <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vref'" @click="toggleMenu('vref')">
-          <span class="nx-pdrop-k">Starts from</span>
+    </div>
+
+    <!-- Images (owner, 2026-11-16): none, a start frame, start + end, or references to follow. -->
+    <span class="nx-label">Images</span>
+    <div class="nx-seg nx-seg-grid" role="radiogroup" aria-label="How the video uses images">
+      <button v-for="m in IMAGE_MODES" :key="m.key" type="button" role="radio" :aria-checked="imageMode === m.key" :class="imageMode === m.key ? 'on' : ''" @click="imageMode = m.key">{{ m.label }}</button>
+    </div>
+    <p class="nx-hint">{{ modeHint }}</p>
+
+    <div v-if="imageMode === 'start' || imageMode === 'start_end'" :class="['nx-frames', imageMode === 'start_end' ? 'is-pair' : '']">
+      <div class="nx-slot">
+        <span class="nx-slot-k">Start</span>
+        <button type="button" class="nx-slot-img" :aria-label="referenceThumb ? 'Change the start picture' : 'Choose a start picture'" @click="pickImage('start')">
           <img v-if="referenceThumb" :src="referenceThumb" alt="" />
-          <span>{{ referenceLabel }}</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          <span v-else class="nx-slot-add">+</span>
         </button>
-        <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vmodel'" @click="toggleMenu('vmodel')">
-          <span class="nx-pdrop-k">Video model</span>
-          <span>{{ ANIMATE_TIER_META[animateTier]?.name || "Model" }}</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-        </button>
-        <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vlen'" @click="toggleMenu('vlen')">
-          <span class="nx-pdrop-k">Length</span>
-          <span>{{ animateDuration }} s · {{ qualityLabel }}</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-        </button>
-        <button v-if="makeMode === 'storyboard'" type="button" class="nx-pdrop" :aria-expanded="menu === 'vframes'" @click="toggleMenu('vframes')">
-          <span class="nx-pdrop-k">Frames drawn by</span>
-          <span>{{ frameModelLabel(frameModel) }}</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-        </button>
+        <span class="nx-slot-name">{{ videoReference ? videoReference.title : sceneStillThumb ? "This scene's picture" : "Choose a picture" }}</span>
+        <button v-if="videoReference && sceneStillThumb" class="nx-link nx-slot-x" type="button" @click="videoReference = null">Use this scene's</button>
       </div>
-
-      <!-- Reference: the scene's own picture, or any image from the workspace (the picker also uploads). -->
-      <div v-if="menu === 'vref'" class="nx-pop">
-        <div class="nx-list">
-          <button v-if="sceneStillThumb" type="button" :class="['nx-list-row', !videoReference ? 'on' : '']" @click="videoReference = null; menu = null">
-            <img class="nx-ref-thumb" :src="sceneStillThumb" alt="" />
-            <span class="nx-list-main"><b>This scene's picture</b><span>The video starts from it</span></span>
+      <template v-if="imageMode === 'start_end'">
+        <span class="nx-frames-arrow" aria-hidden="true">→</span>
+        <div class="nx-slot">
+          <span class="nx-slot-k">End</span>
+          <button type="button" class="nx-slot-img" :aria-label="videoEnd ? 'Change the end picture' : 'Choose an end picture'" @click="pickImage('end')">
+            <img v-if="videoEnd" :src="videoEnd.thumb" alt="" />
+            <span v-else class="nx-slot-add">+</span>
           </button>
-          <button v-if="videoReference" type="button" class="nx-list-row on" @click="menu = null">
-            <img class="nx-ref-thumb" :src="videoReference.thumb" alt="" />
-            <span class="nx-list-main"><b>{{ videoReference.title }}</b><span>From your uploads</span></span>
-          </button>
-          <button type="button" class="nx-list-row" @click="pickReference">
-            <span class="nx-ref-thumb nx-ref-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v4h16v-4" /></svg></span>
-            <span class="nx-list-main"><b>{{ videoReference ? "Choose another image" : "Upload or choose an image" }}</b><span>From your uploads or your computer</span></span>
-          </button>
+          <span class="nx-slot-name">{{ videoEnd ? videoEnd.title : "Choose a picture" }}</span>
+          <button v-if="videoEnd" class="nx-link nx-slot-x" type="button" @click="videoEnd = null">Remove</button>
         </div>
-      </div>
+      </template>
+    </div>
 
-      <!-- Model: every video model (in Storyboard first, those that can end on a frame), with the server's price for its cheapest short clip. -->
-      <div v-else-if="menu === 'vmodel'" class="nx-pop">
+    <div v-else-if="imageMode === 'reference'" class="nx-refs">
+      <div v-for="r in videoRefs" :key="r.id" class="nx-ref">
+        <img :src="r.thumb" :alt="r.title" />
+        <button type="button" class="nx-ref-x" :aria-label="`Remove ${r.title}`" @click="videoRefs = videoRefs.filter((x) => x.id !== r.id)">×</button>
+      </div>
+      <button v-if="videoRefs.length < 4" type="button" class="nx-ref nx-ref-add" aria-label="Add a picture to follow" @click="pickImage('ref')">+</button>
+    </div>
+
+    <!-- Model and length, each with the server's price. -->
+    <span class="nx-label">Model</span>
+    <div class="nx-pop-wrap" @click.stop>
+      <button type="button" class="nx-list-row nx-pick nx-model-pick" :aria-expanded="menu === 'vmodel'" @click="toggleMenu('vmodel')">
+        <span class="nx-list-main"><b>{{ ANIMATE_TIER_META[animateTier]?.name || "Model" }}</b><span>{{ ANIMATE_TIER_META[animateTier]?.sub }}</span></span>
+        <span class="nx-num">from {{ tierPrice(animateTier) }} cr</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      <div v-if="menu === 'vmodel'" class="nx-pop">
         <div class="nx-list">
           <button v-for="key in menuTiers" :key="key" type="button" :class="['nx-list-row', animateTier === key ? 'on' : '']" @click="animateTier = key; menu = null">
             <span class="nx-list-main">
@@ -397,84 +446,24 @@ function send() {
             <span class="nx-num">from {{ tierPrice(key) }} cr</span>
           </button>
         </div>
-        <p v-if="makeMode === 'storyboard'" class="nx-hint">Wan 2.5 and Hailuo 2.3 can't end on a chosen frame, so they're under Straight to video.</p>
+        <p v-if="imageMode !== 'start'" class="nx-hint">Only the models that can {{ imageMode === "none" ? "work from words alone" : imageMode === "reference" ? "follow reference pictures" : "end on a chosen picture" }} are listed.</p>
       </div>
-
-      <!-- Length and quality for the chosen model; each quality shows its price. -->
-      <div v-else-if="menu === 'vlen'" class="nx-pop">
-        <span class="nx-label">Length</span>
-        <div class="nx-seg nx-seg-full" role="group" aria-label="Length">
-          <button v-for="d in animateDurations" :key="d" type="button" :class="animateDuration === d ? 'on' : ''" @click="animateDuration = d">{{ d }} s</button>
-        </div>
-        <span class="nx-label">Quality</span>
-        <div class="nx-seg nx-seg-full" role="group" aria-label="Quality">
-          <button v-for="q in qualityChoices" :key="q.value" type="button" :class="animateQuality === q.value ? 'on' : ''" @click="animateQuality = q.value; menu = null">{{ q.label }}</button>
-        </div>
-        <p v-if="animateDurations.some((d) => d >= 10)" class="nx-hint">A 10 second clip costs twice as much.</p>
+    </div>
+    <span class="nx-label">Length and quality</span>
+    <div class="nx-row nx-lenq">
+      <div class="nx-seg" role="group" aria-label="Length">
+        <button v-for="d in animateDurations" :key="d" type="button" :class="animateDuration === d ? 'on' : ''" @click="animateDuration = d">{{ d }} s</button>
       </div>
-
-      <!-- Frames: the image model that draws the storyboard, priced for all three frames. -->
-      <div v-else-if="menu === 'vframes'" class="nx-pop">
-        <div class="nx-list">
-          <button v-for="m in FRAME_MODELS" :key="m" type="button" :class="['nx-list-row', frameModel === m ? 'on' : '']" @click="frameModel = m; menu = null">
-            <span class="nx-list-main"><b>{{ frameModelLabel(m) }}</b><span>3 frames</span></span>
-            <span class="nx-num">{{ storyboardPrice(m) ?? "–" }} cr</span>
-          </button>
-        </div>
+      <div class="nx-seg" role="group" aria-label="Quality">
+        <button v-for="q in qualityChoices" :key="q.value" type="button" :class="animateQuality === q.value ? 'on' : ''" @click="animateQuality = q.value">{{ q.label }}</button>
       </div>
     </div>
 
-    <span class="nx-label">How to make it</span>
-    <div class="nx-choice" role="radiogroup" aria-label="How to make it">
-      <button type="button" role="radio" :aria-checked="makeMode === 'storyboard'" :class="['nx-opt', makeMode === 'storyboard' ? 'on' : '']" @click="makeMode = 'storyboard'">
-        <b>Storyboard first</b><span>See the shot in 3 frames before paying for motion.</span>
-      </button>
-      <button type="button" role="radio" :aria-checked="makeMode === 'direct'" :class="['nx-opt', makeMode === 'direct' ? 'on' : '']" @click="makeMode = 'direct'">
-        <b>Straight to video</b><span>One step, from the reference.</span>
-      </button>
-    </div>
-
-    <!-- Storyboard first: draw the shot as start, middle and end, then make one clip from the first frame to the last. -->
-    <template v-if="makeMode === 'storyboard'">
-      <template v-if="storyboard && storyboard.status !== 'failed'">
-        <div class="nx-row"><span class="nx-label">Storyboard · {{ frameModelLabel(storyboard.model) }}</span><span v-if="storyboard.status === 'drawing'" class="nx-num" role="status">{{ !storyboardFrames.length && !storyboard.beats ? "Planning the shot…" : `Drawing ${Math.min(storyboardFrames.length + 1, 3)} of 3…` }}</span></div>
-        <ol class="nx-sb" aria-label="The shot in three frames">
-          <li v-for="(label, i) in FRAME_LABELS" :key="label" class="nx-sb-frame">
-            <img v-if="storyboardFrames[i]?.image_url && !frameRetry[storyboardFrames[i].asset_id]" :src="storyboardFrames[i].image_url" :alt="`${label} frame`" @error="frameFailed(storyboardFrames[i].asset_id)" />
-            <span v-else class="nx-sb-wait"></span>
-            <span class="nx-sb-label">{{ label }}</span>
-          </li>
-        </ol>
-      </template>
-      <p v-if="storyboard?.status === 'failed'" class="nx-err">{{ storyboard.error || "The storyboard could not be drawn. Your credits have not been charged." }}</p>
-      <template v-if="storyboardReady">
-        <!-- While the clip is made, say so here, where the button was pressed (the notice at the top may be out of view). -->
-        <div v-if="activeSceneAnimationPending" class="nx-quote" role="status">
-          <div class="nx-row nx-row-start"><span class="nx-spin nx-spin-soft"></span><b>Making the video with {{ ANIMATE_TIER_META[runningTier]?.name || "your model" }}…</b></div>
-          <p class="nx-hint">About {{ (ANIMATE_TIER_META[runningTier]?.render || "a few minutes").replace("~", "") }}. The clip takes this scene's place when it's done.</p>
-        </div>
-        <button v-else class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canMakeFromStoryboard" @click="makeVideoFromStoryboard">
-          {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
-        </button>
-        <button class="nx-btn nx-full" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">{{ `Redraw the storyboard${cr(storyboardPrice(frameModel))}` }}</button>
-        <p class="nx-hint">The video runs from the first frame to the last. Changed the description? Redraw first.</p>
-      </template>
-      <template v-else>
-        <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">
-          {{ storyboardSubmitting || storyboard?.status === "drawing" ? "Drawing…" : `Draw the storyboard${cr(storyboardPrice(frameModel))}` }}
-        </button>
-        <p class="nx-hint">{{ animateMotionPrompt.trim().length < 3 ? "Describe the shot first." : hasReference ? "About a minute. Drawn from the reference; nothing moves until you make the video." : "About a minute. No reference, so it's drawn from the description." }}</p>
-      </template>
-      <p v-if="storyboardError" class="nx-err">{{ storyboardError }}</p>
-    </template>
-
-    <!-- Straight to video. -->
-    <template v-else>
-      <p v-if="!hasReference" class="nx-hint">This scene has no picture to start from. Choose an image above, draw one in Image › AI image, or use Storyboard first.</p>
-      <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canMakeVideo" @click="makeVideo">
+    <template v-if="!activeSceneAnimationPending">
+      <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo" @click="makeVideo">
         {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
       </button>
-      <p v-if="hasReference && !activeSceneAnimationPending" class="nx-hint">About {{ (ANIMATE_TIER_META[animateTier]?.render || "").replace("~", "") }}. The clip replaces this scene's picture; the picture stays in Versions.</p>
+      <p class="nx-hint">{{ makeBlocker || `About ${(ANIMATE_TIER_META[animateTier]?.render || "a few minutes").replace("~", "")}. The clip replaces this scene's picture; the picture stays in Versions. A 10 second clip costs twice as much.` }}</p>
     </template>
     <!-- The look before a paid clip (ClipPrecheck): frame problems are shown before anything is charged. -->
     <div v-if="clipCheck && !clipCheck.note" class="nx-quote nx-quote-warn" role="alert">

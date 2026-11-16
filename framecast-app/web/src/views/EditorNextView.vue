@@ -32,6 +32,11 @@ const core = useEditorCore();
 // The AI video tab's reference image: picked through the media picker without replacing the scene's picture.
 core.videoReference = ref(null);
 core.videoReferencePicking = ref(false);
+// AI video's other image slots (2026-11-16): an end frame, reference images (up to 4), and which slot a pick fills.
+core.videoEndRef = ref(null);
+core.videoRefs = ref([]);
+core.videoPickTarget = ref("start");
+watch(() => core.activeSceneId.value, () => { core.videoEndRef.value = null; core.videoRefs.value = []; });
 provideEditorCore(core);
 const { imageCost, voiceCost } = usePrices(core);
 
@@ -151,7 +156,13 @@ function onMediaPicked(e) {
   const item = e?.item;
   const isImage = item && item.asset_type !== "video" && !String(item.mime_type ?? "").startsWith("video/");
   if (item?.id && isImage) {
-    core.videoReference.value = { id: item.id, title: item.title || "Your image", thumb: item.thumbnail_url || item.storage_url };
+    // AI video's image slots (MediaPanel): the start frame, the end frame, or one more reference (up to 4).
+    const picked = { id: item.id, title: item.title || "Your image", thumb: item.thumbnail_url || item.storage_url };
+    const target = core.videoPickTarget.value;
+    core.videoPickTarget.value = "start";
+    if (target === "end") core.videoEndRef.value = picked;
+    else if (target === "ref") { if (!core.videoRefs.value.some((r) => r.id === picked.id)) core.videoRefs.value = [...core.videoRefs.value, picked].slice(0, 4); }
+    else core.videoReference.value = picked;
   } else {
     core.pushToast({ id: `video-ref-${Date.now()}`, title: "That's a video.", message: "Pick an image to start the video from." });
   }
@@ -626,7 +637,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
         </nav>
 
         <!-- Panel -->
-        <aside :class="['nx-panel', panel === 'assistant' ? 'is-chat' : '']" aria-label="Properties">
+        <aside :class="['nx-panel', panel === 'assistant' ? 'is-chat' : '']" aria-label="Properties" @scroll="(e) => { if (e.target.scrollLeft) e.target.scrollLeft = 0; }">
           <template v-if="panel === 'script'">
             <div class="nx-ph nx-row">
               <div>

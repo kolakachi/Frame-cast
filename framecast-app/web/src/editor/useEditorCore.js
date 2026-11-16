@@ -6778,7 +6778,8 @@ export function useEditorCore() {
     if (args) submitAnimate({ ...args, prechecked: true });
   }
 
-  async function submitAnimate({ sourceAssetId = null, endAssetId = null, motionPrompt = null, check = false, prechecked = false } = {}) {
+  // imageMode (new editor, 2026-11-16): none | start | start_end | reference; referenceAssetIds for reference.
+  async function submitAnimate({ sourceAssetId = null, endAssetId = null, motionPrompt = null, check = false, prechecked = false, imageMode = null, referenceAssetIds = [] } = {}) {
     const scene = activeScene.value;
     if (!scene) return;
     animateSubmitting.value = true;
@@ -6794,9 +6795,10 @@ export function useEditorCore() {
             duration_seconds: animateDuration.value,
             ...(sourceAssetId ? { source_asset_id: sourceAssetId } : {}),
             ...(endAssetId ? { end_asset_id: endAssetId } : {}),
+            ...(imageMode ? { image_mode: imageMode } : {}),
           })).data?.data;
           if (r) {
-            const args = { sourceAssetId, endAssetId, motionPrompt: r.prompt || prompt };
+            const args = { sourceAssetId, endAssetId, motionPrompt: r.prompt || prompt, imageMode, referenceAssetIds };
             if (r.frame_issues?.length) {
               clipCheck.value = { ...r, args };
               animateSubmitting.value = false;
@@ -6819,6 +6821,8 @@ export function useEditorCore() {
         duration_seconds: animateDuration.value,
         motion_prompt: motionPrompt || animateMotionPrompt.value.trim() || null,
         ...(prechecked ? { prechecked: true } : {}),
+        ...(imageMode ? { image_mode: imageMode } : {}),
+        ...(imageMode === "reference" ? { reference_asset_ids: referenceAssetIds } : {}),
         quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
         // Only the spokesperson tier has an engine choice; the i2v tiers are a
         // different pipeline entirely.

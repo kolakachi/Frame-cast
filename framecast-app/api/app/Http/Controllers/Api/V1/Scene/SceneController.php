@@ -1239,7 +1239,30 @@ class SceneController extends Controller
             'end_asset_id'     => ['sometimes', 'nullable', 'integer'],
             // The editor already ran ClipPrecheck on this prompt and frames (clip-check below), so the job need not.
             'prechecked'       => ['sometimes', 'boolean'],
+            // How the clip uses images (owner, 2026-11-16): none (from words alone), start, start_end, or reference
+            // (up to four images it keeps the person or look of; not a frame). Absent = start, as before.
+            'image_mode'            => ['sometimes', 'nullable', 'string', 'in:none,start,start_end,reference'],
+            'reference_asset_ids'   => ['sometimes', 'array', 'max:4'],
+            'reference_asset_ids.*' => ['integer'],
         ]);
+        $imageMode = $validated['image_mode'] ?? 'start';
+        $referenceAssets = collect();
+        if ($imageMode === 'none' && ! \App\Services\Generation\Video\ReplicateI2VAdapter::takesNoImage($validated['tier'])) {
+            return $this->error('needs_start_frame', 'This model needs a start frame. Pick Veo or Seedance to make a video from words alone.', 422);
+        }
+        if ($imageMode === 'reference') {
+            if (! \App\Services\Generation\Video\ReplicateI2VAdapter::takesReferences($validated['tier'])) {
+                return $this->error('no_references', 'This model can\'t follow reference images. Pick Seedance 2.5 or Seedance 1 Lite.', 422);
+            }
+            $ids = array_values(array_unique(array_map('intval', $validated['reference_asset_ids'] ?? [])));
+            $referenceAssets = \App\Models\Asset::query()->whereIn('id', $ids)->where('workspace_id', $user->workspace_id)->get()
+                ->filter(fn ($a) => ! str_starts_with((string) $a->mime_type, 'video/') && $a->asset_type !== 'video')->values();
+            if ($referenceAssets->isEmpty()) {
+                return $this->error('bad_reference', 'Pick at least one image from your workspace to follow.', 422);
+            }
+        }
+        $noFrames = in_array($imageMode, ['none', 'reference'], true);
+        if ($noFrames) unset($validated['end_asset_id'], $validated['source_asset_id']);
         $endAsset = null;
         if (! empty($validated['end_asset_id'])) {
             if (! \App\Services\Generation\Video\ReplicateI2VAdapter::takesEndFrame($validated['tier'])) {
@@ -1277,7 +1300,9 @@ class SceneController extends Controller
                 return $this->error('bad_reference', 'Pick an image from your workspace to start the video from.', 422);
             }
         }
-        if (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
+        if ($noFrames && ! $isSpokesperson) {
+            $sourceAsset = null;
+        } elseif (! $sourceAsset || str_starts_with((string) $sourceAsset->mime_type, 'video/') || $sourceAsset->asset_type === 'video') {
             return $this->error('no_source_image', 'Generate a still image for this scene before animating.', 422);
         }
         // Spokesperson lip-syncs to the scene's voiceover — require it.
@@ -1367,6 +1392,9 @@ class SceneController extends Controller
                 'animation_duration'         => $durationSeconds,
                 'animation_quality'          => $quality,
                 'animation_motion_prompt'    => $validated['motion_prompt'] ?? null,
+                // How it uses images, so a resumed clip (the reaper) knows it has no start frame.
+                'animation_image_mode'       => $imageMode,
+                'animation_reference_asset_ids' => $referenceAssets->pluck('id')->all(),
                 'animation_started_at'       => now()->toIso8601String(),
                 'generation_token'           => $token,
             ], $isSpokesperson && ! data_get($existing, 'spokesperson_consent.at') ? [
@@ -1401,9 +1429,11 @@ class SceneController extends Controller
                 // re-derive it from visual_asset_id, which on a re-animate is
                 // last run's video — so this guard passed while the job then
                 // handed a video to an image-to-video model.
-                sourceAssetId: $sourceAsset->getKey(),
+                sourceAssetId: $sourceAsset?->getKey(),
                 endAssetId: $endAsset?->getKey(),
                 prechecked: (bool) ($validated['prechecked'] ?? false),
+                imageMode: $imageMode,
+                referenceAssetIds: $referenceAssets->pluck('id')->all(),
             );
         }
 
@@ -1440,6 +1470,7 @@ class SceneController extends Controller
             'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
             'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
             'end_asset_id'     => ['sometimes', 'nullable', 'integer'],
+            'image_mode'       => ['sometimes', 'nullable', 'string', 'in:none,start,start_end,reference'],
         ]);
         $mine = fn (?int $id) => $id ? \App\Models\Asset::query()->whereKey($id)->where('workspace_id', $user->workspace_id)->first() : null;
         $still = fn ($a) => $a && ! str_starts_with((string) $a->mime_type, 'video/') && $a->asset_type !== 'video' ? $a : null;
@@ -1447,7 +1478,9 @@ class SceneController extends Controller
             ?? $still(\App\Models\Asset::query()->find((int) ($scene->visual_asset_id ?? 0)))
             ?? $still(\App\Models\Asset::query()->find((int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0)));
         $images = [];
-        foreach ([[$start, 'start'], [$still($mine($validated['end_asset_id'] ?? null)), 'end']] as [$asset, $role]) {
+        // A video made from words or reference images has no frames to look at.
+        if (in_array($validated['image_mode'] ?? null, ['none', 'reference'], true)) $start = null;
+        foreach ([[$start, 'start'], [$start ? $still($mine($validated['end_asset_id'] ?? null)) : null, 'end']] as [$asset, $role]) {
             $bytes = $asset?->storage_url ? rescue(fn () => app(\App\Services\Media\StorageService::class)->get((string) $asset->storage_url), null, false) : null;
             if (is_string($bytes) && $bytes !== '') $images[] = ['bytes' => $bytes, 'role' => $role];
         }

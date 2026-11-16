@@ -382,6 +382,21 @@ class ReplicateI2VAdapter implements I2VAdapter
             ],
         };
 
+        // No start frame (owner, 2026-11-16): from words alone, or from reference images it follows. Only the models
+        // whose image is optional (NO_IMAGE_TIERS); the frame field goes, and the shape is said outright since there is
+        // no picture to follow.
+        $refs = array_values(array_filter((array) ($options['reference_image_urls'] ?? []), 'is_string'));
+        if ($imageUrl === '' && self::takesNoImage($tier)) {
+            unset($request[2]['image']);
+            if (str_starts_with($tier, 'seedance')) $request[2]['aspect_ratio'] = self::seedanceShape($options['aspect_ratio'] ?? '9:16');
+            if ($refs && self::takesReferences($tier)) {
+                $request[2]['reference_images'] = array_slice($refs, 0, 4);
+                // Seedance 1 Lite takes references only below 1080p.
+                if ($tier === 'seedance_lite' && ($request[2]['resolution'] ?? '') === '1080p') $request[2]['resolution'] = '720p';
+            }
+            return $request;
+        }
+
         // A storyboard's end frame (the editor's AI video tab): the clip runs from the start still to this one.
         $endUrl = (string) ($options['end_image_url'] ?? '');
         if ($endUrl !== '' && ($field = self::END_FRAME_FIELDS[$tier] ?? null) !== null) {
@@ -390,6 +405,28 @@ class ReplicateI2VAdapter implements I2VAdapter
         }
 
         return $request;
+    }
+
+    /** Models whose start image is optional: they make a clip from words alone (or from reference images). */
+    public const NO_IMAGE_TIERS = ['veo_fast', 'seedance_25', 'seedance_lite', 'seedance_pro'];
+
+    /** Models that follow reference images (a person or look to keep, not a frame); Replicate's reference_images. */
+    public const REFERENCE_TIERS = ['seedance_25', 'seedance_lite'];
+
+    public static function takesNoImage(string $tier): bool
+    {
+        return in_array($tier, self::NO_IMAGE_TIERS, true);
+    }
+
+    public static function takesReferences(string $tier): bool
+    {
+        return in_array($tier, self::REFERENCE_TIERS, true);
+    }
+
+    /** The project's shape in Seedance's terms (4:5 has no match: its nearest, 3:4). */
+    private static function seedanceShape(string $ratio): string
+    {
+        return ['9:16' => '9:16', '16:9' => '16:9', '1:1' => '1:1', '4:5' => '3:4'][$ratio] ?? '9:16';
     }
 
     /** Whether a tier's model can end on a given frame. */

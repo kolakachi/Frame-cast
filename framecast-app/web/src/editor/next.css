@@ -714,3 +714,27 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-motion-row { gap: 12px; }
 .nx-motion-row .ui-select { flex: 1 1 auto; min-width: 0; }
 .nx-motion-row .ui-select-trigger { width: 100%; justify-content: space-between; height: 36px; }
+
+/* AI video: images (none / start / start + end / reference), model, length (owner, 2026-11-16) */
+.nx-frames { display: flex; align-items: flex-start; gap: 10px; }
+.nx-frames-arrow { align-self: center; margin-top: -24px; color: var(--muted); font-size: 18px; }
+.nx-slot { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.nx-slot-k { font-size: 11px; color: var(--muted); font-weight: 500; }
+.nx-slot-img { width: 100%; aspect-ratio: 4 / 5; border: 0; padding: 0; border-radius: 10px; overflow: hidden; background: var(--field); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.nx-frames:not(.is-pair) .nx-slot { flex: 0 0 140px; }
+.nx-slot-img:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.nx-slot-img img { width: 100%; height: 100%; object-fit: cover; }
+.nx-slot-add { font-size: 22px; color: var(--muted); }
+.nx-slot-name { font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-slot-x { align-self: flex-start; height: 22px; padding: 0; font-size: 12px; }
+.nx-refs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.nx-ref { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--field); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.nx-ref img { width: 100%; height: 100%; object-fit: cover; }
+.nx-ref-x { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.7); color: #fff; font-size: 14px; line-height: 1; padding: 0; }
+.nx-ref-add { border: 0; color: var(--muted); font-size: 22px; cursor: pointer; }
+.nx-ref-add:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.nx-lenq { gap: 8px; flex-wrap: wrap; justify-content: flex-start; }
+.nx-seg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.nx-seg-grid button { width: 100%; }
+/* A side panel never scrolls sideways (Reference mode nudged it 37px). */
+.nx-panel { overflow-x: hidden; }

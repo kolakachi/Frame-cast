@@ -75,6 +75,10 @@ class AnimateSceneJob implements ShouldQueue
         public readonly ?int $endAssetId = null,
         // The editor ran ClipPrecheck before charging; anything else (the classic editor, Cruise, the API) is checked here.
         public readonly bool $prechecked = false,
+        // How the clip uses images (owner, 2026-11-16): none (words alone) or reference (images it follows, not frames)
+        // have no start frame; start / start_end as before. Null = read from the scene (a resume), else start.
+        public readonly ?string $imageMode = null,
+        public readonly array $referenceAssetIds = [],
     ) {
         $this->onQueue('visual');
     }
@@ -144,24 +148,29 @@ class AnimateSceneJob implements ShouldQueue
         }
 
         try {
-            $sourceAsset = $this->sourceAssetId
+            $settings0 = $scene->image_generation_settings_json ?? [];
+            $mode = $this->imageMode ?? (string) (data_get($settings0, 'animation_image_mode') ?: 'start');
+            $noFrames = in_array($mode, ['none', 'reference'], true) && \App\Services\Generation\Video\ReplicateI2VAdapter::takesNoImage($this->tier);
+            $refIds = $this->referenceAssetIds ?: (array) data_get($settings0, 'animation_reference_asset_ids', []);
+            $references = $mode === 'reference' && $refIds ? Asset::query()->whereIn('id', $refIds)->get()->filter(fn ($a) => $a->storage_url)->values() : collect();
+            $sourceAsset = $noFrames ? null : ($this->sourceAssetId
                 ? Asset::query()->find($this->sourceAssetId)
-                : ($scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null);
-            if (! $sourceAsset || ! $sourceAsset->storage_url) {
+                : ($scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null));
+            if (! $noFrames && (! $sourceAsset || ! $sourceAsset->storage_url)) {
                 throw new RuntimeException('Scene has no source image to animate.');
             }
             // Re-animate: the scene's visual is last run's video. Fall back to
             // the preserved original here rather than trusting every caller to
             // pass one — Cruise's animate tool and the retry path don't, and
             // handing a video to an image-to-video model fails at the provider.
-            if ($this->isVideoAsset($sourceAsset)) {
+            if ($sourceAsset && $this->isVideoAsset($sourceAsset)) {
                 $originalId = (int) (data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id') ?? 0);
                 $original   = $originalId ? Asset::query()->find($originalId) : null;
                 if ($original && $original->storage_url && ! $this->isVideoAsset($original)) {
                     $sourceAsset = $original;
                 }
             }
-            if ($this->isVideoAsset($sourceAsset)) {
+            if ($sourceAsset && $this->isVideoAsset($sourceAsset)) {
                 throw new RuntimeException('Animation needs a still image, but this scene has only a video.');
             }
 
@@ -187,8 +196,8 @@ class AnimateSceneJob implements ShouldQueue
                     'height'           => null,
                 ];
             } else {
-                $imageUrl = $this->publicUrlFor($sourceAsset);
-                $endAsset = $this->endAssetId && \App\Services\Generation\Video\ReplicateI2VAdapter::takesEndFrame($this->tier)
+                $imageUrl = $sourceAsset ? $this->publicUrlFor($sourceAsset) : '';
+                $endAsset = $sourceAsset && $this->endAssetId && \App\Services\Generation\Video\ReplicateI2VAdapter::takesEndFrame($this->tier)
                     ? Asset::query()->find($this->endAssetId) : null;
 
                 // Send the chosen quality under the model's input name
@@ -212,13 +221,15 @@ class AnimateSceneJob implements ShouldQueue
                 $motion = $this->checkedPrompt($scene, $sourceAsset, $endAsset);
                 try {
                     $result = $adapter->animate($imageUrl, $motion, $this->tier, $this->durationSeconds,
-                        $options + ($endAsset ? ['end_image_url' => $this->publicUrlFor($endAsset)] : []));
+                        $options + ($endAsset ? ['end_image_url' => $this->publicUrlFor($endAsset)] : [])
+                        + ($references->isNotEmpty() ? ['reference_image_urls' => $references->map(fn ($a) => $this->publicUrlFor($a))->all()] : []));
                 } catch (RuntimeException $e) {
                     // The provider could not fetch our image from storage (seen in production: a connection error to
                     // B2). Nothing was made or billed: hand it the image through its own file store and start once more.
                     if (! self::inputFetchFailed($e->getMessage())) throw $e;
-                    $result = $adapter->animate($this->providerCopy($sourceAsset), $motion, $this->tier, $this->durationSeconds,
-                        $options + ($endAsset ? ['end_image_url' => $this->providerCopy($endAsset)] : []));
+                    $result = $adapter->animate($sourceAsset ? $this->providerCopy($sourceAsset) : '', $motion, $this->tier, $this->durationSeconds,
+                        $options + ($endAsset ? ['end_image_url' => $this->providerCopy($endAsset)] : [])
+                        + ($references->isNotEmpty() ? ['reference_image_urls' => $references->map(fn ($a) => $this->providerCopy($a))->all()] : []));
                 }
             }
 
@@ -250,7 +261,7 @@ class AnimateSceneJob implements ShouldQueue
                 'title'              => "AI Animated — {$this->tier} — Scene {$scene->scene_order}",
                 'description'        => $this->motionPrompt ?: 'i2v animation',
                 'storage_url'        => $storageUrl,
-                'thumbnail_url'      => $sourceAsset->storage_url, // reuse source still as thumb
+                'thumbnail_url'      => $sourceAsset?->storage_url, // reuse source still as thumb (none for a clip from words)
                 'duration_seconds'   => $result['duration_seconds'],
                 'mime_type'          => 'video/mp4',
                 'tags'               => ['ai_animated', $result['provider_key'], $this->tier],
@@ -266,7 +277,7 @@ class AnimateSceneJob implements ShouldQueue
             $currentVisual   = $scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null;
             $previousImageId = ($currentVisual && $currentVisual->asset_type === 'image')
                 ? $currentVisual->getKey()
-                : (($sourceAsset->asset_type === 'image') ? $sourceAsset->getKey() : null);
+                : (($sourceAsset?->asset_type === 'image') ? $sourceAsset->getKey() : null);
             $existingOriginal = data_get($scene->image_generation_settings_json, 'animation_original_image_asset_id');
             $originalToStore = $existingOriginal ?: $previousImageId;
 
@@ -464,7 +475,7 @@ class AnimateSceneJob implements ShouldQueue
      * The motion prompt to buy with: as given when the editor already checked it, else after ClipPrecheck has looked at
      * it with the start (and end) frame. Frame problems are noted only; the user chose these pictures.
      */
-    private function checkedPrompt(Scene $scene, Asset $start, ?Asset $end): string
+    private function checkedPrompt(Scene $scene, ?Asset $start, ?Asset $end): string
     {
         $prompt = (string) $this->motionPrompt;
         if ($this->prechecked || trim($prompt) === '') return $prompt;
