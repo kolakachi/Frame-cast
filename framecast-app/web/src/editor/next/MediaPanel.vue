@@ -4,6 +4,7 @@
 // AI video is the AI picture plus animating it, so that is where Animate lives.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import api from "../../services/api";
+import UiSelect from "../../components/UiSelect.vue";
 import { cr, useCore, usePrices } from "./core";
 
 const core = useCore();
@@ -232,6 +233,7 @@ const motionOptions = computed(() => [
   ...MOTION_EFFECT_OPTIONS.filter((o) => o.value === "static"),
   ...MOTION_EFFECT_OPTIONS.filter((o) => o.value !== "static"),
 ]);
+const motionSelectOptions = computed(() => motionOptions.value.map((o) => ({ value: o.value, label: MOTION_SHORT[o.value] || o.label })));
 
 // The prompt box: one dropdown open at a time, closed by a click anywhere else.
 const menu = ref(null);
@@ -687,10 +689,12 @@ function send() {
 
   <!-- Motion, for still pictures: the Ken Burns move rendered on export. Shown with the picture tabs only, not the
        video or audiogram tabs (owner, 2026-10-31). -->
+  <!-- Motion moves a still picture (Ken Burns): only for a scene whose picture is a still image, on its Image or
+       Uploads tab; a video already moves, and an audiogram or text card has no picture to move. -->
   <section v-if="activeSceneIsStillImage && group !== 'video' && group !== 'audiogram'" class="nx-sec nx-sec-top">
-    <span class="nx-label">Motion</span>
-    <div class="nx-chips">
-      <button v-for="o in motionOptions" :key="o.value" type="button" :class="['nx-chip', motionEffectDraft === o.value ? 'on' : '']" @click="motionEffectDraft = o.value">{{ MOTION_SHORT[o.value] || o.label }}</button>
+    <div class="nx-row nx-motion-row">
+      <span class="nx-label" title="Slow camera movement over the still picture">Motion</span>
+      <UiSelect v-model="motionEffectDraft" :options="motionSelectOptions" label="Motion" />
     </div>
     <div v-if="motionEffectDraft !== 'static'" class="nx-seg nx-seg-full" role="group" aria-label="Motion strength">
       <button v-for="o in MOTION_INTENSITY_OPTIONS" :key="o.value" type="button" :class="motionIntensityDraft === o.value ? 'on' : ''" @click="motionIntensityDraft = o.value">{{ o.label }}</button>

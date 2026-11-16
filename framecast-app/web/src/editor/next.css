@@ -710,3 +710,7 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-faces-wrap { flex-wrap: wrap; overflow: visible; }
 .nx-fold .nx-looks-grid .nx-look img, .nx-fold .nx-looks-grid .nx-look-glyph { height: 78px; aspect-ratio: auto; }
 .nx-fold .nx-looks-grid .nx-look { gap: 4px; padding-bottom: 6px; }
+/* Motion: a dropdown beside its label */
+.nx-motion-row { gap: 12px; }
+.nx-motion-row .ui-select { flex: 1 1 auto; min-width: 0; }
+.nx-motion-row .ui-select-trigger { width: 100%; justify-content: space-between; height: 36px; }
