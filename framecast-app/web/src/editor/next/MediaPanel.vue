@@ -39,9 +39,9 @@ const GROUPS = [
   { key: "uploads", label: "Uploads" },
 ];
 const isAi = computed(() => activeScene.value?.visual_type === "ai_image");
-// AI image › Style: the first LOOKS_SHOWN looks and the one picked; "Show all" opens the rest.
-const LOOKS_SHOWN = 6;
-const allLooks = ref(false);
+// AI image › Style and Character fold open and shut; closed, they show their pick.
+const lookOpen = ref(false);
+const charOpen = ref(false);
 // The core keeps one source key; "AI Image" serves both AI image and AI video, told apart here.
 const aiAsVideo = ref(false);
 watch(() => activeScene.value?.id, () => { aiAsVideo.value = isAi.value && activeSceneVisualIsVideo.value; }, { immediate: true });
@@ -240,12 +240,6 @@ const closeMenu = () => { menu.value = null; };
 onMounted(() => document.addEventListener("click", closeMenu));
 onBeforeUnmount(() => document.removeEventListener("click", closeMenu));
 const lookRow = computed(() => stylePickerRows.value.find((r) => r.key === lookKey.value) ?? null);
-const shownLooks = computed(() => {
-  const rows = stylePickerRows.value;
-  if (allLooks.value) return rows;
-  const first = rows.slice(0, LOOKS_SHOWN);
-  return lookRow.value && !first.includes(lookRow.value) ? [...first.slice(0, LOOKS_SHOWN - 1), lookRow.value] : first;
-});
 const modelRow = computed(() => availableImageModelsEditor.value.find((m) => m.key === aiImageModelKey.value) ?? null);
 // A scene with an AI picture can also be edited in place (the shot kept, one thing changed).
 const aiMode = ref("new");
@@ -539,31 +533,55 @@ function send() {
     </div>
 
     <template v-if="!editing">
-      <!-- Style: sample pictures; the first six, and the one picked, with the rest a click away. -->
-      <div class="nx-row"><span class="nx-label">Style</span><button v-if="isAi" class="nx-link" type="button" @click="openBulkStyle()">Use on all scenes</button></div>
-      <div class="nx-looks nx-looks-grid">
-        <button v-for="st in shownLooks" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || st.label" :aria-pressed="lookKey === st.key" @click="visualStyleDraft = st.key">
-          <img v-if="st.sample_url" :src="st.sample_url" alt="" loading="lazy" />
-          <span v-else class="nx-look-glyph">{{ st.icon ?? "✦" }}</span>
-          <span class="nx-look-name">{{ st.label }}</span>
-        </button>
-      </div>
-      <button v-if="stylePickerRows.length > LOOKS_SHOWN" class="nx-link nx-more" type="button" @click="allLooks = !allLooks">{{ allLooks ? "Show fewer styles" : `Show all ${stylePickerRows.length} styles` }}</button>
-
-      <!-- Character: the same person in every picture of this scene. -->
-      <span class="nx-label">Character</span>
-      <div class="nx-faces">
-        <button type="button" :class="['nx-face', !activeScene?.character_id ? 'on' : '']" :aria-pressed="!activeScene?.character_id" @click="selectCharacter(null)">
-          <span class="nx-face-img">–</span><span>None</span>
-        </button>
-        <button v-for="c in characters" :key="c.id" type="button" :class="['nx-face', activeScene?.character_id === c.id ? 'on' : '']" :aria-pressed="activeScene?.character_id === c.id" @click="selectCharacter(c.id)">
-          <span class="nx-face-img">
-            <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url" :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
-            <template v-else>{{ c.name.charAt(0).toUpperCase() }}</template>
+      <!-- Style and Character fold: closed, each shows its pick as an avatar and name (owner, 2026-11-16). -->
+      <div class="nx-fold">
+        <button type="button" class="nx-fold-head" :aria-expanded="lookOpen" @click="lookOpen = !lookOpen">
+          <span class="nx-label">Style</span>
+          <span class="nx-fold-pick">
+            <span class="nx-fold-av"><img v-if="lookRow?.sample_url" :src="lookRow.sample_url" alt="" /><template v-else>✦</template></span>
+            {{ lookLabel(lookKey) }}
           </span>
-          <span>{{ c.name }}</span>
+          <svg :class="['nx-fold-chev', lookOpen ? 'is-open' : '']" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
-        <button type="button" class="nx-face" @click="createCharacterOpen = true"><span class="nx-face-img">+</span><span>New</span></button>
+        <div v-if="lookOpen" class="nx-fold-body">
+          <div class="nx-looks nx-looks-grid">
+            <button v-for="st in stylePickerRows" :key="st.key" type="button" :class="['nx-look', lookKey === st.key ? 'on' : '']" :title="st.description || st.label" :aria-pressed="lookKey === st.key" @click="visualStyleDraft = st.key; lookOpen = false">
+              <img v-if="st.sample_url" :src="st.sample_url" alt="" loading="lazy" />
+              <span v-else class="nx-look-glyph">{{ st.icon ?? "✦" }}</span>
+              <span class="nx-look-name">{{ st.label }}</span>
+            </button>
+          </div>
+          <button v-if="isAi" class="nx-link nx-more" type="button" @click="lookOpen = false; openBulkStyle()">Use this style on all scenes</button>
+        </div>
+      </div>
+
+      <div class="nx-fold">
+        <button type="button" class="nx-fold-head" :aria-expanded="charOpen" @click="charOpen = !charOpen">
+          <span class="nx-label">Character</span>
+          <span class="nx-fold-pick">
+            <span class="nx-fold-av is-round">
+              <img v-if="activeCharacter?.reference_asset?.thumbnail_url || activeCharacter?.reference_asset?.storage_url" :src="activeCharacter.reference_asset.thumbnail_url || activeCharacter.reference_asset.storage_url" alt="" />
+              <template v-else>{{ activeCharacter ? activeCharacter.name.charAt(0).toUpperCase() : "–" }}</template>
+            </span>
+            {{ activeCharacter?.name || "None" }}
+          </span>
+          <svg :class="['nx-fold-chev', charOpen ? 'is-open' : '']" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <div v-if="charOpen" class="nx-fold-body">
+          <div class="nx-faces nx-faces-wrap">
+            <button type="button" :class="['nx-face', !activeScene?.character_id ? 'on' : '']" :aria-pressed="!activeScene?.character_id" @click="selectCharacter(null); charOpen = false">
+              <span class="nx-face-img">–</span><span>None</span>
+            </button>
+            <button v-for="c in characters" :key="c.id" type="button" :class="['nx-face', activeScene?.character_id === c.id ? 'on' : '']" :aria-pressed="activeScene?.character_id === c.id" @click="selectCharacter(c.id); charOpen = false">
+              <span class="nx-face-img">
+                <img v-if="c.reference_asset?.thumbnail_url || c.reference_asset?.storage_url" :src="c.reference_asset.thumbnail_url || c.reference_asset.storage_url" alt="" />
+                <template v-else>{{ c.name.charAt(0).toUpperCase() }}</template>
+              </span>
+              <span>{{ c.name }}</span>
+            </button>
+            <button type="button" class="nx-face" @click="charOpen = false; createCharacterOpen = true"><span class="nx-face-img">+</span><span>New</span></button>
+          </div>
+        </div>
       </div>
 
       <!-- Model, with the server's price for each. -->
