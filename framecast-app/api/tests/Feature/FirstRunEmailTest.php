@@ -165,4 +165,36 @@ class FirstRunEmailTest extends TestCase
         $this->assertStringNotContainsString('evil', $body);
         $this->assertStringContainsString('app.wyvstudio.com/plans', $body);
     }
+
+    public function test_a_free_sign_up_hears_about_its_free_ad_after_two_hours_once_and_never_gets_the_no_trial_email(): void
+    {
+        // Owner, 2026-11-16: 11 of 13 free sign-ups never started their free first ad.
+        config(['billing.free_signup' => true]);
+        Schema::table('workspaces', fn (Blueprint $t) => $t->text('onboarding_json')->nullable());
+        $fresh = $this->user('free');
+        $fresh->forceFill(['created_at' => now()->subMinutes(30)])->save();
+        (new ProcessOnboardingEmailsJob)->handle();
+        Mail::assertNotQueued(\App\Mail\Onboarding\OnboardingFreeAdWaiting::class);
+
+        $fresh->forceFill(['created_at' => now()->subHours(3)])->save();
+        (new ProcessOnboardingEmailsJob)->handle();
+        (new ProcessOnboardingEmailsJob)->handle();
+        Mail::assertQueued(\App\Mail\Onboarding\OnboardingFreeAdWaiting::class, 1);
+        $this->assertSame(1, $fresh->fresh()->onboarding_step);
+        $body = (new \App\Mail\Onboarding\OnboardingFreeAdWaiting($fresh))->render();
+        $this->assertStringContainsString('app.wyvstudio.com/templates', $body);
+        $this->assertStringNotContainsString('free trial', $body);
+
+        // A free ad already started hears nothing.
+        $started = $this->user('free', ['onboarding_json' => json_encode(['free_first_conversation_id' => 'c-1'])]);
+        $started->forceFill(['email' => 'started@acme.test', 'created_at' => now()->subHours(3)])->save();
+        (new ProcessOnboardingEmailsJob)->handle();
+        Mail::assertQueued(\App\Mail\Onboarding\OnboardingFreeAdWaiting::class, 1);
+
+        // Day one: the "finish signup" email (it says there is no free trial) is skipped for them.
+        $fresh->forceFill(['created_at' => now()->subDays(2)])->save();
+        (new ProcessOnboardingEmailsJob)->handle();
+        Mail::assertNotQueued(OnboardingDay1FinishSignup::class);
+        $this->assertSame(2, $fresh->fresh()->onboarding_step);
+    }
 }

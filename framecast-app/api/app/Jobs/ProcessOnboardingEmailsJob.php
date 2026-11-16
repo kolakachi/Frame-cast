@@ -7,6 +7,8 @@ use App\Mail\Onboarding\OnboardingDay1Activation;
 use App\Mail\Onboarding\OnboardingDay1FinishSignup;
 use App\Mail\Onboarding\OnboardingDay3CaseStudy;
 use App\Mail\Onboarding\OnboardingDay7Upgrade;
+use App\Mail\Onboarding\OnboardingFreeAdWaiting;
+use App\Services\Create\FreeFirst;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -56,9 +58,25 @@ class ProcessOnboardingEmailsJob implements ShouldQueue, ShouldBeUnique
         return 'process-onboarding-emails';
     }
 
+    /** Hours after signup the free-ad email waits for (owner, 2026-11-16); signups older than a day are left alone. */
+    public const FREE_AD_AFTER_HOURS = 2;
+
     public function handle(): void
     {
         $now = CarbonImmutable::now();
+
+        // A free sign-up who has not started the free first ad hears about it after two hours, once.
+        User::query()
+            ->where('onboarding_step', 1)
+            ->whereBetween('created_at', [$now->subDay(), $now->subHours(self::FREE_AD_AFTER_HOURS)])
+            ->with('workspace:id,plan_tier')
+            ->chunkById(100, function ($users) {
+                foreach ($users as $user) {
+                    if ($this->freeAdWaiting($user) && $this->markFreeAdEmail($user)) {
+                        rescue(fn () => Mail::to($user->email)->queue(new OnboardingFreeAdWaiting($user)), null, true);
+                    }
+                }
+            });
 
         foreach (self::STEP_THRESHOLDS_HOURS as $currentStep => $hours) {
             // currentStep is what the user is at NOW; we're about to advance
@@ -77,6 +95,26 @@ class ProcessOnboardingEmailsJob implements ShouldQueue, ShouldBeUnique
         }
     }
 
+    /** A free plan whose free first ad is open and not started. */
+    private function freeAdWaiting(User $user): bool
+    {
+        $id = (int) ($user->workspace?->id ?? 0);
+        return $id && FreeFirst::open() && FreeFirst::freePlan($id) && FreeFirst::conversationId($id) === null;
+    }
+
+    /** Records the free-ad email on the workspace (onboarding_json.free_ad_email_at); false when it was already sent. */
+    private function markFreeAdEmail(User $user): bool
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json')) return false;
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($user) {
+            $row = \Illuminate\Support\Facades\DB::table('workspaces')->where('id', $user->workspace_id)->lockForUpdate()->first(['onboarding_json']);
+            $kept = json_decode((string) ($row->onboarding_json ?? ''), true) ?: [];
+            if (! empty($kept['free_ad_email_at'])) return false;
+            \Illuminate\Support\Facades\DB::table('workspaces')->where('id', $user->workspace_id)->update(['onboarding_json' => json_encode([...$kept, 'free_ad_email_at' => now()->toIso8601String()])]);
+            return true;
+        });
+    }
+
     private function sendStep(User $user, int $nextStep): void
     {
         try {
@@ -91,6 +129,13 @@ class ProcessOnboardingEmailsJob implements ShouldQueue, ShouldBeUnique
                     'onboarding_step' => 5,
                     'onboarding_last_sent_at' => now(),
                 ])->save();
+                return;
+            }
+
+            // A free first ad's account had the free-ad email instead: the day-1 "finish signup" one says there is
+            // no free trial. Step on without it.
+            if ($nextStep === 2 && ! $isPaid && $user->workspace && FreeFirst::freePlan((int) $user->workspace->id) && FreeFirst::open()) {
+                $user->forceFill(['onboarding_step' => 2, 'onboarding_last_sent_at' => now()])->save();
                 return;
             }
 
