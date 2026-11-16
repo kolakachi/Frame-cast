@@ -202,6 +202,17 @@ class AuthController extends Controller
             $user->workspace->forceFill(['intended_plan' => $validated['plan']])->save();
         }
 
+        // A free sign-up ("Make my first ad free") goes straight to the free templates, not the onboarding questions:
+        // 8 of 13 free sign-ups (2026-10-17 to 11-16) left on those questions without ever seeing a template.
+        if ($register && ! $existingByEmail && $freeStart && ! isset($validated['plan']) && $user->workspace_id) {
+            if (\Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json')) {
+                \App\Services\Onboarding\BrandFromSite::merge((int) $user->workspace_id, ['free_start_at' => now()->toIso8601String()]);
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'preferences_json')) {
+                $user->forceFill(['preferences_json' => array_merge((array) ($user->preferences_json ?? []), ['onboarded' => true])])->save();
+            }
+        }
+
         // Only a newly created account may receive a session without authenticating.
         // Existing accounts (including concurrent signups) must prove ownership.
         if ($register) {

@@ -94,6 +94,13 @@ class RegistrationCheckoutTest extends TestCase
         $ok = $controller->register($post(['name' => 'Free Start', 'email' => 'freestart@gmail.com', 'free' => true]));
         $this->assertSame(200, $ok->status());
         $this->assertSame('free', Workspace::query()->latest('id')->first()->plan_tier);
+        // A free start skips the onboarding questions (2026-11-16): straight to the free templates, the start kept.
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'preferences_json')) {
+            $this->assertTrue(User::where('email', 'freestart@gmail.com')->first()->preferences_json['onboarded'] ?? false);
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('workspaces', 'onboarding_json')) {
+            $this->assertArrayHasKey('free_start_at', json_decode((string) Workspace::query()->latest('id')->first()->onboarding_json, true));
+        }
     }
 
     public function test_a_sign_in_with_an_unknown_email_makes_no_account_while_free_sign_up_is_closed(): void

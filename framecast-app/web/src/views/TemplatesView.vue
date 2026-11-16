@@ -14,13 +14,19 @@ const templates = ref([]), categories = ref({}), isPublic = ref(false), staff = 
 // A free plan's free first ad (FREE-FIRST) starts from a template that has its own code: those carry a badge.
 const freeFirstOpen = ref(false), freeFirstUsed = ref(false)
 const category = ref('all'), style = ref(''), shape = ref(''), search = ref('')
+// A free plan sees only the templates its free ad can use, until it asks for all: 15 of 55 are free, spread through
+// the library, and 11 of 13 free sign-ups (to 2026-11-16) never started one.
+const freeOnly = ref(false)
+const freeCount = computed(() => templates.value.filter(t => t.free_fit && !t.locked).length)
+const pool = computed(() => freeOnly.value ? templates.value.filter(t => t.free_fit && !t.locked) : templates.value)
+function showAll(all) { freeOnly.value = !all; category.value = 'all' }
 
 const styleOptions = computed(() => [{ value: '', label: 'Any' }, ...[...new Set(templates.value.map(t => t.style).filter(Boolean))].sort().map(s => ({ value: s, label: s }))])
 const shapeOptions = [{ value: '', label: 'Any' }, { value: '9:16', label: '9:16' }, { value: '1:1', label: '1:1' }, { value: '16:9', label: '16:9' }]
-const tabs = computed(() => [['all', 'All'], ...Object.entries(categories.value).filter(([k]) => templates.value.some(t => t.category === k))])
+const tabs = computed(() => [['all', 'All'], ...Object.entries(categories.value).filter(([k]) => pool.value.some(t => t.category === k))])
 const shown = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return templates.value.filter(t => (category.value === 'all' || t.category === category.value) && (!style.value || t.style === style.value)
+  return pool.value.filter(t => (category.value === 'all' || t.category === category.value) && (!style.value || t.style === style.value)
     && (!shape.value || t.shape === shape.value) && (!q || `${t.title} ${t.category_label} ${t.style || ''}`.toLowerCase().includes(q)))
 })
 const duration = s => `0:${String(Math.max(0, Math.round(s))).padStart(2, '0')}`
@@ -35,6 +41,7 @@ onMounted(async () => {
   try {
     const d = (await api.get('/create/templates')).data.data
     templates.value = d.templates; categories.value = d.categories; isPublic.value = d.public; staff.value = d.staff
+    freeOnly.value = freeFirstOpen.value && freeCount.value > 0
   } catch (e) {
     // Not open to this account yet: Create is where they start.
     if (e?.response?.status === 404) { router.replace({ name: 'create' }); return }
@@ -55,7 +62,8 @@ onMounted(async () => {
         <header class="page-head">
           <div>
             <h1>Templates <span v-if="staff && !isPublic" class="staff-badge" title="Customers don't see Templates until it is made public">Staff only</span></h1>
-            <p v-if="freeFirstOpen" class="free-banner"><b>Make your first ad free.</b> Pick a template marked "Free first ad": it keeps the template's look with your words, colours, photos and a new voiceover.</p>
+            <p v-if="freeFirstOpen" class="free-banner"><b>Pick a template. Your first ad is free.</b> It keeps the template's look with your words, colours, photos and a new voiceover.
+              <template v-if="freeCount"><button v-if="freeOnly" type="button" class="free-toggle" @click="showAll(true)">Show all templates</button><button v-else type="button" class="free-toggle" @click="showAll(false)">Show only the {{ freeCount }} free template{{ freeCount === 1 ? "" : "s" }}</button></template></p>
             <p v-else-if="freeFirstUsed" class="free-banner"><b>You've made your free first ad.</b> <a href="/continue?pass=1">Get the $9 Test Pass</a> to make more, with new shots, voices and presenters and no WyvStudio mark.</p>
             <p>Start from a finished video. Add your product and the Creative Director makes it yours.</p>
           </div>
@@ -138,6 +146,8 @@ onMounted(async () => {
 .free-banner{margin:6px 0 0;font-size:14px;color:var(--color-text-secondary);max-width:720px}
 .free-banner b{color:var(--color-text-primary)}
 .free-banner a{color:var(--color-accent);font-weight:600}
+.free-toggle{margin-left:6px;padding:0;border:0;background:none;color:var(--color-accent);font:inherit;font-weight:600;cursor:pointer}
+.free-toggle:hover{text-decoration:underline}
 .free-badge{position:absolute;top:10px;left:10px;font-size:11px;font-weight:700;letter-spacing:.03em;padding:4px 9px;border-radius:999px;background:var(--color-accent);color:#fff}
 .card-meta{font-size:12px;color:#8b8ba0}
 @media (prefers-reduced-motion:reduce){.card-media video{transition:none}}

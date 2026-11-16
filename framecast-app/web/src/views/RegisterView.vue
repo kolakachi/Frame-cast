@@ -51,6 +51,8 @@ const freeTemplate = templateFromLink(route.query.template);
 // Free sign-up closed (owner, 2026-10-22): anyone not here for a paid plan goes to the $9 Test Pass, on Kelviq's own
 // checkout when its link is set, else through this form and our checkout.
 const freeOpen = ref(true);
+// The form names the free ad when that is what they came for (no plan chosen, free sign-up open).
+const freeAd = computed(() => freeStart && freeOpen.value && !pendingPlan.value);
 
 onMounted(async () => {
   const plan = route.query.pass ? "ugc_pass" : String(route.query.plan ?? "");
@@ -111,7 +113,9 @@ async function submit() {
   } catch (err) {
     state.value = "error";
     errorMessage.value =
-      err.response?.data?.error?.message ?? Object.values(err.response?.data?.errors ?? {}).flat()[0] ??
+      // The field's own message ("The email field must be a valid email address.") before the generic one.
+      Object.values(err.response?.data?.error?.details ?? {}).flat()[0] ?? err.response?.data?.error?.message ??
+      Object.values(err.response?.data?.errors ?? {}).flat()[0] ??
       "Unable to create account. Try again.";
   }
 }
@@ -132,9 +136,9 @@ async function submit() {
 
       <template v-else>
         <div class="auth-logo">W</div>
-        <h1 class="auth-title">Create your account</h1>
+        <h1 class="auth-title">{{ freeAd ? "Make your first ad free" : "Create your account" }}</h1>
         <p class="auth-subtitle">
-          Set up your WyvStudio workspace. Takes 30 seconds.
+          {{ freeAd ? "Create your account, then pick a template and add your product. No card needed." : "Set up your WyvStudio workspace. Takes 30 seconds." }}
         </p>
 
         <div v-if="pendingPlanLabel" class="auth-plan-note">
