@@ -23,6 +23,10 @@ const MODES = [["stock_video", "Stock video", "Footage found for the scene"], ["
 // scene is added without a picture and that panel opens on it with the shot described here.
 const mode = ref(addSceneVisualMode.value || "");
 const shot = ref("");
+// Audiogram: chosen here, saved onto the new scene once it exists (the core's own controls save to the selected scene).
+const { AUDIOGRAM_STYLES, AUDIOGRAM_COLORS, AUDIOGRAM_BACKGROUNDS } = core;
+const ag = ref({ style: "bars", color: "#ff6b35", bg: "dark" });
+const agBg = () => ({ background: (AUDIOGRAM_BACKGROUNDS.find((b) => b.key === ag.value.bg) || AUDIOGRAM_BACKGROUNDS[0]).css });
 function pickMode(m) {
   mode.value = m;
   selectAddSceneVisualMode(m === "ai_video" ? "" : m);
@@ -35,6 +39,7 @@ async function add() {
   adding.value = true;
   // Set before the scene is made: adding closes this form; the editor opens AI video once the new scene is selected.
   if (mode.value === "ai_video") core.mediaIntent.value = { kind: "ai_video", shot: shot.value.trim() };
+  if (mode.value === "audiogram") core.mediaIntent.value = { kind: "audiogram", ...ag.value };
   try { await createScene(props.after || null); } finally { adding.value = false; }
 }
 </script>
@@ -79,7 +84,27 @@ async function add() {
         </template>
 
         <template v-else-if="mode === 'audiogram'">
-          <p class="nx-hint">Moving sound waves over a colour, following the voice. Pick its design and colours in Media › Audiogram after adding.</p>
+          <p class="nx-hint">Moving sound waves over a colour, following the scene's voice.</p>
+          <span class="nx-label">Design</span>
+          <div class="nx-ag-grid">
+            <button v-for="st in AUDIOGRAM_STYLES" :key="st.key" type="button" :class="['nx-ag', ag.style === st.key ? 'on' : '']" @click="ag.style = st.key">
+              <span class="nx-ag-mini" :style="agBg()">
+                <svg v-if="st.key === 'circle'" viewBox="0 0 40 40" aria-hidden="true"><g transform="translate(20,20)"><line v-for="(h, i) in [0.5,0.8,0.6,0.9,0.55,0.75,0.65,0.85]" :key="i" :transform="`rotate(${i * 45})`" x1="0" y1="7" x2="0" :y2="7 + h * 10" :stroke="ag.color" stroke-width="2.5" /></g></svg>
+                <template v-else><i v-for="(h, i) in [0.4,0.7,0.55,0.9,0.6,0.8,0.45]" :key="i" :class="st.key === 'mirror' ? 'is-mirror' : st.key === 'minimal' ? 'is-thin' : ''" :style="{ height: `${h * 100}%`, background: ag.color }"></i></template>
+              </span>
+              <span>{{ st.label }}</span>
+            </button>
+          </div>
+          <span class="nx-label">Colour</span>
+          <div class="nx-swatches">
+            <button v-for="c in AUDIOGRAM_COLORS" :key="c" type="button" :class="['nx-swatch', ag.color === c ? 'on' : '']" :style="{ background: c }" :aria-label="`Colour ${c}`" @click="ag.color = c"></button>
+            <label class="nx-swatch nx-swatch-custom" aria-label="Your own colour"><input type="color" :value="ag.color" @input="(e) => (ag.color = e.target.value)" />+</label>
+          </div>
+          <span class="nx-label">Background</span>
+          <div class="nx-chips">
+            <button v-for="bg in AUDIOGRAM_BACKGROUNDS" :key="bg.key" type="button" :class="['nx-chip', ag.bg === bg.key ? 'on' : '']" @click="ag.bg = bg.key">{{ bg.label }}</button>
+          </div>
+          <p class="nx-hint">Free. You can change it later in Media › Audiogram.</p>
         </template>
 
         <template v-if="mode === 'stock_video'">

@@ -104,7 +104,19 @@ const panel = ref("script");
 // A request for the Media panel to open on a tab (AddSceneForm's AI video): read by MediaPanel when it mounts.
 core.mediaIntent = core.mediaIntent || ref(null);
 watch(activeSceneId, () => {
-  if (core.mediaIntent.value?.kind === "ai_video") { panel.value = "media"; selection.value = "image"; }
+  const intent = core.mediaIntent.value;
+  if (intent?.kind === "ai_video") { panel.value = "media"; selection.value = "image"; }
+  // A new audiogram scene: its design, colour and background from the add-scene modal, saved onto it once the core
+  // has loaded the scene (which resets them to the scene's own).
+  if (intent?.kind === "audiogram") {
+    core.mediaIntent.value = null;
+    nextTick(() => {
+      core.audiogramStyle.value = intent.style;
+      core.audiogramColor.value = intent.color;
+      core.audiogramBg.value = intent.bg;
+      core.saveAudiogramSettings();
+    });
+  }
 });
 const selection = ref("scene");
 
