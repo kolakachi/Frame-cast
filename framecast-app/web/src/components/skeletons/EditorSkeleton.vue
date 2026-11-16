@@ -8,6 +8,27 @@ function delay(i) {
 </script>
 
 <template>
+  <!-- Phone: the classic phone layout (bar, frame, controls, dock: Scenes / Config / Assistant / Finish). -->
+  <div class="ed-sk-ph" aria-busy="true" aria-label="Loading editor">
+    <div class="ph-bar">
+      <div class="sk" style="width: 28px; height: 28px; border-radius: 8px"></div>
+      <div class="sk" style="flex: 1; height: 16px; border-radius: 6px; max-width: 180px"></div>
+      <div class="ed-spacer"></div>
+      <div class="sk" style="width: 54px; height: 22px; border-radius: 6px"></div>
+      <div class="sk" style="width: 28px; height: 28px; border-radius: 8px"></div>
+    </div>
+    <div class="ph-stage">
+      <div class="sk ph-frame"></div>
+      <div class="ed-controls">
+        <div class="sk" style="width: 36px; height: 36px; border-radius: 50%"></div>
+        <div class="sk" style="width: 48px; height: 48px; border-radius: 50%"></div>
+        <div class="sk" style="width: 36px; height: 36px; border-radius: 50%"></div>
+      </div>
+    </div>
+    <div class="ph-dock">
+      <div v-for="i in 4" :key="i" class="ph-dbtn"><div class="sk" style="width: 22px; height: 22px; border-radius: 6px"></div><div class="sk" style="width: 44px; height: 9px; border-radius: 4px"></div></div>
+    </div>
+  </div>
   <div class="ed-sk" aria-busy="true" aria-label="Loading editor">
     <!-- top bar -->
     <div class="ed-top">
@@ -76,5 +97,15 @@ function delay(i) {
 .ed-field { display: flex; flex-direction: column; gap: 8px; }
 @media (max-width: 1000px) {
   .panel { display: none; }
+}
+.ed-sk-ph { display: none; }
+@media (max-width: 860px) {
+  .ed-sk { display: none; }
+  .ed-sk-ph { display: flex; flex-direction: column; height: 100vh; height: 100dvh; background: var(--color-bg-deep); }
+  .ph-bar { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--color-border); }
+  .ph-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 12px 0; }
+  .ph-frame { flex: 1; min-height: 0; max-height: 60vh; aspect-ratio: 9 / 16; border-radius: 16px; }
+  .ph-dock { height: 64px; flex-shrink: 0; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--color-border); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .ph-dbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
 }
 </style>

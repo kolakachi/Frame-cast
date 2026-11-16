@@ -4,6 +4,22 @@
 </script>
 
 <template>
+  <!-- Phone: top bar, the frame, the short timeline, the tool dock. -->
+  <div class="nxs-ph" role="status" aria-label="Loading the editor">
+    <div class="nxs-top">
+      <span class="nxs-b" style="width: 20px; height: 20px"></span>
+      <span class="nxs-b" style="flex: 1; max-width: 170px; height: 15px"></span>
+      <span class="nxs-grow"></span>
+      <span class="nxs-b" style="width: 22px; height: 22px"></span>
+      <span class="nxs-b nxs-accent" style="width: 74px; height: 34px; border-radius: 9px"></span>
+    </div>
+    <div class="nxs-stage"><span class="nxs-b nxs-frame"></span></div>
+    <div class="nxs-ph-tl">
+      <div class="nxs-tl-head" style="margin-left: 0"><span class="nxs-b" style="width: 36px; height: 36px; border-radius: 50%"></span><span class="nxs-b" style="width: 80px; height: 12px"></span></div>
+      <div class="nxs-lane is-tall"><span v-for="w in [84, 140, 70, 120]" :key="w" class="nxs-b" :style="{ width: `${w}px`, height: '56px', borderRadius: '9px' }"></span></div>
+    </div>
+    <div class="nxs-dock"><span v-for="n in 6" :key="n" class="nxs-dbtn"><span class="nxs-b" style="width: 22px; height: 22px; border-radius: 6px"></span><span class="nxs-b" style="width: 38px; height: 8px"></span></span></div>
+  </div>
   <div class="nxs" role="status" aria-label="Loading the editor">
     <div class="nxs-top">
       <span class="nxs-b" style="width: 18px; height: 18px"></span>
@@ -64,4 +80,15 @@
 .nxs-lane { display: flex; gap: 4px; }
 @keyframes nxs-shine { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .nxs-b { animation: none; } }
+.nxs-ph { display: none; }
+@media (max-width: 860px) {
+  .nxs { display: none; }
+  .nxs-ph { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: #141417; overflow: hidden; }
+  .nxs-ph .nxs-top { height: 52px; gap: 10px; padding: 0 12px; }
+  .nxs-ph .nxs-stage { padding: 12px 0; }
+  .nxs-ph .nxs-frame { max-height: 52vh; }
+  .nxs-ph-tl { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .nxs-dock { height: 76px; flex-shrink: 0; background: #17171b; border-radius: 18px 18px 0 0; display: flex; gap: 6px; padding: 10px 8px env(safe-area-inset-bottom, 0px); overflow: hidden; }
+  .nxs-dbtn { width: 58px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 6px; }
+}
 </style>
