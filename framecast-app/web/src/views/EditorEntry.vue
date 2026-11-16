@@ -5,7 +5,10 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { useAuthStore } from "../stores/auth";
 import EditorView from "./EditorView.vue";
 
-const EditorNextView = defineAsyncComponent(() => import("./EditorNextView.vue"));
+import EditorNextSkeleton from "../components/skeletons/EditorNextSkeleton.vue";
+
+// While the new editor's code loads, its own skeleton shows (not a blank page, nor the classic one).
+const EditorNextView = defineAsyncComponent({ loader: () => import("./EditorNextView.vue"), loadingComponent: EditorNextSkeleton, delay: 0 });
 
 const auth = useAuthStore();
 const ready = ref(auth.user?.editor !== undefined);

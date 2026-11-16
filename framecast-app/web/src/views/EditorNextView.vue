@@ -9,7 +9,7 @@ import UiSelect from "../components/UiSelect.vue";
 import CaptionPreview from "../components/CaptionPreview.vue";
 import UgcHeadline from "../components/UgcHeadline.vue";
 import FinishedVideoPlayer from "../components/FinishedVideoPlayer.vue";
-import EditorSkeleton from "../components/skeletons/EditorSkeleton.vue";
+import EditorNextSkeleton from "../components/skeletons/EditorNextSkeleton.vue";
 import MediaPickerModal from "../components/MediaPickerModal.vue";
 import VoiceCloneModal from "../components/VoiceCloneModal.vue";
 import { useEditorCore } from "../editor/useEditorCore";
@@ -100,7 +100,8 @@ const selection = ref("scene");
 
 function openPanel(id) {
   panel.value = id;
-  if (SELECTION_FOR_PANEL[id]) selection.value = SELECTION_FOR_PANEL[id];
+  // A panel with no toolbar of its own (Script, Audio, Brand…) shows the scene's toolbar, not the last panel's.
+  selection.value = SELECTION_FOR_PANEL[id] || "scene";
 }
 // The caption on the frame is outlined only on hover and for a moment after it is clicked, so it doesn't sit boxed
 // the whole time Captions is open.
@@ -217,8 +218,10 @@ watch(activeSceneId, (id) => {
   heldTyping = null;
   if (held.id === id) nextTick(() => { sceneScriptDraft.value = held.text; });
 });
+// The best four, with the rest a click away (classic shows them all).
+const showAllHooks = ref(false);
 const sortedHooks = computed(() =>
-  [...(hookOptions.value || [])].sort((a, b) => (b.hook_score ?? -1) - (a.hook_score ?? -1)).slice(0, 4)
+  [...(hookOptions.value || [])].sort((a, b) => (b.hook_score ?? -1) - (a.hook_score ?? -1)).slice(0, showAllHooks.value ? undefined : 4)
 );
 const hookSceneText = computed(() => {
   const s = scenes.value.find((x) => x.scene_type === "hook") ?? scenes.value[0];
@@ -231,6 +234,17 @@ function scoreTone(score) {
   return "weak";
 }
 
+// "Edit script" opens the Script panel with the cursor at the end of this scene's words.
+function editScript() {
+  openPanel("script");
+  nextTick(() => {
+    const box = document.getElementById(`nx-script-${activeSceneId.value}`);
+    if (!box) return;
+    box.scrollIntoView({ block: "center", behavior: "smooth" });
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(box.value.length, box.value.length);
+  });
+}
 // Where the new scene's form shows: under the selected scene, or at the end when no scene is selected (an empty video).
 const addAfterId = computed(() => (scenes.value.some((sc) => sc.id === activeSceneId.value) ? activeSceneId.value : "end"));
 // Add a scene after the selected one (the insert popover comes with the Audio/Brand slice).
@@ -413,7 +427,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
 
 <template>
   <main class="nx">
-    <EditorSkeleton v-if="loading" />
+    <EditorNextSkeleton v-if="loading" />
     <section v-else-if="error" class="nx-state">{{ error }}</section>
     <section v-else-if="generationFailed" class="nx-state">
       <h2>This video couldn't be made</h2>
@@ -548,8 +562,9 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
               <button v-for="h in sortedHooks" :key="h.id || h.hook_text" type="button"
                 :class="['nx-hook', h.hook_text?.trim() === hookSceneText ? 'on' : '']" @click="useHook(h)">
                 <span :class="['nx-score', `is-${scoreTone(h.hook_score)}`]">{{ h.hook_score ?? "–" }}</span>
-                <span class="nx-hook-text">{{ h.hook_text }}</span>
+                <span class="nx-hook-text">{{ h.hook_text }}<small v-if="h.hook_score_reason" class="nx-hook-why">{{ h.hook_score_reason }}</small></span>
               </button>
+              <button v-if="(hookOptions || []).length > 4" class="nx-link" type="button" @click="showAllHooks = !showAllHooks">{{ showAllHooks ? "Show the best 4" : `Show all ${hookOptions.length}` }}</button>
               <p v-if="sortedHooks.length" class="nx-hint">Scored for how well it stops the scroll. Picking one replaces the first scene's line; the voice re-records when you finish the video.</p>
             </section>
 
@@ -679,9 +694,10 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <span class="nx-tb-label">Scene {{ activeSceneIndex + 1 }} · {{ activeScene ? sceneTypeLabel(activeScene) : "" }}</span>
                 <span class="nx-num">{{ seconds(sceneDuration(activeScene)) }}</span>
                 <span class="nx-sep"></span>
-                <button class="nx-tb" type="button" @click="openPanel('script')">Edit script</button>
-                <button class="nx-tb" type="button" :disabled="activeSceneIndex <= 0 || sceneReorderPendingId !== null" aria-label="Move scene earlier" @click="moveScene(activeSceneId, 'up')">←</button>
-                <button class="nx-tb" type="button" :disabled="activeSceneIndex >= scenes.length - 1 || sceneReorderPendingId !== null" aria-label="Move scene later" @click="moveScene(activeSceneId, 'down')">→</button>
+                <button class="nx-tb" type="button" @click="editScript">Edit script</button>
+                <!-- Moving the scene, not stepping between scenes (that is the timeline's ‹ ›): said in words. -->
+                <button class="nx-tb" type="button" :disabled="activeSceneIndex <= 0 || sceneReorderPendingId !== null" title="Move this scene one place earlier" @click="moveScene(activeSceneId, 'up')">← Move earlier</button>
+                <button class="nx-tb" type="button" :disabled="activeSceneIndex >= scenes.length - 1 || sceneReorderPendingId !== null" title="Move this scene one place later" @click="moveScene(activeSceneId, 'down')">Move later →</button>
                 <button class="nx-tb" type="button" @click="duplicateScene(activeSceneId)">Duplicate</button>
                 <button class="nx-tb" type="button" aria-label="Delete scene" @click="promptDeleteScene(activeSceneId)">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>

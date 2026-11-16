@@ -255,7 +255,7 @@ function send() {
 <template>
   <div class="nx-ph nx-row">
     <div>
-      <h2>Scene {{ activeSceneIndex + 1 }} picture</h2>
+      <h2>Scene {{ activeSceneIndex + 1 }} {{ activeSceneVisualIsVideo ? "video" : "picture" }}</h2>
       <p>{{ current }}</p>
     </div>
     <span class="nx-tag">This scene</span>
@@ -332,13 +332,13 @@ function send() {
         aria-label="Describe the shot" placeholder="How it moves: slow push-in, steam rising, she looks up and smiles"></textarea>
       <div class="nx-pbox-bar">
         <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vref'" @click="toggleMenu('vref')">
-          <span class="nx-pdrop-k">Reference</span>
+          <span class="nx-pdrop-k">Starts from</span>
           <img v-if="referenceThumb" :src="referenceThumb" alt="" />
           <span>{{ referenceLabel }}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
         <button type="button" class="nx-pdrop" :aria-expanded="menu === 'vmodel'" @click="toggleMenu('vmodel')">
-          <span class="nx-pdrop-k">Model</span>
+          <span class="nx-pdrop-k">Video model</span>
           <span>{{ ANIMATE_TIER_META[animateTier]?.name || "Model" }}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
@@ -348,7 +348,7 @@ function send() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
         <button v-if="makeMode === 'storyboard'" type="button" class="nx-pdrop" :aria-expanded="menu === 'vframes'" @click="toggleMenu('vframes')">
-          <span class="nx-pdrop-k">Frames</span>
+          <span class="nx-pdrop-k">Frames drawn by</span>
           <span>{{ frameModelLabel(frameModel) }}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
@@ -439,14 +439,14 @@ function send() {
           <div class="nx-row nx-row-start"><span class="nx-spin nx-spin-soft"></span><b>Making the video with {{ ANIMATE_TIER_META[runningTier]?.name || "your model" }}…</b></div>
           <p class="nx-hint">About {{ (ANIMATE_TIER_META[runningTier]?.render || "a few minutes").replace("~", "") }}. The clip takes this scene's place when it's done.</p>
         </div>
-        <button v-else class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeFromStoryboard" @click="makeVideoFromStoryboard">
+        <button v-else class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canMakeFromStoryboard" @click="makeVideoFromStoryboard">
           {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
         </button>
         <button class="nx-btn nx-full" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">{{ `Redraw the storyboard${cr(storyboardPrice(frameModel))}` }}</button>
         <p class="nx-hint">The video runs from the first frame to the last. Changed the description? Redraw first.</p>
       </template>
       <template v-else>
-        <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">
+        <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canDrawStoryboard" @click="drawStoryboard">
           {{ storyboardSubmitting || storyboard?.status === "drawing" ? "Drawing…" : `Draw the storyboard${cr(storyboardPrice(frameModel))}` }}
         </button>
         <p class="nx-hint">{{ animateMotionPrompt.trim().length < 3 ? "Describe the shot first." : hasReference ? "About a minute. Drawn from the reference; nothing moves until you make the video." : "About a minute. No reference, so it's drawn from the description." }}</p>
@@ -457,7 +457,7 @@ function send() {
     <!-- Straight to video. -->
     <template v-else>
       <p v-if="!hasReference" class="nx-hint">This scene has no picture to start from. Choose an image above, draw one in Image › AI image, or use Storyboard first.</p>
-      <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo" @click="makeVideo">
+      <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canMakeVideo" @click="makeVideo">
         {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
       </button>
       <p v-if="hasReference && !activeSceneAnimationPending" class="nx-hint">About {{ (ANIMATE_TIER_META[animateTier]?.render || "").replace("~", "") }}. The clip replaces this scene's picture; the picture stays in Versions.</p>
@@ -593,7 +593,7 @@ function send() {
       <label class="nx-label" for="nx-custom-look">Describe the look <span class="nx-dim">optional{{ customVisualStyleSaveState === 'pending' ? ' · saving…' : customVisualStyleSaveState === 'saved' ? ' · saved' : '' }}</span></label>
       <textarea id="nx-custom-look" v-model="customVisualStyleDraft" class="nx-input" rows="2" maxlength="500" placeholder="moody film stills, neon alleys, 35mm grain. Or put it in the prompt above."></textarea>
     </template>
-    <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canSend" @click="send">{{ sendLabel }}</button>
+    <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canSend" @click="send">{{ sendLabel }}</button>
     <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
     <p v-if="lookChanged && !editing" class="nx-hint nx-hint-warn">Look changed. Draw again to use it.</p>
     <p v-if="aiImageError || activeSceneVisualGenerationError" class="nx-err">{{ aiImageError || activeSceneVisualGenerationError }}</p>
@@ -613,7 +613,7 @@ function send() {
           <ul v-if="bulkStylePreview.skipped.length" class="nx-skips">
             <li v-for="sk in bulkStylePreview.skipped" :key="sk.scene_id">Scene {{ sk.order }} skipped: {{ sk.reason }}</li>
           </ul>
-          <button class="nx-btn nx-primary nx-full" type="button" :disabled="bulkStyleSubmitting || !bulkStylePreview.affordable" @click="submitBulkStyle">
+          <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="bulkStyleSubmitting || !bulkStylePreview.affordable" @click="submitBulkStyle">
             {{ bulkStyleSubmitting ? "Starting…" : `Redraw ${bulkStylePreview.eligible_count} scenes · ${bulkStylePreview.total_cost} cr` }}
           </button>
         </template>
@@ -662,7 +662,7 @@ function send() {
     <div class="nx-chips">
       <button v-for="bg in AUDIOGRAM_BACKGROUNDS" :key="bg.key" type="button" :class="['nx-chip', audiogramBg === bg.key ? 'on' : '']" @click="selectAudiogramBg(bg.key)">{{ bg.label }}</button>
     </div>
-    <button v-if="activeScene?.visual_type !== 'waveform'" class="nx-btn nx-primary nx-full" type="button" @click="saveAudiogramSettings({ apply: true })">Use an audiogram on this scene</button>
+    <button v-if="activeScene?.visual_type !== 'waveform'" class="nx-btn nx-primary nx-full nx-cta" type="button" @click="saveAudiogramSettings({ apply: true })">Use an audiogram on this scene</button>
     <p v-else class="nx-hint">This scene shows an audiogram.</p>
   </template>
 

@@ -97,7 +97,7 @@ const ownAudio = computed(() => !!activeScene.value?.voice_settings?.custom_audi
         {{ applyVoiceAllState === "saved" ? "Copied. Each scene re-records when you finish the video." : applyVoiceAllState === "error" ? applyVoiceAllError : `Copies the voice, speed, delivery${activeVoiceIsGemini ? " and direction" : ""}.` }}
       </p>
       <button class="nx-btn nx-outline nx-full" type="button" @click="bulkVoiceOpen ? (bulkVoiceOpen = false) : openBulkVoice()">
-        {{ bulkVoiceOpen ? "Hide" : "Re-record all scenes" }}
+        {{ bulkVoiceOpen ? "Hide" : "Re-record all scenes (see the price first)" }}
       </button>
       <div v-if="bulkVoiceOpen" class="nx-quote">
         <p v-if="bulkVoiceLoading" class="nx-hint">Working out the price…</p>
