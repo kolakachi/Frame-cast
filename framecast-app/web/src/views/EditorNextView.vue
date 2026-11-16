@@ -855,6 +855,10 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
               </button>
               <span class="nx-num">{{ previewTimer.elapsed }} <span class="nx-dim">/ {{ previewTimer.total }}</span></span>
               <span class="nx-grow"></span>
+              <!-- Add a scene sits in the header row, so the lanes own the full width (owner, 2026-11-16). -->
+              <button class="nx-btn nx-tl-add" type="button" :title="activeSceneId ? 'Add a scene after the selected one' : 'Add a scene'" @click="openAddScene(activeSceneId ? `after-${activeSceneId}` : 'top')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add scene
+              </button>
               <div class="nx-seg">
                 <button type="button" :class="previewMode === 'scene' ? 'on' : ''" @click="setPreviewMode('scene')">Scene</button>
                 <button type="button" :class="previewMode === 'full' ? 'on' : ''" @click="setPreviewMode('full')">Full video</button>
@@ -903,7 +907,6 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <div class="nx-playhead" :style="{ left: `${playheadX}px` }" aria-hidden="true"></div>
               </div>
               </div>
-              <button class="nx-add-clip" type="button" aria-label="Add a scene" @click="openAddScene(activeSceneId ? `after-${activeSceneId}` : 'top')">+</button>
             </div>
           </section>
         </div>

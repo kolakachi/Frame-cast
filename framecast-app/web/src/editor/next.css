@@ -672,3 +672,6 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-panel.is-chat { width: 440px; }
 @media (max-width: 1280px) { .nx-panel.is-chat { width: 400px; } }
 .nx-asst-foot .nx-ask .nx-pbox-input { max-height: 220px; resize: none; transition: height 0.08s ease; }
+/* Timeline: Add scene in the header row beside Scene / Full video; the lanes take the full width. */
+.nx-tl-add { height: 34px; padding: 0 12px; gap: 6px; margin-right: 6px; font-size: 13px; }
+.nx-tl-add svg { width: 14px; height: 14px; }
