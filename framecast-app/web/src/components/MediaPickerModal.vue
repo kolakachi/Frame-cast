@@ -8,6 +8,9 @@ const props = defineProps({
   musicTracks: { type: Array, default: () => [] },
   selectedMusicTrackId: { default: undefined }, // undefined=unset, null=no music, number=id
   currentAssetId: { type: Number, default: null },
+  // Open on a tab ('sfx-library') with a search filled in (the new editor's quick sound picks).
+  initialTab: { type: String, default: '' },
+  initialQuery: { type: String, default: '' },
 })
 
 const emit = defineEmits(['close', 'select'])
@@ -178,6 +181,11 @@ watch(
     // Clearing the box above wakes the search watcher; the explicit load below
     // already covers it, so drop the queued duplicate.
     clearTimeout(searchTimer)
+    if (props.mode === 'sound' && props.initialTab === 'sfx-library') {
+      activeTab.value = 'sfx-library'
+      searchQuery.value = props.initialQuery || ''
+      loadSfxLibrary()
+    }
 
     // Fetched alongside the assets so the Characters chip is populated the
     // moment it's clicked. Cached for the session — characters change rarely.

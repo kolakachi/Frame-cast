@@ -17,6 +17,7 @@ import { chooseEditor } from "../editor/editorChoice";
 import { cr, provideEditorCore, usePrices } from "../editor/next/core";
 import MediaPanel from "../editor/next/MediaPanel.vue";
 import VoicePanel from "../editor/next/VoicePanel.vue";
+import AudioPanel from "../editor/next/AudioPanel.vue";
 import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
 import VoicePickerDialog from "../editor/next/VoicePickerDialog.vue";
@@ -234,6 +235,14 @@ function scoreTone(score) {
   return "weak";
 }
 
+// Audio › Sound effects opens the free sound library, searching for a quick pick ("whoosh") when one was clicked.
+const pickerTab = ref("");
+const pickerQuery = ref("");
+function browseSounds(q) {
+  pickerTab.value = "sfx-library";
+  pickerQuery.value = q || "";
+  openMediaPicker("sound");
+}
 // "Edit script" opens the Script panel with the cursor at the end of this scene's words.
 function editScript() {
   openPanel("script");
@@ -640,6 +649,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
           <MediaPanel v-else-if="panel === 'media'" />
           <VoicePanel v-else-if="panel === 'voice'" />
           <CaptionsPanel v-else-if="panel === 'captions'" />
+          <AudioPanel v-else-if="panel === 'audio'" @browse-sounds="browseSounds" @select-scene="(id) => select('scene', id)" />
 
           <template v-else>
             <div class="nx-ph">
@@ -790,7 +800,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                   :aria-valuenow="Math.round(playheadTime)" :aria-valuetext="clock(playheadTime)" title="Click or drag to move the playhead"
                   @pointerdown="scrubStart" @pointermove="scrubMove" @pointerup="scrubEnd" @pointercancel="scrubEnd"
                   @keydown.left.prevent="timelineSeek(timeToPct(Math.max(0, playheadTime - 1)))" @keydown.right.prevent="timelineSeek(timeToPct(Math.min(totalVideoDuration || 0, playheadTime + 1)))">
-                  <span v-for="(scene, i) in scenes" :key="scene.id" class="nx-tick" :style="clipFlex(scene)">{{ clock(sceneStart(i)) }}</span>
+                  <span v-for="(scene, i) in scenes" :key="scene.id" class="nx-rtick" :style="clipFlex(scene)">{{ clock(sceneStart(i)) }}</span>
                 </div>
                 <div class="nx-lane is-tall">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
@@ -891,6 +901,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
     <CaptionStylesDialog />
     <VoiceCloneModal v-if="showCloneModal" @close="showCloneModal = false" @created="onVoiceCloned" />
     <MediaPickerModal :mode="mediaPickerMode" :visible="mediaPickerVisible" :music-tracks="musicTracks" :selected-music-track-id="selectedMusicTrackId"
+      :initial-tab="mediaPickerMode === 'sound' ? pickerTab : ''" :initial-query="mediaPickerMode === 'sound' ? pickerQuery : ''"
       :current-asset-id="mediaPickerMode === 'visual' ? (activeScene?.visual_asset_id ?? null) : null"
       @close="mediaPickerVisible = false; core.videoReferencePicking.value = false" @select="onMediaPicked" />
 

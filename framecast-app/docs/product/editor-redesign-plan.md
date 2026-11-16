@@ -122,12 +122,12 @@ The step column says when it lands.
 
 | Classic | Step | |
 |---|---|---|
-| Now playing | 4 | |
-| Library with mood filter, audition, No music | 4 | |
-| My uploads (media picker) | 4 | |
-| AI music: mood chips or own words, price, Generate | 4 | |
-| Volume, duck volume, fade in, loop, duck under voice | 4 | |
-| Scene sound effect: pick, change, volume, remove | 4 | |
+| Now playing | 4 | ✓ |
+| Library with mood filter, audition, No music | 4 | ✓ |
+| My uploads (media picker) | 4 | ✓ |
+| AI music: mood chips or own words, price, Generate | 4 | ✓ |
+| Volume, duck volume, fade in, loop, duck under voice | 4 | ✓ |
+| Scene sound effect: pick, change, volume, remove | 4 | ✓ |
 
 ### Brand panel
 
