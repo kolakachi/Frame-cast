@@ -25,6 +25,11 @@ function newChat() {
   cruiseResetConversation();
   confirmNew.value = false;
 }
+// Saving the brief closes it once the save is done.
+async function saveBrief() {
+  await cruiseSaveBrief();
+  cruiseBriefOpen.value = false;
+}
 const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
 </script>
 
@@ -131,28 +136,32 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
       </button>
       <button type="button" :class="['nx-pdrop', cruisePrefsOpen ? 'on' : '']" :aria-expanded="cruisePrefsOpen" title="Assistant defaults" @click="cruiseTogglePrefs">Defaults</button>
       <span class="nx-grow"></span>
-      <button class="nx-btn nx-primary" type="button" :disabled="!cruiseInputText.trim() || cruiseResolving" title="Send (⌘⏎)" @click="cruiseSubmitIntent">Send</button>
+      <button class="nx-pdrop nx-send" type="button" :disabled="!cruiseInputText.trim() || cruiseResolving" title="Send (⌘⏎)" @click="cruiseSubmitIntent">Send</button>
     </div>
   </div>
 
   <!-- Theme and brief: keeps new scenes and regenerations on theme unless a message says otherwise. -->
-  <div v-if="cruiseBriefOpen && cruiseBrief" class="nx-sheet nx-sec">
-    <div class="nx-row"><b>Theme and brief{{ cruiseBriefLocked ? " · locked" : "" }}</b><button class="nx-link" type="button" @click="cruiseBriefOpen = false">Close</button></div>
-    <p class="nx-hint">Keeps new scenes and regenerations on theme unless you say otherwise in a message.</p>
+  <div v-if="cruiseBriefOpen && cruiseBrief" class="nx-modal-bg" @click.self="cruiseBriefOpen = false">
+  <div class="nx-modal nx-modal-form" role="dialog" aria-modal="true" aria-labelledby="nx-brief-title" @keydown.esc="cruiseBriefOpen = false">
+    <div class="nx-row"><h2 id="nx-brief-title">Theme and brief{{ cruiseBriefLocked ? " · locked" : "" }}</h2><button class="nx-ib" type="button" aria-label="Close" @click="cruiseBriefOpen = false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button></div>
+    <p>Keeps new scenes and regenerations on theme unless you say otherwise in a message. Saving locks it, so it stops following the scenes.</p>
     <label class="nx-label" for="nx-b-theme">Theme</label><input id="nx-b-theme" v-model="cruiseBrief.theme" class="nx-input" maxlength="200" placeholder="hand-drawn doodle explainer" />
     <label class="nx-label" for="nx-b-topic">Topic</label><input id="nx-b-topic" v-model="cruiseBrief.topic" class="nx-input" maxlength="200" placeholder="what the video is about" />
     <label class="nx-label" for="nx-b-style">Visual style</label><input id="nx-b-style" v-model="cruiseBrief.visual_style" class="nx-input" maxlength="200" placeholder="doodle, marker on whiteboard" />
     <label class="nx-label" for="nx-b-tone">Tone</label><input id="nx-b-tone" v-model="cruiseBrief.tone" class="nx-input" maxlength="200" placeholder="friendly, educational" />
     <label class="nx-label" for="nx-b-subj">Recurring subject</label><input id="nx-b-subj" v-model="cruiseBrief.recurring_subject" class="nx-input" maxlength="200" placeholder="a hand drawing on a whiteboard" />
     <div class="nx-row nx-end">
-      <button class="nx-link" type="button" :disabled="cruiseBriefBusy" @click="cruiseRefreshBrief">Refresh from scenes</button>
-      <button class="nx-btn nx-primary" type="button" :disabled="cruiseBriefBusy" @click="cruiseSaveBrief">Save and lock</button>
+      <button class="nx-btn" type="button" :disabled="cruiseBriefBusy" @click="cruiseRefreshBrief">Refresh from scenes</button>
+      <button class="nx-btn nx-primary" type="button" :disabled="cruiseBriefBusy" @click="saveBrief">Save and lock</button>
     </div>
+  </div>
   </div>
 
   <!-- Defaults the assistant leans on when a message doesn't name a model or source. -->
-  <div v-if="cruisePrefsOpen" class="nx-sheet nx-sec">
-    <div class="nx-row"><b>Assistant defaults</b><button class="nx-link" type="button" @click="cruisePrefsOpen = false">Close</button></div>
+  <div v-if="cruisePrefsOpen" class="nx-modal-bg" @click.self="cruisePrefsOpen = false">
+  <div class="nx-modal nx-modal-form" role="dialog" aria-modal="true" aria-labelledby="nx-prefs-title" @keydown.esc="cruisePrefsOpen = false">
+    <div class="nx-row"><h2 id="nx-prefs-title">Assistant defaults</h2><button class="nx-ib" type="button" aria-label="Close" @click="cruisePrefsOpen = false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button></div>
+    <p>What the assistant uses when a message doesn't say.</p>
     <span class="nx-label">Image model</span>
     <UiSelect :model-value="cruisePrefs.image_model || ''" :options="CRUISE_IMAGE_MODEL_OPTIONS" label="Image model" @update:model-value="(v) => setCruisePref('image_model', v || null)" />
     <span class="nx-label">Video model</span>
@@ -160,6 +169,8 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
     <span class="nx-label">Pictures from</span>
     <UiSelect :model-value="cruisePrefs.visual_source || 'auto'" :options="CRUISE_VISUAL_SOURCE_OPTIONS" label="Pictures from" drop="up" @update:model-value="(v) => setCruisePref('visual_source', v)" />
     <p class="nx-hint">These are hints: "use Kling for this one" in a message still wins.</p>
+    <div class="nx-row nx-end"><button class="nx-btn nx-primary" type="button" @click="cruisePrefsOpen = false">Done</button></div>
+  </div>
   </div>
 
   <div class="nx-row">

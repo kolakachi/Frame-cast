@@ -582,3 +582,43 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-drop { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 18px; border: 1px dashed rgba(255, 255, 255, 0.18); border-radius: 10px; cursor: pointer; font-size: 13px; }
 .nx-drop span { font-size: 12px; color: var(--muted); }
 .nx-char-preview { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; }
+
+/* ── Desktop refinements (owner, 2026-11-16) ─────────────────────────────────────────────── */
+/* Scene card: buttons sit a little below the text; Rewrite in the same row */
+.nx-scene-acts { margin-top: 8px; }
+.nx-mini.is-on { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+.nx-scene-tools { margin-top: 6px; }
+.nx-rewrite { margin-top: 6px; padding: 12px; border-radius: 10px; background: var(--bg); gap: 10px; }
+.nx-rewrite .nx-label { margin-top: 2px; }
+/* Assistant: the message box shows its focus on the box, not the textarea; your messages right, replies left */
+.nx-ask .nx-pbox-input:focus, .nx-ask .nx-pbox-input:focus-visible { outline: none; box-shadow: none; }
+.nx-msg.is-user { flex-direction: row-reverse; }
+.nx-msg.is-user .nx-msg-body { align-items: flex-end; }
+.nx-msg.is-user .nx-msg-text { background: var(--raised); color: var(--text); padding: 8px 12px; border-radius: 12px 12px 4px 12px; max-width: 85%; }
+.nx-msg.is-ai .nx-msg-body, .nx-msg.is-assistant .nx-msg-body { align-items: flex-start; }
+.nx-send { background: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0 12px; }
+.nx-send:not(:disabled):hover { background: #f38c5e; box-shadow: none; }
+.nx-send:disabled { background: rgba(240, 122, 69, 0.45); }
+/* Form modals (brief, defaults) */
+.nx-modal-form { max-width: 520px; gap: 12px; }
+.nx-modal-form .nx-label { margin-top: 2px; }
+/* Add a scene: its own roomy modal, two columns */
+.nx-add-modal { max-width: 860px; max-height: calc(100dvh - 32px); overflow-y: auto; gap: 16px; border: 0; }
+.nx-add-modal.nx-add { padding: 22px; background: #1c1c21; border: 0; }
+.nx-add-body { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.nx-add-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.nx-add-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nx-add-chars { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.nx-add-char { flex-shrink: 0; width: 64px; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--text-2); padding: 4px 0; border-radius: 8px; }
+.nx-add-char .nx-pick-thumb { width: 44px; height: 44px; border-radius: 50%; }
+.nx-add-char span:last-child { max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-add-char.on .nx-pick-thumb { box-shadow: 0 0 0 2px var(--accent); }
+.nx-add-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px; }
+.nx-add-style { border: 0; background: var(--field); border-radius: 8px; padding: 0 0 6px; display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--text-2); overflow: hidden; text-align: center; }
+.nx-add-style img, .nx-add-style-ph { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: flex; align-items: center; justify-content: center; background: var(--raised); color: var(--muted); }
+.nx-add-style.on { box-shadow: 0 0 0 2px var(--accent); color: var(--text); }
+@media (max-width: 760px) { .nx-add-body { grid-template-columns: 1fr; } }
+.nx-add-styles { flex-shrink: 0; grid-auto-rows: max-content; }
+.nx-add-style { overflow: visible; }
+.nx-add-style img, .nx-add-style-ph { border-radius: 8px 8px 0 0; }
+.nx-add-chars { flex-shrink: 0; }

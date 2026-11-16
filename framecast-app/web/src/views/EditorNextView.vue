@@ -208,7 +208,11 @@ function closeMenusOutside(event) {
   projectOpen.value = false;
 }
 function closeMenusOnEscape(event) {
-  if (event.key !== "Escape" || (!shareOpen.value && !exportOpen.value && !projectOpen.value)) return;
+  if (event.key !== "Escape") return;
+  // The modals first: the assistant's brief and defaults, then adding a scene.
+  if (core.cruiseBriefOpen.value || core.cruisePrefsOpen.value) { core.cruiseBriefOpen.value = false; core.cruisePrefsOpen.value = false; return; }
+  if (addScenePanelPosition.value) { closeAddScene(); return; }
+  if (!shareOpen.value && !exportOpen.value && !projectOpen.value) return;
   shareOpen.value = false;
   exportOpen.value = false;
   projectOpen.value = false;
@@ -294,15 +298,18 @@ function editScript() {
     box.setSelectionRange(box.value.length, box.value.length);
   });
 }
+// The modal's place: after a scene ("after-<id>") or, from "+ Add", at the end.
+const addAfter = computed(() => (String(addScenePanelPosition.value).startsWith("after-") ? Number(String(addScenePanelPosition.value).slice(6)) : null));
+const addLabel = computed(() => {
+  if (addAfter.value == null) return scenes.value.length ? "Adds it at the end of the video. To put it somewhere else, use Insert between scenes." : "Your first scene.";
+  const i = scenes.value.findIndex((sc) => sc.id === addAfter.value);
+  return i >= 0 ? `Goes after scene ${i + 1}${i + 1 < scenes.value.length ? `, before scene ${i + 2}` : ", at the end"}.` : "";
+});
 // Add a scene: classic's form, at the top ("+ Add", adds at the end) or under the scene an Insert was clicked after.
 function openAddScene(position) {
   openPanel("script");
   if (addScenePanelPosition.value !== position) toggleAddScene(position);
-  nextTick(() => {
-    const form = document.querySelector(".nx-add");
-    form?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    form?.querySelector("textarea")?.focus({ preventScroll: true });
-  });
+  nextTick(() => document.getElementById("nx-add-script")?.focus());
 }
 
 // ── Timeline ────────────────────────────────────────────────────────────────
@@ -611,7 +618,6 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
               </div>
               <button class="nx-mini" type="button" :aria-expanded="addScenePanelPosition === 'top'" @click="openAddScene('top')">+ Add</button>
             </div>
-            <AddSceneForm v-if="addScenePanelPosition === 'top'" label="Adds a scene at the end of the video. To put it somewhere else, use Insert between scenes." />
 
 
             <template v-for="(scene, i) in scenes" :key="scene.id">
@@ -635,13 +641,13 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <button class="nx-mini" type="button" :disabled="i === scenes.length - 1 || sceneReorderPendingId !== null" :aria-label="`Move scene ${i + 1} down`" title="Move down" @click="moveScene(scene.id, 'down')">{{ sceneReorderPendingId === scene.id ? "…" : "↓" }}</button>
                 <button class="nx-mini" type="button" @click="duplicateScene(scene.id)">Duplicate</button>
                 <button class="nx-mini is-danger" type="button" :disabled="sceneReorderPendingId !== null || deleteScenePending" @click="promptDeleteScene(scene.id)">Delete</button>
+                <button v-if="scene.id === activeSceneId" :class="['nx-mini', rewriteToolsVisible ? 'is-on' : '']" type="button" :aria-expanded="rewriteToolsVisible" @click="toggleRewriteTools">Rewrite</button>
               </div>
 
               <!-- The selected scene's tools: rewrite it with AI (free), and the length of a scene with no voice. -->
               <template v-if="scene.id === activeSceneId">
-                <div class="nx-row nx-scene-tools">
-                  <button class="nx-mini" type="button" :aria-expanded="rewriteToolsVisible" @click="toggleRewriteTools">Rewrite</button>
-                  <label v-if="!scene.voice_settings?.audio_asset_id" class="nx-len">
+                <div v-if="!scene.voice_settings?.audio_asset_id" class="nx-row nx-scene-tools">
+                  <label class="nx-len">
                     <span>Length</span>
                     <input v-model="sceneDurationDraft" type="number" min="1" max="600" step="0.5" :disabled="sceneDurationSaving"
                       :placeholder="String(scene.duration_seconds ?? 12)" aria-label="Scene length in seconds" @change="saveSceneDuration" />s
@@ -649,13 +655,18 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 </div>
                 <p v-if="sceneDurationError" class="nx-err">{{ sceneDurationError }}</p>
                 <div v-if="rewriteToolsVisible" class="nx-rewrite">
+                  <span class="nx-label">Quick rewrites</span>
                   <div class="nx-chips">
-                    <button v-for="o in [...REWRITE_EDIT_OPTIONS, ...REWRITE_TONE_OPTIONS]" :key="o.mode" type="button" class="nx-chip" :disabled="rewritePending" @click="submitRewrite(o.mode)">{{ o.label }}</button>
+                    <button v-for="o in REWRITE_EDIT_OPTIONS" :key="o.mode" type="button" class="nx-chip" :disabled="rewritePending" @click="submitRewrite(o.mode)">{{ o.label }}</button>
                   </div>
-                  <div class="nx-row">
-                    <input v-model="rewriteCustomInstruction" class="nx-input nx-input-sm" placeholder="Or say how: make it about price" aria-label="How to rewrite this scene" @keyup.enter="submitRewriteCustom" />
-                    <button class="nx-mini" type="button" :disabled="rewritePending || !rewriteCustomInstruction.trim()" @click="submitRewriteCustom">{{ rewritePending ? "Writing…" : "Go" }}</button>
+                  <span class="nx-label">Tone</span>
+                  <div class="nx-chips">
+                    <button v-for="o in REWRITE_TONE_OPTIONS" :key="o.mode" type="button" class="nx-chip" :disabled="rewritePending" @click="submitRewrite(o.mode)">{{ o.label }}</button>
                   </div>
+                  <label class="nx-label" for="nx-rw-own">Or say how</label>
+                  <textarea id="nx-rw-own" v-model="rewriteCustomInstruction" class="nx-input" rows="3" placeholder="Make it about price, add a question, mention the free shipping…"
+                    @keydown.meta.enter.prevent="submitRewriteCustom" @keydown.ctrl.enter.prevent="submitRewriteCustom"></textarea>
+                  <button class="nx-btn nx-full" type="button" :disabled="rewritePending || !rewriteCustomInstruction.trim()" @click="submitRewriteCustom">{{ rewritePending ? "Writing…" : "Rewrite this way" }}</button>
                   <p class="nx-hint">This scene only. Locked facts stay as they are. No credits.</p>
                   <p v-if="rewriteError" class="nx-err">{{ rewriteError }}</p>
                 </div>
@@ -673,7 +684,6 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
             <div :class="['nx-insert', i === scenes.length - 1 ? 'is-last' : '', addScenePanelPosition === `after-${scene.id}` ? 'is-open' : '']">
               <button type="button" :aria-label="`Insert a scene after scene ${i + 1}`" @click="openAddScene(`after-${scene.id}`)">+ Insert</button>
             </div>
-            <AddSceneForm v-if="addScenePanelPosition === `after-${scene.id}`" :after="scene.id" :label="`Goes after scene ${i + 1}.`" />
             </template>
           </template>
 
@@ -893,6 +903,11 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
           </section>
         </div>
       </div>
+    </div>
+
+    <!-- Add a scene: its own modal (owner, 2026-11-16), opened by "+ Add", an Insert divider or the timeline's +. -->
+    <div v-if="addScenePanelPosition" class="nx-modal-bg" @click.self="closeAddScene">
+      <AddSceneForm :after="addAfter" :label="addLabel" />
     </div>
 
     <!-- New character (Media › AI image and Add scene › AI): it was flagged open but never shown in the new editor. -->
