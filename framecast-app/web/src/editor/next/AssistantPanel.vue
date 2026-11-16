@@ -2,7 +2,7 @@
 // Assistant (canvas 3E3t2SZP8XhvMxAB1NikRj, "Assistant"; classic Cruise Control chat). The chat, its action cards
 // (price, Apply / Skip / Undo / Retry, Apply all), the theme brief and the defaults all run through the shared core:
 // the same conversation and the same spending rules as the classic editor.
-import { ref } from "vue";
+import { nextTick, ref, watch } from "vue";
 import UiSelect from "../../components/UiSelect.vue";
 import { useCore } from "./core";
 
@@ -18,6 +18,18 @@ const {
   CRUISE_IMAGE_MODEL_OPTIONS, CRUISE_ANIMATION_TIER_OPTIONS, CRUISE_VISUAL_SOURCE_OPTIONS,
   cruiseAutoApply, setCruiseAutoApply,
 } = core;
+
+// The message box grows with what is typed, up to ASK_MAX px, then scrolls; it shrinks back once sent.
+const ASK_MAX = 220;
+const askBox = ref(null);
+function fitAsk() {
+  const el = askBox.value;
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, ASK_MAX)}px`;
+  el.style.overflowY = el.scrollHeight > ASK_MAX ? "auto" : "hidden";
+}
+watch(cruiseInputText, () => nextTick(fitAsk));
 
 // "New chat" asks first: the conversation goes, the video's changes stay.
 const confirmNew = ref(false);
@@ -129,7 +141,7 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
   <footer class="nx-asst-foot">
   <div class="nx-pbox nx-ask">
     <label class="nx-label" for="nx-ask">Message the assistant</label>
-    <textarea id="nx-ask" v-model="cruiseInputText" class="nx-pbox-input" rows="2" placeholder="Describe what you want to change…"
+    <textarea id="nx-ask" ref="askBox" v-model="cruiseInputText" class="nx-pbox-input" rows="2" placeholder="Describe what you want to change…"
       @keydown.meta.enter.prevent="cruiseSubmitIntent" @keydown.ctrl.enter.prevent="cruiseSubmitIntent"></textarea>
     <div class="nx-pbox-bar">
       <button type="button" :class="['nx-pdrop', cruiseBriefOpen ? 'on' : '']" :aria-expanded="cruiseBriefOpen" title="Theme and creative brief" @click="cruiseToggleBrief">

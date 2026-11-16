@@ -667,3 +667,8 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-asst-head .nx-scope .ui-select { display: block; flex: 1 1 auto; min-width: 0; }
 .nx-asst-head .nx-scope .ui-select-trigger { width: 100%; height: 40px; justify-content: space-between; border-radius: 8px; padding: 0 12px; font-size: 14px; }
 .nx-asst-head .nx-scope .ui-select-caret { font-size: 10px; }
+
+/* Assistant: a wider panel than the others, so the chat has room (owner, 2026-11-16) */
+.nx-panel.is-chat { width: 440px; }
+@media (max-width: 1280px) { .nx-panel.is-chat { width: 400px; } }
+.nx-asst-foot .nx-ask .nx-pbox-input { max-height: 220px; resize: none; transition: height 0.08s ease; }
