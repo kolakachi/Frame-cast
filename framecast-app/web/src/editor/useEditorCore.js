@@ -7202,7 +7202,8 @@ export function useEditorCore() {
           visual_prompt: visualQuery,
           visual_style: addSceneVisualStyle.value,
         };
-      } else if (!["text_card", "waveform"].includes(visualType)) {
+      } else if (!["text_card", "waveform", "placeholder"].includes(visualType)) {
+        // A scene added with no picture chosen stays empty (2026-11-16: it was matched to a random stock picture).
         const visualResponse = await api.post(`/scenes/${createdScene.id}/swap-visual`, {
           query: visualQuery,
           visual_type: visualType,

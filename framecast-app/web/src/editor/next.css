@@ -622,3 +622,16 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-add-style { overflow: visible; }
 .nx-add-style img, .nx-add-style-ph { border-radius: 8px 8px 0 0; }
 .nx-add-chars { flex-shrink: 0; }
+
+/* Assistant: the chat is its own shaded area; your messages are full-width darker rows, replies sit on the chat */
+.nx-scope { gap: 8px; }
+.nx-chat { background: #121215; border-radius: 12px; padding: 6px 0; gap: 2px; min-height: 160px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
+.nx-chat > .nx-empty { margin: 8px; border: 0; }
+.nx-chat .nx-msg { padding: 10px 12px; gap: 10px; }
+.nx-chat .nx-msg.is-user { flex-direction: row; background: #0b0b0d; }
+.nx-chat .nx-msg.is-user .nx-msg-body { align-items: stretch; }
+.nx-chat .nx-msg.is-user .nx-msg-text { background: transparent; padding: 0; border-radius: 0; max-width: none; color: var(--text); }
+.nx-chat .nx-msg.is-user .nx-msg-who { background: var(--on); }
+.nx-chat .nx-act { background: var(--field); }
+.nx-chat .nx-msg.is-user { flex-direction: row-reverse; }
+.nx-chat .nx-msg.is-user .nx-msg-text { text-align: right; }

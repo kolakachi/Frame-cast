@@ -17,13 +17,24 @@ const {
 const { imageCost } = usePrices(core);
 
 const MODES = [["stock_video", "Stock video", "Footage found for the scene"], ["stock_image", "Stock image", "A photo found for the scene"],
-  ["ai_image", "AI picture", "Drawn for the scene"], ["assets", "Your library", "An upload or past media"]];
+  ["ai_image", "AI picture", "Drawn for the scene"], ["ai_video", "AI video", "A clip made for the scene"],
+  ["audiogram", "Audiogram", "Sound waves over a colour"], ["assets", "Your library", "An upload or past media"]];
+// AI video is made after the scene exists (Media › AI video: model, storyboard or straight, the price shown first); the
+// scene is added without a picture and that panel opens on it with the shot described here.
+const mode = ref(addSceneVisualMode.value || "");
+const shot = ref("");
+function pickMode(m) {
+  mode.value = m;
+  selectAddSceneVisualMode(m === "ai_video" ? "" : m);
+}
 const adding = ref(false);
 const thumb = (c) => c?.reference_asset?.thumbnail_url || c?.reference_asset?.storage_url || null;
 
 async function add() {
   if (adding.value) return;
   adding.value = true;
+  // Set before the scene is made: adding closes this form; the editor opens AI video once the new scene is selected.
+  if (mode.value === "ai_video") core.mediaIntent.value = { kind: "ai_video", shot: shot.value.trim() };
   try { await createScene(props.after || null); } finally { adding.value = false; }
 }
 </script>
@@ -55,24 +66,34 @@ async function add() {
       <section class="nx-add-col">
         <span class="nx-label">Picture</span>
         <div class="nx-add-modes" role="radiogroup" aria-label="Where the picture comes from">
-          <button v-for="[m, l, d] in MODES" :key="m" type="button" role="radio" :aria-checked="addSceneVisualMode === m" :class="['nx-opt', addSceneVisualMode === m ? 'on' : '']" @click="selectAddSceneVisualMode(m)">
+          <button v-for="[m, l, d] in MODES" :key="m" type="button" role="radio" :aria-checked="mode === m" :class="['nx-opt', mode === m ? 'on' : '']" @click="pickMode(m)">
             <b>{{ l }}</b><span>{{ d }}</span>
           </button>
         </div>
-        <p v-if="!addSceneVisualMode" class="nx-hint">None picked: the scene is added without a picture, and you choose it after.</p>
+        <p v-if="!mode" class="nx-hint">None picked: the scene is added without a picture, and you choose it after.</p>
 
-        <template v-if="addSceneVisualMode === 'stock_video'">
+        <template v-if="mode === 'ai_video'">
+          <label class="nx-label" for="nx-add-shot">Describe the shot</label>
+          <textarea id="nx-add-shot" v-model="shot" class="nx-input" rows="4" maxlength="1000" placeholder="How it moves: slow push-in on the product, steam rising, she looks up and smiles"></textarea>
+          <p class="nx-hint">After you add the scene, AI video opens on it with this shot: choose the model and length there, see the price, and nothing is made until you say so.</p>
+        </template>
+
+        <template v-else-if="mode === 'audiogram'">
+          <p class="nx-hint">Moving sound waves over a colour, following the voice. Pick its design and colours in Media › Audiogram after adding.</p>
+        </template>
+
+        <template v-if="mode === 'stock_video'">
           <div class="nx-row"><span>Type</span><UiSelect v-model="addSceneStockSubType" :options="ADD_SCENE_STOCK_OPTIONS" label="Stock video type" /></div>
           <textarea v-model="addSceneVisualQuery" class="nx-input" rows="2" aria-label="Search for" placeholder="Search for: abandoned mansion at night. Leave blank to use the script."></textarea>
           <p class="nx-hint">Stock footage is free.</p>
         </template>
 
-        <template v-else-if="addSceneVisualMode === 'stock_image'">
+        <template v-else-if="mode === 'stock_image'">
           <textarea v-model="addSceneVisualQuery" class="nx-input" rows="2" aria-label="Search for" placeholder="Search for: dark forest with fog. Leave blank to use the script."></textarea>
           <p class="nx-hint">Stock photos are free.</p>
         </template>
 
-        <template v-else-if="addSceneVisualMode === 'ai_image'">
+        <template v-else-if="mode === 'ai_image'">
           <span class="nx-label">Character</span>
           <div class="nx-add-chars">
             <button type="button" :class="['nx-add-char', !addSceneCharacterId ? 'on' : '']" @click="selectAddSceneCharacter(null)"><span class="nx-pick-thumb">–</span><span>None</span></button>
@@ -93,7 +114,7 @@ async function add() {
           <p class="nx-hint">The picture is drawn when you add the scene{{ imageCost != null ? `: ${imageCost} credits` : "" }}.</p>
         </template>
 
-        <template v-else-if="addSceneVisualMode === 'assets'">
+        <template v-else-if="mode === 'assets'">
           <div v-if="addScenePickedAsset" class="nx-list-row nx-pick">
             <span class="nx-pick-thumb"><img v-if="addScenePickedAsset.thumbnail_url || (addScenePickedAsset.asset_type === 'image' && addScenePickedAsset.storage_url)" :src="addScenePickedAsset.thumbnail_url || addScenePickedAsset.storage_url" alt="" /></span>
             <span class="nx-list-main"><b>{{ addScenePickedAsset.title || "Selected" }}</b><span>{{ addScenePickedAsset.asset_type || "asset" }}</span></span>
@@ -107,7 +128,7 @@ async function add() {
     <p v-if="addSceneGenerateError" class="nx-err">{{ addSceneGenerateError }}</p>
     <div class="nx-row nx-end nx-add-actions">
       <button class="nx-btn" type="button" @click="closeAddScene">Cancel</button>
-      <button class="nx-btn nx-primary" type="button" :disabled="adding" @click="add">{{ adding ? "Adding…" : `Add scene${addSceneVisualMode === "ai_image" ? cr(imageCost) : ""}` }}</button>
+      <button class="nx-btn nx-primary" type="button" :disabled="adding" @click="add">{{ adding ? "Adding…" : `Add scene${mode === "ai_image" ? cr(imageCost) : ""}` }}</button>
     </div>
   </div>
 </template>

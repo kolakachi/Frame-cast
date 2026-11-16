@@ -42,6 +42,15 @@ const isAi = computed(() => activeScene.value?.visual_type === "ai_image");
 // The core keeps one source key; "AI Image" serves both AI image and AI video, told apart here.
 const aiAsVideo = ref(false);
 watch(() => activeScene.value?.id, () => { aiAsVideo.value = isAi.value && activeSceneVisualIsVideo.value; }, { immediate: true });
+// Opened for a new AI video scene (AddSceneForm): the AI video tab, with the shot described there.
+watch(() => [activeScene.value?.id, core.mediaIntent?.value], () => {
+  const intent = core.mediaIntent?.value;
+  if (intent?.kind !== "ai_video") return;
+  core.mediaIntent.value = null;
+  aiAsVideo.value = true;
+  selectedSwapVisualSource.value = "AI Image";
+  if (intent.shot) animateMotionPrompt.value = intent.shot;
+}, { immediate: true });
 const group = computed(() => {
   const src = selectedSwapVisualSource.value;
   if (src === "Stock Video") return "video";

@@ -101,6 +101,11 @@ const RAIL = [
 ];
 const SELECTION_FOR_PANEL = { captions: "caption", media: "image", voice: "voice" };
 const panel = ref("script");
+// A request for the Media panel to open on a tab (AddSceneForm's AI video): read by MediaPanel when it mounts.
+core.mediaIntent = core.mediaIntent || ref(null);
+watch(activeSceneId, () => {
+  if (core.mediaIntent.value?.kind === "ai_video") { panel.value = "media"; selection.value = "image"; }
+});
 const selection = ref("scene");
 
 function openPanel(id) {

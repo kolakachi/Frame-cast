@@ -34,23 +34,22 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
 </script>
 
 <template>
-  <div class="nx-ph nx-row">
-    <div>
-      <h2>Assistant</h2>
-      <p>You'll see the cost before anything runs</p>
-    </div>
+  <div class="nx-ph">
+    <h2 title="Ask for changes in plain words. You'll see the cost of each change before anything runs.">Assistant</h2>
+  </div>
+
+  <!-- What it works on, and starting over, in one row. -->
+  <div class="nx-row nx-scope">
+    <span class="nx-label" title="The scene the assistant changes, or the whole video">Working on</span>
+    <UiSelect v-model="cruiseScopeValue" :options="cruiseScopeOptions" label="What the assistant works on" align="left" />
+    <span class="nx-grow"></span>
     <template v-if="cruiseMessages.length">
       <button v-if="!confirmNew" class="nx-mini" type="button" title="Start a new chat; your video's changes stay" @click="confirmNew = true">New chat</button>
       <span v-else class="nx-row nx-confirm">
         <button class="nx-link" type="button" @click="confirmNew = false">Keep</button>
-        <button class="nx-mini" type="button" @click="newChat">Clear chat</button>
+        <button class="nx-mini" type="button" @click="newChat">Clear</button>
       </span>
     </template>
-  </div>
-
-  <div class="nx-row nx-scope">
-    <span class="nx-label">Working on</span>
-    <UiSelect v-model="cruiseScopeValue" :options="cruiseScopeOptions" label="What the assistant works on" align="left" />
   </div>
 
   <div ref="cruiseChatScrollRef" class="nx-chat">
