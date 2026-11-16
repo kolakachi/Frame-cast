@@ -34,25 +34,26 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
 </script>
 
 <template>
-  <div class="nx-ph">
-    <h2 title="Ask for changes in plain words. You'll see the cost of each change before anything runs.">Assistant</h2>
-  </div>
-
-  <!-- What it works on, and starting over, in one row. -->
-  <div class="nx-row nx-scope">
-    <span class="nx-label" title="The scene the assistant changes, or the whole video">Working on</span>
-    <UiSelect v-model="cruiseScopeValue" :options="cruiseScopeOptions" label="What the assistant works on" align="left" />
-    <span class="nx-grow"></span>
-    <template v-if="cruiseMessages.length">
-      <button v-if="!confirmNew" class="nx-mini" type="button" title="Start a new chat; your video's changes stay" @click="confirmNew = true">New chat</button>
+  <div class="nx-asst">
+  <!-- Header: the title and New chat, then what it works on (owner's mockup, 2026-11-16). -->
+  <header class="nx-asst-head">
+    <div class="nx-row">
+      <h2 title="Ask for changes in plain words. You'll see the cost of each change before anything runs.">Assistant</h2>
+      <button v-if="!confirmNew" class="nx-btn nx-asst-new" type="button" :disabled="!cruiseMessages.length" title="Start a new chat; your video's changes stay" @click="confirmNew = true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>New chat
+      </button>
       <span v-else class="nx-row nx-confirm">
         <button class="nx-link" type="button" @click="confirmNew = false">Keep</button>
-        <button class="nx-mini" type="button" @click="newChat">Clear</button>
+        <button class="nx-btn" type="button" @click="newChat">Clear chat</button>
       </span>
-    </template>
-  </div>
+    </div>
+    <div class="nx-row nx-scope">
+      <span class="nx-label" title="The scene the assistant changes, or the whole video">Working on</span>
+      <UiSelect v-model="cruiseScopeValue" :options="cruiseScopeOptions" label="What the assistant works on" align="left" />
+    </div>
+  </header>
 
-  <div ref="cruiseChatScrollRef" class="nx-chat">
+  <div ref="cruiseChatScrollRef" class="nx-chat nx-asst-chat">
     <div v-if="!cruiseMessages.length" class="nx-empty">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></svg>
       <b>What should I change?</b>
@@ -84,7 +85,7 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
               <span v-else class="nx-row nx-row-start"><span class="nx-spin nx-spin-soft" aria-hidden="true"></span>{{ card.progress_text || "Working…" }}</span>
             </div>
             <div v-else-if="card.status === 'applied'" class="nx-row nx-act-state is-good">
-              <span>✓ {{ card.progress_text || "Applied" }} · spent {{ card.credits || card.estimated_cost }} cr</span>
+              <span><span class="nx-act-tick" aria-hidden="true">✓</span>{{ card.progress_text || "Applied" }} · {{ card.credits || card.estimated_cost }} cr</span>
               <button v-if="cruiseCanUndo(card)" class="nx-mini" type="button" :disabled="card._undoing" @click="cruiseUndoAction(m, idx)">{{ card._undoing ? "Undoing…" : "Undo" }}</button>
             </div>
             <p v-else-if="card.status === 'undone'" class="nx-hint">Undone</p>
@@ -115,16 +116,17 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
       </div>
     </div>
 
-    <div v-if="cruiseResolving" class="nx-msg is-ai">
+    <div v-if="cruiseResolving" class="nx-msg is-assistant">
       <span class="nx-msg-who" aria-hidden="true">✦</span>
       <div class="nx-msg-body"><p class="nx-msg-text nx-dim" role="status">Thinking…</p></div>
     </div>
+
+    <div v-if="!cruiseMessages.length" class="nx-chips nx-asst-prompts">
+      <button v-for="qp in CRUISE_QUICK_PROMPTS.slice(0, 4)" :key="qp" type="button" class="nx-chip" @click="cruiseUseQuickPrompt(qp)">{{ qp.charAt(0).toUpperCase() + qp.slice(1) }}</button>
+    </div>
   </div>
 
-  <div v-if="!cruiseMessages.length" class="nx-chips">
-    <button v-for="qp in CRUISE_QUICK_PROMPTS.slice(0, 4)" :key="qp" type="button" class="nx-chip" @click="cruiseUseQuickPrompt(qp)">{{ qp.charAt(0).toUpperCase() + qp.slice(1) }}</button>
-  </div>
-
+  <footer class="nx-asst-foot">
   <div class="nx-pbox nx-ask">
     <label class="nx-label" for="nx-ask">Message the assistant</label>
     <textarea id="nx-ask" v-model="cruiseInputText" class="nx-pbox-input" rows="2" placeholder="Describe what you want to change…"
@@ -177,6 +179,8 @@ const initial = () => (mePayload.value?.name?.[0] ?? "Y").toUpperCase();
       <input type="checkbox" :checked="cruiseAutoApply" @change="setCruiseAutoApply($event.target.checked)" />
       <span>Apply small, undoable changes at once</span>
     </label>
-    <span class="nx-num">{{ cruiseUserBalance }} cr</span>
+    <span class="nx-num">{{ Number(cruiseUserBalance || 0).toLocaleString() }} cr</span>
+  </div>
+  </footer>
   </div>
 </template>

@@ -614,7 +614,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
         </nav>
 
         <!-- Panel -->
-        <aside class="nx-panel" aria-label="Properties">
+        <aside :class="['nx-panel', panel === 'assistant' ? 'is-chat' : '']" aria-label="Properties">
           <template v-if="panel === 'script'">
             <div class="nx-ph nx-row">
               <div>
