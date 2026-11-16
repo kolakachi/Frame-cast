@@ -18,6 +18,8 @@ import { cr, provideEditorCore, usePrices } from "../editor/next/core";
 import MediaPanel from "../editor/next/MediaPanel.vue";
 import VoicePanel from "../editor/next/VoicePanel.vue";
 import AudioPanel from "../editor/next/AudioPanel.vue";
+import BrandPanel from "../editor/next/BrandPanel.vue";
+import AssistantPanel from "../editor/next/AssistantPanel.vue";
 import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
 import VoicePickerDialog from "../editor/next/VoicePickerDialog.vue";
@@ -33,7 +35,7 @@ provideEditorCore(core);
 const { imageCost, voiceCost } = usePrices(core);
 
 const {
-  router, projectId, loading, error, project, scenes, projectTitle,
+  router, projectId, loading, error, project, scenes, projectTitle, titleDraft, commitTitle,
   generationFailed, generationFailureMessage, wholeVideoTake, leaveSaveDialog, chooseLeave,
   retrySourceEditable, retrySourceDraft, retryError, retryPending, retryGeneration, creditCosts,
   // toolbars
@@ -104,6 +106,16 @@ function openPanel(id) {
   // A panel with no toolbar of its own (Script, Audio, Brand…) shows the scene's toolbar, not the last panel's.
   selection.value = SELECTION_FOR_PANEL[id] || "scene";
 }
+// The Assistant panel is the classic editor's assistant tab: ⌘J (the core's shortcut) opens and closes it, and a reply that
+// lands while another panel is open puts a dot on the rail.
+watch(panel, (p) => {
+  core.cruiseTab.value = p === "assistant" ? "assistant" : "config";
+  if (p === "assistant") core.cruiseAssistantPending.value = false;
+});
+watch(core.cruiseTab, (t) => {
+  if (t === "assistant" && panel.value !== "assistant") openPanel("assistant");
+  else if (t !== "assistant" && panel.value === "assistant") openPanel("script");
+});
 // The caption on the frame is outlined only on hover and for a moment after it is clicked, so it doesn't sit boxed
 // the whole time Captions is open.
 const captionFlash = ref(false);
@@ -155,6 +167,30 @@ const exportStatus = computed(() => {
 });
 const shareOpen = ref(false);
 const exportOpen = ref(false);
+const projectOpen = ref(false);
+function toggleProject() {
+  if (!projectOpen.value) titleDraft.value = project.value?.title || projectTitle.value || "";
+  projectOpen.value = !projectOpen.value;
+  shareOpen.value = false;
+  exportOpen.value = false;
+}
+function saveName() {
+  if (!projectOpen.value) return;
+  commitTitle();
+}
+// A shape is chosen at export (both editors): picking another one opens Export with it ticked beside this one.
+function pickShape(value) {
+  projectOpen.value = false;
+  if (value === (project.value?.aspect_ratio || "9:16")) return;
+  const own = project.value?.aspect_ratio || "9:16";
+  exportAspectRatios.value = [...new Set([own, value])];
+  exportOpen.value = true;
+}
+function shapeBox(r) {
+  const [w, h] = r.split(":").map(Number);
+  const k = 18 / Math.max(w, h);
+  return { width: `${Math.round(w * k)}px`, height: `${Math.round(h * k)}px` };
+}
 function toggleExport() {
   // Opens with the video's own shape ticked, as the classic editor does (it opened on "Export 0 formats").
   if (!exportOpen.value && !exportAspectRatios.value.length) exportAspectRatios.value = [project.value?.aspect_ratio || "9:16"];
@@ -163,15 +199,17 @@ function toggleExport() {
 }
 // Share and Export close on a click outside them or on Escape.
 function closeMenusOutside(event) {
-  if (!shareOpen.value && !exportOpen.value) return;
+  if (!shareOpen.value && !exportOpen.value && !projectOpen.value) return;
   if (event.target?.closest?.(".nx-menu-wrap")) return;
   shareOpen.value = false;
   exportOpen.value = false;
+  projectOpen.value = false;
 }
 function closeMenusOnEscape(event) {
-  if (event.key !== "Escape" || (!shareOpen.value && !exportOpen.value)) return;
+  if (event.key !== "Escape" || (!shareOpen.value && !exportOpen.value && !projectOpen.value)) return;
   shareOpen.value = false;
   exportOpen.value = false;
+  projectOpen.value = false;
 }
 onMounted(() => {
   document.addEventListener("pointerdown", closeMenusOutside, true);
@@ -473,7 +511,22 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
           <button class="nx-ib" type="button" aria-label="Back to dashboard" @click="router.push({ name: 'dashboard' })">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
-          <span class="nx-title">{{ projectTitle }}</span>
+          <!-- Project settings: a popover from the name (canvas "Project"), and from the rail's Project. -->
+          <div class="nx-menu-wrap nx-title-wrap">
+            <button class="nx-title nx-title-btn" type="button" aria-haspopup="dialog" :aria-expanded="projectOpen" title="Name and shape" @click="toggleProject">{{ projectTitle }}</button>
+            <div v-if="projectOpen" class="nx-menu nx-menu-left" role="dialog" aria-label="Project settings">
+              <label class="nx-menu-label" for="editor-title-input">Name</label>
+              <input id="editor-title-input" v-model="titleDraft" class="nx-input" maxlength="200" @keydown.enter.prevent="saveName" @blur="saveName" />
+              <div class="nx-menu-label">Shape</div>
+              <div class="nx-shapes">
+                <button v-for="opt in ASPECT_RATIO_OPTIONS" :key="opt.value" type="button" :class="['nx-shape', (project?.aspect_ratio || '9:16') === opt.value ? 'on' : '']"
+                  :aria-pressed="(project?.aspect_ratio || '9:16') === opt.value" @click="pickShape(opt.value)">
+                  <i :style="shapeBox(opt.value)" aria-hidden="true"></i><span>{{ opt.label }}</span>
+                </button>
+              </div>
+              <p class="nx-menu-note">This video is {{ project?.aspect_ratio || "9:16" }}. Pick another shape to export it that way too: each shape is its own render, no extra credits.</p>
+            </div>
+          </div>
           <span :class="['nx-saved', saveLabel === 'Saved' ? '' : 'is-busy']">{{ saveLabel }}</span>
         </div>
         <div class="nx-top-c" role="group" aria-label="Undo and redo">
@@ -547,9 +600,10 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
       <div class="nx-body">
         <!-- Rail -->
         <nav class="nx-rail" aria-label="Editor tools">
-          <button v-for="r in RAIL" :key="r.id" type="button" :class="['nx-rail-btn', panel === r.id ? 'on' : '']" :aria-pressed="panel === r.id" @click="openPanel(r.id)">
+          <button v-for="r in RAIL" :key="r.id" type="button" :class="['nx-rail-btn', panel === r.id ? 'on' : '']" :aria-pressed="panel === r.id" @click="r.id === 'project' ? toggleProject() : openPanel(r.id)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="r.d" /></svg>
             <span>{{ r.label }}</span>
+            <i v-if="r.id === 'assistant' && core.cruiseAssistantPending.value && panel !== 'assistant'" class="nx-rail-dot" aria-label="New reply"></i>
           </button>
         </nav>
 
@@ -649,6 +703,8 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
           <MediaPanel v-else-if="panel === 'media'" />
           <VoicePanel v-else-if="panel === 'voice'" />
           <CaptionsPanel v-else-if="panel === 'captions'" />
+          <BrandPanel v-else-if="panel === 'brand'" />
+          <AssistantPanel v-else-if="panel === 'assistant'" />
           <AudioPanel v-else-if="panel === 'audio'" @browse-sounds="browseSounds" @select-scene="(id) => select('scene', id)" />
 
           <template v-else>

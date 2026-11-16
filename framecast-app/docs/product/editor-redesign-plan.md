@@ -133,32 +133,32 @@ The step column says when it lands.
 
 | Classic | Step | |
 |---|---|---|
-| Channel, brand kit, Save defaults | 4 | |
+| Channel, brand kit, Save defaults | 4 | ✓ |
 
 ### Assistant panel
 
 | Classic | Step | |
 |---|---|---|
-| Scope (which scenes), New chat with confirm | 4 | |
-| Messages, thinking state, quick prompts | 4 | |
-| Action cards: cost, diff, Apply / Skip, running checklist, Undo, Retry, unknown state, top-up when short, Apply all / Skip all | 4 | |
-| Theme & brief popover (save and lock, refresh) | 4 | |
-| Assistant defaults: image model, animation tier, visual source | 4 | |
-| Auto-apply low-risk, balance | 4 | |
+| Scope (which scenes), New chat with confirm | 4 | ✓ |
+| Messages, thinking state, quick prompts | 4 | ✓ |
+| Action cards: cost, diff, Apply / Skip, running checklist, Undo, Retry, unknown state, top-up when short, Apply all / Skip all | 4 | ✓ |
+| Theme & brief popover (save and lock, refresh) | 4 | ✓ |
+| Assistant defaults: image model, animation tier, visual source | 4 | ✓ |
+| Auto-apply low-risk, balance | 4 | ✓ |
 | "Ask the assistant" bar under the frame (new) | 4 | |
 
 ### Project panel
 
 | Classic | Step | |
 |---|---|---|
-| Name (rename), aspect ratio | 4 | |
-| Variants link | 4 | |
+| Name (rename), aspect ratio | 4 | ✓ |
+| Variants link | 4 | ✓ |
 
 ### Timeline
 
 | Classic | New editor | Step | |
 |---|---|---|---|
-| Scene / Full video, scrubber with scene marks, play, prev/next, time | timeline with lanes | 2 | ✓ |
+| Scene / Full video, scrubber with scene marks, play, prev/next, time | timeline with lanes; scrolls sideways, ruler scrubs (2026-11-16) | 2 | ✓ |
 | Music indicator on the frame | music lane | 2 | ✓ |
 | Drag to reorder (classic's hidden timeline) | | 4 | |
 | Collapse the timeline (new) | | 4 | |
