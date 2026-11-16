@@ -11,6 +11,7 @@ const {
   activeScene, activeSceneIndex, scenes, project, currentVisualUrl, activeSceneVisualIsVideo,
   selectedSwapVisualSource, stockVideoSubType, STOCK_VIDEO_SUBTYPE_OPTIONS, visualQueryDraft, swapVisual,
   visualSwapPending, visualSwapError,
+  visualCandidates, visualCandidatesPending, visualCandidatesError, loadVisualCandidates, pickVisualCandidate,
   characters, activeCharacter, selectCharacter, characterPopoverOpen, createCharacterOpen,
   stylePickerRows, imageStylesByKey, visualStyleDraft, visualStyleSaveState, customVisualStyleDraft, customVisualStyleSaveState,
   availableImageModelsEditor, aiImageModelKey, activeSceneHasCharacter, aiImagePromptOverride,
@@ -283,8 +284,21 @@ function send() {
     </div>
     <label class="nx-label" for="nx-q-video">Search for</label>
     <textarea id="nx-q-video" v-model="visualQueryDraft" class="nx-input" rows="2" placeholder="city skyline at sunset. Leave empty to search from the script."></textarea>
-    <button class="nx-btn nx-full" type="button" :disabled="visualSwapPending" @click="swapVisual">{{ visualSwapPending ? "Finding…" : "Find a new clip" }}</button>
-    <p class="nx-hint">Stock footage is free.</p>
+    <button class="nx-btn nx-full" type="button" :disabled="visualCandidatesPending || visualSwapPending" @click="loadVisualCandidates(false)">{{ visualCandidatesPending ? "Searching…" : "Show clips" }}</button>
+    <div v-if="visualCandidates.length" class="nx-cands" role="list" aria-label="Clips to choose from">
+      <button v-for="c in visualCandidates" :key="c.id" type="button" class="nx-cand" role="listitem" :disabled="visualSwapPending"
+        :aria-label="`Use this clip${c.duration_seconds ? `, ${Math.round(c.duration_seconds)} seconds` : ''}`"
+        @mouseenter="($event.currentTarget.querySelector('video') || {}).play?.()?.catch?.(() => {})"
+        @mouseleave="(v => v && (v.pause(), v.currentTime = 0))($event.currentTarget.querySelector('video'))"
+        @click="pickVisualCandidate(c.index)">
+        <img :src="c.thumbnail_url" alt="" loading="lazy" />
+        <video v-if="c.asset_type === 'video'" :src="c.preview_url" muted loop playsinline preload="none"></video>
+        <span v-if="c.duration_seconds" class="nx-cand-dur">{{ Math.round(c.duration_seconds) }}s</span>
+      </button>
+    </div>
+    <button v-if="visualCandidates.length" class="nx-link" type="button" :disabled="visualCandidatesPending" @click="loadVisualCandidates(true)">Show other clips</button>
+    <p class="nx-hint">{{ visualCandidates.length ? (visualSwapPending ? "Putting it in…" : "Pick one to use it in this scene. Undo brings the old one back.") : "Stock footage is free." }}</p>
+    <p v-if="visualCandidatesError" class="nx-err">{{ visualCandidatesError }}</p>
     <p v-if="visualSwapError" class="nx-err">{{ visualSwapError }}</p>
   </template>
 
@@ -292,8 +306,15 @@ function send() {
   <template v-else-if="selectedSwapVisualSource === 'Stock Image'">
     <label class="nx-label" for="nx-q-image">Search for</label>
     <textarea id="nx-q-image" v-model="visualQueryDraft" class="nx-input" rows="2" placeholder="dark forest with fog. Leave empty to search from the script."></textarea>
-    <button class="nx-btn nx-full" type="button" :disabled="visualSwapPending" @click="swapVisual">{{ visualSwapPending ? "Finding…" : "Find a new image" }}</button>
-    <p class="nx-hint">Stock photos are free. To bring one to life, use Video › AI video.</p>
+    <button class="nx-btn nx-full" type="button" :disabled="visualCandidatesPending || visualSwapPending" @click="loadVisualCandidates(false)">{{ visualCandidatesPending ? "Searching…" : "Show images" }}</button>
+    <div v-if="visualCandidates.length" class="nx-cands" role="list" aria-label="Images to choose from">
+      <button v-for="c in visualCandidates" :key="c.id" type="button" class="nx-cand" role="listitem" :disabled="visualSwapPending" aria-label="Use this image" @click="pickVisualCandidate(c.index)">
+        <img :src="c.thumbnail_url" alt="" loading="lazy" />
+      </button>
+    </div>
+    <button v-if="visualCandidates.length" class="nx-link" type="button" :disabled="visualCandidatesPending" @click="loadVisualCandidates(true)">Show other images</button>
+    <p class="nx-hint">{{ visualCandidates.length ? (visualSwapPending ? "Putting it in…" : "Pick one to use it in this scene. Undo brings the old one back.") : "Stock photos are free. To bring one to life, use Video › AI video." }}</p>
+    <p v-if="visualCandidatesError" class="nx-err">{{ visualCandidatesError }}</p>
     <p v-if="visualSwapError" class="nx-err">{{ visualSwapError }}</p>
   </template>
 

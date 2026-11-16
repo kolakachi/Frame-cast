@@ -770,6 +770,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{sceneId}/preview', [SceneController::class, 'preview'])->whereNumber('sceneId');
             Route::post('/{sceneId}/regenerate-voice', [SceneController::class, 'regenerateVoice'])->whereNumber('sceneId');
             Route::post('/{sceneId}/swap-visual', [SceneController::class, 'swapVisual'])->whereNumber('sceneId');
+            Route::get('/{sceneId}/visual-candidates', [SceneController::class, 'visualCandidates'])->whereNumber('sceneId')->middleware('throttle:30,1');
             Route::post('/{sceneId}/generate-image', [SceneController::class, 'generateImage'])->whereNumber('sceneId');
             Route::post('/{sceneId}/edit-image', [SceneController::class, 'editImage'])->whereNumber('sceneId');
             Route::post('/{sceneId}/animate', [SceneController::class, 'animate'])->whereNumber('sceneId');

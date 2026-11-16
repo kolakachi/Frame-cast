@@ -13,6 +13,8 @@ use RuntimeException;
  */
 class PixabayVisualProviderAdapter implements VisualProviderAdapter
 {
+    use CachesStockSearch;
+
     private const VIDEO_TYPES = ['stock_clip', 'background_loop'];
 
     public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage', array $excludeIds = []): array
@@ -39,20 +41,14 @@ class PixabayVisualProviderAdapter implements VisualProviderAdapter
 
     private function matchPhoto(string $query, string $orientation, string $apiKey, array $excludeIds = []): array
     {
-        $response = Http::timeout(15)->get('https://pixabay.com/api/', [
+        $hits = $this->stockSearch('https://pixabay.com/api/', [
             'key' => $apiKey,
             'q' => $query ?: 'nature',
             'image_type' => 'photo',
             'orientation' => $orientation === 'landscape' ? 'horizontal' : 'vertical',
             'safesearch' => 'true',
             'per_page' => 30,
-        ]);
-
-        if (! $response->ok()) {
-            throw new RuntimeException('Pixabay photo search failed: '.$response->status());
-        }
-
-        $hits = $response->json('hits') ?? [];
+        ], [], 'hits', 'Pixabay photo search failed');
         if (empty($hits)) {
             return $this->fallback($query, $orientation);
         }
@@ -80,18 +76,12 @@ class PixabayVisualProviderAdapter implements VisualProviderAdapter
 
     private function matchVideo(string $query, string $orientation, string $apiKey, array $excludeIds = []): array
     {
-        $response = Http::timeout(15)->get('https://pixabay.com/api/videos/', [
+        $videos = $this->stockSearch('https://pixabay.com/api/videos/', [
             'key' => $apiKey,
             'q' => $query ?: 'nature',
             'safesearch' => 'true',
             'per_page' => 30,
-        ]);
-
-        if (! $response->ok()) {
-            throw new RuntimeException('Pixabay video search failed: '.$response->status());
-        }
-
-        $videos = $response->json('hits') ?? [];
+        ], [], 'hits', 'Pixabay video search failed');
         if (empty($videos)) {
             return $this->fallback($query, $orientation);
         }

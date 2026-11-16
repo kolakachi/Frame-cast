@@ -2,7 +2,7 @@
 // The redesigned editor (canvas: "WyvStudio Editor Redesign", 2026-10-29). Same brain as the classic editor
 // (useEditorCore); this file is only the layout: a rail of tools, one panel per tool, the frame with a toolbar for
 // whatever is selected, and a timeline. Staff only until it opens; classic stays one click away.
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SchedulePostModal from "../components/SchedulePostModal.vue";
 import ExportUpdateModal from "../components/ExportUpdateModal.vue";
 import UiSelect from "../components/UiSelect.vue";
@@ -124,7 +124,11 @@ function onMediaPicked(e) {
   }
 }
 function select(kind, sceneId = null) {
-  if (sceneId != null) selectScene(sceneId);
+  if (sceneId != null && previewMode.value === "full") {
+    // In the full video a scene picked on the timeline is where the playhead goes, not 0:00.
+    const i = scenes.value.findIndex((s) => s.id === sceneId);
+    if (i >= 0) flushActiveSceneDrafts().then((ok) => { if (ok !== false) timelineSeek(timeToPct(sceneStart(i)) + 0.001); });
+  } else if (sceneId != null) selectScene(sceneId);
   selection.value = kind;
   if (kind === "caption") flashCaption();
   if (kind === "caption") panel.value = "captions";
@@ -149,6 +153,32 @@ const exportStatus = computed(() => {
 });
 const shareOpen = ref(false);
 const exportOpen = ref(false);
+function toggleExport() {
+  // Opens with the video's own shape ticked, as the classic editor does (it opened on "Export 0 formats").
+  if (!exportOpen.value && !exportAspectRatios.value.length) exportAspectRatios.value = [project.value?.aspect_ratio || "9:16"];
+  exportOpen.value = !exportOpen.value;
+  shareOpen.value = false;
+}
+// Share and Export close on a click outside them or on Escape.
+function closeMenusOutside(event) {
+  if (!shareOpen.value && !exportOpen.value) return;
+  if (event.target?.closest?.(".nx-menu-wrap")) return;
+  shareOpen.value = false;
+  exportOpen.value = false;
+}
+function closeMenusOnEscape(event) {
+  if (event.key !== "Escape" || (!shareOpen.value && !exportOpen.value)) return;
+  shareOpen.value = false;
+  exportOpen.value = false;
+}
+onMounted(() => {
+  document.addEventListener("pointerdown", closeMenusOutside, true);
+  document.addEventListener("keydown", closeMenusOnEscape);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", closeMenusOutside, true);
+  document.removeEventListener("keydown", closeMenusOnEscape);
+});
 function onShare(action) {
   shareAction(action);
   if (action !== "share") shareOpen.value = false;
@@ -158,7 +188,8 @@ async function runExport() {
   await queueExport();
 }
 async function backToClassic() {
-  await flushActiveSceneDrafts();
+  // Stays here if the open scene's changes did not save, as the classic editor does: switching would drop them.
+  if ((await flushActiveSceneDrafts()) === false) return;
   chooseEditor("classic");
 }
 
@@ -200,11 +231,19 @@ function scoreTone(score) {
   return "weak";
 }
 
+// Where the new scene's form shows: under the selected scene, or at the end when no scene is selected (an empty video).
+const addAfterId = computed(() => (scenes.value.some((sc) => sc.id === activeSceneId.value) ? activeSceneId.value : "end"));
 // Add a scene after the selected one (the insert popover comes with the Audio/Brand slice).
 const adding = ref(false);
 function startAdd() {
   closeAddScene();
   adding.value = true;
+  // The form sits under the last scene, out of sight on a long video: bring it into view, cursor in the script box.
+  nextTick(() => {
+    const form = document.querySelector(".nx-add");
+    form?.scrollIntoView({ block: "center", behavior: "smooth" });
+    form?.querySelector("textarea")?.focus({ preventScroll: true });
+  });
 }
 async function finishAdd() {
   await createScene(activeSceneId.value);
@@ -217,16 +256,102 @@ function sceneStart(index) {
   for (let i = 0; i < index; i++) t += sceneDuration(scenes.value[i]);
   return t;
 }
-const playheadPct = computed(() => {
-  const total = totalVideoDuration.value || 1;
-  if (previewMode.value === "full") return playProgress.value;
-  const i = Math.max(0, activeSceneIndex.value);
-  return ((sceneStart(i) + (playProgress.value / 100) * sceneDuration(activeScene.value)) / total) * 100;
-});
-function trackSeek(event) {
-  const rect = event.currentTarget.getBoundingClientRect();
-  timelineSeek(((event.clientX - rect.left) / rect.width) * 100);
+// Each scene is as wide as its length (PX_PER_SECOND), never narrower than MIN_CLIP so its name and length fit; the
+// lanes scroll sideways when the video is longer than the window (owner, 2026-11-16: 18 scenes looked mashed).
+const PX_PER_SECOND = 22;
+const MIN_CLIP = 88;
+function clipWidth(scene) {
+  return Math.max(MIN_CLIP, Math.round(sceneDuration(scene) * PX_PER_SECOND));
 }
+function clipFlex(scene) {
+  const w = clipWidth(scene);
+  return { flex: `${w} 0 ${w}px` };
+}
+// The lanes' full width: every scene's width plus the 4px gaps between them.
+const trackWidth = computed(() => scenes.value.reduce((w, sc) => w + clipWidth(sc), 0) + Math.max(0, scenes.value.length - 1) * 4);
+function timeToPct(t) {
+  return (t / (totalVideoDuration.value || 1)) * 100;
+}
+function clock(t) {
+  const s = Math.max(0, Math.floor(t));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+// Where the playhead is, in seconds from the start.
+const playheadTime = computed(() => {
+  if (previewMode.value === "full") return (playProgress.value / 100) * (totalVideoDuration.value || 0);
+  const i = Math.max(0, activeSceneIndex.value);
+  return sceneStart(i) + (playProgress.value / 100) * sceneDuration(activeScene.value);
+});
+// Scenes are laid out by length with a minimum width, so time is placed from each clip's own box, not a ratio.
+const tlScroll = ref(null);
+const tlTracks = ref(null);
+const layoutTick = ref(0);
+function clipBoxes() {
+  void layoutTick.value;
+  return [...(tlTracks.value?.querySelectorAll(".nx-lane.is-tall > .nx-clip") || [])].map((el) => ({ left: el.offsetLeft, width: el.offsetWidth }));
+}
+const playheadX = computed(() => {
+  const boxes = clipBoxes();
+  if (!boxes.length) return 0;
+  let t = playheadTime.value;
+  for (let i = 0; i < scenes.value.length && i < boxes.length; i++) {
+    const d = sceneDuration(scenes.value[i]) || 0;
+    if (t <= d || i === boxes.length - 1) return boxes[i].left + Math.min(1, d ? t / d : 0) * boxes[i].width;
+    t -= d;
+  }
+  return 0;
+});
+function xToTime(x) {
+  const boxes = clipBoxes();
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i];
+    const end = i < boxes.length - 1 ? boxes[i + 1].left : b.left + b.width;
+    if (x < end || i === boxes.length - 1) {
+      const frac = Math.max(0, Math.min(1, (x - b.left) / (b.width || 1)));
+      return sceneStart(i) + frac * sceneDuration(scenes.value[i]);
+    }
+  }
+  return 0;
+}
+// The ruler above the scenes scrubs: click or drag along it.
+let scrubbing = false;
+function scrubAt(event) {
+  const rect = tlTracks.value.getBoundingClientRect();
+  timelineSeek(timeToPct(xToTime(event.clientX - rect.left)));
+}
+function scrubStart(event) {
+  scrubbing = true;
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  scrubAt(event);
+}
+function scrubMove(event) {
+  if (scrubbing) scrubAt(event);
+}
+function scrubEnd() {
+  scrubbing = false;
+}
+// The playhead stays in view while playing or scrubbing, and a scene picked elsewhere scrolls into view; otherwise
+// the lanes stay where the user scrolled them.
+function keepInView(x, smooth) {
+  const el = tlScroll.value;
+  if (!el) return;
+  if (x < el.scrollLeft + 24 || x > el.scrollLeft + el.clientWidth - 48) el.scrollTo({ left: Math.max(0, x - 96), behavior: smooth ? "smooth" : "auto" });
+}
+watch(playheadX, (x) => { if (scrubbing || isPreviewPlaying.value) keepInView(x, !scrubbing); });
+watch(activeSceneId, () => nextTick(() => {
+  const i = scenes.value.findIndex((sc) => sc.id === activeSceneId.value);
+  const box = clipBoxes()[i];
+  const el = tlScroll.value;
+  if (box && el && (box.left < el.scrollLeft || box.left + box.width > el.scrollLeft + el.clientWidth)) keepInView(box.left, true);
+}));
+let tlObserver = null;
+onMounted(() => {
+  if (typeof ResizeObserver === "undefined") return;
+  tlObserver = new ResizeObserver(() => { layoutTick.value++; });
+  watch(tlTracks, (el) => { tlObserver.disconnect(); if (el) tlObserver.observe(el); }, { immediate: true });
+});
+onBeforeUnmount(() => tlObserver?.disconnect());
+watch(() => scenes.value.map((s) => `${s.id}:${sceneDuration(s)}`).join(","), () => nextTick(() => { layoutTick.value++; }));
 function thumbFor(scene) {
   const a = scene.visual_asset;
   if (!a) return null;
@@ -371,7 +496,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
           </div>
           <div class="nx-menu-wrap">
             <button class="nx-btn nx-primary" type="button" :disabled="exportInProgress || !!exportBlockerMessage"
-              :title="exportBlockerMessage || exportToolbar.hint" @click="exportOpen = !exportOpen; shareOpen = false">
+              :title="exportBlockerMessage || exportToolbar.hint" @click="toggleExport">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11" /><path d="M7 10l5 5 5-5" /><path d="M5 20h14" /></svg>
               {{ exportInProgress ? "Finishing…" : exportToolbar.action }}
             </button>
@@ -428,7 +553,8 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
               <p v-if="sortedHooks.length" class="nx-hint">Scored for how well it stops the scroll. Picking one replaces the first scene's line; the voice re-records when you finish the video.</p>
             </section>
 
-            <div v-for="(scene, i) in scenes" :key="scene.id" :class="['nx-scene', scene.id === activeSceneId ? 'on' : '']">
+            <template v-for="(scene, i) in scenes" :key="scene.id">
+            <div :class="['nx-scene', scene.id === activeSceneId ? 'on' : '']">
               <div class="nx-row">
                 <label :for="`nx-script-${scene.id}`" class="nx-scene-name">Scene {{ i + 1 }} · {{ sceneTypeLabel(scene) }}</label>
                 <span class="nx-num">{{ seconds(sceneDuration(scene)) }}</span>
@@ -474,21 +600,26 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 </div>
               </template>
             </div>
-
-            <div v-if="adding" class="nx-add">
-              <span class="nx-label">New scene after scene {{ activeSceneIndex + 1 }}</span>
-              <div class="nx-chips">
-                <button v-for="t in sceneTypeOptions" :key="t" type="button" :class="['nx-chip', selectedSceneType === t ? 'on' : '']" @click="selectedSceneType = t">{{ t }}</button>
+            <!-- The new scene's form sits under the scene it follows (one form, moved here by the Teleport below). -->
+            <div v-if="adding && scene.id === addAfterId" :id="`nx-add-slot-${scene.id}`"></div>
+            </template>
+            <div v-if="adding && addAfterId === 'end'" id="nx-add-slot-end"></div>
+            <Teleport v-if="adding" defer :to="`#nx-add-slot-${addAfterId}`">
+            <div class="nx-add">
+                <span class="nx-label">{{ addAfterId === "end" ? "New scene" : `New scene after scene ${activeSceneIndex + 1}` }}</span>
+                <div class="nx-chips">
+                  <button v-for="t in sceneTypeOptions" :key="t" type="button" :class="['nx-chip', selectedSceneType === t ? 'on' : '']" @click="selectedSceneType = t">{{ t }}</button>
+                </div>
+                <textarea v-model="newSceneScript" class="nx-input" rows="3" placeholder="What this scene says, or draft it with AI"></textarea>
+                <p v-if="addSceneGenerateError" class="nx-err">{{ addSceneGenerateError }}</p>
+                <div class="nx-row nx-end">
+                  <button class="nx-link" type="button" @click="adding = false">Cancel</button>
+                  <button class="nx-btn" type="button" :disabled="addSceneGeneratePending" @click="generateNewSceneDraft">{{ addSceneGeneratePending ? "Drafting…" : "Draft with AI" }}</button>
+                  <button class="nx-btn nx-primary" type="button" @click="finishAdd">Add scene</button>
+                </div>
               </div>
-              <textarea v-model="newSceneScript" class="nx-input" rows="3" placeholder="What this scene says, or draft it with AI"></textarea>
-              <p v-if="addSceneGenerateError" class="nx-err">{{ addSceneGenerateError }}</p>
-              <div class="nx-row nx-end">
-                <button class="nx-link" type="button" @click="adding = false">Cancel</button>
-                <button class="nx-btn" type="button" :disabled="addSceneGeneratePending" @click="generateNewSceneDraft">{{ addSceneGeneratePending ? "Drafting…" : "Draft with AI" }}</button>
-                <button class="nx-btn nx-primary" type="button" @click="finishAdd">Add scene</button>
-              </div>
-            </div>
-            <button v-else class="nx-btn nx-outline nx-full" type="button" @click="startAdd">+ Add scene</button>
+            </Teleport>
+            <button v-if="!adding" class="nx-btn nx-outline nx-full" type="button" @click="startAdd">+ Add scene</button>
           </template>
 
           <MediaPanel v-else-if="panel === 'media'" />
@@ -635,13 +766,20 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
 
             <div class="nx-lanes">
               <div class="nx-lane-names">
-                <span class="is-tall">Scenes</span><span>Voice</span><span>Captions</span><span>Music</span>
+                <span class="nx-ruler-sp" aria-hidden="true"></span><span class="is-tall">Scenes</span><span>Voice</span><span>Captions</span><span>Music</span>
               </div>
-              <div class="nx-tracks" @click.self="trackSeek">
+              <div ref="tlScroll" class="nx-tl-scroll">
+              <div ref="tlTracks" class="nx-tracks" :style="{ width: `${trackWidth}px` }">
+                <div class="nx-lane nx-ruler" role="slider" tabindex="0" aria-label="Playhead" :aria-valuemin="0" :aria-valuemax="Math.round(totalVideoDuration || 0)"
+                  :aria-valuenow="Math.round(playheadTime)" :aria-valuetext="clock(playheadTime)" title="Click or drag to move the playhead"
+                  @pointerdown="scrubStart" @pointermove="scrubMove" @pointerup="scrubEnd" @pointercancel="scrubEnd"
+                  @keydown.left.prevent="timelineSeek(timeToPct(Math.max(0, playheadTime - 1)))" @keydown.right.prevent="timelineSeek(timeToPct(Math.min(totalVideoDuration || 0, playheadTime + 1)))">
+                  <span v-for="(scene, i) in scenes" :key="scene.id" class="nx-tick" :style="clipFlex(scene)">{{ clock(sceneStart(i)) }}</span>
+                </div>
                 <div class="nx-lane is-tall">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
                     :class="['nx-clip', scene.id === activeSceneId ? (selection === 'scene' || selection === 'image' ? 'is-selected' : 'is-current') : '']"
-                    :style="{ flex: `${sceneDuration(scene)} 1 0` }" :aria-label="`Scene ${i + 1}, ${sceneTypeLabel(scene)}, ${seconds(sceneDuration(scene))}`"
+                    :style="clipFlex(scene)" :aria-label="`Scene ${i + 1}, ${sceneTypeLabel(scene)}, ${seconds(sceneDuration(scene))}`"
                     @click="select('scene', scene.id)">
                     <img v-if="thumbFor(scene)?.type === 'img'" :src="thumbFor(scene).url" alt="" loading="lazy" />
                     <video v-else-if="thumbFor(scene)?.type === 'video'" :src="`${thumbFor(scene).url}#t=0.5`" muted preload="metadata" playsinline></video>
@@ -652,22 +790,21 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <div class="nx-lane">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
                     :class="['nx-bar', selection === 'voice' && scene.id === activeSceneId ? 'is-selected' : '', sceneVoiceOutdated(scene) ? 'is-warn' : '']"
-                    :style="{ flex: `${sceneDuration(scene)} 1 0` }" :aria-label="`Scene ${i + 1} voice`" @click="select('voice', scene.id)">
+                    :style="clipFlex(scene)" :aria-label="`Scene ${i + 1} voice`" @click="select('voice', scene.id)">
                     <svg viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path :d="WAVE" /></svg>
                   </button>
                 </div>
                 <div class="nx-lane">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
                     :class="['nx-bar', 'nx-bar-text', selection === 'caption' && scene.id === activeSceneId ? 'is-selected' : '']"
-                    :style="{ flex: `${sceneDuration(scene)} 1 0` }" :aria-label="`Scene ${i + 1} caption`" @click="select('caption', scene.id)">{{ scene.script_text }}</button>
+                    :style="clipFlex(scene)" :aria-label="`Scene ${i + 1} caption`" @click="select('caption', scene.id)">{{ scene.script_text }}</button>
                 </div>
-                <div class="nx-lane">
-                  <button type="button" :class="['nx-bar', 'nx-bar-text', 'nx-music', panel === 'audio' ? 'is-selected' : '']" @click="openPanel('audio')">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></svg>
-                    {{ activeMusicTrack?.title || "No music" }}
-                  </button>
+                <div class="nx-lane nx-music-lane">
+                  <button type="button" :class="['nx-bar', 'nx-music', panel === 'audio' ? 'is-selected' : '']" :aria-label="`Music: ${activeMusicTrack?.title || 'No music'}`" @click="openPanel('audio')"></button>
+                  <span class="nx-music-name" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></svg>{{ activeMusicTrack?.title || "No music" }}</span>
                 </div>
-                <div class="nx-playhead" :style="{ left: `${playheadPct}%` }" aria-hidden="true"></div>
+                <div class="nx-playhead" :style="{ left: `${playheadX}px` }" aria-hidden="true"></div>
+              </div>
               </div>
               <button class="nx-add-clip" type="button" aria-label="Add a scene" @click="openPanel('script'); startAdd()">+</button>
             </div>

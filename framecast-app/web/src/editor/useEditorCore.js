@@ -1380,6 +1380,12 @@ export function useEditorCore() {
   const visualQueryDraft = ref("");
   const visualSwapPending = ref(false);
   const visualSwapError = ref("");
+  // Stock matches to choose from (GET /scenes/{id}/visual-candidates): picking one swaps it in through swap-visual.
+  const visualCandidates = ref([]);
+  const visualCandidatesToken = ref("");
+  const visualCandidatesPending = ref(false);
+  const visualCandidatesError = ref("");
+  let visualCandidatesSeen = [];
   // AI Image generation
   const aiImagePromptOverride = ref("");
   const aiImagePending = ref(false);
@@ -6264,8 +6270,47 @@ export function useEditorCore() {
     }
   }
 
-  async function swapVisual() {
+  function clearVisualCandidates() {
+    visualCandidates.value = [];
+    visualCandidatesToken.value = "";
+    visualCandidatesError.value = "";
+    visualCandidatesSeen = [];
+  }
+  // Matches belong to one scene and one kind of picture.
+  watch(() => [activeSceneId.value, selectedSwapVisualSource.value, stockVideoSubType.value], clearVisualCandidates);
+
+  // Shows stock matches for the scene's search; "more" asks for others than those already shown.
+  async function loadVisualCandidates(more = false) {
+    if (!activeScene.value || visualCandidatesPending.value) return;
+    if (!more) visualCandidatesSeen = [];
+    visualCandidatesPending.value = true;
+    visualCandidatesError.value = "";
+    try {
+      const response = await api.get(`/scenes/${activeScene.value.id}/visual-candidates`, {
+        params: { query: visualQueryDraft.value || activeScene.value.visual_prompt || "", visual_type: selectedVisualType(), exclude: visualCandidatesSeen },
+      });
+      const data = response.data?.data ?? {};
+      visualCandidates.value = data.candidates ?? [];
+      visualCandidatesToken.value = data.token ?? "";
+      visualCandidatesSeen = [...visualCandidatesSeen, ...visualCandidates.value.map((c) => c.id)];
+      if (!visualCandidates.value.length) visualCandidatesError.value = "Nothing found for that search. Try other words.";
+    } catch (requestError) {
+      visualCandidatesError.value = requestError.response?.data?.error?.message || "Could not search stock footage. Try again.";
+    } finally {
+      visualCandidatesPending.value = false;
+    }
+  }
+
+  async function pickVisualCandidate(index) {
+    if (!visualCandidatesToken.value) return;
+    await swapVisual({ candidate_token: visualCandidatesToken.value, candidate_index: index });
+    if (!visualSwapError.value) clearVisualCandidates();
+  }
+
+  async function swapVisual(picked = null) {
     if (!activeScene.value || visualSwapPending.value) return;
+    // Called from a click, the argument is the event: only a picked match counts.
+    if (!picked || !picked.candidate_token) picked = null;
 
     const flushed = await flushActiveSceneDrafts();
     if (flushed === false) return;
@@ -6279,6 +6324,7 @@ export function useEditorCore() {
       const response = await api.post(`/scenes/${activeScene.value.id}/swap-visual`, {
         query: visualQueryDraft.value || activeScene.value.visual_prompt || "",
         visual_type: selectedVisualType(),
+        ...(picked || {}),
       });
 
       const updatedScene = normalizeScenePayload(response.data?.data?.scene ?? null);
@@ -7725,6 +7771,9 @@ export function useEditorCore() {
     visualQueryDraft,
     visualSwapPending,
     visualSwapError,
+    visualCandidates,
+    visualCandidatesPending,
+    visualCandidatesError,
     aiImagePromptOverride,
     aiImagePending,
     aiImageModelKey,
@@ -8212,6 +8261,9 @@ export function useEditorCore() {
     hookScoreClass,
     useHook,
     swapVisual,
+    loadVisualCandidates,
+    pickVisualCandidate,
+    clearVisualCandidates,
     bulkStyleOpen,
     bulkStylePreview,
     bulkStyleLoading,

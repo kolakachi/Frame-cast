@@ -8,6 +8,8 @@ use RuntimeException;
 
 class PexelsVisualProviderAdapter implements VisualProviderAdapter
 {
+    use CachesStockSearch;
+
     private const VIDEO_TYPES = ['stock_clip', 'background_loop'];
 
     public function match(string $query, string $orientation = 'portrait', string $visualType = 'image_montage', array $excludeIds = []): array
@@ -40,20 +42,12 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             default => 'portrait',
         };
 
-        $response = Http::timeout(15)
-            ->withHeaders(['Authorization' => $apiKey])
-            ->get('https://api.pexels.com/v1/search', [
+        $photos = $this->stockSearch('https://api.pexels.com/v1/search', [
                 'query' => $query ?: 'nature',
                 'orientation' => $pexelsOrientation,
                 'per_page' => 30,
                 'page' => 1,
-            ]);
-
-        if (! $response->ok()) {
-            throw new RuntimeException('Pexels photo search failed: '.$response->status());
-        }
-
-        $photos = $response->json('photos') ?? [];
+            ], ['Authorization' => $apiKey], 'photos', 'Pexels photo search failed');
 
         if (empty($photos)) {
             return $this->fallback($query, $orientation);
@@ -89,20 +83,12 @@ class PexelsVisualProviderAdapter implements VisualProviderAdapter
             default => 'portrait',
         };
 
-        $response = Http::timeout(15)
-            ->withHeaders(['Authorization' => $apiKey])
-            ->get('https://api.pexels.com/videos/search', [
+        $videos = $this->stockSearch('https://api.pexels.com/videos/search', [
                 'query' => $query ?: 'nature',
                 'orientation' => $pexelsOrientation,
                 'per_page' => 25,
                 'page' => 1,
-            ]);
-
-        if (! $response->ok()) {
-            throw new RuntimeException('Pexels video search failed: '.$response->status());
-        }
-
-        $videos = $response->json('videos') ?? [];
+            ], ['Authorization' => $apiKey], 'videos', 'Pexels video search failed');
 
         if (empty($videos)) {
             return $this->fallback($query, $orientation);

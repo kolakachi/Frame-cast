@@ -781,6 +781,76 @@ class SceneController extends Controller
         return $storage->extractPath($raw) !== null ? $storage->url($raw) : $raw;
     }
 
+    /** How many stock matches a scene is offered to choose from. */
+    public const VISUAL_CANDIDATES = 6;
+
+    /**
+     * Stock matches to choose from (owner, 2026-11-16: "Find a new clip" swapped in one random match with no choice).
+     * Nothing changes on the scene: the matches are held for 30 minutes under a token, and swap-visual takes the one
+     * picked. A GET, so the edit history (RecordsEditHistory) records nothing.
+     */
+    public function visualCandidates(Request $request, int $sceneId, VisualProviderAdapter $visualProvider): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene || ! $scene->project) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+        $validated = $request->validate([
+            'query' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'exclude' => ['sometimes', 'array', 'max:60'],
+            'exclude.*' => ['string', 'max:64'],
+        ]);
+        $type = trim((string) ($validated['visual_type'] ?? $scene->visual_type ?? 'image_montage'));
+        if (in_array($type, ['text_card', 'waveform'], true)) {
+            return $this->error('no_media', 'This kind of scene has no picture to choose.', 422);
+        }
+        $prompt = $this->swapPrompt($scene, $validated['query'] ?? null);
+        $orientation = in_array((string) ($scene->project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
+        $seen = array_values(array_map('strval', $validated['exclude'] ?? []));
+        $found = [];
+        for ($i = 0; $i < self::VISUAL_CANDIDATES * 2 && count($found) < self::VISUAL_CANDIDATES; $i++) {
+            try {
+                $match = $visualProvider->match($prompt, $orientation, $type, $seen);
+            } catch (Throwable $e) {
+                report($e);
+                break;
+            }
+            $id = (string) ($match['provider_asset_id'] ?? '');
+            if ($id === '' || in_array($id, $seen, true) || empty($match['asset_url'])) continue;
+            $seen[] = $id;
+            $found[] = $match;
+        }
+        $token = Str::random(24);
+        \Illuminate\Support\Facades\Cache::put("visual-candidates:{$scene->getKey()}:{$token}", ['prompt' => $prompt, 'type' => $type, 'matches' => $found], now()->addMinutes(30));
+
+        return response()->json(['data' => [
+            'token' => $token,
+            'query' => $prompt,
+            'candidates' => array_map(fn (array $m, int $i) => [
+                'index' => $i,
+                'id' => (string) $m['provider_asset_id'],
+                'asset_type' => $m['asset_type'],
+                'thumbnail_url' => $m['thumbnail_url'] ?: $m['asset_url'],
+                'preview_url' => $m['asset_url'],
+                'duration_seconds' => $m['duration_seconds'],
+            ], $found, array_keys($found)),
+        ], 'meta' => []]);
+    }
+
+    /** The search a stock swap runs: what was asked, else the scene's own prompt, else its label, tone and words. */
+    private function swapPrompt(Scene $scene, ?string $query): string
+    {
+        $prompt = trim((string) ($query ?? $scene->visual_prompt ?? ''));
+        if ($prompt === '') {
+            $sceneText = mb_substr(trim((string) $scene->script_text), 0, 160);
+            $prompt = trim(($scene->label ?: 'scene').', '.($scene->project?->tone ?: 'neutral')." style, {$sceneText}");
+        }
+        return $prompt;
+    }
+
     public function swapVisual(Request $request, int $sceneId, VisualProviderAdapter $visualProvider): JsonResponse
     {
         /** @var User $user */
@@ -801,7 +871,21 @@ class SceneController extends Controller
         $validated = $request->validate([
             'query' => ['sometimes', 'nullable', 'string'],
             'visual_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            // A match picked from visual-candidates.
+            'candidate_token' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'candidate_index' => ['required_with:candidate_token', 'integer', 'min:0', 'max:'.(self::VISUAL_CANDIDATES - 1)],
         ]);
+
+        $picked = null;
+        if (! empty($validated['candidate_token'])) {
+            $held = \Illuminate\Support\Facades\Cache::get("visual-candidates:{$scene->getKey()}:{$validated['candidate_token']}");
+            $picked = $held['matches'][(int) $validated['candidate_index']] ?? null;
+            if (! $picked) {
+                return $this->error('candidate_expired', 'Those choices have expired. Search again to see new ones.', 422);
+            }
+            $validated['query'] = $held['prompt'];
+            $validated['visual_type'] = $held['type'];
+        }
 
         $requestedType = trim((string) ($validated['visual_type'] ?? $scene->visual_type ?? 'image_montage'));
         $noMediaTypes = ['text_card', 'waveform'];
@@ -823,17 +907,9 @@ class SceneController extends Controller
             ]);
         }
 
-        $prompt = trim((string) ($validated['query'] ?? $scene->visual_prompt ?? ''));
-
-        if ($prompt === '') {
-            $sceneLabel = $scene->label ?: 'scene';
-            $sceneText = mb_substr(trim((string) $scene->script_text), 0, 160);
-            $tone = $project->tone ?: 'neutral';
-            $prompt = trim("{$sceneLabel}, {$tone} style, {$sceneText}");
-        }
-
+        $prompt = $this->swapPrompt($scene, $validated['query'] ?? null);
         $orientation = in_array((string) ($project->aspect_ratio ?? ''), ['16:9'], true) ? 'landscape' : 'portrait';
-        $match = $visualProvider->match($prompt, $orientation, $requestedType);
+        $match = $picked ?? $visualProvider->match($prompt, $orientation, $requestedType);
 
         $asset = Asset::query()->create([
             'workspace_id' => $project->workspace_id,
