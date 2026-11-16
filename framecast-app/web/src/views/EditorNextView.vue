@@ -19,6 +19,7 @@ import MediaPanel from "../editor/next/MediaPanel.vue";
 import VoicePanel from "../editor/next/VoicePanel.vue";
 import AudioPanel from "../editor/next/AudioPanel.vue";
 import BrandPanel from "../editor/next/BrandPanel.vue";
+import AddSceneForm from "../editor/next/AddSceneForm.vue";
 import AssistantPanel from "../editor/next/AssistantPanel.vue";
 import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
@@ -73,7 +74,7 @@ const {
   // scenes
   duplicateScene, promptDeleteScene, deleteSceneTarget, confirmDeleteScene, closeDeleteSceneModal, deleteScenePending,
   moveScene, sceneReorderPendingId, sceneTypeOptions, selectedSceneType, newSceneScript, createScene,
-  generateNewSceneDraft, addSceneGeneratePending, addSceneGenerateError, closeAddScene,
+  generateNewSceneDraft, addSceneGeneratePending, addSceneGenerateError, closeAddScene, addScenePanelPosition, toggleAddScene,
   // top bar
   editHistory, historyStepping, stepHistory, latestExportJob, exportToolbar, activeExportJob, latestExportDownloadUrl,
   exportChecks, exportCheckNotes, exportsByRatio, selectedExportRatio, ASPECT_RATIO_OPTIONS, shareAction,
@@ -89,6 +90,7 @@ const {
 // opens a tool directly. `selection` decides the toolbar above the frame.
 const RAIL = [
   { id: "script", label: "Script", d: "M4 6h16M4 12h16M4 18h10" },
+  { id: "hooks", label: "Hooks", d: "M13 2L4 14h7l-1 8 9-12h-7z" },
   { id: "media", label: "Media", d: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5" },
   { id: "captions", label: "Captions", d: "M3 6h18v12H3zM7 11h4M13 11h4M7 14h10" },
   { id: "voice", label: "Voice", d: "M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3" },
@@ -292,23 +294,15 @@ function editScript() {
     box.setSelectionRange(box.value.length, box.value.length);
   });
 }
-// Where the new scene's form shows: under the selected scene, or at the end when no scene is selected (an empty video).
-const addAfterId = computed(() => (scenes.value.some((sc) => sc.id === activeSceneId.value) ? activeSceneId.value : "end"));
-// Add a scene after the selected one (the insert popover comes with the Audio/Brand slice).
-const adding = ref(false);
-function startAdd() {
-  closeAddScene();
-  adding.value = true;
-  // The form sits under the last scene, out of sight on a long video: bring it into view, cursor in the script box.
+// Add a scene: classic's form, at the top ("+ Add", adds at the end) or under the scene an Insert was clicked after.
+function openAddScene(position) {
+  openPanel("script");
+  if (addScenePanelPosition.value !== position) toggleAddScene(position);
   nextTick(() => {
     const form = document.querySelector(".nx-add");
-    form?.scrollIntoView({ block: "center", behavior: "smooth" });
+    form?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     form?.querySelector("textarea")?.focus({ preventScroll: true });
   });
-}
-async function finishAdd() {
-  await createScene(activeSceneId.value);
-  adding.value = false;
 }
 
 // ── Timeline ────────────────────────────────────────────────────────────────
@@ -610,26 +604,15 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
         <!-- Panel -->
         <aside class="nx-panel" aria-label="Properties">
           <template v-if="panel === 'script'">
-            <div class="nx-ph">
-              <h2>Script</h2>
-              <p>{{ scenes.length }} scene{{ scenes.length === 1 ? "" : "s" }} · {{ seconds(totalVideoDuration) }}</p>
-            </div>
-
-            <section v-if="sortedHooks.length || hasScriptForHooks" class="nx-hooks">
-              <div class="nx-row">
-                <span class="nx-label">Opening line</span>
-                <button class="nx-mini" type="button" :disabled="hooksGenerating || !hasScriptForHooks" @click="regenerateHooks">
-                  {{ hooksGenerating ? "Writing…" : sortedHooks.length ? "New options" : "Suggest openings" }}
-                </button>
+            <div class="nx-ph nx-row">
+              <div>
+                <h2>Script</h2>
+                <p>{{ scenes.length }} scene{{ scenes.length === 1 ? "" : "s" }} · {{ seconds(totalVideoDuration) }}</p>
               </div>
-              <button v-for="h in sortedHooks" :key="h.id || h.hook_text" type="button"
-                :class="['nx-hook', h.hook_text?.trim() === hookSceneText ? 'on' : '']" @click="useHook(h)">
-                <span :class="['nx-score', `is-${scoreTone(h.hook_score)}`]">{{ h.hook_score ?? "–" }}</span>
-                <span class="nx-hook-text">{{ h.hook_text }}<small v-if="h.hook_score_reason" class="nx-hook-why">{{ h.hook_score_reason }}</small></span>
-              </button>
-              <button v-if="(hookOptions || []).length > 4" class="nx-link" type="button" @click="showAllHooks = !showAllHooks">{{ showAllHooks ? "Show the best 4" : `Show all ${hookOptions.length}` }}</button>
-              <p v-if="sortedHooks.length" class="nx-hint">Scored for how well it stops the scroll. Picking one replaces the first scene's line; the voice re-records when you finish the video.</p>
-            </section>
+              <button class="nx-mini" type="button" :aria-expanded="addScenePanelPosition === 'top'" @click="openAddScene('top')">+ Add</button>
+            </div>
+            <AddSceneForm v-if="addScenePanelPosition === 'top'" label="Adds a scene at the end of the video. To put it somewhere else, use Insert between scenes." />
+
 
             <template v-for="(scene, i) in scenes" :key="scene.id">
             <div :class="['nx-scene', scene.id === activeSceneId ? 'on' : '']">
@@ -646,9 +629,17 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 </button>
               </div>
 
+              <!-- Every scene: move, duplicate, delete (as in the classic editor). -->
+              <div class="nx-scene-acts" @click.stop>
+                <button class="nx-mini" type="button" :disabled="i === 0 || sceneReorderPendingId !== null" :aria-label="`Move scene ${i + 1} up`" title="Move up" @click="moveScene(scene.id, 'up')">{{ sceneReorderPendingId === scene.id ? "…" : "↑" }}</button>
+                <button class="nx-mini" type="button" :disabled="i === scenes.length - 1 || sceneReorderPendingId !== null" :aria-label="`Move scene ${i + 1} down`" title="Move down" @click="moveScene(scene.id, 'down')">{{ sceneReorderPendingId === scene.id ? "…" : "↓" }}</button>
+                <button class="nx-mini" type="button" @click="duplicateScene(scene.id)">Duplicate</button>
+                <button class="nx-mini is-danger" type="button" :disabled="sceneReorderPendingId !== null || deleteScenePending" @click="promptDeleteScene(scene.id)">Delete</button>
+              </div>
+
               <!-- The selected scene's tools: rewrite it with AI (free), and the length of a scene with no voice. -->
               <template v-if="scene.id === activeSceneId">
-                <div class="nx-row">
+                <div class="nx-row nx-scene-tools">
                   <button class="nx-mini" type="button" :aria-expanded="rewriteToolsVisible" @click="toggleRewriteTools">Rewrite</button>
                   <label v-if="!scene.voice_settings?.audio_asset_id" class="nx-len">
                     <span>Length</span>
@@ -678,28 +669,37 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 </div>
               </template>
             </div>
-            <!-- The new scene's form sits under the scene it follows (one form, moved here by the Teleport below). -->
-            <div v-if="adding && scene.id === addAfterId" :id="`nx-add-slot-${scene.id}`"></div>
+            <!-- Insert between scenes (classic's divider): shows on hover, always under the last scene. -->
+            <div :class="['nx-insert', i === scenes.length - 1 ? 'is-last' : '', addScenePanelPosition === `after-${scene.id}` ? 'is-open' : '']">
+              <button type="button" :aria-label="`Insert a scene after scene ${i + 1}`" @click="openAddScene(`after-${scene.id}`)">+ Insert</button>
+            </div>
+            <AddSceneForm v-if="addScenePanelPosition === `after-${scene.id}`" :after="scene.id" :label="`Goes after scene ${i + 1}.`" />
             </template>
-            <div v-if="adding && addAfterId === 'end'" id="nx-add-slot-end"></div>
-            <Teleport v-if="adding" defer :to="`#nx-add-slot-${addAfterId}`">
-            <div class="nx-add">
-                <span class="nx-label">{{ addAfterId === "end" ? "New scene" : `New scene after scene ${activeSceneIndex + 1}` }}</span>
-                <div class="nx-chips">
-                  <button v-for="t in sceneTypeOptions" :key="t" type="button" :class="['nx-chip', selectedSceneType === t ? 'on' : '']" @click="selectedSceneType = t">{{ t }}</button>
-                </div>
-                <textarea v-model="newSceneScript" class="nx-input" rows="3" placeholder="What this scene says, or draft it with AI"></textarea>
-                <p v-if="addSceneGenerateError" class="nx-err">{{ addSceneGenerateError }}</p>
-                <div class="nx-row nx-end">
-                  <button class="nx-link" type="button" @click="adding = false">Cancel</button>
-                  <button class="nx-btn" type="button" :disabled="addSceneGeneratePending" @click="generateNewSceneDraft">{{ addSceneGeneratePending ? "Drafting…" : "Draft with AI" }}</button>
-                  <button class="nx-btn nx-primary" type="button" @click="finishAdd">Add scene</button>
-                </div>
-              </div>
-            </Teleport>
-            <button v-if="!adding" class="nx-btn nx-outline nx-full" type="button" @click="startAdd">+ Add scene</button>
           </template>
 
+          <!-- Hooks: the opening line options, in their own place (owner, 2026-11-16). -->
+          <template v-else-if="panel === 'hooks'">
+            <div class="nx-ph">
+              <h2>Hooks</h2>
+              <p>Options for the opening line, scored for how well they stop the scroll</p>
+            </div>
+            <p v-if="!hasScriptForHooks" class="nx-hint">Write the script first: the openings are written from it.</p>
+            <section class="nx-hooks">
+              <div class="nx-row">
+                <span class="nx-label">{{ sortedHooks.length ? "Ranked by score" : "No openings yet" }}</span>
+                <button class="nx-mini" type="button" :disabled="hooksGenerating || !hasScriptForHooks" @click="regenerateHooks">
+                  {{ hooksGenerating ? "Writing…" : sortedHooks.length ? "New options" : "Suggest openings" }}
+                </button>
+              </div>
+              <button v-for="h in sortedHooks" :key="h.id || h.hook_text" type="button"
+                :class="['nx-hook', h.hook_text?.trim() === hookSceneText ? 'on' : '']" @click="useHook(h)">
+                <span :class="['nx-score', `is-${scoreTone(h.hook_score)}`]">{{ h.hook_score ?? "–" }}</span>
+                <span class="nx-hook-text">{{ h.hook_text }}<small v-if="h.hook_score_reason" class="nx-hook-why">{{ h.hook_score_reason }}</small></span>
+              </button>
+              <button v-if="(hookOptions || []).length > 4" class="nx-link" type="button" @click="showAllHooks = !showAllHooks">{{ showAllHooks ? "Show the best 4" : `Show all ${hookOptions.length}` }}</button>
+              <p v-if="sortedHooks.length" class="nx-hint">Scored for how well it stops the scroll. Picking one replaces the first scene's line; the voice re-records when you finish the video.</p>
+            </section>
+          </template>
           <MediaPanel v-else-if="panel === 'media'" />
           <VoicePanel v-else-if="panel === 'voice'" />
           <CaptionsPanel v-else-if="panel === 'captions'" />
@@ -888,9 +888,37 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <div class="nx-playhead" :style="{ left: `${playheadX}px` }" aria-hidden="true"></div>
               </div>
               </div>
-              <button class="nx-add-clip" type="button" aria-label="Add a scene" @click="openPanel('script'); startAdd()">+</button>
+              <button class="nx-add-clip" type="button" aria-label="Add a scene" @click="openAddScene(activeSceneId ? `after-${activeSceneId}` : 'top')">+</button>
             </div>
           </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- New character (Media › AI image and Add scene › AI): it was flagged open but never shown in the new editor. -->
+    <div v-if="core.createCharacterOpen.value" class="nx-modal-bg" @click.self="core.closeCharacterModal()">
+      <div class="nx-modal" role="dialog" aria-modal="true" aria-labelledby="nx-char-title">
+        <h2 id="nx-char-title">New character</h2>
+        <span class="nx-label">Reference image (optional)</span>
+        <label v-if="!core.createCharacterPreviewUrl.value" class="nx-drop">
+          <input type="file" accept="image/*" hidden @change="core.pickCharacterFile" />
+          <b>Choose an image</b><span>PNG or JPG, up to 10 MB</span>
+        </label>
+        <div v-else class="nx-row nx-row-start">
+          <img :src="core.createCharacterPreviewUrl.value" alt="" class="nx-char-preview" />
+          <button class="nx-mini" type="button" @click="core.clearCharacterFile()">Remove</button>
+        </div>
+        <label class="nx-label" for="nx-char-name">Name</label>
+        <input id="nx-char-name" v-model="core.createCharacterName.value" class="nx-input" maxlength="120" placeholder="Marcus the detective" />
+        <label class="nx-label" for="nx-char-desc">Description (optional)</label>
+        <textarea id="nx-char-desc" v-model="core.createCharacterDescription.value" class="nx-input" rows="3" maxlength="2000" placeholder="A weathered 50-year-old detective in a worn trench coat, sharp eyes…"></textarea>
+        <p class="nx-hint">Used in scene prompts to keep the character the same across scenes.</p>
+        <p v-if="core.createCharacterError.value" class="nx-err">{{ core.createCharacterError.value }}</p>
+        <div class="nx-row nx-end">
+          <button class="nx-btn" type="button" @click="core.closeCharacterModal()">Cancel</button>
+          <button class="nx-btn nx-primary" type="button" :disabled="core.createCharacterSaving.value" @click="core.createCharacter()">
+            {{ core.createCharacterSaving.value ? (core.createCharacterFile.value ? "Uploading…" : "Saving…") : "Create" }}
+          </button>
         </div>
       </div>
     </div>
