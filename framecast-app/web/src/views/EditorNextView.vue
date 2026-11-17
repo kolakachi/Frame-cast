@@ -486,6 +486,13 @@ function thumbFor(scene) {
 function seconds(v) {
   return `${Number(v || 0).toFixed(1)}s`;
 }
+// A video scene playing its clip's own sound says so on the voice lane.
+function clipSoundLabel(scene) {
+  const a = scene?.visual_asset;
+  const isVideo = a?.asset_type === "video" || String(a?.mime_type || "").startsWith("video/");
+  const mode = isVideo ? scene?.voice_settings?.clip_sound : null;
+  return mode === "only" ? "Clip sound" : mode === "under" ? "+ clip sound" : "";
+}
 // A fixed waveform shape for the voice lane: it says "narration is here", not the real loudness.
 const WAVE = (() => {
   let d = "";
@@ -912,8 +919,10 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <div class="nx-lane">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
                     :class="['nx-bar', selection === 'voice' && scene.id === activeSceneId ? 'is-selected' : '', sceneVoiceOutdated(scene) ? 'is-warn' : '']"
-                    :style="clipFlex(scene)" :aria-label="`Scene ${i + 1} voice`" @click="select('voice', scene.id)">
+                    :style="clipFlex(scene)" :aria-label="`Scene ${i + 1} voice${clipSoundLabel(scene) ? `: ${clipSoundLabel(scene)}` : ''}`" @click="select('voice', scene.id)">
                     <svg viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path :d="WAVE" /></svg>
+                    <!-- Which sound the scene plays when its clip has its own (owner, 2026-11-17). -->
+                    <span v-if="clipSoundLabel(scene)" class="nx-bar-tag">{{ clipSoundLabel(scene) }}</span>
                   </button>
                 </div>
                 <div class="nx-lane">

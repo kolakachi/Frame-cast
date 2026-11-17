@@ -79,6 +79,10 @@ class AnimateSceneJob implements ShouldQueue
         // have no start frame; start / start_end as before. Null = read from the scene (a resume), else start.
         public readonly ?string $imageMode = null,
         public readonly array $referenceAssetIds = [],
+        // The clip's own sound (Veo, Seedance 2.5; owner, 2026-11-17). Null = read from the scene (a resume).
+        public readonly ?bool $withSound = null,
+        // Beta: the narration Seedance 2.5 makes the referenced person speak (reference_audios).
+        public readonly ?int $speakAudioAssetId = null,
     ) {
         $this->onQueue('visual');
     }
@@ -96,7 +100,8 @@ class AnimateSceneJob implements ShouldQueue
         // Cost is length- AND quality-based (resolution/mode); animation_cost is
         // what we'd refund if the user cancels.
         $quality = \App\Services\CreditService::videoQuality($this->tier, $this->quality);
-        $cost = \App\Services\CreditService::animationCost($this->tier, $quality, $this->durationSeconds);
+        $withSound = $this->withSound ?? (bool) data_get($scene->image_generation_settings_json, 'animation_with_sound', false);
+        $cost = \App\Services\CreditService::animationCost($this->tier, $quality, $this->durationSeconds, $withSound);
         // A resume keeps what the first attempt charged and stamped: that is what a refund returns.
         $this->stampAnimationState($scene, $this->resumePredictionId ? [
             'animation_in_progress'   => true,
@@ -131,8 +136,8 @@ class AnimateSceneJob implements ShouldQueue
                     'scene_id'   => $this->sceneId,
                     'user_id'    => $scene->project->created_by_user_id,
                     // COGS by tier × quality × duration (10s = 2×).
-                    'upstream_cost_usd' => \App\Services\CreditService::animationCogsUsd($this->tier, $quality, $this->durationSeconds),
-                    'metadata'   => ['tier' => $this->tier, 'duration_seconds' => $this->durationSeconds, 'quality' => $quality],
+                    'upstream_cost_usd' => \App\Services\CreditService::animationCogsUsd($this->tier, $quality, $this->durationSeconds, $withSound),
+                    'metadata'   => ['tier' => $this->tier, 'duration_seconds' => $this->durationSeconds, 'quality' => $quality, 'with_sound' => $withSound],
                 ],
             );
             if (! $charged) {
@@ -153,6 +158,8 @@ class AnimateSceneJob implements ShouldQueue
             $noFrames = in_array($mode, ['none', 'reference'], true) && \App\Services\Generation\Video\ReplicateI2VAdapter::takesNoImage($this->tier);
             $refIds = $this->referenceAssetIds ?: (array) data_get($settings0, 'animation_reference_asset_ids', []);
             $references = $mode === 'reference' && $refIds ? Asset::query()->whereIn('id', $refIds)->get()->filter(fn ($a) => $a->storage_url)->values() : collect();
+            $speakId = $this->speakAudioAssetId ?? (int) data_get($settings0, 'animation_speak_audio_asset_id', 0);
+            $speakAudio = $speakId && $mode === 'reference' && $references->isNotEmpty() ? Asset::query()->find($speakId) : null;
             $sourceAsset = $noFrames ? null : ($this->sourceAssetId
                 ? Asset::query()->find($this->sourceAssetId)
                 : ($scene->visual_asset_id ? Asset::query()->find($scene->visual_asset_id) : null));
@@ -206,6 +213,7 @@ class AnimateSceneJob implements ShouldQueue
                 $options = [
                     'aspect_ratio' => $scene->project->aspect_ratio ?? '9:16',
                     $qualityParam  => $quality,
+                    'with_sound'   => $withSound,
                     // Persist the prediction id the instant Replicate hands
                     // it over, so a mid-poll worker death is resumable.
                     'on_prediction_created' => function (string $pid) use ($scene): void {
@@ -219,6 +227,8 @@ class AnimateSceneJob implements ShouldQueue
                     },
                 ];
                 $motion = $this->checkedPrompt($scene, $sourceAsset, $endAsset);
+                // The voiceover the person speaks (Beta): through Replicate's file store, an audio link it can always read.
+                if ($speakAudio) $options['reference_audio_url'] = \App\Services\Generation\ReplicateFiles::copy($speakAudio, 'scene voiceover');
                 try {
                     $result = $adapter->animate($imageUrl, $motion, $this->tier, $this->durationSeconds,
                         $options + ($endAsset ? ['end_image_url' => $this->publicUrlFor($endAsset)] : [])
@@ -264,7 +274,7 @@ class AnimateSceneJob implements ShouldQueue
                 'thumbnail_url'      => $sourceAsset?->storage_url, // reuse source still as thumb (none for a clip from words)
                 'duration_seconds'   => $result['duration_seconds'],
                 'mime_type'          => 'video/mp4',
-                'tags'               => ['ai_animated', $result['provider_key'], $this->tier],
+                'tags'               => array_values(array_filter(['ai_animated', $result['provider_key'], $this->tier, $withSound ? 'with_sound' : null])),
                 'source'             => 'ai_generated',
                 'usage_count'        => 1,
                 'status'             => 'active',
@@ -284,7 +294,22 @@ class AnimateSceneJob implements ShouldQueue
             // Swap the scene's visual to the new video. visual_type stays 'ai_image' so the
             // user can regenerate the still later via the existing flow — the asset_type
             // ('video') is what drives renderer + preview behaviour.
-            $scene->forceFill(['visual_asset_id' => $asset->getKey()])->save();
+            // The scene's sound and length follow the clip (owner, 2026-11-17). A clip made with sound plays it: under the
+            // narration, or as the scene's only sound when there is none. A clip speaking the voiceover keeps the
+            // narration playing (the lips follow it). A scene without narration, or playing only the clip, runs as long
+            // as the clip.
+            $fill = ['visual_asset_id' => $asset->getKey()];
+            $voice = $scene->voice_settings_json ?? [];
+            $narrated = ! empty($voice['audio_asset_id']);
+            if (! empty($speakAudio)) $voice['clip_sound'] = 'off';
+            elseif ($withSound) $voice['clip_sound'] = $narrated ? 'under' : 'only';
+            if ((! $narrated || ($voice['clip_sound'] ?? 'off') === 'only') && \Illuminate\Support\Facades\Schema::hasColumn('scenes', 'duration_seconds')) {
+                $fill['duration_seconds'] = (float) $result['duration_seconds'];
+            }
+            if ($voice !== ($scene->voice_settings_json ?? [])) $fill['voice_settings_json'] = $voice;
+            $scene->forceFill($fill)->save();
+            // Its words, for captions when the clip's own sound is the scene's voice.
+            if ($withSound) rescue(fn () => \App\Jobs\TranscribeAssetJob::dispatch($asset->getKey())->onQueue('generation'), report: false);
 
             // Append to a capped history so users can compare past animations.
             $fresh = $scene->fresh();

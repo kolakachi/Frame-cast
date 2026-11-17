@@ -211,7 +211,8 @@ class GenerateTTSJob implements ShouldQueue, \App\Services\Developer\RepeatableA
                 }
 
                 $scene->forceFill([
-                    'duration_seconds' => $audio['duration_seconds'],
+                    // A scene playing only its clip's sound runs as long as the clip, whatever the narration's length.
+                    'duration_seconds' => ($voiceSettings['clip_sound'] ?? 'off') === 'only' ? $scene->duration_seconds : $audio['duration_seconds'],
                     'voice_settings_json' => $voiceSettings,
                     'image_generation_settings_json' => $scene->image_generation_settings_json,
                     'status' => $this->shouldFinalizeProject ? $scene->status : 'edited',

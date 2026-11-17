@@ -776,3 +776,8 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-info { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 4px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3); font-size: 10px; font-weight: 700; font-style: italic; color: var(--muted); cursor: help; vertical-align: middle; }
 .nx-info:hover, .nx-info:focus-visible { color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); outline: none; }
 .nx-seg-grid { overflow: visible; }
+
+/* Beta label (owner, 2026-11-17): features whose full test is a paid one: clip sound, long clips, speaking the voiceover. */
+.nx-beta { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.nx-bar { position: relative; }
+.nx-bar-tag { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); padding: 1px 5px; border-radius: 4px; font-size: 10px; font-weight: 600; color: var(--text); background: rgba(0, 0, 0, 0.55); white-space: nowrap; pointer-events: none; }

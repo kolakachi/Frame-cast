@@ -18,7 +18,15 @@ const {
   onVoicePreviewSeek, voicePreviewCurrent, voicePreviewDuration, fmtVoicePreviewTime, confirmUploadFromPreview, cancelVoiceUpload,
   voiceUploadAsset, applyVoiceUpload, voiceUploadError,
   customAudioAssets, customAudioLoading, loadCustomAudioAssets, customAudioSearch, customAudioAssetsFiltered, assignCustomAudio,
+  activeSceneVisualIsVideo, activeSceneClipSound, setClipSound, clipSoundSaving, clipSoundError,
 } = core;
+// What a video scene plays (owner, 2026-11-17): its voiceover, the clip's own sound under it, or the clip's sound alone.
+const CLIP_SOUND = [
+  ["off", "Voiceover", "The clip is silent; the voiceover plays. The scene runs as long as the voiceover."],
+  ["under", "Both", "The clip's own sound plays quietly under the voiceover."],
+  ["only", "Clip sound", "The clip's own sound instead of the voiceover; captions come from what it says. The scene runs as long as the clip."],
+];
+const clipSoundHint = computed(() => CLIP_SOUND.find(([k]) => k === activeSceneClipSound.value)?.[2] ?? "");
 const { voiceCost } = usePrices(core);
 
 // Stability, said the way it sounds.
@@ -40,6 +48,15 @@ const ownAudio = computed(() => !!activeScene.value?.voice_settings?.custom_audi
     </div>
     <span class="nx-tag">This scene</span>
   </div>
+
+  <section v-if="activeSceneVisualIsVideo" class="nx-sec nx-sec-top">
+    <span class="nx-label">What this scene plays</span>
+    <div class="nx-seg nx-seg-full" role="radiogroup" aria-label="What this scene plays">
+      <button v-for="[k, l] in CLIP_SOUND" :key="k" type="button" role="radio" :aria-checked="activeSceneClipSound === k" :disabled="clipSoundSaving"
+        :class="activeSceneClipSound === k ? 'on' : ''" @click="activeSceneClipSound !== k && setClipSound(k)">{{ l }}</button>
+    </div>
+    <p :class="clipSoundError ? 'nx-err' : 'nx-hint'">{{ clipSoundError || clipSoundHint }} If the clip has no sound of its own, only the voiceover plays.</p>
+  </section>
 
   <div class="nx-seg nx-seg-full" role="tablist" aria-label="Voice source">
     <button type="button" role="tab" :aria-selected="voiceTab === 'default'" :class="voiceTab === 'default' ? 'on' : ''" @click="voiceTab = 'default'">AI voice</button>

@@ -306,6 +306,10 @@ class SceneController extends Controller
                 $scene->image_generation_settings_json = $image;
             }
         }
+        if (array_key_exists('duration_seconds', $validated) && data_get($scene->voice_settings_json, 'clip_sound') === 'only'
+            && (float) $validated['duration_seconds'] !== (float) $scene->duration_seconds) {
+            return $this->error('clip_controls_duration', 'This scene plays its clip\'s own sound, so it runs as long as the clip.', 422);
+        }
         if (array_key_exists('duration_seconds', $validated) && data_get($scene->voice_settings_json, 'audio_asset_id')
             && (float) $validated['duration_seconds'] !== (float) $scene->duration_seconds) {
             return $this->error('narration_controls_duration', 'This scene follows its narration length. Edit and regenerate narration to change its duration.', 422);
@@ -1206,6 +1210,113 @@ class SceneController extends Controller
         ]);
     }
 
+    /**
+     * What a video scene plays (owner, 2026-11-17): off = the narration only (as before), under = the clip's own sound
+     * quietly under the narration, only = the clip's sound instead of the narration. The scene's length follows what
+     * speaks: the clip in "only", else the narration when there is one.
+     */
+    public function clipSound(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+        $mode = $request->validate(['mode' => ['required', 'string', 'in:off,under,only']])['mode'];
+        $visual = $scene->visual_asset_id ? \App\Models\Asset::query()->find((int) $scene->visual_asset_id) : null;
+        $isVideo = $visual && ($visual->asset_type === 'video' || str_starts_with((string) $visual->mime_type, 'video/'));
+        if (! $isVideo && $mode !== 'off') {
+            return $this->error('not_a_clip', 'Only a video clip has its own sound to play.', 422);
+        }
+        $voice = $scene->voice_settings_json ?? [];
+        $voice['clip_sound'] = $mode;
+        $fill = ['voice_settings_json' => $voice];
+        $narration = ! empty($voice['audio_asset_id']) ? \App\Models\Asset::query()->find((int) $voice['audio_asset_id']) : null;
+        if ($mode === 'only' && (float) $visual->duration_seconds > 0) {
+            $fill['duration_seconds'] = (float) $visual->duration_seconds;
+        } elseif ($mode !== 'only' && $narration && (float) $narration->duration_seconds > 0) {
+            $fill['duration_seconds'] = (float) $narration->duration_seconds;
+        }
+        $scene->forceFill($fill)->save();
+
+        return response()->json(['data' => ['scene' => $this->serializeScene($scene->fresh())], 'meta' => []]);
+    }
+
+    /**
+     * The last frame of the scene before this one, as an image to start this scene's AI video from ("Continue from
+     * the previous scene", owner 2026-11-17). Free. A still is returned as it is; a clip's very last frame is cut once
+     * and kept on the clip (metadata last_frame_asset_id).
+     */
+    public function previousFrame(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+        $previous = \App\Models\Scene::query()->where('project_id', $scene->project_id)
+            ->where('scene_order', '<', $scene->scene_order)->orderByDesc('scene_order')->first();
+        $visual = $previous?->visual_asset_id ? \App\Models\Asset::query()->find((int) $previous->visual_asset_id) : null;
+        if (! $visual || ! $visual->storage_url) {
+            return $this->error('no_previous_frame', $previous ? 'The scene before this one has no picture yet.' : 'This is the first scene: there is nothing before it to continue.', 422);
+        }
+        $isVideo = $visual->asset_type === 'video' || str_starts_with((string) $visual->mime_type, 'video/');
+        if (! $isVideo) {
+            return response()->json(['data' => ['asset' => $this->serializeAsset($visual)], 'meta' => []]);
+        }
+        $kept = (int) data_get($visual->metadata_json, 'last_frame_asset_id', 0);
+        $frame = $kept ? \App\Models\Asset::query()->find($kept) : null;
+        if (! $frame) {
+            $storage = app(\App\Services\Media\StorageService::class);
+            $clip = tempnam(sys_get_temp_dir(), 'prev-clip-');
+            $png = tempnam(sys_get_temp_dir(), 'prev-frame-').'.png';
+            try {
+                // Our own file is read from storage; a stock clip (Pexels, Pixabay) is read where it is, ffmpeg fetching
+                // only its end.
+                $source = (string) $visual->storage_url;
+                $input = $clip;
+                if ($storage->extractPath($source) === null && str_starts_with($source, 'https://')) {
+                    $input = $source;
+                } else {
+                    $bytes = rescue(fn () => $storage->get($source), null, false);
+                    if (! is_string($bytes) || $bytes === '') {
+                        return $this->error('no_previous_frame', 'The clip before this one could not be read.', 422);
+                    }
+                    file_put_contents($clip, $bytes);
+                }
+                // The very last frame: each decoded frame overwrites the file (as the UGC handoff does).
+                $run = \Illuminate\Support\Facades\Process::timeout(60)->run(['ffmpeg', '-y', '-sseof', '-0.5', '-i', $input, '-update', '1', '-q:v', '2', $png]);
+                if (! $run->successful() || ! @filesize($png)) {
+                    return $this->error('no_previous_frame', 'The last frame of the clip before this one could not be cut.', 422);
+                }
+                $size = @getimagesize($png) ?: [null, null];
+                $url = $storage->put(sprintf('workspaces/%s/assets/frames/%s.png', $scene->project->workspace_id, \Illuminate\Support\Str::uuid()), file_get_contents($png));
+                $frame = \App\Models\Asset::query()->create([
+                    'workspace_id'       => $scene->project->workspace_id,
+                    'channel_id'         => $scene->project->channel_id,
+                    'asset_type'         => 'image',
+                    'title'              => 'Last frame of scene '.$previous->scene_order,
+                    'storage_url'        => $url,
+                    'thumbnail_url'      => $url,
+                    'mime_type'          => 'image/png',
+                    'dimensions_json'    => ['width' => $size[0], 'height' => $size[1]],
+                    'tags'               => ['last_frame'],
+                    'usage_count'        => 0,
+                    'status'             => 'active',
+                    'created_by_user_id' => $user->getKey(),
+                ]);
+                $visual->forceFill(['metadata_json' => array_merge($visual->metadata_json ?? [], ['last_frame_asset_id' => $frame->getKey()])])->save();
+            } finally {
+                @unlink($clip);
+                @unlink($png);
+            }
+        }
+
+        return response()->json(['data' => ['asset' => $this->serializeAsset($frame)], 'meta' => []]);
+    }
+
     public function animate(Request $request, int $sceneId): JsonResponse
     {
         /** @var User $user */
@@ -1218,9 +1329,12 @@ class SceneController extends Controller
 
         $validated = $request->validate([
             'tier'             => ['required', 'string', \Illuminate\Validation\Rule::in(['quick', 'balanced', 'premium', 'seedance_lite', 'seedance_pro', 'veo_fast', 'seedance_25', 'spokesperson'])],
-            // Accept any 3–10s from clients; the adapter clamps to 5 or 10 internally
-            // (the Wan/Hailuo/Kling/Seedance models only render those two buckets).
-            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
+            // Any length a model takes (owner, 2026-11-17): ReplicateI2VAdapter::lengthFor holds it to the model's own.
+            'duration_seconds' => ['sometimes', 'integer', 'min:2', 'max:30'],
+            // The clip's own sound (Veo, Seedance 2.5); the scene then plays it (voice_settings_json.clip_sound).
+            'with_sound'       => ['sometimes', 'boolean'],
+            // Beta: Seedance 2.5 makes the referenced person speak this scene's voiceover, lips in sync.
+            'speak_voiceover'  => ['sometimes', 'boolean'],
             'motion_prompt'    => ['sometimes', 'nullable', 'string', 'max:1000'],
             // Which lip-sync model renders a spokesperson clip. Ignored by the
             // other tiers, which are image-to-video and have no such choice.
@@ -1277,9 +1391,24 @@ class SceneController extends Controller
         // the scene's voiceover -> lip-synced clip. Cost is LENGTH-BASED on the
         // voiceover (Fabric bills per second), not a 5/10s i2v bucket.
         $isSpokesperson = $validated['tier'] === 'spokesperson';
-        // Normalize: anything ≤ 7 maps to a 5s render, ≥ 8 to a 10s render. Cost follows.
-        $requested = (int) ($validated['duration_seconds'] ?? 5);
-        $durationSeconds = $requested >= 8 ? 10 : 5;
+        // The length the model will render, which the price follows.
+        $durationSeconds = \App\Services\Generation\Video\ReplicateI2VAdapter::lengthFor($validated['tier'], (int) ($validated['duration_seconds'] ?? 5));
+        $withSound = ! empty($validated['with_sound']) && \App\Services\Generation\Video\ReplicateI2VAdapter::takesSound($validated['tier']);
+        $speakAudio = null;
+        if (! empty($validated['speak_voiceover'])) {
+            if ($validated['tier'] !== 'seedance_25' || $imageMode !== 'reference') {
+                return $this->error('speak_needs_reference', 'Speaking the voiceover needs Seedance 2.5 and a picture of the person to follow.', 422);
+            }
+            $speakAudio = \App\Models\Asset::query()->find((int) data_get($scene->voice_settings_json, 'audio_asset_id', 0));
+            if (! $speakAudio || data_get($scene->voice_settings_json, 'is_outdated') || data_get($scene->voice_settings_json, 'regenerating')) {
+                return $this->error('no_voice', 'Make this scene\'s voiceover first: the person speaks it.', 422);
+            }
+            $spoken = (float) ($speakAudio->duration_seconds ?: $scene->duration_seconds ?: 0);
+            if ($spoken > 30) {
+                return $this->error('voice_too_long', 'This scene\'s voiceover runs '.round($spoken).' s; Seedance 2.5 makes up to 30 s. Split the scene first.', 422);
+            }
+            $durationSeconds = \App\Services\Generation\Video\ReplicateI2VAdapter::lengthFor('seedance_25', max(4, $spoken));
+        }
 
         // Must have a source still image to animate. On a RE-render the scene's
         // visual is already the animated/talking video, so fall back to the
@@ -1349,7 +1478,7 @@ class SceneController extends Controller
             // Tier × chosen quality (resolution/mode) × duration (10s = 2×).
             // Kling takes an end frame in pro mode only, so that is what is charged.
             $quality = CreditService::videoQuality($validated['tier'], $endAsset && $validated['tier'] === 'premium' ? 'pro' : ($validated['quality'] ?? null));
-            $cost = CreditService::animationCost($validated['tier'], $quality, $durationSeconds);
+            $cost = CreditService::animationCost($validated['tier'], $quality, $durationSeconds, $withSound);
         }
 
         $balance = $this->credits->balance((int) $user->workspace_id);
@@ -1395,6 +1524,8 @@ class SceneController extends Controller
                 // How it uses images, so a resumed clip (the reaper) knows it has no start frame.
                 'animation_image_mode'       => $imageMode,
                 'animation_reference_asset_ids' => $referenceAssets->pluck('id')->all(),
+                'animation_with_sound'       => $withSound,
+                'animation_speak_audio_asset_id' => $speakAudio?->getKey(),
                 'animation_started_at'       => now()->toIso8601String(),
                 'generation_token'           => $token,
             ], $isSpokesperson && ! data_get($existing, 'spokesperson_consent.at') ? [
@@ -1434,6 +1565,8 @@ class SceneController extends Controller
                 prechecked: (bool) ($validated['prechecked'] ?? false),
                 imageMode: $imageMode,
                 referenceAssetIds: $referenceAssets->pluck('id')->all(),
+                withSound: $withSound,
+                speakAudioAssetId: $speakAudio?->getKey(),
             );
         }
 
@@ -1467,7 +1600,7 @@ class SceneController extends Controller
         }
         $validated = $request->validate([
             'motion_prompt'    => ['required', 'string', 'max:1000'],
-            'duration_seconds' => ['sometimes', 'integer', 'min:3', 'max:10'],
+            'duration_seconds' => ['sometimes', 'integer', 'min:2', 'max:30'],
             'source_asset_id'  => ['sometimes', 'nullable', 'integer'],
             'end_asset_id'     => ['sometimes', 'nullable', 'integer'],
             'image_mode'       => ['sometimes', 'nullable', 'string', 'in:none,start,start_end,reference'],

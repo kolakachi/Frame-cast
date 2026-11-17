@@ -408,6 +408,12 @@ Route::prefix('v1')->group(function (): void {
                     'qualities' => array_map(fn ($opt) => (int) $opt['cr'], $cfg['options'] ?? []),
                     'credits' => \App\Services\CreditService::animationCost($tier, $quality, 5),
                     'credits_10s_plus' => \App\Services\CreditService::animationCost($tier, $quality, 10),
+                    // Each model's own lengths (a list, or min/max), and how its price scales: by the second from
+                    // per_second_base, else 10 s and up = 2x. sound: it can make the clip's own sound, at that multiplier.
+                    'lengths' => \App\Services\Generation\Video\ReplicateI2VAdapter::LENGTHS[$tier] ?? [5, 10],
+                    'per_second_base' => \App\Services\CreditService::VIDEO_PER_SECOND_BASE[$tier] ?? null,
+                    'sound' => \App\Services\Generation\Video\ReplicateI2VAdapter::takesSound($tier),
+                    'sound_multiplier' => \App\Services\CreditService::VIDEO_SOUND_MULTIPLIER[$tier] ?? 1.0,
                     'recent_minutes' => $speed[$tier]['median_minutes'] ?? null,
                     'slow' => (bool) ($speed[$tier]['slow'] ?? false),
                 ];
@@ -779,6 +785,8 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{sceneId}/animate/use-history', [SceneController::class, 'useAnimationFromHistory'])->whereNumber('sceneId');
             Route::post('/{sceneId}/storyboard', [SceneController::class, 'storyboard'])->whereNumber('sceneId');
             Route::post('/{sceneId}/clip-check', [SceneController::class, 'clipCheck'])->whereNumber('sceneId')->middleware('throttle:30,1');
+            Route::post('/{sceneId}/clip-sound', [SceneController::class, 'clipSound'])->whereNumber('sceneId');
+            Route::get('/{sceneId}/previous-frame', [SceneController::class, 'previousFrame'])->whereNumber('sceneId')->middleware('throttle:30,1');
             Route::post('/{sceneId}/regenerate-music', [SceneController::class, 'regenerateMusic'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');

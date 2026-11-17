@@ -1488,6 +1488,23 @@ export function useEditorCore() {
   );
 
   const animateDurations = computed(() => ANIMATE_TIER_DURATIONS[animateTier.value] || [5, 10]);
+  // Each model's own lengths, from the server (owner, 2026-11-17: no 5-or-10 cap): a list, or { min, max } in seconds.
+  function videoLengths(tier) {
+    return creditCosts.value?.video_tiers?.[tier]?.lengths ?? ANIMATE_TIER_DURATIONS[tier] ?? [5, 10];
+  }
+  const animateLengths = computed(() => videoLengths(animateTier.value));
+  // The length a model renders for a request: ReplicateI2VAdapter::lengthFor, mirrored.
+  function videoLengthFor(tier, requested) {
+    const lengths = videoLengths(tier);
+    const want = Math.ceil(Number(requested) || 5);
+    if (!Array.isArray(lengths)) return Math.max(lengths.min, Math.min(lengths.max, want));
+    if (lengths.includes(want)) return want;
+    return want <= 7 ? lengths[0] : lengths[lengths.length - 1];
+  }
+  // The clip's own sound (Veo, Seedance 2.5) and, in Beta, Seedance 2.5 speaking the scene's voiceover.
+  const animateWithSound = ref(false);
+  const animateSpeakVoiceover = ref(false);
+  const animateTakesSound = computed(() => !!creditCosts.value?.video_tiers?.[animateTier.value]?.sound);
   const animateShortDuration = computed(() => animateDurations.value[0]);
   // Quality options for the current tier (empty for spokesperson, which has no picker).
   // The server's price for each quality wins over the copy above once /credit-costs has answered.
@@ -1509,8 +1526,13 @@ export function useEditorCore() {
     const opt = animateQualityOptions.value.find((o) => o.value === animateQuality.value)
       || animateQualityOptions.value[0];
     const base = opt ? opt.cr : ANIMATE_TIER_COSTS_5S[animateTier.value];
-    // Doubles from ten seconds, as CreditService::animationCost does (Veo's 8 s clip is not doubled).
-    return base * (Number(animateDuration.value) >= 10 ? 2 : 1);
+    // CreditService::animationCost: by the second from the tier's base length where the model bills that way, else
+    // 10 s and up = 2x; times the sound multiplier when the clip makes its own sound.
+    const tier = creditCosts.value?.video_tiers?.[animateTier.value];
+    const len = videoLengthFor(animateTier.value, animateDuration.value);
+    const per = tier?.per_second_base;
+    const sound = animateWithSound.value && tier?.sound ? Number(tier.sound_multiplier || 1) : 1;
+    return Math.ceil(base * (per ? len / per : len >= 10 ? 2 : 1) * sound - 1e-9);
   });
   // Animation models. We expose actual model names (Wan/Hailuo/Kling/Seedance)
   // instead of generic tier labels so power users know what they're picking.
@@ -1531,10 +1553,9 @@ export function useEditorCore() {
   // When the user switches tier, snap the chosen duration to one the new tier
   // actually supports. Prevents the 422 ("duration must be one of: 6, 10") that
   // fired when balanced inherited the 5s default from quick.
-  watch(animateTier, () => {
-    if (!animateDurations.value.includes(animateDuration.value)) {
-      animateDuration.value = animateDurations.value[0];
-    }
+  watch(animateTier, (tier) => {
+    animateDuration.value = videoLengthFor(tier, animateDuration.value);
+    if (!creditCosts.value?.video_tiers?.[tier]?.sound) animateWithSound.value = false;
   });
   // Quick-pick prompts for the animate modal — covers the motion patterns most
   // faceless creators reach for. Click sets the prompt; user can still edit.
@@ -2209,9 +2230,39 @@ export function useEditorCore() {
     // how it first arrived there says nothing about whether it can be animated.
     return true;
   });
+  // What a video scene plays (owner, 2026-11-17): off (narration), under (the clip's sound under it), only (the clip).
+  const activeSceneClipSound = computed(() => {
+    const a = activeScene.value?.visual_asset;
+    const isVideo = a?.asset_type === "video" || String(a?.mime_type || "").startsWith("video/");
+    return isVideo ? activeScene.value?.voice_settings?.clip_sound || "off" : "off";
+  });
   const activeSceneAudioUrl = computed(
-    () => activeScene.value?.audio_asset?.storage_url ?? null
+    () => (activeSceneClipSound.value === "only" ? null : activeScene.value?.audio_asset?.storage_url ?? null)
   );
+  const clipSoundSaving = ref(false);
+  const clipSoundError = ref("");
+  async function setClipSound(mode) {
+    const scene = activeScene.value;
+    if (!scene || clipSoundSaving.value) return;
+    clipSoundSaving.value = true;
+    clipSoundError.value = "";
+    try {
+      const r = await api.post(`/scenes/${scene.id}/clip-sound`, { mode });
+      const updated = normalizeScenePayload(r.data?.data?.scene);
+      if (updated) replaceSceneInCollection(updated);
+    } catch (err) {
+      clipSoundError.value = err.response?.data?.error?.message ?? "Couldn't change the scene's sound.";
+    } finally {
+      clipSoundSaving.value = false;
+    }
+  }
+  // "Continue from the previous scene": its last frame, as a picture to start this scene's AI video from. Free.
+  async function previousSceneFrame() {
+    const scene = activeScene.value;
+    if (!scene) return null;
+    const r = await api.get(`/scenes/${scene.id}/previous-frame`);
+    return r.data?.data?.asset ?? null;
+  }
   const activeSceneSoundAsset = computed(() => activeScene.value?.sound_asset ?? null);
   const activeSceneSoundUrl = computed(() => activeSceneSoundAsset.value?.storage_url ?? null);
   const selectedProjectChannel = computed(() =>
@@ -5232,6 +5283,14 @@ export function useEditorCore() {
   // do not replay the action while narration continues.
   function syncSceneVideoPreview() {
     const offset = currentSceneAudioOffset();
+    const fg = previewVideoRef.value;
+    if (fg) {
+      // The clip's own sound in the preview: at the voice's volume as the scene's only sound, at a third under narration.
+      const mode = activeSceneClipSound.value;
+      fg.muted = mode === "off" || !isPreviewPlaying.value;
+      const voice = Math.max(0, Math.min(1, Number(activeScene.value?.voice_settings?.volume ?? 100) / 100));
+      try { fg.volume = mode === "under" ? 0.3 : voice; } catch { /* some browsers refuse volume on muted media */ }
+    }
     for (const video of [previewVideoRef.value, previewVideoBackgroundRef.value]) {
       if (!video || !Number.isFinite(video.duration) || video.duration <= 0) continue;
       const target = Math.min(offset, Math.max(0, video.duration - 0.04));
@@ -6823,6 +6882,8 @@ export function useEditorCore() {
         ...(prechecked ? { prechecked: true } : {}),
         ...(imageMode ? { image_mode: imageMode } : {}),
         ...(imageMode === "reference" ? { reference_asset_ids: referenceAssetIds } : {}),
+        ...(animateWithSound.value && animateTakesSound.value ? { with_sound: true } : {}),
+        ...(animateSpeakVoiceover.value && imageMode === "reference" && animateTier.value === "seedance_25" ? { speak_voiceover: true } : {}),
         quality: animateTier.value === 'spokesperson' ? null : animateQuality.value,
         // Only the spokesperson tier has an engine choice; the i2v tiers are a
         // different pipeline entirely.
@@ -7809,6 +7870,16 @@ export function useEditorCore() {
     activeSceneConsented,
     needsSpokespersonConsent,
     animateDurations,
+    animateLengths,
+    videoLengthFor,
+    animateWithSound,
+    animateSpeakVoiceover,
+    animateTakesSound,
+    activeSceneClipSound,
+    clipSoundSaving,
+    clipSoundError,
+    setClipSound,
+    previousSceneFrame,
     animateShortDuration,
     animateQualityOptions,
     animateCost,

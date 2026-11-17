@@ -273,18 +273,9 @@ class ReplicateI2VAdapter implements I2VAdapter
         int $durationSeconds,
         array $options
     ): array {
-        // Per-tier valid durations sourced from the actual model schemas.
-        // The frontend is also constrained to these, but we re-validate here
-        // because the adapter is the source of truth.
-        $validDurations = match ($tier) {
-            'balanced' => [6, 10],
-            // Veo only renders 4/6/8s. 4→8 is the one pair where long is
-            // exactly double short, matching the ×2 billing rule.
-            'veo_fast' => [4, 8],
-            'seedance_lite', 'seedance_pro', 'seedance_25' => [5, 10],
-            default    => [5, 10],
-        };
-        $duration = $durationSeconds <= 7 ? $validDurations[0] : $validDurations[1];
+        // Each model's own lengths (owner, 2026-11-17: no 5-or-10 cap); see LENGTHS.
+        $duration = self::lengthFor($tier, $durationSeconds);
+        $withSound = ! empty($options['with_sound']) && self::takesSound($tier);
 
         $request = match ($tier) {
             // Resolution/mode are PINNED per tier so COGS is predictable and
@@ -309,11 +300,9 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'prompt'         => $prompt !== '' ? $prompt : 'subtle natural motion, gentle camera drift',
                     'duration'       => $duration,
                     'resolution'     => $options['resolution'] ?? '720p',
-                    // The price we calibrated against is the without_audio
-                    // variant ($0.10/s vs $0.20/s). Clips are silent b-roll —
-                    // the voiceover is mixed at render — so audio would be
-                    // paid for and then discarded.
-                    'generate_audio' => false,
+                    // Silent unless asked: $0.10/s silent, $0.15/s with sound (Replicate, 2026-11-17). The voiceover is
+                    // mixed at render, so sound is only made when the scene will play it.
+                    'generate_audio' => $withSound,
                     // Veo supports only 16:9 / 9:16; 1:1 projects fall back to
                     // 9:16 and the renderer letterboxes as usual.
                     'aspect_ratio'   => in_array($options['aspect_ratio'] ?? '', ['16:9', '9:16'], true)
@@ -329,8 +318,8 @@ class ReplicateI2VAdapter implements I2VAdapter
                     'prompt'         => $prompt !== '' ? $prompt : 'subtle natural motion',
                     'duration'       => $duration,
                     'resolution'     => $options['resolution'] ?? '480p',
-                    // Calibrated against the non_video_in, silent price.
-                    'generate_audio' => false,
+                    // Sound costs nothing extra on Seedance 2.5 (non_video_in is one price, 2026-11-17).
+                    'generate_audio' => $withSound,
                     'watermark'      => false,
                     // Follow the source image's shape.
                     'aspect_ratio'   => 'adaptive',
@@ -393,6 +382,12 @@ class ReplicateI2VAdapter implements I2VAdapter
                 $request[2]['reference_images'] = array_slice($refs, 0, 4);
                 // Seedance 1 Lite takes references only below 1080p.
                 if ($tier === 'seedance_lite' && ($request[2]['resolution'] ?? '') === '1080p') $request[2]['resolution'] = '720p';
+                // Speak the scene's voiceover (Beta, 2026-11-17): Seedance 2.5 lip-syncs the referenced person to this audio.
+                $audio = (string) ($options['reference_audio_url'] ?? '');
+                if ($audio !== '' && $tier === 'seedance_25') {
+                    $request[2]['reference_audios'] = [$audio];
+                    $request[2]['prompt'] = trim($request[2]['prompt'].' The person in [Image1] speaks the words in [Audio1], lips in sync with it.');
+                }
             }
             return $request;
         }
@@ -405,6 +400,41 @@ class ReplicateI2VAdapter implements I2VAdapter
         }
 
         return $request;
+    }
+
+    /**
+     * The lengths each model takes (Replicate schemas, read 2026-11-17): a list, or a min-max range in whole seconds.
+     * Seedance 2.5 runs up to 30 s.
+     */
+    public const LENGTHS = [
+        'quick'         => [5, 10],
+        'balanced'      => [6, 10],
+        'premium'       => [5, 10],
+        'veo_fast'      => [4, 6, 8],
+        'seedance_lite' => ['min' => 4, 'max' => 12],
+        'seedance_pro'  => ['min' => 2, 'max' => 12],
+        'seedance_25'   => ['min' => 4, 'max' => 30],
+    ];
+
+    /** Models that can make the clip's own sound (speech, effects, ambience). */
+    public const SOUND_TIERS = ['veo_fast', 'seedance_25'];
+
+    public static function takesSound(string $tier): bool
+    {
+        return in_array($tier, self::SOUND_TIERS, true);
+    }
+
+    /**
+     * The length a model renders for a request. In a range: the request, held inside it. In a list: the request when
+     * listed, else the old rule (up to 7 s the shortest, above it the longest), so callers asking 5 or 10 are unchanged.
+     */
+    public static function lengthFor(string $tier, int|float $requested): int
+    {
+        $lengths = self::LENGTHS[$tier] ?? [5, 10];
+        $want = (int) ceil((float) $requested);
+        if (isset($lengths['min'])) return max($lengths['min'], min($lengths['max'], $want));
+        if (in_array($want, $lengths, true)) return $want;
+        return $want <= 7 ? $lengths[0] : $lengths[count($lengths) - 1];
     }
 
     /** Models whose start image is optional: they make a clip from words alone (or from reference images). */

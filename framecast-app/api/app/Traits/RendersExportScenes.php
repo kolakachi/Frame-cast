@@ -56,6 +56,12 @@ trait RendersExportScenes
         bool $watermarkEnabled = false,
         ?Asset $sceneSoundAsset = null
     ): string {
+        // What a video scene plays (owner, 2026-11-17): off = the narration only; under = the clip's own sound quietly
+        // under it; only = the clip's sound instead of the narration, for as long as the scene (set to the clip's length).
+        $clipSound = (string) data_get($scene->voice_settings_json, 'clip_sound', 'off');
+        $visualIsVideo = $visualAsset !== null
+            && ($visualAsset->asset_type === 'video' || str_starts_with((string) $visualAsset->mime_type, 'video/'));
+        if ($clipSound === 'only' && $visualIsVideo) $audioAsset = null;
         $duration = max(1.0, (float) ($audioAsset?->duration_seconds ?: $scene->duration_seconds ?: 3.0));
 
         if ($scene->visual_type === 'waveform') {
@@ -151,7 +157,8 @@ trait RendersExportScenes
                 $this->buildASSCaption(
                     $captionText, $captionStyle, $captionPosition, $captionFont, $duration,
                     $dimensions, $assFile, $captionHighlightMode,
-                    $this->captionTimingWordsFromAsset($audioAsset ?? $this->spokenVideo($visualAsset)),
+                    $this->captionTimingWordsFromAsset($audioAsset ?? $this->spokenVideo($visualAsset)
+                        ?? ($clipSound === 'only' && $visualIsVideo ? $visualAsset : null)),
                     $captionColor, $captionSize, $captionHighlightColor,
                     $captionAnimationOptions,
                 );
@@ -210,13 +217,19 @@ trait RendersExportScenes
                 );
             }
 
-            // UGC clips (including silent ASMR footage) carry their own sound when there is no separate narration.
+            // UGC clips (including silent ASMR footage) carry their own sound when there is no separate narration, and
+            // so does any clip set to play its sound (clip_sound): as the scene's voice without narration, else under it.
             $voiceInput = 1;
-            if ($isVideo && ! $audioAsset && data_get($scene->image_generation_settings_json, 'ugc_kind')) {
+            $clipUnder = false;
+            $isUgc = (bool) data_get($scene->image_generation_settings_json, 'ugc_kind');
+            if ($isVideo && (($isUgc && ! $audioAsset) || in_array($clipSound, ['under', 'only'], true))) {
                 $audioProbe = new Process(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', $visualPath]);
                 $audioProbe->setTimeout(30);
                 $audioProbe->run();
-                if ($audioProbe->isSuccessful() && trim($audioProbe->getOutput()) !== '') $voiceInput = 0;
+                if ($audioProbe->isSuccessful() && trim($audioProbe->getOutput()) !== '') {
+                    if (! $audioAsset) $voiceInput = 0;
+                    else $clipUnder = $clipSound === 'under';
+                }
             }
 
             // Voice and sound volume (0-100 → 0.0-1.0)
@@ -248,17 +261,29 @@ trait RendersExportScenes
                 $videoGraph,
                 sprintf(
                     '[%d:a]apad,atrim=duration=%s,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,volume=%.4f[a_voice]',
-                    $voiceInput, $durationForFilter, $voiceInput === 0 ? $soundVolume : $voiceVolume,
+                    $voiceInput, $durationForFilter, $voiceInput === 0 ? ($isUgc ? $soundVolume : $voiceVolume) : $voiceVolume,
                 ),
             ];
             $audioMapLabel = '[a_voice]';
+            $mix = ['[a_voice]'];
 
             if ($soundInputIndex !== null) {
                 $complexFilters[] = sprintf(
                     '[%d:a]atrim=duration=%s,asetpts=PTS-STARTPTS,volume=%.4f[a_sfx]',
                     $soundInputIndex, $durationForFilter, $soundVolume,
                 );
-                $complexFilters[] = '[a_voice][a_sfx]amix=inputs=2:normalize=0[a_out]';
+                $mix[] = '[a_sfx]';
+            }
+            // The clip's own sound under the narration, at a third (it lowers like the music does).
+            if ($clipUnder) {
+                $complexFilters[] = sprintf(
+                    '[0:a]apad,atrim=duration=%s,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,volume=%.4f[a_clip]',
+                    $durationForFilter, 0.3 * $soundVolume,
+                );
+                $mix[] = '[a_clip]';
+            }
+            if (count($mix) > 1) {
+                $complexFilters[] = implode('', $mix).'amix=inputs='.count($mix).':normalize=0[a_out]';
                 $audioMapLabel = '[a_out]';
             }
 

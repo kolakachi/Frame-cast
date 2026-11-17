@@ -30,6 +30,7 @@ const {
   ANIMATE_TIER_META, ANIMATE_TIER_ORDER, ANIMATE_TIER_COSTS_5S, animateTier, animateDuration, animateDurations, animateQuality,
   animateQualityOptions, animateCost, animateMotionPrompt, animateSubmitting, animateError, submitAnimate, clipCheck, makeClipAnyway, creditCosts, tierSlow,
   videoReference, videoReferencePicking, normalizeScenePayload, replaceSceneInCollection,
+  animateLengths, videoLengthFor, animateWithSound, animateSpeakVoiceover, animateTakesSound, previousSceneFrame, activeSceneHasVoice,
 } = core;
 const { imageModelCost, imageCost, imageEditCost, characterPriced } = usePrices(core);
 
@@ -151,6 +152,43 @@ function removeStart() {
   if (videoReference.value) videoReference.value = null;
   else imageMode.value = "none";
 }
+// ── Length (owner, 2026-11-17): each model's own lengths, starting at the scene's length so the clip fills it. ──────
+const lengthRange = computed(() => (Array.isArray(animateLengths.value) ? null : animateLengths.value));
+const sceneSeconds = computed(() => Number(activeScene.value?.duration_seconds) || 0);
+watch(() => activeScene.value?.id, () => {
+  if (sceneSeconds.value > 0) animateDuration.value = videoLengthFor(animateTier.value, sceneSeconds.value);
+  animateSpeakVoiceover.value = false;
+}, { immediate: true });
+// Beta: Seedance 2.5 makes the person in the reference pictures speak this scene's voiceover; the length follows it.
+const canSpeak = computed(() => imageMode.value === "reference" && animateTier.value === "seedance_25" && activeSceneHasVoice.value);
+watch(canSpeak, (ok) => { if (!ok) animateSpeakVoiceover.value = false; });
+watch([animateSpeakVoiceover, sceneSeconds], ([on]) => {
+  if (on) animateDuration.value = videoLengthFor("seedance_25", Math.max(4, sceneSeconds.value));
+});
+const voiceTooLong = computed(() => animateSpeakVoiceover.value && sceneSeconds.value > 30);
+const soundCostNote = computed(() => {
+  const m = Number(creditCosts.value?.video_tiers?.[animateTier.value]?.sound_multiplier || 1);
+  return m > 1 ? `costs ${m}× as much` : "no extra cost";
+});
+// "Continue from the previous scene": its last frame becomes this video's start, so the two join up. Free.
+const prevFramePending = ref(false);
+const prevFrameError = ref("");
+async function continueFromPrevious() {
+  prevFramePending.value = true;
+  prevFrameError.value = "";
+  try {
+    const a = await previousSceneFrame();
+    if (a?.id) {
+      videoReference.value = { id: a.id, title: "End of the previous scene", thumb: a.thumbnail_url || a.storage_url };
+      if (imageMode.value !== "start_end") imageMode.value = "start";
+    }
+  } catch (err) {
+    prevFrameError.value = err.response?.data?.error?.message ?? "Couldn't get the previous scene's last frame.";
+  } finally {
+    prevFramePending.value = false;
+  }
+}
+
 function makeVideo() {
   menu.value = null;
   const mode = imageMode.value;
@@ -445,6 +483,11 @@ function send() {
       </template>
     </div>
 
+    <template v-if="(imageMode === 'start' || imageMode === 'start_end') && activeSceneIndex > 0">
+      <button class="nx-link" type="button" :disabled="prevFramePending" @click="continueFromPrevious">{{ prevFramePending ? "Getting the frame…" : "Continue from the previous scene" }}</button>
+      <p class="nx-hint">{{ prevFrameError || "Starts on the last frame of the scene before, so the two clips join up." }}</p>
+    </template>
+
     <span v-if="imageMode === 'reference'" class="nx-slot-k">Pictures to follow <span class="nx-info nx-tipped tip-left" tabindex="0" role="note" :data-tip="TIPS.reference" :aria-label="TIPS.reference">i</span></span>
     <div v-if="imageMode === 'reference'" class="nx-refs">
       <div v-for="r in videoRefs" :key="r.id" class="nx-ref nx-slot-box">
@@ -478,10 +521,32 @@ function send() {
         <p v-if="imageMode !== 'start'" class="nx-hint">Only the models that can {{ imageMode === "none" ? "work from words alone" : imageMode === "reference" ? "follow reference pictures" : "end on a chosen picture" }} are listed.</p>
       </div>
     </div>
+    <!-- Sound and speech (Beta, owner 2026-11-17): the clip's own sound, or Seedance 2.5 speaking the voiceover. -->
+    <template v-if="animateTakesSound">
+      <label class="nx-switch nx-switch-row">
+        <span>With sound <span class="nx-beta">Beta</span></span>
+        <input v-model="animateWithSound" type="checkbox" />
+      </label>
+      <p class="nx-hint">The model makes the clip's own sound: voices, effects, ambience ({{ soundCostNote }}). It plays under this scene's voiceover, or on its own if the scene has none. Change it in Voice › What this scene plays.</p>
+    </template>
+    <template v-if="canSpeak">
+      <label class="nx-switch nx-switch-row">
+        <span>Speak this scene's voiceover <span class="nx-beta">Beta</span></span>
+        <input v-model="animateSpeakVoiceover" type="checkbox" />
+      </label>
+      <p class="nx-hint">The person in your first picture says the voiceover, lips in sync. Seedance may refuse realistic faces; you're not charged when it does.</p>
+    </template>
+
     <span class="nx-label">Length and quality</span>
+    <p v-if="animateSpeakVoiceover" class="nx-hint">{{ voiceTooLong ? `The voiceover runs ${Math.round(sceneSeconds)} s; Seedance 2.5 makes up to 30 s. Split the scene first.` : `Follows the voiceover: ${animateDuration} s.` }}</p>
+    <template v-else-if="lengthRange">
+      <div class="nx-row"><label for="nx-vlen">Length <span v-if="animateDuration > 10" class="nx-beta">Beta</span></label><span class="nx-num">{{ animateDuration }} s</span></div>
+      <input id="nx-vlen" v-model.number="animateDuration" type="range" class="nx-range" :min="lengthRange.min" :max="lengthRange.max" step="1" />
+      <p class="nx-hint">{{ lengthRange.min }}–{{ lengthRange.max }} s on this model.<template v-if="sceneSeconds"> This scene runs {{ Math.round(sceneSeconds * 10) / 10 }} s.</template></p>
+    </template>
     <div class="nx-row nx-lenq">
-      <div class="nx-seg" role="group" aria-label="Length">
-        <button v-for="d in animateDurations" :key="d" type="button" :class="animateDuration === d ? 'on' : ''" @click="animateDuration = d">{{ d }} s</button>
+      <div v-if="!lengthRange && !animateSpeakVoiceover" class="nx-seg" role="group" aria-label="Length">
+        <button v-for="d in animateLengths" :key="d" type="button" :class="animateDuration === d ? 'on' : ''" @click="animateDuration = d">{{ d }} s</button>
       </div>
       <div class="nx-seg" role="group" aria-label="Quality">
         <button v-for="q in qualityChoices" :key="q.value" type="button" :class="animateQuality === q.value ? 'on' : ''" @click="animateQuality = q.value">{{ q.label }}</button>
@@ -489,10 +554,10 @@ function send() {
     </div>
 
     <template v-if="!activeSceneAnimationPending">
-      <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo" @click="makeVideo">
+      <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo || voiceTooLong" @click="makeVideo">
         {{ animateSubmitting ? "Starting…" : `Make the video${cr(animateCost)}` }}
       </button>
-      <p class="nx-hint">{{ makeBlocker || `About ${(ANIMATE_TIER_META[animateTier]?.render || "a few minutes").replace("~", "")}. The clip replaces this scene's picture; the picture stays in Versions. A 10 second clip costs twice as much.` }}</p>
+      <p class="nx-hint">{{ makeBlocker || `About ${(ANIMATE_TIER_META[animateTier]?.render || "a few minutes").replace("~", "")}. The clip replaces this scene's picture; the picture stays in Versions. A scene without voiceover takes the clip's length.` }}</p>
     </template>
     <!-- The look before a paid clip (ClipPrecheck): frame problems are shown before anything is charged. -->
     <div v-if="clipCheck && !clipCheck.note" class="nx-quote nx-quote-warn" role="alert">

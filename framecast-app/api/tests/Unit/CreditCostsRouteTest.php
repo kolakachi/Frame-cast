@@ -39,8 +39,13 @@ class CreditCostsRouteTest extends TestCase
                 $this->assertSame(CreditService::animationCost($tier, $quality, 5), $tiers[$tier]['qualities'][$quality], "{$tier} {$quality}");
             }
         }
-        // Doubling starts at ten seconds: Veo's 8 second clip is the short price.
-        $this->assertSame(CreditService::animationCost('veo_fast', '720p', 5), CreditService::animationCost('veo_fast', '720p', 8));
+        // Per-second models scale with the length (owner, 2026-11-17): Veo's 8 s clip is twice its 4 s one, and every
+        // tier's lengths and sound pricing are served for the editor to price with.
+        $this->assertSame(2 * CreditService::animationCost('veo_fast', '720p', 4), CreditService::animationCost('veo_fast', '720p', 8));
+        $this->assertSame(['min' => 4, 'max' => 30], $tiers['seedance_25']['lengths']);
+        $this->assertSame(5, $tiers['seedance_25']['per_second_base']);
+        $this->assertTrue($tiers['veo_fast']['sound']);
+        $this->assertFalse($tiers['quick']['sound']);
     }
 
     public function test_storyboard_is_priced_as_the_job_charges(): void

@@ -376,31 +376,51 @@ class CreditService
     }
 
     /** Credit cost for a video tier at a given quality + duration (10s = 2×). */
-    public static function animationCost(string $tier, ?string $quality, int $seconds): int
+    /**
+     * Models billed by the second upstream, and the clip length their VIDEO_PRICING credits are for. Their price scales
+     * with the length (owner, 2026-11-17: each model's own lengths, priced per second). The others keep 10 s = 2x.
+     */
+    public const VIDEO_PER_SECOND_BASE = ['veo_fast' => 4, 'seedance_lite' => 5, 'seedance_pro' => 5, 'seedance_25' => 5];
+
+    /** What the clip's own sound adds: Veo Fast $0.15/s with it against $0.10/s; Seedance 2.5 one price (2026-11-17). */
+    public const VIDEO_SOUND_MULTIPLIER = ['veo_fast' => 1.5, 'seedance_25' => 1.0];
+
+    /** Credits for a clip: the tier's quality price, scaled to the length the model will render (and its sound). */
+    public static function animationCost(string $tier, ?string $quality, int|float $seconds, bool $withSound = false): int
     {
         $cfg = self::VIDEO_PRICING[$tier] ?? null;
-        $mult = $seconds >= 10 ? 2 : 1;
         if (! $cfg) {
-            return self::VIDEO_QUICK * $mult;
+            return self::VIDEO_QUICK * ($seconds >= 10 ? 2 : 1);
         }
         $q = self::videoQuality($tier, $quality);
+        $cr = (int) ($cfg['options'][$q]['cr'] ?? self::VIDEO_QUICK);
 
-        return (int) ($cfg['options'][$q]['cr'] ?? self::VIDEO_QUICK) * $mult;
+        return (int) ceil($cr * self::videoLengthFactor($tier, $seconds, $withSound) - 1e-9);
     }
 
-    /** Upstream COGS (USD) for a video tier at a given quality + duration (10s = 2×). */
-    public static function animationCogsUsd(string $tier, ?string $quality, int $seconds): ?float
+    /** Upstream COGS (USD) for a video tier at a given quality, length and sound. */
+    public static function animationCogsUsd(string $tier, ?string $quality, int|float $seconds, bool $withSound = false): ?float
     {
         $cfg = self::VIDEO_PRICING[$tier] ?? null;
-        $mult = $seconds >= 10 ? 2 : 1;
         if (! $cfg) {
             $base = self::cogsUsd('video:'.$tier) ?? self::cogsUsd('video:quick');
-            return $base === null ? null : round($base * $mult, 4);
+            return $base === null ? null : round($base * ($seconds >= 10 ? 2 : 1), 4);
         }
         $q = self::videoQuality($tier, $quality);
         $cogs = $cfg['options'][$q]['cogs'] ?? null;
 
-        return $cogs === null ? null : round($cogs * $mult, 4);
+        return $cogs === null ? null : round($cogs * self::videoLengthFactor($tier, $seconds, $withSound), 4);
+    }
+
+    /** How many base clips a request costs: by the second for VIDEO_PER_SECOND_BASE tiers, else 1 or 2 (from 10 s). */
+    private static function videoLengthFactor(string $tier, int|float $seconds, bool $withSound): float
+    {
+        $length = \App\Services\Generation\Video\ReplicateI2VAdapter::lengthFor($tier, $seconds);
+        $sound = $withSound && \App\Services\Generation\Video\ReplicateI2VAdapter::takesSound($tier)
+            ? (self::VIDEO_SOUND_MULTIPLIER[$tier] ?? 1.0) : 1.0;
+        $base = self::VIDEO_PER_SECOND_BASE[$tier] ?? null;
+
+        return ($base ? $length / $base : ($length >= 10 ? 2 : 1)) * $sound;
     }
 
     // Monthly credit allocations per plan — sized for blended usage + breakage
