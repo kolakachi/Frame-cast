@@ -105,10 +105,28 @@ class OpenAITTSAdapter implements TTSAdapter
 
         return [
             'audio_url' => $audioStorageUrl,
-            'duration_seconds' => $this->estimateDuration($text, $speed),
+            // Measured, as the Gemini and Chatterbox adapters do (2026-11-17): the word-count estimate was off by up to
+            // a second a scene (project 59: 95.6 s estimated, 86 s spoken), and the stored length sets the scene's
+            // length in the editor, its preview pacing and where transitions fall.
+            'duration_seconds' => self::measure($response->body()) ?? $this->estimateDuration($text, $speed),
             'provider_key' => 'openai',
             'provider_voice_id' => $safeVoice,
         ];
+    }
+
+    /** The audio's real length in seconds (ffprobe), or null when it can't be read. */
+    public static function measure(string $bytes, string $ext = 'mp3'): ?float
+    {
+        return rescue(function () use ($bytes, $ext): ?float {
+            $tmp = tempnam(sys_get_temp_dir(), 'tts-').'.'.$ext;
+            file_put_contents($tmp, $bytes);
+            $out = [];
+            exec('ffprobe -v error -show_entries format=duration -of csv=p=0 '.escapeshellarg($tmp), $out);
+            @unlink($tmp);
+            $d = isset($out[0]) ? (float) $out[0] : 0.0;
+
+            return $d > 0.05 ? round($d, 3) : null;
+        }, null, false);
     }
 
     private function estimateDuration(string $text, float $speed): float
