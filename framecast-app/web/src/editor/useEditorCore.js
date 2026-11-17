@@ -2751,6 +2751,8 @@ export function useEditorCore() {
         comment: exportFbComment.value.trim() || null,
         project_id: Number(projectId.value) || null,
         export_job_id: latestExportJob.value?.id ?? null,
+        // Which editor it was made in: both share one route, so the new editor's root says it.
+        editor: document.querySelector('main.nx') ? 'new' : 'classic',
       });
     } catch { /* feedback must never error at the user */ }
     finally {

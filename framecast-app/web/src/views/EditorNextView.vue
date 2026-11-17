@@ -24,6 +24,7 @@ import { friendlyError } from "../editor/next/sceneErrors.js";
 import AssistantPanel from "../editor/next/AssistantPanel.vue";
 import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
+import ExportFeedbackDialog from "../editor/next/ExportFeedbackDialog.vue";
 import VoicePickerDialog from "../editor/next/VoicePickerDialog.vue";
 import CharacterDialog from "../editor/next/CharacterDialog.vue";
 import CaptionStylesDialog from "../editor/next/CaptionStylesDialog.vue";
@@ -1033,6 +1034,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
     </div>
 
     <AnimateDialog />
+    <ExportFeedbackDialog />
     <VoicePickerDialog />
     <CharacterDialog />
     <CaptionStylesDialog />

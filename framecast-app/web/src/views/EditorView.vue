@@ -767,8 +767,8 @@ async function tryNewEditor() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="11" height="4" rx="1"/><rect x="3" y="17" width="15" height="4" rx="1"/></svg>
               Timeline
             </button>
-            <!-- The redesigned editor, staff only until it opens (2026-10-29). -->
-            <button v-if="authStore.user?.editor_new_available" class="btn btn-ghost btn-back" type="button" @click="tryNewEditor">
+            <!-- The redesigned editor, open to everyone to try (2026-11-17). Not on phones: they open classic either way. -->
+            <button v-if="authStore.user?.editor_new_available" class="btn btn-ghost btn-back btn-try-new" type="button" @click="tryNewEditor">
               Try the new editor
             </button>
             <button class="btn btn-ghost btn-back" type="button" @click="router.push({ name: 'project-variants', params: { projectId: projectId } })">
@@ -9012,4 +9012,5 @@ select.preset-select {
 .export-check.ok { color: var(--color-success, #4ade80); }
 .export-check.note b { color: var(--color-warning, #fbbf24); }
 .export-check-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning, #fbbf24); margin-left: 6px; vertical-align: middle; }
+@media (max-width: 860px) { .btn-try-new { display: none; } }
 </style>

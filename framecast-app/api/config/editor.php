@@ -19,7 +19,8 @@
 
 return [
 
-    'new_open' => (bool) env('EDITOR_NEW_OPEN', false),
+    // Open to everyone to try (owner, 2026-11-17): classic still opens by default, the new one is a choice.
+    'new_open' => (bool) env('EDITOR_NEW_OPEN', true),
 
     'new_users_from' => env('EDITOR_NEW_USERS_FROM'),
 

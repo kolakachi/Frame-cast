@@ -44,6 +44,8 @@ class FeedbackController extends Controller
             'dismissed'     => ['sometimes', 'boolean'],
             // "ready": asked on the finished video's own screen (#11), where the automatic finish lands people.
             'trigger'       => ['sometimes', 'string', 'in:export,ready'],
+            // Which editor the video was made in (owner, 2026-11-17: the new editor asks too).
+            'editor'        => ['sometimes', 'nullable', 'string', 'in:new,classic'],
         ]);
 
         $dismissed = (bool) ($validated['dismissed'] ?? false);
@@ -66,6 +68,7 @@ class FeedbackController extends Controller
                 array_filter([
                     'rating'  => $validated['rating'] ?? null,
                     'options' => $validated['options'] ?? null,
+                    'editor'  => $validated['editor'] ?? null,
                 ]),
                 $user->workspace_id,
             );
@@ -75,6 +78,7 @@ class FeedbackController extends Controller
 "
                 .'Rating: '.($validated['rating'] ?? '—')."/5
 "
+                .(! empty($validated['editor']) ? 'Editor: '.$validated['editor'].PHP_EOL : '')
                 .'Aspects: '.implode(', ', $validated['options'] ?? [])."
 
 "
