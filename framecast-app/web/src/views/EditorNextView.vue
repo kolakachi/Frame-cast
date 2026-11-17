@@ -694,25 +694,46 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
             <button class="nx-btn" type="button" aria-haspopup="menu" :aria-expanded="shareOpen" @click="shareOpen = !shareOpen; exportOpen = false">
               Share<span v-if="exportCheckNotes.length" class="nx-dot" :title="`${exportCheckNotes.length} to check`"></span>
             </button>
-            <div v-if="shareOpen" class="nx-menu" role="menu">
-              <template v-if="exportChecks.length">
-                <div class="nx-menu-label">Checks</div>
-                <div v-if="!exportCheckNotes.length" class="nx-check ok">✓ Sound, pictures, narration and length all checked</div>
-                <div v-for="c in exportCheckNotes" :key="c.id" class="nx-check"><b>{{ c.label }}:</b> {{ c.detail }}</div>
-              </template>
-              <div class="nx-menu-label">Aspect ratio</div>
-              <div class="nx-ratios">
-                <button v-for="job in (exportsByRatio.length ? exportsByRatio : [activeExportJob])" :key="job.id" type="button"
-                  :class="['nx-ratio', job.id === activeExportJob?.id ? 'on' : '']" @click="selectedExportRatio = job.aspect_ratio">{{ job.aspect_ratio }}</button>
+            <!-- Share (owner, 2026-11-17: restyled): what was exported, its checks, then getting it out. -->
+            <div v-if="shareOpen" class="nx-menu nx-share" role="menu">
+              <div class="nx-share-head">
+                <b>Your video</b>
+                <span>{{ activeExportJob?.aspect_ratio }}{{ activeExportJob?.output_asset?.duration_seconds ? ` · ${Math.round(activeExportJob.output_asset.duration_seconds)} s` : "" }}</span>
               </div>
-              <button class="nx-menu-item" type="button" @click="onShare('open')">Open in new tab</button>
-              <button class="nx-menu-item" type="button" @click="onShare('download')">Download MP4</button>
-              <button class="nx-menu-item" type="button" @click="onShare('schedule')">Schedule</button>
-              <button class="nx-menu-item" type="button" @click="onShare('approval')">Send for approval</button>
-              <button class="nx-menu-item" type="button" :disabled="shareTogglePending" @click="onShare('share')">
+              <div v-if="exportsByRatio.length > 1" class="nx-share-ratios" role="group" aria-label="Which shape">
+                <button v-for="job in exportsByRatio" :key="job.id" type="button" :class="job.id === activeExportJob?.id ? 'on' : ''" @click="selectedExportRatio = job.aspect_ratio">{{ job.aspect_ratio }}</button>
+              </div>
+              <template v-if="exportChecks.length">
+                <div v-if="!exportCheckNotes.length" class="nx-share-check is-ok">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                  <span>Sound, pictures, narration and length all checked.</span>
+                </div>
+                <div v-else class="nx-share-check">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16.5v.5" /><circle cx="12" cy="12" r="9" /></svg>
+                  <div>
+                    <p v-for="c in exportCheckNotes" :key="c.id"><b>{{ c.label }}</b> {{ c.detail }}</p>
+                  </div>
+                </div>
+              </template>
+              <div class="nx-share-sep"></div>
+              <button class="nx-share-item" type="button" role="menuitem" @click="onShare('download')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14" /></svg>Download MP4
+              </button>
+              <button class="nx-share-item" type="button" role="menuitem" :disabled="shareTogglePending" @click="onShare('share')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
                 {{ shareTogglePending ? "Creating link…" : shareCopiedToast === "Copied!" ? "Link copied" : "Copy share link" }}
               </button>
+              <button class="nx-share-item" type="button" role="menuitem" @click="onShare('open')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5" /></svg>Open in a new tab
+              </button>
               <div v-if="shareCopiedToast && shareCopiedToast !== 'Copied!'" class="nx-menu-url">{{ shareCopiedToast }}</div>
+              <div class="nx-share-sep"></div>
+              <button class="nx-share-item" type="button" role="menuitem" @click="onShare('schedule')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="2" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" /></svg>Schedule a post
+              </button>
+              <button class="nx-share-item" type="button" role="menuitem" @click="onShare('approval')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-7-6 15-3-6z" /></svg>Send for approval
+              </button>
             </div>
           </div>
           <div class="nx-menu-wrap">

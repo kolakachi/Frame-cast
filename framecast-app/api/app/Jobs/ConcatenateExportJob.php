@@ -137,9 +137,13 @@ class ConcatenateExportJob implements ShouldQueue
             }, report: false);
 
             $fileSize = filesize($outputFile) ?: null;
+            // The file's own length (2026-11-17): the scenes' stored lengths can be estimates (OpenAI narration was).
+            $measuredSeconds = $this->probeMediaDuration($outputFile);
             @unlink($outputFile);
 
-            $totalDurationSeconds = (float) $scenes->sum(fn (Scene $s): float => (float) ($s->duration_seconds ?: 0));
+            $totalDurationSeconds = $measuredSeconds && $measuredSeconds > 0
+                ? round($measuredSeconds, 2)
+                : (float) $scenes->sum(fn (Scene $s): float => (float) ($s->duration_seconds ?: 0));
             $dimensions = $this->dimensionsForAspectRatio((string) $exportJob->aspect_ratio);
 
             $assetCreated = false;
