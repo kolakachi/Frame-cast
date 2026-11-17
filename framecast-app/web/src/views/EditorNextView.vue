@@ -162,6 +162,7 @@ function onMediaPicked(e) {
     core.videoPickTarget.value = "start";
     if (target === "end") core.videoEndRef.value = picked;
     else if (target === "ref") { if (!core.videoRefs.value.some((r) => r.id === picked.id)) core.videoRefs.value = [...core.videoRefs.value, picked].slice(0, 4); }
+    else if (String(target).startsWith("ref:")) { const old = Number(String(target).slice(4)); core.videoRefs.value = core.videoRefs.value.map((r) => (r.id === old ? picked : r)); }
     else core.videoReference.value = picked;
   } else {
     core.pushToast({ id: `video-ref-${Date.now()}`, title: "That's a video.", message: "Pick an image to start the video from." });

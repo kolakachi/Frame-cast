@@ -138,6 +138,10 @@ function pickImage(target) {
   openMediaPicker("visual");
 }
 const pickReference = () => pickImage("start");
+function removeStart() {
+  if (videoReference.value) videoReference.value = null;
+  else imageMode.value = "none";
+}
 function makeVideo() {
   menu.value = null;
   const mode = imageMode.value;
@@ -399,31 +403,45 @@ function send() {
     <div v-if="imageMode === 'start' || imageMode === 'start_end'" :class="['nx-frames', imageMode === 'start_end' ? 'is-pair' : '']">
       <div class="nx-slot">
         <span class="nx-slot-k">Start</span>
-        <button type="button" class="nx-slot-img" :aria-label="referenceThumb ? 'Change the start picture' : 'Choose a start picture'" @click="pickImage('start')">
-          <img v-if="referenceThumb" :src="referenceThumb" alt="" />
-          <span v-else class="nx-slot-add">+</span>
-        </button>
+        <div class="nx-slot-box">
+          <button type="button" class="nx-slot-img" :aria-label="referenceThumb ? 'Swap the start picture' : 'Choose a start picture'" @click="pickImage('start')">
+            <img v-if="referenceThumb" :src="referenceThumb" alt="" />
+            <span v-else class="nx-slot-add">+</span>
+          </button>
+          <!-- On hover: swap it, or remove it (an upload goes back to the scene's picture; the scene's own leaves no image). -->
+          <div v-if="referenceThumb" class="nx-slot-acts">
+            <button type="button" @click="pickImage('start')">Swap</button>
+            <button type="button" @click="removeStart">Remove</button>
+          </div>
+        </div>
         <span class="nx-slot-name">{{ videoReference ? videoReference.title : sceneStillThumb ? "This scene's picture" : "Choose a picture" }}</span>
-        <button v-if="videoReference && sceneStillThumb" class="nx-link nx-slot-x" type="button" @click="videoReference = null">Use this scene's</button>
       </div>
       <template v-if="imageMode === 'start_end'">
         <span class="nx-frames-arrow" aria-hidden="true">→</span>
         <div class="nx-slot">
           <span class="nx-slot-k">End</span>
-          <button type="button" class="nx-slot-img" :aria-label="videoEnd ? 'Change the end picture' : 'Choose an end picture'" @click="pickImage('end')">
-            <img v-if="videoEnd" :src="videoEnd.thumb" alt="" />
-            <span v-else class="nx-slot-add">+</span>
-          </button>
+          <div class="nx-slot-box">
+            <button type="button" class="nx-slot-img" :aria-label="videoEnd ? 'Swap the end picture' : 'Choose an end picture'" @click="pickImage('end')">
+              <img v-if="videoEnd" :src="videoEnd.thumb" alt="" />
+              <span v-else class="nx-slot-add">+</span>
+            </button>
+            <div v-if="videoEnd" class="nx-slot-acts">
+              <button type="button" @click="pickImage('end')">Swap</button>
+              <button type="button" @click="videoEnd = null">Remove</button>
+            </div>
+          </div>
           <span class="nx-slot-name">{{ videoEnd ? videoEnd.title : "Choose a picture" }}</span>
-          <button v-if="videoEnd" class="nx-link nx-slot-x" type="button" @click="videoEnd = null">Remove</button>
         </div>
       </template>
     </div>
 
     <div v-else-if="imageMode === 'reference'" class="nx-refs">
-      <div v-for="r in videoRefs" :key="r.id" class="nx-ref">
+      <div v-for="r in videoRefs" :key="r.id" class="nx-ref nx-slot-box">
         <img :src="r.thumb" :alt="r.title" />
-        <button type="button" class="nx-ref-x" :aria-label="`Remove ${r.title}`" @click="videoRefs = videoRefs.filter((x) => x.id !== r.id)">×</button>
+        <div class="nx-slot-acts">
+          <button type="button" :aria-label="`Swap ${r.title}`" @click="pickImage(`ref:${r.id}`)">Swap</button>
+          <button type="button" :aria-label="`Remove ${r.title}`" @click="videoRefs = videoRefs.filter((x) => x.id !== r.id)">Remove</button>
+        </div>
       </div>
       <button v-if="videoRefs.length < 4" type="button" class="nx-ref nx-ref-add" aria-label="Add a picture to follow" @click="pickImage('ref')">+</button>
     </div>
