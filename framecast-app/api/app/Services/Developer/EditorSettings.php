@@ -106,7 +106,7 @@ class EditorSettings
         foreach (CreditService::VIDEO_PRICING as $tier => $cfg) $tiers[$tier] = ['quality_options' => array_keys($cfg['options']), 'default_quality' => $cfg['default'], 'duration_seconds' => ['minimum' => 3, 'maximum' => 10, 'normalization' => '3–7 -> 5; 8–10 -> 10; provider may return its native duration.']];
         $tiers['spokesperson'] = ['quality_options' => [], 'duration' => 'Actual narration asset duration, fallback scene duration then 8 seconds. Re-record stale narration first.', 'lipsync_engines' => array_keys((array) config('services.lipsync.engines', [])), 'default_engine' => config('services.lipsync.default'), 'consent' => 'Required for likeness use.'];
         return ['scene_fields' => self::sceneFields(), 'groups' => self::groups(), 'animation' => $tiers,
-            'transition_rule' => ['type' => 'string|null', 'max_length' => 64, 'description' => 'Legacy stored field; current export renderer does not use it. Do not promise a transition effect.'],
+            'transition_rule' => ['type' => 'string|null', 'max_length' => 64, 'description' => 'The transition into the next scene, "type:seconds" (e.g. "fade:0.5"); null is a plain cut. Types: '.implode(', ', array_keys(\App\Services\Export\SceneTransitions::CATALOGUE)).'. Seconds 0.2-1.5. Ignored on the last scene.'],
             'project_selections' => ['channel_id', 'brand_kit_id', 'music_asset_id'],
             'selection_nulls' => 'Omitted preserves; explicit null clears. Aspect ratio cannot change after creation.',
             'stale_state' => 'Narration is_outdated and animation_outdated are server-owned. Script/voice edits require re-recording; stale lip-sync requires re-animation before export.',

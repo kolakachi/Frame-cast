@@ -786,6 +786,8 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{sceneId}/storyboard', [SceneController::class, 'storyboard'])->whereNumber('sceneId');
             Route::post('/{sceneId}/clip-check', [SceneController::class, 'clipCheck'])->whereNumber('sceneId')->middleware('throttle:30,1');
             Route::post('/{sceneId}/clip-sound', [SceneController::class, 'clipSound'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/transition', [SceneController::class, 'transition'])->whereNumber('sceneId');
+            Route::post('/{sceneId}/transition/all', [SceneController::class, 'transitionAll'])->whereNumber('sceneId');
             Route::get('/{sceneId}/previous-frame', [SceneController::class, 'previousFrame'])->whereNumber('sceneId')->middleware('throttle:30,1');
             Route::post('/{sceneId}/regenerate-music', [SceneController::class, 'regenerateMusic'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');

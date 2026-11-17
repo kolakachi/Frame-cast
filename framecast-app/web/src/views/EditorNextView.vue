@@ -25,6 +25,8 @@ import AssistantPanel from "../editor/next/AssistantPanel.vue";
 import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
 import ExportFeedbackDialog from "../editor/next/ExportFeedbackDialog.vue";
+import TransitionDialog from "../editor/next/TransitionDialog.vue";
+import { parseRule, transitionLabel } from "../editor/next/transitions";
 import VoicePickerDialog from "../editor/next/VoicePickerDialog.vue";
 import CharacterDialog from "../editor/next/CharacterDialog.vue";
 import CaptionStylesDialog from "../editor/next/CaptionStylesDialog.vue";
@@ -487,6 +489,17 @@ function thumbFor(scene) {
 function seconds(v) {
   return `${Number(v || 0).toFixed(1)}s`;
 }
+// Transitions (owner, 2026-11-17): a marker on each cut between scenes opens the picker; set ones are filled.
+const transitionAt = ref(null);
+function cutLeft(i) {
+  let x = 0;
+  for (let k = 0; k <= i; k++) x += clipWidth(scenes.value[k]);
+  return x + i * 4 + 2;
+}
+function cutLabel(i) {
+  const t = parseRule(scenes.value[i]?.transition_rule);
+  return t ? `${transitionLabel(t.type)}, ${t.seconds} s` : "No transition";
+}
 // A video scene playing its clip's own sound says so on the voice lane.
 function clipSoundLabel(scene) {
   const a = scene?.visual_asset;
@@ -916,6 +929,10 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                     <span v-if="failedIds.has(scene.id)" class="nx-clip-err" title="This scene didn't finish">!</span>
                     <span class="nx-clip-dur">{{ seconds(sceneDuration(scene)) }}</span>
                   </button>
+                  <button v-for="(scene, i) in scenes.slice(0, -1)" :key="`cut-${scene.id}`" type="button"
+                    :class="['nx-cut', parseRule(scene.transition_rule) ? 'is-set' : '']" :style="{ left: `${cutLeft(i)}px` }"
+                    :title="`${cutLabel(i)}. Click to change.`" :aria-label="`Transition from scene ${i + 1} to ${i + 2}: ${cutLabel(i)}`"
+                    @click.stop="transitionAt = i"><span aria-hidden="true"></span></button>
                 </div>
                 <div class="nx-lane">
                   <button v-for="(scene, i) in scenes" :key="scene.id" type="button"
@@ -1035,6 +1052,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
 
     <AnimateDialog />
     <ExportFeedbackDialog />
+    <TransitionDialog v-if="transitionAt !== null && transitionAt < scenes.length - 1" :index="transitionAt" @close="transitionAt = null" />
     <VoicePickerDialog />
     <CharacterDialog />
     <CaptionStylesDialog />

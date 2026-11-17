@@ -561,7 +561,10 @@ trait RendersExportScenes
     /**
      * @param list<string> $segmentPaths
      */
-    protected function concatSegments(array $segmentPaths, string $outputFile, string $tempDir): void
+    /**
+     * @param  list<array{type:string,seconds:float}|null>  $transitions  the cut after each segment (SceneTransitions)
+     */
+    protected function concatSegments(array $segmentPaths, string $outputFile, string $tempDir, array $transitions = []): void
     {
         if ($segmentPaths === []) {
             throw new \RuntimeException('No rendered scene segments available.');
@@ -573,6 +576,16 @@ trait RendersExportScenes
             range(0, $n - 1)
         ));
         $filterComplex = "{$filterInputs}concat=n={$n}:v=1:a=1[outv][outa]";
+        // Transitions (owner, 2026-11-17): the picture joins through xfade over held frames; the sound joins exactly
+        // as before, so every voice keeps its moment and the length is unchanged.
+        if (array_filter($transitions) !== []) {
+            $durations = array_map(fn (string $p): float => (float) ($this->probeMediaDuration($p) ?? 0), $segmentPaths);
+            $video = min($durations) > 0 ? \App\Services\Export\SceneTransitions::videoGraph($durations, $transitions) : null;
+            if ($video !== null) {
+                $audio = implode('', array_map(static fn (int $i): string => "[{$i}:a]", range(0, $n - 1)))."concat=n={$n}:v=0:a=1[outa]";
+                $filterComplex = $video.';'.$audio;
+            }
+        }
 
         $command = ['ffmpeg', '-y'];
         foreach ($segmentPaths as $path) {

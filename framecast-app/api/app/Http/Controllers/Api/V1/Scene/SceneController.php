@@ -200,7 +200,10 @@ class SceneController extends Controller
             'sound_asset_id' => ['sometimes', 'nullable', 'integer'],
             'sound_settings_json' => ['sometimes', 'nullable', 'array'],
             'visual_prompt' => ['sometimes', 'nullable', 'string'],
-            'transition_rule' => ['sometimes', 'nullable', 'string', 'max:64'],
+            // The cut after this scene, "type:seconds" (SceneTransitions); empty is a plain cut.
+            'transition_rule' => ['sometimes', 'nullable', 'string', 'max:64', function ($attr, $value, $fail) {
+                if (! \App\Services\Export\SceneTransitions::valid($value)) $fail('Pick a transition from the list.');
+            }],
             'voice_profile_id' => ['sometimes', 'nullable', 'integer'],
             'voice_settings_json' => ['sometimes', 'nullable', 'array'],
             'voice_settings_json.custom_audio' => ['sometimes', 'boolean'],
@@ -1208,6 +1211,42 @@ class SceneController extends Controller
             ],
             'meta' => [],
         ]);
+    }
+
+    /**
+     * The transition into the next scene (owner, 2026-11-17): one of SceneTransitions::CATALOGUE or none, for this
+     * scene or, with all, every scene that has one after it. One request, so one undo.
+     */
+    /** The same transition on every cut of the project: its own route, so it is its own undo step. */
+    public function transitionAll(Request $request, int $sceneId): JsonResponse
+    {
+        $request->merge(['all' => true]);
+
+        return $this->transition($request, $sceneId);
+    }
+
+    public function transition(Request $request, int $sceneId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+        $v = $request->validate([
+            'type'    => ['required', 'string', \Illuminate\Validation\Rule::in(array_merge(['none'], array_keys(\App\Services\Export\SceneTransitions::CATALOGUE)))],
+            'seconds' => ['sometimes', 'numeric', 'min:'.\App\Services\Export\SceneTransitions::MIN_SECONDS, 'max:'.\App\Services\Export\SceneTransitions::MAX_SECONDS],
+            'all'     => ['sometimes', 'boolean'],
+        ]);
+        $rule = \App\Services\Export\SceneTransitions::format($v['type'], (float) ($v['seconds'] ?? \App\Services\Export\SceneTransitions::DEFAULT_SECONDS));
+        $scenes = Scene::query()->where('project_id', $scene->project_id)->orderBy('scene_order')->get();
+        $last = $scenes->last();
+        $targets = ! empty($v['all']) ? $scenes->reject(fn ($s) => $s->is($last)) : collect([$scene]);
+        foreach ($targets as $t) $t->forceFill(['transition_rule' => $rule])->save();
+
+        return response()->json(['data' => [
+            'scenes' => $scenes->map(fn ($s) => ['id' => $s->getKey(), 'transition_rule' => $s->fresh()->transition_rule])->values(),
+        ], 'meta' => []]);
     }
 
     /**

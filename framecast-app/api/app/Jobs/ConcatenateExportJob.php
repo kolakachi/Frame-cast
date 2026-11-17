@@ -72,7 +72,9 @@ class ConcatenateExportJob implements ShouldQueue
         try {
             $segmentPaths = $this->downloadSegments();
 
-            $this->concatSegments($segmentPaths, $outputFile, $this->tempDir);
+            // The cut after each scene (none unless chosen in the editor).
+            $transitions = $scenes->values()->map(fn ($scene) => \App\Services\Export\SceneTransitions::parse($scene->transition_rule ?? null))->all();
+            $this->concatSegments($segmentPaths, $outputFile, $this->tempDir, count($transitions) === count($segmentPaths) ? $transitions : []);
 
             // Clean up local segment copies immediately after concat.
             foreach ($segmentPaths as $path) {

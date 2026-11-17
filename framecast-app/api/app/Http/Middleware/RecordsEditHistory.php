@@ -27,6 +27,8 @@ class RecordsEditHistory
         'BulkAnimateController' => 'Animated every scene', 'BulkVisualController' => 'Restyled every scene', 'BulkVoiceController' => 'Re-recorded every voice',
         'CruiseControlController@apply' => 'Assistant edit', 'CruiseControlController@undo' => "Undid an assistant's action",
         'EditorController@apply' => 'Assistant edit', 'AssistantController@apply' => "Applied the assistant's plan",
+        'SceneController@transition' => 'Changed the transition after scene {n}', 'SceneController@transitionAll' => 'Set every transition',
+        'SceneController@clipSound' => "Changed what scene {n} plays",
     ];
 
     /** Generating: the result comes later from a job, so these are not undoable steps. */
@@ -37,7 +39,7 @@ class RecordsEditHistory
         'schedule_post', 'undo_last_edit', 'redo_last_edit'];
     /** Edits that change only the scene they name: only that scene is compared, so another scene's job result is never swept in. */
     private const ONE_SCENE = ['SceneController@update', 'SceneController@swapVisual', 'SceneController@revertAnimation',
-        'SceneController@useAnimationFromHistory', 'SceneController@rewrite'];
+        'SceneController@useAnimationFromHistory', 'SceneController@rewrite', 'SceneController@transition', 'SceneController@clipSound'];
 
     public function handle(Request $request, Closure $next): Response
     {
