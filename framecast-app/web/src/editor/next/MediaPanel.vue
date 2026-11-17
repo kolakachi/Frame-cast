@@ -101,11 +101,20 @@ const hasReference = computed(() => !!videoReference.value || !!sceneStillThumb.
 // ── Images (owner, 2026-11-16): none (from words alone), a start frame, a start and an end frame, or reference images
 // it follows (a person or look, not a frame). Each mode lists only the models that can do it (ReplicateI2VAdapter).
 const IMAGE_MODES = [
-  { key: "none", label: "None", hint: "Made from your words alone." },
-  { key: "start", label: "Start", hint: "The video begins on this picture." },
-  { key: "start_end", label: "Start + end", hint: "The video moves from the first picture to the second." },
-  { key: "reference", label: "Reference", hint: "Up to 4 pictures of a person, product or look to keep. Not used as frames." },
+  { key: "none", label: "None", hint: "Made from your words alone.",
+    tip: "No picture. The video is made from your description alone. Works with Veo and Seedance." },
+  { key: "start", label: "Start", hint: "The video begins on this picture.",
+    tip: "The video's first frame is this picture, then it moves the way you describe. Use the scene's picture or upload one." },
+  { key: "start_end", label: "Start + end", hint: "The video moves from the first picture to the second.",
+    tip: "The video begins on the first picture and ends on the second, moving between them. Good for before and after. Works with Kling, Veo and Seedance." },
+  { key: "reference", label: "Reference", hint: "Up to 4 pictures of a person, product or look to keep. Not used as frames.",
+    tip: "Pictures for the video to stay true to: a person, a product, an outfit or a place. They guide what's in the video but aren't shown as frames. Up to 4; Seedance only." },
 ];
+const TIPS = {
+  start: "The first frame of the video. Hover the picture to swap or remove it.",
+  end: "The last frame of the video. The model finds the motion between the start and this picture.",
+  reference: "Each picture shows the model who or what to keep. Name them in your description if it helps: \"the woman in picture 1 holds the bottle in picture 2\".",
+};
 const MODE_TIERS = {
   none: ["veo_fast", "seedance_25", "seedance_lite", "seedance_pro"],
   start_end: ["premium", "veo_fast", "seedance_25", "seedance_lite", "seedance_pro"],
@@ -396,13 +405,14 @@ function send() {
     <!-- Images (owner, 2026-11-16): none, a start frame, start + end, or references to follow. -->
     <span class="nx-label">Images</span>
     <div class="nx-seg nx-seg-grid" role="radiogroup" aria-label="How the video uses images">
-      <button v-for="m in IMAGE_MODES" :key="m.key" type="button" role="radio" :aria-checked="imageMode === m.key" :class="imageMode === m.key ? 'on' : ''" @click="imageMode = m.key">{{ m.label }}</button>
+      <button v-for="(m, i) in IMAGE_MODES" :key="m.key" type="button" role="radio" :aria-checked="imageMode === m.key" :aria-description="m.tip"
+        :class="['nx-tipped', i % 2 ? 'tip-right' : 'tip-left', imageMode === m.key ? 'on' : '']" :data-tip="m.tip" @click="imageMode = m.key">{{ m.label }}</button>
     </div>
     <p class="nx-hint">{{ modeHint }}</p>
 
     <div v-if="imageMode === 'start' || imageMode === 'start_end'" :class="['nx-frames', imageMode === 'start_end' ? 'is-pair' : '']">
       <div class="nx-slot">
-        <span class="nx-slot-k">Start</span>
+        <span class="nx-slot-k">Start <span class="nx-info nx-tipped tip-left" tabindex="0" role="note" :data-tip="TIPS.start" :aria-label="TIPS.start">i</span></span>
         <div class="nx-slot-box">
           <button type="button" class="nx-slot-img" :aria-label="referenceThumb ? 'Swap the start picture' : 'Choose a start picture'" @click="pickImage('start')">
             <img v-if="referenceThumb" :src="referenceThumb" alt="" />
@@ -419,7 +429,7 @@ function send() {
       <template v-if="imageMode === 'start_end'">
         <span class="nx-frames-arrow" aria-hidden="true">→</span>
         <div class="nx-slot">
-          <span class="nx-slot-k">End</span>
+          <span class="nx-slot-k">End <span class="nx-info nx-tipped tip-right" tabindex="0" role="note" :data-tip="TIPS.end" :aria-label="TIPS.end">i</span></span>
           <div class="nx-slot-box">
             <button type="button" class="nx-slot-img" :aria-label="videoEnd ? 'Swap the end picture' : 'Choose an end picture'" @click="pickImage('end')">
               <img v-if="videoEnd" :src="videoEnd.thumb" alt="" />
@@ -435,7 +445,8 @@ function send() {
       </template>
     </div>
 
-    <div v-else-if="imageMode === 'reference'" class="nx-refs">
+    <span v-if="imageMode === 'reference'" class="nx-slot-k">Pictures to follow <span class="nx-info nx-tipped tip-left" tabindex="0" role="note" :data-tip="TIPS.reference" :aria-label="TIPS.reference">i</span></span>
+    <div v-if="imageMode === 'reference'" class="nx-refs">
       <div v-for="r in videoRefs" :key="r.id" class="nx-ref nx-slot-box">
         <img :src="r.thumb" :alt="r.title" />
         <div class="nx-slot-acts">

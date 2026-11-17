@@ -796,57 +796,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
         <!-- Frame + timeline -->
         <div class="nx-main">
           <div class="nx-stage">
-            <div class="nx-toolbar" role="toolbar" :aria-label="toolbarLabel">
-              <template v-if="selection === 'caption'">
-                <button class="nx-tb" type="button" @click="captionEffectModalOpen = true"><b class="nx-aa">Aa</b>{{ captionStyleName }}</button>
-                <span class="nx-sep"></span>
-                <button class="nx-tb nx-tb-icon" type="button" aria-label="Smaller captions" @click="nudgeCaptionSize(-2)">−</button>
-                <span class="nx-num nx-tb-num" aria-live="polite">{{ Math.round(captionPx) }}</span>
-                <button class="nx-tb nx-tb-icon" type="button" aria-label="Bigger captions" @click="nudgeCaptionSize(2)">+</button>
-                <span class="nx-sep"></span>
-                <label class="nx-tb" title="Highlight color">
-                  <span class="nx-tb-swatch" :style="{ background: captionHighlightColorDraft }"></span>Highlight
-                  <input v-model="captionHighlightColorDraft" type="color" class="nx-hidden-input" aria-label="Highlight color" />
-                </label>
-                <button class="nx-tb" type="button" aria-label="Caption position, click to change" @click="cyclePosition">{{ POSITION_SHORT[captionPositionDraft] || "Position" }}</button>
-                <span class="nx-tag">This scene</span>
-              </template>
-              <template v-else-if="selection === 'image'">
-                <template v-if="isAiScene">
-                  <button class="nx-tb" type="button" :disabled="aiImagePending || activeSceneAIImagePending || activeSceneAnimationPending" @click="generateAIImage">
-                    {{ aiImagePending || activeSceneAIImagePending ? "Drawing…" : "Regenerate" }}<span class="nx-dim">{{ cr(imageCost) }}</span>
-                  </button>
-                  <button class="nx-tb" type="button" @click="focusImageEdit">Edit image</button>
-                  <button v-if="lookName" class="nx-tb" type="button" @click="openPanel('media')">Look: {{ lookName }}</button>
-                </template>
-                <button class="nx-tb" type="button" @click="openMediaPicker('visual')">Replace</button>
-                <button v-if="canAnimateActiveScene && !activeSceneAnimationPending && (isAiScene || !activeSceneVisualIsVideo)" class="nx-tb" type="button" @click="openAnimateModal">{{ activeSceneAlreadyAnimated ? "Animate again" : "Animate" }}</button>
-                <span class="nx-tag">This scene</span>
-              </template>
-              <template v-else-if="selection === 'voice'">
-                <button class="nx-tb" type="button" @click="openVoiceModal">{{ activeVoiceName || "Voice" }}</button>
-                <button class="nx-tb" type="button" aria-label="Voice speed, click to change" @click="cycleSpeed">Speed {{ voiceSpeedDraft }}×</button>
-                <button class="nx-tb" type="button" aria-label="Delivery, click to change" @click="cycleDelivery">{{ DELIVERY[voiceStabilityDraft] || "Delivery" }}</button>
-                <button class="nx-tb" type="button" :disabled="voiceRegeneratePending" @click="regenerateVoice">
-                  {{ voiceRegeneratePending ? "Recording…" : "Re-record" }}<span class="nx-dim">{{ cr(voiceCost) }}</span>
-                </button>
-                <span class="nx-tag">This scene</span>
-              </template>
-              <template v-else>
-                <span class="nx-tb-label">Scene {{ activeSceneIndex + 1 }} · {{ activeScene ? sceneTypeLabel(activeScene) : "" }}</span>
-                <span class="nx-num">{{ seconds(sceneDuration(activeScene)) }}</span>
-                <span class="nx-sep"></span>
-                <button class="nx-tb" type="button" @click="editScript">Edit script</button>
-                <!-- Moving the scene, not stepping between scenes (that is the timeline's ‹ ›): said in words. -->
-                <button class="nx-tb" type="button" :disabled="activeSceneIndex <= 0 || sceneReorderPendingId !== null" title="Move this scene one place earlier" @click="moveScene(activeSceneId, 'up')">← Move earlier</button>
-                <button class="nx-tb" type="button" :disabled="activeSceneIndex >= scenes.length - 1 || sceneReorderPendingId !== null" title="Move this scene one place later" @click="moveScene(activeSceneId, 'down')">Move later →</button>
-                <button class="nx-tb" type="button" @click="duplicateScene(activeSceneId)">Duplicate</button>
-                <button class="nx-tb" type="button" aria-label="Delete scene" @click="promptDeleteScene(activeSceneId)">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
-                </button>
-              </template>
-            </div>
-
+            <!-- The selection toolbar above the frame was taken out (owner, 2026-11-17): its controls live in the panels. -->
             <p v-if="previewVideoShortfall > 0.15" class="nx-note">This clip ends {{ previewVideoShortfall.toFixed(1) }}s before the narration; the last frame holds.</p>
 
             <div class="nx-frame-wrap">
