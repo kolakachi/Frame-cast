@@ -31,6 +31,7 @@ const {
   animateQualityOptions, animateCost, animateMotionPrompt, animateSubmitting, animateError, submitAnimate, clipCheck, makeClipAnyway, creditCosts, tierSlow,
   videoReference, videoReferencePicking, normalizeScenePayload, replaceSceneInCollection,
   animateLengths, videoLengthFor, animateWithSound, animateSpeakVoiceover, animateTakesSound, previousSceneFrame, activeSceneHasVoice,
+  lipsyncEngines, lipsyncEngine, needsSpokespersonConsent, spokespersonConsent,
 } = core;
 const { imageModelCost, imageCost, imageEditCost, characterPriced } = usePrices(core);
 
@@ -79,9 +80,18 @@ function pickGroup(g) {
 }
 const videoAi = computed(() => group.value === "video" && sub.value === "ai");
 // ── AI video ────────────────────────────────────────────────────────────────
-// Every video model but the talking one (that lip-syncs the scene's voice and stays in the Animate dialog).
-const videoTiers = ANIMATE_TIER_ORDER.filter((k) => k !== "spokesperson");
-watch(videoAi, (on) => { if (on && animateTier.value === "spokesperson") animateTier.value = "veo_fast"; }, { immediate: true });
+// Every video model, and the talking photo (VEED Fabric, owner 2026-11-17): a start picture lip-synced to the scene's
+// voiceover. It is listed only for a start picture on a scene with a voiceover (menuTiers).
+const videoTiers = ANIMATE_TIER_ORDER;
+const talking = computed(() => animateTier.value === "spokesperson");
+const TALKING_META = { name: "Talking photo", sub: "VEED Fabric · speaks the voiceover" };
+const tierName = (key) => (key === "spokesperson" ? TALKING_META.name : ANIMATE_TIER_META[key]?.name);
+const tierSub = (key) => (key === "spokesperson" ? TALKING_META.sub : ANIMATE_TIER_META[key]?.sub);
+const tierPriceLabel = (key) => {
+  if (key !== "spokesperson") return `from ${tierPrice(key)} cr`;
+  const e = lipsyncEngines.value.find((x) => x.key === lipsyncEngine.value) || lipsyncEngines.value[0];
+  return e ? `${e.credits_per_second} cr/s` : "per second";
+};
 // A model's cheapest short clip, as the server prices it.
 function tierPrice(key) {
   const served = Object.values(creditCosts.value?.video_tiers?.[key]?.qualities || {});
@@ -129,11 +139,13 @@ const modeHint = computed(() => IMAGE_MODES.find((m) => m.key === imageMode.valu
 const canMakeVideo = computed(() => {
   if (animateSubmitting.value || activeSceneAnimationPending.value || generating.value) return false;
   if (imageMode.value === "none") return animateMotionPrompt.value.trim().length >= 3;
+  if (talking.value && needsSpokespersonConsent.value && !spokespersonConsent.value) return false;
   if (imageMode.value === "start") return hasReference.value;
   if (imageMode.value === "start_end") return hasReference.value && !!videoEnd.value;
   return videoRefs.value.length > 0;
 });
 const makeBlocker = computed(() => {
+  if (talking.value && needsSpokespersonConsent.value && !spokespersonConsent.value) return "Tick the consent box first.";
   if (imageMode.value === "none" && animateMotionPrompt.value.trim().length < 3) return "Describe the shot first.";
   if ((imageMode.value === "start" || imageMode.value === "start_end") && !hasReference.value) return "Choose a start picture.";
   if (imageMode.value === "start_end" && !videoEnd.value) return "Choose an end picture.";
@@ -207,7 +219,8 @@ function makeVideo() {
 // The storyboard step left the AI video tab (owner, 2026-11-16: no "How to make it"); its code stays for the classic editor.
 const makeMode = ref("direct");
 const END_FRAME_TIERS = MODE_TIERS.start_end;
-const menuTiers = computed(() => (MODE_TIERS[imageMode.value] ? videoTiers.filter((k) => MODE_TIERS[imageMode.value].includes(k)) : videoTiers));
+const menuTiers = computed(() => (MODE_TIERS[imageMode.value] ? videoTiers.filter((k) => MODE_TIERS[imageMode.value].includes(k))
+  : videoTiers.filter((k) => k !== "spokesperson" || (imageMode.value === "start" && activeSceneHasVoice.value))));
 watch([menuTiers, videoAi], ([tiers, on]) => {
   if (on && tiers.length && !tiers.includes(animateTier.value)) animateTier.value = tiers.includes("veo_fast") ? "veo_fast" : tiers[0];
 }, { immediate: true });
@@ -504,23 +517,39 @@ function send() {
     <span class="nx-label">Model</span>
     <div class="nx-pop-wrap" @click.stop>
       <button type="button" class="nx-list-row nx-pick nx-model-pick" :aria-expanded="menu === 'vmodel'" @click="toggleMenu('vmodel')">
-        <span class="nx-list-main"><b>{{ ANIMATE_TIER_META[animateTier]?.name || "Model" }}</b><span>{{ ANIMATE_TIER_META[animateTier]?.sub }}</span></span>
-        <span class="nx-num">from {{ tierPrice(animateTier) }} cr</span>
+        <span class="nx-list-main"><b>{{ tierName(animateTier) || "Model" }}</b><span>{{ tierSub(animateTier) }}</span></span>
+        <span class="nx-num">{{ tierPriceLabel(animateTier) }}</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       <div v-if="menu === 'vmodel'" class="nx-pop">
         <div class="nx-list">
           <button v-for="key in menuTiers" :key="key" type="button" :class="['nx-list-row', animateTier === key ? 'on' : '']" @click="animateTier = key; menu = null">
             <span class="nx-list-main">
-              <b>{{ ANIMATE_TIER_META[key].name }}</b>
-              <span>{{ ANIMATE_TIER_META[key].sub }} · {{ ANIMATE_TIER_META[key].render }}<template v-if="tierSlow(key)"> · <span class="nx-warn-text">slow now</span></template></span>
+              <b>{{ tierName(key) }}</b>
+              <span>{{ tierSub(key) }} · {{ ANIMATE_TIER_META[key].render }}<template v-if="tierSlow(key)"> · <span class="nx-warn-text">slow now</span></template></span>
             </span>
-            <span class="nx-num">from {{ tierPrice(key) }} cr</span>
+            <span class="nx-num">{{ tierPriceLabel(key) }}</span>
           </button>
         </div>
+        <p v-if="imageMode === 'start' && !activeSceneHasVoice" class="nx-hint">Talking photo appears once this scene has a voiceover.</p>
         <p v-if="imageMode !== 'start'" class="nx-hint">Only the models that can {{ imageMode === "none" ? "work from words alone" : imageMode === "reference" ? "follow reference pictures" : "end on a chosen picture" }} are listed.</p>
       </div>
     </div>
+    <!-- Talking photo (VEED Fabric): the start picture speaks the voiceover; the length follows it, priced per second. -->
+    <template v-if="talking">
+      <template v-if="lipsyncEngines.length > 1">
+        <span class="nx-label">Lip-sync model</span>
+        <div class="nx-seg nx-seg-full" role="group" aria-label="Lip-sync model">
+          <button v-for="e in lipsyncEngines" :key="e.key" type="button" :class="lipsyncEngine === e.key ? 'on' : ''" @click="lipsyncEngine = e.key">{{ e.label }} · {{ e.credits_per_second }} cr/s</button>
+        </div>
+      </template>
+      <p class="nx-hint">The person in the start picture says this scene's voiceover, lips in sync. The clip is as long as the voiceover ({{ Math.round(sceneSeconds * 10) / 10 }} s). Works with realistic faces; the description above isn't used.</p>
+      <label v-if="needsSpokespersonConsent" class="nx-consent">
+        <input v-model="spokespersonConsent" type="checkbox" />
+        <span>I have the rights and consent to make this person appear to speak. <a href="/synthetic-media" target="_blank" rel="noopener">Synthetic media policy</a></span>
+      </label>
+    </template>
+
     <!-- Sound and speech (Beta, owner 2026-11-17): the clip's own sound, or Seedance 2.5 speaking the voiceover. -->
     <template v-if="animateTakesSound">
       <label class="nx-switch nx-switch-row">
@@ -537,6 +566,7 @@ function send() {
       <p class="nx-hint">The person in your first picture says the voiceover, lips in sync. Seedance may refuse realistic faces; you're not charged when it does.</p>
     </template>
 
+    <template v-if="!talking">
     <span class="nx-label">Length and quality</span>
     <p v-if="animateSpeakVoiceover" class="nx-hint">{{ voiceTooLong ? `The voiceover runs ${Math.round(sceneSeconds)} s; Seedance 2.5 makes up to 30 s. Split the scene first.` : `Follows the voiceover: ${animateDuration} s.` }}</p>
     <template v-else-if="lengthRange">
@@ -552,6 +582,7 @@ function send() {
         <button v-for="q in qualityChoices" :key="q.value" type="button" :class="animateQuality === q.value ? 'on' : ''" @click="animateQuality = q.value">{{ q.label }}</button>
       </div>
     </div>
+    </template>
 
     <template v-if="!activeSceneAnimationPending">
       <button class="nx-btn nx-primary nx-full" type="button" :disabled="!canMakeVideo || voiceTooLong" @click="makeVideo">
