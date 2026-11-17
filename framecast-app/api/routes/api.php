@@ -789,6 +789,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{sceneId}/transition', [SceneController::class, 'transition'])->whereNumber('sceneId');
             Route::post('/{sceneId}/transition/all', [SceneController::class, 'transitionAll'])->whereNumber('sceneId');
             Route::get('/{sceneId}/previous-frame', [SceneController::class, 'previousFrame'])->whereNumber('sceneId')->middleware('throttle:30,1');
+            Route::get('/{sceneId}/edge-frame', [SceneController::class, 'edgeFrame'])->whereNumber('sceneId')->middleware('throttle:120,1');
             Route::post('/{sceneId}/regenerate-music', [SceneController::class, 'regenerateMusic'])->whereNumber('sceneId');
             Route::post('/{sceneId}/rewrite', [SceneController::class, 'rewrite'])->whereNumber('sceneId');
             Route::post('/{sceneId}/duplicate', [SceneController::class, 'duplicate'])->whereNumber('sceneId');

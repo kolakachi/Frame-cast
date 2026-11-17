@@ -26,7 +26,7 @@ import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
 import ExportFeedbackDialog from "../editor/next/ExportFeedbackDialog.vue";
 import TransitionDialog from "../editor/next/TransitionDialog.vue";
-import { parseRule, transitionLabel } from "../editor/next/transitions";
+import { drawTransition, parseRule, sceneFrame, transitionLabel } from "../editor/next/transitions";
 import VoicePickerDialog from "../editor/next/VoicePickerDialog.vue";
 import CharacterDialog from "../editor/next/CharacterDialog.vue";
 import CaptionStylesDialog from "../editor/next/CaptionStylesDialog.vue";
@@ -500,6 +500,67 @@ function cutLabel(i) {
   const t = parseRule(scenes.value[i]?.transition_rule);
   return t ? `${transitionLabel(t.type)}, ${t.seconds} s` : "No transition";
 }
+// Transitions in the preview (owner, 2026-11-17): while the full video plays or is scrubbed across a cut that has one,
+// a canvas over the frame draws it from the outgoing scene's last frame to the next one's first, timed as the export
+// does (centred on the cut, never longer than 80% of either scene). The clock ticks every 50 ms, so the canvas runs
+// ahead smoothly between ticks.
+const cutCanvas = ref(null);
+const cutFrames = new Map();
+const cutTries = new Map();
+const cutWindows = computed(() => {
+  const out = [];
+  for (let i = 0; i < scenes.value.length - 1; i++) {
+    const tr = parseRule(scenes.value[i].transition_rule);
+    if (!tr) continue;
+    const d = Math.min(tr.seconds, 0.8 * sceneDuration(scenes.value[i]), 0.8 * sceneDuration(scenes.value[i + 1]));
+    if (d < 0.1) continue;
+    const cut = sceneStart(i + 1);
+    out.push({ i, type: tr.type, d, from: cut - d / 2, to: cut + d / 2, a: scenes.value[i], b: scenes.value[i + 1] });
+  }
+  return out;
+});
+const cutSize = computed(() => {
+  const [w, h] = String(project.value?.aspect_ratio || "9:16").split(":").map(Number);
+  const r = w && h ? w / h : 9 / 16;
+  return r >= 1 ? [640, Math.round(640 / r)] : [Math.round(640 * r), 640];
+});
+// Frames load ahead, so the cut is ready before the playhead reaches it.
+// Keyed by the pictures themselves: a scene whose picture hasn't arrived yet is tried again once it has.
+const picOf = (sc) => sc?.visual_asset?.thumbnail_url || sc?.visual_asset?.storage_url || "";
+function cutKey(c) { return `${picOf(c.a)}|${picOf(c.b)}|${cutSize.value.join("x")}`; }
+function loadCutFrames(list = cutWindows.value) {
+  const [w, h] = cutSize.value;
+  for (const c of list) {
+    const k = cutKey(c);
+    if (cutFrames.has(k) || !picOf(c.a) || !picOf(c.b)) continue;
+    cutFrames.set(k, null);
+    Promise.all([sceneFrame(c.a, c.i + 1, w, h, "end"), sceneFrame(c.b, c.i + 2, w, h, "start")]).then(([a, b]) => {
+      if (!a.standIn && !b.standIn) cutFrames.set(k, { a, b });
+      // Not readable yet (still loading, or slow): try again shortly rather than leave the cut plain.
+      else if ((cutTries.get(k) || 0) < 3) {
+        cutTries.set(k, (cutTries.get(k) || 0) + 1);
+        setTimeout(() => { cutFrames.delete(k); loadCutFrames(); }, 4000);
+      } else cutFrames.set(k, false); // unreadable here: the cut previews as a plain cut (the export still has it)
+    });
+  }
+}
+watch(cutWindows, (list) => loadCutFrames(list), { immediate: true });
+const activeCut = ref(null);
+let clockAt = 0;
+let clockStamp = 0;
+watch(playheadTime, (t) => { clockAt = t; clockStamp = performance.now(); }, { immediate: true });
+let cutRaf = 0;
+function cutTick() {
+  cutRaf = requestAnimationFrame(cutTick);
+  if (previewMode.value !== "full") { activeCut.value = null; return; }
+  const t = clockAt + (isPreviewPlaying.value ? Math.min(0.06, (performance.now() - clockStamp) / 1000) : 0);
+  const c = cutWindows.value.find((x) => t >= x.from && t < x.to) || null;
+  const frames = c ? cutFrames.get(cutKey(c)) : null;
+  activeCut.value = c && frames ? c : null;
+  if (activeCut.value && cutCanvas.value) drawTransition(cutCanvas.value, frames.a, frames.b, c.type, (t - c.from) / c.d);
+}
+onMounted(() => { cutRaf = requestAnimationFrame(cutTick); });
+onBeforeUnmount(() => cancelAnimationFrame(cutRaf));
 // A video scene playing its clip's own sound says so on the voice lane.
 function clipSoundLabel(scene) {
   const a = scene?.visual_asset;
@@ -843,6 +904,8 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                     </div>
                   </div>
                 </button>
+                <!-- The transition into the next scene, drawn over the frame while the full video crosses a cut. -->
+                <canvas v-show="activeCut" ref="cutCanvas" class="nx-cut-canvas" :width="cutSize[0]" :height="cutSize[1]" aria-hidden="true"></canvas>
                 <div v-if="activeSceneAIImagePending" class="nx-loading">Generating the picture…</div>
                 <div v-else-if="activeSceneAnimationPending" class="nx-loading">{{ activeSceneStillRendering ? "The video model is busy, so this clip is taking longer. You can leave this page." : "Animating this scene…" }}</div>
                 <div v-else-if="visualSwapPending" class="nx-loading">Swapping the picture…</div>

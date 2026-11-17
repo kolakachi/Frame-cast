@@ -1283,6 +1283,57 @@ class SceneController extends Controller
     }
 
     /**
+     * A scene's first or last frame as a small JPEG, for the editor's transition previews (owner, 2026-11-17). Served
+     * through the API, which the editor may read: the stored media (B2) sends no cross-origin headers, so the browser
+     * can't draw it into the preview itself. Free; cached a day per picture.
+     */
+    public function edgeFrame(Request $request, int $sceneId): \Symfony\Component\HttpFoundation\Response
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $scene = $this->resolveScene($sceneId, $user);
+        if (! $scene) {
+            return $this->error('not_found', 'Scene not found.', 404);
+        }
+        $at = $request->query('at') === 'end' ? 'end' : 'start';
+        $visual = $scene->visual_asset_id ? \App\Models\Asset::query()->where('workspace_id', $user->workspace_id)->find((int) $scene->visual_asset_id) : null;
+        if (! $visual || ! $visual->storage_url) {
+            return $this->error('no_picture', 'This scene has no picture yet.', 404);
+        }
+        $isVideo = $visual->asset_type === 'video' || str_starts_with((string) $visual->mime_type, 'video/');
+        $key = 'edge-frame:'.$visual->getKey().':'.($isVideo ? $at : 'still').':'.md5((string) $visual->storage_url);
+        $jpeg = \Illuminate\Support\Facades\Cache::get($key);
+        if (! is_string($jpeg) || $jpeg === '') {
+            $storage = app(\App\Services\Media\StorageService::class);
+            $source = (string) $visual->storage_url;
+            $tmp = tempnam(sys_get_temp_dir(), 'edge-src-');
+            $out = tempnam(sys_get_temp_dir(), 'edge-out-').'.jpg';
+            try {
+                // A stock clip or picture is read where it is; our own from storage.
+                $input = $tmp;
+                if ($storage->extractPath($source) === null && str_starts_with($source, 'https://')) {
+                    $input = $source;
+                } else {
+                    $bytes = rescue(fn () => $storage->get($source), null, false);
+                    if (! is_string($bytes) || $bytes === '') return $this->error('no_picture', 'The picture could not be read.', 404);
+                    file_put_contents($tmp, $bytes);
+                }
+                $seek = ! $isVideo ? [] : ($at === 'end' ? ['-sseof', '-0.5'] : ['-ss', '0.05']);
+                $run = \Illuminate\Support\Facades\Process::timeout(45)->run(array_merge(['ffmpeg', '-y', '-loglevel', 'error'], $seek,
+                    ['-i', $input, '-vf', "scale='min(640,iw)':-2", '-update', '1', '-q:v', '4', $out]));
+                $jpeg = $run->successful() ? (string) @file_get_contents($out) : '';
+            } finally {
+                @unlink($tmp);
+                @unlink($out);
+            }
+            if ($jpeg === '') return $this->error('no_picture', 'The frame could not be cut.', 404);
+            \Illuminate\Support\Facades\Cache::put($key, $jpeg, now()->addDay());
+        }
+
+        return response($jpeg, 200, ['Content-Type' => 'image/jpeg', 'Cache-Control' => 'private, max-age=3600']);
+    }
+
+    /**
      * The last frame of the scene before this one, as an image to start this scene's AI video from ("Continue from
      * the previous scene", owner 2026-11-17). Free. A still is returned as it is; a clip's very last frame is cut once
      * and kept on the clip (metadata last_frame_asset_id).

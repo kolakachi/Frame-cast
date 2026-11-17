@@ -1,3 +1,5 @@
+import api from "../../services/api";
+
 // Transitions between scenes (owner, 2026-11-17). The list mirrors api SceneTransitions::CATALOGUE, and the preview
 // draws each with the same formula ffmpeg's xfade uses at export, so what the picker shows is what the video gets.
 // A scene's transition_rule is the cut after it: "type:seconds", empty for a plain cut.
@@ -169,52 +171,34 @@ function standIn(w, h, n, hue) {
   x.textAlign = "center";
   x.textBaseline = "middle";
   x.fillText(String(n), w / 2, h / 2);
+  c.standIn = true; // the main preview skips a cut it can't show truly
   return c;
 }
 
 const frameCache = new Map();
 /**
  * A scene's picture as a w×h canvas for the preview: its image, or its clip's first (`at` = "start") or last frame.
- * Falls back to a numbered stand-in when the picture can't be read across origins.
+ * Fetched through the API (GET /scenes/{id}/edge-frame): stored media sends no cross-origin headers, so the browser
+ * couldn't draw it into a preview straight from storage. Falls back to a numbered stand-in when it can't be had.
  */
 export async function sceneFrame(scene, n, w, h, at = "start") {
   const a = scene?.visual_asset;
-  const isVideo = a && (a.asset_type === "video" || String(a.mime_type || "").startsWith("video/"));
-  const url = a ? (isVideo ? a.storage_url : a.thumbnail_url || a.storage_url) : null;
-  const key = `${url}|${w}x${h}|${isVideo ? at : ""}`;
-  if (url && frameCache.has(key)) return frameCache.get(key);
+  const pic = a ? a.thumbnail_url || a.storage_url : null;
   const fallback = standIn(w, h, n, n % 2 ? 210 : 20);
-  if (!url) return fallback;
-  const draw = (src, sw, sh) => {
+  if (!scene?.id || !pic) return fallback;
+  const key = `${scene.id}|${pic}|${w}x${h}|${at}`;
+  if (frameCache.has(key)) return frameCache.get(key);
+  let frame = fallback;
+  try {
+    const r = await api.get(`/scenes/${scene.id}/edge-frame`, { params: { at }, responseType: "blob" });
+    const bmp = await createImageBitmap(r.data);
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
-    const s = Math.max(w / sw, h / sh);
-    c.getContext("2d").drawImage(src, (w - sw * s) / 2, (h - sh * s) / 2, sw * s, sh * s);
-    c.getContext("2d").getImageData(0, 0, 1, 1); // throws when the picture is from another origin without CORS
-    return c;
-  };
-  const frame = await new Promise((resolve) => {
-    const done = (v) => resolve(v || fallback);
-    setTimeout(() => done(null), 8000);
-    try {
-      if (isVideo) {
-        const v = document.createElement("video");
-        v.crossOrigin = "anonymous";
-        v.muted = true;
-        v.preload = "auto";
-        v.onloadedmetadata = () => { v.currentTime = at === "end" ? Math.max(0, v.duration - 0.1) : Math.min(0.1, v.duration / 2); };
-        v.onseeked = () => { try { done(draw(v, v.videoWidth, v.videoHeight)); } catch { done(null); } };
-        v.onerror = () => done(null);
-        v.src = url;
-      } else {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => { try { done(draw(img, img.naturalWidth, img.naturalHeight)); } catch { done(null); } };
-        img.onerror = () => done(null);
-        img.src = url;
-      }
-    } catch { done(null); }
-  });
-  frameCache.set(key, frame);
+    const s = Math.max(w / bmp.width, h / bmp.height);
+    c.getContext("2d").drawImage(bmp, (w - bmp.width * s) / 2, (h - bmp.height * s) / 2, bmp.width * s, bmp.height * s);
+    bmp.close?.();
+    frame = c;
+  } catch { /* stand-in */ }
+  if (!frame.standIn) frameCache.set(key, frame); // a failure is tried again next time, not remembered
   return frame;
 }
