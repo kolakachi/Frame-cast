@@ -745,3 +745,12 @@ a.nx-link { text-decoration: none; display: inline-flex; align-items: center; al
 .nx-slot-acts button { min-width: 76px; height: 28px; border: 0; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #141417; font-size: 12px; font-weight: 600; padding: 0 10px; }
 .nx-slot-acts button + button { background: rgba(20, 20, 23, 0.85); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
 .nx-ref .nx-slot-acts button { min-width: 0; height: 24px; font-size: 11px; padding: 0 8px; }
+
+/* Scene errors in one place (owner, 2026-11-16) */
+.nx-frame-err { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: rgba(20, 20, 23, 0.94); box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.45), 0 12px 30px rgba(0, 0, 0, 0.5); font-size: 13px; line-height: 1.45; color: var(--text-2); text-align: left; }
+.nx-frame-err b { color: var(--text); font-size: 14px; }
+.nx-frame-err .nx-btn { height: 32px; padding: 0 12px; font-size: 12.5px; }
+.nx-frame-err-raw { margin: 0; max-height: 120px; overflow: auto; padding: 8px; border-radius: 8px; background: #0b0b0d; color: var(--muted); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nx-banner-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.nx-banner-link:hover { color: #fff; }
+.nx-clip-err { position: absolute; right: 8px; top: 7px; width: 18px; height: 18px; border-radius: 50%; background: var(--bad); color: #1a0606; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5); }

@@ -20,6 +20,7 @@ import VoicePanel from "../editor/next/VoicePanel.vue";
 import AudioPanel from "../editor/next/AudioPanel.vue";
 import BrandPanel from "../editor/next/BrandPanel.vue";
 import AddSceneForm from "../editor/next/AddSceneForm.vue";
+import { friendlyError } from "../editor/next/sceneErrors.js";
 import AssistantPanel from "../editor/next/AssistantPanel.vue";
 import CaptionsPanel from "../editor/next/CaptionsPanel.vue";
 import AnimateDialog from "../editor/next/AnimateDialog.vue";
@@ -327,6 +328,38 @@ function editScript() {
     box.setSelectionRange(box.value.length, box.value.length);
   });
 }
+// ── Scene errors: one place (owner, 2026-11-16) ─────────────────────────────────────────────────────────────────
+// The project's failed scenes are named in the banner (each opens its scene); the open scene's error is shown once,
+// in the frame, in plain words. Try again opens the panel tab that makes it (the price shows before anything runs);
+// Dismiss hides it for this session.
+const failedIds = computed(() => new Set((core.failedScenes.value || []).map((f) => f.id)));
+const sceneNumber = (id) => scenes.value.findIndex((sc) => sc.id === id) + 1;
+const dismissedErrors = ref(new Set());
+const errDetails = ref(false);
+const sceneError = computed(() => {
+  const anim = activeSceneAnimationError.value;
+  const pic = activeSceneVisualGenerationError.value;
+  const raw = anim || pic;
+  if (!raw || dismissedErrors.value.has(`${activeSceneId.value}:${raw}`)) return null;
+  return { ...friendlyError(raw, anim ? "video" : "picture"), kind: anim ? "video" : "picture" };
+});
+watch(activeSceneId, () => { errDetails.value = false; });
+function dismissSceneError() {
+  if (!sceneError.value) return;
+  dismissedErrors.value = new Set([...dismissedErrors.value, `${activeSceneId.value}:${sceneError.value.raw}`]);
+}
+function retrySceneError() {
+  const kind = sceneError.value?.kind;
+  openPanel("media");
+  selection.value = "image";
+  core.selectedSwapVisualSource.value = "AI Image";
+  if (kind === "video") core.mediaIntent.value = { kind: "ai_video", shot: core.animateMotionPrompt.value };
+}
+function openFailedScene(f) {
+  select("scene", f.id);
+  openPanel("media");
+}
+
 // The modal's place: after a scene ("after-<id>") or, from "+ Add", at the end.
 const addAfter = computed(() => (String(addScenePanelPosition.value).startsWith("after-") ? Number(String(addScenePanelPosition.value).slice(6)) : null));
 const addLabel = computed(() => {
@@ -623,7 +656,11 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
       </header>
 
       <div v-if="failedSceneCount > 0" class="nx-banner">
-        <span><b>{{ failedSceneCount }} scene{{ failedSceneCount === 1 ? "" : "s" }} failed</b> to finish. {{ resumeError || "You can run them again." }}</span>
+        <span>
+          <b>{{ failedSceneCount === 1 ? "Scene" : "Scenes" }}
+            <template v-for="(f, k) in core.failedScenes.value" :key="f.id"><button class="nx-banner-link" type="button" :title="`Open scene ${sceneNumber(f.id)}`" @click="openFailedScene(f)">{{ sceneNumber(f.id) }}</button>{{ k < failedSceneCount - 2 ? ", " : k === failedSceneCount - 2 ? " and " : "" }}</template>
+            failed</b> to finish. {{ resumeError || "Open one to see why, or run them all again." }}
+        </span>
         <button class="nx-btn" type="button" :disabled="resumePending" @click="resumeFailedScenes">{{ resumePending ? "Resuming…" : "Resume failed" }}</button>
       </div>
 
@@ -838,8 +875,17 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                 <div v-if="activeSceneAIImagePending" class="nx-loading">Generating the picture…</div>
                 <div v-else-if="activeSceneAnimationPending" class="nx-loading">{{ activeSceneStillRendering ? "The video model is busy, so this clip is taking longer. You can leave this page." : "Animating this scene…" }}</div>
                 <div v-else-if="visualSwapPending" class="nx-loading">Swapping the picture…</div>
-                <div v-else-if="activeSceneAnimationError" class="nx-loading is-bad">{{ activeSceneAnimationError }}</div>
-                <div v-else-if="activeSceneVisualGenerationError" class="nx-loading is-bad">{{ activeSceneVisualGenerationError }}</div>
+                <!-- The scene's error, in one place and plain words (sceneErrors.js); the raw text for staff only. -->
+                <div v-else-if="sceneError" class="nx-frame-err" role="alert">
+                  <b>{{ sceneError.title }}</b>
+                  <span>{{ sceneError.text }}</span>
+                  <div class="nx-row nx-row-start">
+                    <button class="nx-btn nx-primary" type="button" @click="retrySceneError">Try again</button>
+                    <button class="nx-btn" type="button" @click="dismissSceneError">Dismiss</button>
+                    <button v-if="core.isAdmin.value" class="nx-link" type="button" @click="errDetails = !errDetails">{{ errDetails ? "Hide details" : "Details" }}</button>
+                  </div>
+                  <pre v-if="errDetails && core.isAdmin.value" class="nx-frame-err-raw">{{ sceneError.raw }}</pre>
+                </div>
                 <div v-else-if="isSceneLoading" class="nx-loading">Loading scene…</div>
                 <div v-else-if="visualLoadFailed" class="nx-loading is-bad">Media unavailable</div>
                 <span class="nx-watermark">WYVSTUDIO</span>
@@ -909,6 +955,7 @@ const pdfSource = computed(() => project.value?.source_type === "pdf_upload");
                     <img v-if="thumbFor(scene)?.type === 'img'" :src="thumbFor(scene).url" alt="" loading="lazy" />
                     <video v-else-if="thumbFor(scene)?.type === 'video'" :src="`${thumbFor(scene).url}#t=0.5`" muted preload="metadata" playsinline></video>
                     <span class="nx-clip-name">{{ i + 1 }} · {{ sceneTypeLabel(scene) }}</span>
+                    <span v-if="failedIds.has(scene.id)" class="nx-clip-err" title="This scene didn't finish">!</span>
                     <span class="nx-clip-dur">{{ seconds(sceneDuration(scene)) }}</span>
                   </button>
                 </div>

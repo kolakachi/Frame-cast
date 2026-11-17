@@ -495,7 +495,6 @@ function send() {
     </div>
     <p v-else-if="clipCheck?.note" class="nx-hint">We adjusted the description so the video model handles it better: {{ clipCheck.prompt_issues.join(" ") }}</p>
     <p v-if="animateError" class="nx-err">{{ animateError }}</p>
-    <p v-if="activeSceneAnimationError" class="nx-err">{{ activeSceneAnimationError }}</p>
 
     <div v-if="spokespersonOutdated && !activeSceneAnimationPending" class="nx-callout">
       <span>The voice changed, so the lips no longer match.</span>
@@ -624,7 +623,7 @@ function send() {
     <button class="nx-btn nx-primary nx-full nx-cta" type="button" :disabled="!canSend" @click="send">{{ sendLabel }}</button>
     <p v-if="generating" class="nx-hint">About 15 seconds; up to 3 minutes with a character.</p>
     <p v-if="lookChanged && !editing" class="nx-hint nx-hint-warn">Look changed. Draw again to use it.</p>
-    <p v-if="aiImageError || activeSceneVisualGenerationError" class="nx-err">{{ aiImageError || activeSceneVisualGenerationError }}</p>
+    <p v-if="aiImageError" class="nx-err">{{ aiImageError }}</p>
     <p v-if="editing && editError" class="nx-err">{{ editError }}</p>
 
     <div v-if="bulkStyleOpen" class="nx-quote">
