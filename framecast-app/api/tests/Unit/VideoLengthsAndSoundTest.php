@@ -43,6 +43,16 @@ class VideoLengthsAndSoundTest extends TestCase
         $this->assertEqualsWithDelta(3.084, CreditService::animationCogsUsd('seedance_25', '480p', 30), 0.001);
     }
 
+    public function test_create_keeps_its_subsidised_veo_price(): void
+    {
+        $this->assertSame(160, CreditService::animationCost('veo_fast', null, 8), 'the editor: per second');
+        $ctx = ['has_avatar' => true, 'has_sheet' => true, 'aspect_ratio' => '9:16', 'video_tier' => 'standard', 'subjects' => ['Shop owner', 'Shop']];
+        $r = \App\Services\Create\ShotRoute::shot(['engine' => 'veo_fast', 'first_frame' => 'sheet', 'seconds' => 8], $ctx);
+        $this->assertSame('veo_fast', $r['engine']);
+        $this->assertSame(8, $r['seconds']);
+        $this->assertSame(80, $r['credits'], 'Create prices its 8 s Veo clip at the 4 s price');
+    }
+
     public function test_sound_is_made_only_when_asked_and_priced_as_billed(): void
     {
         $this->assertFalse($this->req('veo_fast', 8)['generate_audio']);

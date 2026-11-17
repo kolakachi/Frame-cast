@@ -274,7 +274,9 @@ class ShotRoute
             $spec = self::FIRST_FRAME[$engine];
             $seconds = self::step($seconds, $spec['steps']);
             $aspect = self::aspect($item['aspect'] ?? null, ['16:9', '9:16', '1:1'], $ctx['aspect_ratio'] ?? '9:16');
-            $credits = CreditService::animationCost($spec['tier'], null, $seconds);
+            // Create keeps its subsidised Veo Fast price (owner, 2026-11-17): the 8 s clip at the 4 s price, as before the
+            // editor moved to per-second pricing.
+            $credits = CreditService::animationCost($spec['tier'], null, $spec['tier'] === 'veo_fast' ? 4 : $seconds);
         }
         $audio = in_array($item['audio'] ?? null, ['ambient', 'speech', 'none'], true) ? $item['audio'] : 'ambient';
         $line = $audio === 'speech' ? mb_substr(trim((string) ($item['line'] ?? '')), 0, 200) : '';
