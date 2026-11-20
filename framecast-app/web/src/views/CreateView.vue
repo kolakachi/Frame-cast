@@ -354,7 +354,7 @@ function planDirty(p) {
   const d = planDrafts.value[p.id]; if (!d) return false
   const sel = p.plan.selections
   if (coloursDirty(p)) return true
-  return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort(), d.agreement ? agreementLists(d.agreement) : null]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, sel.choices, [...sel.kept].sort(), d.agreement ? agreementLists(agreementText(sel.agreement)) : null])
+  return JSON.stringify([(d.omitted_performance || []).slice().sort(), d.callouts.map(t => t.trim()).filter(Boolean), (d.narration || []).map(t => t.trim()).filter(Boolean), d.voice || '', d.style || '', !!d.look_first, d.choices, [...d.kept].sort(), d.agreement ? agreementLists(d.agreement) : null]) !== JSON.stringify([(sel.omitted_performance || []).slice().sort(), sel.callouts, sel.narration || [], sel.voice || '', styleKey(sel.style), !!sel.look_first, { ...sel.choices }, [...sel.kept].sort(), d.agreement ? agreementLists(agreementText(sel.agreement)) : null])
 }
 // Generated video is priced by its route (engine and length), which the server resolves for the saved selections.
 const GENERATED = ['reference_sheet', 'generated_shot', 'ugc_take']
