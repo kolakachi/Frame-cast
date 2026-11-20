@@ -916,6 +916,27 @@ class PlanService
      * When a plan item is bought: talking takes and generated shots after what they are made from (sheets, poses,
      * narration), and a video cutout after the takes and shots it cuts. One rule for saving and for pricing a plan.
      */
+    /**
+     * A talking clip or a variant of the character is made from an approved character image (CharacterApproval), so a
+     * plan that buys one without the image could never be approved: Approve asked for the look, the look stage had
+     * nothing to draw, and the user went round in a circle (2026-11-20, ws 79: re-plans kept the take, dropped the poses).
+     * The missing character image is added, drawn from the same description.
+     */
+    public static function withCharacterLook(array $media): array
+    {
+        $kinds = array_column($media, 'kind');
+        if (array_intersect($kinds, ['character_poses', 'reference_sheet'])) return $media;
+        $needs = collect($media)->first(fn ($m) => in_array($m['kind'] ?? '', ['talking_shot', 'talking_take', 'character_variants'], true)
+            || (($m['kind'] ?? '') === 'animate_image' && ($m['subject'] ?? '') === 'approved_character'));
+        if (! $needs) return $media;
+        $about = trim((string) ($needs['description'] ?? ''));
+        $description = 'The character as one still for approval, exactly as in the reference'.($about !== '' ? ': '.$about : '.');
+        array_unshift($media, ['requirement_ids' => $needs['requirement_ids'] ?? [], 'kind' => 'character_poses',
+            'description' => mb_strlen($description) > 200 ? rtrim(mb_substr($description, 0, 199)).'…' : $description,
+            'subject' => 'source', 'credits' => CapabilityCatalogue::CHARACTER_MASTER_CREDITS]);
+        return $media;
+    }
+
     public static function buyOrder(string $kind): int
     {
         return $kind === 'cutout_video' ? 2 : (in_array($kind, ['talking_shot', 'talking_take', 'generated_shot', 'ugc_take'], true) ? 1 : 0);
@@ -1024,6 +1045,7 @@ class PlanService
             // again): without it the take looked for the user's photo instead (GTM-1 #5, "none is attached").
             array_unshift($media, ['requirement_ids' => [], 'credits' => 0, 'carried' => true] + $cast[0]);
         }
+        $media = self::withCharacterLook($media);
         // The spoken script: short lines, sized to the video, only when the video should speak.
         $silent = ($ctx['settings']['audio'] ?? 'original') === 'silent';
         // Measured: the catalogue voices speak about 2 words a second with pauses; leave 1.5 s at the end.
