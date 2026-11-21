@@ -6,9 +6,25 @@ use App\Services\CreditService;
 /** A quote freezes the speech route, engine, duration and price before any provider call. */
 class TalkingPresenter
 {
-    public static function route(string $kind, ?string $voice, int $duration = 15): array
+    /** Whether the plan asks this talking task for body moves (gestures, leans, steps), not only face and speech. */
+    public static function moves(array $plan, string $kind): bool
+    {
+        $omitted = (array) ($plan['selections']['omitted_performance'] ?? []);
+        return collect($plan['character_performance'] ?? [])->contains(fn ($r) => ($r['kind'] ?? '') === 'body'
+            && ($r['tool'] ?? null) === $kind && ! in_array($r['id'] ?? '', $omitted, true));
+    }
+
+    /**
+     * A cloned voice with body moves (a wave, a lean) goes to Seedance 2.5, which lip-syncs the referenced character
+     * to the voice and acts the moves; the photo lip-sync (VEED Fabric) only moves the face (owner, 2026-11-21, ws 79).
+     */
+    public static function route(string $kind, ?string $voice, int $duration = 15, bool $moves = false): array
     {
         $seconds = $kind === 'talking_shot' ? 4 : max(4, min(15, $duration));
+        if ($voice === 'clone' && $moves) {
+            return ['speech_mode' => 'cloned_motion', 'engine' => 'seedance25', 'seconds' => $seconds,
+                'credits' => $seconds * CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25']];
+        }
         if ($voice === 'clone') {
             return ['speech_mode' => 'cloned_lipsync', 'engine' => 'lipsync', 'seconds' => $seconds,
                 'credits' => CreditService::spokespersonCost((float) $seconds)];

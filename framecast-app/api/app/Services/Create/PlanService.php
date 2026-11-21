@@ -1412,7 +1412,7 @@ class PlanService
             $items = array_values(array_filter($items, fn ($m) => ! in_array($m['kind'], ['voiceover', 'cloned_voiceover'], true)));
         }
         return collect($items)->map(function ($m) use ($voice, $plan) {
-            if (in_array($m['kind'], ['talking_shot', 'talking_take'], true)) $m = array_merge($m, TalkingPresenter::route($m['kind'], $voice));
+            if (in_array($m['kind'], ['talking_shot', 'talking_take'], true)) $m = array_merge($m, TalkingPresenter::route($m['kind'], $voice, 15, TalkingPresenter::moves($plan, $m['kind'])));
             if ($voice !== 'clone' && $m['kind'] === 'cloned_voiceover') {
                 $m['kind'] = 'voiceover';
                 $m['credits'] = \App\Services\CreditService::TTS_GEMINI;

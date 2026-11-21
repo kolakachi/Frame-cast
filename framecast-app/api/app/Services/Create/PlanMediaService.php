@@ -353,7 +353,7 @@ class PlanMediaService
         abort_unless(is_int($credits) && $credits > 0, 422, 'That item is not for sale here.');
         abort_if($kind === 'cloned_voiceover' && ($input['plan']['voice'] ?? null) !== 'clone', 422, 'Select a cloned voice explicitly before generating cloned speech.');
         if (in_array($kind, ['talking_shot', 'talking_take'], true)) CharacterApproval::requireApproved($input['plan'], $input['settings'], (int) $run->workspace_id, $input['input_files'] ?? []);
-        $talkingRoute = in_array($kind, ['talking_shot', 'talking_take'], true) ? TalkingPresenter::route($kind, $input['plan']['voice'] ?? null, (int) ($input['settings']['duration_seconds'] ?? 15)) : [];
+        $talkingRoute = in_array($kind, ['talking_shot', 'talking_take'], true) ? TalkingPresenter::route($kind, $input['plan']['voice'] ?? null, (int) ($input['settings']['duration_seconds'] ?? 15), TalkingPresenter::moves($input['plan'], $kind)) : [];
         $credits = $talkingRoute['credits'] ?? $credits;
         $ceiling = (int) ($input['execution_policy']['plan_media']['total_credits'] ?? 0);
         $spent = (int) DB::table('composition_attempts')->where('run_id', $runId)->where('kind', 'plan_media')->sum('charged_credits');

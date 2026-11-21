@@ -300,7 +300,7 @@ class ConversationService
                             // Generated video is priced by its route (engine and length), already resolved for the plan.
                             if (in_array($m['kind'], ShotRoute::KINDS, true)) return [...$item, ...array_intersect_key($m, array_flip(ShotRoute::ROUTE_KEYS)), 'credits' => (int) ($m['credits'] ?? 0)];
                             return in_array($m['kind'], ['talking_shot', 'talking_take'], true)
-                                ? array_merge($item, TalkingPresenter::route($m['kind'], $plan['voice'] ?? null, (int) ($settings['duration_seconds'] ?? 15))) : $item;
+                                ? array_merge($item, TalkingPresenter::route($m['kind'], $plan['voice'] ?? null, (int) ($settings['duration_seconds'] ?? 15), TalkingPresenter::moves($plan, $m['kind']))) : $item;
                         })->values()->all()
                     : [];
                 if (collect($planMedia)->contains(fn ($m) => in_array($m['kind'], ['talking_shot', 'talking_take'], true))) {

@@ -324,6 +324,7 @@ class PlanMediaExecutor
         $end = $whole ? min((float) ($route['seconds'] ?? 15), max(1.5, round((float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $narration])->output()), 2))) : $this->firstLineEnd($narration, $audioMime, $line);
         Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $narration, '-t', (string) $end, '-c:a', 'pcm_s16le', $dir.'/line.wav']);
         if (! is_file($dir.'/line.wav')) throw new RuntimeException('The first line could not be cut from the narration.');
+        if (($route['speech_mode'] ?? null) === 'cloned_motion') return $this->clonedMotion($line, $image, $imageMime, $dir.'/line.wav', $end, $ctx, $route, $dir, $whole);
         $adapter = app(\App\Services\Generation\Video\ReplicateFabricAdapter::class);
         $id = $adapter->start($this->replicateUpload($image, $imageMime), $this->replicateUpload((string) file_get_contents($dir.'/line.wav'), 'audio/wav'), null);
         // Measured: a 3 s shot returns in about a minute; a 15 s take in five to ten.
@@ -331,6 +332,37 @@ class PlanMediaExecutor
         if (! $url) throw new RuntimeException(($whole ? 'The talking take' : 'The talking shot').' took too long to make.');
         $path = $this->fetch($url, $dir.'/talking.mp4');
         return ['path' => $path, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'), 'provider_id' => 'talk-'.preg_replace('/[^a-zA-Z0-9_-]/', '', $id), 'line' => $line, 'seconds' => $end];
+    }
+
+    /**
+     * The approved character speaking the user's cloned voice while acting the planned moves (a wave, a lean):
+     * Seedance 2.5 lip-syncs [Image1] to [Audio1], then the exact voice file replaces the model's sound, so the
+     * words are the user's own (TalkingPresenter::route, owner 2026-11-21).
+     */
+    private function clonedMotion(string $line, string $image, string $mime, string $voicePath, float $voiceSeconds, array $ctx, array $route, string $dir, bool $whole): array
+    {
+        $seconds = max(4, min((int) ($route['seconds'] ?? 15), (int) ceil($voiceSeconds + 0.3)));
+        $prompt = 'Animate the character in [Image1] as a presenter speaking to camera. Preserve its identity, styling, texture and clothing exactly. '
+            .'One continuous performance with the body moves and expressions asked for below, natural and clearly visible. '
+            .'No other people, no subtitles, logos, music or on-screen text.'.RequirementContract::prompt($ctx['task_requirements'] ?? []);
+        $adapter = app(\App\Services\Generation\Video\ReplicateI2VAdapter::class);
+        $options = ['reference_image_urls' => [$this->replicateUpload($image, $mime)], 'reference_audio_url' => $this->replicateUpload((string) file_get_contents($voicePath), 'audio/wav'),
+            'aspect_ratio' => $ctx['aspect_ratio'] ?? '9:16', 'resolution' => '720p', 'with_sound' => true];
+        try {
+            $url = (string) $adapter->animate('', $prompt, 'seedance_25', $seconds, $options)['video_url'];
+        } catch (\App\Services\Generation\Video\PredictionStillRunning $e) {
+            $url = null; $until = time() + 600;
+            while (! $url && time() < $until) $url = $adapter->pollExisting($e->predictionId);
+            if (! $url) throw new RuntimeException('The talking take took too long to make.');
+        }
+        $raw = $this->fetch($url, $dir.'/motion.mp4');
+        // The user's own voice, not the model's re-voicing: the lips were made to it.
+        $out = $dir.'/talking.mp4';
+        $mux = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $raw, '-i', $voicePath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-af', 'apad', '-shortest', $out]);
+        if (! $mux->successful() || ! is_file($out)) throw new RuntimeException('The cloned voice could not be laid on the talking take.');
+        $length = (float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $out])->output());
+        return ['path' => $out, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'),
+            'provider_id' => 'motion-'.Str::uuid(), 'line' => $line, 'seconds' => $length ?: (float) $seconds, 'speech_mode' => 'cloned_motion', 'engine' => 'seedance25'];
     }
 
     private function nativeTalking(string $line, string $image, string $mime, array $ctx, array $route, string $dir, bool $whole): array
@@ -1028,7 +1060,7 @@ class PlanMediaExecutor
     private function replicateUpload(string $bytes, string $mime): string
     {
         if ($bytes === '') throw new RuntimeException('The character image could not be read.');
-        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)->attach('content', $bytes, (str_starts_with($mime, 'video/') ? 'video.' : 'image.').(['image/jpeg' => 'jpg', 'image/webp' => 'webp', 'video/mp4' => 'mp4', 'video/quicktime' => 'mov', 'video/webm' => 'webm'][$mime] ?? 'png'), ['Content-Type' => $mime])
+        $r = Http::withToken((string) config('services.replicate.api_token'))->timeout(60)->attach('content', $bytes, (str_starts_with($mime, 'video/') ? 'video.' : (str_starts_with($mime, 'audio/') ? 'audio.' : 'image.')).(['image/jpeg' => 'jpg', 'image/webp' => 'webp', 'video/mp4' => 'mp4', 'video/quicktime' => 'mov', 'video/webm' => 'webm', 'audio/wav' => 'wav', 'audio/mpeg' => 'mp3'][$mime] ?? 'png'), ['Content-Type' => $mime])
             ->post('https://api.replicate.com/v1/files');
         $url = $r->json('urls.get');
         if (! $r->successful() || ! is_string($url)) throw new RuntimeException('The character image could not be prepared for the model.');

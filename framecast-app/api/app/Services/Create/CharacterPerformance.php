@@ -97,7 +97,9 @@ class CharacterPerformance
             elseif (($r['route'] ?? '') !== 'generated_video' || ! $item) $why = 'Add a character-animation or talking-video task to the plan; still poses cannot perform this action.';
             elseif ($r['kind'] === 'speech' && ! in_array($tool, ['talking_shot', 'talking_take'], true)) $why = 'Speaking on camera needs a talking-video task, not a silent animation.';
             elseif ($r['kind'] === 'speech' && (empty($plan['narration']) || ($settings['audio'] ?? 'original') === 'silent')) $why = 'Speaking on camera needs an approved script and audio enabled.';
-            elseif ($r['kind'] === 'body' && $tool !== 'animate_image') $why = 'A talking-head task does not establish walking or hand gestures. Plan the body action explicitly.';
+            // A generated talking video (native speech, or Seedance acting to the cloned voice) acts its moves; the photo
+            // lip-sync only moves the face.
+            elseif ($r['kind'] === 'body' && $tool !== 'animate_image' && ! in_array($item['speech_mode'] ?? '', ['native', 'cloned_motion'], true)) $why = 'A talking-head task does not establish walking or hand gestures. Plan the body action explicitly.';
             elseif (! collect($media)->contains('kind', 'character_poses')) $why = 'Add a character master to this plan so the performance uses the approved design.';
             if ($why) $issues[] = ['id' => $r['id'], 'action' => $r['action'], 'message' => $why];
             else $spans[$tool][] = $r;
