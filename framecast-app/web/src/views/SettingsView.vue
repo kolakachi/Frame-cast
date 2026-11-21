@@ -355,9 +355,14 @@ const disconnecting     = ref(null)
 const BASE_PLATFORMS = [
   { key: 'youtube',   label: 'YouTube',         icon: '▶', note: 'Upload and schedule YouTube Shorts & videos' },
   { key: 'tiktok',    label: 'TikTok',           icon: '♪', note: 'Post directly to your TikTok account' },
-  { key: 'instagram', label: 'Instagram Reels',  icon: '◈', note: 'Publish Reels to your Instagram Business or Creator account' },
-  { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Publish Reels to your Facebook Page' },
+  { key: 'instagram', label: 'Instagram Reels',  icon: '◈', note: 'Publish Reels to your Instagram Business or Creator account', maintenance: true },
+  { key: 'facebook',  label: 'Facebook Reels',   icon: 'f', note: 'Publish Reels to your Facebook Page', maintenance: true },
 ]
+
+// Instagram and Facebook are under maintenance while Meta reviews the business
+// account behind our app (owner, 2026-11-21; answer expected early December).
+// Remove the flags to open them again.
+const MAINTENANCE_NOTE = 'Under maintenance, back in early December'
 
 // Meta App Review granted Advanced Access, so Instagram and Facebook are live
 // for everyone — the "Coming soon" hold that stood in for the review period is
@@ -1126,8 +1131,10 @@ onMounted(() => {
                       {{ accountForPlatform(plat.key).platform_display_name || accountForPlatform(plat.key).platform_username }}
                       <!-- Only a connection we know is dead. A lapsed access
                            token renews itself and is not worth mentioning. -->
-                      <span v-if="accountForPlatform(plat.key).status === 'expired'" style="color:#fbbf24"> · Reconnect needed</span>
+                      <span v-if="plat.maintenance" style="color:#fbbf24"> · {{ MAINTENANCE_NOTE }}</span>
+                      <span v-else-if="accountForPlatform(plat.key).status === 'expired'" style="color:#fbbf24"> · Reconnect needed</span>
                     </template>
+                    <template v-else-if="plat.maintenance">{{ MAINTENANCE_NOTE }}</template>
                     <template v-else>{{ plat.note }}</template>
                   </div>
                 </div>
@@ -1140,6 +1147,7 @@ onMounted(() => {
                       @click="confirmDisconnect(accountForPlatform(plat.key).id)"
                     >Disconnect</button>
                   </template>
+                  <span v-else-if="plat.maintenance" class="plan-status-badge" style="color:#fbbf24">Maintenance</span>
                   <template v-else>
                     <button class="settings-btn settings-btn-sm settings-btn-primary" @click="connectPlatform(plat.key)">Connect →</button>
                   </template>
