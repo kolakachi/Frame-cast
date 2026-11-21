@@ -23,7 +23,8 @@ class TalkingPresenter
         $seconds = $kind === 'talking_shot' ? 4 : max(4, min(15, $duration));
         if ($voice === 'clone' && $moves) {
             return ['speech_mode' => 'cloned_motion', 'engine' => 'seedance25', 'seconds' => $seconds,
-                'credits' => $seconds * CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25']];
+                // The clip, then the lip-sync of the exact voice onto it.
+                'credits' => $seconds * (CreditService::VIDEO_ONESHOT_PER_SECOND['seedance25'] + CreditService::VIDEO_LIPSYNC_PER_SECOND)];
         }
         if ($voice === 'clone') {
             return ['speech_mode' => 'cloned_lipsync', 'engine' => 'lipsync', 'seconds' => $seconds,

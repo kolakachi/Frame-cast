@@ -356,9 +356,22 @@ class PlanMediaExecutor
             if (! $url) throw new RuntimeException('The talking take took too long to make.');
         }
         $raw = $this->fetch($url, $dir.'/motion.mp4');
-        // The user's own voice, not the model's re-voicing: the lips were made to it.
+        // Seedance speaks the words at its own pace, so its lips do not follow the voice file (owner, 2026-11-21: "not in
+        // sync"). The exact voice, padded with silence to the clip, is lip-synced onto its mouth (Sync Lipsync-2-Pro, as
+        // the UGC takes do); the moves and the rest of the picture stay as made.
+        $clipSeconds = (float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $raw])->output()) ?: (float) $seconds;
+        $padded = $dir.'/voice-padded.wav';
+        Process::timeout(60)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $voicePath, '-af', 'apad', '-t', sprintf('%.2f', $clipSeconds), '-c:a', 'pcm_s16le', $padded]);
+        $video = $raw;
+        try {
+            if (! is_file($padded)) throw new RuntimeException('The voice could not be padded to the clip.');
+            $video = app(\App\Services\Generation\Video\ReplicateLipsyncAdapter::class)->sync($raw, $padded, 600);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('create: cloned-motion lip-sync failed; the voice is laid on unsynced', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+        }
+        // The user's own voice, not the model's re-voicing.
         $out = $dir.'/talking.mp4';
-        $mux = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $raw, '-i', $voicePath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-af', 'apad', '-shortest', $out]);
+        $mux = Process::timeout(120)->run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', $video, '-i', is_file($padded) ? $padded : $voicePath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-af', 'apad', '-shortest', $out]);
         if (! $mux->successful() || ! is_file($out)) throw new RuntimeException('The cloned voice could not be laid on the talking take.');
         $length = (float) trim(Process::timeout(20)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $out])->output());
         return ['path' => $out, 'mime' => 'video/mp4', 'title' => ($whole ? 'Talking take · ' : 'Talking shot · ').Str::limit($line, 40, '…'),
