@@ -46,18 +46,18 @@ cancel:
 
 | Plan | Price | Credits |
 | --- | --- | --- |
-| Starter | $89 | 4,000 (~13 shorts) |
-| Creator | $199 | 12,000 (~40 shorts) |
-| Agency | $399 | 20,000 (~66 shorts) |
+| Starter | $47 | 2,500 (about 10 twenty-second videos) |
+| Creator | $157 | 9,000 (about 38 twenty-second videos) |
+| Agency | $299 | 20,000 (about 85 twenty-second videos) |
 
 Credits are a one-time bucket — there's no monthly refill. When it runs out you
-top up at standard prices. Short counts assume a 30-second video with AI
-visuals at roughly 300 credits; stock-footage shorts cost a fraction of that
-and go much further, while AI video and lip-sync cost more.
+top up at standard prices. Video counts assume a typical 20-second video at
+about 230 credits, plan included; stock-footage videos go further, while AI
+video, presenters and lip-sync cost more.
 
-**Subscribe monthly** — **Starter ($19)**, **Creator ($39)**, **Pro ($79)**, or
-**Agency ($149)**, with credits refilling every month at a better rate per
-credit.
+**Subscribe monthly** — **Starter ($29, 2,000 credits)**, **Creator ($59, 4,000)**,
+**Pro ($99, 6,500)**, or **Agency ($199, 13,500)**, with credits refilling every
+month.
 
 ![the plans page showing one-time packs and monthly subscriptions](/img/howto/settings-plans.png)
 
