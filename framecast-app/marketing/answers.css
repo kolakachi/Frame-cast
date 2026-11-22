@@ -1,0 +1,50 @@
+/* Answer pages (/ai-ugc-ads, /arcads-alternatives, ...): one reading column on top of styles.css.
+   The first two sentences of each page are the plain answer, so they read as a lead, not a hero. */
+
+.ans { max-width: 50rem; margin: 0 auto; padding: 56px 24px 96px; }
+.ans-kicker { font-family: var(--mono); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-text); margin: 0 0 14px; }
+.ans h1 { font-size: clamp(2rem, 4.6vw, 2.9rem); line-height: 1.1; letter-spacing: -.02em; margin: 0 0 18px; text-wrap: balance; }
+.ans-lead { font-size: 1.18rem; color: var(--text-2); margin: 0 0 12px; max-width: 42rem; }
+.ans-meta { font-size: .85rem; color: var(--dim); margin: 0 0 28px; }
+.ans-cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 8px; }
+
+.ans h2 { font-size: 1.55rem; line-height: 1.2; letter-spacing: -.01em; margin: 64px 0 14px; text-wrap: balance; }
+.ans h3 { font-size: 1.12rem; margin: 32px 0 8px; }
+.ans p, .ans li { color: var(--text-2); }
+.ans p { margin: 0 0 14px; }
+.ans ul, .ans ol { padding-left: 1.25rem; margin: 0 0 16px; }
+.ans li { margin-bottom: 6px; }
+.ans strong { color: var(--text); }
+.ans a:not(.btn) { color: var(--accent-text); }
+
+.ans-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 36px 0 8px; }
+@media (max-width: 760px) { .ans-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.ans .ans-steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 12px; }
+.ans-steps li { counter-increment: s; position: relative; padding: 16px 18px 16px 58px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); margin: 0; }
+.ans-steps li::before { content: counter(s); position: absolute; left: 18px; top: 15px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-wash); color: var(--accent-text); font: 700 .85rem/26px var(--mono); text-align: center; }
+
+.ans-table-wrap { overflow-x: auto; margin: 8px 0 12px; border: 1px solid var(--line); border-radius: 14px; }
+.ans table { width: 100%; border-collapse: collapse; font-size: .92rem; min-width: 640px; }
+.ans th, .ans td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.ans th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); background: var(--surface); font-weight: 600; }
+.ans tr:last-child td { border-bottom: 0; }
+.ans td:first-child { font-weight: 600; color: var(--text); white-space: nowrap; }
+.ans tr.ours td { background: var(--accent-wash); }
+.ans-note { font-size: .82rem; color: var(--dim); }
+
+.ans-card { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 18px 20px; margin: 0 0 12px; }
+.ans-card h3 { margin-top: 0; }
+.ans-card p:last-child { margin-bottom: 0; }
+.ans-pill { display: inline-block; font-size: .75rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--dim); margin-left: 8px; vertical-align: 2px; }
+
+.ans details { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-bottom: 8px; }
+.ans summary { cursor: pointer; padding: 14px 18px; font-weight: 600; color: var(--text); list-style: none; }
+.ans summary::-webkit-details-marker { display: none; }
+.ans summary::after { content: "+"; float: right; color: var(--accent); font-family: var(--mono); }
+.ans details[open] summary::after { content: "−"; }
+.ans details > div { padding: 0 18px 14px; }
+
+.ans-end { margin-top: 64px; padding: 28px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); }
+.ans-end h2 { margin-top: 0; }
+.ans-related { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: .92rem; margin-top: 18px; }

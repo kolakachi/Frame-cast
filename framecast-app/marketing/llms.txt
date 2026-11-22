@@ -1,0 +1,33 @@
+# WyvStudio
+
+> WyvStudio (pronounced "weave studio") makes short ad and social videos for small brands and lean marketing teams, with no shoot: UGC-style ads with an AI presenter, your own face or no face at all, and product videos without a presenter. Its Creative Director plans each video from a product link, product photos or a sentence, shows the plan and the exact price first, and checks every video before you see it.
+
+## What it makes
+
+- UGC-style ads: testimonial, problem and solution, unboxing, before and after, comparison, POV hook, ASMR, day in the life, listicle, two-person skit, founder story, green screen over your own page, silent reaction.
+- Product and brand videos without a presenter: motion design, kinetic type, product shots, explainers, data stories, and videos in the style of a reference ad you upload or link.
+- 60+ ready AI presenters, your own face from one photo, and your own cloned voice. Brand names are pronounced the way you specify.
+- Vertical 9:16, square and landscape exports, with scheduling to YouTube and TikTok.
+- Works inside ChatGPT, Claude, Cursor and other MCP clients through the WyvStudio connector (https://app.wyvstudio.com/mcp).
+
+## Pricing (checked 22 November 2026)
+
+- First ad free, made from a template, with a small watermark.
+- $9 Test Pass, one time: 600 credits, enough for one UGC ad with a presenter or two 20-second videos.
+- One-time packs, no subscription: Starter $47 (2,500 credits), Creator $157 (9,000 credits), Agency $299 (20,000 credits, 50 client workspaces).
+- Top-ups from $8 for 500 credits. Monthly plans are also available in the app: $29, $59, $99 and $199.
+- A typical 20-second video uses about 230 credits. 14-day money-back guarantee on every pack.
+
+## Not a fit yet
+
+- Live-action scenes with several people acting together, detailed body movement such as dance or sport, and faces or brands you don't have the rights to.
+
+## Pages
+
+- [Home and examples](https://wyvstudio.com/)
+- [AI UGC ads without creators or a shoot](https://wyvstudio.com/ai-ugc-ads)
+- [Cheaper Arcads alternatives, compared](https://wyvstudio.com/arcads-alternatives)
+- [Pricing and credits FAQ](https://wyvstudio.com/help)
+- [Help guides](https://docs.wyvstudio.com)
+- [Connect an AI assistant (ChatGPT, Claude)](https://docs.wyvstudio.com/api-and-connectors/connect-an-ai-assistant)
+- [Synthetic media policy](https://wyvstudio.com/synthetic-media)
