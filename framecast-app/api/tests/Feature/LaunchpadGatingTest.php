@@ -340,6 +340,62 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame(['ignored', 'ignored', 'ignored'], \App\Models\BillingWebhookLog::query()->pluck('outcome')->all());
     }
 
+    /** A JVZoo IPN, form-encoded and signed the way JVZoo signs it (cverify). @param  array<string, string>  $over */
+    private function jvz(array $over = [], string $secret = 'jvz-secret', ?string $verify = null): \Illuminate\Testing\TestResponse
+    {
+        config(['services.jvzoo.ipn_secret' => 'jvz-secret']);
+        $fields = array_replace(['ccustname' => 'Jv Buyer', 'ccustemail' => 'jv@example.com', 'ccustcc' => 'US', 'ccuststate' => '',
+            'cproditem' => '463835', 'cprodtitle' => 'OfferIQ', 'cprodtype' => 'STANDARD', 'ctransaction' => 'SALE',
+            'ctransaffiliate' => '0', 'ctransamount' => '17.00', 'ctranspaymentmethod' => 'PYPL', 'ctransvendor' => '119531',
+            'ctransreceipt' => 'JVZR1', 'cupsellreceipt' => '', 'caffitid' => '', 'cvendthru' => '', 'ctranstime' => '1795000000'], $over);
+        $keys = array_keys($fields); sort($keys);
+        $pop = implode('', array_map(fn ($k) => $fields[$k].'|', $keys)).$secret;
+        $fields['cverify'] = $verify ?? strtoupper(substr(sha1($pop), 0, 8));
+
+        return $this->call('POST', '/api/v1/webhooks/jvzoo', [], [], [], ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'], http_build_query($fields));
+    }
+
+    public function test_a_jvzoo_sale_grants_the_offeriq_product_once_and_a_refund_takes_it_back(): void
+    {
+        $this->jvz()->assertOk();
+        $this->jvz()->assertOk(); // redelivery
+        $w = User::query()->where('email', 'jv@example.com')->firstOrFail()->workspace;
+        $this->assertSame(['launch_fe', 900, 'jvzoo'], [$w->plan_tier, (int) $w->credits_topup, $w->acquisition_channel]);
+        $row = LaunchPurchase::query()->sole();
+        $this->assertSame(['oiq_fe', 'jvz:JVZR1', 'jvzoo', '17.00'], [$row->product, $row->receipt, $row->source, (string) $row->amount]);
+        $this->assertSame(['processed', 'duplicate'], \App\Models\BillingWebhookLog::query()->orderBy('id')->pluck('outcome')->all());
+        Mail::assertQueued(LaunchpadPurchaseMail::class, 1);
+
+        // Each upsell is its own receipt; the popup's discounted copy grants the same product.
+        $this->jvz(['cproditem' => '464189', 'ctransreceipt' => 'JVZR2', 'ctransamount' => '227.00', 'cupsellreceipt' => 'JVZR1'])->assertOk();
+        $this->assertSame(['launch_bundle', 10900], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+
+        $this->jvz(['cproditem' => '464189', 'ctransreceipt' => 'JVZR2', 'ctransaction' => 'RFND', 'ctransamount' => '-227.00'])->assertOk();
+        $this->assertSame(['active', 'refunded'], LaunchPurchase::query()->orderBy('id')->pluck('status')->all());
+        $this->assertSame(['launch_fe', 900], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+    }
+
+    public function test_every_jvzoo_product_maps_to_its_offeriq_product(): void
+    {
+        foreach (\App\Services\Launch\JvzooIpn::PRODUCT_IDS as $id => $product) {
+            $this->jvz(['cproditem' => (string) $id, 'ctransreceipt' => "R{$id}", 'ccustemail' => "j{$id}@example.com"])->assertOk();
+            $this->assertSame([$product], LaunchPurchase::query()->where('receipt', "jvz:R{$id}")->pluck('product')->all());
+        }
+    }
+
+    public function test_a_jvzoo_ipn_with_a_bad_signature_or_no_secret_is_refused_and_others_are_acknowledged(): void
+    {
+        $this->jvz([], 'wrong-secret')->assertNotFound();
+        $this->jvz([], 'jvz-secret', 'DEADBEEF')->assertNotFound();
+        $this->assertSame(0, LaunchPurchase::query()->count());
+        $this->assertSame('invalid_signature', $this->hook()->outcome);
+
+        $this->jvz(['cproditem' => '1'])->assertOk();
+        $this->jvz(['ctransaction' => 'BILL'])->assertOk();
+        $this->assertSame(0, LaunchPurchase::query()->count());
+        $this->assertSame(['ignored', 'ignored'], \App\Models\BillingWebhookLog::query()->where('signature_valid', true)->orderBy('id')->pluck('outcome')->all());
+    }
+
     public function test_a_failure_answers_500_so_launchpad_retries(): void
     {
         $this->ipn(['user' => ['email' => 'not-an-email']])->assertStatus(500);

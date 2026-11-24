@@ -16,6 +16,7 @@ class BillingWebhookLog extends Model
     public const PROVIDER_KELVIQ  = 'kelviq';
     public const PROVIDER_APPSUMO = 'appsumo';
     public const PROVIDER_LAUNCHPAD = 'launchpad';
+    public const PROVIDER_JVZOO = 'jvzoo';
 
     /** How long rows are kept — payloads carry customer PII. */
     public const RETENTION_DAYS = 90;

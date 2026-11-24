@@ -54,7 +54,7 @@ class LaunchpadService
             return ['purchase' => $existing, 'created' => false];
         }
 
-        $workspace = $this->workspaceFor($email, $name);
+        $workspace = $this->workspaceFor($email, $name, $source);
 
         try {
             $purchase = DB::transaction(function () use ($workspace, $email, $product, $receipt, $sale, $source, $catalogue) {
@@ -150,9 +150,9 @@ class LaunchpadService
     }
 
     /** The buyer's workspace, or a new account for a first-time buyer (mirrors registration; they sign in by magic link). */
-    private function workspaceFor(string $email, ?string $name): Workspace
+    private function workspaceFor(string $email, ?string $name, string $source = 'launchpad'): Workspace
     {
-        return DB::transaction(function () use ($email, $name) {
+        return DB::transaction(function () use ($email, $name, $source) {
             $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->with('workspace')->lockForUpdate()->first();
             if ($user?->workspace) {
                 return $user->workspace;
@@ -170,7 +170,7 @@ class LaunchpadService
                 'onboarding_step'         => 1,
                 'onboarding_last_sent_at' => now(),
             ]);
-            $workspace->forceFill(['owner_user_id' => $user->getKey(), 'acquisition_channel' => 'launchpad'])->save();
+            $workspace->forceFill(['owner_user_id' => $user->getKey(), 'acquisition_channel' => $source === 'jvzoo' ? 'jvzoo' : 'launchpad'])->save();
             rescue(fn () => app(RewardService::class)->ensureReferralCode($workspace));
             Log::info('Launchpad: provisioned account', ['workspace_id' => $workspace->getKey(), 'user_id' => $user->getKey()]);
 

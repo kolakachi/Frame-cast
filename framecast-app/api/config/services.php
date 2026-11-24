@@ -320,4 +320,9 @@ return [
         'ipn_token' => env('LAUNCHPAD_IPN_TOKEN', ''),
     ],
 
+    // JVZoo IPN (JVZIPN): the products' secret key in JVZoo, which signs each IPN (cverify). Unset = every IPN is refused.
+    'jvzoo' => [
+        'ipn_secret' => env('JVZOO_IPN_SECRET', ''),
+    ],
+
 ];
