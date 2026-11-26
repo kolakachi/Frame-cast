@@ -276,10 +276,10 @@ class LaunchpadGatingTest extends TestCase
     public function test_offeriq_sales_grant_the_wyvstudio_side_that_comes_with_them(): void
     {
         // OfferIQ's front (offer 622, "NEW CREDITS" 2026-11-02): product id and offer-product id both count.
-        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 500], [6218, 7187, 'oiq_bundle', 'launch_agency', 14700], [6219, 7186, 'oiq_scale', 'launch_bundle', 10000],
+        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 500], [6218, 7187, 'oiq_bundle', 'launch_agency', 13300], [6219, 7186, 'oiq_scale', 'launch_bundle', 10000],
             [6220, 7188, 'oiq_pro', 'launch_pro', 2500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000],
             // The exit popups' discounted copies grant the same.
-            [6425, 7409, 'oiq_bundle', 'launch_agency', 14700], [6426, 7410, 'oiq_scale', 'launch_bundle', 10000], [6427, 7411, 'oiq_pro', 'launch_pro', 2500],
+            [6425, 7409, 'oiq_bundle', 'launch_agency', 13300], [6426, 7410, 'oiq_scale', 'launch_bundle', 10000], [6427, 7411, 'oiq_pro', 'launch_pro', 2500],
             [6429, 7414, 'oiq_agency', 'launch_agency', 5000]] as [$id, $offerProduct, $product, $tier, $credits]) {
             foreach ([$id, $offerProduct] as $pid) {
                 $email = "oiq{$pid}@example.com";
@@ -299,7 +299,7 @@ class LaunchpadGatingTest extends TestCase
         // The popup's discounted DFY (6428) adds the same kit (to a Bundle buyer, whose template vault is already unlimited).
         $this->ipn(['product_id' => 6428, 'transaction_id' => 'pi_oiq_dfy_popup', 'bump' => 'false', 'user' => ['email' => 'oiq7409@example.com']])->assertOk();
         $w = User::query()->where('email', 'oiq7409@example.com')->firstOrFail()->workspace;
-        $this->assertSame(14700 + 2000, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
+        $this->assertSame(13300 + 2000, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
     }
 
     public function test_offeriq_bumps_add_their_wyvstudio_side_and_its_fe_bump_is_offeriq_only(): void
