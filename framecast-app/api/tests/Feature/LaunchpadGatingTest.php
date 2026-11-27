@@ -396,6 +396,49 @@ class LaunchpadGatingTest extends TestCase
         $this->assertSame(['ignored', 'ignored'], \App\Models\BillingWebhookLog::query()->where('signature_valid', true)->orderBy('id')->pluck('outcome')->all());
     }
 
+    /** A JVZIPN v2 IPN (the shape set up on JVZoo, 2026-11-27), signed over its five fields. @param  array<string, string>  $over */
+    private function jvz2(array $over = [], string $secret = 'jvz-secret', ?string $verify = null): \Illuminate\Testing\TestResponse
+    {
+        config(['services.jvzoo.ipn_secret' => 'jvz-secret']);
+        $fields = array_replace(['customer_first_name' => 'Jamie', 'customer_last_name' => 'Rivers', 'customer_email' => 'v2@example.com',
+            'product_id' => '463835', 'product_name' => 'WyvStudio Starter', 'product_type' => 'STANDARD', 'transaction_type' => 'SALE',
+            'transaction_id' => '9TX000111Z', 'paykey' => 'PT-9TX000111Z', 'affiliate_id' => '0', 'vendor_id' => '119531', 'total' => '17.00',
+            'payment_method' => 'PYPL', 'status' => 'COMPLETED', 'date' => '2026-11-27 12:16:42', 'other_params' => '',
+            'transactionPayouts' => json_encode([['payee_amount' => 15.3, 'payout_type' => 'VENDOR']])], $over);
+        $pop = implode('|', [$fields['paykey'], $fields['customer_email'], $fields['product_name'], $fields['transaction_type'], $fields['date']]).'|'.$secret;
+        $fields['cverify'] = $verify ?? strtoupper(substr(sha1($pop), 0, 8));
+
+        return $this->call('POST', '/api/v1/webhooks/jvzoo', [], [], [], ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'], http_build_query($fields));
+    }
+
+    public function test_a_jvzipn_v2_sale_grants_once_and_its_refund_or_chargeback_takes_it_back(): void
+    {
+        $this->jvz2()->assertOk();
+        $this->jvz2()->assertOk(); // redelivery
+        $w = User::query()->where('email', 'v2@example.com')->firstOrFail()->workspace;
+        $this->assertSame(['launch_fe', 500, 'jvzoo'], [$w->plan_tier, (int) $w->credits_topup, $w->acquisition_channel]);
+        $row = LaunchPurchase::query()->sole();
+        $this->assertSame(['oiq_fe', 'jvz:9TX000111Z', '17.00'], [$row->product, $row->receipt, (string) $row->amount]);
+        $this->assertSame('Jamie Rivers', User::query()->where('email', 'v2@example.com')->value('name'));
+
+        $this->jvz2(['product_id' => '464199', 'product_name' => 'WyvStudio Pro', 'transaction_id' => '9TX2', 'paykey' => 'PT-9TX2', 'total' => '47.00'])->assertOk();
+        $this->assertSame(['launch_pro', 3000], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+
+        // v2 sends chargebacks as RFND too.
+        $this->jvz2(['product_id' => '464199', 'product_name' => 'WyvStudio Pro', 'transaction_id' => '9TX2', 'paykey' => 'PT-9TX2', 'transaction_type' => 'RFND'])->assertOk();
+        $this->assertSame(['active', 'refunded'], LaunchPurchase::query()->orderBy('id')->pluck('status')->all());
+        $this->assertSame(['launch_fe', 500], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+    }
+
+    public function test_a_jvzipn_v2_with_a_bad_signature_is_refused(): void
+    {
+        $this->jvz2([], 'wrong-secret')->assertNotFound();
+        $this->jvz2([], 'jvz-secret', 'DEADBEEF')->assertNotFound();
+        $this->assertSame(0, LaunchPurchase::query()->count());
+        $this->jvz2(['transaction_type' => 'BILL'])->assertOk();
+        $this->assertSame(0, LaunchPurchase::query()->count());
+    }
+
     public function test_a_failure_answers_500_so_launchpad_retries(): void
     {
         $this->ipn(['user' => ['email' => 'not-an-email']])->assertStatus(500);

@@ -11,12 +11,13 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
 /**
- * JVZoo IPN (owner, 2026-11-24): POST /api/v1/webhooks/jvzoo, set as each OfferIQ product's JVZIPN URL in JVZoo.
+ * JVZoo IPN (owner, 2026-11-24): POST /api/v1/webhooks/jvzoo, set as each OfferIQ product's JVZIPN v2 URL in JVZoo
+ * (v1 is read too; see JvzooIpn).
  *
- * Signed with cverify against JVZOO_IPN_SECRET (the product's "secret key" in JVZoo); a bad or missing signature, or
+ * Signed with cverify against JVZOO_IPN_SECRET (the account's secret key, My Account → Seller Settings); a bad or missing signature, or
  * no secret set, is a 404. A sale grants the same OfferIQ products as Launchpad's offer 622 (WyvStudio side included)
  * through LaunchpadService, idempotent per receipt; a refund or chargeback revokes that receipt. A processing error
- * answers 500 so JVZoo retries; anything else is acknowledged and kept in the billing-webhooks log.
+ * answers 500 (JVZoo does not retry, but emails the seller about it); anything else is acknowledged and kept in the billing-webhooks log.
  */
 class JvzooWebhookController extends Controller
 {
@@ -38,7 +39,7 @@ class JvzooWebhookController extends Controller
 
         $product = $ipn->product();
         if ($product === null || $receipt === null) {
-            Log::warning('JvzooWebhook: unrecognised product', ['product_id' => $ipn->productId(), 'title' => $fields['cprodtitle'] ?? null]);
+            Log::warning('JvzooWebhook: unrecognised product', ['product_id' => $ipn->productId(), 'title' => $ipn->productTitle()]);
             $this->log('ignored', $fields, $event, $receipt, true, 200, 'Unrecognised product or no receipt: nothing granted.', null, $request->ip());
 
             return response('OK');

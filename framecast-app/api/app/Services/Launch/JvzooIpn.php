@@ -3,14 +3,21 @@
 namespace App\Services\Launch;
 
 /**
- * Reads a JVZoo IPN (JVZIPN; owner, 2026-11-24: useofferiq.com sells the OfferIQ funnel on JVZoo too). JVZoo POSTs
- * one form-encoded event per transaction to the product's JVZIPN URL:
- *   ccustname, ccustemail, cproditem (product id), cprodtitle, ctransaction (SALE | BILL | RFND | CGBK | INSF |
- *   CANCEL-REBILL | UNCANCEL-REBILL), ctransreceipt, ctransamount, cupsellreceipt, …, cverify.
+ * Reads a JVZoo IPN (owner, 2026-11-24: useofferiq.com sells the OfferIQ funnel on JVZoo too). JVZoo POSTs one
+ * form-encoded event per transaction to the product's IPN URL (Advanced Settings), in one of two shapes; both land on
+ * the same endpoint and are told apart by their field names:
  *
- * cverify is JVZoo's signature: every other field's value in field-name order, each followed by "|", then the secret
- * key; SHA-1, upper-cased, first 8 characters. Each upsell is its own transaction with its own receipt, and a refund
- * names the receipt it refunds. Every product here is one-time, so a rebill grants nothing.
+ *   v2 (JVZIPN v2, the one we set up, 2026-11-27): paykey, transaction_id, transaction_type (SALE | BILL | RFND; a
+ *       chargeback also arrives as RFND), total (dollars), date, product_id, product_name, customer_email,
+ *       customer_first_name, customer_last_name, …, transactionPayouts (a JSON string), cverify.
+ *       cverify = SHA-1 of "paykey|customer_email|product_name|transaction_type|date|" + secret, first 8, upper-cased.
+ *   v1 (classic JVZIPN): ccustname, ccustemail, cproditem, ctransaction (SALE | BILL | RFND | CGBK | INSF | …),
+ *       ctransreceipt, ctransamount, …, cverify = every other field's value in field-name order, each followed by
+ *       "|", then the secret; SHA-1, upper-cased, first 8.
+ *
+ * The secret is the account's (My Account → Seller Settings), the same for both. Each upsell is its own transaction
+ * with its own receipt, and a refund names the receipt it refunds. Every product here is one-time, so a rebill grants
+ * nothing. JVZoo does not retry a failed delivery.
  */
 final class JvzooIpn
 {
@@ -32,6 +39,15 @@ final class JvzooIpn
 
     private const REVOKE_ACTIONS = ['RFND' => 'refunded', 'CGBK' => 'chargeback'];
 
+    /** The v2 field each reader takes, and its v1 name. */
+    private const V1_NAMES = [
+        'transaction_type' => 'ctransaction',
+        'transaction_id' => 'ctransreceipt',
+        'product_id' => 'cproditem',
+        'customer_email' => 'ccustemail',
+        'total' => 'ctransamount',
+    ];
+
     /** @param  array<string, mixed>  $fields  the form fields exactly as JVZoo sent them */
     public function __construct(public readonly array $fields)
     {
@@ -45,21 +61,36 @@ final class JvzooIpn
         return new self($fields);
     }
 
+    public function isV2(): bool
+    {
+        return array_key_exists('transaction_type', $this->fields) || array_key_exists('customer_email', $this->fields);
+    }
+
     public function verified(string $secret): bool
     {
         $given = strtoupper(trim((string) ($this->fields['cverify'] ?? '')));
         if ($secret === '' || $given === '') {
             return false;
         }
-        $keys = array_keys(array_diff_key($this->fields, ['cverify' => true]));
-        sort($keys);
-        $pop = '';
-        foreach ($keys as $key) {
-            $pop .= (is_scalar($this->fields[$key]) ? (string) $this->fields[$key] : '').'|';
-        }
-        $pop .= $secret;
-        if (! mb_check_encoding($pop, 'UTF-8')) {
-            $pop = mb_convert_encoding($pop, 'UTF-8', 'ISO-8859-1');
+
+        if ($this->isV2()) {
+            $pop = '';
+            foreach (['paykey', 'customer_email', 'product_name', 'transaction_type', 'date'] as $key) {
+                $pop .= $this->raw($key).'|';
+            }
+            // As JVZoo's own sample does it.
+            $pop = mb_convert_encoding($pop.$secret, 'UTF-8');
+        } else {
+            $keys = array_keys(array_diff_key($this->fields, ['cverify' => true]));
+            sort($keys);
+            $pop = '';
+            foreach ($keys as $key) {
+                $pop .= $this->raw($key).'|';
+            }
+            $pop .= $secret;
+            if (! mb_check_encoding($pop, 'UTF-8')) {
+                $pop = mb_convert_encoding($pop, 'UTF-8', 'ISO-8859-1');
+            }
         }
 
         return hash_equals(strtoupper(substr(sha1($pop), 0, 8)), $given);
@@ -67,7 +98,7 @@ final class JvzooIpn
 
     public function action(): string
     {
-        return strtoupper(trim((string) ($this->fields['ctransaction'] ?? '')));
+        return strtoupper(trim($this->field('transaction_type')));
     }
 
     public function isSale(): bool
@@ -83,7 +114,7 @@ final class JvzooIpn
 
     public function productId(): ?int
     {
-        $id = $this->fields['cproditem'] ?? null;
+        $id = $this->field('product_id');
 
         return is_numeric($id) ? (int) $id : null;
     }
@@ -93,30 +124,50 @@ final class JvzooIpn
         return self::PRODUCT_IDS[$this->productId()] ?? null;
     }
 
-    /** Prefixed, so a JVZoo receipt can never collide with a Launchpad transaction id. */
+    public function productTitle(): ?string
+    {
+        return ($this->fields['product_name'] ?? $this->fields['cprodtitle'] ?? null) ?: null;
+    }
+
+    /** Prefixed, so a JVZoo receipt can never collide with a Launchpad transaction id. The same in v1 and v2. */
     public function receipt(): ?string
     {
-        $receipt = trim((string) ($this->fields['ctransreceipt'] ?? ''));
+        $receipt = trim($this->field('transaction_id'));
 
         return $receipt !== '' ? 'jvz:'.$receipt : null;
     }
 
     public function email(): string
     {
-        return (string) ($this->fields['ccustemail'] ?? '');
+        return $this->field('customer_email');
     }
 
     public function name(): ?string
     {
-        $name = trim((string) ($this->fields['ccustname'] ?? ''));
+        $name = $this->isV2()
+            ? trim($this->raw('customer_first_name').' '.$this->raw('customer_last_name'))
+            : trim($this->raw('ccustname'));
 
         return $name !== '' ? $name : null;
     }
 
     public function amount(): ?float
     {
-        $amount = $this->fields['ctransamount'] ?? null;
+        $amount = $this->field('total');
 
         return is_numeric($amount) ? (float) $amount : null;
+    }
+
+    /** A field by its v2 name, read from its v1 name on a v1 IPN. */
+    private function field(string $v2): string
+    {
+        return $this->raw($this->isV2() ? $v2 : (self::V1_NAMES[$v2] ?? $v2));
+    }
+
+    private function raw(string $key): string
+    {
+        $value = $this->fields[$key] ?? '';
+
+        return is_scalar($value) ? (string) $value : '';
     }
 }
