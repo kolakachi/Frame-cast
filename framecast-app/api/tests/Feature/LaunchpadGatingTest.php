@@ -276,10 +276,10 @@ class LaunchpadGatingTest extends TestCase
     public function test_offeriq_sales_grant_the_wyvstudio_side_that_comes_with_them(): void
     {
         // OfferIQ's front (offer 622, "NEW CREDITS" 2026-11-02): product id and offer-product id both count.
-        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 500], [6218, 7187, 'oiq_bundle', 'launch_agency', 13300], [6219, 7186, 'oiq_scale', 'launch_bundle', 10000],
-            [6220, 7188, 'oiq_pro', 'launch_pro', 2500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000],
+        foreach ([[6217, 7185, 'oiq_fe', 'launch_fe', 400], [6218, 7187, 'oiq_bundle', 'launch_agency', 7700], [6219, 7186, 'oiq_scale', 'launch_bundle', 6000],
+            [6220, 7188, 'oiq_pro', 'launch_pro', 1500], [6222, 7190, 'oiq_agency', 'launch_agency', 5000],
             // The exit popups' discounted copies grant the same.
-            [6425, 7409, 'oiq_bundle', 'launch_agency', 13300], [6426, 7410, 'oiq_scale', 'launch_bundle', 10000], [6427, 7411, 'oiq_pro', 'launch_pro', 2500],
+            [6425, 7409, 'oiq_bundle', 'launch_agency', 7700], [6426, 7410, 'oiq_scale', 'launch_bundle', 6000], [6427, 7411, 'oiq_pro', 'launch_pro', 1500],
             [6429, 7414, 'oiq_agency', 'launch_agency', 5000]] as [$id, $offerProduct, $product, $tier, $credits]) {
             foreach ([$id, $offerProduct] as $pid) {
                 $email = "oiq{$pid}@example.com";
@@ -295,11 +295,11 @@ class LaunchpadGatingTest extends TestCase
         // The DFY kit adds to the buyer's plan: credits and templates, no tier of its own.
         $this->ipn(['product_id' => 6221, 'transaction_id' => 'pi_oiq_dfy', 'bump' => 'false', 'user' => ['email' => 'oiq6217@example.com']])->assertOk();
         $w = User::query()->where('email', 'oiq6217@example.com')->firstOrFail()->workspace;
-        $this->assertSame(['launch_fe', 2500, 10], [$w->plan_tier, (int) $w->credits_topup, CreditService::limitsFor($w)['sample_vault']]);
+        $this->assertSame(['launch_fe', 1900, 10], [$w->plan_tier, (int) $w->credits_topup, CreditService::limitsFor($w)['sample_vault']]);
         // The popup's discounted DFY (6428) adds the same kit (to a Bundle buyer, whose template vault is already unlimited).
         $this->ipn(['product_id' => 6428, 'transaction_id' => 'pi_oiq_dfy_popup', 'bump' => 'false', 'user' => ['email' => 'oiq7409@example.com']])->assertOk();
         $w = User::query()->where('email', 'oiq7409@example.com')->firstOrFail()->workspace;
-        $this->assertSame(13300 + 2000, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
+        $this->assertSame(7700 + 1500, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
     }
 
     public function test_offeriq_bumps_add_their_wyvstudio_side_and_its_fe_bump_is_offeriq_only(): void
@@ -360,7 +360,7 @@ class LaunchpadGatingTest extends TestCase
         $this->jvz()->assertOk();
         $this->jvz()->assertOk(); // redelivery
         $w = User::query()->where('email', 'jv@example.com')->firstOrFail()->workspace;
-        $this->assertSame(['launch_fe', 500, 'jvzoo'], [$w->plan_tier, (int) $w->credits_topup, $w->acquisition_channel]);
+        $this->assertSame(['launch_fe', 900, 'jvzoo'], [$w->plan_tier, (int) $w->credits_topup, $w->acquisition_channel]);
         $row = LaunchPurchase::query()->sole();
         $this->assertSame(['oiq_fe', 'jvz:JVZR1', 'jvzoo', '17.00'], [$row->product, $row->receipt, $row->source, (string) $row->amount]);
         $this->assertSame(['processed', 'duplicate'], \App\Models\BillingWebhookLog::query()->orderBy('id')->pluck('outcome')->all());
@@ -368,11 +368,11 @@ class LaunchpadGatingTest extends TestCase
 
         // Each upsell is its own receipt; the popup's discounted copy grants the same product.
         $this->jvz(['cproditem' => '464189', 'ctransreceipt' => 'JVZR2', 'ctransamount' => '227.00', 'cupsellreceipt' => 'JVZR1'])->assertOk();
-        $this->assertSame(['launch_bundle', 10500], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+        $this->assertSame(['launch_bundle', 10900], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
 
         $this->jvz(['cproditem' => '464189', 'ctransreceipt' => 'JVZR2', 'ctransaction' => 'RFND', 'ctransamount' => '-227.00'])->assertOk();
         $this->assertSame(['active', 'refunded'], LaunchPurchase::query()->orderBy('id')->pluck('status')->all());
-        $this->assertSame(['launch_fe', 500], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+        $this->assertSame(['launch_fe', 900], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
     }
 
     public function test_every_jvzoo_product_maps_to_its_offeriq_product(): void
@@ -416,18 +416,18 @@ class LaunchpadGatingTest extends TestCase
         $this->jvz2()->assertOk();
         $this->jvz2()->assertOk(); // redelivery
         $w = User::query()->where('email', 'v2@example.com')->firstOrFail()->workspace;
-        $this->assertSame(['launch_fe', 500, 'jvzoo'], [$w->plan_tier, (int) $w->credits_topup, $w->acquisition_channel]);
+        $this->assertSame(['launch_fe', 900, 'jvzoo'], [$w->plan_tier, (int) $w->credits_topup, $w->acquisition_channel]);
         $row = LaunchPurchase::query()->sole();
         $this->assertSame(['oiq_fe', 'jvz:9TX000111Z', '17.00'], [$row->product, $row->receipt, (string) $row->amount]);
         $this->assertSame('Jamie Rivers', User::query()->where('email', 'v2@example.com')->value('name'));
 
         $this->jvz2(['product_id' => '464199', 'product_name' => 'WyvStudio Pro', 'transaction_id' => '9TX2', 'paykey' => 'PT-9TX2', 'total' => '47.00'])->assertOk();
-        $this->assertSame(['launch_pro', 3000], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+        $this->assertSame(['launch_pro', 4400], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
 
         // v2 sends chargebacks as RFND too.
         $this->jvz2(['product_id' => '464199', 'product_name' => 'WyvStudio Pro', 'transaction_id' => '9TX2', 'paykey' => 'PT-9TX2', 'transaction_type' => 'RFND'])->assertOk();
         $this->assertSame(['active', 'refunded'], LaunchPurchase::query()->orderBy('id')->pluck('status')->all());
-        $this->assertSame(['launch_fe', 500], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
+        $this->assertSame(['launch_fe', 900], [$w->fresh()->plan_tier, (int) $w->fresh()->credits_topup]);
     }
 
     public function test_a_jvzipn_v2_with_a_bad_signature_is_refused(): void

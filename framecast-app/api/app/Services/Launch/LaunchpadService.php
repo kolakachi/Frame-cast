@@ -65,7 +65,7 @@ class LaunchpadService
                     'source'          => $source,
                     'email'           => $email,
                     'status'          => 'active',
-                    'credits_granted' => (int) ($catalogue['credits'] ?? 0),
+                    'credits_granted' => LaunchCatalogue::credits($product, $source),
                     'amount'          => $sale['amount'] ?? null,
                     'currency'        => $sale['currency'] ?? null,
                     'payload'         => $sale['payload'] ?? null,
