@@ -295,11 +295,11 @@ class LaunchpadGatingTest extends TestCase
         // The DFY kit adds to the buyer's plan: credits and templates, no tier of its own.
         $this->ipn(['product_id' => 6221, 'transaction_id' => 'pi_oiq_dfy', 'bump' => 'false', 'user' => ['email' => 'oiq6217@example.com']])->assertOk();
         $w = User::query()->where('email', 'oiq6217@example.com')->firstOrFail()->workspace;
-        $this->assertSame(['launch_fe', 1900, 10], [$w->plan_tier, (int) $w->credits_topup, CreditService::limitsFor($w)['sample_vault']]);
+        $this->assertSame(['launch_fe', 2400, 10], [$w->plan_tier, (int) $w->credits_topup, CreditService::limitsFor($w)['sample_vault']]);
         // The popup's discounted DFY (6428) adds the same kit (to a Bundle buyer, whose template vault is already unlimited).
         $this->ipn(['product_id' => 6428, 'transaction_id' => 'pi_oiq_dfy_popup', 'bump' => 'false', 'user' => ['email' => 'oiq7409@example.com']])->assertOk();
         $w = User::query()->where('email', 'oiq7409@example.com')->firstOrFail()->workspace;
-        $this->assertSame(7700 + 1500, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
+        $this->assertSame(7700 + 2000, (int) $w->credits_topup, 'the Bundle buyer gets the DFY credits on top');
     }
 
     public function test_offeriq_bumps_add_their_wyvstudio_side_and_its_fe_bump_is_offeriq_only(): void

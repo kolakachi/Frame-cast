@@ -22,7 +22,7 @@ final class LaunchCatalogue
         'agency'         => ['name' => 'WyvStudio Agency',                  'price' => 347, 'tier' => 'launch_agency', 'credits' => 3000],
         'agency_credits' => ['name' => '+2,000 credits',                    'price' => 69,  'of' => 'agency', 'credits' => 2000],
 
-        // OfferIQ's front (owner, 2026-11-02 "NEW CREDITS"; Launch & Scale 10,000 from 2026-11-04; 2026-11-27 for Launchpad: Starter 400, Bundle 7,700, Launch & Scale 6,000, Pro 1,500, DFY 1,500, Agency 5,000, so no product loses money at 30% even fully used at cost): the same launch tiers, OfferIQ's credit amounts. Its FE
+        // OfferIQ's front (owner, 2026-11-02 "NEW CREDITS"; Launch & Scale 10,000 from 2026-11-04; 2026-11-27 for Launchpad: Starter 400, Bundle 7,700, Launch & Scale 6,000, Pro 1,500, DFY 2,000 at $97, Agency 5,000, so no product loses money at 30% even fully used at cost): the same launch tiers, OfferIQ's credit amounts. Its FE
         // bump (+3 offers) is OfferIQ-only; the Agency bump's client licences count on both sides.
         'oiq_fe'              => ['name' => 'OfferIQ Starter',                   'price' => 17,  'tier' => 'launch_fe',     'credits' => 400],
         'oiq_bundle'          => ['name' => 'OfferIQ Ultimate Bundle',           'price' => 397, 'tier' => 'launch_agency', 'credits' => 7700],
@@ -30,9 +30,9 @@ final class LaunchCatalogue
         'oiq_scale_length'    => ['name' => 'Videos up to 3 minutes',            'price' => 12,  'of' => 'oiq_scale',  'limits' => ['max_duration_seconds' => 180]],
         'oiq_pro'             => ['name' => 'OfferIQ Pro',                       'price' => 67,  'tier' => 'launch_pro',    'credits' => 1500],
         'oiq_pro_seats'       => ['name' => '+2 characters & +2 cloned voices',  'price' => 27,  'of' => 'oiq_pro',    'add' => ['max_characters' => 2, 'voice_cloning_limit' => 2]],
-        'oiq_dfy'             => ['name' => 'OfferIQ DFY Launch Kit',            'price' => 67,  'credits' => 1500, 'add' => ['sample_vault' => 10]],
+        'oiq_dfy'             => ['name' => 'OfferIQ DFY Launch Kit',            'price' => 97,  'credits' => 2000, 'add' => ['sample_vault' => 10]],
         'oiq_dfy_templates'   => ['name' => '+20 templates',                     'price' => 17,  'of' => 'oiq_dfy',    'add' => ['sample_vault' => 20]],
-        'oiq_agency'          => ['name' => 'OfferIQ Agency',                    'price' => 97,  'tier' => 'launch_agency', 'credits' => 5000],
+        'oiq_agency'          => ['name' => 'OfferIQ Agency',                    'price' => 297, 'tier' => 'launch_agency', 'credits' => 5000],
         'oiq_agency_licenses' => ['name' => '+20 client licenses',               'price' => 67,  'of' => 'oiq_agency', 'add' => ['max_client_workspaces' => 20]],
     ];
 
