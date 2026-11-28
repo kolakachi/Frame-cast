@@ -10,13 +10,15 @@
 #     if a build is still running then, it aborts and leaves the slots draining (they claim nothing new) - rerun later;
 #  3. replaces the code, keeping runtime/art-packs, artifacts and node_modules;
 #  4. reinstalls packages when the lockfile changed, and rebuilds the sandbox image when anything it copies changed;
-#  5. starts the slots again and checks they are running.
+#  5. removes build folders in artifacts/live older than KEEP_DAYS (default 14);
+#  6. starts the slots again and checks they are running.
 # Queued builds wait while the slots are stopped; nothing is lost.
 set -euo pipefail
 
 HOST=${HOST:-framecast-create}
 ROOT=/opt/wyv-create
 WAIT_SECONDS=${WAIT_SECONDS:-5400}
+KEEP_DAYS=${KEEP_DAYS:-14}
 UNITS="wyv-create-worker wyv-create-worker@2 wyv-create-worker@3"
 
 repo=$(git rev-parse --show-toplevel)
@@ -42,7 +44,7 @@ trap 'rm -f "$tar_file"' EXIT
 git archive --format=tar --prefix=hyperframes-worker/ "HEAD:framecast-app/hyperframes-worker" > "$tar_file"
 scp -q "$tar_file" "$HOST:/tmp/create-worker-$short.tar"
 
-ssh "$HOST" "REV=$rev SHORT=$short ROOT=$ROOT WAIT_SECONDS=$WAIT_SECONDS UNITS='$UNITS' REBUILD=$rebuild bash -s" <<'REMOTE'
+ssh "$HOST" "REV=$rev SHORT=$short ROOT=$ROOT WAIT_SECONDS=$WAIT_SECONDS KEEP_DAYS=$KEEP_DAYS UNITS='$UNITS' REBUILD=$rebuild bash -s" <<'REMOTE'
 set -euo pipefail
 cd "$ROOT"
 old=$(cat hyperframes-worker/REVISION 2>/dev/null || echo unknown)
@@ -74,6 +76,11 @@ if [ "$needs_image" = 1 ]; then echo "Sandbox inputs changed: rebuilding the san
 # The build cache and the replaced image's layers stay on the 30 GB disk after a rebuild; the slots stop claiming builds
 # below 8 GiB free (2026-10-16: 6.25 GB of cache held every slot waiting for 3 hours). Clear them; the image in use stays.
 if [ "$needs_image" = 1 ]; then docker builder prune -f >/dev/null && docker image prune -f >/dev/null || echo "Could not clear the build cache; check the disk." >&2; fi
+# Each build leaves its working folder in artifacts/live and nothing else removes them (2026-11-28: 218 folders, 8 GB,
+# held the slots under the 8 GiB claim floor). Edits and re-renders get their files from the API; a folder is read again
+# only to resume a failed build of the same plan. Folders older than KEEP_DAYS go while the slots are stopped.
+pruned=$(find hyperframes-worker/artifacts/live -maxdepth 1 -mindepth 1 -type d -name 'app-*' -mtime +"$KEEP_DAYS" -print -exec rm -rf {} + | wc -l)
+echo "Removed $pruned build folder(s) older than $KEEP_DAYS days."
 echo "Free disk: $(df -h / | awk 'NR==2{print $4}')"
 
 for u in $UNITS; do sudo systemctl start "$u"; done
