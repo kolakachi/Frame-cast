@@ -25,6 +25,14 @@ export function preflight({path,text,assets=[],audible=[]}){
   });
   // A timed <video> is muted unless it is a talking take or shot, whose own sound is the voice.
   out=out.replace(/<video\b([^>]*)>/gi,(all,attrs)=>{
+   // muted="false" still mutes: any muted attribute does. It means "let this be heard", so say that instead
+   // (2026-11-21, ws 115: a talking take written muted="false" was delivered silent).
+   if(/\bmuted\s*=\s*["']?false["']?/i.test(attrs)){
+    attrs=attrs.replace(/\s*\bmuted\s*=\s*["']?false["']?/gi,'');
+    if(!/data-has-audio=/.test(attrs))attrs+=' data-has-audio="true"';
+    fixed.push('muted="false" removed (any muted attribute silences a video): data-has-audio="true"');
+    return '<video'+attrs+'>';
+   }
    if(!/data-start=/.test(attrs)||/\bmuted\b|data-has-audio=/.test(attrs))return all;
    const src=(attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/)||[])[1]||'';
    const speaks=audible.includes(src);

@@ -74,6 +74,14 @@ test('pre-flight settles the sound of every timed video',()=>{
  assert.match(r.text,/<video src="x.mp4"><\/video>/,'an untimed video is left alone');
  assert.equal(r.fixed.length,2);
 });
+test('pre-flight reads muted="false" as "heard", never as muted',()=>{
+ const html='<html><body><video id="take" class="clip" src="take.mp4" data-start="0" data-duration="15" data-volume="1" muted="false" playsinline></video><video data-start="2" muted=\'false\' data-has-audio="true" src="b.mp4"></video><script>window.__timelines["main"]=1;</script></body></html>';
+ const r=preflight({path:'index.html',text:html,assets:['take.mp4','b.mp4'],audible:['take.mp4']});
+ assert.match(r.text,/<video id="take" class="clip" src="take.mp4" data-start="0" data-duration="15" data-volume="1" playsinline data-has-audio="true">/);
+ assert.match(r.text,/<video data-start="2" data-has-audio="true" src="b.mp4">/);
+ assert.doesNotMatch(r.text,/muted/);
+ assert.equal(r.fixed.length,2);
+});
 
 test('high scores cannot hide an unmet character requirement or a revise verdict',()=>{
  const scores=Object.fromEntries(CRITERIA.map(k=>[k,9]));
